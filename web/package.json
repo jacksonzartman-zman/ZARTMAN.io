@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npx @cloudflare/next-on-pages"
+    "build": "next build",
+    "start": "next start"
   },
   "dependencies": {
     "next": "15.5.2",
@@ -12,7 +13,6 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "1.13.5",
     "typescript": "^5.6.2"
   }
 }
