@@ -12,7 +12,7 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "latest",
+    "@cloudflare/next-on-pages": "1.13.5",
     "typescript": "^5.6.2"
   }
 }
