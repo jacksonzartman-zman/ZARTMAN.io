@@ -1,6 +1,7 @@
 "use client"
 import { useEffect, useState } from 'react'
 import AuthGate from '@/components/AuthGate'
+import QuotePanel from '@/components/QuotePanel'
 
 type Quote = { id:string; title:string; est_total_cents:number; created_at:string }
 type Msg = { id:string; body:string; created_at:string; thread_id:string }
@@ -64,36 +65,10 @@ export default function Home() {
           </ul>
         </div>
 
-        {/* Quote builder (list of quotes for now) */}
-        <div className="rounded-2xl bg-neutral-900/60 border border-white/10 p-4">
-          <h3 className="font-semibold mb-3">Quote Builder</h3>
-          <ul className="space-y-3">
-            {quotes.map(q => (
-              <li key={q.id} className="flex items-center justify-between rounded-lg bg-neutral-800/60 border border-white/10 p-3">
-                <div>
-                  <div className="font-medium">{q.title}</div>
-                  <div className="text-xs opacity-60">{new Date(q.created_at).toLocaleDateString()}</div>
-                </div>
-                <div className="font-semibold">${(q.est_total_cents/100).toLocaleString()}</div>
-              </li>
-            ))}
-          </ul>
-          <button
-            className="mt-4 w-full rounded-lg bg-white/10 hover:bg-white/20 transition p-2"
-            onClick={async ()=>{
-              const owner_user_id = 'YOUR-USER-UUID-HERE'
-              const res = await fetch('/api/quotes', {
-                method:'POST',
-                headers:{'Content-Type':'application/json'},
-                body: JSON.stringify({ owner_user_id, title:'New Quote' })
-              }).then(r=>r.json())
-              if (res?.id) location.reload()
-              else alert(res?.error || 'Failed')
-            }}
-          >
-            + New Quote
-          </button>
-        </div>
+        <section className="mt-8 rounded-2xl bg-neutral-900/60 border border-white/10 p-4">
+          <h2 className="text-lg font-semibold mb-3">Your quotes</h2>
+          <QuotePanel />
+        </section>
       </div>
       </AuthGate>
     </main>
