@@ -7,9 +7,9 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => { setUser((data as any).user ?? null); setReady(true); });
+    supabase.auth.getUser().then((res: any) => { setUser((res.data as any).user ?? null); setReady(true); });
     const { data: sub } = supabase.auth.onAuthStateChange(() =>
-      supabase.auth.getUser().then(({ data }) => setUser((data as any).user ?? null))
+      supabase.auth.getUser().then((res: any) => setUser((res.data as any).user ?? null))
     );
     return () => sub.subscription.unsubscribe();
   }, []);

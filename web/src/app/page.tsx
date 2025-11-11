@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useState } from 'react'
+import AuthGate from '@/components/AuthGate'
 
 type Quote = { id:string; title:string; est_total_cents:number; created_at:string }
 type Msg = { id:string; body:string; created_at:string; thread_id:string }
@@ -33,6 +34,7 @@ export default function Home() {
 
   return (
     <main className="p-6 md:p-10 text-white">
+      <AuthGate>
       <section className="max-w-3xl">
         <p className="text-sm uppercase opacity-70">Manufacturing OS</p>
         <h1 className="mt-2 text-5xl font-extrabold">Zartman.io powers the modern manufacturing platform.</h1>
@@ -93,6 +95,7 @@ export default function Home() {
           </button>
         </div>
       </div>
+      </AuthGate>
     </main>
   )
 }
