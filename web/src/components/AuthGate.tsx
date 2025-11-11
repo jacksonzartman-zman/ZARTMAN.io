@@ -1,18 +1,20 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
+import { supabaseBrowser } from '@/lib/supabase.client';
+
+const supabase = supabaseBrowser();
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<any>(null);
 
-  useEffect(() => {
-    supabase.auth.getUser().then((res: any) => { setUser((res.data as any).user ?? null); setReady(true); });
-    const { data: sub } = supabase.auth.onAuthStateChange(() =>
-      supabase.auth.getUser().then((res: any) => setUser((res.data as any).user ?? null))
-    );
-    return () => sub.subscription.unsubscribe();
-  }, []);
+    useEffect(() => {
+      supabase.auth.getUser().then((res: any) => { setUser((res.data as any).user ?? null); setReady(true); });
+      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+        setUser(session?.user ?? null);
+      });
+      return () => sub?.subscription?.unsubscribe();
+    }, []);
 
   if (!ready) return null;
 
