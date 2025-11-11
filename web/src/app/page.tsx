@@ -1,13 +1,15 @@
-"use client"
-import CadUpload from "@/components/CadUpload"
+import CadUpload from "@/components/CadUpload";
 
 export default function Page() {
   return (
-    <>
-      {/* ...your hero... */}
-      <CadUpload />
-      {/* ...rest... */}
-    </>
-  )
+    <main>
+      {/* …your hero / layout… */}
+      <section>
+        <h3>Upload your CAD</h3>
+        <CadUpload />
+      </section>
+      {/* …rest of page… */}
+    </main>
+  );
 }
  
