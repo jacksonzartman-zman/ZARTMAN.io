@@ -1,51 +1,28 @@
 "use client";
 import { useState } from 'react';
+import { handleCadUpload } from '@/lib/upload.client';
 
-// Uses the signed-upload flow: POST /api/upload -> PUT signed URL -> (optional) record via /api/files
 export default function CadUpload() {
   const [msg, setMsg] = useState<string>('');
+  const OWNER = '<TEMP_USER_UUID>' // replace with real user id when auth is added
 
-  async function handleUpload(file: File) {
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
     try {
-      setMsg('Preparing upload...')
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: JSON.stringify({ owner_user_id: 'me', filename: file.name }),
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const body = await res.json()
-      if (body.error) throw new Error(body.error)
-
-      const { url, path } = body
-      setMsg('Uploading file...')
-      const put = await fetch(url, { method: 'PUT', body: file })
-      if (!put.ok) throw new Error('Upload failed')
-
-      // Try to record the file row (best-effort). If your backend exposes /api/files it will persist.
-      try {
-        await fetch('/api/files', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ quote_id: null, filename: file.name, size_bytes: file.size, mime: file.type || 'application/octet-stream', path }),
-        })
-      } catch (e) {
-        // ignore
-      }
-
+      setMsg('Uploading...')
+      await handleCadUpload(file, OWNER)
       setMsg('Upload complete ✅')
-    } catch (e: any) {
-      setMsg(`Upload error: ${e?.message ?? String(e)}`)
+    } catch (err: any) {
+      console.error(err)
+      setMsg(`Upload failed: ${err?.message ?? String(err)}`)
     }
   }
 
   return (
     <div className="space-y-2">
       <label className="px-3 py-2 rounded bg-white text-black cursor-pointer">
-        <input
-          type="file"
-          className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f) }}
-        />
+        <input type="file" accept=".step,.stp,.stl,.iges,.igs,.sldprt,.x_t,.x_b,.3mf,.obj" className="hidden" onChange={onPick} />
         Upload CAD
       </label>
       {msg && <div className="text-sm opacity-70">{msg}</div>}
