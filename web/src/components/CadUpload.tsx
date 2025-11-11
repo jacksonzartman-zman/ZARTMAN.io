@@ -1,31 +1,40 @@
 "use client";
-import { useState } from 'react';
-import { handleCadUpload } from '@/lib/upload.client';
+import { useState } from "react";
+import { supabaseBrowser } from "@/lib/supabase.client";
 
 export default function CadUpload() {
-  const [msg, setMsg] = useState<string>('');
-  const OWNER = '<TEMP_USER_UUID>' // replace with real user id when auth is added
+  const [status, setStatus] = useState<string>("");
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      setMsg('Uploading...')
-      await handleCadUpload(file, OWNER)
-      setMsg('Upload complete ✅')
-    } catch (err: any) {
-      console.error(err)
-      setMsg(`Upload failed: ${err?.message ?? String(err)}`)
+    const f = e.target.files?.[0];
+    if (!f) return;
+
+    setStatus("Uploading…");
+    const supa = supabaseBrowser();
+    const path = `uploads/${Date.now()}_${f.name}`;
+
+    // Make sure your bucket is named "cad"
+    const { data, error } = await supa.storage
+      .from("cad")
+      .upload(path, f, { upsert: false, contentType: f.type || "application/octet-stream" });
+
+    if (error) {
+      console.error("Upload failed:", error);
+      setStatus(`Upload failed: ${error.message}`);
+      return;
     }
+    console.log("Uploaded:", data);
+    setStatus("Uploaded!");
   }
 
   return (
-    <div className="space-y-2">
-      <label className="px-3 py-2 rounded bg-white text-black cursor-pointer">
-        <input type="file" accept=".step,.stp,.stl,.iges,.igs,.sldprt,.x_t,.x_b,.3mf,.obj" className="hidden" onChange={onPick} />
-        Upload CAD
-      </label>
-      {msg && <div className="text-sm opacity-70">{msg}</div>}
+    <div>
+      <input
+        type="file"
+        accept=".step,.stp,.igs,.iges,.stl,.zip,.pdf,.sldprt,.prt,.3mf,.obj"
+        onChange={onPick}
+      />
+      {status && <p className="text-sm mt-2 opacity-80">{status}</p>}
     </div>
   );
 }
