@@ -1,24 +1,33 @@
-import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase.server'
-import { randomUUID } from 'crypto'
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export async function POST(req: Request) {
+export const runtime = "edge"; // Cloudflare Pages runs on edge
+export const preferredRegion = "auto";
+
+export async function POST(req: NextRequest) {
   try {
-    const { owner_user_id, quote_id, filename } = await req.json()
+    const form = await req.formData();
+    const file = form.get("file") as File | null;
+    if (!file)
+      return NextResponse.json({ ok: false, error: "No file" }, { status: 400 });
 
-    if (!owner_user_id || !filename) {
-      return NextResponse.json({ error: 'owner_user_id and filename required' }, { status: 400 })
-    }
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY!; // server-only
 
-    const key = `${owner_user_id}/${quote_id ?? 'unassigned'}/${randomUUID()}-${filename}`
+    // In Cloudflare Workers, pass global fetch explicitly
+    const supabase = createClient(url, key, { global: { fetch } as any });
 
-    const admin = supabaseAdmin()
-    const { data, error } = await admin.storage.from('cad').createSignedUploadUrl(key)
+    const objectKey = `${Date.now()}-${file.name}`;
+    const { data, error } = await supabase.storage.from("cad").upload(objectKey, file, {
+      upsert: false,
+      cacheControl: "3600",
+    });
 
-    if (error) throw error
-    // data = { signedUrl, token, path }
-    return NextResponse.json({ path: key, signedUrl: (data as any).signedUrl, token: (data as any).token })
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+
+    const pub = supabase.storage.from("cad").getPublicUrl(objectKey).data.publicUrl;
+    return NextResponse.json({ ok: true, key: objectKey, publicUrl: pub });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });
   }
 }
