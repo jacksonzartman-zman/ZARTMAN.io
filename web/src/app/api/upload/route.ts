@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase.server'
 import { randomUUID } from 'crypto'
 
+export const runtime = 'edge'
+
 export async function POST(req: Request) {
   try {
     const { owner_user_id, quote_id, filename } = await req.json()
