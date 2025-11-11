@@ -1,5 +1,13 @@
 {
   "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "strict": true
+  },
+  "include": ["next-env.d.ts", "src/**/*", ".next/types/**/*.ts"]
+}
+{
+  "compilerOptions": {
     "target": "ES2017",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
