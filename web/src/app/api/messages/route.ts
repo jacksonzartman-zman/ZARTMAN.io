@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabasePublic, supabaseAdmin } from '@/lib/supabase.server'
 
+export const runtime = 'edge'
+
 // GET /api/messages?quote=<uuid>
 export async function GET(req: Request) {
   try {
