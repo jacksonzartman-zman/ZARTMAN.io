@@ -11,13 +11,12 @@ export const supabasePublic = () =>
     global: { fetch: fetch as any },
   })
 
-// Admin client (server-only, for signed URLs / privileged ops)
-export const supabaseAdmin = () => {
-  if (!SERVICE) throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY')
-  return createClient(URL, SERVICE, {
-    auth: { persistSession: false },
-    global: { fetch: fetch as any },
-  })
+export function supabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  )
 }
 
 // Convenient pre-created server client (null if service role not provided)
