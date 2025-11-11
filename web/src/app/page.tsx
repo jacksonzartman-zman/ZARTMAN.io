@@ -1,3 +1,4 @@
+import AuthGate from "@/components/AuthGate";
 import CadUpload from "@/components/CadUpload";
 
 export default function Page() {
@@ -5,7 +6,9 @@ export default function Page() {
     <main>
       {/* your hero/marketing copy */}
       <section>
-        <CadUpload />
+        <AuthGate>
+          <CadUpload />
+        </AuthGate>
       </section>
     </main>
   );
