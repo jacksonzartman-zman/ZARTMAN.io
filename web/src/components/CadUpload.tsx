@@ -1,56 +1,48 @@
 "use client";
-
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function CadUpload() {
   const [uploading, setUploading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    console.log("File input event fired"); // <-- Required to debug on iPad
+    console.log("CadUpload: file input change fired");
+    setMsg(null);
 
     const file = e.target.files?.[0];
     if (!file) {
-      console.log("No file selected");
+      setMsg("No file selected");
       return;
     }
 
     setUploading(true);
-
-    const filePath = `${Date.now()}-${file.name}`;
+    const path = `${Date.now()}-${file.name}`;
 
     const { data, error } = await supabase.storage
       .from("cad")
-      .upload(filePath, file, {
-        cacheControl: "3600",
-        upsert: false,
-      });
+      .upload(path, file, { cacheControl: "3600", upsert: false });
 
     if (error) {
-      console.error("Upload error:", error);
-      alert(`Upload failed: ${error.message}`);
+      console.error("CadUpload: upload error", error);
+      setMsg(`Upload failed: ${error.message}`);
     } else {
-      console.log("Upload success:", data);
-      alert("✅ Upload complete!");
-
-      // OPTIONAL: Log public URL
-      const { data: publicUrl } = supabase.storage.from("cad").getPublicUrl(filePath);
-
-      console.log("Public URL:", publicUrl.publicUrl);
+      console.log("CadUpload: upload success", data);
+      const { data: pub } = supabase.storage.from("cad").getPublicUrl(path);
+      setMsg(`✅ Uploaded: ${pub.publicUrl}`);
     }
-
     setUploading(false);
   }
 
   return (
-    <div>
+    <div style={{ display: "grid", gap: 12 }}>
       <input
         type="file"
         accept=".step,.stp,.iges,.igs,.stl"
         onChange={handleFileChange}
-        style={{ display: "block", marginBottom: "12px" }}
       />
-      {uploading && <p>Uploading…</p>}
+      {uploading && <span>Uploading…</span>}
+      {msg && <span>{msg}</span>}
     </div>
   );
 }
