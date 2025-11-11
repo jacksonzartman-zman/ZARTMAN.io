@@ -1,5 +1,6 @@
+
 'use client'
-import { supabase as supabaseBrowser } from '@/lib/supabase.client'
+import { supabaseBrowser } from '@/lib/supabase.client'
 
 export async function handleCadUpload(file: File, ownerUserId: string, quoteId?: string) {
   // Step 1: ask our API for a signed upload URL + token
@@ -17,7 +18,7 @@ export async function handleCadUpload(file: File, ownerUserId: string, quoteId?:
   if (!res.ok || error) throw new Error(error || 'Could not get signed upload URL')
 
   // Step 2: upload file to Supabase using the token
-  const sb = supabaseBrowser
+  const sb = supabaseBrowser()
   const { data, error: upErr } = await sb.storage
     .from('cad')
     .uploadToSignedUrl(path, token, file, {

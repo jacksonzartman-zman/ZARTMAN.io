@@ -1,12 +1,10 @@
-"use client"
 import { createClient } from '@supabase/supabase-js'
 
-export function supabaseBrowser() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-}
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-// Backwards-compatible default export used by UI components
-export const supabase = supabaseBrowser()
+// Eager browser client instance (keeps previous code working that expects `supabase`)
+export const supabase = createClient(url, anon, { auth: { persistSession: true } })
+
+// Factory for callers that prefer to call a function
+export const supabaseBrowser = () => supabase
