@@ -14,8 +14,11 @@ export async function handleCadUpload(file: File, ownerUserId: string, quoteId?:
     }),
   })
 
-  const { error, path, token } = await res.json()
-  if (!res.ok || error) throw new Error(error || 'Could not get signed upload URL')
+  const uploadMeta = await res.json().catch(() => ({}))
+  const { error, path, token } = uploadMeta as { error?: string; path?: string; token?: string }
+  if (!res.ok || error || !path || !token) {
+    throw new Error(error || 'Could not get signed upload URL')
+  }
 
   // Step 2: upload file to Supabase using the token
   const sb = supabaseBrowser()
@@ -29,7 +32,7 @@ export async function handleCadUpload(file: File, ownerUserId: string, quoteId?:
   if (upErr) throw upErr
 
   // Optional: record the file row in your DB (keeps list in `files` table)
-  await fetch('/api/files', {
+  const recordRes = await fetch('/api/files', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -37,8 +40,17 @@ export async function handleCadUpload(file: File, ownerUserId: string, quoteId?:
       filename: file.name,
       size_bytes: file.size,
       mime: file.type || 'application/octet-stream',
+      owner_user_id: ownerUserId,
+      storage_path: path,
     }),
   })
+
+  if (!recordRes.ok) {
+    const recordPayload = await recordRes.json().catch(() => ({}))
+    throw new Error(
+      (recordPayload as { error?: string }).error || 'Could not record uploaded file metadata'
+    )
+  }
 
   return data
 }
