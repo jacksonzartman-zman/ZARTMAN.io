@@ -1,12 +1,10 @@
-"use client";
+"use client"
 import { createClient } from '@supabase/supabase-js'
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export const supabase = createClient(url, anon, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
+// Export a ready-to-use browser Supabase client instance expected by UI components
+export const supabase = createClient(URL, ANON, {
+  auth: { persistSession: true, autoRefreshToken: true },
 })

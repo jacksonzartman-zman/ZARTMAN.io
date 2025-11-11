@@ -6,19 +6,20 @@ type Quote = { id: string; title: string; status: string; created_at: string };
 export default function QuotePanel() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [busy, setBusy] = useState(false);
+  const OWNER = '<TEMP_USER_UUID>' // replace with real user id when auth is added
 
   async function load() {
-    const r = await fetch('/api/quotes', { cache: 'no-store' });
+    const r = await fetch(`/api/quotes?owner=${OWNER}`, { cache: 'no-store' });
     if (r.ok) {
       const { quotes } = await r.json();
-      setQuotes(quotes);
+      setQuotes(quotes ?? []);
     }
   }
   useEffect(() => { load(); }, []);
 
   async function create() {
     setBusy(true);
-    await fetch('/api/quotes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'New Quote' }) });
+    await fetch('/api/quotes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'New Quote', owner_user_id: OWNER }) });
     setBusy(false);
     load();
   }
