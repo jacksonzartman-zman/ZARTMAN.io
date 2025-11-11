@@ -3,12 +3,10 @@ import CadUpload from "@/components/CadUpload";
 export default function Page() {
   return (
     <main>
-      {/* …your hero / layout… */}
+      {/* your hero/marketing copy */}
       <section>
-        <h3>Upload your CAD</h3>
         <CadUpload />
       </section>
-      {/* …rest of page… */}
     </main>
   );
 }
