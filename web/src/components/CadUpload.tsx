@@ -1,48 +1,57 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function CadUpload() {
-  const [uploading, setUploading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [status, setStatus] = useState<string>("");
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    console.log("CadUpload: file input change fired");
-    setMsg(null);
-
+  async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file) {
-      setMsg("No file selected");
+    if (!file) return;
+    setStatus("Uploading…");
+
+    const key = `${Date.now()}-${file.name}`;
+    const { data, error } = await supabase.storage
+      .from("cad")
+      .upload(key, file, { cacheControl: "3600", upsert: false });
+
+    if (error) {
+      console.error("upload error", error);
+      setStatus(`❌ ${error.message}`);
       return;
     }
 
-    setUploading(true);
-    const path = `${Date.now()}-${file.name}`;
-
-    const { data, error } = await supabase.storage
-      .from("cad")
-      .upload(path, file, { cacheControl: "3600", upsert: false });
-
-    if (error) {
-      console.error("CadUpload: upload error", error);
-      setMsg(`Upload failed: ${error.message}`);
-    } else {
-      console.log("CadUpload: upload success", data);
-      const { data: pub } = supabase.storage.from("cad").getPublicUrl(path);
-      setMsg(`✅ Uploaded: ${pub.publicUrl}`);
-    }
-    setUploading(false);
+    const pub = supabase.storage.from("cad").getPublicUrl(key).data.publicUrl;
+    console.log("uploaded", data, pub);
+    setStatus(`✅ Uploaded: ${key}`);
   }
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
+      {/* Hide input but keep it in DOM for iPad Safari */}
       <input
+        ref={inputRef}
         type="file"
         accept=".step,.stp,.iges,.igs,.stl"
-        onChange={handleFileChange}
+        onChange={onChange}
+        style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
       />
-      {uploading && <span>Uploading…</span>}
-      {msg && <span>{msg}</span>}
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        aria-label="Upload your CAD"
+        style={{
+          padding: "10px 16px",
+          borderRadius: 999,
+          background: "#1db954",
+          color: "black",
+          fontWeight: 600,
+        }}
+      >
+        Upload your CAD
+      </button>
+      {status && <div>{status}</div>}
     </div>
   );
 }
