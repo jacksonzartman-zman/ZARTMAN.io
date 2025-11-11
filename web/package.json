@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-  "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" \"*.{js,ts}\""
+    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" \"*.{js,ts}\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.81.0",
@@ -17,12 +17,13 @@
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
-  "@types/react-dom": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
     "autoprefixer": "^10.4.22",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.2",
     "postcss": "^8.5.6",
+    "prettier": "^3.6.2",
     "tailwindcss": "^3.4.7",
-    "typescript": "^5.6.2",
-    "eslint": "^8.50.0",
-    "eslint-config-next": "15.5.2"
+    "typescript": "^5.6.2"
   }
 }
