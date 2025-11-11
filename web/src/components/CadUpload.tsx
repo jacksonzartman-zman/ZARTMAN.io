@@ -1,92 +1,49 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import type { User } from "@supabase/supabase-js";
-import { supabaseBrowser } from "@/lib/supabase.client";
-import { handleCadUpload } from "@/lib/upload.client";
-
-const supabase = supabaseBrowser();
+import { useRef, useState } from "react";
 
 export default function CadUpload() {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [status, setStatus] = useState<string>("");
-  const [uploading, setUploading] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [log, setLog] = useState<string>("");
 
-  useEffect(() => {
-    let isMounted = true;
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setLog(`Picked: ${f.name} (${f.type || "unknown"}) • ${f.size} bytes\nUploading…`);
 
-    supabase.auth.getUser().then((res) => {
-      if (!isMounted) return;
-      setUser(res.data.user ?? null);
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (_event, session) => setUser(session?.user ?? null),
-    );
-
-    return () => {
-      isMounted = false;
-      authListener?.subscription?.unsubscribe();
-    };
-  }, []);
-
-  async function onChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!user?.id) {
-      setStatus("Please sign in before uploading.");
-      e.target.value = "";
-      return;
-    }
-
-    setUploading(true);
-    setStatus("Uploading…");
+    const fd = new FormData();
+    fd.append("file", f);
 
     try {
-      await handleCadUpload(file, user.id);
-      setStatus(`✅ Uploaded: ${file.name}`);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      setLog((prev) => prev + `\nResponse: ${res.status} ${res.statusText}\n${JSON.stringify(json, null, 2)}`);
     } catch (err: any) {
-      console.error("upload error", err);
-      setStatus(`❌ ${err?.message ?? "Upload failed"}`);
-    } finally {
-      setUploading(false);
-      if (e.target) e.target.value = "";
+      setLog((prev) => prev + `\n❌ Network error: ${err?.message ?? err}`);
     }
   }
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {/* Hide input but keep it in DOM for iPad Safari */}
+    <div style={{ display: "grid", gap: 10, maxWidth: 520 }}>
       <input
         ref={inputRef}
         type="file"
-        accept=".step,.stp,.iges,.igs,.stl"
-        onChange={onChange}
-        style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
+        accept=".step,.stp,.iges,.igs,.stl,.obj,.zip"
+        onChange={onPick}
+        style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
       />
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
+        style={{ padding: "10px 16px", borderRadius: 999, background: "#1db954", fontWeight: 600 }}
         aria-label="Upload your CAD"
-        disabled={uploading}
-        style={{
-          padding: "10px 16px",
-          borderRadius: 999,
-          background: uploading ? "#999" : "#1db954",
-          color: "black",
-          fontWeight: 600,
-          cursor: uploading ? "not-allowed" : "pointer",
-          opacity: uploading ? 0.7 : 1,
-        }}
       >
-        {uploading ? "Uploading…" : "Upload your CAD"}
+        Upload your CAD
       </button>
-      {!user && (
-        <div style={{ fontSize: 14, opacity: 0.7 }}>
-          Sign in to upload CAD files.
-        </div>
+      {log && (
+        <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, background: "#0f1115", padding: 10, borderRadius: 8 }}>
+          {log}
+        </pre>
       )}
-      {status && <div>{status}</div>}
     </div>
   );
 }
