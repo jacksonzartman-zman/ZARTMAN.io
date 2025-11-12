@@ -4,8 +4,8 @@
 // change to remove the function from published deploys.
 
 export const onRequestPost = async () => {
-  return new Response(JSON.stringify({ ok: false, message: 'This function has been removed. Use /api/upload (app route) instead.' }), {
-    status: 410,
-    headers: { 'content-type': 'application/json' },
+  return new Response(JSON.stringify({ ok: false, message: 'Deprecated endpoint. Use Next.js /api/upload instead.' }), {
+    status: 404,
+    headers: { 'cache-control': 'no-store', 'content-type': 'application/json' },
   });
 };
