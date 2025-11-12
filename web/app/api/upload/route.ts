@@ -8,7 +8,10 @@ export async function POST(req: Request) {
     const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      const body = JSON.stringify({ ok: false, error: 'Missing SUPABASE env variables on server' })
+      const body = JSON.stringify({ ok: false, error: 'Missing SUPABASE env variables on server', missing: {
+        NEXT_PUBLIC_SUPABASE_URL: !!SUPABASE_URL,
+        SUPABASE_SERVICE_ROLE_KEY: !!SUPABASE_SERVICE_ROLE_KEY,
+      } })
       return new Response(body, { status: 500, headers: { 'content-type': 'application/json' } })
     }
 
@@ -19,9 +22,6 @@ export async function POST(req: Request) {
       return new Response(body, { status: 400, headers: { 'content-type': 'application/json' } })
     }
 
-    const arrayBuffer = await file.arrayBuffer()
-    const uint8 = new Uint8Array(arrayBuffer)
-
     const key = `${Date.now()}_${file.name.replace(/\s+/g, '_')}`
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -29,12 +29,13 @@ export async function POST(req: Request) {
       global: { fetch },
     })
 
+    const contentType = file.type && file.type.trim() !== '' ? file.type : 'application/octet-stream'
     const { error: uploadError } = await supabase.storage
       .from('cad')
-      .upload(key, uint8, { contentType: file.type })
+      .upload(key, file, { contentType, upsert: false })
 
     if (uploadError) {
-      const body = JSON.stringify({ ok: false, error: uploadError.message })
+      const body = JSON.stringify({ ok: false, error: uploadError.message, details: uploadError })
       return new Response(body, { status: 500, headers: { 'content-type': 'application/json' } })
     }
 
