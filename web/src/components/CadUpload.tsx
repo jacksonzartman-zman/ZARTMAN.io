@@ -17,6 +17,28 @@ export default function CadUpload() {
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       const json = await res.json();
       setLog((prev) => prev + `\nResponse: ${res.status} ${res.statusText}\n${JSON.stringify(json, null, 2)}`);
+
+      // If upload succeeded, record metadata in /api/files for tracking
+      if (res.ok && json?.ok) {
+        const metadata = {
+          filename: f.name,
+          size_bytes: f.size,
+          mime: f.type || null,
+          storage_path: json.key || null,
+        }
+
+        try {
+          const r2 = await fetch('/api/files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(metadata),
+          })
+          const j2 = await r2.json()
+          setLog((prev) => prev + `\nFiles API: ${r2.status} ${r2.statusText}\n${JSON.stringify(j2, null, 2)}`)
+        } catch (err: any) {
+          setLog((prev) => prev + `\n❌ Failed to record metadata: ${err?.message ?? err}`)
+        }
+      }
     } catch (err: any) {
       setLog((prev) => prev + `\n❌ Network error: ${err?.message ?? err}`);
     }
