@@ -1,0 +1,5 @@
+// minimal dummy STEP content for upload test
+DATA;
+// trivial content
+ENDSEC;
+END-ISO-10303-21;
