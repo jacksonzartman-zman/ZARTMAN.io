@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'edge'
@@ -9,16 +8,15 @@ export async function POST(req: Request) {
     const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      return NextResponse.json(
-        { ok: false, error: 'Missing SUPABASE env variables on server' },
-        { status: 500 }
-      )
+      const body = JSON.stringify({ ok: false, error: 'Missing SUPABASE env variables on server' })
+      return new Response(body, { status: 500, headers: { 'content-type': 'application/json' } })
     }
 
     const formData = await req.formData()
     const file = formData.get('file') as File | null
     if (!file) {
-      return NextResponse.json({ ok: false, error: 'No file provided' }, { status: 400 })
+      const body = JSON.stringify({ ok: false, error: 'No file provided' })
+      return new Response(body, { status: 400, headers: { 'content-type': 'application/json' } })
     }
 
     const arrayBuffer = await file.arrayBuffer()
@@ -36,15 +34,18 @@ export async function POST(req: Request) {
       .upload(key, uint8, { contentType: file.type })
 
     if (uploadError) {
-      return NextResponse.json({ ok: false, error: uploadError.message }, { status: 500 })
+      const body = JSON.stringify({ ok: false, error: uploadError.message })
+      return new Response(body, { status: 500, headers: { 'content-type': 'application/json' } })
     }
 
     const publicUrl = `${SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/public/cad/${encodeURIComponent(
       key
     )}`
 
-    return NextResponse.json({ ok: true, key, publicUrl })
+    const body = JSON.stringify({ ok: true, key, publicUrl })
+    return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
   } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err?.message ?? String(err) }, { status: 500 })
+    const body = JSON.stringify({ ok: false, error: err?.message ?? String(err) })
+    return new Response(body, { status: 500, headers: { 'content-type': 'application/json' } })
   }
 }
