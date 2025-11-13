@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 const JSON_HEADERS = {
   'content-type': 'application/json',
   'cache-control': 'no-store',
+  'x-served-by': 'next-app-edge',
 }
 
 const BUCKET_ID = 'cad'
