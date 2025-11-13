@@ -28,6 +28,13 @@ export async function GET() {
       bucketError,
       timestamp: new Date().toISOString(),
     }),
-    { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } }
+    {
+      status: 200,
+      headers: {
+        'content-type': 'application/json',
+        'cache-control': 'no-store',
+        'x-served-by': 'next-app-edge',
+      },
+    }
   )
 }
