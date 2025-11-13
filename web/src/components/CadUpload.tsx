@@ -1,112 +1,179 @@
 "use client";
-import { useRef, useState } from "react";
+
+import { useState } from "react";
+
+type UploadState =
+  | { kind: "idle"; message: string }
+  | { kind: "uploading"; filename: string; size: number }
+  | { kind: "success"; filename: string; key: string; publicUrl: string | null }
+  | { kind: "error"; step: string; error: string; raw?: Record<string, unknown> };
 
 export default function CadUpload() {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const [log, setLog] = useState<string>("Select a CAD file to begin.");
+  const [state, setState] = useState<UploadState>({
+    kind: "idle",
+    message: "Choose a CAD file (STEP, IGES, STL, OBJ, ZIP).",
+  });
 
-  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setLog(
-      [
-        `Picked: ${f.name} (${f.type || "unknown"}) • ${f.size.toLocaleString()} bytes`,
-        "📤 Uploading…",
-      ].join("\n"),
-    );
+  async function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
 
-    const fd = new FormData();
-    fd.append("file", f);
+    setState({ kind: "uploading", filename: file.name, size: file.size });
+
+    const formData = new FormData();
+    formData.append("file", file);
 
     try {
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const text = await res.text();
-      let json: any;
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const text = await response.text();
+      let payload: any;
       try {
-        json = text ? JSON.parse(text) : undefined;
+        payload = text ? JSON.parse(text) : undefined;
       } catch {
-        json = undefined;
+        payload = undefined;
       }
 
-      if (res.ok && json?.ok) {
-        const successLines = [
-          `✅ Upload complete: ${f.name}`,
-          `Storage key: ${json.key}`,
-          json.publicUrl ? `Public URL: ${json.publicUrl}` : "Public URL: (not public)",
-        ];
-        setLog(successLines.join("\n"));
-
-        // If upload succeeded, record metadata in /api/files for tracking
-        const metadata = {
-          filename: f.name,
-          size_bytes: f.size,
-          mime: f.type || null,
-          storage_path: json.key || null,
-        };
-
-        try {
-          const recordRes = await fetch("/api/files", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(metadata),
-          });
-          if (!recordRes.ok) {
-            const recordJson = await recordRes.json().catch(() => ({}));
-            setLog((prev) =>
-              [
-                prev,
-                `⚠️ Metadata save failed: ${recordJson?.error ?? `${recordRes.status} ${recordRes.statusText}`}`,
-              ].join("\n"),
-            );
-          }
-        } catch (err: any) {
-          setLog((prev) => [
-            prev,
-            `⚠️ Metadata save error: ${err?.message ?? String(err)}`,
-          ].join("\n"));
-        }
+      if (response.ok && payload?.ok) {
+        setState({
+          kind: "success",
+          filename: file.name,
+          key: payload.key ?? "(missing)",
+          publicUrl: payload.publicUrl ?? null,
+        });
       } else {
-        const step = json?.step ?? "unknown";
-        const errMsg = json?.error ?? `Request failed with ${res.status} ${res.statusText}`;
-        const diagnostic = json ? `Diagnostics: ${JSON.stringify(json, null, 2)}` : undefined;
-        setLog(
-          [
-            `❌ Upload failed at step "${step}".`,
-            `Reason: ${errMsg}`,
-            diagnostic,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-        );
+        setState({
+          kind: "error",
+          step: payload?.step ?? "unknown",
+          error: payload?.error ?? `${response.status} ${response.statusText}`,
+          raw: payload,
+        });
       }
-    } catch (err: any) {
-      setLog(`❌ Network error: ${err?.message ?? String(err)}`);
+    } catch (error: any) {
+      setState({
+        kind: "error",
+        step: "network",
+        error: error?.message ?? String(error),
+      });
+    } finally {
+      event.currentTarget.value = "";
     }
   }
 
   return (
-    <div style={{ display: "grid", gap: 10, maxWidth: 520 }}>
+    <section
+      aria-label="CAD upload"
+      style={{
+        display: "grid",
+        gap: "1rem",
+        padding: "1.5rem",
+        borderRadius: "1rem",
+        border: "1px solid #2a2d34",
+        background: "rgba(15, 17, 21, 0.85)",
+        maxWidth: "520px",
+      }}
+    >
+      <header>
+        <h2 style={{ margin: 0, fontSize: "1.75rem" }}>Upload a CAD file</h2>
+        <p style={{ margin: "0.25rem 0 0", color: "#a0a3ad" }}>
+          Files stay private by default. We support STEP, IGES, STL, OBJ, and ZIP archives.
+        </p>
+      </header>
+
       <input
-        ref={inputRef}
         type="file"
+        name="file"
         accept=".step,.stp,.iges,.igs,.stl,.obj,.zip"
-        onChange={onPick}
-        style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
+        onChange={handleChange}
+        style={{
+          padding: "0.85rem",
+          borderRadius: "0.75rem",
+          border: "1px solid #3d414c",
+          background: "#0f1115",
+          color: "#f7f8f9",
+          fontSize: "1rem",
+        }}
       />
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        style={{ padding: "10px 16px", borderRadius: 999, background: "#1db954", fontWeight: 600 }}
-        aria-label="Upload your CAD"
-      >
-        Upload your CAD
-      </button>
-        <pre
-          aria-live="polite"
-          style={{ whiteSpace: "pre-wrap", fontSize: 12, background: "#0f1115", padding: 10, borderRadius: 8 }}
-        >
-          {log}
-        </pre>
-    </div>
+
+      <StatusDisplay state={state} />
+    </section>
   );
+}
+
+function StatusDisplay({ state }: { state: UploadState }) {
+  switch (state.kind) {
+    case "idle":
+      return (
+        <p style={{ margin: 0, color: "#a0a3ad" }} aria-live="polite">
+          {state.message}
+        </p>
+      );
+    case "uploading":
+      return (
+        <p style={{ margin: 0, color: "#a0a3ad" }} aria-live="assertive">
+          Uploading <strong>{state.filename}</strong> (
+          {new Intl.NumberFormat().format(state.size)} bytes)…
+        </p>
+      );
+    case "success":
+      return (
+        <div
+          aria-live="assertive"
+          style={{
+            display: "grid",
+            gap: "0.35rem",
+            padding: "0.85rem",
+            borderRadius: "0.75rem",
+            background: "rgba(46, 204, 113, 0.18)",
+            color: "#2ecc71",
+          }}
+        >
+          <strong>Upload complete</strong>
+          <span>File: {state.filename}</span>
+          <span>Key: {state.key}</span>
+          <span>
+            Public URL:{" "}
+            {state.publicUrl ? (
+              <a
+                href={state.publicUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: "#b7f7d1", wordBreak: "break-all" }}
+              >
+                {state.publicUrl}
+              </a>
+            ) : (
+              "not public"
+            )}
+          </span>
+        </div>
+      );
+    case "error":
+      return (
+        <div
+          aria-live="assertive"
+          style={{
+            display: "grid",
+            gap: "0.35rem",
+            padding: "0.85rem",
+            borderRadius: "0.75rem",
+            background: "rgba(242, 101, 91, 0.18)",
+            color: "#f2655b",
+          }}
+        >
+          <strong>Upload failed at step: {state.step}</strong>
+          <span>{state.error}</span>
+          {state.raw ? (
+            <code style={{ whiteSpace: "pre-wrap", fontSize: "0.8rem", color: "#ffd7d4" }}>
+              {JSON.stringify(state.raw, null, 2)}
+            </code>
+          ) : null}
+        </div>
+      );
+    default:
+      return null;
+  }
 }
