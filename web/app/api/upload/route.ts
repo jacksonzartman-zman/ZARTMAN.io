@@ -36,7 +36,10 @@ export async function POST(req: Request) {
 
     if (uploadError) {
       const body = JSON.stringify({ ok: false, error: uploadError.message, details: uploadError })
-      return new Response(body, { status: 500, headers: { 'content-type': 'application/json' } })
+      return new Response(body, {
+        status: 500,
+        headers: { 'content-type': 'application/json', 'x-served-by': 'next-app-edge' },
+      })
     }
 
     const publicUrl = `${SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/public/cad/${encodeURIComponent(
@@ -44,9 +47,15 @@ export async function POST(req: Request) {
     )}`
 
     const body = JSON.stringify({ ok: true, key, publicUrl })
-    return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+    return new Response(body, {
+      status: 200,
+      headers: { 'content-type': 'application/json', 'x-served-by': 'next-app-edge' },
+    })
   } catch (err: any) {
     const body = JSON.stringify({ ok: false, error: err?.message ?? String(err) })
-    return new Response(body, { status: 500, headers: { 'content-type': 'application/json' } })
+    return new Response(body, {
+      status: 500,
+      headers: { 'content-type': 'application/json', 'x-served-by': 'next-app-edge' },
+    })
   }
 }
