@@ -5,11 +5,13 @@ Run these commands **after** deploying the latest changes to Cloudflare Pages. R
 ### Health Checks
 
 ```bash
+curl -i https://zartman.io/api/ping
 curl -i https://zartman.io/api/has-service-role
 curl -i https://zartman.io/api/runtime
+curl -i https://zartman.io/api/debug
 ```
 
-Expected: HTTP 200 with JSON showing `ok: true`. `has-service-role` includes `hasServiceRole: true` when the Pages project is bound to `SUPABASE_SERVICE_ROLE_KEY`.
+Expected: HTTP 200 for each endpoint. `/api/ping` returns `pong:GET` as plain text, while the JSON endpoints include `ok: true`. `/api/has-service-role` responds with `hasServiceRole: true` when the Pages project is bound to `SUPABASE_SERVICE_ROLE_KEY`.
 
 ### Multipart Upload
 
@@ -42,4 +44,4 @@ If the response contains `"ok": false`, check the `step` field to understand whe
 - `supabase-upload`: Supabase returned an error (see the message and `details`).
 - `unexpected`: an uncaught error occurred; redeploy or inspect Cloudflare logs for stack traces.
 
-After a successful upload, confirm the object exists in the Supabase `cad` bucket and that Storage logs show an `upload` event.
+After a successful upload, confirm the object exists in the Supabase `cad` bucket and that Storage logs show a `storage.object.create` event. In the UI, the success message surfaces the storage key and public URL (when available); on failure the UI displays the `step` and `error` values from the JSON response for quicker diagnostics.
