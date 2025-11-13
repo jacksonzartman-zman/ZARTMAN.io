@@ -10,6 +10,9 @@ export async function GET() {
     })
   } catch (err: any) {
     const body = JSON.stringify({ ok: false, error: err?.message ?? String(err) })
-    return new Response(body, { status: 500, headers: { 'content-type': 'application/json' } })
+    return new Response(body, {
+      status: 500,
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-served-by': 'next-app-edge' },
+    })
   }
 }
