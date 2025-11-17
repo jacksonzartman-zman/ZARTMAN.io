@@ -1,97 +1,101 @@
 import UploadBox from "@/components/UploadBox";
 
-const steps = [
-  "Upload your CAD file",
-  "We review manufacturability & options",
-  "You get a clear path to parts in production",
-];
-
-export default function Page() {
+export default function HomePage() {
   return (
-    <main className="bg-gray-50 text-gray-900">
-      <div className="container mx-auto max-w-6xl px-6 py-16 space-y-24">
-        <section className="text-center space-y-6">
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-500">
-            Zartman Manufacturing OS
-          </p>
-          <h1 className="text-4xl md:text-6xl font-bold text-gray-900">
-            Zartman.io
-          </h1>
-          <p className="text-lg md:text-2xl text-gray-700 max-w-3xl mx-auto">
-            From CAD file to manufacturing quote, without the runaround.
-          </p>
-          <button
-            className="inline-flex items-center justify-center rounded-full bg-gray-900 px-6 py-3 text-base font-semibold text-white shadow-lg shadow-gray-900/20 transition hover:-translate-y-0.5"
-            onClick={() => {
-              const uploadSection = document.getElementById("upload-section");
-              uploadSection?.scrollIntoView({ behavior: "smooth" });
-            }}
-          >
-            Upload CAD file
-          </button>
-        </section>
-
-        <section className="space-y-8" aria-labelledby="how-it-works-heading">
-          <div className="space-y-2 text-center">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-500">
-              How it works
-            </p>
-            <h2
-              id="how-it-works-heading"
-              className="text-3xl font-bold text-gray-900"
-            >
-              A clear path from file to parts
-            </h2>
+    <main className="min-h-screen bg-white text-neutral-900">
+      <div className="mx-auto flex max-w-5xl flex-col gap-16 px-4 py-16 sm:px-6 lg:px-8">
+        {/* Hero */}
+        <section className="space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-1 text-sm font-medium text-emerald-700">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Manufacturing OS for real-world parts
           </div>
-          <div className="grid gap-6 md:grid-cols-3">
-            {steps.map((step, index) => (
-              <div
-                key={step}
-                className="rounded-2xl border border-gray-200 bg-white p-6 text-left shadow-sm"
-              >
-                <p className="text-sm font-semibold text-gray-500">
-                  Step {index + 1}
-                </p>
-                <p className="mt-3 text-lg font-medium text-gray-900">
-                  {step}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="grid gap-8 rounded-3xl bg-white/70 p-10 shadow-inner shadow-gray-200 md:grid-cols-2">
           <div className="space-y-4">
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-gray-500">
-              Why this exists
-            </p>
-            <h2 className="text-3xl font-bold text-gray-900">
-              Modern manufacturing needs a front door
-            </h2>
-            <p className="text-gray-700 leading-relaxed">
-              Most manufacturing workflows are still fragmented across inboxes,
-              ad hoc portals, and tribal knowledge. Zartman.io is a simple,
-              OS-style front door: you share a CAD file, we return manufacturability
-              clarity and a playbook to get parts into production without the
-              endless back-and-forth.
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+              Zartman.io
+            </h1>
+            <p className="max-w-2xl text-base text-neutral-600 sm:text-lg">
+              From CAD file to manufacturing quote, without the runaround. One front
+              door for quotes, DFM feedback, and supplier coordination.
             </p>
           </div>
-          <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-gray-700">
-            <p className="font-semibold text-gray-900">What you can expect</p>
-            <ul className="mt-4 space-y-3 text-sm leading-relaxed">
-              <li>• Fast, actionable feedback on your design.</li>
-              <li>• Transparent manufacturing options and timelines.</li>
-              <li>• A single thread to take parts from speculation to production.</li>
-            </ul>
+          <div className="flex flex-wrap items-center gap-4">
+            <a
+              href="#upload"
+              className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600"
+            >
+              Upload CAD file
+            </a>
+            <p className="text-xs text-neutral-500 sm:text-sm">
+              STEP, IGES, STL, SolidWorks &amp; more. No spam, no newsletter.
+            </p>
           </div>
         </section>
 
-        <section
-          id="upload-section"
-          className="rounded-3xl bg-white p-8 shadow-xl shadow-gray-200"
-        >
+        {/* How it works */}
+        <section className="space-y-6">
+          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
+            How it works
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase text-neutral-500">
+                1. Upload
+              </div>
+              <p className="text-neutral-700">
+                Drop in your CAD and a note about volumes, timelines, and priorities.
+              </p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase text-neutral-500">
+                2. Review
+              </div>
+              <p className="text-neutral-700">
+                We review manufacturability, flag risks, and line up realistic paths to
+                parts in hand.
+              </p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase text-neutral-500">
+                3. Decide
+              </div>
+              <p className="text-neutral-700">
+                You get an honest, actionable plan: pricing signals, lead times, and
+                suggested next steps.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Why this exists */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
+            Why this exists
+          </h2>
+          <p className="max-w-3xl text-sm text-neutral-700 sm:text-base">
+            Modern manufacturing workflows are fragmented: one portal for quotes, one
+            inbox thread for DFM, one spreadsheet for suppliers. Zartman.io is a
+            single point of entry for the messy part in the middle – getting from
+            CAD to parts without losing context or time.
+          </p>
+        </section>
+
+        {/* Upload section */}
+        <section id="upload" className="space-y-4">
+          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
+            Upload your CAD
+          </h2>
+          <p className="text-sm text-neutral-600 sm:text-base">
+            Start with one file. We&apos;ll use this to tune the flow, not to spam
+            you with sales outreach.
+          </p>
           <UploadBox />
         </section>
+
+        {/* Footer */}
+        <footer className="border-t border-neutral-200 pt-6 text-xs text-neutral-500">
+          Built by Zartman, powered by too many manufacturing war stories to count.
+        </footer>
       </div>
     </main>
   );
