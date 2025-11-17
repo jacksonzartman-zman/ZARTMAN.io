@@ -9,6 +9,7 @@ export default function UploadBox() {
   const [status, setStatus] = useState<UploadState>("idle");
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0] ?? null;
@@ -16,6 +17,7 @@ export default function UploadBox() {
     setStatus("idle");
     setUploadedUrl(null);
     setErrorMessage(null);
+    setUploadedFileName(null);
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -27,6 +29,7 @@ export default function UploadBox() {
 
     setStatus("uploading");
     setUploadedUrl(null);
+    setUploadedFileName(null);
     setErrorMessage(null);
 
     try {
@@ -44,6 +47,7 @@ export default function UploadBox() {
       }
 
       setUploadedUrl(payload.url);
+      setUploadedFileName(file.name);
       setStatus("success");
     } catch (error) {
       setStatus("error");
@@ -52,13 +56,6 @@ export default function UploadBox() {
       );
     }
   }
-
-  const statusCopy: Record<UploadState, string> = {
-    idle: "",
-    uploading: "Uploading…",
-    success: "Upload complete",
-    error: "Upload failed",
-  };
 
   return (
     <form
@@ -97,26 +94,42 @@ export default function UploadBox() {
           : "Select a file to submit"}
       </button>
 
-      <p className="text-xs text-neutral-400 sm:text-sm">
-        {statusCopy[status]}
-        {status === "success" && uploadedUrl ? (
+      <div className="space-y-1 text-xs sm:text-sm">
+        {status === "idle" && (
+          <p className="text-neutral-400">Ready when you are.</p>
+        )}
+        {status === "uploading" && (
+          <p className="text-neutral-300">Uploading… hang tight.</p>
+        )}
+        {status === "success" && (
           <>
-            {" "}
-            —{" "}
-            <a
-              href={uploadedUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-emerald-300 underline"
-            >
-              View file
-            </a>
+            <p className="font-medium text-emerald-300">
+              Upload received – we’ll review and follow up.
+              {uploadedUrl ? (
+                <>
+                  {" "}
+                  <a
+                    href={uploadedUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    View file
+                  </a>
+                </>
+              ) : null}
+            </p>
+            {uploadedFileName && (
+              <p className="text-[0.7rem] uppercase tracking-wide text-neutral-400">
+                Uploaded: {uploadedFileName}
+              </p>
+            )}
           </>
-        ) : null}
-        {status === "error" && errorMessage ? (
-          <> — {errorMessage}</>
-        ) : null}
-      </p>
+        )}
+        {status === "error" && errorMessage && (
+          <p className="text-red-400">Error: {errorMessage}</p>
+        )}
+      </div>
     </form>
   );
 }
