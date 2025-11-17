@@ -1,54 +1,53 @@
 "use client";
 
-import { useState, ChangeEvent } from "react";
-
-const ACCEPTED_TYPES =
-  ".step,.stp,.iges,.igs,.sldprt,.x_t,.x_b,.stl,.zip";
+import { useState, ChangeEvent, FormEvent } from "react";
 
 export default function UploadBox() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [file, setFile] = useState<File | null>(null);
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    setSelectedFile(file);
-  };
+  function handleChange(event: ChangeEvent<HTMLInputElement>) {
+    const selected = event.target.files?.[0] ?? null;
+    setFile(selected);
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    // TODO: wire this up to Supabase / API later
+    // For now, it's just a visual placeholder.
+  }
 
   return (
-    <div className="flex flex-col gap-6 rounded-2xl border border-gray-200 bg-gradient-to-b from-white to-gray-50 p-8 shadow-lg">
+    <form
+      onSubmit={handleSubmit}
+      className="w-full max-w-xl space-y-4 rounded-xl border border-neutral-200 bg-neutral-900 p-4 text-neutral-50 sm:p-5"
+    >
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-gray-500">
-          Upload
-        </p>
-        <h3 className="mt-2 text-2xl font-semibold text-gray-900">
-          Upload your file
-        </h3>
-        <p className="mt-2 text-gray-600">
-          Drop in a STEP, IGES, SolidWorks, STL, or a zipped assembly. We&apos;ll
-          review manufacturability and reply with a clear next step.
+        <h3 className="text-sm font-semibold sm:text-base">Upload your CAD file</h3>
+        <p className="mt-1 text-xs text-neutral-300 sm:text-sm">
+          STEP, IGES, STL, SolidWorks, zipped assemblies — max 25MB for now.
         </p>
       </div>
 
-      <label className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-300 bg-white px-6 py-10 text-center text-gray-600 transition hover:border-gray-400">
+      <label className="flex cursor-pointer items-center justify-between rounded-lg bg-neutral-800 px-4 py-3 text-xs sm:text-sm hover:bg-neutral-700">
+        <span>{file ? file.name : "Select a CAD file to begin."}</span>
+        <span className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white">
+          Choose file
+        </span>
         <input
           type="file"
-          accept={ACCEPTED_TYPES}
+          accept=".step,.stp,.iges,.igs,.sldprt,.x_t,.x_b,.stl,.zip"
           className="hidden"
-          onChange={handleFileChange}
+          onChange={handleChange}
         />
-        <span className="text-lg font-medium text-gray-900">
-          Choose a file
-        </span>
-        <span className="text-sm text-gray-500">
-          {selectedFile ? selectedFile.name : "STEP, IGES, SLDPRT, STL, ZIP"}
-        </span>
       </label>
 
       <button
-        disabled
-        className="inline-flex w-full items-center justify-center rounded-full bg-gray-900/30 px-4 py-3 text-sm font-semibold text-white cursor-not-allowed"
+        type="submit"
+        disabled={!file}
+        className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-5 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
       >
-        Submit
+        {file ? "Submit (mock for now)" : "Select a file to submit"}
       </button>
-    </div>
+    </form>
   );
 }
