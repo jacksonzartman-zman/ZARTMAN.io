@@ -9,7 +9,7 @@
     "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" \"*.{js,ts}\""
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.81.0",
+    "@supabase/supabase-js": "^2.81.1",
     "next": "15.5.2",
     "react": "18.3.1",
     "react-dom": "18.3.1"
