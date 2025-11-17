@@ -1,0 +1,70 @@
+{
+  "version": 3,
+  "middleware": {},
+  "functions": {
+    "/api/hello/route": {
+      "files": [
+        "server/server-reference-manifest.js",
+        "server/app/api/hello/route_client-reference-manifest.js",
+        "server/middleware-build-manifest.js",
+        "server/middleware-react-loadable-manifest.js",
+        "server/next-font-manifest.js",
+        "server/interception-route-rewrite-manifest.js",
+        "server/edge-runtime-webpack.js",
+        "server/edge-chunks/798.js",
+        "server/app/api/hello/route.js"
+      ],
+      "name": "app/api/hello/route",
+      "page": "/api/hello/route",
+      "matchers": [
+        {
+          "regexp": "^/api/hello$",
+          "originalSource": "/api/hello"
+        }
+      ],
+      "wasm": [],
+      "assets": [],
+      "env": {
+        "__NEXT_BUILD_ID": "dMW-9GW0o8NtKCiyKpnQZ",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "qoQBYmFXAcW8W8llRBaUMQW2l5c/yYIONws9wqLXK04=",
+        "__NEXT_PREVIEW_MODE_ID": "b2e7cb62b5074445db350770e5008ed0",
+        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "10ebf0ddbfbfad9941eec18afbd5d19175c2a6699b4334312b1d2e8ff783f490",
+        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "381d4102c42daa66f98657022d869f7ee55905505f4b5e7f6178767ff39df361"
+      }
+    },
+    "/api/upload/route": {
+      "files": [
+        "server/server-reference-manifest.js",
+        "server/app/api/upload/route_client-reference-manifest.js",
+        "server/middleware-build-manifest.js",
+        "server/middleware-react-loadable-manifest.js",
+        "server/next-font-manifest.js",
+        "server/interception-route-rewrite-manifest.js",
+        "server/edge-runtime-webpack.js",
+        "server/edge-chunks/798.js",
+        "server/app/api/upload/route.js"
+      ],
+      "name": "app/api/upload/route",
+      "page": "/api/upload/route",
+      "matchers": [
+        {
+          "regexp": "^/api/upload$",
+          "originalSource": "/api/upload"
+        }
+      ],
+      "wasm": [],
+      "assets": [],
+      "env": {
+        "__NEXT_BUILD_ID": "dMW-9GW0o8NtKCiyKpnQZ",
+        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "qoQBYmFXAcW8W8llRBaUMQW2l5c/yYIONws9wqLXK04=",
+        "__NEXT_PREVIEW_MODE_ID": "b2e7cb62b5074445db350770e5008ed0",
+        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "10ebf0ddbfbfad9941eec18afbd5d19175c2a6699b4334312b1d2e8ff783f490",
+        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "381d4102c42daa66f98657022d869f7ee55905505f4b5e7f6178767ff39df361"
+      },
+      "regions": [
+        "auto"
+      ]
+    }
+  },
+  "sortedMiddleware": []
+}
