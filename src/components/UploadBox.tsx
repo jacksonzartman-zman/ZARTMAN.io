@@ -2,19 +2,63 @@
 
 import { useState, ChangeEvent, FormEvent } from "react";
 
+type UploadState = "idle" | "uploading" | "success" | "error";
+
 export default function UploadBox() {
   const [file, setFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<UploadState>("idle");
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const selected = event.target.files?.[0] ?? null;
     setFile(selected);
+    setStatus("idle");
+    setUploadedUrl(null);
+    setErrorMessage(null);
   }
 
-  function handleSubmit(event: FormEvent) {
+  async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    // TODO: wire this up to Supabase / API later
-    // For now, it's just a visual placeholder.
+    if (!file || status === "uploading") return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    setStatus("uploading");
+    setUploadedUrl(null);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = (await response.json()) as { url?: string; error?: string };
+
+      if (!response.ok || !payload.url) {
+        setStatus("error");
+        setErrorMessage(payload.error ?? "Upload failed. Please try again.");
+        return;
+      }
+
+      setUploadedUrl(payload.url);
+      setStatus("success");
+    } catch (error) {
+      setStatus("error");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unexpected error during upload."
+      );
+    }
   }
+
+  const statusCopy: Record<UploadState, string> = {
+    idle: "",
+    uploading: "Uploading…",
+    success: "Upload complete",
+    error: "Upload failed",
+  };
 
   return (
     <form
@@ -43,11 +87,36 @@ export default function UploadBox() {
 
       <button
         type="submit"
-        disabled={!file}
+        disabled={!file || status === "uploading"}
         className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-5 py-2 text-xs font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
       >
-        {file ? "Submit (mock for now)" : "Select a file to submit"}
+        {status === "uploading"
+          ? "Uploading…"
+          : file
+          ? "Upload file"
+          : "Select a file to submit"}
       </button>
+
+      <p className="text-xs text-neutral-400 sm:text-sm">
+        {statusCopy[status]}
+        {status === "success" && uploadedUrl ? (
+          <>
+            {" "}
+            —{" "}
+            <a
+              href={uploadedUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-emerald-300 underline"
+            >
+              View file
+            </a>
+          </>
+        ) : null}
+        {status === "error" && errorMessage ? (
+          <> — {errorMessage}</>
+        ) : null}
+      </p>
     </form>
   );
 }
