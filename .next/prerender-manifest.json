@@ -1,11 +1,61 @@
 {
   "version": 4,
-  "routes": {},
+  "routes": {
+    "/_not-found": {
+      "initialStatus": 404,
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/_not-found",
+      "dataRoute": "/_not-found.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    },
+    "/": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/",
+      "dataRoute": "/index.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    }
+  },
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "d2a8f1db4689ec07b17b9ab891848b04",
-    "previewModeSigningKey": "facab6afee70e9956d578088555ee2e8859da98a621237edef22797596d04c05",
-    "previewModeEncryptionKey": "c8e335cba29cb56956d48b3fd9bb63491274381c91c2f3a355e12d8f1e1d62fa"
+    "previewModeId": "ca7ef9af10e75aca1290cb49d48a9452",
+    "previewModeSigningKey": "4b5081a4f20e1b0a4ca9ef50822a880f1eb011f0d7d9d9b23f7c4207d7b9aa50",
+    "previewModeEncryptionKey": "de9ec2a9751307760104b90d6cf6d132ad1c5d14d559f164dca37999862232db"
   }
 }
