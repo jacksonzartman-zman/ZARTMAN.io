@@ -3,8 +3,6 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { authenticate } from "./actions";
 import { ADMIN_COOKIE_NAME } from "./constants";
 
-const ADMIN_COOKIE_NAME = "admin-auth";
-
 type UploadRow = {
   id: string;
   file_name: string;
