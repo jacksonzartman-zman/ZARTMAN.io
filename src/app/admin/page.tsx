@@ -1,156 +1,106 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { supabaseServer } from "@/lib/supabaseServer";
+import UploadBox from "@/components/UploadBox";
 
-const ADMIN_COOKIE_NAME = "admin-auth";
-
-type UploadRow = {
-  id: string;
-  file_name: string;
-  file_path: string;
-  file_size: number | null;
-  content_type: string | null;
-  notes: string | null;
-  email: string | null;
-  created_at: string | null;
-};
-
-// Server action: handle password submit
-import { cookies } from "next/headers";
-import { supabaseServer } from "@/lib/supabaseServer";
-import { ADMIN_COOKIE_NAME, authenticate } from "./actions";
-
-type UploadRow = {
-  id: string;
-  file_name: string;
-  file_path: string;
-  file_size: number | null;
-  content_type: string | null;
-  notes: string | null;
-  email: string | null;
-  created_at: string | null;
-};
-
-async function getUploads(): Promise<UploadRow[]> {
-  const { data, error } = await supabaseServer
-    .from("uploads")
-    .select(
-      "id, file_name, file_path, file_size, content_type, notes, email, created_at"
-    )
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  if (error) {
-    console.error("Error fetching uploads:", error);
-    return [];
-  }
-
-  return (data ?? []) as UploadRow[];
-}
-
-export default async function AdminPage() {
-  const cookieStore = cookies();
-  const isAuthed = cookieStore.get(ADMIN_COOKIE_NAME)?.value === "ok";
-
-  // Not authenticated → show password form
-  if (!isAuthed) {
-    return (
-      <main className="min-h-screen bg-neutral-950 text-neutral-50 flex items-center justify-center px-4">
-        <form
-          action={authenticate}
-          className="w-full max-w-sm space-y-4 rounded-2xl border border-neutral-800 bg-neutral-900 p-6"
-        >
-          <h1 className="text-lg font-semibold">Admin – Zartman.io</h1>
-          <p className="text-xs text-neutral-400">
-            Private area. Enter the admin password to view uploads.
-          </p>
-          <input
-            type="password"
-            name="password"
-            placeholder="Admin password"
-            className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-            autoComplete="current-password"
-          />
-          <button
-            type="submit"
-            className="w-full rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black hover:bg-emerald-400"
-          >
-            Enter
-          </button>
-        </form>
-      </main>
-    );
-  }
-
-  // Authenticated → show dashboard
-  const uploads = await getUploads();
-
+export default function HomePage() {
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-50 px-4 py-8">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <header className="flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold">Uploads dashboard</h1>
-            <p className="text-xs text-neutral-400">
-              Latest CAD uploads hitting Supabase.
+    <main className="min-h-screen bg-white text-neutral-900">
+      <div className="mx-auto flex max-w-5xl flex-col gap-16 px-4 py-16 sm:px-6 lg:px-8">
+        {/* Hero */}
+        <section className="space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-4 py-1 text-sm font-medium text-emerald-700">
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Manufacturing OS for real-world parts
+          </div>
+          <div className="space-y-4">
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
+              Zartman.io
+            </h1>
+            <p className="max-w-2xl text-base text-neutral-600 sm:text-lg">
+              From CAD file to manufacturing quote, without the runaround.
+              One front door for quotes, DFM feedback, and supplier
+              coordination.
             </p>
           </div>
-        </header>
+          <div className="flex flex-wrap items-center gap-4">
+            <a
+              href="#upload"
+              className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-6 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600"
+            >
+              Upload CAD file
+            </a>
+            <p className="text-xs text-neutral-500 sm:text-sm">
+              STEP, IGES, STL, SolidWorks &amp; more. No spam, no
+              newsletter.
+            </p>
+          </div>
+        </section>
 
-        <div className="overflow-x-auto rounded-2xl border border-neutral-800 bg-neutral-900">
-          <table className="min-w-full text-left text-xs">
-            <thead className="border-b border-neutral-800 bg-neutral-900/60">
-              <tr>
-                <th className="px-4 py-3">When</th>
-                <th className="px-4 py-3">File</th>
-                <th className="px-4 py-3">Size</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {uploads.map((u) => (
-                <tr key={u.id} className="border-t border-neutral-800/60">
-                  <td className="px-4 py-3 text-neutral-400 whitespace-nowrap">
-                    {u.created_at
-                      ? new Date(u.created_at).toLocaleString()
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {u.file_name || u.file_path || "—"}
-                  </td>
-                  <td className="px-4 py-3 text-neutral-400">
-                    {u.file_size
-                      ? `${(u.file_size / 1024).toFixed(1)} KB`
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-neutral-400">
-                    {u.content_type ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-neutral-400 max-w-xs truncate">
-                    {u.notes ?? "—"}
-                  </td>
-                </tr>
-              ))}
+        {/* How it works */}
+        <section className="space-y-6">
+          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
+            How it works
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase text-neutral-500">
+                1. Upload
+              </div>
+              <p className="text-neutral-700">
+                Drop in your CAD and a note about volumes, timelines, and
+                priorities.
+              </p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase text-neutral-500">
+                2. Review
+              </div>
+              <p className="text-neutral-700">
+                We review manufacturability, flag risks, and line up
+                realistic paths to parts in hand.
+              </p>
+            </div>
+            <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-sm">
+              <div className="mb-2 text-xs font-semibold uppercase text-neutral-500">
+                3. Decide
+              </div>
+              <p className="text-neutral-700">
+                You get an honest, actionable plan: pricing signals, lead
+                times, and suggested next steps.
+              </p>
+            </div>
+          </div>
+        </section>
 
-              {uploads.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-4 py-8 text-center text-neutral-500"
-                  >
-                    No uploads logged yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </main>
-  );
-}
-        </div>
+        {/* Why this exists */}
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
+            Why this exists
+          </h2>
+          <p className="max-w-3xl text-sm text-neutral-700 sm:text-base">
+            Modern manufacturing workflows are fragmented: one portal for
+            quotes, one inbox thread for DFM, one spreadsheet for suppliers.
+            Zartman.io is a single point of entry for the messy part in the
+            middle – getting from CAD to parts without losing context or
+            time.
+          </p>
+        </section>
+
+        {/* Upload section */}
+        <section id="upload" className="space-y-4">
+          <h2 className="text-lg font-semibold tracking-tight sm:text-xl">
+            Upload your CAD
+          </h2>
+          <p className="text-sm text-neutral-600 sm:text-base">
+            Start with one file. We&apos;ll use this to tune the flow, not
+            to spam you with sales outreach.
+          </p>
+          <UploadBox />
+        </section>
+
+        {/* Footer */}
+        <footer className="border-t border-neutral-200 pt-6 text-xs text-neutral-500">
+          Built by Zartman, powered by too many manufacturing war stories to
+          count.
+        </footer>
       </div>
     </main>
   );
