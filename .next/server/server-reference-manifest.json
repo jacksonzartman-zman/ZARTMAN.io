@@ -1,1 +1,5 @@
-{"node":{"40639539a9c8482bc74260b1e7f9ece435dff02ece":{"workers":{"app/admin/page":{"moduleId":"9714","async":false}},"layer":{"app/admin/page":"rsc"},"filename":"app/admin/actions.ts","exportedName":"authenticate"}},"edge":{},"encryptionKey":"CVnI6X5UtED2gx0tsmMmV6+6hA85+MCJnTMU2cj3igY="}
+{
+  "node": {},
+  "edge": {},
+  "encryptionKey": "UKcBIaJty1gtpugr9E+bIAaqPC5eqL1C346NX340Y4U="
+}
