@@ -19,6 +19,6 @@ export async function authenticate(formData: FormData) {
     });
   }
 
-  // Always redirect back to /admin, whether auth succeeded or not
+  // Always go back to /admin (success or failure)
   redirect("/admin");
 }
