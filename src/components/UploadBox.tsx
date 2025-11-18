@@ -57,42 +57,98 @@ export default function UploadBox() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <div className="rounded-xl bg-neutral-900 px-4 py-4 text-sm text-neutral-50">
-        <label className="flex flex-col gap-2">
-          <span className="text-xs font-medium text-neutral-300">
-            Upload your CAD file
-          </span>
-          <input
-            type="file"
-            onChange={(e) => {
-              const f = e.target.files?.[0] ?? null;
-              setFile(f);
-              setStatus("idle");
-              setError(null);
-            }}
-            className="text-xs text-neutral-200"
-          />
+  <div className="mx-auto w-full max-w-xl rounded-xl border border-neutral-800 bg-neutral-950 p-6 shadow-xl">
+    <h2 className="mb-2 text-lg font-semibold text-neutral-100">
+      Upload your CAD
+    </h2>
+    <p className="mb-4 text-sm text-neutral-400">
+      STEP, IGES, STL, SolidWorks, zipped assemblies — max 25MB for now.
+    </p>
+
+    <form
+      onSubmit={handleSubmit}
+      encType="multipart/form-data"
+      className="space-y-5"
+    >
+      {/* Contact name */}
+      <div>
+        <label className="block text-sm font-medium text-neutral-300">
+          Your name
         </label>
-
-        <button
-          type="submit"
-          disabled={status === "uploading" || !file}
-          className="mt-3 inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-60"
-        >
-          {status === "uploading" ? "Uploading…" : "Upload file"}
-        </button>
-
-        {status === "success" && (
-          <p className="mt-2 text-xs text-emerald-400">
-            Upload complete. Thanks for sending a part.
-          </p>
-        )}
-
-        {status === "error" && error && (
-          <p className="mt-2 text-xs text-red-400">Error: {error}</p>
-        )}
+        <input
+          type="text"
+          name="contact_name"
+          placeholder="Jane Doe"
+          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
+        />
       </div>
+
+      {/* Contact email */}
+      <div>
+        <label className="block text-sm font-medium text-neutral-300">
+          Work email
+        </label>
+        <input
+          type="email"
+          name="contact_email"
+          placeholder="jane@allstarautoparts.com"
+          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
+        />
+      </div>
+
+      {/* Company */}
+      <div>
+        <label className="block text-sm font-medium text-neutral-300">
+          Company
+        </label>
+        <input
+          type="text"
+          name="company"
+          placeholder="All Star Auto Parts"
+          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
+        />
+      </div>
+
+      {/* Notes */}
+      <div>
+        <label className="block text-sm font-medium text-neutral-300">
+          Anything we should know?
+        </label>
+        <textarea
+          name="notes"
+          rows={3}
+          placeholder="EX: Need PP material, 10-day lead time, using existing tool..."
+          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
+        />
+      </div>
+
+      {/* File */}
+      <div>
+        <label className="block text-sm font-medium text-neutral-300">
+          CAD file
+        </label>
+        <input
+          type="file"
+          name="file"
+          required
+          className="mt-2 w-full text-neutral-300 file:mr-4 file:rounded-md file:border-0 file:bg-neutral-800 file:px-4 file:py-2 file:text-sm file:text-neutral-200 hover:file:bg-neutral-700"
+          onChange={(e) => {
+            const f = e.target.files?.[0] ?? null;
+            setFile(f);
+            setStatus("idle");
+            setError(null);
+          }}
+        />
+      </div>
+
+      <button
+        type="submit"
+        disabled={status === "uploading" || !file}
+        className="w-full rounded-md bg-emerald-600 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-emerald-500"
+      >
+        {status === "uploading" ? "Uploading…" : "Upload file"}
+      </button>
     </form>
-  );
+  </div>
+);
 }
