@@ -3,6 +3,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Global Zartman.io theming */
+
+body {
+  @apply bg-page text-ink font-sans antialiased;
+}
+
+/* Main page wrapper (we’ll use this on the homepage soon) */
+.main-shell {
+  @apply min-h-screen bg-gradient-to-b from-black via-page-soft to-black;
+}
+
+/* Card shell for surfaces (like the upload panel & admin table) */
+.surface-card {
+  @apply bg-page-soft border border-line-subtle rounded-2xl shadow-lift-md;
+}
+
+/* Soft pill badges (we’ll use for labels/status chips) */
+.badge-soft {
+  @apply inline-flex items-center gap-1 rounded-pill px-3 py-1 text-xs font-medium
+    bg-brand-pale text-brand-soft;
+}
+
 html,
 body {
   margin: 0;
