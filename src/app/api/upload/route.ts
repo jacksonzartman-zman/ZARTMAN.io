@@ -1,66 +1,53 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from "next/server";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { randomUUID } from "crypto";
 
-import { supabaseServer } from '@/lib/supabaseServer'
-
-const BUCKET_ID = 'cad-uploads'
-
-export const runtime = 'nodejs'
-
-function normalizeFileName(name?: string | null) {
-  if (!name) return 'upload.bin'
-  return name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
-}
-
-export async function POST(req: NextRequest) {
-  let formData: FormData
+export async function POST(req: Request) {
   try {
-    formData = await req.formData()
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Invalid multipart/form-data payload'
-    return NextResponse.json({ success: false, error: message }, { status: 400 })
-  }
+    const formData = await req.formData();
+    const file = formData.get("file");
 
-  const file = formData.get('file')
-  if (!(file instanceof File)) {
-    return NextResponse.json({ success: false, error: 'Expected a file field named "file"' }, { status: 400 })
-  }
-
-  try {
-    const bytes = await file.arrayBuffer()
-    const fileName = normalizeFileName(file.name)
-    const objectPath = `uploads/${Date.now()}-${fileName}`
-    const contentType = file.type || 'application/octet-stream'
-    const fileSize = typeof file.size === 'number' ? file.size : bytes.byteLength
-
-    const { error: uploadError } = await supabaseServer.storage.from(BUCKET_ID).upload(objectPath, bytes, {
-      contentType,
-      upsert: false,
-    })
-
-    if (uploadError) {
-      return NextResponse.json({ success: false, error: 'Failed to upload file' }, { status: 500 })
+    if (!(file instanceof File)) {
+      return NextResponse.json(
+        { success: false, error: "No file uploaded" },
+        { status: 400 }
+      );
     }
 
-    const { error: insertError } = await supabaseServer.from('uploads').insert({
-      file_path: objectPath,
-      file_name: fileName,
-      file_size: fileSize,
-      content_type: contentType,
-    })
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
 
-    if (insertError) {
-      return NextResponse.json({ success: false, error: 'Failed to log upload details' }, { status: 500 })
+    const ext = file.name.split(".").pop() ?? "bin";
+    const filename = `${Date.now()}-${randomUUID()}.${ext}`;
+
+    const supabase = supabaseServer;
+
+    const { data, error } = await supabase.storage
+      .from("cad-uploads")
+      .upload(`uploads/${filename}`, buffer, {
+        contentType: file.type || "application/octet-stream",
+        upsert: false,
+      });
+
+    if (error) {
+      console.error("Supabase upload error:", error);
+      return NextResponse.json(
+        { success: false, error: "Storage upload failed" },
+        { status: 500 }
+      );
     }
+
+    // (Optional) if you later add a DB table, you could insert metadata here.
 
     return NextResponse.json({
       success: true,
-      filePath: objectPath,
-      fileName,
-      fileSize,
-      contentType,
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unexpected server error'
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+      path: data.path,
+    });
+  } catch (err) {
+    console.error("Unexpected upload error:", err);
+    return NextResponse.json(
+      { success: false, error: "Unexpected server error" },
+      { status: 500 }
+    );
   }
 }
