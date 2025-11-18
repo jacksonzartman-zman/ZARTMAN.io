@@ -16,25 +16,20 @@ type UploadRow = {
 };
 
 // Server action: handle password submit
-export async function authenticate(formData: FormData) {
-  "use server";
+import { cookies } from "next/headers";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { ADMIN_COOKIE_NAME, authenticate } from "./actions";
 
-  const password = (formData.get("password") ?? "").toString();
-  const expected = process.env.ADMIN_DASH_PASSWORD;
-
-  if (expected && password === expected) {
-    cookies().set(ADMIN_COOKIE_NAME, "ok", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      maxAge: 60 * 60 * 8, // 8 hours
-      path: "/",
-    });
-  }
-
-  // Always bounce back to /admin (either logged in or still on the form)
-  redirect("/admin");
-}
+type UploadRow = {
+  id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number | null;
+  content_type: string | null;
+  notes: string | null;
+  email: string | null;
+  created_at: string | null;
+};
 
 async function getUploads(): Promise<UploadRow[]> {
   const { data, error } = await supabaseServer
@@ -150,6 +145,11 @@ export default async function AdminPage() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+    </main>
+  );
+}
         </div>
       </div>
     </main>
