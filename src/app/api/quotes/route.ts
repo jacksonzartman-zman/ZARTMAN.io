@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabasePublic, supabaseAdmin } from '@/lib/supabaseserver'
+import { supabasePublic, supabaseAdmin } from '@/lib/supabaseServer'
 
 // GET /api/quotes?owner=<uuid>
 export async function GET(req: Request) {
