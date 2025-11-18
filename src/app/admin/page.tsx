@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { authenticate } from "./actions";
 import { ADMIN_COOKIE_NAME } from "./constants";
 import { supabaseServer } from "@/lib/supabaseServer";
+import AdminTable from "./AdminTable";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +19,11 @@ type UploadRow = {
 };
 
 export default async function AdminPage() {
-  // NOTE: cookies() is async in your setup, so we await it
+  // cookies() is async in your setup
   const cookieStore = await cookies();
   const isAuthed = cookieStore.get(ADMIN_COOKIE_NAME)?.value === "ok";
 
-  // Not authenticated ➜ show password form
+  // Not authenticated → show password form
   if (!isAuthed) {
     return (
       <main className="min-h-screen bg-page text-ink flex items-center justify-center px-4">
@@ -61,7 +62,7 @@ export default async function AdminPage() {
     );
   }
 
-  // Authenticated ➜ load uploads from Supabase
+  // Authenticated → load uploads from Supabase
   const { data, error } = await supabaseServer
     .from("uploads")
     .select("*")
@@ -75,120 +76,7 @@ export default async function AdminPage() {
 
   return (
     <main className="min-h-screen bg-page text-ink px-4 py-10">
-      <section className="mx-auto w-full max-w-5xl">
-        <header className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold">Uploads dashboard</h1>
-            <p className="text-xs text-muted">
-              Latest CAD uploads hitting Supabase.
-            </p>
-          </div>
-          <p className="text-[11px] text-muted">Admin view only</p>
-        </header>
-
-        <div className="overflow-x-auto rounded-3xl border border-border bg-surface/60">
-          <table className="min-w-full border-collapse text-left">
-            <thead>
-              <tr className="border-b border-border bg-surface/80">
-                <th className="px-4 py-3 text-[11px] font-medium">File</th>
-                <th className="px-4 py-3 text-[11px] font-medium">Contact</th>
-                <th className="px-4 py-3 text-[11px] font-medium">Company</th>
-                <th className="px-4 py-3 text-[11px] font-medium">Notes</th>
-                <th className="px-4 py-3 text-[11px] font-medium">
-                  Uploaded at
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {uploads.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-4 py-8 text-center text-xs text-muted"
-                  >
-                    No uploads yet.
-                  </td>
-                </tr>
-              ) : (
-                uploads.map((row) => {
-                  const publicUrl =
-                    row.file_path && process.env.NEXT_PUBLIC_SUPABASE_URL
-                      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${row.file_path}`
-                      : null;
-
-                  return (
-                    <tr
-                      key={row.id}
-                      className="border-t border-border/60 hover:bg-surface/40"
-                    >
-                      {/* File column */}
-                      <td className="px-4 py-3 align-top">
-                        <div className="flex flex-col gap-0.5">
-                          {publicUrl ? (
-                            <a
-                              href={publicUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="font-medium text-[11px] underline-offset-2 hover:underline"
-                            >
-                              {row.file_name ?? "—"}
-                            </a>
-                          ) : (
-                            <span className="font-medium text-[11px]">
-                              {row.file_name ?? "—"}
-                            </span>
-                          )}
-                          <span className="text-[10px] text-muted">
-                            {row.file_type ?? "unknown type"}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Contact column */}
-                      <td className="px-4 py-3 align-top">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-[11px]">
-                            {row.contact_name ?? "—"}
-                          </span>
-                          {row.contact_email ? (
-                            <a
-                              href={`mailto:${row.contact_email}`}
-                              className="text-[10px] text-muted underline-offset-2 hover:underline"
-                            >
-                              {row.contact_email}
-                            </a>
-                          ) : (
-                            <span className="text-[10px] text-muted"></span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Company column */}
-                      <td className="px-4 py-3 align-top text-[11px]">
-                        {row.company ?? "—"}
-                      </td>
-
-                      {/* Notes column */}
-                      <td className="px-4 py-3 align-top text-[11px] max-w-xs">
-                        <span className="text-muted">
-                          {row.notes ?? "—"}
-                        </span>
-                      </td>
-
-                      {/* Timestamp column */}
-                      <td className="px-4 py-3 align-top text-[10px] text-muted whitespace-nowrap">
-                        {row.created_at
-                          ? new Date(row.created_at).toLocaleString()
-                          : "—"}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <AdminTable uploads={uploads} />
     </main>
   );
 }
