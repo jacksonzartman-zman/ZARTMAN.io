@@ -1,10 +1,11 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
   "/api/files/route": "app/api/files/route.js",
   "/api/messages/route": "app/api/messages/route.js",
-  "/api/threads/route": "app/api/threads/route.js",
   "/api/quotes/route": "app/api/quotes/route.js",
+  "/api/threads/route": "app/api/threads/route.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/api/upload/route": "app/api/upload/route.js",
   "/admin/page": "app/admin/page.js",
-  "/page": "app/page.js"
+  "/page": "app/page.js",
+  "/api/hello/route": "app/api/hello/route.js"
 }
