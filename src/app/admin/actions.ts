@@ -6,116 +6,110 @@ import { revalidatePath } from "next/cache";
 import { ADMIN_COOKIE_NAME } from "./constants";
 import { supabaseServer } from "@/lib/supabaseServer";
 
-/**
- * Simple password-based admin auth.
- */
-export async function authenticate(formData: FormData) {
-  const password = formData.get("password");
-  const adminPassword = process.env.ADMIN_PASSWORD;
+// 1) Simple admin password auth
+export async function authenticate(formData: FormData): Promise<void> {
+  const password = (formData.get("password") ?? "").toString();
+  const expected = process.env.ADMIN_PASSWORD ?? "";
 
-  if (!adminPassword) {
-    console.error("ADMIN_PASSWORD env var is not set");
-    return { ok: false };
+  // If env var isn't set, treat as config error
+  if (!expected) {
+    console.error("ADMIN_PASSWORD is not set in the environment.");
+    redirect("/admin?error=config");
   }
 
-  if (password !== adminPassword) {
-    return { ok: false };
+  if (password !== expected) {
+    // Wrong password → bounce back with error flag
+    redirect("/admin?error=invalid");
   }
 
-  const cookieStore = await cookies();
+  // Correct password → set cookie and go to admin dashboard
+  const cookieStore = await cookies(); // 🔑 note the await
   cookieStore.set(ADMIN_COOKIE_NAME, "ok", {
     httpOnly: true,
+    secure: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 6, // 6 hours
   });
 
   redirect("/admin");
 }
 
-/**
- * Create a quote row from an existing upload.
- */
-export async function createQuoteFromUpload(formData: FormData) {
-  const uploadId = formData.get("upload_id");
-
-  if (typeof uploadId !== "string" || !uploadId) {
-    console.error("createQuoteFromUpload: missing upload_id");
-    return { ok: false };
+// 2) Create a quote row from an upload (called from the main admin uploads table)
+export async function createQuoteFromUpload(formData: FormData): Promise<void> {
+  const uploadId = (formData.get("upload_id") ?? "").toString();
+  if (!uploadId) {
+    throw new Error("Missing upload id.");
   }
 
-  const supabase = supabaseServer();
+  // supabaseServer is already a client, don't call it
+  const supabase = supabaseServer as any;
+
+  // Optional: sanity check the upload exists
+  const { data: upload, error: uploadError } = await supabase
+    .from("uploads")
+    .select("id")
+    .eq("id", uploadId)
+    .maybeSingle();
+
+  if (uploadError) {
+    console.error("Error checking upload before creating quote:", uploadError);
+    throw new Error("Failed to verify upload.");
+  }
+
+  if (!upload) {
+    throw new Error("Upload not found.");
+  }
 
   const { error } = await supabase.from("quotes").insert({
     upload_id: uploadId,
     status: "new",
-    price: null,
-    currency: "USD",
-    target_date: null,
   });
 
   if (error) {
     console.error("Error creating quote:", error);
-    return { ok: false };
+    throw new Error("Failed to create quote.");
   }
 
+  // Refresh admin pages that show quotes
   revalidatePath("/admin");
   revalidatePath("/admin/quotes");
-
-  return { ok: true };
 }
 
-/**
- * Update status / price / currency / target_date for a quote.
- * This is the first step toward suppliers entering pricing.
- */
-export async function updateQuote(formData: FormData) {
-  const id = formData.get("quote_id");
-  const status = formData.get("status");
-  const priceRaw = formData.get("price");
-  const currency = formData.get("currency");
-  const targetDateRaw = formData.get("target_date");
-
-  if (typeof id !== "string" || !id) {
-    console.error("updateQuote: missing quote_id");
-    return { ok: false };
+// 3) Update pricing / status on a quote (used on /admin/quotes/[id])
+export async function updateQuote(formData: FormData): Promise<void> {
+  const quoteId = (formData.get("quote_id") ?? "").toString();
+  if (!quoteId) {
+    throw new Error("Missing quote id.");
   }
 
-  const updates: any = {};
+  const status = (formData.get("status") ?? "").toString() || "new";
+  const priceRaw = (formData.get("price") ?? "").toString();
+  const currency = (formData.get("currency") ?? "").toString() || "USD";
+  const targetDate = (formData.get("target_date") ?? "").toString();
 
-  if (typeof status === "string" && status.trim() !== "") {
-    updates.status = status.trim();
-  }
+  const price =
+    priceRaw.trim().length > 0 && !Number.isNaN(Number(priceRaw))
+      ? Number(priceRaw)
+      : null;
 
-  if (typeof currency === "string" && currency.trim() !== "") {
-    updates.currency = currency.trim();
-  }
+  const supabase = supabaseServer as any;
 
-  if (typeof priceRaw === "string" && priceRaw.trim() !== "") {
-    const n = Number(priceRaw);
-    updates.price = Number.isNaN(n) ? null : n;
-  } else {
-    updates.price = null;
-  }
-
-  if (typeof targetDateRaw === "string" && targetDateRaw.trim() !== "") {
-    // Supabase will parse this as a date
-    updates.target_date = targetDateRaw;
-  } else {
-    updates.target_date = null;
-  }
-
-  const supabase = supabaseServer();
-  const { error } = await supabase.from("quotes").update(updates).eq("id", id);
+  const { error } = await supabase
+    .from("quotes")
+    .update({
+      status,
+      price,
+      currency,
+      target_date: targetDate || null,
+    })
+    .eq("id", quoteId);
 
   if (error) {
     console.error("Error updating quote:", error);
-    return { ok: false };
+    throw new Error("Failed to update quote.");
   }
 
   revalidatePath("/admin/quotes");
-  revalidatePath(`/admin/quotes/${id}`);
-
-  return { ok: true };
+  revalidatePath(`/admin/quotes/${quoteId}`);
 }

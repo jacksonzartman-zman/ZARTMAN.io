@@ -29,7 +29,7 @@ export default async function QuotesAdminPage() {
     redirect("/admin");
   }
 
-  const supabase = supabaseServer();
+  const supabase = supabaseServer as any;
   const { data, error } = await supabase
     .from("quotes")
     .select(
