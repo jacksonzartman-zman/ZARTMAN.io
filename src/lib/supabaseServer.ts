@@ -1,20 +1,37 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const URL =
+  process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl) {
-  throw new Error("SUPABASE_URL is required");
+if (!URL) {
+  throw new Error(
+    "SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL is required (check your env vars)."
+  );
 }
 
-if (!supabaseServiceKey) {
-  throw new Error("SUPABASE_SERVICE_ROLE_KEY is required");
-}
+// Public client – safe for RLS-protected reads, used in some routes
+export const supabasePublic = () => {
+  if (!ANON) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY is required");
+  }
 
-// Main server/admin client (uses service role key)
-export const supabaseServer = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: { persistSession: false },
-});
+  return createClient(URL, ANON, {
+    auth: { persistSession: false },
+  });
+};
 
-// Alias used by older code
-export const supabaseAdmin = supabaseServer;
+// Admin / server client – uses the service role key (server-only)
+export const supabaseAdmin = () => {
+  if (!SERVICE) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY is required");
+  }
+
+  return createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
+};
+
+// Convenience instance for places that just import `supabaseServer`
+export const supabaseServer = supabaseAdmin();
