@@ -1,75 +1,77 @@
-import { NextRequest, NextResponse } from "next/server";
+// src/app/api/upload/route.ts
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { randomUUID } from "crypto";
 
-export const runtime = "nodejs"; // make sure this is here at top-level
+export const runtime = "nodejs"; // important for file uploads
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
 
     const file = formData.get("file") as File | null;
+
+    const contactName = (formData.get("contact_name") ?? "").toString();
+    const contactEmail = (formData.get("contact_email") ?? "").toString();
+    const company = (formData.get("company") ?? "").toString();
+    const notes = (formData.get("notes") ?? "").toString();
+
     if (!file || typeof file === "string") {
       return NextResponse.json(
-        { ok: false, error: "No file provided" },
+        { success: false, error: "No file uploaded" },
         { status: 400 }
       );
     }
 
-    // New: grab contact details from the form
-    const contactName = (formData.get("contact_name") ?? "") as string;
-    const contactEmail = (formData.get("contact_email") ?? "") as string;
-    const company = (formData.get("company") ?? "") as string;
-    const notes = (formData.get("notes") ?? "") as string;
+    // Build a storage path – you can tweak this later if you want
+    const fileName = file.name;
+    const timestamp = Date.now();
+    const storagePath = `uploads/${timestamp}-${fileName}`;
 
-    const supabase = supabaseServer;
+    // Upload to Supabase Storage
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    // 1) Upload file to storage bucket
-    const fileExt = file.name.split(".").pop();
-    const filePath = `uploads/${Date.now()}-${file.name}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("cad-uploads")
-      .upload(filePath, file);
+    const storage = supabaseServer.storage.from("cad-uploads");
+    const { error: uploadError } = await storage.upload(storagePath, buffer, {
+      contentType: file.type || "application/octet-stream",
+    });
 
     if (uploadError) {
-      console.error("Storage upload error", uploadError);
+      console.error("Storage upload error:", uploadError);
       return NextResponse.json(
-        { ok: false, error: "Failed to upload file" },
+        { success: false, error: "Failed to upload file to storage." },
         { status: 500 }
       );
     }
 
-    // 2) Insert metadata row into public.uploads
-    const { error: insertError } = await supabase
+    // Insert metadata into uploads table
+    const { error: insertError } = await supabaseServer
       .from("uploads")
       .insert({
-        file_path: filePath,
-        file_name: file.name,
+        file_path: storagePath,
+        file_name: fileName,
+        file_size: file.size,
+        file_type: file.type,
         contact_name: contactName || null,
         contact_email: contactEmail || null,
         company: company || null,
         notes: notes || null,
-        // created_at will default to now()
       });
 
     if (insertError) {
-      console.error("Insert error", insertError);
-      // We still return ok: true-ish but flag metadata failure
+      console.error("DB insert error:", insertError);
       return NextResponse.json(
-        {
-          ok: true,
-          warning: "File stored, but metadata insert failed.",
-        },
-        { status: 200 }
+        { success: false, error: "Failed to save upload metadata." },
+        { status: 500 }
       );
     }
 
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("Upload handler error", err);
+    console.error("Unexpected upload error:", err);
     return NextResponse.json(
-      { ok: false, error: "Unexpected error" },
+      { success: false, error: "Unexpected server error." },
       { status: 500 }
     );
   }
