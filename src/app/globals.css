@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Prefer dark UI, but let system control actual rendering */
+/* Prefer dark UI */
 :root {
   color-scheme: dark;
 }
@@ -10,7 +10,8 @@
 /* ---------- Base layer: global elements ---------- */
 @layer base {
   body {
-    @apply bg-page text-ink font-sans antialiased;
+    /* only built-in Tailwind classes here */
+    @apply bg-neutral-950 text-neutral-50 font-sans antialiased;
   }
 }
 
@@ -18,17 +19,17 @@
 @layer components {
   /* Main page wrapper */
   .main-shell {
-    @apply min-h-screen bg-gradient-to-b from-black via-page-soft to-black;
+    @apply min-h-screen bg-gradient-to-b from-black via-neutral-950 to-black;
   }
 
   /* Card shell for surfaces (upload panel, info cards, etc.) */
   .surface-card {
-    @apply bg-page-soft border border-line-subtle rounded-2xl shadow-lift-md;
+    @apply bg-neutral-900/90 border border-neutral-800 rounded-2xl shadow-lg;
   }
 
   /* Soft pill badges (labels/status chips) */
   .badge-soft {
     @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium
-      bg-brand-pale text-brand-soft;
+      bg-emerald-900/40 text-emerald-200;
   }
 }
