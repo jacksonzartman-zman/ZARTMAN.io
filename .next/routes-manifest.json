@@ -37,6 +37,12 @@
       "regex": "^/admin(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/admin(?:/)?$"
+    },
+    {
+      "page": "/admin/quotes",
+      "regex": "^/admin/quotes(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/quotes(?:/)?$"
     }
   ],
   "dataRoutes": [],
