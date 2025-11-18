@@ -33,7 +33,7 @@ async function getUploads(): Promise<UploadRow[]> {
 }
 
 export default async function AdminPage() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const isAuthed = cookieStore.get(ADMIN_COOKIE_NAME)?.value === "ok";
 
   // Not authenticated → show password form
