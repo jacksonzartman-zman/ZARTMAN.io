@@ -1,16 +1,20 @@
-/* src/app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Global Zartman.io theming */
+/* Prefer dark UI, but let system control actual rendering */
+:root {
+  color-scheme: dark;
+}
 
+/* ---------- Base layer: global elements ---------- */
 @layer base {
   body {
     @apply bg-page text-ink font-sans antialiased;
   }
 }
 
+/* ---------- Components layer: reusable shells ---------- */
 @layer components {
   /* Main page wrapper */
   .main-shell {
@@ -24,13 +28,7 @@
 
   /* Soft pill badges (labels/status chips) */
   .badge-soft {
-    @apply inline-flex items-center gap-1 rounded-pill px-3 py-1 text-xs font-medium
+    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium
       bg-brand-pale text-brand-soft;
   }
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
 }
