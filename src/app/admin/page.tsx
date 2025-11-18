@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { ADMIN_COOKIE_NAME, authenticate } from "./actions";
+import { authenticate } from "./actions";
+
+const ADMIN_COOKIE_NAME = "admin-auth";
 
 type UploadRow = {
   id: string;
