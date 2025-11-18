@@ -29,14 +29,14 @@ export default function UploadBox() {
       try {
         json = await res.json();
       } catch {
-        // ignore JSON error and rely on res.ok
+        // ignore JSON parse error and fall back to res.ok
       }
 
       if (!res.ok || json?.success === false) {
         throw new Error(json?.error || "Upload failed");
       }
 
-      // ✅ SUCCESS
+      // ✅ success
       setStatus("success");
       setFile(null);
       form.reset();
@@ -49,15 +49,16 @@ export default function UploadBox() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-
-      {/* FILE INPUT */}
-      <div className="rounded-xl bg-neutral-900 px-4 py-4 text-sm text-neutral-50">
-        <label className="flex flex-col gap-2">
-          <span className="font-medium text-neutral-300 text-xs">
+    <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-6">
+      <form onSubmit={handleSubmit} className="space-y-3 text-sm text-neutral-100">
+        {/* FILE INPUT */}
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-neutral-300">
             Upload your CAD file
-          </span>
-
+          </label>
+          <p className="text-[11px] text-neutral-500">
+            STEP, IGES, STL, SolidWorks, or zipped assemblies. Max 25&nbsp;MB.
+          </p>
           <input
             type="file"
             onChange={(e) => {
@@ -66,60 +67,72 @@ export default function UploadBox() {
               setStatus("idle");
               setError(null);
             }}
-            className="text-xs text-neutral-200"
+            className="mt-1 block w-full cursor-pointer rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-xs text-neutral-100 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-500 file:px-3 file:py-1 file:text-xs file:font-medium file:text-neutral-900 hover:border-neutral-600"
           />
-        </label>
-      </div>
+        </div>
 
-      {/* CONTACT NAME */}
-      <input
-        name="contact_name"
-        placeholder="Your name"
-        className="w-full rounded-md bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
-      />
+        {/* CONTACT NAME */}
+        <div className="space-y-1">
+          <label className="text-xs text-neutral-400">Your name</label>
+          <input
+            name="contact_name"
+            placeholder="e.g. Jackson Zartman"
+            className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-500 focus:outline-none"
+          />
+        </div>
 
-      {/* CONTACT EMAIL */}
-      <input
-        name="contact_email"
-        type="email"
-        placeholder="Your email"
-        className="w-full rounded-md bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
-      />
+        {/* CONTACT EMAIL */}
+        <div className="space-y-1">
+          <label className="text-xs text-neutral-400">Email</label>
+          <input
+            name="contact_email"
+            type="email"
+            placeholder="you@company.com"
+            className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-500 focus:outline-none"
+          />
+        </div>
 
-      {/* COMPANY */}
-      <input
-        name="company"
-        placeholder="Company"
-        className="w-full rounded-md bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
-      />
+        {/* COMPANY */}
+        <div className="space-y-1">
+          <label className="text-xs text-neutral-400">Company</label>
+          <input
+            name="company"
+            placeholder="Company or project"
+            className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-500 focus:outline-none"
+          />
+        </div>
 
-      {/* NOTES */}
-      <textarea
-        name="notes"
-        placeholder="Notes (optional)"
-        className="w-full rounded-md bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
-        rows={3}
-      />
+        {/* NOTES */}
+        <div className="space-y-1">
+          <label className="text-xs text-neutral-400">What do you need help with?</label>
+          <textarea
+            name="notes"
+            placeholder="Short context: material, quantity, timing, blockers…"
+            className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-500 focus:outline-none"
+            rows={3}
+          />
+        </div>
 
-      <button
-        type="submit"
-        disabled={status === "uploading" || !file}
-        className="mt-3 inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-emerald-400 disabled:opacity-50"
-      >
-        {status === "uploading" ? "Uploading…" : "Upload file"}
-      </button>
+        <button
+          type="submit"
+          disabled={status === "uploading" || !file}
+          className="mt-2 inline-flex w-full items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-emerald-400 disabled:opacity-50"
+        >
+          {status === "uploading" ? "Uploading…" : "Upload file"}
+        </button>
 
-      {/* SUCCESS MESSAGE */}
-      {status === "success" && (
-        <p className="mt-2 text-xs text-emerald-400">
-          Upload complete. Thanks for sending this in.
-        </p>
-      )}
+        {/* SUCCESS MESSAGE */}
+        {status === "success" && (
+          <p className="mt-2 text-[11px] text-emerald-400">
+            Upload complete. Thanks for sending this in — I’ll review it and follow up.
+          </p>
+        )}
 
-      {/* ERROR MESSAGE */}
-      {status === "error" && error && (
-        <p className="mt-2 text-xs text-red-400">Error: {error}</p>
-      )}
-    </form>
+        {/* ERROR MESSAGE */}
+        {status === "error" && error && (
+          <p className="mt-2 text-[11px] text-red-400">Error: {error}</p>
+        )}
+      </form>
+    </div>
   );
 }
