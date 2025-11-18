@@ -1,154 +1,125 @@
 "use client";
 
-import { useState, FormEvent } from "react";
-
-const MAX_SIZE_MB = 25;
+import React from "react";
 
 export default function UploadBox() {
-  const [file, setFile] = useState<File | null>(null);
-  const [status, setStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
-  const [error, setError] = useState<string | null>(null);
+  const [file, setFile] = React.useState<File | null>(null);
+  const [status, setStatus] = React.useState<"idle" | "uploading" | "success" | "error">("idle");
+  const [error, setError] = React.useState<string | null>(null);
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-
-    if (!file) {
-      setError("Choose a file first.");
-      setStatus("error");
-      return;
-    }
-
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      setError(`Max size is ${MAX_SIZE_MB}MB.`);
-      setStatus("error");
-      return;
-    }
-
     setStatus("uploading");
     setError(null);
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
+    const form = e.currentTarget;
+    const formData = new FormData(form);
 
+    if (file) {
+      formData.append("file", file);
+    }
+
+    try {
       const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
 
-      let data: any = null;
+      let json: any = null;
       try {
-        data = await res.json();
+        json = await res.json();
       } catch {
-        // ignore JSON error – we'll fall back to res.ok
+        // ignore JSON error and rely on res.ok
       }
 
-      if (!res.ok || data?.success === false) {
-        throw new Error(data?.error || "Upload failed");
+      if (!res.ok || json?.success === false) {
+        throw new Error(json?.error || "Upload failed");
       }
 
+      // ✅ SUCCESS
       setStatus("success");
-      setError(null);
       setFile(null);
+      form.reset();
+      setError(null);
     } catch (err: any) {
+      console.error(err);
       setStatus("error");
-      setError(err?.message || "Upload failed");
+      setError(err.message || "Upload failed. Please try again.");
     }
   }
 
   return (
-  <div className="mx-auto w-full max-w-xl rounded-xl border border-neutral-800 bg-neutral-950 p-6 shadow-xl">
-    <h2 className="mb-2 text-lg font-semibold text-neutral-100">
-      Upload your CAD
-    </h2>
-    <p className="mb-4 text-sm text-neutral-400">
-      STEP, IGES, STL, SolidWorks, zipped assemblies — max 25MB for now.
-    </p>
+    <form onSubmit={handleSubmit} className="space-y-4">
 
-    <form
-      onSubmit={handleSubmit}
-      encType="multipart/form-data"
-      className="space-y-5"
-    >
-      {/* Contact name */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-300">
-          Your name
+      {/* FILE INPUT */}
+      <div className="rounded-xl bg-neutral-900 px-4 py-4 text-sm text-neutral-50">
+        <label className="flex flex-col gap-2">
+          <span className="font-medium text-neutral-300 text-xs">
+            Upload your CAD file
+          </span>
+
+          <input
+            type="file"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setFile(f);
+              setStatus("idle");
+              setError(null);
+            }}
+            className="text-xs text-neutral-200"
+          />
         </label>
-        <input
-          type="text"
-          name="contact_name"
-          placeholder="Jane Doe"
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
-        />
       </div>
 
-      {/* Contact email */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-300">
-          Work email
-        </label>
-        <input
-          type="email"
-          name="contact_email"
-          placeholder="jane@allstarautoparts.com"
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
-        />
-      </div>
+      {/* CONTACT NAME */}
+      <input
+        name="contact_name"
+        placeholder="Your name"
+        className="w-full rounded-md bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
+      />
 
-      {/* Company */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-300">
-          Company
-        </label>
-        <input
-          type="text"
-          name="company"
-          placeholder="All Star Auto Parts"
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
-        />
-      </div>
+      {/* CONTACT EMAIL */}
+      <input
+        name="contact_email"
+        type="email"
+        placeholder="Your email"
+        className="w-full rounded-md bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
+      />
 
-      {/* Notes */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-300">
-          Anything we should know?
-        </label>
-        <textarea
-          name="notes"
-          rows={3}
-          placeholder="EX: Need PP material, 10-day lead time, using existing tool..."
-          className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100"
-        />
-      </div>
+      {/* COMPANY */}
+      <input
+        name="company"
+        placeholder="Company"
+        className="w-full rounded-md bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
+      />
 
-      {/* File */}
-      <div>
-        <label className="block text-sm font-medium text-neutral-300">
-          CAD file
-        </label>
-        <input
-          type="file"
-          name="file"
-          required
-          className="mt-2 w-full text-neutral-300 file:mr-4 file:rounded-md file:border-0 file:bg-neutral-800 file:px-4 file:py-2 file:text-sm file:text-neutral-200 hover:file:bg-neutral-700"
-          onChange={(e) => {
-            const f = e.target.files?.[0] ?? null;
-            setFile(f);
-            setStatus("idle");
-            setError(null);
-          }}
-        />
-      </div>
+      {/* NOTES */}
+      <textarea
+        name="notes"
+        placeholder="Notes (optional)"
+        className="w-full rounded-md bg-neutral-800 px-3 py-2 text-sm text-neutral-200"
+        rows={3}
+      />
 
       <button
         type="submit"
         disabled={status === "uploading" || !file}
-        className="w-full rounded-md bg-emerald-600 px-4 py-2 text-center text-sm font-semibold text-white hover:bg-emerald-500"
+        className="mt-3 inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-neutral-900 hover:bg-emerald-400 disabled:opacity-50"
       >
         {status === "uploading" ? "Uploading…" : "Upload file"}
       </button>
+
+      {/* SUCCESS MESSAGE */}
+      {status === "success" && (
+        <p className="mt-2 text-xs text-emerald-400">
+          Upload complete. Thanks for sending this in.
+        </p>
+      )}
+
+      {/* ERROR MESSAGE */}
+      {status === "error" && error && (
+        <p className="mt-2 text-xs text-red-400">Error: {error}</p>
+      )}
     </form>
-  </div>
-);
+  );
 }
