@@ -68,43 +68,59 @@ if (!allowedExts.includes(ext)) {
     const safeName = file.name.replace(/\s+/g, "-");
     const filePath = `uploads/${timestamp}-${safeName}`;
 
-      // 3 NEW: ensure there is a customer record for this upload
-    const { data: customer, error: customerError } = await supabase
-      .from("customers")
-      .upsert(
-      {
-        name,
-        email,
-        company,
-      },
-      {
-        onConflict: "email", // use the unique email constraint
-      }
-      )
-      .select()
-      .single();
+    // 3 NEW: ensure there is a customer record for this upload
+let customerId: string | null = null;
 
-    if (customerError) {
-      console.error("Customer upsert failed", customerError);
-  } else {
-      console.log("Customer upsert OK", customer);
+const { data: customer, error: customerError } = await supabase
+  .from("customers")
+  .upsert(
+    {
+      name,
+      email,
+      company,
+    },
+    {
+      // relies on the UNIQUE(email) constraint you confirmed
+      onConflict: "email",
     }
+  )
+  .select("id, email")
+  .single();
 
-  // 4️⃣ Insert the upload row, linking to the customer if we have one
-    const { data: uploadRow, error: uploadError } = await supabase
-      .from("uploads")
-      .insert({
-        file_name: file.name,
-        file_path: filePath,
-        mime_type: file.type,
-        name,
-        email,
-        company,
-        notes,
-        customer_id: customer?.id ?? null, // NEW FK column
-        })
-      .select()
-      .single();
+console.log("UPSERT CUSTOMER RESULT", { customer, customerError });
+
+if (customerError) {
+  // Don’t block the upload, but log so we can debug in Vercel/dev logs
+  console.error("Customer upsert failed", customerError);
+} else if (customer) {
+  customerId = customer.id;
+}
+
+  // 4 Insert the upload row, linking to the customer if we have one
+const { data: uploadRow, error: uploadError } = await supabase
+  .from("uploads")
+  .insert({
+    file_name: file.name,
+    file_path: filePath,
+    mime_type: file.type,
+    name,
+    email,
+    company,
+    notes,
+    customer_id: customerId,
+  })
+  .select()
+  .single();
+
+console.log("UPLOAD INSERT RESULT", { uploadRow, uploadError });
+
+if (uploadError) {
+  console.error("Upload row insert failed", uploadError);
+  return NextResponse.json(
+    { success: false, message: "Failed to save upload metadata" },
+    { status: 500 }
+  );
+}
 
     // Save metadata
     const { error: insertError } = await supabase.from("uploads").insert({
