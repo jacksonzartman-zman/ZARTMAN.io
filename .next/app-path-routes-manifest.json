@@ -6,8 +6,8 @@
   "/api/threads/route": "/api/threads",
   "/api/upload/route": "/api/upload",
   "/page": "/",
+  "/admin/quotes/[id]/page": "/admin/quotes/[id]",
   "/admin/page": "/admin",
   "/admin/quotes/page": "/admin/quotes",
-  "/admin/quotes/[id]/page": "/admin/quotes/[id]",
   "/api/hello/route": "/api/hello"
 }
