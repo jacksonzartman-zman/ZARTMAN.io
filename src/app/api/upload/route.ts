@@ -69,58 +69,64 @@ if (!allowedExts.includes(ext)) {
     const filePath = `uploads/${timestamp}-${safeName}`;
 
     // 3 NEW: ensure there is a customer record for this upload
-let customerId: string | null = null;
+    let customerId: string | null = null;
 
-const { data: customer, error: customerError } = await supabase
-  .from("customers")
-  .upsert(
-    {
+    const { data: customer, error: customerError } = await supabase
+      .from("customers")
+      .upsert(
+      {
+        name,
+        email,
+        company,
+      },
+      {
+        onConflict: "email", // relies on UNIQUE(email)
+      },
+      {
+        onConflict: "email", // relies on UNIQUE(email)
+      }
+      )
+      .select("id, email")
+      .single();
+
+  console.log("UPSERT CUSTOMER RESULT", { customer, customerError });
+
+    if (customerError) {
+  // Don't block the upload, but log so we can debug in Vercel/dev logs
+  console.error("Customer upsert failed", customerError);
+  } else if (customer) {
+      customerId = customer.id as string;
+  }
+
+// 4 Insert the upload row, linking to the customer if we have one
+  const { data: uploadRow, error: uploadError } = await supabase
+    .from("uploads")
+    .insert({
+      file_name: file.name,
+      file_path: filePath,
+      mime_type: file.type,
       name,
       email,
       company,
-    },
-    {
-      // relies on the UNIQUE(email) constraint you confirmed
-      onConflict: "email",
-    }
-  )
-  .select("id, email")
+      notes,
+      customer_id: customerId, // can be null if upsert failed
+    })
+    .select("id, customer_id")
   .single();
 
-console.log("UPSERT CUSTOMER RESULT", { customer, customerError });
+  console.log("UPLOAD INSERT RESULT", { uploadRow, uploadError });
 
-if (customerError) {
-  // Don’t block the upload, but log so we can debug in Vercel/dev logs
-  console.error("Customer upsert failed", customerError);
-} else if (customer) {
-  customerId = customer.id;
-}
-
-  // 4 Insert the upload row, linking to the customer if we have one
-const { data: uploadRow, error: uploadError } = await supabase
-  .from("uploads")
-  .insert({
-    file_name: file.name,
-    file_path: filePath,
-    mime_type: file.type,
-    name,
-    email,
-    company,
-    notes,
-    customer_id: customerId,
-  })
-  .select()
-  .single();
-
-console.log("UPLOAD INSERT RESULT", { uploadRow, uploadError });
-
-if (uploadError) {
+    if (uploadError) {
   console.error("Upload row insert failed", uploadError);
-  return NextResponse.json(
-    { success: false, message: "Failed to save upload metadata" },
-    { status: 500 }
-  );
-}
+    return NextResponse.json(
+    {
+      success: false,
+      // TEMP: bubble the actual DB error so we can see what's wrong
+      message: `Failed to save upload metadata: ${uploadError.message}`,
+    },
+    { status: 500 },
+   );
+    }
 
     // Save metadata
     const { error: insertError } = await supabase.from("uploads").insert({
