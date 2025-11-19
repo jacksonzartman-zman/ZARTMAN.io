@@ -68,7 +68,7 @@ if (!allowedExts.includes(ext)) {
     const safeName = file.name.replace(/\s+/g, "-");
     const filePath = `uploads/${timestamp}-${safeName}`;
 
-      // 3️⃣ NEW: ensure there is a customer record for this upload
+      // 3 NEW: ensure there is a customer record for this upload
     const { data: customer, error: customerError } = await supabase
       .from("customers")
       .upsert(
@@ -86,8 +86,9 @@ if (!allowedExts.includes(ext)) {
 
     if (customerError) {
       console.error("Customer upsert failed", customerError);
-    // We *don't* bail out – worst case we still save the upload
-      }
+  } else {
+      console.log("Customer upsert OK", customer);
+    }
 
   // 4️⃣ Insert the upload row, linking to the customer if we have one
     const { data: uploadRow, error: uploadError } = await supabase
