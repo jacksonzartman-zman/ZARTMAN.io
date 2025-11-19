@@ -158,6 +158,7 @@ export default function UploadBox() {
 
   // ---------- UI ----------
 
+    const canSubmit = !!(state.file && state.name && state.email);
   return (
     <section
       aria-label="CAD upload"
@@ -278,10 +279,15 @@ export default function UploadBox() {
         </div>
 
         {/* Submit */}
-        <button
+                <button
           type="submit"
-          disabled={isSubmitting}
-          className="mt-2 w-full rounded-full bg-emerald-500 px-6 py-3 text-sm font-medium text-black shadow-sm transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-70"
+          disabled={isSubmitting || !canSubmit}
+          className={clsx(
+            "mt-2 w-full rounded-full px-6 py-3 text-sm font-medium text-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-70",
+            canSubmit && !isSubmitting
+              ? "bg-emerald-500 hover:bg-emerald-400"
+              : "bg-emerald-500/40"
+          )}
         >
           {isSubmitting ? "Uploading..." : "Upload file"}
         </button>
