@@ -19,7 +19,6 @@ type UploadRow = {
 };
 
 export default async function AdminPage() {
-  // cookies() is async in your setup
   const cookieStore = await cookies();
   const isAuthed = cookieStore.get(ADMIN_COOKIE_NAME)?.value === "ok";
 
@@ -27,7 +26,7 @@ export default async function AdminPage() {
   if (!isAuthed) {
     return (
       <main className="min-h-screen bg-page text-ink flex items-center justify-center px-4">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-surface px-6 py-8 shadow-lg">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-surface px-6 py-8">
           <h1 className="text-lg font-semibold">Admin – Zartman.io</h1>
           <p className="mt-2 text-xs text-muted">
             Private area. Enter the admin password to view uploads.
@@ -45,14 +44,14 @@ export default async function AdminPage() {
                 id="password"
                 name="password"
                 type="password"
-                className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-                placeholder="••••••••"
+                placeholder="********"
+                className="w-full rounded-md border border-border bg-input px-3 py-2 text-xs"
               />
             </div>
 
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-medium text-black hover:opacity-90 transition"
+              className="inline-flex w-full items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-medium text-ink hover:opacity-90"
             >
               Enter
             </button>
@@ -63,20 +62,34 @@ export default async function AdminPage() {
   }
 
   // Authenticated → load uploads from Supabase
-  const { data, error } = await supabaseServer
+  const supabase = supabaseServer as any;
+
+  const { data, error } = await supabase
     .from("uploads")
     .select("*")
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Error loading uploads:", error);
+    console.error("Error loading uploads", error);
   }
 
   const uploads: UploadRow[] = (data as UploadRow[]) ?? [];
 
   return (
     <main className="min-h-screen bg-page text-ink px-4 py-10">
-      <AdminTable uploads={uploads} />
+      <div className="mx-auto max-w-5xl">
+        <header className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold">Uploads dashboard</h1>
+            <p className="text-xs text-muted">
+              Latest CAD uploads hitting Supabase.
+            </p>
+          </div>
+          <p className="text-[11px] text-muted">Admin view only</p>
+        </header>
+
+        <AdminTable uploads={uploads} />
+      </div>
     </main>
   );
 }
