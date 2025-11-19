@@ -26,6 +26,14 @@
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/admin/quotes/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/admin/uploads/[id]",
+      "regex": "^/admin/uploads/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/admin/uploads/(?<nxtPid>[^/]+?)(?:/)?$"
     }
   ],
   "staticRoutes": [
