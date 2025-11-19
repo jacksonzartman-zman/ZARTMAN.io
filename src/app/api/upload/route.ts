@@ -7,76 +7,80 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
 
-    const file = formData.get("file");
-    if (!file || !(file instanceof File)) {
+    const file = formData.get("file") as File | null;
+    const name = (formData.get("name") ?? "") as string;
+    const email = (formData.get("email") ?? "") as string;
+    const company = (formData.get("company") ?? "") as string;
+    const notes = (formData.get("notes") ?? "") as string;
+
+    if (!file) {
       return NextResponse.json(
-        { success: false, error: "No file uploaded." },
+        { error: "Missing file in request" },
         { status: 400 }
       );
     }
 
-    // 💬 Text fields from the form
-    const contactName = (formData.get("contact_name") ?? "") as string;
-    const contactEmail = (formData.get("contact_email") ?? "") as string;
-    const company = (formData.get("company") ?? "") as string;
-    const notes = (formData.get("notes") ?? "") as string;
+    if (!name || !email) {
+      return NextResponse.json(
+        { error: "Name and email are required" },
+        { status: 400 }
+      );
+    }
 
-    const originalName = file.name;
-    const ext = originalName.split(".").pop() ?? "";
-    const safeExt = ext.toLowerCase();
-
-    // Unique path in the cad-uploads bucket
-    const filePath = `uploads/${Date.now()}-${originalName}`;
-
+    // ❗ FIXED: supabaseServer is NOT a function — it's already a client
     const supabase = supabaseServer;
 
-    // 1) Upload to Storage
-    const { error: storageError } = await supabase.storage
+    // Create a unique-ish path
+    const timestamp = Date.now();
+    const safeName = file.name.replace(/\s+/g, "-");
+    const filePath = `uploads/${timestamp}-${safeName}`;
+
+    // Upload file to storage
+    const { error: uploadError } = await supabase.storage
       .from("cad-uploads")
       .upload(filePath, file, {
-        contentType: file.type || "application/octet-stream",
+        cacheControl: "3600",
         upsert: false,
       });
 
-    if (storageError) {
-      console.error("Supabase storage error:", storageError);
+    if (uploadError) {
+      console.error("Supabase storage upload error:", uploadError);
       return NextResponse.json(
-        { success: false, error: `Storage error: ${storageError.message}` },
+        { error: "Failed to upload file to storage" },
         { status: 500 }
       );
     }
 
-    // 2) Insert metadata into uploads table
-    const { error: dbError } = await supabase.from("uploads").insert({
+    // Save metadata
+    const { error: insertError } = await supabase.from("uploads").insert({
+      file_name: file.name,
       file_path: filePath,
-      file_name: originalName,
-      file_size: file.size,
-      file_type: file.type || safeExt || null,
-      contact_name: contactName || null,
-      contact_email: contactEmail || null,
-      company: company || null,
-      notes: notes || null,
+      file_type: file.type,
+      contact_name: name,
+      contact_email: email,
+      company,
+      notes,
     });
 
-    if (dbError) {
-      console.error("Supabase insert error:", dbError);
+    if (insertError) {
+      console.error("Supabase insert error:", insertError);
       return NextResponse.json(
-        {
-          success: false,
-          error: `DB error: ${dbError.message}`,
-        },
+        { error: "Failed to save upload metadata" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true }, { status: 200 });
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Upload successful",
+      },
+      { status: 200 }
+    );
   } catch (err: any) {
     console.error("Unexpected upload error:", err);
     return NextResponse.json(
-      {
-        success: false,
-        error: err?.message ?? "Unexpected error while uploading.",
-      },
+      { error: "Unexpected error during upload" },
       { status: 500 }
     );
   }
