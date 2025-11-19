@@ -1,13 +1,13 @@
 {
+  "/_not-found/page": "/_not-found",
   "/api/files/route": "/api/files",
   "/api/messages/route": "/api/messages",
   "/api/quotes/route": "/api/quotes",
   "/api/threads/route": "/api/threads",
   "/api/upload/route": "/api/upload",
-  "/_not-found/page": "/_not-found",
-  "/admin/page": "/admin",
   "/page": "/",
   "/admin/quotes/[id]/page": "/admin/quotes/[id]",
+  "/admin/page": "/admin",
   "/admin/quotes/page": "/admin/quotes",
   "/api/hello/route": "/api/hello"
 }
