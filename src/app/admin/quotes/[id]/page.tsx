@@ -302,18 +302,32 @@ export default async function QuoteDetailPage(props: any) {
             </div>
 
                   {/* Footer: tracker hint + save button */}
-            <div className="mt-6 flex items-center justify-between gap-4 border-t border-border/40 pt-4">
+            <div className="mt-10 border-t border-zinc-800 pt-6 flex flex-col gap-4">
+
               <p className="text-xs text-muted-ink">
                 Future: this will drive a Domino’s-style tracker for the customer.
               </p>
 
               <button
                 type="submit"
-                className="inline-flex items-center justify-center rounded-full bg-accent px-5 py-2 text-sm font-medium text-black shadow-sm hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
+                className="
+                  w-full
+                  bg-accent
+                  text-black
+                  font-semibold
+                  py-3
+                  rounded-lg
+                  shadow-md
+                  hover:bg-accent/90
+                  transition
+                  duration-200
+                  text-center
+                  "
               >
                 Save quote
               </button>
             </div>
+
           </form>
         </section>
       </div>
