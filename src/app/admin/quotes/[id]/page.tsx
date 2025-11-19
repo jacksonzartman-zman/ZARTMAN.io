@@ -309,7 +309,7 @@ export default async function QuoteDetailPage(props: any) {
 
               <button
                 type="submit"
-                className="inline-flex items-center justify-center rounded-full bg-accent px-5 py-2 text-xs font-medium text-ink shadow-sm hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center rounded-full bg-accent px-5 py-2 text-sm font-medium text-black shadow-sm hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Save quote
               </button>
