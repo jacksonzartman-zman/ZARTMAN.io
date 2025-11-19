@@ -1,6 +1,4 @@
-"use client";
-
-import Link from "next/link";
+import { createQuoteFromUpload } from "./actions";
 
 type UploadRow = {
   id: string;
@@ -14,79 +12,92 @@ type UploadRow = {
   created_at: string | null;
 };
 
-export default function AdminTable({ uploads }: { uploads: UploadRow[] }) {
+interface AdminTableProps {
+  uploads: UploadRow[];
+}
+
+export default function AdminTable({ uploads }: AdminTableProps) {
   return (
-    <div className="mt-10 w-full overflow-x-auto">
-      <table className="w-full border border-border rounded-lg overflow-hidden">
-        <thead className="bg-surface border-b border-border text-left text-neutral-400 text-xs uppercase tracking-wider">
-          <tr>
-            <th className="px-4 py-3">File</th>
-            <th className="px-4 py-3">Contact</th>
-            <th className="px-4 py-3">Company</th>
-            <th className="px-4 py-3">Notes</th>
-            <th className="px-4 py-3">Uploaded</th>
-            <th className="px-4 py-3">Quote</th>
+    <div className="mt-10 overflow-x-auto rounded-2xl border border-border bg-surface text-xs">
+      <table className="min-w-full border-collapse">
+        <thead>
+          <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted">
+            <th className="px-4 py-3 text-left font-medium">File</th>
+            <th className="px-4 py-3 text-left font-medium">Contact</th>
+            <th className="px-4 py-3 text-left font-medium">Company</th>
+            <th className="px-4 py-3 text-left font-medium">Notes</th>
+            <th className="px-4 py-3 text-left font-medium">Uploaded</th>
+            <th className="px-4 py-3 text-right font-medium">Quote</th>
           </tr>
         </thead>
-
-        <tbody className="divide-y divide-border bg-card">
+        <tbody>
           {uploads.length === 0 ? (
             <tr>
               <td
                 colSpan={6}
-                className="px-4 py-8 text-center text-neutral-500 text-sm"
+                className="px-4 py-6 text-center text-[11px] text-muted"
               >
-                No uploads found.
+                No uploads yet. Send yourself a test file from the homepage.
               </td>
             </tr>
           ) : (
-            uploads.map((row) => (
-              <tr key={row.id} className="hover:bg-surface/40 transition">
-                <td className="px-4 py-3 whitespace-nowrap">
-                  <div className="font-medium text-neutral-200">
-                    {row.file_name}
-                  </div>
-                  <div className="text-xs text-neutral-500">
-                    {row.file_type}
-                  </div>
-                </td>
+            uploads.map((row) => {
+              const created = row.created_at
+                ? new Date(row.created_at).toLocaleString("en-US", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })
+                : "";
 
-                <td className="px-4 py-3 whitespace-nowrap text-sm">
-                  <div className="text-neutral-200">{row.contact_name}</div>
-                  <a
-                    href={`mailto:${row.contact_email}`}
-                    className="text-xs text-accent hover:underline"
-                  >
-                    {row.contact_email}
-                  </a>
-                </td>
+              return (
+                <tr
+                  key={row.id}
+                  className="border-t border-border align-top hover:bg-neutral-900/40"
+                >
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-[11px]">
+                      {row.file_name ?? "Unknown file"}
+                    </div>
+                    <div className="text-[10px] text-muted">
+                      {row.file_type ?? "application/octet-stream"}
+                    </div>
+                  </td>
 
-                <td className="px-4 py-3 text-sm text-neutral-300">
-                  {row.company}
-                </td>
+                  <td className="px-4 py-3">
+                    <div className="text-[11px]">
+                      {row.contact_name ?? "—"}
+                    </div>
+                    <div className="text-[10px] text-muted break-all">
+                      {row.contact_email ?? "—"}
+                    </div>
+                  </td>
 
-                <td className="px-4 py-3 text-sm text-neutral-300">
-                  {row.notes}
-                </td>
+                  <td className="px-4 py-3 text-[11px]">
+                    {row.company ?? "—"}
+                  </td>
 
-                <td className="px-4 py-3 whitespace-nowrap text-sm text-neutral-400">
-                  {row.created_at
-                    ? new Date(row.created_at).toLocaleString()
-                    : "—"}
-                </td>
+                  <td className="px-4 py-3 text-[11px] whitespace-pre-wrap">
+                    {row.notes ?? "—"}
+                  </td>
 
-                {/* CREATE QUOTE BUTTON */}
-                <td className="px-4 py-3 text-sm">
-                  <Link
-                    href={`/admin/quotes/${row.id}`}
-                    className="inline-flex items-center justify-center px-3 py-1 rounded-full 
-                               bg-accent text-black font-medium text-xs hover:bg-accent/80 transition"
-                  >
-                    Create quote
-                  </Link>
-                </td>
-              </tr>
-            ))
+                  <td className="px-4 py-3 text-[11px] whitespace-nowrap">
+                    {created || "—"}
+                  </td>
+
+                  <td className="px-4 py-3 text-right">
+                    <form action={createQuoteFromUpload}>
+                      <input type="hidden" name="upload_id" value={row.id} />
+                      <button
+                        type="submit"
+                        className="inline-flex items-center rounded-full border border-accent px-3 py-1 text-[11px] font-medium text-accent hover:bg-accent/10"
+                      >
+                        Create quote
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              );
+            })
           )}
         </tbody>
       </table>

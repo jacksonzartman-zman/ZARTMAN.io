@@ -2,96 +2,83 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
-import { ADMIN_COOKIE_NAME } from "./constants";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { ADMIN_COOKIE_NAME, ADMIN_PASSWORD } from "./constants";
 
-// 1) Simple admin password auth
+/**
+ * Simple password check for the admin area.
+ * Used as the <form action={authenticate}> handler on /admin.
+ */
 export async function authenticate(formData: FormData): Promise<void> {
-  const password = (formData.get("password") ?? "").toString();
-  const expected = process.env.ADMIN_PASSWORD ?? "";
+  const password = formData.get("password") as string | null;
 
-  // If env var isn't set, treat as config error
-  if (!expected) {
-    console.error("ADMIN_PASSWORD is not set in the environment.");
-    redirect("/admin?error=config");
+  // For now we just bounce back to /admin on wrong password.
+  if (password !== ADMIN_PASSWORD) {
+    redirect("/admin");
   }
 
-  if (password !== expected) {
-    // Wrong password → bounce back with error flag
-    redirect("/admin?error=invalid");
-  }
+  const cookieStore = await cookies();
 
-  // Correct password → set cookie and go to admin dashboard
-  const cookieStore = await cookies(); // 🔑 note the await
   cookieStore.set(ADMIN_COOKIE_NAME, "ok", {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 6, // 6 hours
+    maxAge: 60 * 60 * 24 * 30, // 30 days
   });
 
   redirect("/admin");
 }
 
-// 2) Create a quote row from an upload (called from the main admin uploads table)
-export async function createQuoteFromUpload(formData: FormData): Promise<void> {
-  const uploadId = (formData.get("upload_id") ?? "").toString();
+/**
+ * Create a new quote row tied to an upload, then go to the quote detail page.
+ * Used as the <form action={createQuoteFromUpload}> handler in AdminTable.
+ */
+export async function createQuoteFromUpload(
+  formData: FormData
+): Promise<void> {
+  const uploadId = formData.get("upload_id") as string | null;
+
   if (!uploadId) {
-    throw new Error("Missing upload id.");
+    console.error("Missing upload id when creating quote");
+    redirect("/admin");
   }
 
-  // supabaseServer is already a client, don't call it
   const supabase = supabaseServer as any;
 
-  // Optional: sanity check the upload exists
-  const { data: upload, error: uploadError } = await supabase
-    .from("uploads")
+  const { data, error } = await supabase
+    .from("quotes")
+    .insert({
+      upload_id: uploadId,
+      status: "New",
+    })
     .select("id")
-    .eq("id", uploadId)
-    .maybeSingle();
+    .single();
 
-  if (uploadError) {
-    console.error("Error checking upload before creating quote:", uploadError);
-    throw new Error("Failed to verify upload.");
+  if (error || !data) {
+    console.error("Error creating quote", error);
+    redirect("/admin");
   }
 
-  if (!upload) {
-    throw new Error("Upload not found.");
-  }
-
-  const { error } = await supabase.from("quotes").insert({
-    upload_id: uploadId,
-    status: "new",
-  });
-
-  if (error) {
-    console.error("Error creating quote:", error);
-    throw new Error("Failed to create quote.");
-  }
-
-  // Refresh admin pages that show quotes
-  revalidatePath("/admin");
-  revalidatePath("/admin/quotes");
+  redirect(`/admin/quotes/${data.id}`);
 }
 
-// 3) Update pricing / status on a quote (used on /admin/quotes/[id])
+/**
+ * Update an existing quote (status / price / dates).
+ * Used as the <form action={updateQuote}> handler on /admin/quotes/[id].
+ */
 export async function updateQuote(formData: FormData): Promise<void> {
-  const quoteId = (formData.get("quote_id") ?? "").toString();
+  const quoteId = formData.get("quote_id") as string | null;
+
   if (!quoteId) {
-    throw new Error("Missing quote id.");
+    console.error("Missing quote id in updateQuote");
+    redirect("/admin/quotes");
   }
 
-  const status = (formData.get("status") ?? "").toString() || "new";
-  const priceRaw = (formData.get("price") ?? "").toString();
-  const currency = (formData.get("currency") ?? "").toString() || "USD";
-  const targetDate = (formData.get("target_date") ?? "").toString();
-
-  const price =
-    priceRaw.trim().length > 0 && !Number.isNaN(Number(priceRaw))
-      ? Number(priceRaw)
-      : null;
+  const status = formData.get("status") as string | null;
+  const price = formData.get("price") as string | null;
+  const currency = formData.get("currency") as string | null;
+  const targetDate = formData.get("target_date") as string | null;
 
   const supabase = supabaseServer as any;
 
@@ -99,17 +86,15 @@ export async function updateQuote(formData: FormData): Promise<void> {
     .from("quotes")
     .update({
       status,
-      price,
+      price: price ? Number(price) : null,
       currency,
       target_date: targetDate || null,
     })
     .eq("id", quoteId);
 
   if (error) {
-    console.error("Error updating quote:", error);
-    throw new Error("Failed to update quote.");
+    console.error("Error updating quote", error);
   }
 
-  revalidatePath("/admin/quotes");
-  revalidatePath(`/admin/quotes/${quoteId}`);
+  redirect(`/admin/quotes/${quoteId}`);
 }
