@@ -1,80 +1,179 @@
 "use client";
 
-import React, { useState, DragEvent, ChangeEvent, FormEvent } from "react";
+import React, {
+  useState,
+  DragEvent,
+  ChangeEvent,
+  FormEvent,
+} from "react";
 import clsx from "clsx";
 
 type UploadState = {
   file: File | null;
+  fileName: string;
   name: string;
   email: string;
   company: string;
   notes: string;
 };
 
+const MAX_FILE_SIZE_MB = 25;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+// Match the copy on the page
+const ALLOWED_EXTENSIONS = [
+  ".step",
+  ".stp",
+  ".iges",
+  ".igs",
+  ".stl",
+  ".sldprt",
+  ".zip",
+];
+
 export default function UploadBox() {
   const [state, setState] = useState<UploadState>({
     file: null,
+    fileName: "",
     name: "",
     email: "",
     company: "",
     notes: "",
   });
 
-  const [isDragging, setDragging] = useState(false);
-  const [isSubmitting, setSubmitting] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  /** -------------------------------
-   * Drag + Drop handlers
-   --------------------------------*/
+  const resetMessages = () => {
+    setError(null);
+    setSuccess(null);
+  };
+
+  // ------- Helpers -------
+
+  const hasAllowedExtension = (file: File) => {
+    const name = file.name.toLowerCase();
+    return ALLOWED_EXTENSIONS.some((ext) => name.endsWith(ext));
+  };
+
+  const validateFile = (file: File | null): boolean => {
+    if (!file) {
+      setError("Please select a CAD file to upload.");
+      return false;
+    }
+
+    if (!hasAllowedExtension(file)) {
+      setError(
+        "Unsupported file type. Use STEP, IGES, STL, SolidWorks, or a ZIP archive.",
+      );
+      return false;
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File is too large. Max size is ~${MAX_FILE_SIZE_MB} MB.`);
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleFileSelectInternal = (file: File | null) => {
+    resetMessages();
+
+    if (!file) {
+      setState((prev) => ({
+        ...prev,
+        file: null,
+        fileName: "",
+      }));
+      return;
+    }
+
+    if (!validateFile(file)) {
+      // Reset file state if invalid
+      setState((prev) => ({
+        ...prev,
+        file: null,
+        fileName: "",
+      }));
+      return;
+    }
+
+    setState((prev) => ({
+      ...prev,
+      file,
+      fileName: file.name,
+    }));
+  };
+
+  // ------- Event handlers -------
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    handleFileSelectInternal(file);
+  };
+
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setDragging(true);
+    e.stopPropagation();
+    setIsDragging(true);
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setDragging(true);
+    e.stopPropagation();
+    setIsDragging(true);
   };
 
   const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setDragging(false);
+    e.stopPropagation();
+    setIsDragging(false);
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setDragging(false);
+    e.stopPropagation();
+    setIsDragging(false);
 
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      setState((prev) => ({ ...prev, file }));
-    }
+    const file = e.dataTransfer.files?.[0] ?? null;
+    handleFileSelectInternal(file);
   };
 
-  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setState((prev) => ({ ...prev, file }));
-    }
+  const handleTextChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    resetMessages();
+    const { name, value } = e.target;
+
+    setState((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
-  /** -------------------------------
-   * Submit handler → calls /api/upload
-   --------------------------------*/
-  const handleSubmit = async (e: FormEvent): Promise<void> => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    setSuccess(false);
+    resetMessages();
+
+    if (!state.file) {
+      setError("Please select a CAD file to upload.");
+      return;
+    }
+
+    if (!state.name.trim() || !state.email.trim()) {
+      setError("Name and email are required.");
+      return;
+    }
+
+    if (!validateFile(state.file)) {
+      return;
+    }
 
     try {
-      if (!state.file) {
-        setError("Please select a file first.");
-        setSubmitting(false);
-        return;
-      }
+      setIsSubmitting(true);
 
       const formData = new FormData();
       formData.append("file", state.file);
@@ -89,146 +188,161 @@ export default function UploadBox() {
       });
 
       if (!res.ok) {
-        throw new Error("Upload failed.");
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || "Upload failed");
       }
 
-      setSuccess(true);
-      setState({
+      // Success – keep contact info, reset file + notes
+      setState((prev) => ({
+        ...prev,
         file: null,
-        name: "",
-        email: "",
-        company: "",
+        fileName: "",
         notes: "",
-      });
+      }));
+
+      setSuccess("Thanks — your CAD file is in the queue. I’ll take a look.");
     } catch (err: any) {
-      setError(err.message || "Something went wrong.");
+      console.error(err);
+      setError(err.message || "Something went wrong while uploading.");
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
+  // ------- Render -------
+
   return (
-    <section className="w-full max-w-md border border-border/40 rounded-2xl p-6">
-      {/* Drop zone */}
-      <div
-        className={clsx(
-          "border-2 border-dashed rounded-xl p-8 text-center transition",
-          isDragging ? "border-accent bg-accent/10" : "border-border/60"
-        )}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+    <section aria-label="Upload CAD file" className="w-full">
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-4 text-sm text-ink"
       >
-        <p className="text-sm text-muted-foreground">
-          STEP, IGES, STL, SolidWorks, or zipped assemblies. Max ~25 MB.
-        </p>
-
-        <button
-          type="button"
-          onClick={() => document.getElementById("file-input")?.click()}
-          className="mt-4 px-4 py-2 rounded-full border text-sm"
-        >
-          Browse from device
-        </button>
-
-        <input
-          id="file-input"
-          type="file"
-          className="hidden"
-          onChange={handleFileSelect}
-        />
-
-        <p className="text-xs mt-3">
-          {state.file ? (
-            <>Selected: {state.file.name}</>
-          ) : (
-            <>…or drag & drop into this box</>
+        {/* Drag & drop / file input */}
+        <div
+          className={clsx(
+            "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-8 text-center text-xs sm:text-sm transition",
+            isDragging
+              ? "border-accent/80 bg-accent/5"
+              : "border-border/80 bg-surface-muted",
           )}
-        </p>
-      </div>
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <p className="mb-2 font-medium">
+            STEP, IGES, STL, SolidWorks, or zipped assemblies. Max ~25 MB.
+          </p>
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-4 mt-6">
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <label className="text-xs">Your name*</label>
-            <input
-              required
-              type="text"
-              value={state.name}
-              onChange={(e) =>
-                setState((s) => ({ ...s, name: e.target.value }))
-              }
-              className="w-full mt-1 px-3 py-2 border rounded-md bg-background"
-            />
-          </div>
+          <label
+            htmlFor="file"
+            className="mt-2 inline-flex items-center justify-center rounded-full border border-border bg-surface px-4 py-2 text-xs font-medium hover:bg-surface/80 cursor-pointer"
+          >
+            Browse from device
+          </label>
 
-          <div className="flex-1">
-            <label className="text-xs">Email*</label>
-            <input
-              required
-              type="email"
-              value={state.email}
-              onChange={(e) =>
-                setState((s) => ({ ...s, email: e.target.value }))
-              }
-              className="w-full mt-1 px-3 py-2 border rounded-md bg-background"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="text-xs">Company</label>
           <input
-            type="text"
-            value={state.company}
-            onChange={(e) =>
-              setState((s) => ({ ...s, company: e.target.value }))
-            }
-            className="w-full mt-1 px-3 py-2 border rounded-md bg-background"
+            id="file"
+            name="file"
+            type="file"
+            className="hidden"
+            onChange={handleFileChange}
+            accept={ALLOWED_EXTENSIONS.join(",")}
           />
+
+          <p className="mt-2 text-[11px] text-muted">
+            …or drag &amp; drop into this box
+          </p>
+
+          <p className="mt-3 text-[11px] text-muted">
+            Selected:{" "}
+            {state.fileName ? (
+              <span className="font-medium text-ink">{state.fileName}</span>
+            ) : (
+              "No file selected yet"
+            )}
+          </p>
         </div>
 
-        <div>
-          <label className="text-xs">Process / quantity / timing</label>
-          <textarea
-            value={state.notes}
-            onChange={(e) =>
-              setState((s) => ({ ...s, notes: e.target.value }))
-            }
-            className="w-full mt-1 px-3 py-2 border rounded-md bg-background"
-            placeholder="CNC, qty 50, target ship date, special material or tolerances…"
-          />
+        {/* Text fields */}
+        <div className="mt-4 grid grid-cols-1 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium">
+                Your name<span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                name="name"
+                required
+                value={state.name}
+                onChange={handleTextChange}
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-[11px] font-medium">
+                Email<span className="text-red-400">*</span>
+              </label>
+              <input
+                type="email"
+                name="email"
+                required
+                value={state.email}
+                onChange={handleTextChange}
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium">
+              Company
+            </label>
+            <input
+              type="text"
+              name="company"
+              value={state.company}
+              onChange={handleTextChange}
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-[11px] font-medium">
+              Process / quantity / timing
+            </label>
+            <textarea
+              name="notes"
+              rows={3}
+              value={state.notes}
+              onChange={handleTextChange}
+              placeholder="CNC, qty 50, target ship date, special material or tolerances…"
+              className="w-full resize-none rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+          </div>
         </div>
 
-        {/* Upload button + messages */}
-        <div className="space-y-2 pt-2 border-t border-border/40 mt-2">
+        {/* Submit + messages */}
+        <div className="mt-2 flex flex-col gap-2">
           <button
             type="submit"
             disabled={isSubmitting}
-            className={clsx(
-              "w-full inline-flex items-center justify-center rounded-full px-4 py-2.5 text-sm font-medium transition",
-              "disabled:opacity-60 disabled:cursor-not-allowed"
-            )}
-            style={{
-              backgroundColor: "#22c55e", // bright green
-              color: "#000",
-              border: "1px solid rgba(34,197,94,0.9)",
-            }}
+            className="inline-flex w-full items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-ink shadow-sm hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? "Uploading…" : "Upload file"}
           </button>
 
           {error && (
-            <p className="text-[11px] text-red-400" role="alert">
+            <p className="text-xs text-red-400" role="alert">
               Error: {error}
             </p>
           )}
 
-          {success && !error && (
-            <p className="text-[11px] text-emerald-400" role="status">
-              Thanks — your CAD file is in the queue. I’ll take a look.
+          {success && (
+            <p className="text-xs text-emerald-400" role="status">
+              {success}
             </p>
           )}
         </div>
