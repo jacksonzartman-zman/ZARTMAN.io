@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, DragEvent, ChangeEvent, FormEvent } from "react";
+import React, {
+  useState,
+  DragEvent,
+  ChangeEvent,
+  FormEvent,
+} from "react";
+import clsx from "clsx";
 
 type UploadState = {
   file: File | null;
@@ -11,7 +17,7 @@ type UploadState = {
 };
 
 export default function UploadBox() {
-  const [form, setForm] = useState<UploadState>({
+  const [uploadState, setUploadState] = useState<UploadState>({
     file: null,
     name: "",
     email: "",
@@ -24,54 +30,75 @@ export default function UploadBox() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // ---------- helpers ----------
+  // --- drag & drop handlers -------------------------------------------------
 
-  function handleInputChange(
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-    setError(null);
-    setSuccess(null);
-  }
-
-  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    setForm((prev) => ({ ...prev, file }));
-    setError(null);
-    setSuccess(null);
-  }
-
-  function handleDragOver(e: DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
+  const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
     setIsDragging(true);
-  }
+  };
 
-  function handleDragLeave(e: DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
-    setIsDragging(false);
-  }
-
-  function handleDrop(e: DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0] ?? null;
-    if (file) {
-      setForm((prev) => ({ ...prev, file }));
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isDragging) {
+      setIsDragging(true);
     }
-  }
+  };
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) return;
+
+    setUploadState((prev) => ({
+      ...prev,
+      file,
+    }));
+  };
+
+  // --- input handlers -------------------------------------------------------
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setUploadState((prev) => ({
+      ...prev,
+      file,
+    }));
+  };
+
+  const handleTextChange =
+    (field: keyof UploadState) =>
+    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const value = event.target.value;
+      setUploadState((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
+    };
+
+  // --- submit handler -------------------------------------------------------
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError(null);
     setSuccess(null);
 
-    if (!form.file) {
-      setError("Please upload a CAD file before submitting.");
+    if (!uploadState.file) {
+      setError("Please add a CAD file before uploading.");
       return;
     }
 
-    if (!form.name.trim() || !form.email.trim()) {
+    if (!uploadState.name || !uploadState.email) {
       setError("Name and email are required.");
       return;
     }
@@ -79,186 +106,218 @@ export default function UploadBox() {
     try {
       setIsSubmitting(true);
 
-      const body = new FormData();
-      body.append("file", form.file);
-      body.append("name", form.name);
-      body.append("email", form.email);
-      body.append("company", form.company);
-      body.append("notes", form.notes);
+      const formData = new FormData();
+      formData.append("file", uploadState.file);
+      formData.append("name", uploadState.name);
+      formData.append("email", uploadState.email);
+      formData.append("company", uploadState.company);
+      formData.append("notes", uploadState.notes);
 
+      // This assumes you already have /api/upload wired up.
       const res = await fetch("/api/upload", {
         method: "POST",
-        body,
+        body: formData,
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error ?? "Upload failed");
+        const body = await res.json().catch(() => null);
+        const message =
+          body?.error || `Upload failed with status ${res.status}`;
+        throw new Error(message);
       }
 
-      setSuccess("Thanks – your CAD file is in the queue. I’ll take a look.");
-      // Optional: clear the form except name/email/company
-      setForm((prev) => ({
-        ...prev,
+      setSuccess("Thanks — your CAD file is in the queue. I’ll take a look.");
+      setUploadState({
         file: null,
+        name: "",
+        email: "",
+        company: "",
         notes: "",
-      }));
+      });
     } catch (err: any) {
-      setError(err.message ?? "Something went wrong during upload.");
+      setError(err?.message ?? "Something went wrong while uploading.");
     } finally {
       setIsSubmitting(false);
     }
-  }
+  };
 
-  // ---------- UI ----------
+  const isSubmitDisabled =
+    isSubmitting ||
+    !uploadState.file ||
+    !uploadState.name.trim() ||
+    !uploadState.email.trim();
+
+  // --- JSX ------------------------------------------------------------------
 
   return (
-    <section className="max-w-3xl mx-auto py-10">
-      <h1 className="text-2xl font-semibold text-ink mb-2">
-        Upload your CAD
-      </h1>
-      <p className="text-sm text-muted mb-6">
-        Start with one file. This tunes the flow and gets us talking – no
-        spammy sales cadences, just real project help.
-      </p>
+    <section className="mx-auto flex max-w-5xl flex-col gap-6 sm:flex-row sm:items-start sm:gap-10">
+      {/* Left side: marketing copy (you can tweak text however you like) */}
+      <div className="sm:w-1/2 space-y-4">
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Upload a CAD file
+        </h1>
+        <p className="text-sm text-muted">
+          STEP, IGES, STL, SolidWorks & zipped assemblies. No spam, no nurture
+          sequence — just manufacturability feedback and a realistic path to
+          parts-in-hand.
+        </p>
 
+        <div className="grid gap-3 text-sm sm:grid-cols-3">
+          <div className="rounded-xl border border-border/40 bg-surface-muted/40 p-3">
+            <p className="font-medium">For real work</p>
+            <p className="mt-1 text-xs text-muted">
+              Production, service parts, and weird one-offs that don&apos;t fit
+              in a dropdown.
+            </p>
+          </div>
+          <div className="rounded-xl border border-border/40 bg-surface-muted/40 p-3">
+            <p className="font-medium">Built from war stories</p>
+            <p className="mt-1 text-xs text-muted">
+              Lessons from thousands of jobs at Protolabs, Hubs, and
+              friends-of-the-industry.
+            </p>
+          </div>
+          <div className="rounded-xl border border-border/40 bg-surface-muted/40 p-3">
+            <p className="font-medium">Not another portal</p>
+            <p className="mt-1 text-xs text-muted">
+              One front door for context, not another login you&apos;ll forget.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Right side: intake + drag/drop upload */}
       <form
         onSubmit={handleSubmit}
-        className="space-y-8 rounded-2xl border border-border bg-surface p-6 md:p-8 shadow-sm"
+        className="sm:w-1/2 rounded-2xl border border-border bg-surface p-5 sm:p-6"
       >
-        {/* Files */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-medium text-ink">CAD file</h2>
-          <p className="text-xs text-muted">
-            STEP, IGES, STL, SolidWorks, or zipped assemblies. Max ~25&nbsp;MB.
+        {/* Drag & drop / file input */}
+        <div
+          className={clsx(
+            "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-4 py-8 text-center text-sm transition",
+            isDragging
+              ? "border-accent/60 bg-accent/5"
+              : "border-border/80 bg-surface-muted/30"
+          )}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <p className="font-medium">CAD file</p>
+          <p className="mt-1 text-xs text-muted">
+            STEP, IGES, STL, SolidWorks, or zipped assemblies. Max ~25 MB.
           </p>
 
-          <label
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={[
-              "mt-2 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 cursor-pointer transition",
-              isDragging
-                ? "border-accent/80 bg-accent/10"
-                : "border-border hover:border-accent/80 hover:bg-muted/10",
-            ].join(" ")}
-          >
-            <input
-              type="file"
-              name="file"
-              id="file"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            <span className="text-sm font-medium text-ink">
-              {form.file ? form.file.name : "Drag & drop your CAD file here"}
-            </span>
-            <span className="mt-1 text-xs text-muted">
-              or <span className="underline">browse from your device</span>
-            </span>
-          </label>
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center rounded-full border border-border bg-surface px-4 py-1.5 text-xs font-medium">
+              <span>{uploadState.file ? "Change file" : "Browse files"}</span>
+              <input
+                type="file"
+                name="file"
+                accept=".step,.stp,.iges,.igs,.stl,.sldprt,.zip"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </label>
+            <p className="text-[11px] text-muted">
+              or drag &amp; drop into this box
+            </p>
+          </div>
+
+          {uploadState.file && (
+            <p className="mt-3 text-xs text-muted">
+              Selected:{" "}
+              <span className="font-medium">{uploadState.file.name}</span>
+            </p>
+          )}
         </div>
 
-        {/* Project details */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <label
-              htmlFor="name"
-              className="block text-xs font-medium text-muted"
-            >
-              Your name<span className="text-red-500 ml-0.5">*</span>
-            </label>
+        {/* Text fields */}
+        <div className="mt-6 grid grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium">
+                Your name<span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                value={uploadState.name}
+                onChange={handleTextChange("name")}
+                placeholder="Jackson"
+                required
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium">
+                Email<span className="text-red-400">*</span>
+              </label>
+              <input
+                type="email"
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+                value={uploadState.email}
+                onChange={handleTextChange("email")}
+                placeholder="engineer@company.com"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Company</label>
             <input
-              id="name"
-              name="name"
-              value={form.name}
-              onChange={handleInputChange}
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              placeholder="Jackson Zartman"
-              required
+              type="text"
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              value={uploadState.company}
+              onChange={handleTextChange("company")}
+              placeholder="Zart LLC"
             />
           </div>
 
-          <div className="space-y-2">
-            <label
-              htmlFor="email"
-              className="block text-xs font-medium text-muted"
-            >
-              Email<span className="text-red-500 ml-0.5">*</span>
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              value={form.email}
-              onChange={handleInputChange}
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              placeholder="you@company.com"
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="company"
-              className="block text-xs font-medium text-muted"
-            >
-              Company
-            </label>
-            <input
-              id="company"
-              name="company"
-              value={form.company}
-              onChange={handleInputChange}
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              placeholder="Zart Consulting, All Star Auto, etc."
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="notes"
-              className="block text-xs font-medium text-muted"
-            >
+          <div className="space-y-1">
+            <label className="text-xs font-medium">
               Process / quantity / timing
             </label>
-            <input
-              id="notes"
-              name="notes"
-              value={form.notes}
-              onChange={handleInputChange}
-              className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm text-ink outline-none focus:border-accent focus:ring-1 focus:ring-accent"
-              placeholder="CNC, qty 50, target ship Dec 10"
+            <textarea
+              className="min-h-[80px] w-full rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent"
+              value={uploadState.notes}
+              onChange={handleTextChange("notes")}
+              placeholder="CNC, qty 50, target ship date, special material or tolerances…"
             />
           </div>
         </div>
 
-        {/* Submit */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <p className="text-xs text-muted md:max-w-md">
-            Hit upload and I’ll review manufacturability, pricing options, and
-            where this fits best in the network. You’ll hear from a human,
-            not a bot.
+        {/* Submit + messages */}
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[11px] text-muted">
+            Hit upload and I&apos;ll review manufacturability, pricing options,
+            and where this fits best in the network. You&apos;ll hear from a
+            human, not a bot.
           </p>
 
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="inline-flex items-center justify-center rounded-full bg-accent px-6 py-2 text-sm font-medium text-black disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={isSubmitDisabled}
+            className={clsx(
+              "inline-flex items-center justify-center rounded-full px-5 py-2 text-sm font-medium transition",
+              isSubmitDisabled
+                ? "cursor-not-allowed bg-border/60 text-muted"
+                : "bg-accent text-ink hover:bg-accent/90"
+            )}
           >
             {isSubmitting ? "Uploading…" : "Upload file"}
           </button>
         </div>
 
-        {/* Messages */}
         {error && (
-          <p className="text-xs text-red-400" role="alert">
+          <p className="mt-3 text-xs text-red-400" role="alert">
             Error: {error}
           </p>
         )}
+
         {success && (
-          <p className="text-xs text-emerald-400" role="status">
+          <p className="mt-3 text-xs text-emerald-400" role="status">
             {success}
           </p>
         )}
