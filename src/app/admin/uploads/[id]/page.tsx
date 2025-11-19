@@ -1,106 +1,123 @@
 // src/app/admin/uploads/[id]/page.tsx
-
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 
-export const dynamic = "force-dynamic";
+type UploadDetail = {
+  id: string;
+  file_name: string | null;
+  file_path: string | null;
+  name: string | null;
+  email: string | null;
+  company: string | null;
+  notes: string | null;
+  created_at: string | null;
+  customers: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    company: string | null;
+  } | null;
+};
 
-// --- Data loader -------------------------------------------------------------
-
-async function getUploadWithCustomer(id: string) {
+async function getUploadWithCustomer(id: string): Promise<UploadDetail | null> {
   const supabase = supabaseServer;
 
   const { data, error } = await supabase
     .from("uploads")
     .select(
       `
+      id,
+      file_name,
+      file_path,
+      name,
+      email,
+      company,
+      notes,
+      created_at,
+      customers:customer_id (
         id,
-        file_name,
-        file_path,
-        mime_type,
         name,
         email,
-        company,
-        notes,
-        created_at,
-        customer_id
-      `
+        company
+      )
+    `
     )
     .eq("id", id)
-    .single();
+    .maybeSingle();
 
   if (error) {
-    console.error("Error fetching upload for admin detail view:", error);
+    console.error("Error loading upload detail", error);
     return null;
   }
 
-  return data;
+  return data as UploadDetail | null;
 }
 
-// --- Page component ----------------------------------------------------------
-// NOTE: we accept props as `any` so TS stops trying to enforce `PageProps`.
-
-export default async function UploadDetailPage(props: any) {
-  const id = props?.params?.id as string | undefined;
-
-  if (!id) {
-    notFound();
-  }
-
-  const upload = await getUploadWithCustomer(id);
+export default async function UploadDetailPage({ params }: any) {
+  const upload = await getUploadWithCustomer(params.id);
 
   if (!upload) {
     notFound();
   }
 
+  const created =
+    upload.created_at && new Date(upload.created_at).toLocaleString();
+
   return (
-    <main className="max-w-4xl mx-auto px-4 py-10">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold">Upload details</h1>
+    <main className="max-w-4xl mx-auto px-4 py-10 space-y-6">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold">Upload detail</h1>
         <p className="text-sm text-muted-foreground">
-          CAD file and intake context from the public front door.
+          Customer upload and context for this request.
         </p>
       </header>
 
-      <section className="space-y-6 rounded-lg border border-border bg-card p-6">
-        {/* Customer block */}
-        <div>
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Customer
+      <section className="space-y-4 rounded-lg border border-border bg-card p-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Customer block */}
+          <div className="space-y-1">
+            <h2 className="text-sm font-semibold text-muted-foreground">
+              Customer
+            </h2>
+            <p className="font-medium">
+              {upload.customers?.name || upload.name || "Unknown"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {upload.customers?.email || upload.email}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {upload.customers?.company || upload.company}
+            </p>
+          </div>
+
+          {/* File block */}
+          <div className="space-y-1">
+            <h2 className="text-sm font-semibold text-muted-foreground">
+              File
+            </h2>
+            <p className="text-sm">{upload.file_name || "Unknown file"}</p>
+            <p className="text-xs text-muted-foreground break-all">
+              {upload.file_path}
+            </p>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Initial request notes
           </h2>
-          <p className="mt-1 text-base font-medium">
-            {upload.name || "Unknown"}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {upload.company || "—"}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {upload.email || "—"}
+          <p className="text-sm whitespace-pre-wrap">
+            {upload.notes || "No notes provided."}
           </p>
         </div>
 
-        {/* File block */}
-        <div className="border-t border-border pt-4">
-          <h2 className="text-sm font-medium text-muted-foreground">File</h2>
-          <p className="mt-1 text-base font-medium">
-            {upload.file_name ?? "Unknown file"}
+        {/* Meta */}
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <p>
+            Upload ID: <span className="font-mono">{upload.id}</span>
           </p>
-          <p className="text-xs text-muted-foreground">
-            {upload.mime_type || ""}{" "}
-            {upload.created_at
-              ? `· ${new Date(upload.created_at).toLocaleString()}`
-              : ""}
-          </p>
-        </div>
-
-        {/* Notes block */}
-        <div className="border-t border-border pt-4">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Intake notes
-          </h2>
-          <p className="mt-1 whitespace-pre-wrap text-sm">
-            {upload.notes || "No intake notes provided."}
-          </p>
+          <p>Created: {created || "Unknown"}</p>
         </div>
       </section>
     </main>
