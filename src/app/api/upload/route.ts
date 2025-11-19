@@ -82,9 +82,6 @@ if (!allowedExts.includes(ext)) {
       {
         onConflict: "email", // relies on UNIQUE(email)
       },
-      {
-        onConflict: "email", // relies on UNIQUE(email)
-      }
       )
       .select("id, email")
       .single();
