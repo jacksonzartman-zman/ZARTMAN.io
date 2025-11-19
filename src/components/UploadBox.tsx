@@ -1,121 +1,146 @@
 "use client";
 
-import React, {
-  useState,
-  DragEvent,
-  ChangeEvent,
-  FormEvent,
-} from "react";
+import React, { useState, DragEvent, ChangeEvent, FormEvent } from "react";
 import clsx from "clsx";
 
 type UploadState = {
   file: File | null;
-  fileName: string;
+  fileName: string | null;
   name: string;
   email: string;
   company: string;
   notes: string;
 };
 
-export default function UploadBox() {
-  const [state, setState] = useState<UploadState>({
-    file: null,
-    fileName: "",
-    name: "",
-    email: "",
-    company: "",
-    notes: "",
-  });
+const initialState: UploadState = {
+  file: null,
+  fileName: null,
+  name: "",
+  email: "",
+  company: "",
+  notes: "",
+};
 
+const ALLOWED_EXTENSIONS = [
+  "step",
+  "stp",
+  "iges",
+  "igs",
+  "stl",
+  "sldprt",
+  "sldasm",
+  "zip",
+  "prt",
+  "sat",
+  "x_t",
+  "x_b",
+  "ipt",
+];
+
+function isAllowedFile(file: File): boolean {
+  const parts = file.name.toLowerCase().split(".");
+  const ext = parts.length > 1 ? parts.pop()! : "";
+  return ALLOWED_EXTENSIONS.includes(ext);
+}
+
+export default function UploadBox() {
+  const [state, setState] = useState<UploadState>(initialState);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  // ---------- helpers ----------
+  const canSubmit = !!(state.file && state.name && state.email);
 
-  function handleFileSelected(file: File | null) {
+  const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files?.[0];
     if (!file) return;
 
-    setState((prev) => ({
-      ...prev,
-      file,
-      fileName: file.name,
-    }));
+    if (!isAllowedFile(file)) {
+      setError(
+        "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, or zipped CAD files."
+      );
+      setSuccess(false);
+      setState((prev) => ({ ...prev, file: null, fileName: null }));
+      return;
+    }
+
     setError(null);
-    setSuccess(null);
-  }
+    setSuccess(false);
+    setState((prev) => ({ ...prev, file, fileName: file.name }));
+  };
 
-  // ---------- drag & drop ----------
-
-  function handleDragEnter(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  }
-
-  function handleDragOver(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  }
-
-  function handleDragLeave(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  }
-
-  function handleDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const file = e.dataTransfer?.files?.[0];
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
     if (!file) return;
 
-    handleFileSelected(file);
-  }
+    if (!isAllowedFile(file)) {
+      setError(
+        "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, or zipped CAD files."
+      );
+      setSuccess(false);
+      setState((prev) => ({ ...prev, file: null, fileName: null }));
+      // Clear so they can re-choose
+      e.target.value = "";
+      return;
+    }
 
-  // ---------- inputs ----------
+    setError(null);
+    setSuccess(false);
+    setState((prev) => ({ ...prev, file, fileName: file.name }));
+  };
 
-  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    handleFileSelected(file);
-  }
+  const handleChange =
+    (field: keyof UploadState) =>
+    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const value = e.target.value;
+      setState((prev) => ({ ...prev, [field]: value }));
+    };
 
-  function handleFieldChange(
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) {
-    const { name, value } = e.target;
-
-    setState((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  }
-
-  // ---------- submit ----------
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setError(null);
+    setSuccess(false);
 
-    // basic client validation
     if (!state.file) {
       setError("Please select a CAD file to upload.");
-      setSuccess(null);
+      return;
+    }
+
+    if (!isAllowedFile(state.file)) {
+      setError(
+        "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, or zipped CAD files."
+      );
       return;
     }
 
     if (!state.name || !state.email) {
-      setError("Name and email are required.");
-      setSuccess(null);
+      setError("Please add at least your name and email.");
       return;
     }
 
     setSubmitting(true);
-    setError(null);
-    setSuccess(null);
 
     try {
       const formData = new FormData();
@@ -131,178 +156,177 @@ export default function UploadBox() {
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
+        const data = (await res.json().catch(() => null)) as
+          | { message?: string }
+          | null;
         throw new Error(data?.message ?? "Upload failed");
       }
 
-      // Success – keep contact info, reset file + notes
+      // Success → keep contact info, reset file + notes
       setState((prev) => ({
         ...prev,
         file: null,
-        fileName: "",
+        fileName: null,
         notes: "",
       }));
-
-      setSuccess("Thanks — your CAD file is in the queue. I’ll take a look.");
+      setSuccess(true);
       setError(null);
     } catch (err: any) {
       console.error(err);
-      setError(
-        err?.message ?? "Upload failed. Please try again or email the file."
-      );
-      setSuccess(null);
+      setError(err?.message ?? "Upload failed. Please try again.");
+      setSuccess(false);
     } finally {
       setSubmitting(false);
     }
-  }
+  };
 
-  // ---------- UI ----------
-
-    const canSubmit = !!(state.file && state.name && state.email);
   return (
     <section
-      aria-label="CAD upload"
-      className="rounded-3xl border border-border bg-surface px-6 py-6 sm:px-8 sm:py-8"
+      aria-label="Upload CAD file"
+      className="relative flex flex-col rounded-3xl border border-border bg-surface p-6 sm:p-8"
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        {/* Drop zone */}
-        <div
-          className={clsx(
-            "rounded-3xl border-2 border-dashed px-6 py-6 text-center text-xs sm:text-sm",
-            isDragging
-              ? "border-accent/70 bg-accent/5"
-              : "border-border/80 bg-surface"
-          )}
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <p className="font-medium text-muted">
-            STEP, IGES, STL, SolidWorks, or zipped assemblies. Max ~25 MB.
-          </p>
-          <div className="mt-4 flex items-center justify-center">
-            <label
-              htmlFor="file"
-              className="inline-flex cursor-pointer items-center justify-center rounded-full border border-border bg-surface px-4 py-2 text-xs font-medium text-foreground transition hover:bg-border/20"
-            >
-              Browse from device
-            </label>
-            <input
-              id="file"
-              name="file"
-              type="file"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-          </div>
-          <p className="mt-2 text-[11px] text-muted">
+      {/* Drag & drop / file box */}
+      <div
+        className={clsx(
+          "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm sm:px-8 sm:py-12",
+          isDragging ? "border-accent/80 bg-accent/5" : "border-border/60"
+        )}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <p className="text-xs text-muted">
+          STEP, IGES, STL, SolidWorks, or zipped assemblies. Max ~25 MB.
+        </p>
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <label
+            htmlFor="file"
+            className="inline-flex cursor-pointer items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-foreground transition hover:border-accent hover:text-accent"
+          >
+            Browse from device
+          </label>
+          <p className="text-[11px] text-muted">
             …or drag &amp; drop into this box
           </p>
           <p className="mt-1 text-[11px] text-muted">
             Selected:{" "}
-            {state.fileName ? state.fileName : "No file selected yet"}
+            {state.fileName ? (
+              <span className="text-foreground">{state.fileName}</span>
+            ) : (
+              "No file selected yet"
+            )}
           </p>
         </div>
+        <input
+          id="file"
+          name="file"
+          type="file"
+          className="hidden"
+          onChange={handleFileChange}
+          accept=".step,.stp,.iges,.igs,.stl,.sldprt,.sldasm,.zip,.prt,.sat,.x_t,.x_b,.ipt"
+        />
+      </div>
 
-        {/* Name / email */}
+      {/* Form fields */}
+      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
+          <div className="space-y-1">
             <label
               htmlFor="name"
-              className="text-[11px] font-medium text-muted"
+              className="text-xs font-medium text-muted tracking-wide"
             >
-              Your name*
+              Your name<span className="text-red-500">*</span>
             </label>
             <input
               id="name"
-              name="name"
+              type="text"
               required
               value={state.name}
-              onChange={handleFieldChange}
-              className="h-9 rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-accent focus:ring-0"
+              onChange={handleChange("name")}
+              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none ring-0 transition focus:border-accent"
             />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="space-y-1">
             <label
               htmlFor="email"
-              className="text-[11px] font-medium text-muted"
+              className="text-xs font-medium text-muted tracking-wide"
             >
-              Email*
+              Email<span className="text-red-500">*</span>
             </label>
             <input
               id="email"
-              name="email"
               type="email"
               required
               value={state.email}
-              onChange={handleFieldChange}
-              className="h-9 rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-accent focus:ring-0"
+              onChange={handleChange("email")}
+              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none ring-0 transition focus:border-accent"
             />
           </div>
         </div>
 
-        {/* Company */}
-        <div className="flex flex-col gap-1">
+        <div className="space-y-1">
           <label
             htmlFor="company"
-            className="text-[11px] font-medium text-muted"
+            className="text-xs font-medium text-muted tracking-wide"
           >
             Company
           </label>
           <input
             id="company"
-            name="company"
+            type="text"
             value={state.company}
-            onChange={handleFieldChange}
-            className="h-9 rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-accent focus:ring-0"
+            onChange={handleChange("company")}
+            className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none ring-0 transition focus:border-accent"
           />
         </div>
 
-        {/* Notes */}
-        <div className="flex flex-col gap-1">
+        <div className="space-y-1">
           <label
             htmlFor="notes"
-            className="text-[11px] font-medium text-muted"
+            className="text-xs font-medium text-muted tracking-wide"
           >
             Process / quantity / timing
           </label>
           <textarea
             id="notes"
-            name="notes"
             rows={3}
             value={state.notes}
-            onChange={handleFieldChange}
+            onChange={handleChange("notes")}
             placeholder="CNC, qty 50, target ship date, special material or tolerances..."
-            className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent focus:ring-0"
+            className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none ring-0 transition focus:border-accent"
           />
         </div>
 
-        {/* Submit */}
-                <button
-          type="submit"
-          disabled={isSubmitting || !canSubmit}
-          className={clsx(
-            "mt-2 w-full rounded-full px-6 py-3 text-sm font-medium text-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-70",
-            canSubmit && !isSubmitting
-              ? "bg-emerald-500 hover:bg-emerald-400"
-              : "bg-emerald-500/40"
-          )}
-        >
-          {isSubmitting ? "Uploading..." : "Upload file"}
-        </button>
+        {/* Upload CTA */}
+        <div className="pt-1">
+          <button
+            type="submit"
+            disabled={isSubmitting || !canSubmit}
+            className={clsx(
+              "mt-2 w-full rounded-full px-6 py-3 text-sm font-medium text-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-70",
+              canSubmit && !isSubmitting
+                ? "bg-emerald-500 hover:bg-emerald-400"
+                : "bg-emerald-500/40"
+            )}
+          >
+            {isSubmitting ? "Uploading..." : "Upload file"}
+          </button>
+        </div>
 
         {/* Messages */}
-        {error && (
-          <p className="mt-1 text-xs text-red-400" role="alert">
-            Error: {error}
-          </p>
-        )}
-        {success && (
-          <p className="mt-1 text-xs text-emerald-400" role="status">
-            {success}
-          </p>
-        )}
+        <div className="min-h-[1.25rem] pt-1">
+          {error && (
+            <p className="text-xs text-red-400" role="alert">
+              Error: {error}
+            </p>
+          )}
+          {!error && success && (
+            <p className="text-xs text-emerald-400" role="status">
+              Thanks — your CAD file is in the queue. I’ll take a look.
+            </p>
+          )}
+        </div>
       </form>
     </section>
   );
