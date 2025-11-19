@@ -128,14 +128,14 @@ if (!allowedExts.includes(ext)) {
       console.log("UPLOAD INSERT RESULT", { uploadRow, uploadError });
 
     if (uploadError) {
-    console.error("Upload row insert failed", uploadError);
-    return NextResponse.json(
+      console.error("Upload row insert failed", uploadError);
+      return NextResponse.json(
       {
         success: false,
-        // TEMP: bubble the actual DB error so we can see what's wrong
-        message: `Failed to save upload metadata: ${uploadError.message}`,
+        // Keep it simple for the client; details are in the server logs
+        message: "Failed to save upload metadata",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
