@@ -301,33 +301,30 @@ export default async function QuoteDetailPage(props: any) {
               </p>
             </div>
 
-                  {/* Footer: tracker hint + save button */}
+            {/* Footer: tracker hint + save button */}
             <div className="mt-10 border-t border-zinc-800 pt-6 flex flex-col gap-4">
-
               <p className="text-xs text-muted-ink">
                 Future: this will drive a Domino’s-style tracker for the customer.
               </p>
 
               <button
                 type="submit"
-                className="
-                  w-full
-                  bg-accent
-                  text-black
-                  font-semibold
-                  py-3
-                  rounded-lg
-                  shadow-md
-                  hover:bg-accent/90
-                  transition
-                  duration-200
-                  text-center
-                  "
+                style={{
+                  width: '100%',
+                  padding: '12px 20px',
+                  borderRadius: '9999px',
+                  backgroundColor: '#22c55e', // bright green
+                  border: '1px solid #22c55e',
+                  color: '#000000',
+                  fontWeight: 600,
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  textAlign: 'center'
+                }}
               >
                 Save quote
               </button>
             </div>
-
           </form>
         </section>
       </div>
