@@ -125,36 +125,30 @@ if (!allowedExts.includes(ext)) {
    );
     }
 
-    // Save metadata
-    const { error: insertError } = await supabase.from("uploads").insert({
-      file_name: file.name,
-      file_path: filePath,
-      file_type: file.type,
-      contact_name: name,
-      contact_email: email,
-      company,
-      notes,
-    });
+      console.log("UPLOAD INSERT RESULT", { uploadRow, uploadError });
 
-    if (insertError) {
-      console.error("Supabase insert error:", insertError);
-      return NextResponse.json(
-        { error: "Failed to save upload metadata" },
-        { status: 500 }
-      );
-    }
-
+    if (uploadError) {
+    console.error("Upload row insert failed", uploadError);
     return NextResponse.json(
       {
-        success: true,
-        message: "Upload successful",
+        success: false,
+        // TEMP: bubble the actual DB error so we can see what's wrong
+        message: `Failed to save upload metadata: ${uploadError.message}`,
       },
-      { status: 200 }
+      { status: 500 }
     );
+  }
+
+  // Success — respond OK
+  return NextResponse.json({
+    success: true,
+    message: "Upload complete",
+    uploadId: uploadRow.id,
+  });
   } catch (err: any) {
-    console.error("Unexpected upload error:", err);
+    console.error('Upload handler error', err);
     return NextResponse.json(
-      { error: "Unexpected error during upload" },
+      { success: false, message: err?.message ?? String(err) },
       { status: 500 }
     );
   }
