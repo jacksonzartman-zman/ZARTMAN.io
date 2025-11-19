@@ -1,106 +1,192 @@
-import { createQuoteFromUpload } from "./actions";
+// src/app/admin/quotes/AdminTable.tsx
+"use client";
 
-type UploadRow = {
-  id: string;
-  file_name: string | null;
-  file_path: string | null;
-  file_type: string | null;
-  contact_name: string | null;
-  contact_email: string | null;
-  company: string | null;
-  notes: string | null;
-  created_at: string | null;
+import { useMemo, useState } from "react";
+import Link from "next/link";
+
+type AdminTableProps = {
+  // We keep this loose so it works with whatever shape
+  // your /api/quotes endpoint is returning right now.
+  quotes: any[];
 };
 
-interface AdminTableProps {
-  uploads: UploadRow[];
-}
+export default function AdminTable({ quotes }: AdminTableProps) {
+  const [search, setSearch] = useState("");
 
-export default function AdminTable({ uploads }: AdminTableProps) {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return quotes;
+
+    return quotes.filter((row) => {
+      const customerName =
+        row.customer_name ??
+        row.customer?.name ??
+        row.name ??
+        "";
+      const customerEmail =
+        row.customer_email ??
+        row.customer?.email ??
+        row.email ??
+        "";
+      const company =
+        row.company ??
+        row.customer?.company ??
+        row.company_name ??
+        "";
+      const fileName =
+        row.file_name ??
+        row.upload?.file_name ??
+        row.file?.name ??
+        "";
+      const status =
+        row.status ?? row.quote_status ?? "";
+
+      const haystack = [
+        customerName,
+        customerEmail,
+        company,
+        fileName,
+        status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+  }, [quotes, search]);
+
   return (
-    <div className="mt-10 overflow-x-auto rounded-2xl border border-border bg-surface text-xs">
-      <table className="min-w-full border-collapse">
-        <thead>
-          <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted">
-            <th className="px-4 py-3 text-left font-medium">File</th>
-            <th className="px-4 py-3 text-left font-medium">Contact</th>
-            <th className="px-4 py-3 text-left font-medium">Company</th>
-            <th className="px-4 py-3 text-left font-medium">Notes</th>
-            <th className="px-4 py-3 text-left font-medium">Uploaded</th>
-            <th className="px-4 py-3 text-right font-medium">Quote</th>
-          </tr>
-        </thead>
-        <tbody>
-          {uploads.length === 0 ? (
-            <tr>
-              <td
-                colSpan={6}
-                className="px-4 py-6 text-center text-[11px] text-muted"
-              >
-                No uploads yet. Send yourself a test file from the homepage.
-              </td>
+    <div className="space-y-4">
+      {/* Search bar */}
+      <div className="flex items-center justify-between gap-4">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by customer, email, company, file, or status…"
+          className="w-full max-w-md rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+        {search ? (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="text-xs text-zinc-400 hover:text-zinc-200"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950">
+        <table className="min-w-full text-sm">
+          <thead className="border-b border-zinc-800 bg-zinc-900/60">
+            <tr className="text-xs uppercase tracking-wide text-zinc-400">
+              <th className="px-4 py-3 text-left">Customer</th>
+              <th className="px-4 py-3 text-left">Company</th>
+              <th className="px-4 py-3 text-left">File</th>
+              <th className="px-4 py-3 text-left">Status</th>
+              <th className="px-4 py-3 text-left">Created</th>
+              <th className="px-4 py-3 text-right">Open</th>
             </tr>
-          ) : (
-            uploads.map((row) => {
-              const created = row.created_at
-                ? new Date(row.created_at).toLocaleString("en-US", {
-                    dateStyle: "short",
-                    timeStyle: "short",
-                  })
-                : "";
-
-              return (
-                <tr
-                  key={row.id}
-                  className="border-t border-border align-top hover:bg-neutral-900/40"
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="px-4 py-8 text-center text-sm text-zinc-500"
                 >
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-[11px]">
-                      {row.file_name ?? "Unknown file"}
-                    </div>
-                    <div className="text-[10px] text-muted">
-                      {row.file_type ?? "application/octet-stream"}
-                    </div>
-                  </td>
+                  {search
+                    ? "No quotes match your search."
+                    : "No quotes yet. Upload a CAD file to create the first one."}
+                </td>
+              </tr>
+            ) : (
+              filtered.map((row) => {
+                const id = row.id;
 
-                  <td className="px-4 py-3">
-                    <div className="text-[11px]">
-                      {row.contact_name ?? "—"}
-                    </div>
-                    <div className="text-[10px] text-muted break-all">
-                      {row.contact_email ?? "—"}
-                    </div>
-                  </td>
+                const customerName =
+                  row.customer_name ??
+                  row.customer?.name ??
+                  row.name ??
+                  "—";
+                const customerEmail =
+                  row.customer_email ??
+                  row.customer?.email ??
+                  row.email ??
+                  "";
+                const company =
+                  row.company ??
+                  row.customer?.company ??
+                  row.company_name ??
+                  "—";
+                const fileName =
+                  row.file_name ??
+                  row.upload?.file_name ??
+                  row.file?.name ??
+                  "—";
+                const status =
+                  row.status ?? row.quote_status ?? "New";
+                const createdAtRaw =
+                  row.created_at ??
+                  row.upload?.created_at ??
+                  row.quote_created_at ??
+                  null;
 
-                  <td className="px-4 py-3 text-[11px]">
-                    {row.company ?? "—"}
-                  </td>
+                const createdAt =
+                  createdAtRaw
+                    ? new Date(createdAtRaw).toLocaleDateString()
+                    : "—";
 
-                  <td className="px-4 py-3 text-[11px] whitespace-pre-wrap">
-                    {row.notes ?? "—"}
-                  </td>
-
-                  <td className="px-4 py-3 text-[11px] whitespace-nowrap">
-                    {created || "—"}
-                  </td>
-
-                  <td className="px-4 py-3 text-right">
-                    <form action={createQuoteFromUpload}>
-                      <input type="hidden" name="upload_id" value={row.id} />
-                      <button
-                        type="submit"
-                        className="inline-flex items-center rounded-full border border-accent px-3 py-1 text-[11px] font-medium text-accent hover:bg-accent/10"
+                return (
+                  <tr
+                    key={id}
+                    className="border-b border-zinc-800/80 hover:bg-zinc-900/60"
+                  >
+                    <td className="px-4 py-3 align-top text-zinc-100">
+                      <div className="flex flex-col">
+                        <span className="font-medium">
+                          {customerName}
+                        </span>
+                        {customerEmail && (
+                          <span className="text-xs text-zinc-400">
+                            {customerEmail}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top text-zinc-200">
+                      {company}
+                    </td>
+                    <td className="px-4 py-3 align-top text-zinc-200">
+                      <span className="line-clamp-2 break-all text-xs">
+                        {fileName}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <span className="inline-flex rounded-full bg-zinc-800 px-2 py-1 text-xs capitalize text-zinc-100">
+                        {status.toLowerCase()}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 align-top text-zinc-300">
+                      {createdAt}
+                    </td>
+                    <td className="px-4 py-3 align-top text-right">
+                      <Link
+                        href={`/admin/quotes/${id}`}
+                        className="text-xs font-medium text-emerald-400 hover:text-emerald-300"
                       >
-                        Create quote
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
+                        View
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

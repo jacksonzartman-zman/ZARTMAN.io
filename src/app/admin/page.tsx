@@ -88,7 +88,7 @@ export default async function AdminPage() {
           <p className="text-[11px] text-muted">Admin view only</p>
         </header>
 
-        <AdminTable uploads={uploads} />
+        <AdminTable quotes={uploads} />
       </div>
     </main>
   );
