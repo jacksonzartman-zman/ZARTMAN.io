@@ -68,21 +68,42 @@ if (!allowedExts.includes(ext)) {
     const safeName = file.name.replace(/\s+/g, "-");
     const filePath = `uploads/${timestamp}-${safeName}`;
 
-    // Upload file to storage
-    const { error: uploadError } = await supabase.storage
-      .from("cad-uploads")
-      .upload(filePath, file, {
-        cacheControl: "3600",
-        upsert: false,
-      });
+      // 3️⃣ NEW: ensure there is a customer record for this upload
+    const { data: customer, error: customerError } = await supabase
+      .from("customers")
+      .upsert(
+      {
+        name,
+        email,
+        company,
+      },
+      {
+        onConflict: "email", // use the unique email constraint
+      }
+      )
+      .select()
+      .single();
 
-    if (uploadError) {
-      console.error("Supabase storage upload error:", uploadError);
-      return NextResponse.json(
-        { error: "Failed to upload file to storage" },
-        { status: 500 }
-      );
-    }
+    if (customerError) {
+      console.error("Customer upsert failed", customerError);
+    // We *don't* bail out – worst case we still save the upload
+      }
+
+  // 4️⃣ Insert the upload row, linking to the customer if we have one
+    const { data: uploadRow, error: uploadError } = await supabase
+      .from("uploads")
+      .insert({
+        file_name: file.name,
+        file_path: filePath,
+        mime_type: file.type,
+        name,
+        email,
+        company,
+        notes,
+        customer_id: customer?.id ?? null, // NEW FK column
+        })
+      .select()
+      .single();
 
     // Save metadata
     const { error: insertError } = await supabase.from("uploads").insert({
