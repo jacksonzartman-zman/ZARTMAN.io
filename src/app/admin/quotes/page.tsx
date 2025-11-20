@@ -1,122 +1,198 @@
 // src/app/admin/quotes/page.tsx
-
 import { supabaseServer } from "@/lib/supabaseServer";
-import QuotesTable from "../QuotesTable";
+import StatusFilterChips from "../StatusFilterChips";
 import type { UploadStatus } from "../constants";
 
 export const dynamic = "force-dynamic";
 
+type QuoteStatus = UploadStatus;
+
 type QuoteRow = {
   id: string;
-  uploadId: string;
-  status: string;
-  price: number | null;
-  currency: string | null;
-  targetDate: string | null;
-  createdAt: string;
   customerName: string;
   customerEmail: string;
   company: string;
   fileName: string;
+  status: QuoteStatus;
+  price: number | null;
+  currency: string | null;
+  targetDate: string | null;
+  createdAt: string;
 };
 
-const STATUS_OPTIONS: { value: UploadStatus | "all"; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "new", label: "New" },
-  { value: "in_review", label: "In review" },
-  { value: "quoted", label: "Quoted" },
-  { value: "on_hold", label: "On hold" },
-  { value: "closed_lost", label: "Closed lost" },
-];
+type StatusFilter = QuoteStatus | "all";
 
 export default async function QuotesPage({ searchParams }: any) {
+  const search = (searchParams?.search as string | undefined) ?? "";
+  const statusFilter = (searchParams?.statusFilter as StatusFilter | undefined) ?? "all";
+
   const supabase = supabaseServer;
 
-  // Determine the active status filter from the URL (?status=...)
-  const statusParam = searchParams?.status;
-
-  // 1) Fetch recent quotes
-  const { data: quotes, error: quotesError } = await supabase
-    .from("quotes")
+  const { data, error } = await supabase
+    .from("quotes_with_uploads")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(100);
 
-  if (quotesError) {
-    console.error("Error loading quotes for admin", quotesError);
+  if (error) {
+    console.error("Error loading quotes for admin:", error);
     return (
       <main className="mx-auto max-w-5xl px-4 py-10">
         <p className="text-sm text-red-400">
-          Failed to load quotes dashboard: {quotesError.message}
+          Failed to load quotes dashboard: {error.message}
         </p>
       </main>
     );
   }
 
-  if (!quotes || quotes.length === 0) {
-    return (
-      <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
-        <header>
-          <h1 className="mb-1 text-2xl font-semibold">Quotes</h1>
-          <p className="text-sm text-slate-400">
-            Recent quotes created from uploads.
-          </p>
-        </header>
-        <p className="text-sm text-slate-400">No quotes yet.</p>
-      </main>
-    );
+  const rows: QuoteRow[] =
+    data?.map((row: any) => ({
+      id: row.id,
+      customerName: row.customer_name ?? "Unknown",
+      customerEmail: row.customer_email ?? "",
+      company: row.company_name ?? "",
+      fileName: row.file_name ?? "",
+      status: (row.status ?? "new") as QuoteStatus,
+      price: row.price,
+      currency: row.currency,
+      targetDate: row.target_date,
+      createdAt: row.created_at,
+    })) ?? [];
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  let filteredRows = rows;
+
+  if (normalizedSearch) {
+    filteredRows = filteredRows.filter((row) => {
+      const haystack = [
+        row.customerName,
+        row.customerEmail,
+        row.company,
+        row.fileName,
+        row.status,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedSearch);
+    });
   }
 
-  // 2) Fetch related uploads so we can show customer + file info
-  const uploadIds = Array.from(
-    new Set(quotes.map((q) => q.upload_id).filter((id): id is string => !!id))
-  );
-
-  const { data: uploads, error: uploadsError } = await supabase
-    .from("uploads")
-    .select("*")
-    .in("id", uploadIds);
-
-  if (uploadsError) {
-    console.error("Error loading uploads for quotes", uploadsError);
+  if (statusFilter !== "all") {
+    filteredRows = filteredRows.filter((row) => row.status === statusFilter);
   }
-
-  const uploadsMap = new Map<string, any>(
-    (uploads ?? []).map((u: any) => [u.id, u])
-  );
-
-  const rows: QuoteRow[] = quotes
-    .map((quote: any) => {
-      const upload = uploadsMap.get(quote.upload_id);
-
-      return {
-        id: quote.id,
-        uploadId: quote.upload_id,
-        status: quote.status,
-        price: quote.price,
-        currency: quote.currency,
-        targetDate: quote.target_date,
-        createdAt: quote.created_at,
-        customerName: upload?.name ?? "Unknown",
-        customerEmail: upload?.email ?? "",
-        company: upload?.company ?? "",
-        fileName: upload?.file_name ?? "",
-      };
-    })
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="mb-1 text-2xl font-semibold">Quotes</h1>
-          <p className="text-sm text-slate-400">
-            Recent quotes created from uploads.
-          </p>
-        </div>
-
+      <header>
+        <h1 className="mb-1 text-2xl font-semibold">Quotes</h1>
+        <p className="text-sm text-slate-400">
+          Recent quotes created from uploads.
+        </p>
       </header>
 
-      <QuotesTable quotes={rows} />
+      {/* Filters + search aligned like uploads dashboard */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <StatusFilterChips
+          currentStatus={statusFilter}
+          basePath="/admin/quotes"
+        />
+
+        <form className="w-full md:w-72" method="get">
+          {/* Preserve status filter when searching */}
+          {statusFilter !== "all" && (
+            <input
+              type="hidden"
+              name="statusFilter"
+              value={statusFilter}
+            />
+          )}
+          <input
+            type="search"
+            name="search"
+            defaultValue={search}
+            placeholder="Search by customer, email, company, file, or status..."
+            className="w-full rounded-md border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm outline-none focus:border-emerald-400"
+          />
+        </form>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/40">
+        <table className="min-w-full text-left text-sm">
+          <thead className="border-b border-slate-800 bg-slate-950/60">
+            <tr>
+              <th className="px-4 py-3 font-medium text-slate-300">Customer</th>
+              <th className="px-4 py-3 font-medium text-slate-300">Company</th>
+              <th className="px-4 py-3 font-medium text-slate-300">File</th>
+              <th className="px-4 py-3 font-medium text-slate-300">Status</th>
+              <th className="px-4 py-3 font-medium text-slate-300">Price</th>
+              <th className="px-4 py-3 font-medium text-slate-300">
+                Target date
+              </th>
+              <th className="px-4 py-3 font-medium text-slate-300">Created</th>
+              <th className="px-4 py-3 font-medium text-slate-300">Open</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredRows.map((row) => (
+              <tr
+                key={row.id}
+                className="border-t border-slate-900/80 hover:bg-slate-900/40"
+              >
+                <td className="px-4 py-3 align-top">
+                  <div className="text-sm font-medium text-emerald-200">
+                    {row.customerName}
+                  </div>
+                  {row.customerEmail && (
+                    <div className="text-xs text-emerald-400">
+                      {row.customerEmail}
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3 align-top text-slate-200">
+                  {row.company}
+                </td>
+                <td className="px-4 py-3 align-top text-slate-200">
+                  <div className="max-w-xs truncate">{row.fileName}</div>
+                </td>
+                <td className="px-4 py-3 align-top">
+                  <span className="inline-flex rounded-full bg-slate-900 px-2 py-1 text-xs font-medium capitalize text-emerald-300">
+                    {row.status.replace("_", " ")}
+                  </span>
+                </td>
+                <td className="px-4 py-3 align-top text-slate-200">
+                  {row.price != null && row.currency ? (
+                    <>
+                      {row.currency} {row.price.toFixed(2)}
+                    </>
+                  ) : (
+                    <span className="text-slate-500">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 align-top text-slate-200">
+                  {row.targetDate ? (
+                    new Date(row.targetDate).toLocaleDateString()
+                  ) : (
+                    <span className="text-slate-500">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 align-top text-slate-200">
+                  {new Date(row.createdAt).toLocaleDateString()}
+                </td>
+                <td className="px-4 py-3 align-top">
+                  <a
+                    href={`/admin/quotes/${row.id}`}
+                    className="text-xs font-medium text-emerald-400 hover:underline"
+                  >
+                    View quote
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </main>
   );
 }
