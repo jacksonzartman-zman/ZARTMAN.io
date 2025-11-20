@@ -10,6 +10,9 @@ export async function updateUpload(formData: FormData) {
 
   const supabase = supabaseServer;
 
+  // Optional: debug log in Vercel
+  console.log("updateUpload called with", { id, status, adminNotes });
+
   const { error } = await supabase
     .from("uploads")
     .update({
@@ -23,7 +26,7 @@ export async function updateUpload(formData: FormData) {
     throw new Error("Failed to update upload");
   }
 
-  // Refresh detail + dashboard
+  // Refresh list + detail
   revalidatePath(`/admin/uploads/${id}`);
   revalidatePath("/admin");
 }
