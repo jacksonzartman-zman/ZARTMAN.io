@@ -16,7 +16,7 @@ export async function updateUpload(formData: FormData) {
 
   const supabase = supabaseServer;
 
-  // 1) Update uploads
+  // 1) Update the uploads table
   const { error: uploadError } = await supabase
     .from("uploads")
     .update({
@@ -34,34 +34,33 @@ export async function updateUpload(formData: FormData) {
     return;
   }
 
-  // 2) Sync quotes table for this upload
-  // --- ADJUST THESE COLUMN NAMES to match your quotes table ---
-  // Example assumed schema:
-  //   quotes: id (uuid), upload_id (uuid), status (text), notes (text)
-  const uploadIdColumn = "upload_id"; // change if needed
-  const quoteStatusColumn = "status"; // change if needed
-  const quoteNotesColumn = "notes";   // change if needed
+  // 2) Ensure there's a quote record for this upload
 
-  // Check if a quote already exists for this upload
+  // Check for an existing quote row tied to this upload
   const { data: existingQuote, error: fetchQuoteError } = await supabase
     .from("quotes")
     .select("id")
-    .eq(uploadIdColumn, id)
+    .eq("upload_id", id)
     .maybeSingle();
 
   if (fetchQuoteError) {
     console.error("updateUpload: error fetching quote", fetchQuoteError);
-  } else if (existingQuote?.id) {
+  }
+
+  const quoteStatus =
+    typeof status === "string" && status.length > 0 ? status : "new";
+  const quoteInternalNotes =
+    typeof adminNotes === "string" && adminNotes.length > 0
+      ? adminNotes
+      : null;
+
+  if (existingQuote?.id) {
     // Update existing quote
     const { error: quoteUpdateError } = await supabase
       .from("quotes")
       .update({
-        [quoteStatusColumn]:
-          typeof status === "string" && status.length > 0 ? status : null,
-        [quoteNotesColumn]:
-          typeof adminNotes === "string" && adminNotes.length > 0
-            ? adminNotes
-            : null,
+        status: quoteStatus,
+        internal_notes: quoteInternalNotes,
       })
       .eq("id", existingQuote.id);
 
@@ -69,15 +68,12 @@ export async function updateUpload(formData: FormData) {
       console.error("updateUpload: error updating quote", quoteUpdateError);
     }
   } else {
-    // Insert new quote
+    // Insert a new quote row
     const { error: quoteInsertError } = await supabase.from("quotes").insert({
-      [uploadIdColumn]: id,
-      [quoteStatusColumn]:
-        typeof status === "string" && status.length > 0 ? status : null,
-      [quoteNotesColumn]:
-        typeof adminNotes === "string" && adminNotes.length > 0
-          ? adminNotes
-          : null,
+      upload_id: id,
+      status: quoteStatus,
+      internal_notes: quoteInternalNotes,
+      // price, currency, target_date, customer_note can stay NULL / defaults
     });
 
     if (quoteInsertError) {
@@ -85,7 +81,7 @@ export async function updateUpload(formData: FormData) {
     }
   }
 
-  // 3) Revalidate + redirect
+  // 3) Revalidate and redirect back to this upload
   revalidatePath("/admin");
   revalidatePath(`/admin/uploads/${id}`);
   redirect(`/admin/uploads/${id}`);
