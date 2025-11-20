@@ -84,5 +84,5 @@ export async function updateUpload(formData: FormData) {
   // 3) Revalidate and redirect back to this upload
   revalidatePath("/admin");
   revalidatePath(`/admin/uploads/${id}`);
-  redirect(`/admin/uploads/${id}`);
+  redirect(`/admin/uploads/${id}?updated=1`);
 }
