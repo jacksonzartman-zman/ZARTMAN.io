@@ -1,6 +1,6 @@
+// src/app/admin/uploads/[id]/actions.ts
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 export async function updateUpload(formData: FormData) {
@@ -8,10 +8,12 @@ export async function updateUpload(formData: FormData) {
   const status = (formData.get("status") as string | null) || null;
   const adminNotes = (formData.get("admin_notes") as string | null) || null;
 
-  const supabase = supabaseServer;
+  if (!id) {
+    console.error("updateUpload: missing id");
+    return;
+  }
 
-  // Optional: debug log in Vercel
-  console.log("updateUpload called with", { id, status, adminNotes });
+  const supabase = supabaseServer;
 
   const { error } = await supabase
     .from("uploads")
@@ -22,11 +24,6 @@ export async function updateUpload(formData: FormData) {
     .eq("id", id);
 
   if (error) {
-    console.error("Error updating upload", error);
-    throw new Error("Failed to update upload");
+    console.error("updateUpload error", error);
   }
-
-  // Refresh list + detail
-  revalidatePath(`/admin/uploads/${id}`);
-  revalidatePath("/admin");
 }

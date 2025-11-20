@@ -1,155 +1,166 @@
-// @ts-nocheck
+// src/app/admin/uploads/[id]/page.tsx
 
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { updateUpload } from "./actions";
 
-export default async function UploadDetailPage(props: any) {
-  const supabase = supabaseServer();
-
-  // Next may pass params as a Promise; awaiting works for both Promise and plain values
-  const params = (await props?.params) || {};
-  const id = params.id;
-
-  if (!id) {
+export default async function UploadDetailPage({ params }: any) {
+  // Extra safety: if params or id is missing, bail out
+  if (!params || !params.id) {
+    console.error("UploadDetailPage: missing params.id");
     notFound();
   }
 
-  // Fetch upload by id
-  const { data: upload, error } = await supabase
+  const supabase = supabaseServer;
+
+  // --- Fetch upload row by id ---
+  const { data: upload, error: uploadError } = await supabase
     .from("uploads")
     .select("*")
-    .eq("id", id)
+    .eq("id", params.id)
     .single();
 
-  if (error || !upload) {
-    console.error("Error loading upload detail", error);
+  if (uploadError || !upload) {
+    console.error("Error loading upload", uploadError);
     notFound();
   }
 
-  const created = upload.created_at
+  // --- Optionally fetch customer (if customer_id is set) ---
+  let customer: {
+    name: string | null;
+    email: string | null;
+    company: string | null;
+  } | null = null;
+
+  if (upload.customer_id) {
+    const { data: customerRow, error: customerError } = await supabase
+      .from("customers")
+      .select("name,email,company")
+      .eq("id", upload.customer_id)
+      .single();
+
+    if (customerError) {
+      console.error("Error loading customer", customerError);
+    } else {
+      customer = customerRow;
+    }
+  }
+
+  const createdText = upload.created_at
     ? new Date(upload.created_at).toLocaleString()
-    : "Unknown";
+    : "";
+
+  const fileName: string = upload.file_name ?? "";
+  const filePath: string = upload.file_path ?? "";
+
+  const statusValue: string = upload.status ?? "New";
+  const adminNotesValue: string = upload.admin_notes ?? "";
+  const initialNotes: string = upload.initial_request_notes ?? "";
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-10 space-y-10">
-      {/* Header */}
-      <section className="space-y-2">
-        <p className="text-sm text-emerald-300/80">
+    <main className="mx-auto max-w-4xl px-4 py-10 space-y-8">
+      {/* Top card: customer + file info */}
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-6">
+        <h1 className="text-2xl font-semibold mb-1">Upload detail</h1>
+        <p className="text-sm text-zinc-400 mb-6">
           Customer upload and context for this request.
         </p>
-        <h1 className="text-2xl font-semibold tracking-tight">Upload detail</h1>
-      </section>
 
-      {/* Top card: customer + file */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-6 shadow-sm">
-        <div className="grid gap-8 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-2">
           {/* Customer block */}
-          <div className="space-y-3">
-            <h2 className="text-lg font-medium">Customer</h2>
-            <div className="space-y-1 text-sm">
-              <p className="font-medium">
-                {upload.customer_name || "Unknown customer"}
-              </p>
-              {upload.customer_email && (
-                <p>
-                  <a
-                    href={`mailto:${upload.customer_email}`}
-                    className="text-emerald-400 underline"
-                  >
-                    {upload.customer_email}
-                  </a>
-                </p>
-              )}
-              {upload.customer_company && (
-                <p className="text-zinc-300">{upload.customer_company}</p>
-              )}
-            </div>
+          <div className="space-y-2">
+            <h2 className="text-sm font-medium text-zinc-300">Customer</h2>
+            <p className="text-sm font-semibold">
+              {customer?.name ?? "Unknown"}
+            </p>
+            <p className="text-sm text-emerald-400">
+              {customer?.email ?? "—"}
+            </p>
+            <p className="text-sm text-zinc-400">
+              {customer?.company ?? "—"}
+            </p>
 
-            <div className="mt-4 space-y-1 text-sm">
-              <p className="font-medium">Initial request notes</p>
-              <p className="whitespace-pre-line text-zinc-300">
-                {upload.initial_request_notes || "—"}
-              </p>
-            </div>
+            <p className="mt-4 text-sm font-medium text-zinc-300">
+              Initial request notes
+            </p>
+            <p className="text-sm whitespace-pre-line text-zinc-200">
+              {initialNotes || "—"}
+            </p>
 
-            <div className="mt-4 space-y-1 text-xs text-zinc-400">
-              <p>
-                <span className="font-medium">Upload ID:</span> {upload.id}
-              </p>
-              <p>
-                <span className="font-medium">Created:</span> {created}
-              </p>
-            </div>
+            <p className="mt-4 text-xs text-zinc-500">
+              Upload ID: <span className="font-mono">{upload.id}</span>
+              <br />
+              Created: {createdText || "Unknown"}
+            </p>
           </div>
 
           {/* File block */}
-          <div className="space-y-3">
-            <h2 className="text-lg font-medium">File</h2>
-            <div className="space-y-1 text-sm">
-              <p className="font-medium break-all">
-                {upload.file_name || "Unknown file"}
+          <div className="space-y-2">
+            <h2 className="text-sm font-medium text-zinc-300">File</h2>
+            <p className="text-sm font-semibold break-all">{fileName || "—"}</p>
+            {filePath && (
+              <p className="text-xs text-zinc-400 break-all">
+                {filePath}
               </p>
-              {upload.file_path && (
-                <p className="break-all text-zinc-300">{upload.file_path}</p>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </section>
 
       {/* Admin controls */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-6 shadow-sm">
-        <h2 className="text-lg font-medium mb-4">Admin controls</h2>
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-6">
+        <h2 className="text-lg font-semibold mb-1">Admin controls</h2>
+        <p className="text-sm text-zinc-400 mb-4">
+          Private notes for you/your team — customers never see these.
+        </p>
 
-        <form action={updateUpload} className="space-y-6">
-          {/* Important: hidden id so the server action knows what to update */}
+        <form
+          action={updateUpload}
+          className="space-y-4"
+        >
+          {/* Hidden id so the action knows which row to update */}
           <input type="hidden" name="id" value={upload.id} />
 
           <div className="space-y-2">
             <label
               htmlFor="status"
-              className="block text-sm font-medium text-zinc-100"
+              className="block text-sm font-medium text-zinc-200"
             >
               Status
             </label>
             <select
               id="status"
               name="status"
-              defaultValue={upload.status || "New"}
-              className="w-full rounded-md border border-zinc-700 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+              defaultValue={statusValue}
+              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-50"
             >
               <option value="New">New</option>
-              <option value="Reviewing">Reviewing</option>
+              <option value="In review">In review</option>
               <option value="Quoted">Quoted</option>
-              <option value="Won">Won</option>
-              <option value="Lost">Lost</option>
+              <option value="On hold">On hold</option>
+              <option value="Closed">Closed</option>
             </select>
           </div>
 
           <div className="space-y-2">
             <label
               htmlFor="admin_notes"
-              className="block text-sm font-medium text-zinc-100"
+              className="block text-sm font-medium text-zinc-200"
             >
               Admin notes
             </label>
             <textarea
               id="admin_notes"
               name="admin_notes"
-              rows={5}
-              defaultValue={upload.admin_notes || ""}
-              className="w-full rounded-md border border-zinc-700 bg-black px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-              placeholder="Private notes for you/your team — customers never see these."
+              defaultValue={adminNotesValue}
+              rows={4}
+              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-50"
             />
-            <p className="text-xs text-zinc-500">
-              Private notes for you/your team — customers never see these.
-            </p>
           </div>
 
           <button
             type="submit"
-            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-black hover:bg-emerald-400 transition-colors"
+            className="inline-flex items-center rounded-full bg-emerald-400 px-4 py-2 text-sm font-medium text-black hover:bg-emerald-300"
           >
             Save changes
           </button>
