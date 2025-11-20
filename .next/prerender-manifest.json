@@ -26,30 +26,6 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/admin/quotes": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/admin/quotes",
-      "dataRoute": "/admin/quotes.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
     "/": {
       "experimentalBypassFor": [
         {
@@ -78,8 +54,8 @@
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "4570db31872152423b0998cb5e9a17df",
-    "previewModeSigningKey": "ea172cd4b575b7cee016a200737c63c542c87a6d3686d313c1926a968d50ca9c",
-    "previewModeEncryptionKey": "56c6ea3ce9e993d08d0fce438a890f57576dd7bf0b707e28e70a5743d0d8b77a"
+    "previewModeId": "0337201aa10158f7362d136dd81956a5",
+    "previewModeSigningKey": "751663bb2a82ddc24d8f64690637fd1e754881fcda769bb269f85e1d66b009de",
+    "previewModeEncryptionKey": "873ba245def4fdfe31488da10dab6f99bf69f091eefcefc88418760bc252877a"
   }
 }
