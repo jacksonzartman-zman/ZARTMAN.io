@@ -74,38 +74,37 @@ export default async function QuotesPage({ searchParams }: any) {
 
   // 4) Render header + chips + search + table
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
-      <header>
-        <h1 className="mb-1 text-2xl font-semibold">Quotes</h1>
-        <p className="text-sm text-slate-400">
-          Recent quotes created from uploads.
-        </p>
-      </header>
+  <main className="mx-auto max-w-6xl px-4 py-10 space-y-8">
+    <header>
+      <h1 className="text-2xl font-semibold">Quotes</h1>
+      <p className="mt-1 text-sm text-slate-400">
+        Recent quotes created from uploads.
+      </p>
+    </header>
 
-      {/* Filters + search aligned like uploads dashboard */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <StatusFilterChips
-          currentStatus={statusFilter}
-          basePath="/admin/quotes"
+    {/* Filters + search aligned like uploads dashboard */}
+    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+      <StatusFilterChips
+        currentStatus={statusFilter}
+        basePath="/admin/quotes"
+      />
+
+      <form method="get" className="w-full md:w-80">
+        {/* preserve the current status filter when searching */}
+        {statusFilter && (
+          <input type="hidden" name="status" value={statusFilter} />
+        )}
+        <input
+          type="text"
+          name="search"
+          defaultValue={search}
+          placeholder="Search by customer, email, company, file..."
+          className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-emerald-400"
         />
+      </form>
+    </div>
 
-        <form className="w-full md:w-80" action="/admin/quotes">
-          <input
-            type="text"
-            name="search"
-            defaultValue={search}
-            placeholder="Search by customer, email, company, file..."
-            className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-emerald-400"
-          />
-
-          {/* Preserve status when searching */}
-          {statusFilter && statusFilter !== "all" && (
-            <input type="hidden" name="status" value={statusFilter} />
-          )}
-        </form>
-      </div>
-
-      <QuotesTable quotes={filtered} />
-    </main>
-  );
+    <QuotesTable quotes={rows} />
+  </main>
+);
 }
