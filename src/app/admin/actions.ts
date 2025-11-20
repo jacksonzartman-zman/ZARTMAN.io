@@ -36,5 +36,5 @@ export async function updateQuote(formData: FormData) {
     throw new Error("Failed to update quote.");
   }
 
-  redirect(`/admin/quotes/${id}?updated=1`);
+  return redirect(`/admin/quotes/${id}?updated=1`);
 }
