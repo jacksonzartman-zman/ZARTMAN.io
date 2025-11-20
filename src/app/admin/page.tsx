@@ -1,5 +1,5 @@
 // src/app/admin/page.tsx
-import AdminTable, { UploadRow } from "./AdminTable";
+import AdminTable, { type UploadRow } from "./AdminTable";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
@@ -7,16 +7,18 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   const supabase = supabaseServer;
 
+  // Fetch latest uploads (keep it simple & explicit)
   const { data, error } = await supabase
     .from("uploads")
-    .select("*")
+    .select("id, name, email, company, file_name, status, created_at")
     .order("created_at", { ascending: false })
     .limit(100);
 
   if (error) {
     console.error("Error loading uploads for admin", error);
+
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
+      <main className="mx-auto max-w-5xl px-4 py-10">
         <p className="text-sm text-red-400">
           Failed to load uploads dashboard: {error.message}
         </p>
@@ -24,7 +26,7 @@ export default async function AdminPage() {
     );
   }
 
-  const uploads: UploadRow[] = (data ?? []).map((row: any) => ({
+  const uploads: UploadRow[] = (data ?? []).map((row) => ({
     id: row.id,
     customerName: row.name ?? "Unknown",
     customerEmail: row.email ?? "",
@@ -35,13 +37,22 @@ export default async function AdminPage() {
   }));
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
-      <h1 className="mb-1 text-2xl font-semibold">Uploads dashboard</h1>
-      <p className="mb-6 text-sm text-slate-400">
-        Latest CAD uploads hitting Supabase.
-      </p>
+    <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
+      <header>
+        <h1 className="mb-1 text-2xl font-semibold">Uploads dashboard</h1>
+        <p className="text-sm text-slate-400">
+          Latest CAD uploads hitting Supabase.
+        </p>
+      </header>
 
-      <AdminTable uploads={uploads} />
+      {uploads.length === 0 ? (
+        <p className="text-sm text-slate-400">
+          No uploads yet. Share your Zartman.io upload link and this table will
+          start to fill up.
+        </p>
+      ) : (
+        <AdminTable uploads={uploads} />
+      )}
     </main>
   );
 }
