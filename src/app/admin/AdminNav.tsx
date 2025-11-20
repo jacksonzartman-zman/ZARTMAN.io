@@ -1,38 +1,38 @@
-// src/app/admin/AdminNav.tsx
 "use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const links = [
-  { href: "/admin", label: "Uploads" },
-  { href: "/admin/quotes", label: "Quotes" },
-];
-
-export function AdminNav() {
+export default function AdminNav() {
   const pathname = usePathname();
 
-  return (
-    <nav className="flex gap-3 text-xs sm:text-sm">
-      {links.map((link) => {
-        const isActive =
-          pathname === link.href || pathname.startsWith(link.href + "/");
+  const isUploads = pathname.startsWith("/admin/uploads");
+  const isQuotes = pathname.startsWith("/admin/quotes");
 
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={[
-              "rounded-full px-3 py-1 transition",
-              isActive
-                ? "bg-emerald-500 text-slate-950 font-medium"
-                : "text-slate-300 hover:bg-slate-800 hover:text-slate-50",
-            ].join(" ")}
-          >
-            {link.label}
-          </Link>
-        );
-      })}
-    </nav>
+  const base =
+    "px-4 py-2 rounded-full text-sm font-medium transition";
+
+  const active =
+    "bg-emerald-500 text-slate-900";
+
+  const inactive =
+    "text-emerald-400 border border-emerald-600 hover:bg-emerald-900";
+
+  return (
+    <div className="flex gap-2">
+      <Link
+        href="/admin/uploads"
+        className={`${base} ${isUploads ? active : inactive}`}
+      >
+        Uploads
+      </Link>
+
+      <Link
+        href="/admin/quotes"
+        className={`${base} ${isQuotes ? active : inactive}`}
+      >
+        Quotes
+      </Link>
+    </div>
   );
 }
