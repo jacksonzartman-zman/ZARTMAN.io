@@ -4,11 +4,11 @@
   "/api/messages/route": "/api/messages",
   "/api/quotes/route": "/api/quotes",
   "/api/threads/route": "/api/threads",
+  "/api/upload/route": "/api/upload",
   "/admin/uploads/[id]/page": "/admin/uploads/[id]",
   "/page": "/",
-  "/admin/page": "/admin",
   "/admin/quotes/page": "/admin/quotes",
+  "/admin/page": "/admin",
   "/admin/quotes/[id]/page": "/admin/quotes/[id]",
-  "/api/upload/route": "/api/upload",
   "/api/hello/route": "/api/hello"
 }

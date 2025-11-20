@@ -3,6 +3,7 @@
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { updateUpload } from "./actions";
+import { SuccessBanner } from "./SuccessBanner";
 
 type UploadRow = {
   id: string;
@@ -58,9 +59,7 @@ export default async function UploadDetailPage(props: any) {
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 space-y-8">
       {wasUpdated && (
-        <div className="mb-6 rounded-lg bg-emerald-900/40 border border-emerald-500/60 px-4 py-3 text-sm text-emerald-100">
-          Changes saved and quote recorded.
-        </div>
+        <SuccessBanner message="Changes saved and quote recorded." />
       )}
 
       {/* Top card – customer + file details */}
