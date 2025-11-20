@@ -3,11 +3,12 @@
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { updateQuote } from "../../actions";
+import { SuccessBanner } from "../../uploads/[id]/SuccessBanner";
 
 export const dynamic = "force-dynamic";
 
 export default async function QuoteDetailPage(props: any) {
-  const { params } = props;
+  const { params, searchParams } = props;
   
   const id = params?.id;
 
@@ -29,13 +30,19 @@ export default async function QuoteDetailPage(props: any) {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 space-y-10">
-      <header>
-        <h1 className="text-2xl font-semibold">Quote Detail</h1>
-        <p className="text-sm text-slate-400">
-          ID: <span className="font-mono">{quote.id}</span>
-        </p>
-      </header>
+  <main className="mx-auto max-w-3xl px-4 py-10 space-y-10">
+    {searchParams?.updated && (
+      <SuccessBanner message="Changes saved." />
+    )}
+
+    <header>
+      <h1 className="text-2xl font-semibold">Quote Detail</h1>
+      <p className="text-sm text-slate-400">
+        ID: <span className="font-mono">{quote.id}</span>
+      </p>
+    </header>
+
+    {/* ...rest of your existing content/form... */}
 
       <form action={updateQuote} className="space-y-8">
         <input type="hidden" name="id" value={quote.id} />
