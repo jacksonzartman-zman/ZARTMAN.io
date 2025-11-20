@@ -2,6 +2,7 @@
 
 import { supabaseServer } from "@/lib/supabaseServer";
 
+
 export const dynamic = "force-dynamic";
 
 type QuoteRow = {
@@ -176,10 +177,10 @@ export default async function QuotesPage() {
                 </td>
                 <td className="px-4 py-3 align-top">
                   <a
-                    href={`/admin/uploads/${row.uploadId}`}
+                    href={`/admin/quotes/${row.id}`}
                     className="text-xs font-medium text-emerald-400 hover:underline"
                   >
-                    View upload
+                    View quote
                   </a>
                 </td>
               </tr>
