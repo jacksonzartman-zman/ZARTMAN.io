@@ -3,11 +3,14 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import QuotesTable from "../QuotesTable";
 import { UploadStatus } from "../constants";
 import StatusFilterChips from "../StatusFilterChips";
+import build from "next/dist/build";
 
 export const dynamic = "force-dynamic";
 
 export default async function QuotesPage({ searchParams }: any) {
   const supabase = supabaseServer;
+
+  const searchTerm = (searchParams?.search as string | undefined) ?? "";
 
   // Read filters from the URL
   const statusFilter = (searchParams?.status as string | undefined) ?? "all";
@@ -76,11 +79,29 @@ export default async function QuotesPage({ searchParams }: any) {
   return (
   <main className="mx-auto max-w-6xl px-4 py-10 space-y-8">
     <header>
-      <h1 className="text-2xl font-semibold">Quotes</h1>
-      <p className="mt-1 text-sm text-slate-400">
-        Recent quotes created from uploads.
-      </p>
-    </header>
+  <h1 className="mb-1 text-2xl font-semibold">Quotes</h1>
+  <p className="mb-6 text-sm text-slate-400">
+    Recent quotes created from uploads.
+  </p>
+
+  {/* Filters + search aligned like uploads dashboard */}
+  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <StatusFilterChips
+      currentStatus={statusFilter}
+      basePath="/admin/quotes"
+    />
+
+    <form action="/admin/quotes" className="flex-1 md:max-w-md">
+      <input
+        type="text"
+        name="search"
+        defaultValue={searchTerm}
+        placeholder="Search by customer, email, company, file..."
+        className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-emerald-400"
+      />
+    </form>
+  </div>
+</header>
 
     {/* Filters + search aligned like uploads dashboard */}
     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
