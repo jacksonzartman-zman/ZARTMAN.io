@@ -1,6 +1,6 @@
 // src/app/admin/layout.tsx
 import type { ReactNode } from "react";
-import { AdminNav } from "./AdminNav";
+import AdminNav from "./AdminNav";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
