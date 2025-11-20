@@ -1,31 +1,22 @@
 // src/app/admin/page.tsx
-import AdminTable, { type UploadRow } from "./AdminTable";
+import AdminTable, { UploadRow } from "./AdminTable";
 import { supabaseServer } from "@/lib/supabaseServer";
+
+export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   const supabase = supabaseServer;
 
-  // Pull latest uploads (no joins yet – keep it simple)
   const { data, error } = await supabase
     .from("uploads")
-    .select(
-      `
-        id,
-        file_name,
-        status,
-        created_at,
-        name,
-        email,
-        company
-      `
-    )
+    .select("*")
     .order("created_at", { ascending: false })
     .limit(100);
 
   if (error) {
     console.error("Error loading uploads for admin", error);
     return (
-      <main className="max-w-5xl mx-auto px-4 py-10">
+      <main className="mx-auto max-w-3xl px-4 py-10">
         <p className="text-sm text-red-400">
           Failed to load uploads dashboard: {error.message}
         </p>
@@ -33,27 +24,22 @@ export default async function AdminPage() {
     );
   }
 
-  // Make TS happy: map from raw rows into the shape the table expects
   const uploads: UploadRow[] = (data ?? []).map((row: any) => ({
     id: row.id,
-    customerName: row.name ?? row.email ?? "Unknown",
+    customerName: row.name ?? "Unknown",
     customerEmail: row.email ?? "",
     company: row.company ?? "",
-    fileName: row.file_name ?? "(no file name)",
+    fileName: row.file_name ?? "",
     status: row.status ?? "New",
-    createdAt: row.created_at ?? null,
+    createdAt: row.created_at,
   }));
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-10">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-white">
-          Uploads dashboard
-        </h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Latest CAD uploads hitting Supabase.
-        </p>
-      </header>
+    <main className="mx-auto max-w-5xl px-4 py-10">
+      <h1 className="mb-1 text-2xl font-semibold">Uploads dashboard</h1>
+      <p className="mb-6 text-sm text-slate-400">
+        Latest CAD uploads hitting Supabase.
+      </p>
 
       <AdminTable uploads={uploads} />
     </main>

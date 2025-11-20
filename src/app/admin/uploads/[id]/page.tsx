@@ -4,157 +4,126 @@ import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { updateUpload } from "./actions";
 
-export default async function UploadDetailPage({ params }: any) {
-  // Extra safety: if params or id is missing, bail out
-  if (!params || !params.id) {
-    console.error("UploadDetailPage: missing params.id");
-    notFound();
-  }
+export default async function UploadDetailPage(props: any) {
+  // Narrow props to the shape we expect
+  const { params } = props as { params: { id: string } };
 
   const supabase = supabaseServer;
 
-  // --- Fetch upload row by id ---
-  const { data: upload, error: uploadError } = await supabase
+  // Fetch upload by id
+  const { data: upload, error } = await supabase
     .from("uploads")
     .select("*")
     .eq("id", params.id)
     .single();
 
-  if (uploadError || !upload) {
-    console.error("Error loading upload", uploadError);
+  if (error) {
+    console.error("Error fetching upload", error);
     notFound();
   }
 
-  // --- Optionally fetch customer (if customer_id is set) ---
-  let customer: {
-    name: string | null;
-    email: string | null;
-    company: string | null;
-  } | null = null;
-
-  if (upload.customer_id) {
-    const { data: customerRow, error: customerError } = await supabase
-      .from("customers")
-      .select("name,email,company")
-      .eq("id", upload.customer_id)
-      .single();
-
-    if (customerError) {
-      console.error("Error loading customer", customerError);
-    } else {
-      customer = customerRow;
-    }
+  if (!upload) {
+    notFound();
   }
 
-  const createdText = upload.created_at
+  const created = upload.created_at
     ? new Date(upload.created_at).toLocaleString()
-    : "";
-
-  const fileName: string = upload.file_name ?? "";
-  const filePath: string = upload.file_path ?? "";
-
-  const statusValue: string = upload.status ?? "New";
-  const adminNotesValue: string = upload.admin_notes ?? "";
-  const initialNotes: string = upload.initial_request_notes ?? "";
+    : "Unknown";
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 space-y-8">
-      {/* Top card: customer + file info */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-6">
-        <h1 className="text-2xl font-semibold mb-1">Upload detail</h1>
-        <p className="text-sm text-zinc-400 mb-6">
+      {/* Top card – customer + file */}
+      <section className="rounded-xl border border-slate-800 bg-[#05070b] p-6">
+        <h1 className="mb-1 text-2xl font-semibold">Upload detail</h1>
+        <p className="mb-6 text-sm text-slate-400">
           Customer upload and context for this request.
         </p>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Customer block */}
-          <div className="space-y-2">
-            <h2 className="text-sm font-medium text-zinc-300">Customer</h2>
-            <p className="text-sm font-semibold">
-              {customer?.name ?? "Unknown"}
+        <div className="grid gap-8 md:grid-cols-2">
+          {/* Customer side */}
+          <div className="space-y-3">
+            <h2 className="text-lg font-medium">Customer</h2>
+            <p className="text-sm text-slate-50">{upload.name ?? "Unknown"}</p>
+            {upload.email && (
+              <a
+                href={`mailto:${upload.email}`}
+                className="text-sm text-emerald-400 hover:underline"
+              >
+                {upload.email}
+              </a>
+            )}
+            <p className="text-sm text-slate-200">
+              {upload.company ?? "No company provided"}
             </p>
-            <p className="text-sm text-emerald-400">
-              {customer?.email ?? "—"}
-            </p>
-            <p className="text-sm text-zinc-400">
-              {customer?.company ?? "—"}
-            </p>
-
-            <p className="mt-4 text-sm font-medium text-zinc-300">
+            <p className="mt-3 text-xs font-medium text-slate-400">
               Initial request notes
             </p>
-            <p className="text-sm whitespace-pre-line text-zinc-200">
-              {initialNotes || "—"}
+            <p className="whitespace-pre-line text-sm text-slate-200">
+              {upload.initial_request_notes || "—"}
             </p>
 
-            <p className="mt-4 text-xs text-zinc-500">
-              Upload ID: <span className="font-mono">{upload.id}</span>
+            <p className="mt-4 text-xs text-slate-500">
+              Upload ID: {upload.id}
               <br />
-              Created: {createdText || "Unknown"}
+              Created: {created}
             </p>
           </div>
 
-          {/* File block */}
-          <div className="space-y-2">
-            <h2 className="text-sm font-medium text-zinc-300">File</h2>
-            <p className="text-sm font-semibold break-all">{fileName || "—"}</p>
-            {filePath && (
-              <p className="text-xs text-zinc-400 break-all">
-                {filePath}
-              </p>
+          {/* File side */}
+          <div className="space-y-3">
+            <h2 className="text-lg font-medium">File</h2>
+            <p className="text-sm text-slate-50">
+              {upload.file_name ?? "Unknown file"}
+            </p>
+            {upload.file_url && (
+              <a
+                href={upload.file_url}
+                className="break-all text-sm text-emerald-400 hover:underline"
+              >
+                {upload.file_url}
+              </a>
             )}
           </div>
         </div>
       </section>
 
       {/* Admin controls */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-6">
-        <h2 className="text-lg font-semibold mb-1">Admin controls</h2>
-        <p className="text-sm text-zinc-400 mb-4">
+      <section className="rounded-xl border border-slate-800 bg-[#05070b] p-6">
+        <h2 className="mb-4 text-lg font-semibold">Admin controls</h2>
+        <p className="mb-4 text-xs text-slate-400">
           Private notes for you/your team — customers never see these.
         </p>
 
-        <form
-          action={updateUpload}
-          className="space-y-4"
-        >
-          {/* Hidden id so the action knows which row to update */}
+        <form action={updateUpload} className="space-y-4">
+          {/* hidden id to tell the action which row to update */}
           <input type="hidden" name="id" value={upload.id} />
 
-          <div className="space-y-2">
-            <label
-              htmlFor="status"
-              className="block text-sm font-medium text-zinc-200"
-            >
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-slate-200">
               Status
             </label>
             <select
-              id="status"
               name="status"
-              defaultValue={statusValue}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-50"
+              defaultValue={upload.status ?? "New"}
+              className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
             >
               <option value="New">New</option>
               <option value="In review">In review</option>
               <option value="Quoted">Quoted</option>
               <option value="On hold">On hold</option>
-              <option value="Closed">Closed</option>
+              <option value="Done">Done</option>
             </select>
           </div>
 
-          <div className="space-y-2">
-            <label
-              htmlFor="admin_notes"
-              className="block text-sm font-medium text-zinc-200"
-            >
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-slate-200">
               Admin notes
             </label>
             <textarea
-              id="admin_notes"
               name="admin_notes"
-              defaultValue={adminNotesValue}
-              rows={4}
-              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-50"
+              defaultValue={upload.admin_notes ?? ""}
+              rows={5}
+              className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
             />
           </div>
 

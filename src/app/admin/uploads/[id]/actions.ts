@@ -9,11 +9,12 @@ export async function updateUpload(formData: FormData) {
   const adminNotes = (formData.get("admin_notes") as string | null) || null;
 
   if (!id) {
-    console.error("updateUpload: missing id");
-    return;
+    throw new Error("Missing upload id");
   }
 
   const supabase = supabaseServer;
+
+  console.log("updateUpload called with", { id, status, adminNotes });
 
   const { error } = await supabase
     .from("uploads")
@@ -24,6 +25,7 @@ export async function updateUpload(formData: FormData) {
     .eq("id", id);
 
   if (error) {
-    console.error("updateUpload error", error);
+    console.error("Error updating upload", error);
+    throw new Error("Failed to update upload");
   }
 }
