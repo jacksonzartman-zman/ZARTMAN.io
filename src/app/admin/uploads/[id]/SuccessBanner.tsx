@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 type SuccessBannerProps = {
   message: string;
@@ -11,25 +12,30 @@ export function SuccessBanner({ message }: SuccessBannerProps) {
   const [visible, setVisible] = useState(true);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
 
   useEffect(() => {
-    if (!visible) return;
+  if (!visible) return;
 
-    const timer = setTimeout(() => {
-      setVisible(false);
+  const timer = setTimeout(() => {
+    // Build a clean copy of the current query params
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("updated");
 
-      // Remove ?updated=1 from the URL so it doesn't re-show on refresh
-      const params = new URLSearchParams(searchParams.toString());
-      params.delete("updated");
+    const queryString = params.toString();
+    const newUrl = queryString
+      ? `${pathname}?${queryString}`
+      : pathname;
 
-      const queryString = params.toString();
-      const newUrl = queryString ? `?${queryString}` : "."; // keep same path
+    // Update URL without a full navigation
+    router.replace(newUrl, { scroll: false });
 
-      router.replace(newUrl, { scroll: false });
-    }, 4000); // 4 seconds
+    // Hide the banner
+    setVisible(false);
+  }, 4000);
 
-    return () => clearTimeout(timer);
-  }, [visible, router, searchParams]);
+  return () => clearTimeout(timer);
+}, [visible, searchParams, pathname, router]);
 
   if (!visible) return null;
 
