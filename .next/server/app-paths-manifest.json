@@ -4,11 +4,11 @@
   "/api/messages/route": "app/api/messages/route.js",
   "/api/quotes/route": "app/api/quotes/route.js",
   "/api/threads/route": "app/api/threads/route.js",
-  "/api/upload/route": "app/api/upload/route.js",
   "/admin/uploads/[id]/page": "app/admin/uploads/[id]/page.js",
   "/page": "app/page.js",
   "/admin/page": "app/admin/page.js",
-  "/admin/quotes/[id]/page": "app/admin/quotes/[id]/page.js",
   "/admin/quotes/page": "app/admin/quotes/page.js",
+  "/admin/quotes/[id]/page": "app/admin/quotes/[id]/page.js",
+  "/api/upload/route": "app/api/upload/route.js",
   "/api/hello/route": "app/api/hello/route.js"
 }
