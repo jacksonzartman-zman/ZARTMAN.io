@@ -34,10 +34,6 @@ export default async function QuotesPage({ searchParams }: any) {
 
   // Determine the active status filter from the URL (?status=...)
   const statusParam = searchParams?.status;
-  const statusFilter: UploadStatus | "all" =
-    statusParam && statusParam !== "all"
-      ? (statusParam as UploadStatus)
-      : "all";
 
   // 1) Fetch recent quotes
   const { data: quotes, error: quotesError } = await supabase
@@ -107,9 +103,6 @@ export default async function QuotesPage({ searchParams }: any) {
         fileName: upload?.file_name ?? "",
       };
     })
-    .filter((row) =>
-      statusFilter === "all" ? true : row.status === statusFilter
-    );
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
@@ -121,29 +114,6 @@ export default async function QuotesPage({ searchParams }: any) {
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {STATUS_OPTIONS.map((option) => {
-            const isActive = statusFilter === option.value;
-            const href =
-              option.value === "all"
-                ? "/admin/quotes"
-                : `/admin/quotes?status=${option.value}`;
-
-            return (
-              <a
-                key={option.value}
-                href={href}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                  isActive
-                    ? "bg-emerald-500/10 text-emerald-300 border-emerald-500"
-                    : "bg-slate-900 text-slate-300 border-slate-700 hover:border-emerald-500/50"
-                }`}
-              >
-                {option.label}
-              </a>
-            );
-          })}
-        </div>
       </header>
 
       <QuotesTable quotes={rows} />
