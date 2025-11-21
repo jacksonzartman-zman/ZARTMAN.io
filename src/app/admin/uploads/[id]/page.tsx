@@ -12,7 +12,7 @@ type UploadRow = {
   company: string | null;
   file_name: string | null;
   file_path: string | null;
-  initial_request_notes: string | null;
+  notes: string | null;
   status: string | null;
   admin_notes: string | null;
   created_at: string | null;
@@ -94,9 +94,9 @@ export default async function UploadDetailPage(props: any) {
               <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
                 Initial request notes
               </p>
-              <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
-                {upload.initial_request_notes || "—"}
-              </p>
+                <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+                  {upload.notes || "—"}
+                </p>
             </div>
 
             <p className="mt-4 text-xs text-slate-500">
