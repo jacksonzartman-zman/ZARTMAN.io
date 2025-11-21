@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReadonlyURLSearchParams } from "next/navigation";
+import CadViewer from "@/components/CadViewer";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { formatDateTime } from "@/lib/formatDate";
 import {
@@ -38,10 +39,44 @@ type QuoteWithUploadsRow = {
   currency: string | null;
   target_date: string | null;
   internal_notes: string | null;
+  dfm_notes: string | null;
   created_at: string | null;
   updated_at: string | null;
   upload_id: string | null;
 };
+
+type FileStorageRow = {
+  storage_path: string | null;
+  bucket_id: string | null;
+  filename: string | null;
+  mime: string | null;
+};
+
+type UploadFileReference = {
+  file_path: string | null;
+  file_name: string | null;
+};
+
+type CadFileCandidate = {
+  storagePath: string;
+  bucketId?: string | null;
+  fileName?: string | null;
+  mime?: string | null;
+};
+
+type CadPreviewResult = {
+  signedUrl: string | null;
+  fileName?: string | null;
+  reason?: string;
+};
+
+const DEFAULT_CAD_BUCKET =
+  process.env.SUPABASE_CAD_BUCKET ||
+  process.env.NEXT_PUBLIC_CAD_BUCKET ||
+  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
+  "cad";
+
+const CAD_SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 function extractFileNames(row: QuoteWithUploadsRow): string[] {
   const names: string[] = [];
@@ -123,6 +158,170 @@ function getSearchParamValue(
   return recordValue;
 }
 
+async function getCadPreviewForQuote(
+  quote: QuoteWithUploadsRow,
+): Promise<CadPreviewResult> {
+  try {
+    const { data: files, error: filesError } = await supabaseServer
+      .from("files")
+      .select("storage_path,bucket_id,filename,mime")
+      .eq("quote_id", quote.id)
+      .order("created_at", { ascending: true });
+
+    if (filesError) {
+      console.error("Failed to load files for quote", quote.id, filesError);
+    }
+
+    let uploadFile: UploadFileReference | null = null;
+    if (quote.upload_id) {
+      const { data: uploadData, error: uploadError } = await supabaseServer
+        .from("uploads")
+        .select("file_path,file_name")
+        .eq("id", quote.upload_id)
+        .maybeSingle<UploadFileReference>();
+
+      if (uploadError) {
+        console.error("Failed to load upload for quote", quote.upload_id, uploadError);
+      } else {
+        uploadFile = uploadData;
+      }
+    }
+
+    const candidate = pickCadCandidate(files ?? [], uploadFile);
+
+    if (!candidate) {
+      return {
+        signedUrl: null,
+        fileName: uploadFile?.file_name ?? files?.[0]?.filename ?? undefined,
+        reason: "3D preview not available for this quote yet.",
+      };
+    }
+
+    const normalized = normalizeStorageReference(
+      candidate.storagePath,
+      candidate.bucketId,
+    );
+
+    if (!normalized) {
+      return {
+        signedUrl: null,
+        fileName: candidate.fileName ?? undefined,
+        reason: "Missing storage path for CAD file.",
+      };
+    }
+
+    const { data: signedData, error: signedError } = await supabaseServer.storage
+      .from(normalized.bucket)
+      .createSignedUrl(normalized.path, CAD_SIGNED_URL_TTL_SECONDS);
+
+    if (signedError || !signedData?.signedUrl) {
+      console.error("Failed to create CAD signed URL", signedError);
+      return {
+        signedUrl: null,
+        fileName:
+          candidate.fileName ?? extractFileNameFromPath(candidate.storagePath),
+        reason: "Unable to generate CAD preview link right now.",
+      };
+    }
+
+    return {
+      signedUrl: signedData.signedUrl,
+      fileName: candidate.fileName ?? extractFileNameFromPath(candidate.storagePath),
+    };
+  } catch (error) {
+    console.error("Unexpected CAD preview error", error);
+    return {
+      signedUrl: null,
+      reason: "Unable to load the 3D preview right now.",
+    };
+  }
+}
+
+function pickCadCandidate(
+  files: FileStorageRow[],
+  upload: UploadFileReference | null,
+): CadFileCandidate | null {
+  const candidates: CadFileCandidate[] = [];
+
+  files?.forEach((file) => {
+    if (!file?.storage_path) return;
+    candidates.push({
+      storagePath: file.storage_path,
+      bucketId: file.bucket_id,
+      fileName: file.filename,
+      mime: file.mime,
+    });
+  });
+
+  if (upload?.file_path) {
+    candidates.push({
+      storagePath: upload.file_path,
+      bucketId: null,
+      fileName: upload.file_name,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const stlCandidate = candidates.find(isStlCandidate);
+  return stlCandidate ?? candidates[0];
+}
+
+function isStlCandidate(candidate: CadFileCandidate): boolean {
+  const fileName = candidate.fileName?.toLowerCase() ?? "";
+  const path = candidate.storagePath.toLowerCase();
+  const mime = candidate.mime?.toLowerCase() ?? "";
+
+  return (
+    fileName.endsWith(".stl") ||
+    path.endsWith(".stl") ||
+    mime.includes("stl")
+  );
+}
+
+function normalizeStorageReference(
+  storagePath: string,
+  bucketId?: string | null,
+): { bucket: string; path: string } | null {
+  if (!storagePath) {
+    return null;
+  }
+
+  let path = storagePath.trim().replace(/^\/+/, "");
+  if (!path) {
+    return null;
+  }
+
+  let bucket = bucketId?.trim() || null;
+
+  if (!bucket && path.startsWith(`${DEFAULT_CAD_BUCKET}/`)) {
+    bucket = DEFAULT_CAD_BUCKET;
+    path = path.slice(DEFAULT_CAD_BUCKET.length + 1);
+  }
+
+  if (!bucket) {
+    bucket = DEFAULT_CAD_BUCKET;
+  }
+
+  if (path.startsWith(`${bucket}/`)) {
+    path = path.slice(bucket.length + 1);
+  }
+
+  if (!path) {
+    return null;
+  }
+
+  return { bucket, path };
+}
+
+function extractFileNameFromPath(path: string): string | undefined {
+  if (!path) return undefined;
+  const segments = path.split("/");
+  return segments[segments.length - 1] || undefined;
+}
+
 export default async function QuoteDetailPage({
   params,
   searchParams,
@@ -171,6 +370,11 @@ export default async function QuoteDetailPage({
   const customerName = quote.customer_name ?? "Unknown customer";
   const fileNames = extractFileNames(quote);
   const statusLabel = UPLOAD_STATUS_LABELS[status] ?? "Unknown";
+  const cadPreview = await getCadPreviewForQuote(quote);
+  const dfmNotes =
+    typeof quote.dfm_notes === "string" && quote.dfm_notes.trim().length > 0
+      ? quote.dfm_notes
+      : null;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-8">
@@ -191,8 +395,8 @@ export default async function QuoteDetailPage({
         </p>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 space-y-6">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 space-y-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -218,69 +422,102 @@ export default async function QuoteDetailPage({
             </span>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Files
-              </p>
-              <div className="mt-2 space-y-1 text-sm text-slate-200">
-                {fileNames.length === 0 ? (
-                  <p className="text-slate-500">No files listed.</p>
-                ) : (
-                  fileNames.map((name) => (
-                    <p key={name} className="break-words">
-                      {name}
-                    </p>
-                  ))
-                )}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Files
+                </p>
+                <div className="mt-2 space-y-1 text-sm text-slate-200">
+                  {fileNames.length === 0 ? (
+                    <p className="text-slate-500">No files listed.</p>
+                  ) : (
+                    fileNames.map((name) => (
+                      <p key={name} className="break-words">
+                        {name}
+                      </p>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Quote details
+                </p>
+                <dl className="mt-2 space-y-2 text-sm text-slate-200">
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">Price</dt>
+                    <dd>{formatMoney(quote.price, quote.currency)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">Target date</dt>
+                    <dd>{formatDateTime(quote.target_date)}</dd>
+                  </div>
+                </dl>
               </div>
             </div>
 
             <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Quote details
-              </p>
-              <dl className="mt-2 space-y-2 text-sm text-slate-200">
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Price</dt>
-                  <dd>{formatMoney(quote.price, quote.currency)}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Target date</dt>
-                  <dd>{formatDateTime(quote.target_date)}</dd>
-                </div>
-              </dl>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  3D preview
+                </p>
+                <span className="text-[11px] font-medium uppercase tracking-wide text-slate-600">
+                  {cadPreview.signedUrl ? "Interactive STL" : "Unavailable"}
+                </span>
+              </div>
+              <div className="mt-4">
+                <CadViewer
+                  src={cadPreview.signedUrl}
+                  fileName={cadPreview.fileName}
+                  fallbackMessage={cadPreview.reason}
+                  height={320}
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Timeline
-            </p>
-            <dl className="mt-3 grid gap-3 text-sm text-slate-200 md:grid-cols-2">
-              <div>
-                <dt className="text-slate-500">Created</dt>
-                <dd>{formatDateTime(quote.created_at, { includeTime: true })}</dd>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  DFM notes
+                </p>
+                <p className="mt-2 whitespace-pre-line text-sm text-slate-200">
+                  {dfmNotes ?? "No customer-facing notes yet."}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Shared with the customer once the quote is ready.
+                </p>
               </div>
-              <div>
-                <dt className="text-slate-500">Updated</dt>
-                <dd>{formatDateTime(quote.updated_at, { includeTime: true })}</dd>
+
+              <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Timeline
+                </p>
+                <dl className="mt-3 grid gap-3 text-sm text-slate-200 md:grid-cols-2">
+                  <div>
+                    <dt className="text-slate-500">Created</dt>
+                    <dd>{formatDateTime(quote.created_at, { includeTime: true })}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">Updated</dt>
+                    <dd>{formatDateTime(quote.updated_at, { includeTime: true })}</dd>
+                  </div>
+                </dl>
+                <p className="mt-4 text-xs text-slate-500">
+                  Quote ID:{" "}
+                  <span className="font-mono text-slate-300">{quote.id}</span>
+                  {quote.upload_id && (
+                    <>
+                      <br />
+                      Upload ID:{" "}
+                      <span className="font-mono text-slate-300">
+                        {quote.upload_id}
+                      </span>
+                    </>
+                  )}
+                </p>
               </div>
-            </dl>
-            <p className="mt-4 text-xs text-slate-500">
-              Quote ID:{" "}
-              <span className="font-mono text-slate-300">{quote.id}</span>
-              {quote.upload_id && (
-                <>
-                  <br />
-                  Upload ID:{" "}
-                  <span className="font-mono text-slate-300">
-                    {quote.upload_id}
-                  </span>
-                </>
-              )}
-            </p>
-          </div>
+            </div>
         </section>
 
         <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
@@ -288,8 +525,9 @@ export default async function QuoteDetailPage({
             Update quote
           </h2>
           <p className="mt-1 text-sm text-slate-400">
-            Adjust status, pricing, currency, target date, and notes. Changes are
-            saved back to Supabase and show up instantly on the dashboard.
+              Adjust status, pricing, currency, target date, DFM notes, and internal
+              notes. Changes are saved back to Supabase and show up instantly on the
+              dashboard.
           </p>
 
           <QuoteUpdateForm
@@ -300,6 +538,7 @@ export default async function QuoteDetailPage({
               currency: quote.currency,
               targetDate: quote.target_date,
               internalNotes: quote.internal_notes,
+                dfmNotes,
             }}
           />
         </section>
