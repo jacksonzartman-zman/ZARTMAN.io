@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import {
+  CAD_EXTENSIONS,
+  isAllowedCadFileName,
+} from "@/lib/cadFileTypes";
 
 export const runtime = "nodejs";
 
@@ -20,34 +24,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-      // --- Backend file-type validation (security + consistency) ---
-      const allowedExts = [
-        "stl",
-        "step",
-        "stp",
-        "iges",
-        "igs",
-        "sldprt",
-        "sldasm",
-        "pdf",
-        "zip",
-      ];
-
-      const lowerName = file.name.toLowerCase();
-      const parts = lowerName.split(".");
-      const ext = parts.length > 1 ? parts.pop()! : "";
-
-      // Reject non-CAD files BEFORE uploading to Supabase
-      if (!allowedExts.includes(ext)) {
-        return NextResponse.json(
-          {
-            message:
-              "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files.",
-          },
-          { status: 400 }
-        );
-      }
-      // --------------------------------------------------------------
+    // Reject non-CAD files BEFORE uploading to Supabase
+    if (!isAllowedCadFileName(file.name)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Unsupported file type. Allowed extensions: ${CAD_EXTENSIONS.join(
+            ", "
+          )}.`,
+        },
+        { status: 400 }
+      );
+    }
 
     if (!name || !email) {
       return NextResponse.json(

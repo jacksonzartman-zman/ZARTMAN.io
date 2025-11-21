@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
+import { CAD_ACCEPT_STRING } from "@/lib/cadFileTypes";
 
 export default function CadUpload() {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -89,7 +90,8 @@ export default function CadUpload() {
         <input
           ref={inputRef}
           type="file"
-          accept=".stl,.step,.stp,.iges,.igs,.sldprt,.sldasm,.pdf,.zip"
+          // Same literal accept list keeps STL/STEP/etc. selectable in iOS Safari pickers.
+          accept={CAD_ACCEPT_STRING}
           onChange={onPick}
           style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
         />
