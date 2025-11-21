@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST='{"../node_modules/@react-three/drei/core/Text.js -> troika-three-text":{"id":null,"files":[]},"../node_modules/@react-three/drei/web/FaceLandmarker.js -> @mediapipe/tasks-vision":{"id":null,"files":[]}}';
+self.__REACT_LOADABLE_MANIFEST='{"components/CadViewerClient.tsx -> ./CadViewer":{"id":370,"files":["static/chunks/b536a0f1.6687b0a95037fd90.js","static/chunks/989.8fe9d0af354a2230.js"]}}';
