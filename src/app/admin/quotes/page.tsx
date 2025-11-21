@@ -8,8 +8,8 @@ import StatusFilterChips from "../StatusFilterChips";
 export const dynamic = "force-dynamic";
 
 type QuotesPageSearchParams = {
-  status?: string | string[];
-  search?: string | string[];
+  status?: string;
+  search?: string;
 };
 
 type QuotesPageProps = {
@@ -24,21 +24,12 @@ const VALID_STATUS_VALUES: UploadStatus[] = [
   "closed_lost",
 ];
 
-const getFirstParamValue = (value?: string | string[]) => {
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-
-  return value;
-};
-
 export default async function QuotesPage({
   searchParams,
 }: QuotesPageProps) {
   const resolvedSearchParams = (await searchParams) ?? {};
-
-  const rawStatus = getFirstParamValue(resolvedSearchParams.status);
-  const rawSearch = getFirstParamValue(resolvedSearchParams.search);
+  const rawStatus = resolvedSearchParams.status ?? "";
+  const rawSearch = resolvedSearchParams.search ?? "";
 
   const normalizedStatus =
     typeof rawStatus === "string" ? rawStatus.trim().toLowerCase() : "";
@@ -82,7 +73,7 @@ export default async function QuotesPage({
       createdAt: row.created_at,
     })) ?? [];
 
-  const rowsToShow = rows.filter((row) => {
+  const rowsToShow: QuoteRow[] = rows.filter((row) => {
     const rowStatus = (row.status ?? "new").toLowerCase();
     const matchesStatus =
       statusFilter === "all" ? true : rowStatus === statusFilter;
@@ -91,44 +82,56 @@ export default async function QuotesPage({
       return matchesStatus;
     }
 
-    const haystack = `${row.customerName} ${row.customerEmail} ${row.company ?? ""} ${row.fileName ?? ""} ${
-      row.status ?? ""
-    }`
-      .toLowerCase()
-      .replace(/\s+/g, " ");
+    const searchableFields = [
+      row.customerName,
+      row.customerEmail,
+      row.company,
+      row.fileName,
+      row.status,
+    ];
 
-    return matchesStatus && haystack.includes(normalizedSearch);
+    const matchesSearch = searchableFields.some((field) => {
+      if (!field) {
+        return false;
+      }
+
+      return field.toLowerCase().includes(normalizedSearch);
+    });
+
+    return matchesStatus && matchesSearch;
   });
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold">Quotes</h1>
-        <p className="text-sm text-slate-400">
-          Recent quotes created from uploads.
-        </p>
-      </header>
+        <header className="space-y-2">
+          <h1 className="text-2xl font-semibold">Quotes</h1>
+          <p className="text-sm text-slate-400">
+            Recent quotes created from uploads.
+          </p>
+        </header>
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <StatusFilterChips
-          currentStatus={statusFilter === "all" ? "" : statusFilter}
-          basePath="/admin/quotes"
-        />
-        <form className="w-full md:w-80" method="get">
-          {statusFilter !== "all" && (
-            <input type="hidden" name="status" value={statusFilter} />
-          )}
-          <input
-            type="search"
-            name="search"
-            defaultValue={searchTerm}
-            placeholder="Search by customer, email, company, file, or status..."
-            className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-emerald-400"
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <StatusFilterChips
+            currentStatus={statusFilter === "all" ? "" : statusFilter}
+            basePath="/admin/quotes"
           />
-        </form>
-      </div>
+          <form className="w-full md:w-80" method="get">
+            <input
+              type="hidden"
+              name="status"
+              value={statusFilter === "all" ? "" : statusFilter}
+            />
+            <input
+              type="search"
+              name="search"
+              defaultValue={searchTerm}
+              placeholder="Search by customer, email, company, file, or status..."
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-emerald-400"
+            />
+          </form>
+        </div>
 
-      <QuotesTable quotes={rowsToShow} />
+        <QuotesTable quotes={rowsToShow} />
     </main>
   );
 }
