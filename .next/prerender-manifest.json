@@ -1,6 +1,30 @@
 {
   "version": 4,
   "routes": {
+    "/": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/",
+      "dataRoute": "/index.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    },
     "/_not-found": {
       "initialStatus": 404,
       "experimentalBypassFor": [
@@ -25,37 +49,13 @@
         "x-next-revalidated-tags",
         "x-next-revalidate-tag-token"
       ]
-    },
-    "/": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/",
-      "dataRoute": "/index.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
     }
   },
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "26ab9f9fe46ea03aff68d2d8d73d49e5",
-    "previewModeSigningKey": "e0cdef07c83053d8f2b9180fd0a2acab2f875407e23c4f3a909b9f63bb9c379f",
-    "previewModeEncryptionKey": "4a67f408fa13ff9052fb43b853fd9e022b8e39c9524a43d24b41d0be3555a9b8"
+    "previewModeId": "4c316688961816647b305849d2f8565e",
+    "previewModeSigningKey": "00f415fab753f349f2afe280d8f145d9982a28c77d1a8606ae5e23d3a82e0367",
+    "previewModeEncryptionKey": "9e86be5577bd7324d303661869e9933bb10dd8dfb8008e6579d28a656dda3600"
   }
 }

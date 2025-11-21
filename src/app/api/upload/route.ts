@@ -25,109 +25,130 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: "application/pdf",
 };
 
+type UploadResponseExtras = {
+  uploadId?: string;
+  quoteId?: string | null;
+} & Record<string, unknown>;
+
+function buildSuccess(message: string, extra: UploadResponseExtras = {}) {
+  return NextResponse.json(
+    {
+      success: true,
+      message,
+      ...extra,
+    },
+    { status: 200 },
+  );
+}
+
+function buildError(
+  message: string,
+  status = 400,
+  extra: Record<string, unknown> = {},
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      message,
+      ...extra,
+    },
+    { status },
+  );
+}
+
 export async function POST(req: NextRequest) {
+  const logContext: UploadLogContext = {};
+
   try {
     const formData = await req.formData();
 
     const fileEntry = formData.get("file");
     if (!(fileEntry instanceof File)) {
       logUploadDebug("Rejecting request: missing file in form-data payload");
-      return NextResponse.json(
-        { success: false, message: "Missing file in request." },
-        { status: 400 },
-      );
+      return buildError("Missing file in request.", 400);
     }
 
     const file = fileEntry;
+    logContext.fileName = file.name;
+    logContext.fileSize = file.size;
+    logContext.providedType = file.type || "";
+
     const name = getFormValue(formData.get("name"));
     const email = getFormValue(formData.get("email"));
     const company = getFormValue(formData.get("company"));
     const requestNotes = getFormValue(formData.get("notes"));
     const extension = getFileExtension(file.name);
     const isStlUpload = extension === "stl";
-    const baseLogContext: UploadLogContext = {
-      fileName: file.name,
-      fileSize: file.size,
-      providedType: file.type || "",
-      extension,
-      isStlUpload,
-    };
+    logContext.extension = extension;
+    logContext.isStlUpload = isStlUpload;
 
     logUploadDebug("Received upload request", {
-      ...baseLogContext,
+      ...logContext,
       bucket: CAD_BUCKET,
     });
 
     if (!name || !email) {
       logUploadDebug("Rejecting upload: missing contact info", {
-        ...baseLogContext,
+        ...logContext,
         namePresent: Boolean(name),
         emailPresent: Boolean(email),
       });
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Name and email are required to submit a quote request.",
-        },
-        { status: 400 },
+      return buildError(
+        "Name and email are required to submit a quote request.",
+        400,
       );
     }
 
     if (!isAllowedCadFileName(file.name)) {
       logUploadDebug("Rejecting upload: unsupported extension", {
-        ...baseLogContext,
+        ...logContext,
         allowedExtensions: CAD_EXTENSIONS.join(", "),
       });
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Unsupported file type .${extension || "unknown"}. Allowed extensions: ${CAD_EXTENSIONS.join(
-            ", ",
-          )}.`,
-        },
-        { status: 400 },
+      return buildError(
+        `Unsupported file type .${extension || "unknown"}. Allowed extensions: ${CAD_EXTENSIONS.join(
+          ", ",
+        )}.`,
+        400,
       );
     }
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
       logUploadDebug("Rejecting upload: exceeds size limit", {
-        ...baseLogContext,
+        ...logContext,
         maxBytes: MAX_FILE_SIZE_BYTES,
       });
-      return NextResponse.json(
-        {
-          success: false,
-          message: `File exceeds maximum size of ${Math.floor(
-            MAX_FILE_SIZE_BYTES / (1024 * 1024),
-          )} MB.`,
-        },
-        { status: 413 },
+      return buildError(
+        `File exceeds maximum size of ${Math.floor(
+          MAX_FILE_SIZE_BYTES / (1024 * 1024),
+        )} MB.`,
+        413,
       );
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     if (buffer.byteLength === 0) {
-      logUploadDebug("Rejecting upload: empty file buffer", baseLogContext);
-      return NextResponse.json(
-        { success: false, message: "The uploaded file is empty." },
-        { status: 400 },
-      );
+      logUploadDebug("Rejecting upload: empty file buffer", logContext);
+      return buildError("The uploaded file is empty.", 400);
     }
 
     const mimeType = detectMimeType(file, extension);
+    logContext.mimeType = mimeType;
+
     const safeFileName = sanitizeFileName(file.name);
     const storageKey = buildStorageKey(safeFileName);
     const storagePath = `${CAD_BUCKET}/${storageKey}`;
     const supabase = supabaseServer;
-    const uploadLogContext: UploadLogContext = {
-      ...baseLogContext,
-      mimeType,
-      bucket: CAD_BUCKET,
-      storageKey,
-      storagePath,
-    };
+    logContext.bucket = CAD_BUCKET;
+    logContext.storageKey = storageKey;
+    logContext.storagePath = storagePath;
 
-    logUploadDebug("Uploading file to Supabase storage", uploadLogContext);
+    if (isStlUpload) {
+      logUploadDebug("Handling STL upload", {
+        ...logContext,
+      });
+    }
+
+    logUploadDebug("Uploading file to Supabase storage", logContext);
 
     const { error: storageError } = await supabase.storage
       .from(CAD_BUCKET)
@@ -142,21 +163,16 @@ export async function POST(req: NextRequest) {
         storageError as { statusCode?: number | string }
       ).statusCode;
       logUploadError("Storage upload failed", {
-        ...uploadLogContext,
+        ...logContext,
         error: {
           message: storageError.message,
           name: storageError.name,
           statusCode: storageStatusCode,
         },
       });
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Storage upload failed: ${
-            storageError.message || "unknown error"
-          }`,
-        },
-        { status: 500 },
+      return buildError(
+        `Storage upload failed: ${storageError.message || "unknown error"}`,
+        500,
       );
     }
 
@@ -178,7 +194,7 @@ export async function POST(req: NextRequest) {
 
     if (customerError) {
       logUploadError("Customer upsert failed", {
-        ...uploadLogContext,
+        ...logContext,
         error: serializeSupabaseError(customerError),
       });
     } else if (customer?.id) {
@@ -186,7 +202,7 @@ export async function POST(req: NextRequest) {
     }
 
     logUploadDebug("Inserting upload metadata row", {
-      ...uploadLogContext,
+      ...logContext,
       customerId,
     });
 
@@ -207,48 +223,44 @@ export async function POST(req: NextRequest) {
 
     if (uploadError || !uploadRow) {
       logUploadError("Upload metadata insert failed", {
-        ...uploadLogContext,
+        ...logContext,
         error: serializeSupabaseError(uploadError),
       });
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Database insert failed: ${
-            serializeSupabaseError(uploadError) || "unknown reason"
-          }`,
-        },
-        { status: 500 },
+      return buildError(
+        `Database insert failed: ${
+          serializeSupabaseError(uploadError) || "unknown reason"
+        }`,
+        500,
       );
     }
 
     logUploadDebug("Upload finished successfully", {
-      ...uploadLogContext,
+      ...logContext,
       uploadId: uploadRow.id,
       customerId: uploadRow.customer_id,
     });
 
     const quoteId =
-      (uploadRow as { quote_id?: string | null }).quote_id ?? null;
+      "quote_id" in uploadRow
+        ? ((uploadRow as { quote_id?: string | null }).quote_id ?? null)
+        : null;
 
-    return NextResponse.json({
-      success: true,
-      message: "Upload complete. We’ll review your CAD shortly.",
+    return buildSuccess("Upload complete. We’ll review your CAD shortly.", {
       uploadId: uploadRow.id,
       quoteId,
     });
-  } catch (err: any) {
-    logUploadError("Unexpected upload handler error", {
-      error: err?.message ?? String(err),
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : typeof err === "string" ? err : null;
+    const stack = err instanceof Error ? err.stack : undefined;
+    logUploadError("unexpected upload handler error", {
+      ...logContext,
+      errorMessage: message ?? "Unknown error",
+      stack,
     });
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          typeof err?.message === "string"
-            ? err.message
-            : "Unexpected server error.",
-      },
-      { status: 500 },
+    return buildError(
+      "Unexpected server error while uploading your CAD. Please retry or contact support.",
+      500,
     );
   }
 }
@@ -309,6 +321,8 @@ type UploadLogContext = {
   allowedExtensions?: string;
   maxBytes?: number;
   error?: unknown;
+  errorMessage?: string;
+  stack?: string;
 };
 
 function logUploadDebug(message: string, context?: UploadLogContext) {
@@ -321,10 +335,10 @@ function logUploadDebug(message: string, context?: UploadLogContext) {
 
 function logUploadError(message: string, context?: UploadLogContext) {
   if (context) {
-    console.error("[upload-debug]", message, sanitizeContext(context));
+    console.error("[upload-error]", message, sanitizeContext(context));
     return;
   }
-  console.error("[upload-debug]", message);
+  console.error("[upload-error]", message);
 }
 
 function sanitizeContext(context: UploadLogContext) {

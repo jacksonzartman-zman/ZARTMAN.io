@@ -98,7 +98,7 @@
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "/workspaces/ZARTMAN.io",
+    "outputFileTracingRoot": "/workspace",
     "experimental": {
       "useSkewCookie": false,
       "cacheLife": {
@@ -157,7 +157,7 @@
       "middlewarePrefetch": "flexible",
       "optimisticClientCache": true,
       "manualClientBasePath": false,
-      "cpus": 1,
+      "cpus": 3,
       "memoryBasedWorkersCount": false,
       "imgOptConcurrency": null,
       "imgOptTimeoutInSeconds": 7,
@@ -287,10 +287,10 @@
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.js",
     "turbopack": {
-      "root": "/workspaces/ZARTMAN.io"
+      "root": "/workspace"
     }
   },
-  "appDir": "/workspaces/ZARTMAN.io",
+  "appDir": "/workspace",
   "relativeAppDir": "",
   "files": [
     ".next/routes-manifest.json",
