@@ -3,6 +3,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import type { UploadStatus } from "../constants";
+import QuotesSearchInput from "../QuotesSearchInput";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
 import StatusFilterChips from "../StatusFilterChips";
 
@@ -154,35 +155,30 @@ export default async function QuotesPage({
     return matchesStatus && haystack.includes(normalizedSearch);
   });
 
-  return (
-    <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
-      <header className="space-y-2">
-        <h1 className="text-2xl font-semibold">Quotes</h1>
-        <p className="text-sm text-slate-400">
-          Recent quotes created from uploads.
-        </p>
-      </header>
+    return (
+      <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
+        <header className="space-y-2">
+          <h1 className="text-2xl font-semibold">Quotes</h1>
+          <p className="text-sm text-slate-400">
+            Recent quotes created from uploads.
+          </p>
+        </header>
 
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <StatusFilterChips
-          currentStatus={statusFilter === "all" ? "" : statusFilter}
-          basePath="/admin/quotes"
-        />
-        <form className="w-full md:w-80" method="get" action="/admin/quotes">
-          {statusFilter !== "all" && (
-            <input type="hidden" name="status" value={statusFilter} />
-          )}
-          <input
-            type="search"
-            name="search"
-            defaultValue={searchTerm}
-            placeholder="Search by customer, email, company, file, or status..."
-            className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-emerald-400"
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <StatusFilterChips
+            currentStatus={statusFilter === "all" ? "" : statusFilter}
+            basePath="/admin/quotes"
           />
-        </form>
-      </div>
+          <div className="w-full md:w-80">
+            <QuotesSearchInput
+              initialValue={searchTerm}
+              placeholder="Search by customer, email, company, file, or status..."
+              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-emerald-400"
+            />
+          </div>
+        </div>
 
-      <QuotesTable quotes={filteredQuotes} />
-    </main>
-  );
+        <QuotesTable quotes={filteredQuotes} />
+      </main>
+    );
 }
