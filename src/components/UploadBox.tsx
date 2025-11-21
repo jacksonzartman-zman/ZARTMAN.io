@@ -43,12 +43,25 @@ const initialState: UploadState = {
 
 const isAllowedFile = (file: File): boolean => isAllowedCadFileName(file.name);
 
+type UploadApiResponse =
+  | {
+      success: true;
+      message?: string;
+      uploadId?: string;
+      quoteId?: string | null;
+    }
+  | {
+      success: false;
+      message?: string;
+    };
+
 export default function UploadBox() {
   const [state, setState] = useState<UploadState>(initialState);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
 
   useEffect(() => {
@@ -85,16 +98,18 @@ export default function UploadBox() {
     if (!file) return;
 
     if (!isAllowedFile(file)) {
-        setError(
-          "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files."
-        );
+      setError(
+        "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files."
+      );
       setSuccess(false);
+      setSuccessMessage(null);
       setState((prev) => ({ ...prev, file: null, fileName: null }));
       return;
     }
 
     setError(null);
     setSuccess(false);
+    setSuccessMessage(null);
     setState((prev) => ({ ...prev, file, fileName: file.name }));
   };
 
@@ -103,10 +118,11 @@ export default function UploadBox() {
     if (!file) return;
 
     if (!isAllowedFile(file)) {
-        setError(
-          "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files."
-        );
+      setError(
+        "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files."
+      );
       setSuccess(false);
+      setSuccessMessage(null);
       setState((prev) => ({ ...prev, file: null, fileName: null }));
       // Clear so they can re-choose
       e.target.value = "";
@@ -115,6 +131,7 @@ export default function UploadBox() {
 
     setError(null);
     setSuccess(false);
+    setSuccessMessage(null);
     setState((prev) => ({ ...prev, file, fileName: file.name }));
   };
 
@@ -129,6 +146,7 @@ export default function UploadBox() {
     e.preventDefault();
     setError(null);
     setSuccess(false);
+    setSuccessMessage(null);
 
     if (!state.file) {
       setError("Please select a CAD file to upload.");
@@ -136,9 +154,9 @@ export default function UploadBox() {
     }
 
     if (!isAllowedFile(state.file)) {
-        setError(
-          "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files."
-        );
+      setError(
+        "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files."
+      );
       return;
     }
 
@@ -161,13 +179,33 @@ export default function UploadBox() {
         method: "POST",
         body: formData,
       });
+      let json: UploadApiResponse | null = null;
+      let parseError: unknown = null;
 
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as
-          | { message?: string }
-          | null;
-        throw new Error(data?.message ?? "Upload failed");
+      try {
+        json = (await res.json()) as UploadApiResponse;
+      } catch (err) {
+        parseError = err;
       }
+
+      if (!json) {
+        const fallback = parseError
+          ? "Upload failed: invalid server response."
+          : `Upload failed (status ${res.status}).`;
+        throw new Error(fallback);
+      }
+
+      if (!res.ok || json.success === false) {
+        const message =
+          json.message ??
+          (res.ok
+            ? "Upload failed. Please try again."
+            : `Upload failed (status ${res.status}).`);
+        throw new Error(message);
+      }
+
+      const responseMessage =
+        json.message ?? "Upload complete. We’ll review your CAD shortly.";
 
       // Success → keep contact info, reset file + notes
       setState((prev) => ({
@@ -177,11 +215,13 @@ export default function UploadBox() {
         notes: "",
       }));
       setSuccess(true);
+      setSuccessMessage(responseMessage);
       setError(null);
     } catch (err: any) {
       console.error(err);
       setError(err?.message ?? "Upload failed. Please try again.");
       setSuccess(false);
+      setSuccessMessage(null);
     } finally {
       setSubmitting(false);
     }
@@ -325,17 +365,17 @@ export default function UploadBox() {
         </div>
 
         {/* Messages */}
-        <div className="min-h-[1.25rem] pt-1">
+          <div className="min-h-[1.25rem] pt-1">
           {error && (
             <p className="text-xs text-red-400" role="alert">
               Error: {error}
             </p>
           )}
-          {!error && success && (
-            <p className="text-xs text-emerald-400" role="status">
-              Thanks — your CAD file is in the queue. I’ll take a look.
-            </p>
-          )}
+            {!error && success && successMessage && (
+              <p className="text-xs text-emerald-400" role="status">
+                {successMessage}
+              </p>
+            )}
         </div>
       </form>
     </section>
