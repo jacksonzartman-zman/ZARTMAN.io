@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { CAD_EXTENSIONS, isAllowedCadFileName } from "@/lib/cadFileTypes";
+import {
+  CAD_EXTENSIONS,
+  CAD_FILE_TYPE_DESCRIPTION,
+  MAX_UPLOAD_SIZE_BYTES,
+  bytesToMegabytes,
+  isAllowedCadFileName,
+} from "@/lib/cadFileTypes";
 
 export const runtime = "nodejs";
 
@@ -10,8 +16,6 @@ const CAD_BUCKET =
   process.env.NEXT_PUBLIC_CAD_BUCKET ||
   process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
   "cad";
-
-const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   stl: "model/stl",
@@ -25,17 +29,35 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: "application/pdf",
 };
 
+const FILE_SIZE_LIMIT_LABEL = `${bytesToMegabytes(MAX_UPLOAD_SIZE_BYTES)} MB`;
+
+type UploadFileMetadata = {
+  bucket: string;
+  storageKey: string;
+  storagePath: string;
+  sizeBytes: number;
+  mimeType: string;
+  originalFileName: string;
+  sanitizedFileName: string;
+  extension?: string | null;
+};
+
 type UploadResponseExtras = {
   uploadId?: string;
   quoteId?: string | null;
+  file?: UploadFileMetadata;
+  metadataRecorded?: boolean;
+  step?: string;
 } & Record<string, unknown>;
 
 function buildSuccess(message: string, extra: UploadResponseExtras = {}) {
+  const { step, ...rest } = extra;
   return NextResponse.json(
     {
       success: true,
       message,
-      ...extra,
+      step: step ?? "complete",
+      ...rest,
     },
     { status: 200 },
   );
@@ -46,11 +68,13 @@ function buildError(
   status = 400,
   extra: Record<string, unknown> = {},
 ) {
+  const { step, ...rest } = extra;
   return NextResponse.json(
     {
       success: false,
       message,
-      ...extra,
+      step: step ?? "error",
+      ...rest,
     },
     { status },
   );
@@ -65,12 +89,15 @@ export async function POST(req: NextRequest) {
     const fileEntry = formData.get("file");
     if (!(fileEntry instanceof File)) {
       logUploadDebug("Rejecting request: missing file in form-data payload");
-      return buildError("Missing file in request.", 400);
+      return buildError("Missing file in request.", 400, {
+        step: "validate-form",
+      });
     }
 
     const file = fileEntry;
     logContext.fileName = file.name;
     logContext.fileSize = file.size;
+    logContext.fileSizeLabel = formatFileSizeLabel(file.size);
     logContext.providedType = file.type || "";
 
     const name = getFormValue(formData.get("name"));
@@ -96,6 +123,13 @@ export async function POST(req: NextRequest) {
       return buildError(
         "Name and email are required to submit a quote request.",
         400,
+        {
+          step: "validate-contact",
+          missingFields: {
+            name: !name,
+            email: !email,
+          },
+        },
       );
     }
 
@@ -105,36 +139,46 @@ export async function POST(req: NextRequest) {
         allowedExtensions: CAD_EXTENSIONS.join(", "),
       });
       return buildError(
-        `Unsupported file type .${extension || "unknown"}. Allowed extensions: ${CAD_EXTENSIONS.join(
-          ", ",
-        )}.`,
+        `Unsupported file type ".${extension || "unknown"}". Accepted formats: ${CAD_FILE_TYPE_DESCRIPTION}.`,
         400,
+        {
+          step: "validate-extension",
+          allowedExtensions: CAD_EXTENSIONS,
+          attemptedExtension: extension || null,
+        },
       );
     }
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
       logUploadDebug("Rejecting upload: exceeds size limit", {
         ...logContext,
-        maxBytes: MAX_FILE_SIZE_BYTES,
+        maxBytes: MAX_UPLOAD_SIZE_BYTES,
       });
       return buildError(
-        `File exceeds maximum size of ${Math.floor(
-          MAX_FILE_SIZE_BYTES / (1024 * 1024),
-        )} MB.`,
+        `File is ${formatFileSizeLabel(
+          file.size,
+        )}. Maximum allowed size is ${FILE_SIZE_LIMIT_LABEL}.`,
         413,
+        {
+          step: "validate-size",
+          maxBytes: MAX_UPLOAD_SIZE_BYTES,
+          fileBytes: file.size,
+        },
       );
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     if (buffer.byteLength === 0) {
       logUploadDebug("Rejecting upload: empty file buffer", logContext);
-      return buildError("The uploaded file is empty.", 400);
+      return buildError("The uploaded file is empty.", 400, {
+        step: "validate-buffer",
+      });
     }
 
     const mimeType = detectMimeType(file, extension);
     logContext.mimeType = mimeType;
 
-    const safeFileName = sanitizeFileName(file.name);
+    const safeFileName = sanitizeFileName(file.name, extension);
     const storageKey = buildStorageKey(safeFileName);
     const storagePath = `${CAD_BUCKET}/${storageKey}`;
     const supabase = supabaseServer;
@@ -173,6 +217,10 @@ export async function POST(req: NextRequest) {
       return buildError(
         `Storage upload failed: ${storageError.message || "unknown error"}`,
         500,
+        {
+          step: "storage-upload",
+          storageStatusCode,
+        },
       );
     }
 
@@ -218,7 +266,7 @@ export async function POST(req: NextRequest) {
         notes: requestNotes || null,
         customer_id: customerId,
       })
-      .select("id, file_name, file_path, mime_type, customer_id")
+      .select("id, file_name, file_path, mime_type, customer_id, quote_id")
       .single();
 
     if (uploadError || !uploadRow) {
@@ -231,23 +279,66 @@ export async function POST(req: NextRequest) {
           serializeSupabaseError(uploadError) || "unknown reason"
         }`,
         500,
+        {
+          step: "db-insert-upload",
+        },
       );
     }
-
-    logUploadDebug("Upload finished successfully", {
-      ...logContext,
-      uploadId: uploadRow.id,
-      customerId: uploadRow.customer_id,
-    });
 
     const quoteId =
       "quote_id" in uploadRow
         ? ((uploadRow as { quote_id?: string | null }).quote_id ?? null)
         : null;
 
+    const normalizedFile: UploadFileMetadata = {
+      bucket: CAD_BUCKET,
+      storageKey,
+      storagePath,
+      sizeBytes: file.size,
+      mimeType,
+      originalFileName: file.name,
+      sanitizedFileName: safeFileName,
+      extension: extension || null,
+    };
+
+    let metadataRecorded = false;
+    try {
+      const { error: fileMetadataError } = await supabase.from("files").insert({
+        filename: file.name,
+        size_bytes: file.size,
+        mime: mimeType,
+        storage_path: storagePath,
+        bucket_id: CAD_BUCKET,
+        quote_id: quoteId,
+      });
+
+      if (fileMetadataError) {
+        logUploadError("File metadata insert failed", {
+          ...logContext,
+          error: serializeSupabaseError(fileMetadataError),
+        });
+      } else {
+        metadataRecorded = true;
+      }
+    } catch (metadataError) {
+      logUploadError("Unexpected metadata insert error", {
+        ...logContext,
+        error: serializeSupabaseError(metadataError),
+      });
+    }
+
+    logUploadDebug("Upload finished successfully", {
+      ...logContext,
+      uploadId: uploadRow.id,
+      customerId: uploadRow.customer_id,
+      metadataRecorded,
+    });
+
     return buildSuccess("Upload complete. We’ll review your CAD shortly.", {
       uploadId: uploadRow.id,
       quoteId,
+      file: normalizedFile,
+      metadataRecorded,
     });
   } catch (err: unknown) {
     const message =
@@ -261,6 +352,9 @@ export async function POST(req: NextRequest) {
     return buildError(
       "Unexpected server error while uploading your CAD. Please retry or contact support.",
       500,
+      {
+        step: "unexpected-error",
+      },
     );
   }
 }
@@ -269,11 +363,27 @@ function getFormValue(value: FormDataEntryValue | null): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function sanitizeFileName(originalName: string): string {
-  const fallback = "cad-file";
-  if (typeof originalName !== "string" || originalName.trim().length === 0) {
-    return `${fallback}.stl`;
+function formatFileSizeLabel(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 MB";
   }
+  return `${bytesToMegabytes(bytes)} MB`;
+}
+
+function sanitizeFileName(
+  originalName: string,
+  preferredExtension?: string,
+): string {
+  const fallbackBase = "cad-file";
+  const fallbackExtension =
+    typeof preferredExtension === "string" && preferredExtension.length > 0
+      ? preferredExtension
+      : "stl";
+
+  if (typeof originalName !== "string" || originalName.trim().length === 0) {
+    return `${fallbackBase}.${fallbackExtension}`;
+  }
+
   const normalized = originalName
     .trim()
     .normalize("NFKD")
@@ -281,7 +391,16 @@ function sanitizeFileName(originalName: string): string {
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
-  return normalized.length > 0 ? normalized : `${fallback}.stl`;
+
+  if (!normalized) {
+    return `${fallbackBase}.${fallbackExtension}`;
+  }
+
+  if (normalized.includes(".")) {
+    return normalized;
+  }
+
+  return `${normalized}.${fallbackExtension}`;
 }
 
 function buildStorageKey(fileName: string): string {
@@ -301,12 +420,13 @@ function detectMimeType(file: File, extension?: string): string {
 function getFileExtension(fileName: string): string {
   if (typeof fileName !== "string") return "";
   const parts = fileName.toLowerCase().split(".");
-  return parts.length > 1 ? parts.pop() ?? "" : "";
+  return parts.length > 1 ? (parts.pop() ?? "") : "";
 }
 
 type UploadLogContext = {
   fileName?: string | null;
   fileSize?: number;
+  fileSizeLabel?: string;
   providedType?: string;
   extension?: string;
   isStlUpload?: boolean;
@@ -320,6 +440,7 @@ type UploadLogContext = {
   emailPresent?: boolean;
   allowedExtensions?: string;
   maxBytes?: number;
+  metadataRecorded?: boolean;
   error?: unknown;
   errorMessage?: string;
   stack?: string;

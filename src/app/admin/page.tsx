@@ -1,6 +1,6 @@
 // src/app/admin/page.tsx
 import AdminTable, { type UploadRow } from "./AdminTable";
-import type { UploadStatus } from "./constants";
+import { normalizeUploadStatus, type UploadStatus } from "./constants";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export default async function AdminPage() {
     customerEmail: row.email ?? "",
     company: row.company ?? "",
     fileName: row.file_name ?? "",
-    status: (row.status as UploadStatus) ?? "new",
+    status: normalizeUploadStatus(row.status as UploadStatus | null),
     createdAt: row.created_at,
   }));
 
