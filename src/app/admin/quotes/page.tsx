@@ -13,7 +13,7 @@ type QuotesPageSearchParams = {
 };
 
 type QuotesPageProps = {
-  searchParams?: QuotesPageSearchParams;
+  searchParams?: Promise<QuotesPageSearchParams | undefined>;
 };
 
 const VALID_STATUS_VALUES: UploadStatus[] = [
@@ -33,10 +33,12 @@ const getFirstParamValue = (value?: string | string[]) => {
 };
 
 export default async function QuotesPage({
-  searchParams = {},
+  searchParams,
 }: QuotesPageProps) {
-  const rawStatus = getFirstParamValue(searchParams.status);
-  const rawSearch = getFirstParamValue(searchParams.search);
+  const resolvedSearchParams = (await searchParams) ?? {};
+
+  const rawStatus = getFirstParamValue(resolvedSearchParams.status);
+  const rawSearch = getFirstParamValue(resolvedSearchParams.search);
 
   const normalizedStatus =
     typeof rawStatus === "string" ? rawStatus.trim().toLowerCase() : "";
