@@ -2,6 +2,10 @@
 
 import React, { useState, DragEvent, ChangeEvent, FormEvent } from "react";
 import clsx from "clsx";
+import {
+  CAD_ACCEPT_STRING,
+  isAllowedCadFileName,
+} from "@/lib/cadFileTypes";
 
 type UploadState = {
   file: File | null;
@@ -21,23 +25,7 @@ const initialState: UploadState = {
   notes: "",
 };
 
-const ALLOWED_EXTENSIONS = [
-  "stl",
-  "step",
-  "stp",
-  "iges",
-  "igs",
-  "sldprt",
-  "sldasm",
-  "pdf",
-  "zip",
-];
-
-function isAllowedFile(file: File): boolean {
-  const parts = file.name.toLowerCase().split(".");
-  const ext = parts.length > 1 ? parts.pop()! : "";
-  return ALLOWED_EXTENSIONS.includes(ext);
-}
+const isAllowedFile = (file: File): boolean => isAllowedCadFileName(file.name);
 
 export default function UploadBox() {
   const [state, setState] = useState<UploadState>(initialState);
@@ -214,15 +202,15 @@ export default function UploadBox() {
             )}
           </p>
         </div>
-          <input
-            id="file"
-            name="file"
-            type="file"
-            className="hidden"
-            onChange={handleFileChange}
-            // iOS file pickers honor the accept list literally. Limiting to this set ensures STL/STEP/IGES/SolidWorks/PDF/ZIP stay selectable instead of defaulting to ZIP-only on iPad.
-            accept=".stl,.step,.stp,.iges,.igs,.sldprt,.sldasm,.pdf,.zip"
-          />
+            <input
+              id="file"
+              name="file"
+              type="file"
+              className="hidden"
+              onChange={handleFileChange}
+              // iOS file pickers honor the accept list literally. Using the shared CAD_ACCEPT_STRING keeps STL/STEP/IGES/SolidWorks/PDF/ZIP visible instead of falling back to zip-only on iPad.
+              accept={CAD_ACCEPT_STRING}
+            />
       </div>
 
       {/* Form fields */}
