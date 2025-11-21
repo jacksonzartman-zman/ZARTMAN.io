@@ -55,6 +55,48 @@ type UploadApiResponse =
       message?: string;
     };
 
+const extractPayloadMessage = (payload: unknown): string | null => {
+  if (!payload || typeof payload !== "object") return null;
+  const recordPayload = payload as Record<string, unknown>;
+
+  if (typeof recordPayload.message === "string") {
+    const message = recordPayload.message.trim();
+    if (message) {
+      return message;
+    }
+  }
+
+  if (typeof recordPayload.error === "string") {
+    const errorMsg = recordPayload.error.trim();
+    if (errorMsg) {
+      return errorMsg;
+    }
+  }
+
+  if (
+    recordPayload.details &&
+    typeof recordPayload.details === "object" &&
+    "message" in (recordPayload.details as Record<string, unknown>) &&
+    typeof (recordPayload.details as { message?: unknown }).message === "string"
+  ) {
+    const detailsMessage = (recordPayload.details as { message: string }).message.trim();
+    if (detailsMessage) {
+      return detailsMessage;
+    }
+  }
+
+  return null;
+};
+
+const isUploadApiResponse = (payload: unknown): payload is UploadApiResponse => {
+  return Boolean(
+    payload &&
+    typeof payload === "object" &&
+    "success" in payload &&
+    typeof (payload as { success?: unknown }).success === "boolean",
+  );
+};
+
 export default function UploadBox() {
   const [state, setState] = useState<UploadState>(initialState);
   const [isDragging, setIsDragging] = useState(false);
@@ -179,33 +221,42 @@ export default function UploadBox() {
         method: "POST",
         body: formData,
       });
-      let json: UploadApiResponse | null = null;
-      let parseError: unknown = null;
 
-      try {
-        json = (await res.json()) as UploadApiResponse;
-      } catch (err) {
-        parseError = err;
+      const responseText = await res.text();
+      let payload: UploadApiResponse | Record<string, unknown> | null = null;
+
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText) as
+            | UploadApiResponse
+            | Record<string, unknown>;
+        } catch {
+          payload = null;
+        }
       }
 
-      if (!json) {
-        const fallback = parseError
-          ? "Upload failed: invalid server response."
-          : `Upload failed (status ${res.status}).`;
-        throw new Error(fallback);
-      }
+      const payloadMessage = extractPayloadMessage(payload);
+      const structuredPayload = isUploadApiResponse(payload) ? payload : null;
+      const reportedFailure =
+        structuredPayload?.success === false || !res.ok;
 
-      if (!res.ok || json.success === false) {
+      if (reportedFailure) {
+        const fallbackStatus = res.status || 500;
         const message =
-          json.message ??
-          (res.ok
+          payloadMessage ??
+          (payload
             ? "Upload failed. Please try again."
-            : `Upload failed (status ${res.status}).`);
+            : `Upload failed (${fallbackStatus})`);
         throw new Error(message);
       }
 
+      if (!structuredPayload) {
+        const fallbackStatus = res.status || 500;
+        throw new Error(`Upload failed (${fallbackStatus})`);
+      }
+
       const responseMessage =
-        json.message ?? "Upload complete. We’ll review your CAD shortly.";
+        payloadMessage ?? "Upload complete. We’ll review your CAD shortly.";
 
       // Success → keep contact info, reset file + notes
       setState((prev) => ({
