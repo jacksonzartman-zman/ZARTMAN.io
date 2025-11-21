@@ -1,11 +1,27 @@
 "use client";
 
-import React, { useState, DragEvent, ChangeEvent, FormEvent } from "react";
+import React, {
+  useState,
+  DragEvent,
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+} from "react";
 import clsx from "clsx";
 import {
   CAD_ACCEPT_STRING,
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
+
+/**
+ * Minimal, easily testable iOS/iPadOS detector. Modern iPadOS (13+) reports
+ * itself as "Macintosh" but still includes the "Mobile" token in the UA.
+ */
+const isIOSUserAgent = (userAgent: string): boolean => {
+  if (!userAgent) return false;
+  if (/(ipad|iphone|ipod)/i.test(userAgent)) return true;
+  return /macintosh/i.test(userAgent) && /mobile/i.test(userAgent);
+};
 
 type UploadState = {
   file: File | null;
@@ -33,8 +49,15 @@ export default function UploadBox() {
   const [isSubmitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [isIOSDevice, setIsIOSDevice] = useState(false);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    setIsIOSDevice(isIOSUserAgent(navigator.userAgent));
+  }, []);
 
   const canSubmit = !!(state.file && state.name && state.email);
+  const fileInputAccept = isIOSDevice ? undefined : CAD_ACCEPT_STRING;
 
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -202,15 +225,17 @@ export default function UploadBox() {
             )}
           </p>
         </div>
-            <input
-              id="file"
-              name="file"
-              type="file"
-              className="hidden"
-              onChange={handleFileChange}
-              // iOS file pickers honor the accept list literally. Using the shared CAD_ACCEPT_STRING keeps STL/STEP/IGES/SolidWorks/PDF/ZIP visible instead of falling back to zip-only on iPad.
-              accept={CAD_ACCEPT_STRING}
-            />
+        <input
+          id="file"
+          name="file"
+          type="file"
+          className="hidden"
+          onChange={handleFileChange}
+          // iOS Safari greys out STL/STEP-type extensions when accept is strict.
+          // We relax it there and rely on server-side validation while keeping
+          // the shared CAD_ACCEPT_STRING everywhere else for desktop UX.
+          accept={fileInputAccept}
+        />
       </div>
 
       {/* Form fields */}
