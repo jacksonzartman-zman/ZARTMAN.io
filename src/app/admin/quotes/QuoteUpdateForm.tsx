@@ -1,6 +1,7 @@
 "use client";
 
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { handleQuoteFormSubmit, type QuoteFormState } from "@/app/admin/actions";
 import { formatDateInputValue } from "@/lib/formatDate";
 import {
@@ -27,10 +28,10 @@ const CURRENCY_OPTIONS = ["USD", "EUR", "GBP"];
 const INITIAL_STATE: QuoteFormState = {};
 
 export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
-  const [state, formAction] = useFormState(
+  const [state, formAction] = useActionState(
     handleQuoteFormSubmit,
     INITIAL_STATE,
-    );
+  );
 
   return (
     <form className="mt-4 space-y-5" action={formAction}>
