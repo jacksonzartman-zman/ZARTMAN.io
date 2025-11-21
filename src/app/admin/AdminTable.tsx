@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { formatDateTime } from "@/lib/formatDate";
 import type { UploadStatus } from "./constants";
 import { UPLOAD_STATUS_LABELS } from "./constants";
 
@@ -50,6 +51,10 @@ export default function AdminTable({ uploads }: AdminTableProps) {
       return matchesStatus && haystack.includes(query);
     });
   }, [uploads, filterStatus, search]);
+  const emptyStateMessage =
+    uploads.length === 0
+      ? "No uploads yet. Once customers upload files, they’ll appear here."
+      : "No uploads match your filters. Try clearing search or choosing a different status.";
 
   return (
     <div className="space-y-4">
@@ -112,7 +117,7 @@ export default function AdminTable({ uploads }: AdminTableProps) {
                   colSpan={6}
                   className="px-4 py-6 text-center text-sm text-slate-500"
                 >
-                  No uploads match your current filters.
+                  {emptyStateMessage}
                 </td>
               </tr>
             ) : (
@@ -123,9 +128,12 @@ export default function AdminTable({ uploads }: AdminTableProps) {
                 >
                   <td className="px-4 py-3 align-top">
                     <div className="flex flex-col">
-                      <span className="font-medium text-slate-50">
+                      <Link
+                        href={`/admin/uploads/${row.id}`}
+                        className="font-medium text-slate-50 hover:text-emerald-300"
+                      >
                         {row.customerName}
-                      </span>
+                      </Link>
                       <span className="text-xs text-emerald-400">
                         {row.customerEmail}
                       </span>
@@ -143,9 +151,7 @@ export default function AdminTable({ uploads }: AdminTableProps) {
                     </span>
                   </td>
                   <td className="px-4 py-3 align-top text-slate-300">
-                    {row.createdAt
-                      ? new Date(row.createdAt).toLocaleDateString()
-                      : "—"}
+                    {formatDateTime(row.createdAt, { includeTime: true })}
                   </td>
                   <td className="px-4 py-3 align-top text-right">
                     <Link

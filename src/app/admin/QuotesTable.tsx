@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { formatDateTime } from "@/lib/formatDate";
+import type { UploadStatus } from "./constants";
+import { UPLOAD_STATUS_LABELS } from "./constants";
 
 export type QuoteRow = {
   id: string;
@@ -6,7 +9,7 @@ export type QuoteRow = {
   customerEmail: string;
   company: string;
   fileName: string;
-  status: string | null;
+  status: UploadStatus | null;
   price: number | null;
   currency: string | null;
   targetDate: string | null;
@@ -15,6 +18,7 @@ export type QuoteRow = {
 
 type QuotesTableProps = {
   quotes: QuoteRow[];
+  totalCount: number;
 };
 
 function formatMoney(amount: number | null, currency: string | null) {
@@ -25,7 +29,13 @@ function formatMoney(amount: number | null, currency: string | null) {
   return `${cur} ${value.toFixed(2)}`;
 }
 
-export default function QuotesTable({ quotes }: QuotesTableProps) {
+export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
+  const showEmptyState = quotes.length === 0;
+  const emptyMessage =
+    totalCount === 0
+      ? "No quotes yet. Once customers upload files and request pricing, they’ll appear here."
+      : "No quotes match your filters. Try clearing search or choosing a different status.";
+
   return (
     <div className="mt-4 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/60">
       <table className="min-w-full text-left text-sm">
@@ -42,32 +52,35 @@ export default function QuotesTable({ quotes }: QuotesTableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-900">
-          {quotes.length === 0 ? (
+            {showEmptyState ? (
             <tr>
               <td
                 colSpan={8}
                 className="px-4 py-8 text-center text-sm text-slate-500"
               >
-                No quotes match your filters.
+                  {emptyMessage}
               </td>
             </tr>
           ) : (
             quotes.map((row) => (
-              <tr key={row.id} className="hover:bg-slate-900/60">
+                <tr key={row.id} className="hover:bg-slate-900/60">
                 <td className="px-4 py-3 align-top">
-                  <div className="flex flex-col">
-                    <span className="text-sm text-slate-100">
-                      {row.customerName}
-                    </span>
-                    {row.customerEmail && (
-                      <a
-                        href={`mailto:${row.customerEmail}`}
-                        className="text-xs text-emerald-400 hover:underline"
+                    <div className="flex flex-col">
+                      <Link
+                        href={`/admin/quotes/${row.id}`}
+                        className="text-sm text-slate-100 hover:text-emerald-300"
                       >
-                        {row.customerEmail}
-                      </a>
-                    )}
-                  </div>
+                        {row.customerName}
+                      </Link>
+                      {row.customerEmail && (
+                        <a
+                          href={`mailto:${row.customerEmail}`}
+                          className="text-xs text-emerald-400 hover:underline"
+                        >
+                          {row.customerEmail}
+                        </a>
+                      )}
+                    </div>
                 </td>
                 <td className="px-4 py-3 align-top text-sm text-slate-200">
                   {row.company || "—"}
@@ -76,18 +89,18 @@ export default function QuotesTable({ quotes }: QuotesTableProps) {
                   {row.fileName}
                 </td>
                 <td className="px-4 py-3 align-top">
-                  <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                    {(row.status ?? "new").replace("_", " ")}
+                    <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                      {UPLOAD_STATUS_LABELS[(row.status ?? "new") as UploadStatus]}
                   </span>
                 </td>
                 <td className="px-4 py-3 align-top text-xs text-slate-200">
                   {formatMoney(row.price, row.currency)}
                 </td>
                 <td className="px-4 py-3 align-top text-xs text-slate-400">
-                  {row.targetDate ?? "—"}
+                    {formatDateTime(row.targetDate)}
                 </td>
                 <td className="px-4 py-3 align-top text-xs text-slate-400">
-                  {row.createdAt}
+                    {formatDateTime(row.createdAt, { includeTime: true })}
                 </td>
                 <td className="px-4 py-3 align-top text-right text-xs">
                   <Link
