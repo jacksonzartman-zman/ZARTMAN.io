@@ -12,14 +12,10 @@ type QuotesPageSearchParams = {
   search?: string | string[];
 };
 
-type SearchParamsInput =
-  | QuotesPageSearchParams
-  | URLSearchParams
-  | null
-  | undefined;
+type SearchParamsInput = QuotesPageSearchParams | URLSearchParams;
 
 type QuotesPageProps = {
-  searchParams?: SearchParamsInput | Promise<SearchParamsInput>;
+  searchParams?: Promise<SearchParamsInput>;
 };
 
 const VALID_STATUS_VALUES: UploadStatus[] = [
@@ -50,8 +46,14 @@ const toParamValue = (values: string[]): string | string[] | undefined => {
   return values;
 };
 
+type ResolvableSearchParams =
+  | QuotesPageProps["searchParams"]
+  | SearchParamsInput
+  | null
+  | undefined;
+
 const resolveSearchParams = async (
-  rawSearchParams?: QuotesPageProps["searchParams"],
+  rawSearchParams?: ResolvableSearchParams,
 ): Promise<QuotesPageSearchParams> => {
   const resolved = await rawSearchParams;
 
