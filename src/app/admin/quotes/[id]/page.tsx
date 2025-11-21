@@ -371,6 +371,14 @@ export default async function QuoteDetailPage({
   const fileNames = extractFileNames(quote);
   const statusLabel = UPLOAD_STATUS_LABELS[status] ?? "Unknown";
   const cadPreview = await getCadPreviewForQuote(quote);
+  const cadPreviewUrl =
+    typeof cadPreview.signedUrl === "string" && cadPreview.signedUrl.trim().length > 0
+      ? cadPreview.signedUrl
+      : null;
+  const cadPreviewFallback =
+    typeof cadPreview.reason === "string" && cadPreview.reason.trim().length > 0
+      ? cadPreview.reason
+      : undefined;
   const dfmNotes =
     typeof quote.dfm_notes === "string" && quote.dfm_notes.trim().length > 0
       ? quote.dfm_notes
@@ -380,47 +388,47 @@ export default async function QuoteDetailPage({
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-8">
       {wasUpdated && <SuccessBanner message="Quote updated." />}
 
-      <header className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Quote workspace
-        </p>
-        <h1 className="text-3xl font-semibold text-slate-50">
-          Quote · {customerName}
-        </h1>
-        <p className="text-sm text-slate-400">
-          Customer context synced from Supabase view
-          <span className="ml-1 font-mono text-xs text-slate-500">
-            quotes_with_uploads
-          </span>
-        </p>
-      </header>
+        <header className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Quote workspace
+          </p>
+          <h1 className="text-3xl font-semibold text-slate-50">
+            Quote · {customerName}
+          </h1>
+          <p className="text-sm text-slate-400">
+            Customer context synced from Supabase view
+            <span className="ml-1 font-mono text-xs text-slate-500">
+              quotes_with_uploads
+            </span>
+          </p>
+        </header>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 space-y-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Customer
-              </p>
-              <p className="mt-1 text-lg font-medium text-slate-50">
-                {customerName}
-              </p>
-              {quote.customer_email && (
-                <a
-                  href={`mailto:${quote.customer_email}`}
-                  className="text-sm text-emerald-400 hover:underline"
-                >
-                  {quote.customer_email}
-                </a>
-              )}
-              {quote.company && (
-                <p className="text-sm text-slate-300">{quote.company}</p>
-              )}
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Customer
+                </p>
+                <p className="mt-1 text-lg font-medium text-slate-50">
+                  {customerName}
+                </p>
+                {quote.customer_email && (
+                  <a
+                    href={`mailto:${quote.customer_email}`}
+                    className="text-sm text-emerald-400 hover:underline"
+                  >
+                    {quote.customer_email}
+                  </a>
+                )}
+                {quote.company && (
+                  <p className="text-sm text-slate-300">{quote.company}</p>
+                )}
+              </div>
+              <span className="inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                {statusLabel}
+              </span>
             </div>
-            <span className="inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-              {statusLabel}
-            </span>
-          </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
@@ -463,14 +471,14 @@ export default async function QuoteDetailPage({
                   3D preview
                 </p>
                 <span className="text-[11px] font-medium uppercase tracking-wide text-slate-600">
-                  {cadPreview.signedUrl ? "Interactive STL" : "Unavailable"}
+                  {cadPreviewUrl ? "Interactive STL" : "Unavailable"}
                 </span>
               </div>
               <div className="mt-4">
                 <CadViewer
-                  src={cadPreview.signedUrl}
+                  src={cadPreviewUrl}
                   fileName={cadPreview.fileName}
-                  fallbackMessage={cadPreview.reason}
+                  fallbackMessage={cadPreviewFallback}
                   height={320}
                 />
               </div>
@@ -518,31 +526,29 @@ export default async function QuoteDetailPage({
                 </p>
               </div>
             </div>
-        </section>
+          </section>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-          <h2 className="text-base font-semibold text-slate-50">
-            Update quote
-          </h2>
-          <p className="mt-1 text-sm text-slate-400">
+          <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+            <h2 className="text-base font-semibold text-slate-50">Update quote</h2>
+            <p className="mt-1 text-sm text-slate-400">
               Adjust status, pricing, currency, target date, DFM notes, and internal
               notes. Changes are saved back to Supabase and show up instantly on the
               dashboard.
-          </p>
+            </p>
 
-          <QuoteUpdateForm
-            quote={{
-              id: quote.id,
-              status,
-              price: quote.price,
-              currency: quote.currency,
-              targetDate: quote.target_date,
-              internalNotes: quote.internal_notes,
+            <QuoteUpdateForm
+              quote={{
+                id: quote.id,
+                status,
+                price: quote.price,
+                currency: quote.currency,
+                targetDate: quote.target_date,
+                internalNotes: quote.internal_notes,
                 dfmNotes,
-            }}
-          />
-        </section>
-      </div>
+              }}
+            />
+          </section>
+        </div>
     </main>
   );
 }
