@@ -13,9 +13,9 @@ const CAD_EXTENSIONS = [
 const CAD_EXTENSION_SET = new Set<string>(CAD_EXTENSIONS);
 
 /**
- * When this accept string is attached to <input type="file">, iOS/iPadOS Safari
- * will keep STL/STEP-style formats selectable instead of graying them out.
- * Apple requires a literal list of dot-prefixed extensions.
+ * Strict accept list for desktop file inputs. iOS/iPadOS Safari still greys out
+ * some of these extensions, so the client relaxes the attribute there and
+ * relies on server-side validation instead.
  */
 const CAD_ACCEPT_STRING = CAD_EXTENSIONS.map((ext) => `.${ext}`).join(",");
 
