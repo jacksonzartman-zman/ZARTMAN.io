@@ -22,19 +22,15 @@ const initialState: UploadState = {
 };
 
 const ALLOWED_EXTENSIONS = [
+  "stl",
   "step",
   "stp",
   "iges",
   "igs",
-  "stl",
   "sldprt",
   "sldasm",
+  "pdf",
   "zip",
-  "prt",
-  "sat",
-  "x_t",
-  "x_b",
-  "ipt",
 ];
 
 function isAllowedFile(file: File): boolean {
@@ -78,9 +74,9 @@ export default function UploadBox() {
     if (!file) return;
 
     if (!isAllowedFile(file)) {
-      setError(
-        "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, or zipped CAD files."
-      );
+        setError(
+          "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files."
+        );
       setSuccess(false);
       setState((prev) => ({ ...prev, file: null, fileName: null }));
       return;
@@ -96,9 +92,9 @@ export default function UploadBox() {
     if (!file) return;
 
     if (!isAllowedFile(file)) {
-      setError(
-        "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, or zipped CAD files."
-      );
+        setError(
+          "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files."
+        );
       setSuccess(false);
       setState((prev) => ({ ...prev, file: null, fileName: null }));
       // Clear so they can re-choose
@@ -129,9 +125,9 @@ export default function UploadBox() {
     }
 
     if (!isAllowedFile(state.file)) {
-      setError(
-        "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, or zipped CAD files."
-      );
+        setError(
+          "Unsupported file type. Please upload STEP, IGES, STL, SolidWorks, PDF, or zipped CAD files."
+        );
       return;
     }
 
@@ -196,9 +192,9 @@ export default function UploadBox() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        <p className="text-xs text-muted">
-          STEP, IGES, STL, SolidWorks, or zipped assemblies. Max ~25 MB.
-        </p>
+          <p className="text-xs text-muted">
+            STEP, IGES, STL, SolidWorks, PDF, or zipped assemblies. Max ~25 MB.
+          </p>
         <div className="mt-4 flex flex-col items-center gap-2">
           <label
             htmlFor="file"
@@ -218,14 +214,15 @@ export default function UploadBox() {
             )}
           </p>
         </div>
-        <input
-          id="file"
-          name="file"
-          type="file"
-          className="hidden"
-          onChange={handleFileChange}
-          accept=".step,.stp,.iges,.igs,.stl,.sldprt,.sldasm,.zip,.prt,.sat,.x_t,.x_b,.ipt"
-        />
+          <input
+            id="file"
+            name="file"
+            type="file"
+            className="hidden"
+            onChange={handleFileChange}
+            // iOS file pickers honor the accept list literally. Limiting to this set ensures STL/STEP/IGES/SolidWorks/PDF/ZIP stay selectable instead of defaulting to ZIP-only on iPad.
+            accept=".stl,.step,.stp,.iges,.igs,.sldprt,.sldasm,.pdf,.zip"
+          />
       </div>
 
       {/* Form fields */}
