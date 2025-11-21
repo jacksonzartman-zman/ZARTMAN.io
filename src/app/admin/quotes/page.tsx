@@ -1,6 +1,7 @@
 // src/app/admin/quotes/page.tsx
 
 import { supabaseServer } from "@/lib/supabaseServer";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 import type { UploadStatus } from "../constants";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
 import StatusFilterChips from "../StatusFilterChips";
@@ -12,7 +13,10 @@ type QuotesPageSearchParams = {
   search?: string | string[];
 };
 
-type SearchParamsInput = QuotesPageSearchParams | URLSearchParams;
+type SearchParamsInput =
+  | QuotesPageSearchParams
+  | URLSearchParams
+  | ReadonlyURLSearchParams;
 
 type QuotesPageProps = {
   searchParams?: Promise<SearchParamsInput>;
@@ -34,7 +38,9 @@ const getFirstParamValue = (value?: string | string[]) => {
   return value;
 };
 
-const toParamValue = (values: string[]): string | string[] | undefined => {
+const toParamValue = (
+  values: string[],
+): string | string[] | undefined => {
   if (values.length === 0) {
     return undefined;
   }
@@ -52,6 +58,16 @@ type ResolvableSearchParams =
   | null
   | undefined;
 
+const isURLSearchParamsLike = (
+  value: unknown,
+): value is Pick<URLSearchParams, "getAll"> => {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).getAll === "function"
+  );
+};
+
 const resolveSearchParams = async (
   rawSearchParams?: ResolvableSearchParams,
 ): Promise<QuotesPageSearchParams> => {
@@ -61,14 +77,18 @@ const resolveSearchParams = async (
     return {};
   }
 
-  if (resolved instanceof URLSearchParams) {
+  if (isURLSearchParamsLike(resolved)) {
     return {
       status: toParamValue(resolved.getAll("status")),
       search: toParamValue(resolved.getAll("search")),
     };
   }
 
-  return resolved;
+  const maybeObject = resolved as QuotesPageSearchParams;
+  return {
+    status: maybeObject.status,
+    search: maybeObject.search,
+  };
 };
 
 export default async function QuotesPage({
@@ -88,7 +108,10 @@ export default async function QuotesPage({
     : "all";
 
   const searchTerm = typeof rawSearch === "string" ? rawSearch : "";
-  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const normalizedSearch = searchTerm
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 
   const { data, error } = await supabaseServer
     .from("quotes_with_uploads")
@@ -121,7 +144,7 @@ export default async function QuotesPage({
       createdAt: row.created_at,
     })) ?? [];
 
-  const rowsToShow = rows.filter((row) => {
+  const filteredQuotes = rows.filter((row) => {
     const rowStatus = (row.status ?? "new").toLowerCase();
     const matchesStatus =
       statusFilter === "all" ? true : rowStatus === statusFilter;
@@ -130,9 +153,9 @@ export default async function QuotesPage({
       return matchesStatus;
     }
 
-    const haystack = `${row.customerName} ${row.customerEmail} ${row.company ?? ""} ${row.fileName ?? ""} ${
-      row.status ?? ""
-    }`
+    const haystack = `${row.customerName ?? ""} ${row.customerEmail ?? ""} ${
+      row.company ?? ""
+    } ${row.fileName ?? ""} ${row.status ?? ""}`
       .toLowerCase()
       .replace(/\s+/g, " ");
 
@@ -153,7 +176,7 @@ export default async function QuotesPage({
           currentStatus={statusFilter === "all" ? "" : statusFilter}
           basePath="/admin/quotes"
         />
-        <form className="w-full md:w-80" method="get">
+        <form className="w-full md:w-80" method="get" action="/admin/quotes">
           {statusFilter !== "all" && (
             <input type="hidden" name="status" value={statusFilter} />
           )}
@@ -167,7 +190,7 @@ export default async function QuotesPage({
         </form>
       </div>
 
-      <QuotesTable quotes={rowsToShow} />
+      <QuotesTable quotes={filteredQuotes} />
     </main>
   );
 }
