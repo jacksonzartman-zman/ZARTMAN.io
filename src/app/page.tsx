@@ -1,5 +1,5 @@
+import Link from "next/link";
 import EarlyAccessForm from "@/components/EarlyAccessForm";
-import UploadBox from "@/components/UploadBox";
 
 const HERO_PREVIEW_ROWS = [
   {
@@ -59,20 +59,22 @@ export default function HomePage() {
               </li>
             </ul>
 
-            <EarlyAccessForm />
+              <EarlyAccessForm />
 
-            <div className="flex flex-wrap items-center gap-4">
-              <a
-                href="#upload"
-                className="inline-flex items-center justify-center rounded-pill bg-brand px-6 py-2 text-sm font-semibold text-ink shadow-lift-sm hover:bg-brand-soft transition-colors"
-              >
-                Upload a CAD file
-              </a>
-              <p className="text-xs sm:text-sm text-ink-muted">
-                STEP, IGES, STL, SolidWorks &amp; zipped assemblies. No spam, no
-                nurture sequence — just a fast quote.
-              </p>
-            </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <Link
+                  href="/quote"
+                  className="inline-flex items-center justify-center rounded-pill bg-brand px-6 py-2 text-sm font-semibold text-ink shadow-lift-sm hover:bg-brand-soft transition-colors"
+                >
+                  Get a quote
+                </Link>
+                <Link
+                  href="#how-it-works"
+                  className="inline-flex items-center justify-center rounded-pill border border-line-subtle px-6 py-2 text-sm font-semibold text-ink transition-colors hover:text-ink"
+                >
+                  See how it works
+                </Link>
+              </div>
           </div>
 
           {/* Right side: admin preview + intake */}
@@ -115,15 +117,31 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4 shadow-lift-sm">
-              <UploadBox />
-            </div>
+              <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-5 shadow-lift-sm space-y-4">
+                <p className="text-sm font-semibold text-ink">
+                  CAD intake lives on /quote
+                </p>
+                <p className="text-sm text-ink-muted">
+                  STEP, IGES, STL, SolidWorks &amp; zipped assemblies. Uploads land in
+                  Supabase storage and show up instantly in the admin dashboard.
+                </p>
+                <ul className="space-y-2 text-sm text-ink-soft">
+                  <li>• Secure storage with automatic filename sanitizing.</li>
+                  <li>• Status tracking that mirrors the admin cockpit.</li>
+                  <li>• DFM notes + pricing threads kept in one place.</li>
+                </ul>
+                <Link
+                  href="/quote"
+                  className="inline-flex w-full items-center justify-center rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-black shadow-lift-sm transition-colors hover:bg-emerald-400"
+                >
+                  Go to upload flow
+                </Link>
+              </div>
           </div>
         </section>
 
         {/* HOW IT WORKS */}
-        <section className="space-y-6">
+          <section id="how-it-works" className="space-y-6 scroll-mt-24">
           <header className="space-y-2">
             <h2 className="text-lg sm:text-xl font-semibold text-ink">
               How it works
@@ -182,13 +200,6 @@ export default function HomePage() {
             &quot;Here&apos;s what I&apos;m trying to do. Help me make it
             real.&quot;
           </p>
-        </section>
-
-        {/* UPLOAD SECTION ANCHOR (for the hero CTA link) */}
-        <section id="upload">
-          {/* We already render UploadBox in the hero on desktop.
-              This anchor makes sure the "Upload a CAD file" button scrolls
-              users close to the flow on smaller screens. */}
         </section>
 
         {/* FOOTER */}

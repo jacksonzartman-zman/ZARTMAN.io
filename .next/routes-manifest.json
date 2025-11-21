@@ -60,6 +60,12 @@
       "regex": "^/admin/quotes(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/admin/quotes(?:/)?$"
+    },
+    {
+      "page": "/quote",
+      "regex": "^/quote(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/quote(?:/)?$"
     }
   ],
   "dataRoutes": [],
