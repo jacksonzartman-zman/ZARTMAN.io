@@ -69,11 +69,21 @@ async function runScenario(
   const file = new File([buffer], fileName, { type: "" }); // simulate iOS Safari (empty type)
 
   const formData = new FormData();
-  formData.append("file", file);
-  formData.append("name", `STL Harness (${label})`);
-  formData.append("email", "stl-harness@example.com");
-  formData.append("company", "Cursor QA");
-  formData.append("notes", `Scenario: ${label}`);
+    formData.append("file", file);
+    formData.append("name", `STL Harness (${label})`);
+    formData.append("first_name", "STL");
+    formData.append("last_name", "Harness");
+    formData.append("email", "stl-harness@example.com");
+    formData.append("company", "Cursor QA");
+    formData.append("phone", "+1-555-0100");
+    formData.append("manufacturing_process", "CNC machining");
+    formData.append("quantity", "10 proto / 100 production");
+    formData.append("shipping_postal_code", "94107");
+    formData.append("export_restriction", "Not applicable / None");
+    formData.append("rfq_reason", "Need a quote for a new project");
+    formData.append("notes", `Scenario: ${label}`);
+    formData.append("itar_acknowledged", "true");
+    formData.append("terms_accepted", "true");
 
   const request = new NextRequest("http://localhost/api/upload", {
     method: "POST",
