@@ -1,30 +1,6 @@
 {
   "version": 4,
   "routes": {
-    "/": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/",
-      "dataRoute": "/index.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
     "/_not-found": {
       "initialStatus": 404,
       "experimentalBypassFor": [
@@ -49,13 +25,37 @@
         "x-next-revalidated-tags",
         "x-next-revalidate-tag-token"
       ]
+    },
+    "/": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/",
+      "dataRoute": "/index.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
     }
   },
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "046fab0a014a311d8f685bdea56c5ba3",
-    "previewModeSigningKey": "15fb7454f7f17e2d93e20e362078492bc68c80f2cb3745f4646aff60bca9a8b0",
-    "previewModeEncryptionKey": "7258f755c2156a4e354e854ac67ee7f3a95ae273d88d0f830a7a93f5bea8445a"
+    "previewModeId": "3699cb95ecb986e9d04ebbe705173132",
+    "previewModeSigningKey": "3debf0f16bb2fd6c70df50dd05f0b630936881ab08b8980d3da54cd618aa8e63",
+    "previewModeEncryptionKey": "2881fa359624ede8fbe584c8bf108602224f6d96dd4e9e1dae29dcf68946749b"
   }
 }
