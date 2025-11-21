@@ -94,16 +94,38 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const file = fileEntry;
-    logContext.fileName = file.name;
-    logContext.fileSize = file.size;
-    logContext.fileSizeLabel = formatFileSizeLabel(file.size);
-    logContext.providedType = file.type || "";
+      const file = fileEntry;
+      logContext.fileName = file.name;
+      logContext.fileSize = file.size;
+      logContext.fileSizeLabel = formatFileSizeLabel(file.size);
+      logContext.providedType = file.type || "";
 
-    const name = getFormValue(formData.get("name"));
-    const email = getFormValue(formData.get("email"));
-    const company = getFormValue(formData.get("company"));
-    const requestNotes = getFormValue(formData.get("notes"));
+      const rawName = getFormValue(formData.get("name"));
+      const email = getFormValue(formData.get("email"));
+      const company = getFormValue(formData.get("company"));
+      const requestNotes = getFormValue(formData.get("notes"));
+      const firstName = getFormValue(formData.get("first_name"));
+      const lastName = getFormValue(formData.get("last_name"));
+      const phone = getFormValue(formData.get("phone"));
+      const manufacturingProcess = getFormValue(
+        formData.get("manufacturing_process"),
+      );
+      const quantity = getFormValue(formData.get("quantity"));
+      const shippingPostalCode = getFormValue(
+        formData.get("shipping_postal_code"),
+      );
+      const exportRestriction = getFormValue(
+        formData.get("export_restriction"),
+      );
+      const rfqReason = getFormValue(formData.get("rfq_reason"));
+      const itarAcknowledged = parseBooleanFlag(
+        formData.get("itar_acknowledged"),
+      );
+      const termsAccepted = parseBooleanFlag(
+        formData.get("terms_accepted"),
+      );
+      const contactName =
+        rawName || [firstName, lastName].filter(Boolean).join(" ").trim();
     const extension = getFileExtension(file.name);
     const isStlUpload = extension === "stl";
     logContext.extension = extension;
@@ -114,10 +136,10 @@ export async function POST(req: NextRequest) {
       bucket: CAD_BUCKET,
     });
 
-    if (!name || !email) {
+      if (!contactName || !email) {
       logUploadDebug("Rejecting upload: missing contact info", {
         ...logContext,
-        namePresent: Boolean(name),
+          namePresent: Boolean(contactName),
         emailPresent: Boolean(email),
       });
       return buildError(
@@ -126,7 +148,7 @@ export async function POST(req: NextRequest) {
         {
           step: "validate-contact",
           missingFields: {
-            name: !name,
+              name: !contactName,
             email: !email,
           },
         },
@@ -229,7 +251,7 @@ export async function POST(req: NextRequest) {
       .from("customers")
       .upsert(
         {
-          name,
+            name: contactName,
           email,
           company: company || null,
         },
@@ -260,11 +282,21 @@ export async function POST(req: NextRequest) {
         file_name: file.name,
         file_path: storagePath,
         mime_type: mimeType,
-        name,
+          name: contactName,
         email,
         company: company || null,
         notes: requestNotes || null,
         customer_id: customerId,
+          first_name: firstName || null,
+          last_name: lastName || null,
+          phone: phone || null,
+          manufacturing_process: manufacturingProcess || null,
+          quantity: quantity || null,
+          shipping_postal_code: shippingPostalCode || null,
+          export_restriction: exportRestriction || null,
+          rfq_reason: rfqReason || null,
+          itar_acknowledged: itarAcknowledged,
+          terms_accepted: termsAccepted,
       })
       .select("id, file_name, file_path, mime_type, customer_id, quote_id")
       .single();
@@ -361,6 +393,22 @@ export async function POST(req: NextRequest) {
 
 function getFormValue(value: FormDataEntryValue | null): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function parseBooleanFlag(value: FormDataEntryValue | null): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return (
+    normalized === "true" ||
+    normalized === "1" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
 }
 
 function formatFileSizeLabel(bytes: number): string {

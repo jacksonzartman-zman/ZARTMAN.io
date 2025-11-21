@@ -1,6 +1,6 @@
 "use client";
 
-import React, {
+import {
   useState,
   DragEvent,
   ChangeEvent,
@@ -16,6 +16,29 @@ import {
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
 
+const MANUFACTURING_PROCESS_OPTIONS = [
+  "CNC machining",
+  "3D printing",
+  "Sheet metal",
+  "Injection molding",
+  "Not sure yet",
+] as const;
+
+const EXPORT_RESTRICTION_OPTIONS = [
+  "Not applicable / None",
+  "ITAR",
+  "EAR",
+  "EU Dual Use",
+  "Other / Unsure",
+] as const;
+
+const RFQ_REASON_OPTIONS = [
+  "Need a quote for a new project",
+  "Comparing suppliers",
+  "Existing production, looking for backup",
+  "Just exploring capabilities",
+] as const;
+
 /**
  * Minimal, easily testable iOS/iPadOS detector. Modern iPadOS (13+) reports
  * itself as "Macintosh" but still includes the "Mobile" token in the UA.
@@ -29,23 +52,56 @@ const isIOSUserAgent = (userAgent: string): boolean => {
 type UploadState = {
   file: File | null;
   fileName: string | null;
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   company: string;
+  phone: string;
+  manufacturingProcess: string;
+  quantity: string;
+  shippingPostalCode: string;
+  exportRestriction: string;
+  rfqReason: string;
   notes: string;
+  itarAcknowledged: boolean;
+  termsAccepted: boolean;
 };
+
+type FieldErrorKey =
+  | "file"
+  | "firstName"
+  | "lastName"
+  | "email"
+  | "manufacturingProcess"
+  | "quantity"
+  | "shippingPostalCode"
+  | "exportRestriction"
+  | "itarAcknowledged"
+  | "termsAccepted";
+
+type FieldErrors = Partial<Record<FieldErrorKey, string>>;
 
 const initialState: UploadState = {
   file: null,
   fileName: null,
-  name: "",
+  firstName: "",
+  lastName: "",
   email: "",
   company: "",
+  phone: "",
+  manufacturingProcess: "",
+  quantity: "",
+  shippingPostalCode: "",
+  exportRestriction: "",
+  rfqReason: "",
   notes: "",
+  itarAcknowledged: false,
+  termsAccepted: false,
 };
 
 const MAX_UPLOAD_SIZE_LABEL = `${bytesToMegabytes(MAX_UPLOAD_SIZE_BYTES)} MB`;
 const FILE_TYPE_ERROR_MESSAGE = `Unsupported file type. Please upload ${CAD_FILE_TYPE_DESCRIPTION}.`;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
 type UploadFileDescriptor = {
   bucket: string;
@@ -145,8 +201,57 @@ const validateCadFile = (file: File): string | null => {
   return null;
 };
 
+const validateFormFields = (state: UploadState): FieldErrors => {
+  const errors: FieldErrors = {};
+  const trimmedFirstName = state.firstName.trim();
+  const trimmedLastName = state.lastName.trim();
+  const trimmedEmail = state.email.trim();
+  const trimmedQuantity = state.quantity.trim();
+  const postal = state.shippingPostalCode;
+
+  if (!state.file) {
+    errors.file = "Attach your CAD file before submitting.";
+  }
+  if (!trimmedFirstName) {
+    errors.firstName = "First name is required.";
+  }
+  if (!trimmedLastName) {
+    errors.lastName = "Last name is required.";
+  }
+  if (!trimmedEmail) {
+    errors.email = "Business email is required.";
+  } else if (!EMAIL_REGEX.test(trimmedEmail)) {
+    errors.email = "Enter a valid email address.";
+  }
+  if (!state.manufacturingProcess) {
+    errors.manufacturingProcess = "Select a manufacturing process.";
+  }
+  if (!trimmedQuantity) {
+    errors.quantity = "Share the quantity or volumes you need.";
+  }
+  if (postal && !postal.trim()) {
+    errors.shippingPostalCode = "Enter a postal code or leave this blank.";
+  }
+  if (!state.exportRestriction) {
+    errors.exportRestriction = "Select the export restriction.";
+  }
+  if (!state.itarAcknowledged) {
+    errors.itarAcknowledged =
+      "Please confirm these parts are not subject to ITAR.";
+  }
+  if (!state.termsAccepted) {
+    errors.termsAccepted = "Please accept the terms before submitting.";
+  }
+
+  return errors;
+};
+
+const hasErrors = (fieldErrors: FieldErrors) =>
+  Object.keys(fieldErrors).length > 0;
+
 export default function UploadBox() {
   const [state, setState] = useState<UploadState>(initialState);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,8 +265,27 @@ export default function UploadBox() {
     setIsIOSDevice(isIOSUserAgent(navigator.userAgent));
   }, []);
 
-  const canSubmit = !!(state.file && state.name && state.email);
+  const canSubmit = Boolean(
+    state.file &&
+      state.firstName.trim() &&
+      state.lastName.trim() &&
+      state.email.trim() &&
+      state.manufacturingProcess &&
+      state.quantity.trim() &&
+      state.exportRestriction &&
+      state.itarAcknowledged &&
+      state.termsAccepted,
+  );
   const fileInputAccept = isIOSDevice ? undefined : CAD_ACCEPT_STRING;
+
+  const clearFieldError = (field: FieldErrorKey) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -191,6 +315,7 @@ export default function UploadBox() {
     const validationError = validateCadFile(file);
     if (validationError) {
       setError(validationError);
+      setFieldErrors((prev) => ({ ...prev, file: validationError }));
       setStatusMessage(null);
       setSuccess(false);
       setSuccessMessage(null);
@@ -198,6 +323,7 @@ export default function UploadBox() {
       return;
     }
 
+    clearFieldError("file");
     setError(null);
     setSuccess(false);
     setSuccessMessage(null);
@@ -212,15 +338,16 @@ export default function UploadBox() {
     const validationError = validateCadFile(file);
     if (validationError) {
       setError(validationError);
+      setFieldErrors((prev) => ({ ...prev, file: validationError }));
       setStatusMessage(null);
       setSuccess(false);
       setSuccessMessage(null);
       setState((prev) => ({ ...prev, file: null, fileName: null }));
-      // Clear so they can re-choose
       e.target.value = "";
       return;
     }
 
+    clearFieldError("file");
     setError(null);
     setSuccess(false);
     setSuccessMessage(null);
@@ -228,11 +355,40 @@ export default function UploadBox() {
     setState((prev) => ({ ...prev, file, fileName: file.name }));
   };
 
-  const handleChange =
-    (field: keyof UploadState) =>
-    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  type InputFieldKey =
+    | "firstName"
+    | "lastName"
+    | "email"
+    | "company"
+    | "phone"
+    | "manufacturingProcess"
+    | "quantity"
+    | "shippingPostalCode"
+    | "exportRestriction"
+    | "rfqReason"
+    | "notes";
+
+  const handleInputChange =
+    (field: InputFieldKey) =>
+    (
+      e:
+        | ChangeEvent<HTMLInputElement>
+        | ChangeEvent<HTMLTextAreaElement>
+        | ChangeEvent<HTMLSelectElement>,
+    ) => {
       const value = e.target.value;
       setState((prev) => ({ ...prev, [field]: value }));
+      if (field in fieldErrors) {
+        clearFieldError(field as FieldErrorKey);
+      }
+    };
+
+  const handleCheckboxChange =
+    (field: "itarAcknowledged" | "termsAccepted") =>
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const checked = e.target.checked;
+      setState((prev) => ({ ...prev, [field]: checked }));
+      clearFieldError(field);
     };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -242,35 +398,72 @@ export default function UploadBox() {
     setSuccessMessage(null);
     setStatusMessage("Validating file…");
 
+    const validationErrors = validateFormFields(state);
+    if (hasErrors(validationErrors)) {
+      setStatusMessage(null);
+      setFieldErrors(validationErrors);
+      setError("Please fix the highlighted fields before submitting.");
+      return;
+    }
+
     if (!state.file) {
       setStatusMessage(null);
-      setError("Please select a CAD file to upload.");
+      setFieldErrors((prev) => ({
+        ...prev,
+        file: "Attach your CAD file before submitting.",
+      }));
+      setError("Attach your CAD file before submitting.");
       return;
     }
 
     const fileValidationError = validateCadFile(state.file);
     if (fileValidationError) {
       setStatusMessage(null);
+      setFieldErrors((prev) => ({ ...prev, file: fileValidationError }));
       setError(fileValidationError);
       return;
     }
 
-    if (!state.name || !state.email) {
-      setStatusMessage(null);
-      setError("Please add at least your name and email.");
-      return;
-    }
-
+    setFieldErrors({});
     setSubmitting(true);
     setStatusMessage("Uploading file to Supabase…");
 
     try {
+      const trimmedFirstName = state.firstName.trim();
+      const trimmedLastName = state.lastName.trim();
+      const fullName = [trimmedFirstName, trimmedLastName]
+        .filter(Boolean)
+        .join(" ");
+      const trimmedEmail = state.email.trim();
+      const trimmedCompany = state.company.trim();
+      const trimmedPhone = state.phone.trim();
+      const trimmedQuantity = state.quantity.trim();
+      const trimmedZip = state.shippingPostalCode.trim();
+      const trimmedNotes = state.notes.trim();
+      const trimmedReason = state.rfqReason.trim();
+
       const formData = new FormData();
       formData.append("file", state.file);
-      formData.append("name", state.name);
-      formData.append("email", state.email);
-      formData.append("company", state.company);
-      formData.append("notes", state.notes);
+      formData.append("name", fullName);
+      formData.append("email", trimmedEmail);
+      formData.append("company", trimmedCompany);
+      formData.append("phone", trimmedPhone);
+      formData.append("first_name", trimmedFirstName);
+      formData.append("last_name", trimmedLastName);
+      formData.append("manufacturing_process", state.manufacturingProcess);
+      formData.append("quantity", trimmedQuantity);
+      formData.append("shipping_postal_code", trimmedZip);
+      formData.append("export_restriction", state.exportRestriction);
+      formData.append("rfq_reason", trimmedReason);
+      formData.append("notes", trimmedNotes);
+      formData.append(
+        "itar_acknowledged",
+        state.itarAcknowledged ? "true" : "false",
+      );
+      formData.append(
+        "terms_accepted",
+        state.termsAccepted ? "true" : "false",
+      );
 
       const res = await fetch("/api/upload", {
         method: "POST",
@@ -333,28 +526,26 @@ export default function UploadBox() {
             : null;
 
       const responseMessage = [
-        payloadMessage ?? "Upload complete. We’ll review your CAD shortly.",
+        payloadMessage ?? "Upload complete. We'll review your CAD shortly.",
         metadataLine,
       ]
         .filter(Boolean)
         .join(" ");
 
       setStatusMessage(null);
-
-      // Success → keep contact info, reset file + notes
-      setState((prev) => ({
-        ...prev,
-        file: null,
-        fileName: null,
-        notes: "",
-      }));
+      setState(initialState);
+      setFieldErrors({});
       setSuccess(true);
       setSuccessMessage(responseMessage);
       setError(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setStatusMessage(null);
-      setError(err?.message ?? "Upload failed. Please try again.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Upload failed. Please try again.",
+      );
       setSuccess(false);
       setSuccessMessage(null);
     } finally {
@@ -411,64 +602,304 @@ export default function UploadBox() {
           type="file"
           className="hidden"
           onChange={handleFileChange}
-          // iOS Safari greys out STL/STEP-type extensions when accept is strict.
-          // We relax it there and rely on server-side validation while keeping
-          // the shared CAD_ACCEPT_STRING everywhere else for desktop UX.
           accept={fileInputAccept}
         />
+        {fieldErrors.file && (
+          <p className="mt-3 text-xs text-red-400" role="alert">
+            {fieldErrors.file}
+          </p>
+        )}
       </div>
 
       {/* Form fields */}
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1">
             <label
-              htmlFor="name"
+              htmlFor="firstName"
               className="text-xs font-medium text-muted tracking-wide"
             >
-              Your name<span className="text-red-500">*</span>
+              First name<span className="text-red-500">*</span>
             </label>
             <input
-              id="name"
+              id="firstName"
               type="text"
-              required
-              value={state.name}
-              onChange={handleChange("name")}
-              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none ring-0 transition focus:border-accent"
+              autoComplete="given-name"
+              value={state.firstName}
+              onChange={handleInputChange("firstName")}
+              className={clsx(
+                "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
+                fieldErrors.firstName ? "border-red-500" : "border-border",
+              )}
+              aria-invalid={Boolean(fieldErrors.firstName)}
+              aria-describedby={
+                fieldErrors.firstName ? "firstName-error" : undefined
+              }
             />
+            {fieldErrors.firstName && (
+              <p id="firstName-error" className="text-xs text-red-400">
+                {fieldErrors.firstName}
+              </p>
+            )}
           </div>
+          <div className="space-y-1">
+            <label
+              htmlFor="lastName"
+              className="text-xs font-medium text-muted tracking-wide"
+            >
+              Last name<span className="text-red-500">*</span>
+            </label>
+            <input
+              id="lastName"
+              type="text"
+              autoComplete="family-name"
+              value={state.lastName}
+              onChange={handleInputChange("lastName")}
+              className={clsx(
+                "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
+                fieldErrors.lastName ? "border-red-500" : "border-border",
+              )}
+              aria-invalid={Boolean(fieldErrors.lastName)}
+              aria-describedby={
+                fieldErrors.lastName ? "lastName-error" : undefined
+              }
+            />
+            {fieldErrors.lastName && (
+              <p id="lastName-error" className="text-xs text-red-400">
+                {fieldErrors.lastName}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1">
             <label
               htmlFor="email"
               className="text-xs font-medium text-muted tracking-wide"
             >
-              Email<span className="text-red-500">*</span>
+              Business email<span className="text-red-500">*</span>
             </label>
             <input
               id="email"
               type="email"
-              required
+              autoComplete="email"
               value={state.email}
-              onChange={handleChange("email")}
-              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none ring-0 transition focus:border-accent"
+              onChange={handleInputChange("email")}
+              className={clsx(
+                "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
+                fieldErrors.email ? "border-red-500" : "border-border",
+              )}
+              aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={fieldErrors.email ? "email-error" : undefined}
+            />
+            {fieldErrors.email && (
+              <p id="email-error" className="text-xs text-red-400">
+                {fieldErrors.email}
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <label
+              htmlFor="phone"
+              className="text-xs font-medium text-muted tracking-wide"
+            >
+              Phone (optional)
+            </label>
+            <input
+              id="phone"
+              type="tel"
+              autoComplete="tel"
+              value={state.phone}
+              onChange={handleInputChange("phone")}
+              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
             />
           </div>
         </div>
 
-        <div className="space-y-1">
-          <label
-            htmlFor="company"
-            className="text-xs font-medium text-muted tracking-wide"
-          >
-            Company
-          </label>
-          <input
-            id="company"
-            type="text"
-            value={state.company}
-            onChange={handleChange("company")}
-            className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none ring-0 transition focus:border-accent"
-          />
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1">
+            <label
+              htmlFor="company"
+              className="text-xs font-medium text-muted tracking-wide"
+            >
+              Company
+            </label>
+            <input
+              id="company"
+              type="text"
+              autoComplete="organization"
+              value={state.company}
+              onChange={handleInputChange("company")}
+              className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
+            />
+          </div>
+          <div className="space-y-1">
+            <label
+              htmlFor="manufacturingProcess"
+              className="text-xs font-medium text-muted tracking-wide"
+            >
+              Manufacturing process<span className="text-red-500">*</span>
+            </label>
+            <select
+              id="manufacturingProcess"
+              value={state.manufacturingProcess}
+              onChange={handleInputChange("manufacturingProcess")}
+              className={clsx(
+                "w-full rounded-md border bg-black/20 px-3 py-2 text-sm text-foreground outline-none transition",
+                fieldErrors.manufacturingProcess
+                  ? "border-red-500"
+                  : "border-border",
+              )}
+              aria-invalid={Boolean(fieldErrors.manufacturingProcess)}
+              aria-describedby={
+                fieldErrors.manufacturingProcess
+                  ? "manufacturingProcess-error"
+                  : undefined
+              }
+            >
+              <option value="">Select a process</option>
+              {MANUFACTURING_PROCESS_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            {fieldErrors.manufacturingProcess && (
+              <p
+                id="manufacturingProcess-error"
+                className="text-xs text-red-400"
+              >
+                {fieldErrors.manufacturingProcess}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1">
+            <label
+              htmlFor="exportRestriction"
+              className="text-xs font-medium text-muted tracking-wide"
+            >
+              Export restriction<span className="text-red-500">*</span>
+            </label>
+            <select
+              id="exportRestriction"
+              value={state.exportRestriction}
+              onChange={handleInputChange("exportRestriction")}
+              className={clsx(
+                "w-full rounded-md border bg-black/20 px-3 py-2 text-sm text-foreground outline-none transition",
+                fieldErrors.exportRestriction
+                  ? "border-red-500"
+                  : "border-border",
+              )}
+              aria-invalid={Boolean(fieldErrors.exportRestriction)}
+              aria-describedby={
+                fieldErrors.exportRestriction
+                  ? "exportRestriction-error"
+                  : undefined
+              }
+            >
+              <option value="">Select an option</option>
+              {EXPORT_RESTRICTION_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            {fieldErrors.exportRestriction && (
+              <p id="exportRestriction-error" className="text-xs text-red-400">
+                {fieldErrors.exportRestriction}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label
+              htmlFor="quantity"
+              className="text-xs font-medium text-muted tracking-wide"
+            >
+              Quantity / volumes<span className="text-red-500">*</span>
+            </label>
+            <input
+              id="quantity"
+              type="text"
+              value={state.quantity}
+              onChange={handleInputChange("quantity")}
+              placeholder='e.g. "10 proto, 500/yr production"'
+              className={clsx(
+                "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
+                fieldErrors.quantity ? "border-red-500" : "border-border",
+              )}
+              aria-invalid={Boolean(fieldErrors.quantity)}
+              aria-describedby={
+                fieldErrors.quantity ? "quantity-error" : undefined
+              }
+            />
+            {fieldErrors.quantity && (
+              <p id="quantity-error" className="text-xs text-red-400">
+                {fieldErrors.quantity}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1">
+            <label
+              htmlFor="shippingPostalCode"
+              className="text-xs font-medium text-muted tracking-wide"
+            >
+              Shipping ZIP / Postal code
+            </label>
+            <input
+              id="shippingPostalCode"
+              type="text"
+              autoComplete="postal-code"
+              value={state.shippingPostalCode}
+              onChange={handleInputChange("shippingPostalCode")}
+              className={clsx(
+                "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
+                fieldErrors.shippingPostalCode
+                  ? "border-red-500"
+                  : "border-border",
+              )}
+              aria-invalid={Boolean(fieldErrors.shippingPostalCode)}
+              aria-describedby={
+                fieldErrors.shippingPostalCode
+                  ? "shippingPostalCode-error"
+                  : undefined
+              }
+            />
+            {fieldErrors.shippingPostalCode && (
+              <p id="shippingPostalCode-error" className="text-xs text-red-400">
+                {fieldErrors.shippingPostalCode}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label
+              htmlFor="rfqReason"
+              className="text-xs font-medium text-muted tracking-wide"
+            >
+              I&apos;m submitting this RFQ because…
+            </label>
+            <select
+              id="rfqReason"
+              value={state.rfqReason}
+              onChange={handleInputChange("rfqReason")}
+              className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
+            >
+              <option value="">Select a reason (optional)</option>
+              {RFQ_REASON_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="space-y-1">
@@ -476,31 +907,94 @@ export default function UploadBox() {
             htmlFor="notes"
             className="text-xs font-medium text-muted tracking-wide"
           >
-            Process / quantity / timing
+            Project details / notes
           </label>
           <textarea
             id="notes"
-            rows={3}
+            rows={4}
             value={state.notes}
-            onChange={handleChange("notes")}
-            placeholder="CNC, qty 50, target ship date, special material or tolerances..."
-            className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none ring-0 transition focus:border-accent"
+            onChange={handleInputChange("notes")}
+            placeholder="Materials, tolerances, target ship date, special requirements..."
+            className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
           />
         </div>
 
+        <div className="space-y-3">
+          <label className="flex items-start gap-3 text-sm text-foreground">
+            <input
+              id="itarAcknowledged"
+              type="checkbox"
+              checked={state.itarAcknowledged}
+              onChange={handleCheckboxChange("itarAcknowledged")}
+              className={clsx(
+                "mt-1 h-4 w-4 rounded border bg-transparent",
+                fieldErrors.itarAcknowledged
+                  ? "border-red-500"
+                  : "border-line-subtle",
+              )}
+            />
+            <span>
+              I acknowledge these parts are not subject to ITAR restrictions.
+            </span>
+          </label>
+          {fieldErrors.itarAcknowledged && (
+            <p className="text-xs text-red-400" role="alert">
+              {fieldErrors.itarAcknowledged}
+            </p>
+          )}
+
+          <label className="flex items-start gap-3 text-sm text-foreground">
+            <input
+              id="termsAccepted"
+              type="checkbox"
+              checked={state.termsAccepted}
+              onChange={handleCheckboxChange("termsAccepted")}
+              className={clsx(
+                "mt-1 h-4 w-4 rounded border bg-transparent",
+                fieldErrors.termsAccepted
+                  ? "border-red-500"
+                  : "border-line-subtle",
+              )}
+            />
+            <span>
+              I agree to the{" "}
+              <a
+                href="/terms"
+                className="text-emerald-300 underline-offset-2 hover:underline"
+              >
+                terms of service
+              </a>{" "}
+              and{" "}
+              <a
+                href="/privacy"
+                className="text-emerald-300 underline-offset-2 hover:underline"
+              >
+                privacy policy
+              </a>
+              .
+            </span>
+          </label>
+          {fieldErrors.termsAccepted && (
+            <p className="text-xs text-red-400" role="alert">
+              {fieldErrors.termsAccepted}
+            </p>
+          )}
+        </div>
+
         {/* Upload CTA */}
-        <div className="pt-1">
+        <div className="pt-2">
           <button
             type="submit"
             disabled={isSubmitting || !canSubmit}
             className={clsx(
-              "mt-2 w-full rounded-full px-6 py-3 text-sm font-medium text-black shadow-sm transition disabled:cursor-not-allowed disabled:opacity-70",
+              "mt-2 w-full rounded-pill px-6 py-3 text-sm font-semibold text-ink shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-70",
               canSubmit && !isSubmitting
-                ? "bg-emerald-500 hover:bg-emerald-400"
-                : "bg-emerald-500/40",
+                ? "bg-brand hover:bg-brand-soft"
+                : "bg-brand/50",
             )}
+            aria-busy={isSubmitting}
           >
-            {isSubmitting ? "Uploading..." : "Upload file"}
+            {isSubmitting ? "Submitting…" : "Submit RFQ"}
           </button>
         </div>
 
@@ -508,7 +1002,7 @@ export default function UploadBox() {
         <div className="min-h-[1.25rem] pt-1">
           {error && (
             <p className="text-xs text-red-400" role="alert">
-              Error: {error}
+              {error}
             </p>
           )}
           {!error && statusMessage && (

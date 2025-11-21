@@ -64,13 +64,13 @@ export default function HomePage() {
               <div className="flex flex-wrap items-center gap-4">
                 <Link
                   href="/quote"
-                  className="inline-flex items-center justify-center rounded-pill bg-brand px-6 py-2 text-sm font-semibold text-ink shadow-lift-sm hover:bg-brand-soft transition-colors"
+                  className="inline-flex items-center justify-center rounded-pill bg-brand px-6 py-2 text-sm font-semibold text-ink shadow-lift-sm transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                 >
                   Get a quote
                 </Link>
                 <Link
                   href="#how-it-works"
-                  className="inline-flex items-center justify-center rounded-pill border border-line-subtle px-6 py-2 text-sm font-semibold text-ink transition-colors hover:text-ink"
+                  className="inline-flex items-center justify-center rounded-pill border border-line-subtle px-6 py-2 text-sm font-semibold text-ink transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                 >
                   See how it works
                 </Link>
@@ -132,9 +132,9 @@ export default function HomePage() {
                 </ul>
                 <Link
                   href="/quote"
-                  className="inline-flex w-full items-center justify-center rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-black shadow-lift-sm transition-colors hover:bg-emerald-400"
+                  className="inline-flex w-full items-center justify-center rounded-pill bg-brand px-5 py-2 text-sm font-semibold text-ink shadow-lift-sm transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                 >
-                  Go to upload flow
+                  Get a quote
                 </Link>
               </div>
           </div>
