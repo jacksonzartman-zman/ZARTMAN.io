@@ -8,7 +8,7 @@
   "/page": "/",
   "/admin/uploads/[id]/page": "/admin/uploads/[id]",
   "/admin/page": "/admin",
-  "/admin/quotes/[id]/page": "/admin/quotes/[id]",
   "/admin/quotes/page": "/admin/quotes",
+  "/admin/quotes/[id]/page": "/admin/quotes/[id]",
   "/api/hello/route": "/api/hello"
 }
