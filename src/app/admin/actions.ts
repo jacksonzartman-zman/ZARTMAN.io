@@ -16,6 +16,7 @@ export async function updateQuote(formData: FormData) {
   const currency = formData.get("currency") as string;
   const targetDate = formData.get("target_date") as string;
   const internalNotes = formData.get("internal_notes") as string;
+  const dfmNotes = formData.get("dfm_notes") as string | null;
 
   const price =
     priceRaw && priceRaw.length > 0 ? parseFloat(priceRaw) : null;
@@ -28,6 +29,10 @@ export async function updateQuote(formData: FormData) {
       currency,
       target_date: targetDate || null,
       internal_notes: internalNotes || null,
+      dfm_notes:
+        typeof dfmNotes === "string" && dfmNotes.trim().length > 0
+          ? dfmNotes
+          : null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);

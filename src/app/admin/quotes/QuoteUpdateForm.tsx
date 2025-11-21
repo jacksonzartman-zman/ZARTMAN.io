@@ -18,6 +18,7 @@ type QuoteUpdateFormProps = {
     currency: string | null;
     targetDate: string | null;
     internalNotes: string | null;
+    dfmNotes: string | null;
   };
 };
 
@@ -111,6 +112,26 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
           className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
         />
       </div>
+
+        <div className="space-y-1.5">
+          <label
+            htmlFor="dfm_notes"
+            className="block text-sm font-medium text-slate-200"
+          >
+            DFM notes (visible to customer)
+          </label>
+          <textarea
+            id="dfm_notes"
+            name="dfm_notes"
+            defaultValue={quote.dfmNotes ?? ""}
+            rows={4}
+            className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
+            placeholder="Call out manufacturability feedback you want to share"
+          />
+          <p className="text-xs text-slate-500">
+            Customers will eventually see these notes on their quote.
+          </p>
+        </div>
 
       <div className="space-y-1.5">
         <label
