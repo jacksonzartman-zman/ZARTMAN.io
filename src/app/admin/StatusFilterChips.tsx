@@ -2,7 +2,11 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { UploadStatus } from "./constants";
+import {
+  UPLOAD_STATUS_LABELS,
+  UPLOAD_STATUS_OPTIONS,
+  type UploadStatus,
+} from "./constants";
 
 type Props = {
   currentStatus: string;
@@ -11,11 +15,10 @@ type Props = {
 
 const STATUS_OPTIONS: { value: UploadStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "new", label: "New" },
-  { value: "in_review", label: "In review" },
-  { value: "quoted", label: "Quoted" },
-  { value: "on_hold", label: "On hold" },
-  { value: "closed_lost", label: "Closed lost" },
+  ...UPLOAD_STATUS_OPTIONS.map((status) => ({
+    value: status,
+    label: UPLOAD_STATUS_LABELS[status],
+  })),
 ];
 
 export default function StatusFilterChips({ currentStatus, basePath }: Props) {

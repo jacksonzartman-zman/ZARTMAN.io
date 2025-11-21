@@ -4,6 +4,7 @@
 
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { DEFAULT_UPLOAD_STATUS, parseUploadStatusInput } from "./constants";
 import { redirect } from "next/navigation";
 
 export async function updateQuote(formData: FormData) {
@@ -11,20 +12,20 @@ export async function updateQuote(formData: FormData) {
 
   const id = formData.get("id") as string;
 
-  const status = formData.get("status") as string;
+  const statusValue =
+    parseUploadStatusInput(formData.get("status")) ?? DEFAULT_UPLOAD_STATUS;
   const priceRaw = formData.get("price") as string;
   const currency = formData.get("currency") as string;
   const targetDate = formData.get("target_date") as string;
   const internalNotes = formData.get("internal_notes") as string;
   const dfmNotes = formData.get("dfm_notes") as string | null;
 
-  const price =
-    priceRaw && priceRaw.length > 0 ? parseFloat(priceRaw) : null;
+  const price = priceRaw && priceRaw.length > 0 ? parseFloat(priceRaw) : null;
 
   const { error } = await supabase
     .from("quotes")
     .update({
-      status,
+      status: statusValue,
       price,
       currency,
       target_date: targetDate || null,

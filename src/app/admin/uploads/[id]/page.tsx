@@ -4,6 +4,12 @@ import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { updateUpload } from "./actions";
 import { SuccessBanner } from "./SuccessBanner";
+import {
+  DEFAULT_UPLOAD_STATUS,
+  UPLOAD_STATUS_LABELS,
+  UPLOAD_STATUS_OPTIONS,
+  normalizeUploadStatus,
+} from "../../constants";
 
 type UploadRow = {
   id: string;
@@ -43,6 +49,10 @@ export default async function UploadDetailPage(props: any) {
   }
 
   const upload = data;
+  const resolvedStatus = normalizeUploadStatus(
+    upload.status,
+    DEFAULT_UPLOAD_STATUS,
+  );
 
   const created =
     upload.created_at &&
@@ -94,9 +104,9 @@ export default async function UploadDetailPage(props: any) {
               <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
                 Initial request notes
               </p>
-                <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
-                  {upload.notes || "—"}
-                </p>
+              <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+                {upload.notes || "—"}
+              </p>
             </div>
 
             <p className="mt-4 text-xs text-slate-500">
@@ -150,14 +160,14 @@ export default async function UploadDetailPage(props: any) {
             <select
               id="status"
               name="status"
-              defaultValue={upload.status || "new"}
+              defaultValue={resolvedStatus}
               className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
             >
-              <option value="new">New</option>
-              <option value="in_review">In review</option>
-              <option value="quoted">Quoted</option>
-              <option value="on_hold">On hold</option>
-              <option value="closed_lost">Closed lost</option>
+              {UPLOAD_STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {UPLOAD_STATUS_LABELS[status]}
+                </option>
+              ))}
             </select>
           </div>
 

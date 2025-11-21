@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
-import type { UploadStatus } from "./constants";
-import { UPLOAD_STATUS_LABELS } from "./constants";
+import {
+  UPLOAD_STATUS_LABELS,
+  normalizeUploadStatus,
+  type UploadStatus,
+} from "./constants";
 
 export type QuoteRow = {
   id: string;
@@ -9,7 +12,7 @@ export type QuoteRow = {
   customerEmail: string;
   company: string;
   fileName: string;
-  status: UploadStatus | null;
+  status: UploadStatus;
   price: number | null;
   currency: string | null;
   targetDate: string | null;
@@ -52,35 +55,35 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-900">
-            {showEmptyState ? (
+          {showEmptyState ? (
             <tr>
               <td
                 colSpan={8}
                 className="px-4 py-8 text-center text-sm text-slate-500"
               >
-                  {emptyMessage}
+                {emptyMessage}
               </td>
             </tr>
           ) : (
             quotes.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-900/60">
+              <tr key={row.id} className="hover:bg-slate-900/60">
                 <td className="px-4 py-3 align-top">
-                    <div className="flex flex-col">
-                      <Link
-                        href={`/admin/quotes/${row.id}`}
-                        className="text-sm text-slate-100 hover:text-emerald-300"
+                  <div className="flex flex-col">
+                    <Link
+                      href={`/admin/quotes/${row.id}`}
+                      className="text-sm text-slate-100 hover:text-emerald-300"
+                    >
+                      {row.customerName}
+                    </Link>
+                    {row.customerEmail && (
+                      <a
+                        href={`mailto:${row.customerEmail}`}
+                        className="text-xs text-emerald-400 hover:underline"
                       >
-                        {row.customerName}
-                      </Link>
-                      {row.customerEmail && (
-                        <a
-                          href={`mailto:${row.customerEmail}`}
-                          className="text-xs text-emerald-400 hover:underline"
-                        >
-                          {row.customerEmail}
-                        </a>
-                      )}
-                    </div>
+                        {row.customerEmail}
+                      </a>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3 align-top text-sm text-slate-200">
                   {row.company || "—"}
@@ -89,18 +92,18 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                   {row.fileName}
                 </td>
                 <td className="px-4 py-3 align-top">
-                    <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                      {UPLOAD_STATUS_LABELS[(row.status ?? "new") as UploadStatus]}
+                  <span className="inline-flex rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                    {UPLOAD_STATUS_LABELS[normalizeUploadStatus(row.status)]}
                   </span>
                 </td>
                 <td className="px-4 py-3 align-top text-xs text-slate-200">
                   {formatMoney(row.price, row.currency)}
                 </td>
                 <td className="px-4 py-3 align-top text-xs text-slate-400">
-                    {formatDateTime(row.targetDate)}
+                  {formatDateTime(row.targetDate)}
                 </td>
                 <td className="px-4 py-3 align-top text-xs text-slate-400">
-                    {formatDateTime(row.createdAt, { includeTime: true })}
+                  {formatDateTime(row.createdAt, { includeTime: true })}
                 </td>
                 <td className="px-4 py-3 align-top text-right text-xs">
                   <Link

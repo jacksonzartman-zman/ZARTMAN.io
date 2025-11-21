@@ -2,7 +2,11 @@
 
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { ReadonlyURLSearchParams } from "next/navigation";
-import type { UploadStatus } from "../constants";
+import {
+  UPLOAD_STATUS_OPTIONS,
+  normalizeUploadStatus,
+  type UploadStatus,
+} from "../constants";
 import QuotesSearchInput from "../QuotesSearchInput";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
 import StatusFilterChips from "../StatusFilterChips";
@@ -23,13 +27,7 @@ type QuotesPageProps = {
   searchParams?: Promise<ReadonlyURLSearchParams>;
 };
 
-const VALID_STATUS_VALUES: UploadStatus[] = [
-  "new",
-  "in_review",
-  "quoted",
-  "on_hold",
-  "closed_lost",
-];
+const VALID_STATUS_VALUES: UploadStatus[] = [...UPLOAD_STATUS_OPTIONS];
 
 const getFirstParamValue = (
   value?: string | string[] | null,
@@ -82,9 +80,7 @@ const resolveSearchParams = async (
   };
 };
 
-export default async function QuotesPage({
-  searchParams,
-}: QuotesPageProps) {
+export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const resolvedSearchParams = await resolveSearchParams(searchParams);
 
   const normalizedStatus =
@@ -101,10 +97,7 @@ export default async function QuotesPage({
     typeof resolvedSearchParams.search === "string"
       ? resolvedSearchParams.search
       : "";
-  const normalizedSearch = searchTerm
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+  const normalizedSearch = searchTerm.trim().toLowerCase().replace(/\s+/g, " ");
 
   const { data, error } = await supabaseServer
     .from("quotes_with_uploads")
@@ -123,14 +116,14 @@ export default async function QuotesPage({
     );
   }
 
-    const rows: QuoteRow[] =
-      data?.map((row: any) => ({
+  const rows: QuoteRow[] =
+    data?.map((row: any) => ({
       id: row.id,
       customerName: row.customer_name ?? "Unknown",
       customerEmail: row.customer_email ?? "",
       company: row.company ?? "",
       fileName: row.file_name ?? "",
-        status: (row.status as UploadStatus) ?? "new",
+      status: normalizeUploadStatus(row.status as UploadStatus | null),
       price: row.price,
       currency: row.currency,
       targetDate: row.target_date,
@@ -138,9 +131,9 @@ export default async function QuotesPage({
     })) ?? [];
 
   const filteredQuotes = rows.filter((row) => {
-    const rowStatus = (row.status ?? "new").toLowerCase();
+    const normalizedRowStatus = normalizeUploadStatus(row.status);
     const matchesStatus =
-      statusFilter === "all" ? true : rowStatus === statusFilter;
+      statusFilter === "all" ? true : normalizedRowStatus === statusFilter;
 
     if (!normalizedSearch) {
       return matchesStatus;
@@ -155,33 +148,30 @@ export default async function QuotesPage({
     return matchesStatus && haystack.includes(normalizedSearch);
   });
 
-    return (
-      <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
-        <header className="space-y-2">
-          <h1 className="text-2xl font-semibold">Quotes</h1>
-          <p className="text-sm text-slate-400">
-            Recent quotes created from uploads.
-          </p>
-        </header>
+  return (
+    <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold">Quotes</h1>
+        <p className="text-sm text-slate-400">
+          Recent quotes created from uploads.
+        </p>
+      </header>
 
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <StatusFilterChips
-            currentStatus={statusFilter === "all" ? "" : statusFilter}
-            basePath="/admin/quotes"
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <StatusFilterChips
+          currentStatus={statusFilter === "all" ? "" : statusFilter}
+          basePath="/admin/quotes"
+        />
+        <div className="w-full md:w-80">
+          <QuotesSearchInput
+            initialValue={searchTerm}
+            placeholder="Search by customer, email, company, file, or status..."
+            className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-emerald-400"
           />
-          <div className="w-full md:w-80">
-            <QuotesSearchInput
-              initialValue={searchTerm}
-              placeholder="Search by customer, email, company, file, or status..."
-              className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-emerald-400"
-            />
-          </div>
         </div>
+      </div>
 
-          <QuotesTable
-            quotes={filteredQuotes}
-            totalCount={rows.length}
-          />
-      </main>
-    );
+      <QuotesTable quotes={filteredQuotes} totalCount={rows.length} />
+    </main>
+  );
 }

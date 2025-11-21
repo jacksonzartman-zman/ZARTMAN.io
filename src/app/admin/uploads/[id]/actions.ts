@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { DEFAULT_UPLOAD_STATUS, parseUploadStatusInput } from "../../constants";
 
 export async function updateUpload(formData: FormData) {
   const id = formData.get("id");
@@ -15,13 +16,16 @@ export async function updateUpload(formData: FormData) {
   }
 
   const supabase = supabaseServer;
+  const normalizedStatus =
+    typeof status === "string" && status.length > 0
+      ? (parseUploadStatusInput(status) ?? DEFAULT_UPLOAD_STATUS)
+      : DEFAULT_UPLOAD_STATUS;
 
   // 1) Update the uploads table
   const { error: uploadError } = await supabase
     .from("uploads")
     .update({
-      status:
-        typeof status === "string" && status.length > 0 ? status : null,
+      status: normalizedStatus,
       admin_notes:
         typeof adminNotes === "string" && adminNotes.length > 0
           ? adminNotes
@@ -47,12 +51,9 @@ export async function updateUpload(formData: FormData) {
     console.error("updateUpload: error fetching quote", fetchQuoteError);
   }
 
-  const quoteStatus =
-    typeof status === "string" && status.length > 0 ? status : "new";
+  const quoteStatus = normalizedStatus ?? DEFAULT_UPLOAD_STATUS;
   const quoteInternalNotes =
-    typeof adminNotes === "string" && adminNotes.length > 0
-      ? adminNotes
-      : null;
+    typeof adminNotes === "string" && adminNotes.length > 0 ? adminNotes : null;
 
   if (existingQuote?.id) {
     // Update existing quote

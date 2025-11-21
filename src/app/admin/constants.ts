@@ -8,16 +8,23 @@ export const ADMIN_COOKIE_NAME = "zartman_admin";
 export const ADMIN_PASSWORD = "X<wfhURR7s?1x7pv";
 
 const UPLOAD_STATUSES = [
-  "new",
+  "submitted",
   "in_review",
   "quoted",
-  "on_hold",
-  "closed_lost",
+  "approved",
+  "rejected",
 ] as const;
+
+const LEGACY_STATUS_FALLBACKS: Record<string, UploadStatus> = {
+  new: "submitted",
+  on_hold: "in_review",
+  closed_lost: "rejected",
+  draft: "submitted",
+};
 
 export type UploadStatus = (typeof UPLOAD_STATUSES)[number];
 
-export const DEFAULT_UPLOAD_STATUS: UploadStatus = "new";
+export const DEFAULT_UPLOAD_STATUS: UploadStatus = "submitted";
 
 export function isUploadStatus(value: unknown): value is UploadStatus {
   return (
@@ -26,12 +33,45 @@ export function isUploadStatus(value: unknown): value is UploadStatus {
   );
 }
 
+export function normalizeUploadStatus(
+  value: unknown,
+  fallback: UploadStatus = DEFAULT_UPLOAD_STATUS,
+): UploadStatus {
+  if (isUploadStatus(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (LEGACY_STATUS_FALLBACKS[normalized]) {
+      return LEGACY_STATUS_FALLBACKS[normalized];
+    }
+  }
+
+  return fallback;
+}
+
+export function parseUploadStatusInput(value: unknown): UploadStatus | null {
+  if (isUploadStatus(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (isUploadStatus(normalized)) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
 export const UPLOAD_STATUS_LABELS: Record<UploadStatus, string> = {
-  new: "New",
+  submitted: "Submitted",
   in_review: "In review",
   quoted: "Quoted",
-  on_hold: "On hold",
-  closed_lost: "Closed lost",
+  approved: "Approved",
+  rejected: "Rejected",
 };
 
 export const UPLOAD_STATUS_OPTIONS: UploadStatus[] = [...UPLOAD_STATUSES];
