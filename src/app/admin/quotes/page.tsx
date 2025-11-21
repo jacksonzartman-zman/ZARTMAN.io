@@ -9,17 +9,17 @@ import StatusFilterChips from "../StatusFilterChips";
 export const dynamic = "force-dynamic";
 
 type QuotesPageSearchParams = {
-  status?: string | string[];
-  search?: string | string[];
+  status?: string | string[] | null;
+  search?: string | string[] | null;
 };
 
-type SearchParamsInput =
-  | QuotesPageSearchParams
-  | URLSearchParams
-  | ReadonlyURLSearchParams;
+type ResolvedSearchParams = {
+  status?: string;
+  search?: string;
+};
 
 type QuotesPageProps = {
-  searchParams?: Promise<SearchParamsInput>;
+  searchParams?: Promise<ReadonlyURLSearchParams>;
 };
 
 const VALID_STATUS_VALUES: UploadStatus[] = [
@@ -30,47 +30,37 @@ const VALID_STATUS_VALUES: UploadStatus[] = [
   "closed_lost",
 ];
 
-const getFirstParamValue = (value?: string | string[]) => {
+const getFirstParamValue = (
+  value?: string | string[] | null,
+): string | undefined => {
   if (Array.isArray(value)) {
     return value[0];
   }
 
-  return value;
-};
-
-const toParamValue = (
-  values: string[],
-): string | string[] | undefined => {
-  if (values.length === 0) {
-    return undefined;
-  }
-
-  if (values.length === 1) {
-    return values[0];
-  }
-
-  return values;
+  return value ?? undefined;
 };
 
 type ResolvableSearchParams =
   | QuotesPageProps["searchParams"]
-  | SearchParamsInput
+  | URLSearchParams
+  | ReadonlyURLSearchParams
+  | QuotesPageSearchParams
   | null
   | undefined;
 
 const isURLSearchParamsLike = (
   value: unknown,
-): value is Pick<URLSearchParams, "getAll"> => {
+): value is Pick<URLSearchParams, "get"> => {
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as Record<string, unknown>).getAll === "function"
+    typeof (value as Record<string, unknown>).get === "function"
   );
 };
 
 const resolveSearchParams = async (
   rawSearchParams?: ResolvableSearchParams,
-): Promise<QuotesPageSearchParams> => {
+): Promise<ResolvedSearchParams> => {
   const resolved = await rawSearchParams;
 
   if (!resolved) {
@@ -79,15 +69,15 @@ const resolveSearchParams = async (
 
   if (isURLSearchParamsLike(resolved)) {
     return {
-      status: toParamValue(resolved.getAll("status")),
-      search: toParamValue(resolved.getAll("search")),
+      status: resolved.get("status") ?? undefined,
+      search: resolved.get("search") ?? undefined,
     };
   }
 
   const maybeObject = resolved as QuotesPageSearchParams;
   return {
-    status: maybeObject.status,
-    search: maybeObject.search,
+    status: getFirstParamValue(maybeObject.status),
+    search: getFirstParamValue(maybeObject.search),
   };
 };
 
@@ -96,18 +86,20 @@ export default async function QuotesPage({
 }: QuotesPageProps) {
   const resolvedSearchParams = await resolveSearchParams(searchParams);
 
-  const rawStatus = getFirstParamValue(resolvedSearchParams.status);
-  const rawSearch = getFirstParamValue(resolvedSearchParams.search);
-
   const normalizedStatus =
-    typeof rawStatus === "string" ? rawStatus.trim().toLowerCase() : "";
+    typeof resolvedSearchParams.status === "string"
+      ? resolvedSearchParams.status.trim().toLowerCase()
+      : "";
   const statusFilter: UploadStatus | "all" = VALID_STATUS_VALUES.includes(
     normalizedStatus as UploadStatus,
   )
     ? (normalizedStatus as UploadStatus)
     : "all";
 
-  const searchTerm = typeof rawSearch === "string" ? rawSearch : "";
+  const searchTerm =
+    typeof resolvedSearchParams.search === "string"
+      ? resolvedSearchParams.search
+      : "";
   const normalizedSearch = searchTerm
     .trim()
     .toLowerCase()
