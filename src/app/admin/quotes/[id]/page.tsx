@@ -57,6 +57,21 @@ type UploadFileReference = {
   file_name: string | null;
 };
 
+type UploadMeta = {
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  company: string | null;
+  manufacturing_process: string | null;
+  quantity: string | null;
+  shipping_postal_code: string | null;
+  export_restriction: string | null;
+  rfq_reason: string | null;
+  notes: string | null;
+  itar_acknowledged: boolean | null;
+  terms_accepted: boolean | null;
+};
+
 type CadFileCandidate = {
   storagePath: string;
   bucketId?: string | null;
@@ -373,20 +388,94 @@ export default async function QuoteDetailPage({
     );
   }
 
+  let uploadMeta: UploadMeta | null = null;
+  if (quote.upload_id) {
+    const { data: meta, error: metaError } = await supabaseServer
+      .from("uploads")
+      .select(
+        "first_name,last_name,phone,company,manufacturing_process,quantity,shipping_postal_code,export_restriction,rfq_reason,notes,itar_acknowledged,terms_accepted",
+      )
+      .eq("id", quote.upload_id)
+      .maybeSingle<UploadMeta>();
+
+    if (metaError) {
+      console.error(
+        "Failed to load upload metadata for quote",
+        quote.upload_id,
+        metaError,
+      );
+    } else {
+      uploadMeta = meta;
+    }
+  }
+
   const status = normalizeUploadStatus(quote.status, DEFAULT_UPLOAD_STATUS);
   const customerName =
-    typeof quote.customer_name === "string" &&
+    [uploadMeta?.first_name, uploadMeta?.last_name]
+      .filter((value) => typeof value === "string" && value.trim().length > 0)
+      .map((value) => (value ?? "").trim())
+      .join(" ")
+      .trim() ||
+    (typeof quote.customer_name === "string" &&
     quote.customer_name.trim().length > 0
       ? quote.customer_name
-      : "Unknown customer";
+      : "Unknown customer");
   const customerEmail =
     typeof quote.customer_email === "string" &&
     quote.customer_email.includes("@")
       ? quote.customer_email
       : null;
   const companyName =
-    typeof quote.company === "string" && quote.company.trim().length > 0
+    (typeof uploadMeta?.company === "string" &&
+    (uploadMeta?.company ?? "").trim().length > 0
+      ? uploadMeta?.company
+      : null) ||
+    (typeof quote.company === "string" && quote.company.trim().length > 0
       ? quote.company
+      : null);
+  const contactPhone =
+    typeof uploadMeta?.phone === "string" && uploadMeta.phone.trim().length > 0
+      ? uploadMeta.phone.trim()
+      : null;
+  const intakeSummaryItems = uploadMeta
+    ? [
+        {
+          label: "Company",
+          value: uploadMeta.company || companyName || "—",
+        },
+        {
+          label: "Manufacturing process",
+          value: uploadMeta.manufacturing_process || "—",
+        },
+        {
+          label: "Quantity / volumes",
+          value: uploadMeta.quantity || "—",
+        },
+        {
+          label: "Export restriction",
+          value: uploadMeta.export_restriction || "—",
+        },
+        {
+          label: "Shipping ZIP / Postal code",
+          value: uploadMeta.shipping_postal_code || "—",
+        },
+        {
+          label: "RFQ reason",
+          value: uploadMeta.rfq_reason || "—",
+        },
+        {
+          label: "ITAR acknowledgement",
+          value: uploadMeta.itar_acknowledged ? "Acknowledged" : "Not confirmed",
+        },
+        {
+          label: "Terms acceptance",
+          value: uploadMeta.terms_accepted ? "Accepted" : "Not accepted",
+        },
+      ]
+    : null;
+  const intakeNotes =
+    typeof uploadMeta?.notes === "string" && uploadMeta.notes.trim().length > 0
+      ? uploadMeta.notes
       : null;
   const normalizedPrice =
     typeof quote.price === "number"
@@ -465,6 +554,16 @@ export default async function QuoteDetailPage({
                   {customerEmail}
                 </a>
               )}
+                {contactPhone && (
+                  <p>
+                    <a
+                      href={`tel:${contactPhone}`}
+                      className="text-sm text-slate-300 hover:text-emerald-300"
+                    >
+                      {contactPhone}
+                    </a>
+                  </p>
+                )}
               {companyName && (
                 <p className="text-sm text-slate-300">{companyName}</p>
               )}
@@ -508,6 +607,34 @@ export default async function QuoteDetailPage({
               </dl>
             </div>
           </div>
+
+            {intakeSummaryItems && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    RFQ summary
+                  </p>
+                  <dl className="mt-3 grid gap-3 text-sm text-slate-200">
+                    {intakeSummaryItems.map((item) => (
+                      <div key={item.label} className="flex flex-col gap-0.5">
+                        <dt className="text-slate-500">{item.label}</dt>
+                        <dd className="font-medium text-slate-100">
+                          {item.value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+                <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Project details / notes
+                  </p>
+                  <p className="mt-2 whitespace-pre-line text-sm text-slate-200">
+                    {intakeNotes ?? "—"}
+                  </p>
+                </div>
+              </div>
+            )}
 
           <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
             <div className="flex items-center justify-between">
