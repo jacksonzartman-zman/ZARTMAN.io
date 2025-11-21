@@ -3,8 +3,12 @@
 import { useFormState, useFormStatus } from "react-dom";
 import { handleQuoteFormSubmit, type QuoteFormState } from "@/app/admin/actions";
 import { formatDateInputValue } from "@/lib/formatDate";
-import type { UploadStatus } from "../constants";
-import { UPLOAD_STATUS_LABELS } from "../constants";
+import {
+  DEFAULT_UPLOAD_STATUS,
+  type UploadStatus,
+  UPLOAD_STATUS_LABELS,
+  UPLOAD_STATUS_OPTIONS,
+} from "../constants";
 
 type QuoteUpdateFormProps = {
   quote: {
@@ -17,14 +21,6 @@ type QuoteUpdateFormProps = {
   };
 };
 
-const STATUS_OPTIONS: UploadStatus[] = [
-  "new",
-  "in_review",
-  "quoted",
-  "on_hold",
-  "closed_lost",
-];
-
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP"];
 
 const INITIAL_STATE: QuoteFormState = {};
@@ -33,7 +29,7 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
   const [state, formAction] = useFormState(
     handleQuoteFormSubmit,
     INITIAL_STATE,
-  );
+    );
 
   return (
     <form className="mt-4 space-y-5" action={formAction}>
@@ -49,10 +45,10 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
         <select
           id="status"
           name="status"
-          defaultValue={quote.status}
+          defaultValue={quote.status ?? DEFAULT_UPLOAD_STATUS}
           className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
         >
-          {STATUS_OPTIONS.map((status) => (
+          {UPLOAD_STATUS_OPTIONS.map((status) => (
             <option key={status} value={status}>
               {UPLOAD_STATUS_LABELS[status]}
             </option>

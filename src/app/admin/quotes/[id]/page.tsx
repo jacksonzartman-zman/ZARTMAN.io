@@ -4,16 +4,25 @@ import Link from "next/link";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { formatDateTime } from "@/lib/formatDate";
-import type { UploadStatus } from "../../constants";
-import { UPLOAD_STATUS_LABELS } from "../../constants";
+import {
+  DEFAULT_UPLOAD_STATUS,
+  isUploadStatus,
+  type UploadStatus,
+  UPLOAD_STATUS_LABELS,
+} from "../../constants";
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { SuccessBanner } from "../../uploads/[id]/SuccessBanner";
 
 export const dynamic = "force-dynamic";
 
+type SearchParamsLike =
+  | ReadonlyURLSearchParams
+  | URLSearchParams
+  | Record<string, string | string[] | undefined>;
+
 type QuoteDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<ReadonlyURLSearchParams>;
+  searchParams?: Promise<SearchParamsLike>;
 };
 
 type QuoteWithUploadsRow = {
@@ -75,13 +84,52 @@ function formatMoney(amount: number | null, currency: string | null) {
   return formatter.format(parsed);
 }
 
+function hasGetMethod(
+  params: SearchParamsLike,
+): params is URLSearchParams | ReadonlyURLSearchParams {
+  return typeof (params as URLSearchParams).get === "function";
+}
+
+async function resolveMaybePromise<T>(
+  value?: Promise<T> | T,
+): Promise<T | undefined> {
+  if (typeof value === "undefined") {
+    return undefined;
+  }
+
+  return await value;
+}
+
+function getSearchParamValue(
+  params: SearchParamsLike | undefined,
+  key: string,
+): string | undefined {
+  if (!params) {
+    return undefined;
+  }
+
+  if (hasGetMethod(params)) {
+    return params.get(key) ?? undefined;
+  }
+
+  const recordValue = (params as Record<string, string | string[] | undefined>)[
+    key
+  ];
+
+  if (Array.isArray(recordValue)) {
+    return recordValue[0];
+  }
+
+  return recordValue;
+}
+
 export default async function QuoteDetailPage({
   params,
   searchParams,
 }: QuoteDetailPageProps) {
   const resolvedParams = await params;
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const wasUpdated = resolvedSearchParams?.get("updated") === "1";
+  const resolvedSearchParams = await resolveMaybePromise(searchParams);
+  const wasUpdated = getSearchParamValue(resolvedSearchParams, "updated") === "1";
 
   const { data: quote, error } = await supabaseServer
     .from("quotes_with_uploads")
@@ -117,9 +165,12 @@ export default async function QuoteDetailPage({
     );
   }
 
-  const status = (quote.status ?? "new") as UploadStatus;
+  const status = isUploadStatus(quote.status)
+    ? quote.status
+    : DEFAULT_UPLOAD_STATUS;
   const customerName = quote.customer_name ?? "Unknown customer";
   const fileNames = extractFileNames(quote);
+  const statusLabel = UPLOAD_STATUS_LABELS[status] ?? "Unknown";
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-8">
@@ -163,7 +214,7 @@ export default async function QuoteDetailPage({
               )}
             </div>
             <span className="inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-              {UPLOAD_STATUS_LABELS[status]}
+              {statusLabel}
             </span>
           </div>
 
