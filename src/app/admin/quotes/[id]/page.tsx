@@ -187,25 +187,29 @@ async function getCadPreviewForQuote(
       }
     }
 
-    const candidate = pickCadCandidate(files ?? [], uploadFile);
+    const candidates = gatherCadCandidates(files ?? [], uploadFile);
+    const stlCandidate = candidates.find(isStlCandidate);
 
-    if (!candidate) {
+    if (!stlCandidate) {
       return {
         signedUrl: null,
         fileName: uploadFile?.file_name ?? files?.[0]?.filename ?? undefined,
-        reason: "3D preview not available for this quote yet.",
+        reason:
+          candidates.length > 0
+            ? "No STL file available for preview yet."
+            : "3D preview not available for this quote yet.",
       };
     }
 
     const normalized = normalizeStorageReference(
-      candidate.storagePath,
-      candidate.bucketId,
+      stlCandidate.storagePath,
+      stlCandidate.bucketId,
     );
 
     if (!normalized) {
       return {
         signedUrl: null,
-        fileName: candidate.fileName ?? undefined,
+        fileName: stlCandidate.fileName ?? undefined,
         reason: "Missing storage path for CAD file.",
       };
     }
@@ -219,14 +223,17 @@ async function getCadPreviewForQuote(
       return {
         signedUrl: null,
         fileName:
-          candidate.fileName ?? extractFileNameFromPath(candidate.storagePath),
+          stlCandidate.fileName ??
+          extractFileNameFromPath(stlCandidate.storagePath),
         reason: "Unable to generate CAD preview link right now.",
       };
     }
 
     return {
       signedUrl: signedData.signedUrl,
-      fileName: candidate.fileName ?? extractFileNameFromPath(candidate.storagePath),
+      fileName:
+        stlCandidate.fileName ??
+        extractFileNameFromPath(stlCandidate.storagePath),
     };
   } catch (error) {
     console.error("Unexpected CAD preview error", error);
@@ -237,10 +244,10 @@ async function getCadPreviewForQuote(
   }
 }
 
-function pickCadCandidate(
+function gatherCadCandidates(
   files: FileStorageRow[],
   upload: UploadFileReference | null,
-): CadFileCandidate | null {
+): CadFileCandidate[] {
   const candidates: CadFileCandidate[] = [];
 
   files?.forEach((file) => {
@@ -261,12 +268,7 @@ function pickCadCandidate(
     });
   }
 
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  const stlCandidate = candidates.find(isStlCandidate);
-  return stlCandidate ?? candidates[0];
+  return candidates;
 }
 
 function isStlCandidate(candidate: CadFileCandidate): boolean {
