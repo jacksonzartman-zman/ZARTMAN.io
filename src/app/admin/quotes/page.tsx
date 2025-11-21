@@ -12,8 +12,14 @@ type QuotesPageSearchParams = {
   search?: string | string[];
 };
 
+type SearchParamsInput =
+  | QuotesPageSearchParams
+  | URLSearchParams
+  | null
+  | undefined;
+
 type QuotesPageProps = {
-  searchParams?: Promise<QuotesPageSearchParams | undefined>;
+  searchParams?: SearchParamsInput | Promise<SearchParamsInput>;
 };
 
 const VALID_STATUS_VALUES: UploadStatus[] = [
@@ -32,10 +38,41 @@ const getFirstParamValue = (value?: string | string[]) => {
   return value;
 };
 
+const toParamValue = (values: string[]): string | string[] | undefined => {
+  if (values.length === 0) {
+    return undefined;
+  }
+
+  if (values.length === 1) {
+    return values[0];
+  }
+
+  return values;
+};
+
+const resolveSearchParams = async (
+  rawSearchParams?: QuotesPageProps["searchParams"],
+): Promise<QuotesPageSearchParams> => {
+  const resolved = await rawSearchParams;
+
+  if (!resolved) {
+    return {};
+  }
+
+  if (resolved instanceof URLSearchParams) {
+    return {
+      status: toParamValue(resolved.getAll("status")),
+      search: toParamValue(resolved.getAll("search")),
+    };
+  }
+
+  return resolved;
+};
+
 export default async function QuotesPage({
   searchParams,
 }: QuotesPageProps) {
-  const resolvedSearchParams = (await searchParams) ?? {};
+  const resolvedSearchParams = await resolveSearchParams(searchParams);
 
   const rawStatus = getFirstParamValue(resolvedSearchParams.status);
   const rawSearch = getFirstParamValue(resolvedSearchParams.search);
