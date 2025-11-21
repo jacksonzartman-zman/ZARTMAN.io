@@ -1,5 +1,6 @@
 // src/app/admin/page.tsx
 import AdminTable, { type UploadRow } from "./AdminTable";
+import type { UploadStatus } from "./constants";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export default async function AdminPage() {
     customerEmail: row.email ?? "",
     company: row.company ?? "",
     fileName: row.file_name ?? "",
-    status: row.status ?? "New",
+    status: (row.status as UploadStatus) ?? "new",
     createdAt: row.created_at,
   }));
 
@@ -45,14 +46,7 @@ export default async function AdminPage() {
         </p>
       </header>
 
-      {uploads.length === 0 ? (
-        <p className="text-sm text-slate-400">
-          No uploads yet. Share your Zartman.io upload link and this table will
-          start to fill up.
-        </p>
-      ) : (
-        <AdminTable uploads={uploads} />
-      )}
+      <AdminTable uploads={uploads} />
     </main>
   );
 }
