@@ -86,13 +86,13 @@ export default function CadUpload() {
 
   return (
     <div style={{ display: "grid", gap: 10, maxWidth: 520 }}>
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".step,.stp,.iges,.igs,.stl,.obj,.zip"
-        onChange={onPick}
-        style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
-      />
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".stl,.step,.stp,.iges,.igs,.sldprt,.sldasm,.pdf,.zip"
+          onChange={onPick}
+          style={{ position: "absolute", opacity: 0, width: 1, height: 1 }}
+        />
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
