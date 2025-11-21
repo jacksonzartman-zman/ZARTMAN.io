@@ -1,28 +1,65 @@
+import EarlyAccessForm from "@/components/EarlyAccessForm";
 import UploadBox from "@/components/UploadBox";
+
+const HERO_PREVIEW_ROWS = [
+  {
+    id: "QT-1082",
+    customer: "Atlas Motion",
+    file: "stanchion-plate.step",
+    status: "In review",
+    detail: "Ops • Supabase",
+  },
+  {
+    id: "QT-1081",
+    customer: "Nomad Hydraulics",
+    file: "valve-body.stp",
+    status: "Quoted",
+    detail: "Sales • Supabase",
+  },
+  {
+    id: "QT-1079",
+    customer: "Bright Robotics",
+    file: "armature-v6.sldprt",
+    status: "New",
+    detail: "Uploads • Supabase",
+  },
+];
 
 export default function HomePage() {
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
         {/* HERO */}
-        <section className="grid gap-10 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-center">
+        <section className="grid gap-10 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
           <div className="space-y-6">
             <div className="badge-soft">
               <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-              <span>Manufacturing OS for real-world parts</span>
+              <span>Built for quoting &amp; AM teams</span>
             </div>
 
             <div className="space-y-4">
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-                Zartman.io
+                Zartman.io — an admin cockpit for your quoting workflow
               </h1>
               <p className="max-w-copy text-sm sm:text-base text-ink-muted">
-                From CAD file to manufacturing quote, without the runaround.
-                One front door for quotes, DFM feedback, and supplier
-                coordination — built for engineers who live in the real world,
-                not in sales funnels.
+                One dark-mode hub that shows uploads, quote status, pricing, and
+                target dates — all synced from Supabase. Keep sales, AM, and
+                ops aligned without duct-taped spreadsheets.
               </p>
             </div>
+
+            <ul className="grid gap-3 text-sm text-ink-muted sm:grid-cols-2">
+              <li className="surface-card p-3 shadow-lift-sm">
+                Live dashboards for uploads + quotes, with filters and status
+                pills that mirror your admin view.
+              </li>
+              <li className="surface-card p-3 shadow-lift-sm">
+                Server actions + Supabase service role keep edits in sync,
+                including price, currency, target date, and notes.
+              </li>
+            </ul>
+
+            <EarlyAccessForm />
 
             <div className="flex flex-wrap items-center gap-4">
               <a
@@ -33,42 +70,55 @@ export default function HomePage() {
               </a>
               <p className="text-xs sm:text-sm text-ink-muted">
                 STEP, IGES, STL, SolidWorks &amp; zipped assemblies. No spam, no
-                nurture sequence.
+                nurture sequence — just a fast quote.
               </p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-3 text-xs sm:text-sm">
-              <div className="surface-card p-4 shadow-lift-sm">
-                <p className="text-ink-soft font-medium mb-1">For real work</p>
-                <p className="text-ink-muted">
-                  Production, service parts, and weird one-offs that don&apos;t
-                  fit in a dropdown.
-                </p>
-              </div>
-              <div className="surface-card p-4 shadow-lift-sm">
-                <p className="text-ink-soft font-medium mb-1">
-                  Built from war stories
-                </p>
-                <p className="text-ink-muted">
-                  Lessons from thousands of jobs at Protolabs, Hubs, and
-                  friends-of-the-industry.
-                </p>
-              </div>
-              <div className="surface-card p-4 shadow-lift-sm">
-                <p className="text-ink-soft font-medium mb-1">
-                  Not another portal
-                </p>
-                <p className="text-ink-muted">
-                  One place to drop context, not another login you&apos;ll
-                  forget.
-                </p>
-              </div>
             </div>
           </div>
 
-          {/* Right side: upload box pulled up into hero */}
-          <div className="lg:pl-4">
-            <UploadBox />
+          {/* Right side: admin preview + intake */}
+          <div className="space-y-4 lg:pl-4">
+            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-lift-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-ink">
+                    Quotes dashboard preview
+                  </p>
+                  <p className="text-xs text-ink-muted">
+                    Supabase view · status filters live
+                  </p>
+                </div>
+                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                  /admin/quotes
+                </span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {HERO_PREVIEW_ROWS.map((row) => (
+                  <div
+                    key={row.id}
+                    className="rounded-2xl border border-slate-900/70 bg-slate-900/40 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-ink">
+                          {row.customer}
+                        </p>
+                        <p className="text-xs text-ink-muted">{row.file}</p>
+                      </div>
+                      <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-emerald-300">
+                        {row.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[11px] uppercase tracking-wide text-ink-soft">
+                      {row.detail}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4 shadow-lift-sm">
+              <UploadBox />
+            </div>
           </div>
         </section>
 

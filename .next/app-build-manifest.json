@@ -12,7 +12,7 @@
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-e3bf15caf1f1e0f9.js",
       "static/chunks/main-app-1f7455d4bfa8618a.js",
-      "static/css/6c721d0f99a39f29.css",
+      "static/css/fc36eb7988919902.css",
       "static/chunks/app/layout-e75734a99ea7f15c.js"
     ],
     "/api/files/route": [
@@ -55,7 +55,7 @@
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-e3bf15caf1f1e0f9.js",
       "static/chunks/main-app-1f7455d4bfa8618a.js",
-      "static/chunks/app/page-34cd1f31ab368c00.js"
+      "static/chunks/app/page-6da80d5939cf30b1.js"
     ],
     "/admin/layout": [
       "static/chunks/webpack-2eb758dea75faf50.js",
@@ -70,7 +70,7 @@
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-e3bf15caf1f1e0f9.js",
       "static/chunks/main-app-1f7455d4bfa8618a.js",
-      "static/chunks/app/admin/uploads/[id]/page-2649a1140a4bcb81.js"
+      "static/chunks/app/admin/uploads/[id]/page-690f2ec011527828.js"
     ],
     "/admin/page": [
       "static/chunks/webpack-2eb758dea75faf50.js",
@@ -78,14 +78,15 @@
       "static/chunks/255-e3bf15caf1f1e0f9.js",
       "static/chunks/main-app-1f7455d4bfa8618a.js",
       "static/chunks/619-ba102abea3e3d0e4.js",
-      "static/chunks/app/admin/page-00eb6340a97e0525.js"
+      "static/chunks/app/admin/page-3498dd0c40cb60a9.js"
     ],
     "/admin/quotes/[id]/page": [
       "static/chunks/webpack-2eb758dea75faf50.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-e3bf15caf1f1e0f9.js",
       "static/chunks/main-app-1f7455d4bfa8618a.js",
-      "static/chunks/app/admin/quotes/[id]/page-2649a1140a4bcb81.js"
+      "static/chunks/619-ba102abea3e3d0e4.js",
+      "static/chunks/app/admin/quotes/[id]/page-bfc1808297ae4a2d.js"
     ],
     "/admin/quotes/page": [
       "static/chunks/webpack-2eb758dea75faf50.js",
@@ -93,7 +94,7 @@
       "static/chunks/255-e3bf15caf1f1e0f9.js",
       "static/chunks/main-app-1f7455d4bfa8618a.js",
       "static/chunks/619-ba102abea3e3d0e4.js",
-      "static/chunks/app/admin/quotes/page-81433ac04d57224e.js"
+      "static/chunks/app/admin/quotes/page-fad8a1c70eaf74ea.js"
     ],
     "/api/hello/route": [
       "static/chunks/webpack-2eb758dea75faf50.js",

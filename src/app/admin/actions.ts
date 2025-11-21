@@ -2,6 +2,7 @@
 
 "use server";
 
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { redirect } from "next/navigation";
 
@@ -37,4 +38,25 @@ export async function updateQuote(formData: FormData) {
   }
 
   return redirect(`/admin/quotes/${id}?updated=1`);
+}
+
+export type QuoteFormState = {
+  error?: string;
+};
+
+export async function handleQuoteFormSubmit(
+  _prevState: QuoteFormState,
+  formData: FormData,
+): Promise<QuoteFormState> {
+  try {
+    await updateQuote(formData);
+    return {};
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    console.error("handleQuoteFormSubmit error", error);
+    return { error: "Failed to save changes. Please try again." };
+  }
 }
