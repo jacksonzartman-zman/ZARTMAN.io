@@ -7,7 +7,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { formatDateTime } from "@/lib/formatDate";
 import {
   DEFAULT_UPLOAD_STATUS,
-  isUploadStatus,
+  normalizeUploadStatus,
   type UploadStatus,
   UPLOAD_STATUS_LABELS,
 } from "../../constants";
@@ -181,7 +181,11 @@ async function getCadPreviewForQuote(
         .maybeSingle<UploadFileReference>();
 
       if (uploadError) {
-        console.error("Failed to load upload for quote", quote.upload_id, uploadError);
+        console.error(
+          "Failed to load upload for quote",
+          quote.upload_id,
+          uploadError,
+        );
       } else {
         uploadFile = uploadData;
       }
@@ -214,9 +218,10 @@ async function getCadPreviewForQuote(
       };
     }
 
-    const { data: signedData, error: signedError } = await supabaseServer.storage
-      .from(normalized.bucket)
-      .createSignedUrl(normalized.path, CAD_SIGNED_URL_TTL_SECONDS);
+    const { data: signedData, error: signedError } =
+      await supabaseServer.storage
+        .from(normalized.bucket)
+        .createSignedUrl(normalized.path, CAD_SIGNED_URL_TTL_SECONDS);
 
     if (signedError || !signedData?.signedUrl) {
       console.error("Failed to create CAD signed URL", signedError);
@@ -277,9 +282,7 @@ function isStlCandidate(candidate: CadFileCandidate): boolean {
   const mime = candidate.mime?.toLowerCase() ?? "";
 
   return (
-    fileName.endsWith(".stl") ||
-    path.endsWith(".stl") ||
-    mime.includes("stl")
+    fileName.endsWith(".stl") || path.endsWith(".stl") || mime.includes("stl")
   );
 }
 
@@ -330,7 +333,8 @@ export default async function QuoteDetailPage({
 }: QuoteDetailPageProps) {
   const resolvedParams = await params;
   const resolvedSearchParams = await resolveMaybePromise(searchParams);
-  const wasUpdated = getSearchParamValue(resolvedSearchParams, "updated") === "1";
+  const wasUpdated =
+    getSearchParamValue(resolvedSearchParams, "updated") === "1";
 
   const { data: quote, error } = await supabaseServer
     .from("quotes_with_uploads")
@@ -351,7 +355,10 @@ export default async function QuoteDetailPage({
           </h1>
           <p className="mt-2 text-sm text-slate-400">
             We couldn’t find a quote with ID{" "}
-            <span className="font-mono text-slate-200">{resolvedParams.id}</span>.
+            <span className="font-mono text-slate-200">
+              {resolvedParams.id}
+            </span>
+            .
           </p>
           <div className="mt-4">
             <Link
@@ -366,15 +373,15 @@ export default async function QuoteDetailPage({
     );
   }
 
-  const status = isUploadStatus(quote.status)
-    ? quote.status
-    : DEFAULT_UPLOAD_STATUS;
+  const status = normalizeUploadStatus(quote.status, DEFAULT_UPLOAD_STATUS);
   const customerName =
-    typeof quote.customer_name === "string" && quote.customer_name.trim().length > 0
+    typeof quote.customer_name === "string" &&
+    quote.customer_name.trim().length > 0
       ? quote.customer_name
       : "Unknown customer";
   const customerEmail =
-    typeof quote.customer_email === "string" && quote.customer_email.includes("@")
+    typeof quote.customer_email === "string" &&
+    quote.customer_email.includes("@")
       ? quote.customer_email
       : null;
   const companyName =
@@ -403,7 +410,8 @@ export default async function QuoteDetailPage({
   const statusLabel = UPLOAD_STATUS_LABELS[status] ?? "Unknown";
   const cadPreview = await getCadPreviewForQuote(quote);
   const cadPreviewUrl =
-    typeof cadPreview.signedUrl === "string" && cadPreview.signedUrl.trim().length > 0
+    typeof cadPreview.signedUrl === "string" &&
+    cadPreview.signedUrl.trim().length > 0
       ? cadPreview.signedUrl
       : null;
   const cadPreviewFallback =
@@ -415,7 +423,8 @@ export default async function QuoteDetailPage({
       ? quote.dfm_notes
       : null;
   const internalNotes =
-    typeof quote.internal_notes === "string" && quote.internal_notes.trim().length > 0
+    typeof quote.internal_notes === "string" &&
+    quote.internal_notes.trim().length > 0
       ? quote.internal_notes
       : null;
 
@@ -539,11 +548,15 @@ export default async function QuoteDetailPage({
               <dl className="mt-3 grid gap-3 text-sm text-slate-200 md:grid-cols-2">
                 <div>
                   <dt className="text-slate-500">Created</dt>
-                  <dd>{formatDateTime(quote.created_at, { includeTime: true })}</dd>
+                  <dd>
+                    {formatDateTime(quote.created_at, { includeTime: true })}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">Updated</dt>
-                  <dd>{formatDateTime(quote.updated_at, { includeTime: true })}</dd>
+                  <dd>
+                    {formatDateTime(quote.updated_at, { includeTime: true })}
+                  </dd>
                 </div>
               </dl>
               <p className="mt-4 text-xs text-slate-500">
@@ -553,7 +566,9 @@ export default async function QuoteDetailPage({
                   <>
                     <br />
                     Upload ID:{" "}
-                    <span className="font-mono text-slate-300">{quote.upload_id}</span>
+                    <span className="font-mono text-slate-300">
+                      {quote.upload_id}
+                    </span>
                   </>
                 )}
               </p>
@@ -562,11 +577,13 @@ export default async function QuoteDetailPage({
         </section>
 
         <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-          <h2 className="text-base font-semibold text-slate-50">Update quote</h2>
+          <h2 className="text-base font-semibold text-slate-50">
+            Update quote
+          </h2>
           <p className="mt-1 text-sm text-slate-400">
-            Adjust status, pricing, currency, target date, DFM notes, and internal
-            notes. Changes are saved back to Supabase and show up instantly on the
-            dashboard.
+            Adjust status, pricing, currency, target date, DFM notes, and
+            internal notes. Changes are saved back to Supabase and show up
+            instantly on the dashboard.
           </p>
 
           <QuoteUpdateForm

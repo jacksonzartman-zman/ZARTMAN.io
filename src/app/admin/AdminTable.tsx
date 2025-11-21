@@ -4,8 +4,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
-import type { UploadStatus } from "./constants";
-import { UPLOAD_STATUS_LABELS } from "./constants";
+import {
+  UPLOAD_STATUS_LABELS,
+  UPLOAD_STATUS_OPTIONS,
+  type UploadStatus,
+} from "./constants";
 
 export type UploadRow = {
   id: string;
@@ -23,11 +26,7 @@ type AdminTableProps = {
 
 const STATUS_FILTERS: (UploadStatus | "all")[] = [
   "all",
-  "new",
-  "in_review",
-  "quoted",
-  "on_hold",
-  "closed_lost",
+  ...UPLOAD_STATUS_OPTIONS,
 ];
 
 export default function AdminTable({ uploads }: AdminTableProps) {

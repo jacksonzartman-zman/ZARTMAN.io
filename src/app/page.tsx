@@ -20,7 +20,7 @@ const HERO_PREVIEW_ROWS = [
     id: "QT-1079",
     customer: "Bright Robotics",
     file: "armature-v6.sldprt",
-    status: "New",
+    status: "Submitted",
     detail: "Uploads • Supabase",
   },
 ];
@@ -43,8 +43,8 @@ export default function HomePage() {
               </h1>
               <p className="max-w-copy text-sm sm:text-base text-ink-muted">
                 One dark-mode hub that shows uploads, quote status, pricing, and
-                target dates — all synced from Supabase. Keep sales, AM, and
-                ops aligned without duct-taped spreadsheets.
+                target dates — all synced from Supabase. Keep sales, AM, and ops
+                aligned without duct-taped spreadsheets.
               </p>
             </div>
 
@@ -178,8 +178,9 @@ export default function HomePage() {
           </p>
           <p className="text-sm sm:text-base text-ink-muted">
             This isn&apos;t about replacing your suppliers. It&apos;s about
-            giving you a simple way to point at a file and say, &quot;Here&apos;s
-            what I&apos;m trying to do. Help me make it real.&quot;
+            giving you a simple way to point at a file and say,
+            &quot;Here&apos;s what I&apos;m trying to do. Help me make it
+            real.&quot;
           </p>
         </section>
 
