@@ -1,4 +1,4 @@
-// File: /workspace/src/app/api/hello/route.ts
+// File: /workspaces/ZARTMAN.io/src/app/api/hello/route.ts
 import * as entry from '../../../../../src/app/api/hello/route.js'
 import type { NextRequest } from 'next/server.js'
 
