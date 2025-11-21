@@ -1,4 +1,4 @@
-// File: /workspace/src/app/admin/quotes/page.tsx
+// File: /workspaces/ZARTMAN.io/src/app/admin/quotes/page.tsx
 import * as entry from '../../../../../src/app/admin/quotes/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
