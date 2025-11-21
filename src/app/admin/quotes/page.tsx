@@ -123,14 +123,14 @@ export default async function QuotesPage({
     );
   }
 
-  const rows: QuoteRow[] =
-    data?.map((row: any) => ({
+    const rows: QuoteRow[] =
+      data?.map((row: any) => ({
       id: row.id,
       customerName: row.customer_name ?? "Unknown",
       customerEmail: row.customer_email ?? "",
       company: row.company ?? "",
       fileName: row.file_name ?? "",
-      status: row.status ?? "new",
+        status: (row.status as UploadStatus) ?? "new",
       price: row.price,
       currency: row.currency,
       targetDate: row.target_date,
@@ -178,7 +178,10 @@ export default async function QuotesPage({
           </div>
         </div>
 
-        <QuotesTable quotes={filteredQuotes} />
+          <QuotesTable
+            quotes={filteredQuotes}
+            totalCount={rows.length}
+          />
       </main>
     );
 }
