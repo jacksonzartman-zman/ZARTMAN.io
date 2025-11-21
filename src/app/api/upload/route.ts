@@ -1,139 +1,207 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { supabaseServer } from "@/lib/supabaseServer";
-import {
-  CAD_EXTENSIONS,
-  isAllowedCadFileName,
-} from "@/lib/cadFileTypes";
+import { CAD_EXTENSIONS, isAllowedCadFileName } from "@/lib/cadFileTypes";
 
 export const runtime = "nodejs";
+
+const CAD_BUCKET =
+  process.env.SUPABASE_CAD_BUCKET ||
+  process.env.NEXT_PUBLIC_CAD_BUCKET ||
+  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
+  "cad";
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  stl: "model/stl",
+  step: "application/step",
+  stp: "application/step",
+  iges: "model/iges",
+  igs: "model/iges",
+  sldprt: "application/sldprt",
+  sldasm: "application/sldasm",
+  zip: "application/zip",
+  pdf: "application/pdf",
+};
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
 
-    const file = formData.get("file") as File | null;
-    const name = (formData.get("name") ?? "") as string;
-    const email = (formData.get("email") ?? "") as string;
-    const company = (formData.get("company") ?? "") as string;
-    const notes = (formData.get("notes") ?? "") as string;
-
-    if (!file) {
+    const fileEntry = formData.get("file");
+    if (!(fileEntry instanceof File)) {
       return NextResponse.json(
-        { error: "Missing file in request" },
-        { status: 400 }
+        { success: false, message: "Missing file in request" },
+        { status: 400 },
       );
     }
 
-    // Reject non-CAD files BEFORE uploading to Supabase
+    const file = fileEntry;
+    const name = getFormValue(formData.get("name"));
+    const email = getFormValue(formData.get("email"));
+    const company = getFormValue(formData.get("company"));
+    const notes = getFormValue(formData.get("notes"));
+
+    if (!name || !email) {
+      return NextResponse.json(
+        { success: false, message: "Name and email are required" },
+        { status: 400 },
+      );
+    }
+
     if (!isAllowedCadFileName(file.name)) {
       return NextResponse.json(
         {
           success: false,
           message: `Unsupported file type. Allowed extensions: ${CAD_EXTENSIONS.join(
-            ", "
+            ", ",
           )}.`,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    if (!name || !email) {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    if (buffer.byteLength === 0) {
       return NextResponse.json(
-        { error: "Name and email are required" },
-        { status: 400 }
+        { success: false, message: "The uploaded file is empty." },
+        { status: 400 },
       );
     }
 
-    // ❗ FIXED: supabaseServer is NOT a function — it's already a client
+    const mimeType = detectMimeType(file);
+    const safeFileName = sanitizeFileName(file.name);
+    const storageKey = buildStorageKey(safeFileName);
+    const storagePath = `${CAD_BUCKET}/${storageKey}`;
+
     const supabase = supabaseServer;
 
-    // Create a unique-ish path
-    const timestamp = Date.now();
-    const safeName = file.name.replace(/\s+/g, "-");
-    const filePath = `uploads/${timestamp}-${safeName}`;
+    const { error: storageError } = await supabase.storage
+      .from(CAD_BUCKET)
+      .upload(storageKey, buffer, {
+        cacheControl: "3600",
+        contentType: mimeType,
+        upsert: false,
+      });
 
-    // 3 NEW: ensure there is a customer record for this upload
+    if (storageError) {
+      console.error("Supabase storage upload failed", storageError);
+      return NextResponse.json(
+        {
+          success: false,
+          step: "storage-upload",
+          message: "Failed to upload file to storage.",
+        },
+        { status: 500 },
+      );
+    }
+
     let customerId: string | null = null;
-
     const { data: customer, error: customerError } = await supabase
       .from("customers")
       .upsert(
-      {
-        name,
-        email,
-        company,
-      },
-      {
-        onConflict: "email", // relies on UNIQUE(email)
-      },
+        {
+          name,
+          email,
+          company: company || null,
+        },
+        {
+          onConflict: "email",
+        },
       )
-      .select("id, email")
+      .select("id")
       .single();
 
-  console.log("UPSERT CUSTOMER RESULT", { customer, customerError });
-
     if (customerError) {
-  // Don't block the upload, but log so we can debug in Vercel/dev logs
-  console.error("Customer upsert failed", customerError);
-  } else if (customer) {
+      console.error("Customer upsert failed", customerError);
+    } else if (customer?.id) {
       customerId = customer.id as string;
-  }
-
-// 4 Insert the upload row, linking to the customer if we have one
-  const { data: uploadRow, error: uploadError } = await supabase
-    .from("uploads")
-    .insert({
-      file_name: file.name,
-      file_path: filePath,
-      mime_type: file.type,
-      name,
-      email,
-      company,
-      notes,
-      customer_id: customerId, // can be null if upsert failed
-    })
-    .select("id, customer_id")
-  .single();
-
-  console.log("UPLOAD INSERT RESULT", { uploadRow, uploadError });
-
-    if (uploadError) {
-  console.error("Upload row insert failed", uploadError);
-    return NextResponse.json(
-    {
-      success: false,
-      // TEMP: bubble the actual DB error so we can see what's wrong
-      message: `Failed to save upload metadata: ${uploadError.message}`,
-    },
-    { status: 500 },
-   );
     }
 
-      console.log("UPLOAD INSERT RESULT", { uploadRow, uploadError });
+    const { data: uploadRow, error: uploadError } = await supabase
+      .from("uploads")
+      .insert({
+        file_name: file.name,
+        file_path: storagePath,
+        mime_type: mimeType,
+        name,
+        email,
+        company: company || null,
+        initial_request_notes: notes || null,
+        customer_id: customerId,
+      })
+      .select("id, file_name, file_path, mime_type, customer_id")
+      .single();
 
-    if (uploadError) {
-      console.error("Upload row insert failed", uploadError);
+    if (uploadError || !uploadRow) {
+      console.error("Upload metadata insert failed", uploadError);
       return NextResponse.json(
-      {
-        success: false,
-        // Keep it simple for the client; details are in the server logs
-        message: "Failed to save upload metadata",
-      },
+        {
+          success: false,
+          step: "metadata-insert",
+          message: "Failed to save upload metadata.",
+        },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      success: true,
+      message: "Upload complete",
+      uploadId: uploadRow.id,
+      customerId: uploadRow.customer_id,
+      fileName: uploadRow.file_name,
+      filePath: uploadRow.file_path,
+      mimeType: uploadRow.mime_type,
+      bucket: CAD_BUCKET,
+      key: storageKey,
+      storagePath,
+      publicUrl: null,
+    });
+  } catch (err: any) {
+    console.error("Upload handler error", err);
+    return NextResponse.json(
+      { success: false, message: err?.message ?? String(err) },
       { status: 500 },
     );
   }
+}
 
-  // Success — respond OK
-  return NextResponse.json({
-    success: true,
-    message: "Upload complete",
-    uploadId: uploadRow.id,
-  });
-  } catch (err: any) {
-    console.error('Upload handler error', err);
-    return NextResponse.json(
-      { success: false, message: err?.message ?? String(err) },
-      { status: 500 }
-    );
+function getFormValue(value: FormDataEntryValue | null): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function sanitizeFileName(originalName: string): string {
+  const fallback = "cad-file";
+  if (typeof originalName !== "string" || originalName.trim().length === 0) {
+    return `${fallback}.stl`;
   }
+  const normalized = originalName
+    .trim()
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return normalized.length > 0 ? normalized : `${fallback}.stl`;
+}
+
+function buildStorageKey(fileName: string): string {
+  const timestamp = Date.now();
+  const random = randomBytes(6).toString("hex");
+  return `uploads/${timestamp}-${random}-${fileName}`;
+}
+
+function detectMimeType(file: File): string {
+  if (file.type && file.type.trim().length > 0) {
+    return file.type;
+  }
+  const extension = getFileExtension(file.name);
+  return MIME_BY_EXTENSION[extension] || "application/octet-stream";
+}
+
+function getFileExtension(fileName: string): string {
+  if (typeof fileName !== "string") return "";
+  const parts = fileName.toLowerCase().split(".");
+  return parts.length > 1 ? parts.pop() ?? "" : "";
 }
