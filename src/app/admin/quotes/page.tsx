@@ -1,23 +1,51 @@
 // src/app/admin/quotes/page.tsx
 
 import { supabaseServer } from "@/lib/supabaseServer";
+import type { UploadStatus } from "../constants";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
 import StatusFilterChips from "../StatusFilterChips";
 
 export const dynamic = "force-dynamic";
 
-export default async function QuotesPage({ searchParams }: any) {
-  const rawStatus = Array.isArray(searchParams?.status)
-    ? searchParams.status[0]
-    : searchParams?.status;
-  const rawSearch = Array.isArray(searchParams?.search)
-    ? searchParams.search[0]
-    : searchParams?.search;
+type QuotesPageSearchParams = {
+  status?: string | string[];
+  search?: string | string[];
+};
 
-  const statusFilter =
-    typeof rawStatus === "string" && rawStatus.trim().length > 0
-      ? rawStatus.toLowerCase()
-      : "all";
+type QuotesPageProps = {
+  searchParams?: QuotesPageSearchParams;
+};
+
+const VALID_STATUS_VALUES: UploadStatus[] = [
+  "new",
+  "in_review",
+  "quoted",
+  "on_hold",
+  "closed_lost",
+];
+
+const getFirstParamValue = (value?: string | string[]) => {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
+};
+
+export default async function QuotesPage({
+  searchParams = {},
+}: QuotesPageProps) {
+  const rawStatus = getFirstParamValue(searchParams.status);
+  const rawSearch = getFirstParamValue(searchParams.search);
+
+  const normalizedStatus =
+    typeof rawStatus === "string" ? rawStatus.trim().toLowerCase() : "";
+  const statusFilter: UploadStatus | "all" = VALID_STATUS_VALUES.includes(
+    normalizedStatus as UploadStatus,
+  )
+    ? (normalizedStatus as UploadStatus)
+    : "all";
+
   const searchTerm = typeof rawSearch === "string" ? rawSearch : "";
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
@@ -52,19 +80,18 @@ export default async function QuotesPage({ searchParams }: any) {
       createdAt: row.created_at,
     })) ?? [];
 
-  const filteredQuotes = rows.filter((row) => {
+  const rowsToShow = rows.filter((row) => {
+    const rowStatus = (row.status ?? "new").toLowerCase();
     const matchesStatus =
-      statusFilter === "all"
-        ? true
-        : (row.status ?? "new").toLowerCase() === statusFilter;
+      statusFilter === "all" ? true : rowStatus === statusFilter;
 
     if (!normalizedSearch) {
       return matchesStatus;
     }
 
-    const haystack = `${row.customerName} ${row.customerEmail} ${
-      row.company ?? ""
-    } ${row.fileName ?? ""} ${(row.status ?? "").toString()}`
+    const haystack = `${row.customerName} ${row.customerEmail} ${row.company ?? ""} ${row.fileName ?? ""} ${
+      row.status ?? ""
+    }`
       .toLowerCase()
       .replace(/\s+/g, " ");
 
@@ -99,7 +126,7 @@ export default async function QuotesPage({ searchParams }: any) {
         </form>
       </div>
 
-      <QuotesTable quotes={filteredQuotes} />
+      <QuotesTable quotes={rowsToShow} />
     </main>
   );
 }
