@@ -5,11 +5,11 @@
   "/api/quotes/route": "/api/quotes",
   "/api/threads/route": "/api/threads",
   "/api/upload/route": "/api/upload",
-  "/page": "/",
   "/quote/page": "/quote",
+  "/page": "/",
   "/admin/uploads/[id]/page": "/admin/uploads/[id]",
-  "/admin/quotes/page": "/admin/quotes",
   "/admin/page": "/admin",
+  "/admin/quotes/page": "/admin/quotes",
   "/admin/quotes/[id]/page": "/admin/quotes/[id]",
   "/api/hello/route": "/api/hello"
 }

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import { UPLOAD_STATUS_LABELS, type UploadStatus } from "./constants";
+import CreateQuoteButton from "./CreateQuoteButton";
 
 export type InboxRow = {
   id: string;
@@ -33,9 +34,6 @@ export default function AdminTable({
   const emptyHeadline = hasActiveFilters
     ? "No RFQs match your filters yet."
     : "No RFQs yet.";
-  const detailLabel = (quoteId: string | null) =>
-    quoteId ? "Open quote" : "Review upload";
-
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50 shadow-sm">
       <table className="min-w-full text-left text-sm">
@@ -116,14 +114,22 @@ export default function AdminTable({
                       {UPLOAD_STATUS_LABELS[row.status]}
                     </span>
                   </td>
-                  <td className={`${columnClasses} text-right`}>
-                    <Link
-                      href={href}
-                      className="text-sm font-semibold text-emerald-300 hover:text-emerald-200"
-                    >
-                      {detailLabel(row.quoteId)}
-                    </Link>
-                  </td>
+                    <td className={`${columnClasses} text-right`}>
+                      {row.quoteId ? (
+                        <Link
+                          href={href}
+                          className="text-sm font-semibold text-emerald-300 hover:text-emerald-200"
+                        >
+                          Open quote
+                        </Link>
+                      ) : (
+                        <CreateQuoteButton
+                          uploadId={row.id}
+                          size="sm"
+                          align="end"
+                        />
+                      )}
+                    </td>
                 </tr>
               );
             })
