@@ -22,7 +22,9 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": [
+        "src/*"
+      ]
     },
     "isolatedModules": true,
     "plugins": [

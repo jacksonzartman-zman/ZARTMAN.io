@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReadonlyURLSearchParams } from "next/navigation";
 import PortalCard from "../PortalCard";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
@@ -27,17 +26,12 @@ const ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
-type SearchParamsRecord = Record<string, string | string[] | undefined>;
-type SearchParamSource =
-  | Promise<ReadonlyURLSearchParams | URLSearchParams | SearchParamsRecord>
-  | ReadonlyURLSearchParams
-  | URLSearchParams
-  | SearchParamsRecord
-  | null
-  | undefined;
+type CustomerPageSearchParams = {
+  [key: string]: string | string[] | undefined;
+};
 
 type CustomerPageProps = {
-  searchParams?: SearchParamSource;
+  searchParams?: CustomerPageSearchParams;
 };
 
 type RawQuoteRecord = {
@@ -75,15 +69,11 @@ type LoadCustomerPortalDataArgs = {
   domain?: string | null;
 };
 
-type ResolvedSearchParams = {
-  email?: string;
-};
-
-export default async function CustomerDashboardPage({
+async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
-  const resolvedSearchParams = await resolveSearchParams(searchParams);
-  const emailNormalized = normalizeEmailInput(resolvedSearchParams.email);
+  const emailParam = getFirstParamValue(searchParams?.email);
+  const emailNormalized = normalizeEmailInput(emailParam);
   const emailDomain = getEmailDomain(emailNormalized);
 
   if (!emailNormalized) {
@@ -226,27 +216,6 @@ export default async function CustomerDashboardPage({
   );
 }
 
-async function resolveSearchParams(
-  rawSearchParams?: SearchParamSource,
-): Promise<ResolvedSearchParams> {
-  const resolved = await rawSearchParams;
-
-  if (!resolved) {
-    return {};
-  }
-
-  if (isSearchParamsLike(resolved)) {
-    return {
-      email: resolved.get("email") ?? undefined,
-    };
-  }
-
-  const record = resolved as SearchParamsRecord;
-  return {
-    email: getFirstParamValue(record.email),
-  };
-}
-
 function normalizeEmailInput(value?: string): string | null {
   if (!value) {
     return null;
@@ -274,16 +243,6 @@ function getFirstParamValue(
   return value ?? undefined;
 }
 
-function isSearchParamsLike(
-  value: unknown,
-): value is Pick<URLSearchParams, "get"> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as Record<string, unknown>).get === "function"
-  );
-}
-
 async function loadCustomerPortalData({
   email,
   domain,
@@ -302,7 +261,10 @@ async function loadCustomerPortalData({
   if (quotes.length === 0 && domain) {
     const domainResponse = await selectQuotesByPattern(`%@${domain}`);
     if (domainResponse.error) {
-      console.error("Failed to load customer quotes by domain", domainResponse.error);
+      console.error(
+        "Failed to load customer quotes by domain",
+        domainResponse.error,
+      );
       errors.push("domain");
     }
 
@@ -451,3 +413,11 @@ function CustomerPortalDemoCard() {
     </PortalCard>
   );
 }
+
+
+type NextAppPage = (props: {
+  params?: Promise<Record<string, unknown>>;
+  searchParams?: Promise<any>;
+}) => ReturnType<typeof CustomerDashboardPage>;
+
+export default CustomerDashboardPage as unknown as NextAppPage;
