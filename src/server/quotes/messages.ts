@@ -17,16 +17,21 @@ type QuoteMessageOperationResult<T> = {
   error: string | null;
 };
 
+type QuoteMessagesLoadResult = {
+  messages: QuoteMessage[];
+  error: string | null;
+};
+
 const QUOTE_MESSAGE_COLUMNS =
   "id,quote_id,author_type,author_name,author_email,body,created_at";
 
 export async function loadQuoteMessages(
   quoteId: string,
-): Promise<QuoteMessageOperationResult<QuoteMessage[]>> {
+): Promise<QuoteMessagesLoadResult> {
   const normalizedId = quoteId?.trim();
 
   if (!normalizedId) {
-    return { data: [], error: "quoteId is required" };
+    return { messages: [], error: "quoteId is required" };
   }
 
   try {
@@ -39,20 +44,24 @@ export async function loadQuoteMessages(
     if (error) {
       console.error("loadQuoteMessages: query failed", { quoteId, error });
       return {
-        data: [],
-        error: "Failed to load quote messages.",
+        messages: [],
+        error: "Unable to load messages right now.",
       };
     }
 
     return {
-      data: (data as QuoteMessage[]) ?? [],
+      messages: (data as QuoteMessage[]) ?? [],
       error: null,
     };
   } catch (unexpectedError) {
-    console.error("loadQuoteMessages: unexpected error", unexpectedError);
+    // Soft-fail so the quote page keeps rendering even if Supabase hiccups.
+    console.error("loadQuoteMessages: unexpected error", {
+      quoteId: normalizedId,
+      error: unexpectedError,
+    });
     return {
-      data: [],
-      error: "Failed to load quote messages.",
+      messages: [],
+      error: "Unable to load messages right now.",
     };
   }
 }

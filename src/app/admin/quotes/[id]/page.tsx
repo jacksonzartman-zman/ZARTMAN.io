@@ -543,18 +543,18 @@ export default async function QuoteDetailPage({
       quote.internal_notes.trim().length > 0
         ? quote.internal_notes
         : null;
-    const {
-      data: quoteMessages,
-      error: quoteMessagesError,
-    } = await loadQuoteMessages(quote.id);
-
-    if (quoteMessagesError) {
-      console.error("Failed to load quote messages", {
-        quoteId: quote.id,
+      const {
+        messages: quoteMessages,
         error: quoteMessagesError,
-      });
-    }
-    const messages: QuoteMessage[] = quoteMessages ?? [];
+      } = await loadQuoteMessages(quote.id);
+
+      if (quoteMessagesError) {
+        console.error("Failed to load quote messages", {
+          quoteId: quote.id,
+          error: quoteMessagesError,
+        });
+      }
+      const messages: QuoteMessage[] = quoteMessages ?? [];
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-8">
