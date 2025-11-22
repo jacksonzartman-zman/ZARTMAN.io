@@ -101,6 +101,12 @@ type UploadForQuote = {
   quote_id: string | null;
   customer_id: string | null;
   status: UploadStatus | null;
+  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  company: string | null;
+  file_name: string | null;
 };
 
 type QuoteLookupRow = {
@@ -122,7 +128,12 @@ async function syncUploadQuoteLink(
     .eq("id", uploadId);
 
   if (error) {
-    console.error("Failed to sync upload.quote_id after quote creation", error);
+    console.error("Failed to sync upload.quote_id after quote creation", {
+      uploadId,
+      quoteId,
+      status,
+      error,
+    });
     return false;
   }
 
@@ -142,14 +153,19 @@ export async function createQuoteFromUploadAction(
   const uploadId = rawUploadId.trim();
 
   try {
-    const { data: upload, error: uploadError } = await supabaseServer
-      .from("uploads")
-      .select("id, quote_id, customer_id, status")
-      .eq("id", uploadId)
-      .maybeSingle<UploadForQuote>();
+      const { data: upload, error: uploadError } = await supabaseServer
+        .from("uploads")
+        .select(
+          "id, quote_id, customer_id, status, name, first_name, last_name, email, company, file_name",
+        )
+        .eq("id", uploadId)
+        .maybeSingle<UploadForQuote>();
 
     if (uploadError || !upload) {
-      console.error("createQuoteFromUpload: upload lookup failed", uploadError);
+        console.error("createQuoteFromUpload: upload lookup failed", {
+          uploadId,
+          error: uploadError,
+        });
       return { error: "Could not create quote, please try again." };
     }
 
@@ -199,20 +215,56 @@ export async function createQuoteFromUploadAction(
       return redirect(`/admin/quotes/${existingQuote.id}`);
     }
 
-    const { data: newQuote, error: insertError } = await supabaseServer
-      .from("quotes")
-      .insert({
+      const contactPieces = [upload.first_name, upload.last_name]
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter((value) => value.length > 0);
+      const fallbackName =
+        typeof upload.name === "string" && upload.name.trim().length > 0
+          ? upload.name.trim()
+          : "";
+      const fallbackEmail =
+        typeof upload.email === "string" && upload.email.trim().length > 0
+          ? upload.email.trim()
+          : "";
+      const customerNameForQuote =
+        contactPieces.join(" ").trim() ||
+        fallbackName ||
+        fallbackEmail ||
+        "RFQ contact";
+      const sanitizedCompany =
+        typeof upload.company === "string" && upload.company.trim().length > 0
+          ? upload.company.trim()
+          : null;
+      const sanitizedEmail = fallbackEmail || null;
+      const sanitizedFileName =
+        typeof upload.file_name === "string" && upload.file_name.trim().length > 0
+          ? upload.file_name.trim()
+          : null;
+
+      const quoteInsertPayload = {
         upload_id: uploadId,
-        customer_id: upload.customer_id ?? null,
+        customer_id: upload.customer_id ?? undefined,
+        customer_name: customerNameForQuote,
+        customer_email: sanitizedEmail,
+        company: sanitizedCompany,
+        file_name: sanitizedFileName,
         status: desiredStatus,
         currency: "USD",
         internal_notes: `Created from upload ${uploadId}`,
-      })
-      .select("id")
-      .single<{ id: string }>();
+      };
+
+      const { data: newQuote, error: insertError } = await supabaseServer
+        .from("quotes")
+        .insert(quoteInsertPayload)
+        .select("id")
+        .single<{ id: string }>();
 
     if (insertError || !newQuote) {
-      console.error("createQuoteFromUpload: insert failed", insertError);
+        console.error("createQuoteFromUpload: insert failed", {
+          uploadId,
+          payload: quoteInsertPayload,
+          error: insertError,
+        });
       return { error: "Could not create quote, please try again." };
     }
 

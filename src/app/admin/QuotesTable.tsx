@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import {
@@ -6,6 +7,7 @@ import {
   type UploadStatus,
 } from "./constants";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
+import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 export type QuoteRow = {
   id: string;
@@ -115,14 +117,18 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
               <td className={`${adminTableCellClass} text-xs text-slate-400`}>
                 {formatDateTime(row.createdAt, { includeTime: true })}
               </td>
-              <td className={`${adminTableCellClass} text-right`}>
-                <Link
-                  href={`/admin/quotes/${row.id}`}
-                  className="text-sm font-semibold text-emerald-300 hover:text-emerald-200"
-                >
-                  Open quote
-                </Link>
-              </td>
+                <td className={`${adminTableCellClass} text-right`}>
+                  <Link
+                    href={`/admin/quotes/${row.id}`}
+                    className={clsx(
+                      secondaryCtaClasses,
+                      ctaSizeClasses.sm,
+                      "inline-flex min-w-[9.5rem] justify-center",
+                    )}
+                  >
+                    Open quote
+                  </Link>
+                </td>
             </tr>
           ))
         )
