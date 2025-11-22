@@ -982,21 +982,19 @@ export default function UploadBox() {
         </div>
 
         {/* Upload CTA */}
-        <div className="pt-2">
-          <button
-            type="submit"
-            disabled={isSubmitting || !canSubmit}
-            className={clsx(
-              "mt-2 w-full rounded-pill px-6 py-3 text-sm font-semibold text-ink shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:opacity-70",
-              canSubmit && !isSubmitting
-                ? "bg-brand hover:bg-brand-soft"
-                : "bg-brand/50",
-            )}
-            aria-busy={isSubmitting}
-          >
-            {isSubmitting ? "Submitting…" : "Submit RFQ"}
-          </button>
-        </div>
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={isSubmitting || !canSubmit}
+              className={clsx(
+                "mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-semibold text-ink shadow-lift-sm transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:bg-brand/70 disabled:opacity-70",
+                isSubmitting && "cursor-wait",
+              )}
+              aria-busy={isSubmitting}
+            >
+              {isSubmitting ? "Submitting…" : "Submit RFQ"}
+            </button>
+          </div>
 
         {/* Messages */}
         <div className="min-h-[1.25rem] pt-1">
