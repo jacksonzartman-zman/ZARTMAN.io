@@ -7,50 +7,43 @@ import {
   UPLOAD_STATUS_LABELS,
   type UploadStatus,
 } from "@/app/admin/constants";
+import { primaryCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
+const QUOTE_LIMIT = 20;
+const RECENT_ACTIVITY_LIMIT = 10;
 const OPEN_STATUSES: UploadStatus[] = ["submitted", "in_review", "quoted"];
-const OPEN_QUOTES_LIMIT = 5;
-const ACTIVITY_LIMIT = 10;
-const UPLOAD_LIMIT = 25;
-const QUOTE_LIMIT = 25;
 
-const DUE_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+const TARGET_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
 });
-const TIMELINE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+
+const ACTIVITY_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   hour: "numeric",
-  minute: "numeric",
+  minute: "2-digit",
 });
 
 type SearchParamsRecord = Record<string, string | string[] | undefined>;
 type SearchParamSource =
   | Promise<ReadonlyURLSearchParams | URLSearchParams | SearchParamsRecord>
+  | ReadonlyURLSearchParams
+  | URLSearchParams
+  | SearchParamsRecord
+  | null
   | undefined;
 
 type CustomerPageProps = {
   searchParams?: SearchParamSource;
 };
 
-type RawUploadRecord = {
-  id: string;
-  created_at: string | null;
-  file_name: string | null;
-  manufacturing_process: string | null;
-  company: string | null;
-  status: string | null;
-  quantity: number | null;
-};
-
 type RawQuoteRecord = {
   id: string;
   status: string | null;
   created_at: string | null;
-  updated_at: string | null;
   target_date: string | null;
   price: number | string | null;
   currency: string | null;
@@ -59,32 +52,27 @@ type RawQuoteRecord = {
   company: string | null;
 };
 
-type DerivedQuote = {
+type PortalQuote = {
   id: string;
   status: UploadStatus;
-  statusLabel: string;
-  dueLabel: string | null;
-  fallbackDateLabel: string | null;
-  priceLabel: string | null;
-};
-
-type ActivityItem = {
-  id: string;
-  type: "upload" | "quote";
-  label: string;
-  body?: string;
-  timestamp: string;
+  createdAt: string | null;
+  targetDate: string | null;
+  price: number | string | null;
+  currency: string | null;
+  fileName: string | null;
+  customerEmail: string | null;
+  company: string | null;
 };
 
 type CustomerPortalData = {
-  openQuotes: DerivedQuote[];
-  activity: ActivityItem[];
-  rfqCount: number;
-  totalQuotes: number;
-  openQuoteCount: number;
-  lastCompany?: string | null;
-  hasRecords: boolean;
+  quotes: PortalQuote[];
   error?: string;
+  domainFallbackUsed: boolean;
+};
+
+type LoadCustomerPortalDataArgs = {
+  email: string;
+  domain?: string | null;
 };
 
 type ResolvedSearchParams = {
@@ -95,173 +83,144 @@ export default async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
   const resolvedSearchParams = await resolveSearchParams(searchParams);
-  const normalizedEmail = normalizeEmailInput(resolvedSearchParams.email);
+  const emailNormalized = normalizeEmailInput(resolvedSearchParams.email);
+  const emailDomain = getEmailDomain(emailNormalized);
 
-  if (!normalizedEmail) {
+  if (!emailNormalized) {
     return (
       <div className="space-y-6">
-        <PortalCard
-          title="Customer portal demo"
-          description="Paste your business email into the URL to preview how RFQs and quotes will show up for your team."
-          action={
-            <Link
-              href="/quote"
-              className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-emerald-300 transition hover:border-emerald-400 hover:text-emerald-200"
-            >
-              Go to /quote
-            </Link>
-          }
-        >
-          <p className="text-sm text-slate-300">
-            Example: <code className="text-white">/customer?email=you@company.com</code>
-          </p>
-        </PortalCard>
+        <CustomerPortalDemoCard />
       </div>
     );
   }
 
-  const customerData = await loadCustomerPortalData(normalizedEmail);
+  const portalData = await loadCustomerPortalData({
+    email: emailNormalized,
+    domain: emailDomain,
+  });
+
+  const openQuotes = portalData.quotes.filter((quote) =>
+    OPEN_STATUSES.includes(quote.status),
+  );
+  const recentActivity = portalData.quotes.slice(0, RECENT_ACTIVITY_LIMIT);
+  const hasAnyQuotes = portalData.quotes.length > 0;
 
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
         <p>
-          Showing activity for{" "}
-          <span className="font-semibold text-white">{normalizedEmail}</span>
-          {customerData.lastCompany ? (
-            <>
-              {" "}
-              · <span className="text-slate-400">{customerData.lastCompany}</span>
-            </>
-          ) : null}
+          Showing read-only activity for{" "}
+          <span className="font-semibold text-white">{emailNormalized}</span>
         </p>
-        {!customerData.hasRecords ? (
+        {portalData.domainFallbackUsed && emailDomain ? (
           <p className="mt-2 text-xs text-slate-500">
-            We don’t see any RFQs for this contact yet — start a new upload on the
-            quote page.
+            No direct matches found, so we’re showing other contacts at @{emailDomain}.
           </p>
-        ) : null}
+        ) : (
+          <p className="mt-2 text-xs text-slate-500">
+            Share this link with teammates to preview the live portal experience.
+          </p>
+        )}
       </section>
 
-      {customerData.error ? (
-        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
-          {customerData.error}
-        </div>
+      {portalData.error ? (
+        <PortalCard
+          title="Live RFQ data"
+          description="We ran into a temporary issue while loading Supabase data."
+        >
+          <p className="text-sm text-red-200">{portalData.error}</p>
+        </PortalCard>
       ) : null}
 
       <PortalCard
         title="Open quotes"
         description={
-          customerData.openQuoteCount > 0
-            ? `These quotes are still in motion for ${normalizedEmail}.`
-            : "We’ll surface active quotes here as soon as they’re ready."
-        }
-        action={
-          <Link
-            href="/quote"
-            className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-emerald-300 transition hover:border-emerald-400 hover:text-emerald-200"
-          >
-            Start new RFQ
-          </Link>
+          hasAnyQuotes
+            ? "Quotes that are actively moving forward for your team."
+            : "We’ll surface live RFQs here as soon as they exist."
         }
       >
-        {customerData.openQuotes.length > 0 ? (
+        {openQuotes.length > 0 ? (
           <ul className="space-y-3">
-            {customerData.openQuotes.map((quote) => (
+            {openQuotes.map((quote) => (
               <li
                 key={quote.id}
                 className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-900/70 bg-slate-900/30 px-4 py-3"
               >
                 <div>
-                  <p className="font-medium text-white">
-                    Quote {formatQuoteId(quote.id)}
-                  </p>
-                  <p className="text-xs text-slate-400">{quote.statusLabel}</p>
+                  <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
+                  <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
                 </div>
-                <div className="text-right text-xs text-slate-400">
-                  {quote.priceLabel ? (
-                    <p className="text-sm font-semibold text-white">
-                      {quote.priceLabel}
-                    </p>
-                  ) : null}
-                  {quote.dueLabel ? (
-                    <p>Target {quote.dueLabel}</p>
-                  ) : quote.fallbackDateLabel ? (
-                    <p>Updated {quote.fallbackDateLabel}</p>
-                  ) : null}
+                <div className="flex flex-col items-end gap-2 text-right">
+                  <StatusBadge status={quote.status} />
+                  <p className="text-xs text-slate-400">
+                    {formatTargetDate(quote.targetDate) ?? "Target TBD"}
+                  </p>
                 </div>
               </li>
             ))}
           </ul>
         ) : (
           <p className="text-sm text-slate-400">
-            {customerData.hasRecords
-              ? "All caught up! No open quotes at the moment."
-              : `We don’t see any RFQs for ${normalizedEmail} yet.`}{" "}
+            No open quotes yet for <span className="text-white">{emailNormalized}</span>.{" "}
             <Link
               href="/quote"
               className="text-emerald-300 underline-offset-4 hover:underline"
             >
-              Upload files to request a quote.
-            </Link>
+              Submit a new RFQ
+            </Link>{" "}
+            to see it here.
+          </p>
+        )}
+      </PortalCard>
+
+      <PortalCard title="Recent activity" description="Latest RFQ and quote updates.">
+        {recentActivity.length > 0 ? (
+          <ul className="space-y-3">
+            {recentActivity.map((quote) => (
+              <li
+                key={quote.id}
+                className="flex flex-col gap-2 rounded-xl border border-slate-900/60 bg-slate-900/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
+                  <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
+                </div>
+                <div className="flex flex-col items-start gap-1 text-left sm:items-end sm:text-right">
+                  <StatusBadge status={quote.status} size="sm" />
+                  <p className="text-xs text-slate-500">
+                    {formatActivityDate(quote.createdAt) ?? "Date pending"}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-400">
+            We haven’t logged any RFQs yet for {emailNormalized}. They’ll flow in as soon as
+            files are uploaded from the quote tool.
           </p>
         )}
       </PortalCard>
 
       <PortalCard
         title="Next steps"
-        description="Lightweight onboarding checklist so future automation has a home."
+        description="Keep momentum with a lightweight checklist."
+        action={
+          <Link href="/quote" className={primaryCtaClasses}>
+            Submit a new RFQ
+          </Link>
+        }
       >
-        <ol className="list-decimal space-y-2 pl-4 text-slate-300">
+        <ul className="list-disc space-y-2 pl-5 text-slate-300">
+          <li>Share this link with teammates — the portal is read-only today.</li>
           <li>
-            You’ve submitted {customerData.rfqCount} RFQs with this email. Drop in
-            more drawings anytime.
+            {openQuotes.length > 0
+              ? `Track ${openQuotes.length} open quote${openQuotes.length === 1 ? "" : "s"} to keep reviews moving.`
+              : "Watch for new quotes here as soon as uploads are processed."}
           </li>
-          <li>
-            {customerData.openQuoteCount > 0
-              ? `Review ${customerData.openQuoteCount} open quote${customerData.openQuoteCount === 1 ? "" : "s"} for final tweaks.`
-              : "Expect a response shortly — we’ll notify you as soon as quotes update."}
-          </li>
-          <li>Loop in teammates or share target pricing from the quote page.</li>
-        </ol>
-      </PortalCard>
-
-      <PortalCard
-        title="Activity feed"
-        description="Recent RFQ submissions and quote updates."
-      >
-        {customerData.activity.length > 0 ? (
-          <ul className="space-y-4">
-            {customerData.activity.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-col gap-1 rounded-xl border border-slate-900/60 bg-slate-900/20 p-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <p className="font-medium text-white">{item.label}</p>
-                  {item.body ? (
-                    <p className="text-sm text-slate-400">{item.body}</p>
-                  ) : null}
-                </div>
-                <p className="text-xs text-slate-500">
-                  {formatTimelineTimestamp(item.timestamp) ?? "Date pending"}
-                </p>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-slate-400">
-            {customerData.hasRecords
-              ? "No recent changes yet — we’ll drop updates here automatically."
-              : `We don’t see any RFQs for ${normalizedEmail} yet.`}{" "}
-            <Link
-              href="/quote"
-              className="text-emerald-300 underline-offset-4 hover:underline"
-            >
-              Share files to kick off your first RFQ.
-            </Link>
-          </p>
-        )}
+          <li>Uploads from /quote will sync back into this workspace automatically.</li>
+        </ul>
       </PortalCard>
     </div>
   );
@@ -294,7 +253,15 @@ function normalizeEmailInput(value?: string): string | null {
   }
 
   const normalized = value.trim().toLowerCase();
-  return normalized.length > 3 ? normalized : null;
+  return normalized.length > 0 ? normalized : null;
+}
+
+function getEmailDomain(value?: string | null): string | null {
+  if (!value || !value.includes("@")) {
+    return null;
+  }
+  const [, domain] = value.split("@");
+  return domain?.length ? domain : null;
 }
 
 function getFirstParamValue(
@@ -317,184 +284,81 @@ function isSearchParamsLike(
   );
 }
 
-async function loadCustomerPortalData(
-  email: string,
-): Promise<CustomerPortalData> {
-  const supabase = supabaseServer;
-
-  const [uploadsResponse, quotesResponse] = await Promise.all([
-    supabase
-      .from("uploads")
-      .select(
-        `
-        id,
-        created_at,
-        file_name,
-        manufacturing_process,
-        company,
-        status,
-        quantity
-      `,
-      )
-      .ilike("email", email)
-      .order("created_at", { ascending: false })
-      .limit(UPLOAD_LIMIT),
-    supabase
-      .from("quotes_with_uploads")
-      .select(
-        `
-        id,
-        status,
-        created_at,
-        updated_at,
-        target_date,
-        price,
-        currency,
-        file_name,
-        customer_email,
-        company
-      `,
-      )
-      .ilike("customer_email", email)
-      .order("created_at", { ascending: false })
-      .limit(QUOTE_LIMIT),
-  ]);
-
+async function loadCustomerPortalData({
+  email,
+  domain,
+}: LoadCustomerPortalDataArgs): Promise<CustomerPortalData> {
   const errors: string[] = [];
-  if (uploadsResponse.error) {
-    console.error("Failed to load uploads for customer portal", uploadsResponse.error);
-    errors.push("uploads");
+
+  const emailResponse = await selectQuotesByPattern(email);
+  if (emailResponse.error) {
+    console.error("Failed to load customer quotes by email", emailResponse.error);
+    errors.push("email");
   }
 
-  if (quotesResponse.error) {
-    console.error("Failed to load quotes for customer portal", quotesResponse.error);
-    errors.push("quotes");
+  let quotes = mapQuoteRecords(emailResponse.data ?? []);
+  let domainFallbackUsed = false;
+
+  if (quotes.length === 0 && domain) {
+    const domainResponse = await selectQuotesByPattern(`%@${domain}`);
+    if (domainResponse.error) {
+      console.error("Failed to load customer quotes by domain", domainResponse.error);
+      errors.push("domain");
+    }
+
+    const domainQuotes = mapQuoteRecords(domainResponse.data ?? []);
+    if (domainQuotes.length > 0) {
+      quotes = domainQuotes;
+      domainFallbackUsed = true;
+    }
   }
-
-  const uploads = (uploadsResponse.data ?? []) as RawUploadRecord[];
-  const quotes = (quotesResponse.data ?? []) as RawQuoteRecord[];
-
-  const openQuoteRecords = quotes.filter((quote) =>
-    OPEN_STATUSES.includes(normalizeUploadStatus(quote.status)),
-  );
-
-  const openQuotes: DerivedQuote[] = openQuoteRecords
-    .slice(0, OPEN_QUOTES_LIMIT)
-    .map((quote) => {
-      const status = normalizeUploadStatus(quote.status);
-      return {
-        id: quote.id,
-        status,
-        statusLabel: UPLOAD_STATUS_LABELS[status],
-        dueLabel: formatDueDate(quote.target_date),
-        fallbackDateLabel: formatDueDate(quote.created_at),
-        priceLabel: formatPriceLabel(quote.price, quote.currency),
-      };
-    });
-
-  const activity = buildActivityItems(uploads, quotes).slice(0, ACTIVITY_LIMIT);
-
-  const rfqCount = uploads.length;
-  const totalQuotes = quotes.length;
-  const openQuoteCount = openQuoteRecords.length;
 
   return {
-    openQuotes,
-    activity,
-    rfqCount,
-    totalQuotes,
-    openQuoteCount,
-    lastCompany: uploads[0]?.company ?? quotes[0]?.company ?? null,
-    hasRecords: rfqCount > 0 || totalQuotes > 0,
+    quotes,
+    domainFallbackUsed,
     error:
       errors.length > 0
-        ? "We couldn’t load every data point just now. Refresh to try again."
+        ? "We had trouble loading every data point. Refresh to try again."
         : undefined,
   };
 }
 
-function buildActivityItems(
-  uploads: RawUploadRecord[],
-  quotes: RawQuoteRecord[],
-): ActivityItem[] {
-  const uploadItems: ActivityItem[] = uploads
-    .filter((upload) => Boolean(upload.created_at))
-    .map((upload) => ({
-      id: `upload-${upload.id}`,
-      type: "upload" as const,
-      label: "RFQ submitted",
-      body: buildUploadActivityBody(upload),
-      timestamp: upload.created_at as string,
-    }));
-
-  const quoteItems = quotes.flatMap((quote) => {
-    const timestamp = quote.updated_at ?? quote.created_at;
-    if (!timestamp) {
-      return [];
-    }
-
-    const normalizedStatus = normalizeUploadStatus(quote.status);
-    return [
-      {
-        id: `quote-${quote.id}`,
-        type: "quote" as const,
-        label: getQuoteActivityLabel(normalizedStatus),
-        body: buildQuoteActivityBody(quote),
-        timestamp,
-      },
-    ];
-  });
-
-  return [...uploadItems, ...quoteItems].sort((a, b) => {
-    const left = Date.parse(b.timestamp);
-    const right = Date.parse(a.timestamp);
-    return (Number.isNaN(left) ? 0 : left) - (Number.isNaN(right) ? 0 : right);
-  });
+function selectQuotesByPattern(pattern: string) {
+  return supabaseServer
+    .from("quotes_with_uploads")
+    .select(
+      `
+      id,
+      status,
+      created_at,
+      target_date,
+      price,
+      currency,
+      file_name,
+      customer_email,
+      company
+    `,
+    )
+    .ilike("customer_email", pattern)
+    .order("created_at", { ascending: false })
+    .limit(QUOTE_LIMIT);
 }
 
-function buildUploadActivityBody(upload: RawUploadRecord): string {
-  const quantityLabel =
-    typeof upload.quantity === "number" && upload.quantity > 0
-      ? `Qty ${upload.quantity}`
-      : null;
-  const parts = [
-    upload.file_name,
-    upload.manufacturing_process,
-    quantityLabel,
-    upload.company,
-  ].filter((part): part is string => Boolean(part));
-
-  return parts.join(" • ") || "Files received for review.";
+function mapQuoteRecords(records: RawQuoteRecord[]): PortalQuote[] {
+  return records.map((record) => ({
+    id: record.id,
+    status: normalizeUploadStatus(record.status),
+    createdAt: record.created_at ?? null,
+    targetDate: record.target_date ?? null,
+    price: record.price ?? null,
+    currency: record.currency ?? null,
+    fileName: record.file_name ?? null,
+    customerEmail: record.customer_email ?? null,
+    company: record.company ?? null,
+  }));
 }
 
-function buildQuoteActivityBody(quote: RawQuoteRecord): string | undefined {
-  const price = formatPriceLabel(quote.price, quote.currency);
-  const due = formatDueDate(quote.target_date);
-  const parts = [
-    quote.file_name,
-    price ? `Est. ${price}` : null,
-    due ? `Target ${due}` : null,
-  ].filter((part): part is string => Boolean(part));
-
-  return parts.length > 0 ? parts.join(" • ") : undefined;
-}
-
-function getQuoteActivityLabel(status: UploadStatus): string {
-  switch (status) {
-    case "approved":
-      return "Order approved";
-    case "rejected":
-      return "Quote closed";
-    case "quoted":
-      return "Quote shared";
-    case "in_review":
-      return "Quote in review";
-    default:
-      return "Quote updated";
-  }
-}
-
-function formatDueDate(value: string | null): string | null {
+function formatTargetDate(value: string | null): string | null {
   if (!value) {
     return null;
   }
@@ -504,7 +368,39 @@ function formatDueDate(value: string | null): string | null {
     return null;
   }
 
-  return DUE_DATE_FORMATTER.format(new Date(timestamp));
+  return TARGET_DATE_FORMATTER.format(new Date(timestamp));
+}
+
+function formatActivityDate(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+
+  return ACTIVITY_DATE_FORMATTER.format(new Date(timestamp));
+}
+
+function getQuoteTitle(quote: PortalQuote): string {
+  if (quote.fileName) {
+    return quote.fileName;
+  }
+  return `Quote ${formatQuoteId(quote.id)}`;
+}
+
+function getQuoteSummary(quote: PortalQuote): string {
+  if (quote.company) {
+    return quote.company;
+  }
+
+  if (quote.customerEmail) {
+    return quote.customerEmail;
+  }
+
+  return "Awaiting company details";
 }
 
 function formatQuoteId(id: string): string {
@@ -515,41 +411,43 @@ function formatQuoteId(id: string): string {
   return id.startsWith("Q-") ? id : `#${id.slice(0, 6)}`;
 }
 
-function formatPriceLabel(
-  amount: unknown,
-  currency: string | null,
-): string | null {
-  const numericAmount =
-    typeof amount === "number"
-      ? amount
-      : typeof amount === "string"
-        ? Number(amount)
-        : null;
+function StatusBadge({
+  status,
+  size = "md",
+}: {
+  status: UploadStatus;
+  size?: "md" | "sm";
+}) {
+  const sizeClasses =
+    size === "sm"
+      ? "px-2 py-0.5 text-[11px]"
+      : "px-3 py-1 text-xs";
 
-  if (numericAmount === null || Number.isNaN(numericAmount)) {
-    return null;
-  }
-
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency || "USD",
-      maximumFractionDigits: numericAmount >= 1000 ? 0 : 2,
-    }).format(numericAmount);
-  } catch {
-    return numericAmount.toLocaleString("en-US");
-  }
+  return (
+    <span className={`inline-flex items-center rounded-full bg-emerald-500/10 font-semibold text-emerald-200 ${sizeClasses}`}>
+      {UPLOAD_STATUS_LABELS[status]}
+    </span>
+  );
 }
 
-function formatTimelineTimestamp(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) {
-    return null;
-  }
-
-  return TIMELINE_FORMATTER.format(new Date(timestamp));
+function CustomerPortalDemoCard() {
+  return (
+    <PortalCard
+      title="Customer portal demo"
+      description="Add ?email=you@company.com to this URL to load your actual RFQs."
+      action={
+        <Link
+          href="/quote"
+          className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-emerald-300 transition hover:border-emerald-400 hover:text-emerald-200"
+        >
+          Go to /quote
+        </Link>
+      }
+    >
+      <p className="text-sm text-slate-300">
+        Example:{" "}
+        <code className="text-white">/customer?email=you@company.com</code>
+      </p>
+    </PortalCard>
+  );
 }
