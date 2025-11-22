@@ -5,6 +5,7 @@ import {
   requestEarlyAccess,
   type EarlyAccessFormState,
 } from "@/app/actions";
+import { primaryCtaClasses } from "@/lib/ctas";
 
 const INITIAL_STATE: EarlyAccessFormState = {};
 
@@ -48,11 +49,11 @@ function SubmitButton() {
   const { pending } = useFormStatus();
 
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="inline-flex items-center justify-center rounded-full bg-emerald-400 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:opacity-60"
-    >
+      <button
+        type="submit"
+        disabled={pending}
+        className={primaryCtaClasses}
+      >
       {pending ? "Sending..." : "Request early access"}
     </button>
   );

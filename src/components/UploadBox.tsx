@@ -15,6 +15,7 @@ import {
   bytesToMegabytes,
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
+import { primaryCtaClasses } from "@/lib/ctas";
 
 const MANUFACTURING_PROCESS_OPTIONS = [
   "CNC machining",
@@ -987,7 +988,8 @@ export default function UploadBox() {
               type="submit"
               disabled={isSubmitting || !canSubmit}
               className={clsx(
-                "mt-2 inline-flex w-full items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-semibold text-ink shadow-lift-sm transition-colors hover:bg-brand-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:cursor-not-allowed disabled:bg-brand/70 disabled:opacity-70",
+                primaryCtaClasses,
+                "mt-2 w-full px-6 py-3",
                 isSubmitting && "cursor-wait",
               )}
               aria-busy={isSubmitting}
