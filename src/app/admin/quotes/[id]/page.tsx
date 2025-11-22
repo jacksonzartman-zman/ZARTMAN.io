@@ -1,5 +1,6 @@
 // src/app/admin/quotes/[id]/page.tsx
 
+import clsx from "clsx";
 import Link from "next/link";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import CadViewerClient from "@/components/CadViewerClient";
@@ -19,6 +20,7 @@ import {
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { SuccessBanner } from "../../uploads/[id]/SuccessBanner";
 import { QuoteMessageComposer } from "./QuoteMessageComposer";
+import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
@@ -114,10 +116,21 @@ const AUTHOR_LABELS: Record<QuoteMessageAuthorType, string> = {
   supplier: "Supplier",
 };
 
+const MESSAGE_BUBBLE_VARIANTS: Record<QuoteMessageAuthorType, string> = {
+  admin:
+    "bg-emerald-400 text-slate-950 border border-emerald-300/70 shadow-lift-sm",
+  customer: "bg-slate-900 text-slate-100 border border-slate-800/80",
+  supplier: "bg-slate-900 text-slate-100 border border-slate-800/80",
+};
+
 function getAuthorBadgeClasses(type: QuoteMessageAuthorType): string {
   return `${AUTHOR_BADGE_BASE_CLASSES} ${
     AUTHOR_BADGE_VARIANTS[type] ?? AUTHOR_BADGE_VARIANTS.admin
   }`;
+}
+
+function getMessageBubbleClasses(type: QuoteMessageAuthorType): string {
+  return MESSAGE_BUBBLE_VARIANTS[type] ?? MESSAGE_BUBBLE_VARIANTS.customer;
 }
 
 function extractFileNames(row: QuoteWithUploadsRow): string[] {
@@ -405,7 +418,11 @@ export default async function QuoteDetailPage({
           <div className="mt-4">
             <Link
               href="/admin/quotes"
-              className="text-sm font-medium text-emerald-400 hover:text-emerald-300"
+                className={clsx(
+                  secondaryCtaClasses,
+                  ctaSizeClasses.sm,
+                  "inline-flex",
+                )}
             >
               Back to quotes
             </Link>
@@ -556,68 +573,126 @@ export default async function QuoteDetailPage({
       }
       const messages: QuoteMessage[] = quoteMessages ?? [];
 
-  return (
-    <main className="mx-auto max-w-5xl px-4 py-10 space-y-8">
-      {wasUpdated && <SuccessBanner message="Quote updated." />}
+    return (
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-10">
+        {wasUpdated && <SuccessBanner message="Quote updated." />}
 
-      <header className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Quote workspace
-        </p>
-        <h1 className="text-3xl font-semibold text-slate-50">
-          Quote · {customerName}
-        </h1>
-        <p className="text-sm text-slate-400">
-          Customer context synced from Supabase view
-          <span className="ml-1 font-mono text-xs text-slate-500">
-            quotes_with_uploads
-          </span>
-        </p>
-      </header>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 space-y-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-6">
+            <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Customer
+                Quote workspace
               </p>
-              <p className="mt-1 text-lg font-medium text-slate-50">
-                {customerName}
+              <h1 className="text-3xl font-semibold text-slate-50">
+                Quote · {customerName}
+              </h1>
+              <p className="text-sm text-slate-400">
+                Synced from{" "}
+                <span className="font-mono text-xs text-slate-500">
+                  quotes_with_uploads
+                </span>
               </p>
-              {customerEmail && (
-                <a
-                  href={`mailto:${customerEmail}`}
-                  className="text-sm text-emerald-400 hover:underline"
-                >
-                  {customerEmail}
-                </a>
-              )}
-                {contactPhone && (
-                  <p>
-                    <a
-                      href={`tel:${contactPhone}`}
-                      className="text-sm text-slate-300 hover:text-emerald-300"
-                    >
-                      {contactPhone}
-                    </a>
-                  </p>
-                )}
               {companyName && (
                 <p className="text-sm text-slate-300">{companyName}</p>
               )}
+              <div className="flex flex-col gap-1 text-sm text-slate-300">
+                {customerEmail && (
+                  <a
+                    href={`mailto:${customerEmail}`}
+                    className="text-emerald-300 hover:underline"
+                  >
+                    {customerEmail}
+                  </a>
+                )}
+                {contactPhone && (
+                  <a
+                    href={`tel:${contactPhone}`}
+                    className="text-slate-300 hover:text-emerald-300"
+                  >
+                    {contactPhone}
+                  </a>
+                )}
+              </div>
             </div>
-            <span className="inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-              {statusLabel}
-            </span>
+            <div className="flex flex-col items-end gap-3 text-right">
+              <span className="inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                {statusLabel}
+              </span>
+              {quote.upload_id && (
+                <Link
+                  href={`/admin/uploads/${quote.upload_id}`}
+                  className={clsx(
+                    secondaryCtaClasses,
+                    ctaSizeClasses.sm,
+                    "whitespace-nowrap",
+                  )}
+                >
+                  View upload
+                </Link>
+              )}
+            </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Files
-              </p>
-              <div className="mt-2 space-y-1 text-sm text-slate-200">
+          <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Price
+              </dt>
+              <dd className="mt-1 text-base font-medium text-slate-50">
+                {formatMoney(priceValue, currencyValue)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Target date
+              </dt>
+              <dd className="mt-1 text-base text-slate-100">
+                {formatDateTime(targetDateValue) ?? "Not set"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Created
+              </dt>
+              <dd className="mt-1 text-base text-slate-100">
+                {formatDateTime(quote.created_at, { includeTime: true })}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Updated
+              </dt>
+              <dd className="mt-1 text-base text-slate-100">
+                {formatDateTime(quote.updated_at, { includeTime: true })}
+              </dd>
+            </div>
+          </dl>
+
+          <p className="mt-4 text-xs text-slate-500">
+            Quote ID:{" "}
+            <span className="font-mono text-slate-300">{quote.id}</span>
+            {quote.upload_id && (
+              <>
+                {" "}
+                • Upload ID:{" "}
+                <span className="font-mono text-slate-300">{quote.upload_id}</span>
+              </>
+            )}
+          </p>
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-start">
+          <section className="order-2 space-y-6 lg:order-1">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Files
+                </p>
+                <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                  {fileNames.length} attached
+                </span>
+              </div>
+              <div className="mt-3 space-y-2 text-sm text-slate-100">
                 {fileNames.length === 0 ? (
                   <p className="text-slate-500">No files listed.</p>
                 ) : (
@@ -630,208 +705,160 @@ export default async function QuoteDetailPage({
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Quote details
-              </p>
-              <dl className="mt-2 space-y-2 text-sm text-slate-200">
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Price</dt>
-                  <dd>{formatMoney(priceValue, currencyValue)}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Target date</dt>
-                  <dd>{formatDateTime(targetDateValue)}</dd>
-                </div>
-              </dl>
-            </div>
-          </div>
-
             {intakeSummaryItems && (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    RFQ summary
-                  </p>
-                  <dl className="mt-3 grid gap-3 text-sm text-slate-200">
-                    {intakeSummaryItems.map((item) => (
-                      <div key={item.label} className="flex flex-col gap-0.5">
-                        <dt className="text-slate-500">{item.label}</dt>
-                        <dd className="font-medium text-slate-100">
-                          {item.value}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-                <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Project details / notes
-                  </p>
-                  <p className="mt-2 whitespace-pre-line text-sm text-slate-200">
-                    {intakeNotes ?? "—"}
-                  </p>
-                </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  RFQ summary
+                </p>
+                <dl className="mt-4 grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
+                  {intakeSummaryItems.map((item) => (
+                    <div key={item.label} className="space-y-1">
+                      <dt className="text-[12px] uppercase tracking-wide text-slate-500">
+                        {item.label}
+                      </dt>
+                      <dd className="font-medium text-slate-100">{item.value}</dd>
+                    </div>
+                  ))}
+                </dl>
               </div>
             )}
 
-            <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Messages
-                  </p>
-                  <p className="text-sm text-slate-400">
-                    Keep a running thread tied to this quote.
-                  </p>
-                </div>
-                <span className="text-xs text-slate-500">
-                  {messages.length} {messages.length === 1 ? "message" : "messages"}
-                </span>
-              </div>
-              {quoteMessagesError && (
-                <p className="mt-2 text-sm text-red-400">
-                  Unable to load every message right now. Refresh to retry.
-                </p>
-              )}
-              <div className="mt-4 space-y-4">
-                {messages.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-slate-800/70 bg-black/20 px-3 py-4 text-sm text-slate-400">
-                    No messages yet. Use the form below to start a thread for this
-                    quote.
-                  </p>
-                ) : (
-                  <ol className="space-y-4">
-                    {messages.map((message) => (
-                      <li
-                        key={message.id}
-                        className="rounded-lg border border-slate-900/70 bg-slate-950/80 p-4"
-                      >
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                          <span className={getAuthorBadgeClasses(message.author_type)}>
-                            {AUTHOR_LABELS[message.author_type] ??
-                              AUTHOR_LABELS.admin}
-                          </span>
-                          <span className="text-slate-400">
-                            {formatDateTime(message.created_at, { includeTime: true })}
-                          </span>
-                          {message.author_name && (
-                            <span className="text-slate-500">
-                              {message.author_name}
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-2 whitespace-pre-line text-sm text-slate-100">
-                          {message.body}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </div>
-              <div className="mt-6 border-t border-slate-900/60 pt-4">
-                <p className="text-sm font-semibold text-slate-100">
-                  Post a message
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Visible to the admin workspace for this quote.
-                </p>
-                <div className="mt-3">
-                  <QuoteMessageComposer quoteId={quote.id} />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-            <div className="flex items-center justify-between">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                3D preview
+                Project details / notes
               </p>
-              <span className="text-[11px] font-medium uppercase tracking-wide text-slate-600">
-                {cadPreviewUrl ? "Interactive STL" : "Unavailable"}
-              </span>
+              <p className="mt-3 whitespace-pre-line text-sm text-slate-200">
+                {intakeNotes ?? "No additional notes captured during intake."}
+              </p>
             </div>
-            <div className="mt-4">
-              <CadViewerClient
-                src={cadPreviewUrl}
-                fileName={cadPreview.fileName}
-                fallbackMessage={cadPreviewFallback}
-                height={320}
-              />
+          </section>
+
+          <section className="order-1 rounded-2xl border border-slate-800 bg-slate-950/60 p-6 lg:order-2">
+            <h2 className="text-base font-semibold text-slate-50">Update quote</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Adjust status, pricing, currency, target date, and internal/DFM notes.
+            </p>
+
+            <QuoteUpdateForm
+              quote={{
+                id: quote.id,
+                status,
+                price: priceValue,
+                currency: currencyValue,
+                targetDate: targetDateValue,
+                internalNotes,
+                dfmNotes,
+              }}
+            />
+          </section>
+        </div>
+
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Messages
+              </p>
+              <p className="text-sm text-slate-400">
+                Chat-style thread visible only to the admin workspace.
+              </p>
             </div>
+            <span className="text-xs text-slate-500">
+              {messages.length} {messages.length === 1 ? "message" : "messages"}
+            </span>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                DFM notes
-              </p>
-              <p className="mt-2 whitespace-pre-line text-sm text-slate-200">
-                {dfmNotes ?? "No customer-facing notes yet."}
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Shared with the customer once the quote is ready.
-              </p>
-            </div>
+          {quoteMessagesError && (
+            <p
+              className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200"
+              role="status"
+            >
+              Unable to load every message right now. Refresh to retry.
+            </p>
+          )}
 
-            <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Timeline
+          <div className="mt-4">
+            {messages.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-5 text-sm text-slate-400">
+                No messages yet. Use the composer below to start the thread for this quote.
               </p>
-              <dl className="mt-3 grid gap-3 text-sm text-slate-200 md:grid-cols-2">
-                <div>
-                  <dt className="text-slate-500">Created</dt>
-                  <dd>
-                    {formatDateTime(quote.created_at, { includeTime: true })}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-slate-500">Updated</dt>
-                  <dd>
-                    {formatDateTime(quote.updated_at, { includeTime: true })}
-                  </dd>
-                </div>
-              </dl>
-              <p className="mt-4 text-xs text-slate-500">
-                Quote ID:{" "}
-                <span className="font-mono text-slate-300">{quote.id}</span>
-                {quote.upload_id && (
-                  <>
-                    <br />
-                    Upload ID:{" "}
-                    <span className="font-mono text-slate-300">
-                      {quote.upload_id}
-                    </span>
-                  </>
-                )}
-              </p>
+            ) : (
+              <div className="md:max-h-[380px] md:overflow-y-auto md:pr-3">
+                <ol className="flex flex-col gap-4">
+                  {messages.map((message) => {
+                    const isAdmin = message.author_type === "admin";
+                    return (
+                      <li
+                        key={message.id}
+                        className={clsx(
+                          "flex w-full",
+                          isAdmin ? "justify-end" : "justify-start",
+                        )}
+                      >
+                        <div className="flex max-w-[92%] flex-col gap-2 sm:max-w-[70%]">
+                          <div
+                            className={clsx(
+                              "flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500",
+                              isAdmin ? "justify-end text-right" : "text-left",
+                            )}
+                          >
+                            <span className={getAuthorBadgeClasses(message.author_type)}>
+                              {AUTHOR_LABELS[message.author_type] ?? AUTHOR_LABELS.admin}
+                            </span>
+                            <span className="text-slate-400">
+                              {formatDateTime(message.created_at, { includeTime: true })}
+                            </span>
+                            {message.author_name && (
+                              <span className="text-slate-500">{message.author_name}</span>
+                            )}
+                          </div>
+                          <div
+                            className={clsx(
+                              "rounded-2xl border px-4 py-3 text-sm leading-relaxed whitespace-pre-line",
+                              getMessageBubbleClasses(message.author_type),
+                              isAdmin ? "rounded-tr-sm" : "rounded-tl-sm",
+                            )}
+                          >
+                            {message.body}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 border-t border-slate-900/60 pt-4">
+            <p className="text-sm font-semibold text-slate-100">Post a message</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Shared only with admins working on this quote.
+            </p>
+            <div className="mt-3">
+              <QuoteMessageComposer quoteId={quote.id} />
             </div>
           </div>
         </section>
 
         <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-          <h2 className="text-base font-semibold text-slate-50">
-            Update quote
-          </h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Adjust status, pricing, currency, target date, DFM notes, and
-            internal notes. Changes are saved back to Supabase and show up
-            instantly on the dashboard.
-          </p>
-
-          <QuoteUpdateForm
-            quote={{
-              id: quote.id,
-              status,
-              price: priceValue,
-              currency: currencyValue,
-              targetDate: targetDateValue,
-              internalNotes,
-              dfmNotes,
-            }}
-          />
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              3D preview
+            </p>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+              {cadPreviewUrl ? "Interactive STL" : "Unavailable"}
+            </span>
+          </div>
+          <div className="mt-4">
+            <CadViewerClient
+              src={cadPreviewUrl}
+              fileName={cadPreview.fileName}
+              fallbackMessage={cadPreviewFallback}
+              height={320}
+            />
+          </div>
         </section>
-      </div>
-    </main>
-  );
+      </main>
+    );
 }
