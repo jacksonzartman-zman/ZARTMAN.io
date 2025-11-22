@@ -15,9 +15,11 @@ export type QuoteFileItem = {
 
 type QuoteFilesCardProps = {
   files: QuoteFileItem[];
+  id?: string;
+  className?: string;
 };
 
-export function QuoteFilesCard({ files }: QuoteFilesCardProps) {
+export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
 
   const activeFile = useMemo(
@@ -36,7 +38,13 @@ export function QuoteFilesCard({ files }: QuoteFilesCardProps) {
   }, [activeFileId, files]);
 
     return (
-      <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+      <section
+        id={id}
+        className={clsx(
+          "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4",
+          className,
+        )}
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -57,35 +65,35 @@ export function QuoteFilesCard({ files }: QuoteFilesCardProps) {
               No files listed.
             </p>
           ) : (
-            files.map((file) => (
-              <button
-                key={file.id}
-                type="button"
-                onClick={() => setActiveFileId(file.id)}
-                className="group flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/20 px-4 py-3 text-left transition hover:border-slate-800 hover:bg-slate-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-100">
-                    {file.label}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {file.signedUrl
-                      ? "Interactive STL available"
-                      : file.fallbackMessage ?? "Preview not available yet"}
-                  </p>
-                </div>
-                <span
-                  className={clsx(
-                    secondaryCtaClasses,
-                    ctaSizeClasses.sm,
-                    "whitespace-nowrap",
-                    !file.signedUrl && "opacity-70",
-                  )}
+              files.map((file) => (
+                <button
+                  key={file.id}
+                  type="button"
+                  onClick={() => setActiveFileId(file.id)}
+                  className="group flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/20 px-4 py-3 text-left transition hover:border-slate-800 hover:bg-slate-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70"
                 >
-                  Preview
-                </span>
-              </button>
-            ))
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-100">
+                      {file.label}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {file.signedUrl
+                        ? "Interactive STL available"
+                        : file.fallbackMessage ?? "Preview not available yet"}
+                    </p>
+                  </div>
+                  <span
+                    className={clsx(
+                      secondaryCtaClasses,
+                      ctaSizeClasses.sm,
+                      "whitespace-nowrap",
+                      !file.signedUrl && "opacity-70",
+                    )}
+                  >
+                    View model
+                  </span>
+                </button>
+              ))
           )}
         </div>
 

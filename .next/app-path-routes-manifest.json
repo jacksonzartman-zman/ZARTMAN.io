@@ -5,13 +5,13 @@
   "/api/quotes/route": "/api/quotes",
   "/api/threads/route": "/api/threads",
   "/api/upload/route": "/api/upload",
-  "/quote/page": "/quote",
   "/page": "/",
-  "/admin/uploads/[id]/page": "/admin/uploads/[id]",
+  "/quote/page": "/quote",
   "/(portals)/supplier/page": "/supplier",
-  "/admin/quotes/page": "/admin/quotes",
-  "/(portals)/customer/page": "/customer",
+  "/admin/uploads/[id]/page": "/admin/uploads/[id]",
   "/admin/page": "/admin",
+  "/(portals)/customer/page": "/customer",
   "/admin/quotes/[id]/page": "/admin/quotes/[id]",
+  "/admin/quotes/page": "/admin/quotes",
   "/api/hello/route": "/api/hello"
 }
