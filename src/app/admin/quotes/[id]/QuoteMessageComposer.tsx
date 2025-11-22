@@ -6,7 +6,7 @@ import {
   postQuoteMessageAction,
   type PostQuoteMessageActionState,
 } from "./actions";
-import { primaryCtaClasses } from "@/lib/ctas";
+import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 type QuoteMessageComposerProps = {
   quoteId: string;
@@ -75,7 +75,7 @@ function ComposerSubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className={`${primaryCtaClasses} w-full sm:w-auto`}
+      className={`${primaryCtaClasses} ${ctaSizeClasses.md} w-full sm:w-auto`}
     >
       {pending ? "Sending..." : "Send message"}
     </button>

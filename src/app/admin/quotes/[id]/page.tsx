@@ -670,8 +670,8 @@ export default async function QuoteDetailPage({
     }
     const messages: QuoteMessage[] = quoteMessages ?? [];
 
-    return (
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 lg:py-10">
+      return (
+        <main className="mx-auto max-w-6xl space-y-5 px-4 py-8 lg:py-10">
         {wasUpdated && <SuccessBanner message="Quote updated." />}
 
         <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
@@ -779,8 +779,8 @@ export default async function QuoteDetailPage({
           </p>
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <div className="space-y-6">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <div className="space-y-5">
             <QuoteFilesCard files={filePreviews} />
 
             {intakeSummaryItems && (
@@ -788,7 +788,7 @@ export default async function QuoteDetailPage({
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   RFQ summary
                 </p>
-                <dl className="mt-4 grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
+                <dl className="mt-3 grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
                   {intakeSummaryItems.map((item) => (
                     <div key={item.label} className="space-y-1">
                       <dt className="text-[12px] uppercase tracking-wide text-slate-500">
@@ -811,42 +811,19 @@ export default async function QuoteDetailPage({
             </section>
           </div>
 
-          <div className="space-y-6">
-            <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Quote actions
-              </p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-50">
-                Update quote
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Adjust status, pricing, currency, target date, and internal/DFM notes.
-              </p>
-              <div className="mt-4">
-                <QuoteUpdateForm
-                  quote={{
-                    id: quote.id,
-                    status,
-                    price: priceValue,
-                    currency: currencyValue,
-                    targetDate: targetDateValue,
-                    internalNotes,
-                    dfmNotes,
-                  }}
-                />
-              </div>
-            </section>
-
+          <div className="space-y-5">
             <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Messages
                   </p>
-                  <h2 className="text-lg font-semibold text-slate-50">Admin chat</h2>
-                  <p className="text-sm text-slate-400">
-                    Chat-style thread visible only to the admin workspace.
-                  </p>
+                  <div className="mt-1 space-y-1">
+                    <h2 className="text-lg font-semibold text-slate-50">Admin chat</h2>
+                    <p className="text-sm text-slate-400">
+                      Chat-style thread visible only to the admin workspace.
+                    </p>
+                  </div>
                 </div>
                 <span className="text-xs text-slate-500">
                   {messages.length} {messages.length === 1 ? "message" : "messages"}
@@ -862,7 +839,7 @@ export default async function QuoteDetailPage({
                 </p>
               )}
 
-              <div className="mt-4">
+              <div className="mt-3">
                 {messages.length === 0 ? (
                   <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-5 text-sm text-slate-400">
                     No messages yet. Use the composer below to start the thread for this quote.
@@ -915,7 +892,7 @@ export default async function QuoteDetailPage({
                 )}
               </div>
 
-              <div className="mt-6 border-t border-slate-900/60 pt-4">
+              <div className="mt-5 border-t border-slate-900/60 pt-4">
                 <p className="text-sm font-semibold text-slate-100">Post a message</p>
                 <p className="mt-1 text-xs text-slate-500">
                   Shared only with admins working on this quote.
@@ -923,6 +900,31 @@ export default async function QuoteDetailPage({
                 <div className="mt-3">
                   <QuoteMessageComposer quoteId={quote.id} />
                 </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Quote actions
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-50">
+                Update quote
+              </h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Adjust status, pricing, currency, target date, and internal/DFM notes.
+              </p>
+              <div className="mt-3">
+                <QuoteUpdateForm
+                  quote={{
+                    id: quote.id,
+                    status,
+                    price: priceValue,
+                    currency: currencyValue,
+                    targetDate: targetDateValue,
+                    internalNotes,
+                    dfmNotes,
+                  }}
+                />
               </div>
             </section>
           </div>
