@@ -3,7 +3,6 @@
 import clsx from "clsx";
 import Link from "next/link";
 import type { ReadonlyURLSearchParams } from "next/navigation";
-import CadViewerClient from "@/components/CadViewerClient";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { formatDateTime } from "@/lib/formatDate";
 import {
@@ -20,6 +19,7 @@ import {
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { SuccessBanner } from "../../uploads/[id]/SuccessBanner";
 import { QuoteMessageComposer } from "./QuoteMessageComposer";
+import { QuoteFilesCard, type QuoteFileItem } from "./QuoteFilesCard";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
@@ -213,9 +213,9 @@ function getSearchParamValue(
   return recordValue;
 }
 
-async function getCadPreviewForQuote(
+async function getQuoteFilePreviews(
   quote: QuoteWithUploadsRow,
-): Promise<CadPreviewResult> {
+): Promise<QuoteFileItem[]> {
   try {
     const { data: files, error: filesError } = await supabaseServer
       .from("files")
@@ -247,61 +247,168 @@ async function getCadPreviewForQuote(
     }
 
     const candidates = gatherCadCandidates(files ?? [], uploadFile);
-    const stlCandidate = candidates.find(isStlCandidate);
+    const previewCache = new Map<string, CadPreviewResult>();
+    const declaredNames = extractFileNames(quote);
+    const fallbackNames = candidates
+      .map((candidate) => {
+        return (
+          candidate.fileName ??
+          extractFileNameFromPath(candidate.storagePath) ??
+          null
+        );
+      })
+      .filter((value): value is string => Boolean(value?.trim()));
+    const orderedNames =
+      declaredNames.length > 0
+        ? declaredNames
+        : fallbackNames.length > 0
+          ? fallbackNames
+          : [];
 
-    if (!stlCandidate) {
-      return {
-        signedUrl: null,
-        fileName: uploadFile?.file_name ?? files?.[0]?.filename ?? undefined,
-        reason:
-          candidates.length > 0
-            ? "No STL file available for preview yet."
-            : "3D preview not available for this quote yet.",
-      };
+    const entries: QuoteFileItem[] = [];
+    const matchedCandidates = new Set<string>();
+
+    for (let index = 0; index < orderedNames.length; index += 1) {
+      const label = orderedNames[index] || `File ${index + 1}`;
+      const candidate = matchCandidateByName(label, candidates);
+      if (candidate) {
+        matchedCandidates.add(candidate.storagePath);
+      }
+
+      const preview = candidate
+        ? await getPreviewForCandidate(candidate, previewCache)
+        : {
+            signedUrl: null,
+            fileName: label,
+            reason: "Preview not available for this file yet.",
+          };
+
+      entries.push({
+        id: candidate?.storagePath ?? `${index}-${label}`,
+        label,
+        fileName: preview.fileName ?? label,
+        signedUrl: preview.signedUrl,
+        fallbackMessage: preview.reason,
+      });
     }
 
-    const normalized = normalizeStorageReference(
-      stlCandidate.storagePath,
-      stlCandidate.bucketId,
+    const unmatchedCandidates = candidates.filter(
+      (candidate) => !matchedCandidates.has(candidate.storagePath),
     );
 
-    if (!normalized) {
-      return {
-        signedUrl: null,
-        fileName: stlCandidate.fileName ?? undefined,
-        reason: "Missing storage path for CAD file.",
-      };
+    for (const [index, candidate] of unmatchedCandidates.entries()) {
+      const fallbackLabel =
+        candidate.fileName ??
+        extractFileNameFromPath(candidate.storagePath) ??
+        `File ${entries.length + 1}`;
+      const preview = await getPreviewForCandidate(candidate, previewCache);
+      entries.push({
+        id: `${candidate.storagePath}-${index}`,
+        label: fallbackLabel,
+        fileName: preview.fileName ?? fallbackLabel,
+        signedUrl: preview.signedUrl,
+        fallbackMessage: preview.reason,
+      });
     }
 
-    const { data: signedData, error: signedError } =
-      await supabaseServer.storage
-        .from(normalized.bucket)
-        .createSignedUrl(normalized.path, CAD_SIGNED_URL_TTL_SECONDS);
-
-    if (signedError || !signedData?.signedUrl) {
-      console.error("Failed to create CAD signed URL", signedError);
-      return {
-        signedUrl: null,
-        fileName:
-          stlCandidate.fileName ??
-          extractFileNameFromPath(stlCandidate.storagePath),
-        reason: "Unable to generate CAD preview link right now.",
-      };
-    }
-
-    return {
-      signedUrl: signedData.signedUrl,
-      fileName:
-        stlCandidate.fileName ??
-        extractFileNameFromPath(stlCandidate.storagePath),
-    };
+    return entries;
   } catch (error) {
     console.error("Unexpected CAD preview error", error);
-    return {
-      signedUrl: null,
-      reason: "Unable to load the 3D preview right now.",
-    };
+    return [];
   }
+}
+
+async function getPreviewForCandidate(
+  candidate: CadFileCandidate,
+  cache: Map<string, CadPreviewResult>,
+): Promise<CadPreviewResult> {
+  const cacheKey = `${candidate.bucketId ?? "default"}:${candidate.storagePath}`;
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey)!;
+  }
+
+  let result: CadPreviewResult;
+
+  if (!isStlCandidate(candidate)) {
+    result = {
+      signedUrl: null,
+      fileName:
+        candidate.fileName ??
+        extractFileNameFromPath(candidate.storagePath) ??
+        undefined,
+      reason: "Only STL files are supported for preview today.",
+    };
+    cache.set(cacheKey, result);
+    return result;
+  }
+
+  const normalized = normalizeStorageReference(
+    candidate.storagePath,
+    candidate.bucketId,
+  );
+
+  if (!normalized) {
+    result = {
+      signedUrl: null,
+      fileName:
+        candidate.fileName ??
+        extractFileNameFromPath(candidate.storagePath) ??
+        undefined,
+      reason: "Missing storage path for CAD file.",
+    };
+    cache.set(cacheKey, result);
+    return result;
+  }
+
+  const { data: signedData, error: signedError } = await supabaseServer.storage
+    .from(normalized.bucket)
+    .createSignedUrl(normalized.path, CAD_SIGNED_URL_TTL_SECONDS);
+
+  if (signedError || !signedData?.signedUrl) {
+    console.error("Failed to create CAD signed URL", signedError);
+    result = {
+      signedUrl: null,
+      fileName:
+        candidate.fileName ??
+        extractFileNameFromPath(candidate.storagePath) ??
+        undefined,
+      reason: "Unable to generate CAD preview link right now.",
+    };
+    cache.set(cacheKey, result);
+    return result;
+  }
+
+  result = {
+    signedUrl: signedData.signedUrl,
+    fileName:
+      candidate.fileName ??
+      extractFileNameFromPath(candidate.storagePath) ??
+      undefined,
+  };
+
+  cache.set(cacheKey, result);
+  return result;
+}
+
+function matchCandidateByName(
+  name: string,
+  candidates: CadFileCandidate[],
+): CadFileCandidate | undefined {
+  const normalizedName = name?.toLowerCase().trim();
+  if (!normalizedName) {
+    return undefined;
+  }
+
+  return candidates.find((candidate) => {
+    const candidateName = candidate.fileName?.toLowerCase().trim();
+    if (candidateName && candidateName === normalizedName) {
+      return true;
+    }
+    const pathName =
+      extractFileNameFromPath(candidate.storagePath)?.toLowerCase().trim() ??
+      "";
+    return pathName === normalizedName;
+  });
 }
 
 function gatherCadCandidates(
@@ -521,36 +628,26 @@ export default async function QuoteDetailPage({
     typeof uploadMeta?.notes === "string" && uploadMeta.notes.trim().length > 0
       ? uploadMeta.notes
       : null;
-  const normalizedPrice =
-    typeof quote.price === "number"
-      ? quote.price
-      : typeof quote.price === "string"
-        ? Number(quote.price)
+    const normalizedPrice =
+      typeof quote.price === "number"
+        ? quote.price
+        : typeof quote.price === "string"
+          ? Number(quote.price)
+          : null;
+    const priceValue =
+      typeof normalizedPrice === "number" && Number.isFinite(normalizedPrice)
+        ? normalizedPrice
         : null;
-  const priceValue =
-    typeof normalizedPrice === "number" && Number.isFinite(normalizedPrice)
-      ? normalizedPrice
-      : null;
-  const currencyValue =
-    typeof quote.currency === "string" && quote.currency.trim().length > 0
-      ? quote.currency.trim().toUpperCase()
-      : null;
-  const targetDateValue =
-    typeof quote.target_date === "string" && quote.target_date.trim().length > 0
-      ? quote.target_date
-      : null;
-  const fileNames = extractFileNames(quote);
-  const statusLabel = UPLOAD_STATUS_LABELS[status] ?? "Unknown";
-  const cadPreview = await getCadPreviewForQuote(quote);
-  const cadPreviewUrl =
-    typeof cadPreview.signedUrl === "string" &&
-    cadPreview.signedUrl.trim().length > 0
-      ? cadPreview.signedUrl
-      : null;
-  const cadPreviewFallback =
-    typeof cadPreview.reason === "string" && cadPreview.reason.trim().length > 0
-      ? cadPreview.reason
-      : undefined;
+    const currencyValue =
+      typeof quote.currency === "string" && quote.currency.trim().length > 0
+        ? quote.currency.trim().toUpperCase()
+        : null;
+    const targetDateValue =
+      typeof quote.target_date === "string" && quote.target_date.trim().length > 0
+        ? quote.target_date
+        : null;
+    const statusLabel = UPLOAD_STATUS_LABELS[status] ?? "Unknown";
+    const filePreviews = await getQuoteFilePreviews(quote);
     const dfmNotes =
       typeof quote.dfm_notes === "string" && quote.dfm_notes.trim().length > 0
         ? quote.dfm_notes
@@ -560,41 +657,37 @@ export default async function QuoteDetailPage({
       quote.internal_notes.trim().length > 0
         ? quote.internal_notes
         : null;
-      const {
-        messages: quoteMessages,
-        error: quoteMessagesError,
-      } = await loadQuoteMessages(quote.id);
+    const {
+      messages: quoteMessages,
+      error: quoteMessagesError,
+    } = await loadQuoteMessages(quote.id);
 
-      if (quoteMessagesError) {
-        console.error("Failed to load quote messages", {
-          quoteId: quote.id,
-          error: quoteMessagesError,
-        });
-      }
-      const messages: QuoteMessage[] = quoteMessages ?? [];
+    if (quoteMessagesError) {
+      console.error("Failed to load quote messages", {
+        quoteId: quote.id,
+        error: quoteMessagesError,
+      });
+    }
+    const messages: QuoteMessage[] = quoteMessages ?? [];
 
     return (
-      <main className="mx-auto max-w-6xl space-y-6 px-4 py-10">
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 lg:py-10">
         {wasUpdated && <SuccessBanner message="Quote updated." />}
 
         <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
           <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="space-y-2">
+            <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Quote workspace
               </p>
-              <h1 className="text-3xl font-semibold text-slate-50">
-                Quote · {customerName}
-              </h1>
-              <p className="text-sm text-slate-400">
-                Synced from{" "}
-                <span className="font-mono text-xs text-slate-500">
-                  quotes_with_uploads
-                </span>
-              </p>
-              {companyName && (
-                <p className="text-sm text-slate-300">{companyName}</p>
-              )}
+              <div>
+                <h1 className="text-2xl font-semibold text-slate-50">
+                  Quote · {customerName}
+                </h1>
+                {companyName && (
+                  <p className="text-sm text-slate-300">{companyName}</p>
+                )}
+              </div>
               <div className="flex flex-col gap-1 text-sm text-slate-300">
                 {customerEmail && (
                   <a
@@ -613,6 +706,12 @@ export default async function QuoteDetailPage({
                   </a>
                 )}
               </div>
+              <p className="text-xs text-slate-500">
+                Synced from{" "}
+                <span className="font-mono text-xs text-slate-400">
+                  quotes_with_uploads
+                </span>
+              </p>
             </div>
             <div className="flex flex-col items-end gap-3 text-right">
               <span className="inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
@@ -669,8 +768,7 @@ export default async function QuoteDetailPage({
           </dl>
 
           <p className="mt-4 text-xs text-slate-500">
-            Quote ID:{" "}
-            <span className="font-mono text-slate-300">{quote.id}</span>
+            Quote ID: <span className="font-mono text-slate-300">{quote.id}</span>
             {quote.upload_id && (
               <>
                 {" "}
@@ -681,32 +779,12 @@ export default async function QuoteDetailPage({
           </p>
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)] lg:items-start">
-          <section className="order-2 space-y-6 lg:order-1">
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Files
-                </p>
-                <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                  {fileNames.length} attached
-                </span>
-              </div>
-              <div className="mt-3 space-y-2 text-sm text-slate-100">
-                {fileNames.length === 0 ? (
-                  <p className="text-slate-500">No files listed.</p>
-                ) : (
-                  fileNames.map((name) => (
-                    <p key={name} className="break-words">
-                      {name}
-                    </p>
-                  ))
-                )}
-              </div>
-            </div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <div className="space-y-6">
+            <QuoteFilesCard files={filePreviews} />
 
             {intakeSummaryItems && (
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+              <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   RFQ summary
                 </p>
@@ -720,145 +798,135 @@ export default async function QuoteDetailPage({
                     </div>
                   ))}
                 </dl>
-              </div>
+              </section>
             )}
 
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+            <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Project details / notes
               </p>
               <p className="mt-3 whitespace-pre-line text-sm text-slate-200">
                 {intakeNotes ?? "No additional notes captured during intake."}
               </p>
-            </div>
-          </section>
+            </section>
+          </div>
 
-          <section className="order-1 rounded-2xl border border-slate-800 bg-slate-950/60 p-6 lg:order-2">
-            <h2 className="text-base font-semibold text-slate-50">Update quote</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              Adjust status, pricing, currency, target date, and internal/DFM notes.
-            </p>
-
-            <QuoteUpdateForm
-              quote={{
-                id: quote.id,
-                status,
-                price: priceValue,
-                currency: currencyValue,
-                targetDate: targetDateValue,
-                internalNotes,
-                dfmNotes,
-              }}
-            />
-          </section>
-        </div>
-
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
+          <div className="space-y-6">
+            <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Messages
+                Quote actions
               </p>
-              <p className="text-sm text-slate-400">
-                Chat-style thread visible only to the admin workspace.
+              <h2 className="mt-1 text-lg font-semibold text-slate-50">
+                Update quote
+              </h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Adjust status, pricing, currency, target date, and internal/DFM notes.
               </p>
-            </div>
-            <span className="text-xs text-slate-500">
-              {messages.length} {messages.length === 1 ? "message" : "messages"}
-            </span>
-          </div>
-
-          {quoteMessagesError && (
-            <p
-              className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200"
-              role="status"
-            >
-              Unable to load every message right now. Refresh to retry.
-            </p>
-          )}
-
-          <div className="mt-4">
-            {messages.length === 0 ? (
-              <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-5 text-sm text-slate-400">
-                No messages yet. Use the composer below to start the thread for this quote.
-              </p>
-            ) : (
-              <div className="md:max-h-[380px] md:overflow-y-auto md:pr-3">
-                <ol className="flex flex-col gap-4">
-                  {messages.map((message) => {
-                    const isAdmin = message.author_type === "admin";
-                    return (
-                      <li
-                        key={message.id}
-                        className={clsx(
-                          "flex w-full",
-                          isAdmin ? "justify-end" : "justify-start",
-                        )}
-                      >
-                        <div className="flex max-w-[92%] flex-col gap-2 sm:max-w-[70%]">
-                          <div
-                            className={clsx(
-                              "flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500",
-                              isAdmin ? "justify-end text-right" : "text-left",
-                            )}
-                          >
-                            <span className={getAuthorBadgeClasses(message.author_type)}>
-                              {AUTHOR_LABELS[message.author_type] ?? AUTHOR_LABELS.admin}
-                            </span>
-                            <span className="text-slate-400">
-                              {formatDateTime(message.created_at, { includeTime: true })}
-                            </span>
-                            {message.author_name && (
-                              <span className="text-slate-500">{message.author_name}</span>
-                            )}
-                          </div>
-                          <div
-                            className={clsx(
-                              "rounded-2xl border px-4 py-3 text-sm leading-relaxed whitespace-pre-line",
-                              getMessageBubbleClasses(message.author_type),
-                              isAdmin ? "rounded-tr-sm" : "rounded-tl-sm",
-                            )}
-                          >
-                            {message.body}
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
+              <div className="mt-4">
+                <QuoteUpdateForm
+                  quote={{
+                    id: quote.id,
+                    status,
+                    price: priceValue,
+                    currency: currencyValue,
+                    targetDate: targetDateValue,
+                    internalNotes,
+                    dfmNotes,
+                  }}
+                />
               </div>
-            )}
-          </div>
+            </section>
 
-          <div className="mt-6 border-t border-slate-900/60 pt-4">
-            <p className="text-sm font-semibold text-slate-100">Post a message</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Shared only with admins working on this quote.
-            </p>
-            <div className="mt-3">
-              <QuoteMessageComposer quoteId={quote.id} />
-            </div>
-          </div>
-        </section>
+            <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Messages
+                  </p>
+                  <h2 className="text-lg font-semibold text-slate-50">Admin chat</h2>
+                  <p className="text-sm text-slate-400">
+                    Chat-style thread visible only to the admin workspace.
+                  </p>
+                </div>
+                <span className="text-xs text-slate-500">
+                  {messages.length} {messages.length === 1 ? "message" : "messages"}
+                </span>
+              </div>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              3D preview
-            </p>
-            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
-              {cadPreviewUrl ? "Interactive STL" : "Unavailable"}
-            </span>
+              {quoteMessagesError && (
+                <p
+                  className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200"
+                  role="status"
+                >
+                  Unable to load every message right now. Refresh to retry.
+                </p>
+              )}
+
+              <div className="mt-4">
+                {messages.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-5 text-sm text-slate-400">
+                    No messages yet. Use the composer below to start the thread for this quote.
+                  </p>
+                ) : (
+                  <div className="md:max-h-[380px] md:overflow-y-auto md:pr-3">
+                    <ol className="flex flex-col gap-4">
+                      {messages.map((message) => {
+                        const isAdmin = message.author_type === "admin";
+                        return (
+                          <li
+                            key={message.id}
+                            className={clsx(
+                              "flex w-full",
+                              isAdmin ? "justify-end" : "justify-start",
+                            )}
+                          >
+                            <div className="flex max-w-[92%] flex-col gap-2 sm:max-w-[70%]">
+                              <div
+                                className={clsx(
+                                  "flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500",
+                                  isAdmin ? "justify-end text-right" : "text-left",
+                                )}
+                              >
+                                <span className={getAuthorBadgeClasses(message.author_type)}>
+                                  {AUTHOR_LABELS[message.author_type] ?? AUTHOR_LABELS.admin}
+                                </span>
+                                <span className="text-slate-400">
+                                  {formatDateTime(message.created_at, { includeTime: true })}
+                                </span>
+                                {message.author_name && (
+                                  <span className="text-slate-500">{message.author_name}</span>
+                                )}
+                              </div>
+                              <div
+                                className={clsx(
+                                  "rounded-2xl border px-4 py-3 text-sm leading-relaxed whitespace-pre-line",
+                                  getMessageBubbleClasses(message.author_type),
+                                  isAdmin ? "rounded-tr-sm" : "rounded-tl-sm",
+                                )}
+                              >
+                                {message.body}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 border-t border-slate-900/60 pt-4">
+                <p className="text-sm font-semibold text-slate-100">Post a message</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Shared only with admins working on this quote.
+                </p>
+                <div className="mt-3">
+                  <QuoteMessageComposer quoteId={quote.id} />
+                </div>
+              </div>
+            </section>
           </div>
-          <div className="mt-4">
-            <CadViewerClient
-              src={cadPreviewUrl}
-              fileName={cadPreview.fileName}
-              fallbackMessage={cadPreviewFallback}
-              height={320}
-            />
-          </div>
-        </section>
+        </div>
       </main>
     );
 }
