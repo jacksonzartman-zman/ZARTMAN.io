@@ -1,9 +1,11 @@
 // src/app/admin/AdminTable.tsx
+import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import { UPLOAD_STATUS_LABELS, type UploadStatus } from "./constants";
 import CreateQuoteButton from "./CreateQuoteButton";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
+import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 export type InboxRow = {
   id: string;
@@ -112,18 +114,29 @@ export default function AdminTable({
                     {UPLOAD_STATUS_LABELS[row.status]}
                   </span>
                 </td>
-                <td className={`${adminTableCellClass} text-right`}>
-                  {row.quoteId ? (
-                    <Link
-                      href={href}
-                      className="text-sm font-semibold text-emerald-300 hover:text-emerald-200"
-                    >
-                      Open quote
-                    </Link>
-                  ) : (
-                    <CreateQuoteButton uploadId={row.id} size="sm" align="end" />
-                  )}
-                </td>
+                  <td className={`${adminTableCellClass} text-right`}>
+                    <div className="flex justify-end">
+                      {row.quoteId ? (
+                        <Link
+                          href={href}
+                          className={clsx(
+                            secondaryCtaClasses,
+                            ctaSizeClasses.sm,
+                            "min-w-[9.5rem] justify-center",
+                          )}
+                        >
+                          Open quote
+                        </Link>
+                      ) : (
+                        <CreateQuoteButton
+                          uploadId={row.id}
+                          size="sm"
+                          align="end"
+                          className="min-w-[9.5rem]"
+                        />
+                      )}
+                    </div>
+                  </td>
               </tr>
             );
           })
