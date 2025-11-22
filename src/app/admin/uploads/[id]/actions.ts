@@ -51,36 +51,68 @@ export async function updateUpload(formData: FormData) {
     console.error("updateUpload: error fetching quote", fetchQuoteError);
   }
 
-  const quoteStatus = normalizedStatus ?? DEFAULT_UPLOAD_STATUS;
-  const quoteInternalNotes =
-    typeof adminNotes === "string" && adminNotes.length > 0 ? adminNotes : null;
+    const quoteStatus = normalizedStatus ?? DEFAULT_UPLOAD_STATUS;
+    const quoteInternalNotes =
+      typeof adminNotes === "string" && adminNotes.length > 0 ? adminNotes : null;
 
-  if (existingQuote?.id) {
-    // Update existing quote
-    const { error: quoteUpdateError } = await supabase
-      .from("quotes")
-      .update({
-        status: quoteStatus,
-        internal_notes: quoteInternalNotes,
-      })
-      .eq("id", existingQuote.id);
+    if (existingQuote?.id) {
+      // Update existing quote
+      const { error: quoteUpdateError } = await supabase
+        .from("quotes")
+        .update({
+          status: quoteStatus,
+          internal_notes: quoteInternalNotes,
+        })
+        .eq("id", existingQuote.id);
 
-    if (quoteUpdateError) {
-      console.error("updateUpload: error updating quote", quoteUpdateError);
+      if (quoteUpdateError) {
+        console.error("updateUpload: error updating quote", quoteUpdateError);
+      } else {
+        const { error: linkError } = await supabase
+          .from("uploads")
+          .update({
+            quote_id: existingQuote.id,
+          })
+          .eq("id", id);
+
+        if (linkError) {
+          console.error(
+            "updateUpload: error linking existing quote to upload",
+            linkError,
+          );
+        }
+      }
+    } else {
+      // Insert a new quote row
+      const { data: newQuote, error: quoteInsertError } = await supabase
+        .from("quotes")
+        .insert({
+          upload_id: id,
+          status: quoteStatus,
+          internal_notes: quoteInternalNotes,
+          // price, currency, target_date, customer_note can stay NULL / defaults
+        })
+        .select("id")
+        .single<{ id: string }>();
+
+      if (quoteInsertError) {
+        console.error("updateUpload: error inserting quote", quoteInsertError);
+      } else if (newQuote?.id) {
+        const { error: linkError } = await supabase
+          .from("uploads")
+          .update({
+            quote_id: newQuote.id,
+          })
+          .eq("id", id);
+
+        if (linkError) {
+          console.error(
+            "updateUpload: error linking new quote to upload",
+            linkError,
+          );
+        }
+      }
     }
-  } else {
-    // Insert a new quote row
-    const { error: quoteInsertError } = await supabase.from("quotes").insert({
-      upload_id: id,
-      status: quoteStatus,
-      internal_notes: quoteInternalNotes,
-      // price, currency, target_date, customer_note can stay NULL / defaults
-    });
-
-    if (quoteInsertError) {
-      console.error("updateUpload: error inserting quote", quoteInsertError);
-    }
-  }
 
   // 3) Revalidate and redirect back to this upload
   revalidatePath("/admin");
