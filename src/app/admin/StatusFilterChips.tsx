@@ -7,6 +7,7 @@ import {
   UPLOAD_STATUS_OPTIONS,
   type UploadStatus,
 } from "./constants";
+import clsx from "clsx";
 
 type Props = {
   currentStatus?: string;
@@ -48,9 +49,9 @@ export default function StatusFilterChips({
     router.push(target, { scroll: false });
   };
 
-  const containerClasses =
-    className ??
-    "flex flex-wrap gap-2 text-xs font-medium text-slate-200";
+  const baseClasses =
+    "flex min-w-max flex-nowrap gap-2 text-xs font-semibold text-slate-200";
+  const containerClasses = clsx(baseClasses, className);
 
   return (
     <div className={containerClasses}>

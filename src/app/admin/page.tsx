@@ -9,6 +9,8 @@ import {
   type UploadStatus,
 } from "./constants";
 import { supabaseServer } from "@/lib/supabaseServer";
+import AdminDashboardShell from "./AdminDashboardShell";
+import AdminFiltersBar from "./AdminFiltersBar";
 
 export const dynamic = "force-dynamic";
 
@@ -211,38 +213,29 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       };
     }) ?? [];
 
-  const hasActiveFilters = Boolean(statusFilter || normalizedSearch);
+    const hasActiveFilters = Boolean(statusFilter || normalizedSearch);
 
-  return (
-    <main className="mx-auto max-w-6xl px-4 py-10 space-y-6">
-      <header className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-400">
-          Admin
-        </p>
-        <h1 className="text-3xl font-semibold text-white">RFQ inbox</h1>
-        <p className="text-sm text-slate-400">
-          Filter, search, and jump into the latest submissions from customers.
-        </p>
-      </header>
-
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="w-full overflow-x-auto">
-          <StatusFilterChips
-            currentStatus={statusFilter ?? ""}
-            basePath="/admin"
-            className="flex min-w-max gap-2 overflow-x-auto pb-1 text-xs font-semibold"
-          />
-        </div>
-        <div className="w-full lg:w-96">
-          <AdminSearchInput
-            initialValue={searchInputValue}
-            basePath="/admin"
-            placeholder="Search company, contact, email, or file name..."
-          />
-        </div>
-      </section>
-
-      <AdminTable rows={rows} hasActiveFilters={hasActiveFilters} />
-    </main>
-  );
+    return (
+      <AdminDashboardShell
+        title="RFQ inbox"
+        description="Filter, search, and jump into the latest submissions from customers."
+      >
+        <AdminFiltersBar
+          filters={
+            <StatusFilterChips
+              currentStatus={statusFilter ?? ""}
+              basePath="/admin"
+            />
+          }
+          search={
+            <AdminSearchInput
+              initialValue={searchInputValue}
+              basePath="/admin"
+              placeholder="Search company, contact, email, or file name..."
+            />
+          }
+        />
+        <AdminTable rows={rows} hasActiveFilters={hasActiveFilters} />
+      </AdminDashboardShell>
+    );
 }
