@@ -16,6 +16,7 @@ import {
   type UploadStatus,
   UPLOAD_STATUS_LABELS,
 } from "../../constants";
+import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { SuccessBanner } from "../../uploads/[id]/SuccessBanner";
 import { QuoteMessageComposer } from "./QuoteMessageComposer";
@@ -154,24 +155,6 @@ function extractFileNames(row: QuoteWithUploadsRow): string[] {
   }
 
   return names;
-}
-
-function formatMoney(amount: number | null, currency: string | null) {
-  if (amount == null) return "Not set";
-
-  const parsed = Number(amount);
-  if (Number.isNaN(parsed)) {
-    return "Not set";
-  }
-
-  const formatter = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
-  return formatter.format(parsed);
 }
 
 function hasGetMethod(
@@ -560,74 +543,74 @@ export default async function QuoteDetailPage({
     }
   }
 
-  const status = normalizeUploadStatus(quote.status, DEFAULT_UPLOAD_STATUS);
-  const customerName =
-    [uploadMeta?.first_name, uploadMeta?.last_name]
-      .filter((value) => typeof value === "string" && value.trim().length > 0)
-      .map((value) => (value ?? "").trim())
-      .join(" ")
-      .trim() ||
-    (typeof quote.customer_name === "string" &&
-    quote.customer_name.trim().length > 0
-      ? quote.customer_name
-      : "Unknown customer");
-  const customerEmail =
-    typeof quote.customer_email === "string" &&
-    quote.customer_email.includes("@")
-      ? quote.customer_email
+    const status = normalizeUploadStatus(quote.status, DEFAULT_UPLOAD_STATUS);
+    const customerName =
+      [uploadMeta?.first_name, uploadMeta?.last_name]
+        .filter((value) => typeof value === "string" && value.trim().length > 0)
+        .map((value) => (value ?? "").trim())
+        .join(" ")
+        .trim() ||
+      (typeof quote.customer_name === "string" &&
+      quote.customer_name.trim().length > 0
+        ? quote.customer_name
+        : "Unknown customer");
+    const customerEmail =
+      typeof quote.customer_email === "string" &&
+      quote.customer_email.includes("@")
+        ? quote.customer_email
+        : null;
+    const companyName =
+      (typeof uploadMeta?.company === "string" &&
+      (uploadMeta?.company ?? "").trim().length > 0
+        ? uploadMeta?.company
+        : null) ||
+      (typeof quote.company === "string" && quote.company.trim().length > 0
+        ? quote.company
+        : null);
+    const contactPhone =
+      typeof uploadMeta?.phone === "string" && uploadMeta.phone.trim().length > 0
+        ? uploadMeta.phone.trim()
+        : null;
+    const intakeSummaryItems = uploadMeta
+      ? [
+          {
+            label: "Company",
+            value: uploadMeta.company || companyName || "—",
+          },
+          {
+            label: "Manufacturing process",
+            value: uploadMeta.manufacturing_process || "—",
+          },
+          {
+            label: "Quantity / volumes",
+            value: uploadMeta.quantity || "—",
+          },
+          {
+            label: "Export restriction",
+            value: uploadMeta.export_restriction || "—",
+          },
+          {
+            label: "Shipping ZIP / Postal code",
+            value: uploadMeta.shipping_postal_code || "—",
+          },
+          {
+            label: "RFQ reason",
+            value: uploadMeta.rfq_reason || "—",
+          },
+          {
+            label: "ITAR acknowledgement",
+            value: uploadMeta.itar_acknowledged ? "Acknowledged" : "Not confirmed",
+          },
+          {
+            label: "Terms acceptance",
+            value: uploadMeta.terms_accepted ? "Accepted" : "Not accepted",
+          },
+        ]
       : null;
-  const companyName =
-    (typeof uploadMeta?.company === "string" &&
-    (uploadMeta?.company ?? "").trim().length > 0
-      ? uploadMeta?.company
-      : null) ||
-    (typeof quote.company === "string" && quote.company.trim().length > 0
-      ? quote.company
-      : null);
-  const contactPhone =
-    typeof uploadMeta?.phone === "string" && uploadMeta.phone.trim().length > 0
-      ? uploadMeta.phone.trim()
-      : null;
-  const intakeSummaryItems = uploadMeta
-    ? [
-        {
-          label: "Company",
-          value: uploadMeta.company || companyName || "—",
-        },
-        {
-          label: "Manufacturing process",
-          value: uploadMeta.manufacturing_process || "—",
-        },
-        {
-          label: "Quantity / volumes",
-          value: uploadMeta.quantity || "—",
-        },
-        {
-          label: "Export restriction",
-          value: uploadMeta.export_restriction || "—",
-        },
-        {
-          label: "Shipping ZIP / Postal code",
-          value: uploadMeta.shipping_postal_code || "—",
-        },
-        {
-          label: "RFQ reason",
-          value: uploadMeta.rfq_reason || "—",
-        },
-        {
-          label: "ITAR acknowledgement",
-          value: uploadMeta.itar_acknowledged ? "Acknowledged" : "Not confirmed",
-        },
-        {
-          label: "Terms acceptance",
-          value: uploadMeta.terms_accepted ? "Accepted" : "Not accepted",
-        },
-      ]
-    : null;
-  const intakeNotes =
-    typeof uploadMeta?.notes === "string" && uploadMeta.notes.trim().length > 0
-      ? uploadMeta.notes
-      : null;
+    const intakeNotes =
+      typeof uploadMeta?.notes === "string" && uploadMeta.notes.trim().length > 0
+        ? uploadMeta.notes
+        : null;
     const normalizedPrice =
       typeof quote.price === "number"
         ? quote.price
@@ -670,156 +653,189 @@ export default async function QuoteDetailPage({
     }
     const messages: QuoteMessage[] = quoteMessages ?? [];
 
-      return (
-        <main className="mx-auto max-w-6xl space-y-5 px-4 py-8 lg:py-10">
+    const headerTitleSource = companyName || customerName || "Unnamed customer";
+    const headerTitle = `Quote for ${headerTitleSource}`;
+    const headerDescription =
+      "Details, files, pricing, and messages for this RFQ.";
+    const cardClasses =
+      "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
+    const pillBaseClasses =
+      "flex min-w-max items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold";
+    const secondaryPillClasses =
+      "border-slate-800 bg-slate-950/50 text-slate-200 hover:border-emerald-400 hover:text-emerald-100 transition";
+    const priceChipText =
+      typeof priceValue === "number"
+        ? `${(currencyValue ?? "USD").toUpperCase()} ${priceValue.toFixed(2)}`
+        : "Not set";
+    const targetDateChipText = targetDateValue
+      ? formatDateTime(targetDateValue)
+      : "Not set";
+    const fileCountText =
+      filePreviews.length === 0
+        ? "None attached"
+        : filePreviews.length === 1
+          ? "1 attached"
+          : `${filePreviews.length} attached`;
+    const fileCardAnchorId = "quote-files-card";
+
+    return (
+      <AdminDashboardShell
+        eyebrow="Admin · Quote"
+        title={headerTitle}
+        description={headerDescription}
+        actions={
+          quote.upload_id ? (
+            <Link
+              href={`/admin/uploads/${quote.upload_id}`}
+              className={clsx(
+                secondaryCtaClasses,
+                ctaSizeClasses.sm,
+                "whitespace-nowrap",
+              )}
+            >
+              View upload
+            </Link>
+          ) : null
+        }
+      >
         {wasUpdated && <SuccessBanner message="Quote updated." />}
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Quote workspace
-              </p>
-              <div>
-                <h1 className="text-2xl font-semibold text-slate-50">
-                  Quote · {customerName}
-                </h1>
-                {companyName && (
-                  <p className="text-sm text-slate-300">{companyName}</p>
+        <div className="space-y-3">
+          <div className="overflow-x-auto pb-1">
+            <div className="flex min-w-max gap-2">
+              <span
+                className={clsx(
+                  pillBaseClasses,
+                  "border-transparent bg-emerald-500/10 text-emerald-200",
                 )}
-              </div>
-              <div className="flex flex-col gap-1 text-sm text-slate-300">
-                {customerEmail && (
-                  <a
-                    href={`mailto:${customerEmail}`}
-                    className="text-emerald-300 hover:underline"
-                  >
-                    {customerEmail}
-                  </a>
-                )}
-                {contactPhone && (
-                  <a
-                    href={`tel:${contactPhone}`}
-                    className="text-slate-300 hover:text-emerald-300"
-                  >
-                    {contactPhone}
-                  </a>
-                )}
-              </div>
-              <p className="text-xs text-slate-500">
-                Synced from{" "}
-                <span className="font-mono text-xs text-slate-400">
-                  quotes_with_uploads
-                </span>
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-3 text-right">
-              <span className="inline-flex rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
-                {statusLabel}
+              >
+                Status: {statusLabel}
               </span>
-              {quote.upload_id && (
-                <Link
-                  href={`/admin/uploads/${quote.upload_id}`}
-                  className={clsx(
-                    secondaryCtaClasses,
-                    ctaSizeClasses.sm,
-                    "whitespace-nowrap",
-                  )}
-                >
-                  View upload
-                </Link>
-              )}
+              <span className={clsx(pillBaseClasses, secondaryPillClasses)}>
+                Price: {priceChipText}
+              </span>
+              <span className={clsx(pillBaseClasses, secondaryPillClasses)}>
+                Target date: {targetDateChipText}
+              </span>
+              <a
+                href={`#${fileCardAnchorId}`}
+                className={clsx(
+                  pillBaseClasses,
+                  secondaryPillClasses,
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                )}
+              >
+                Files: {fileCountText}
+              </a>
             </div>
           </div>
 
-          <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Price
-              </dt>
-              <dd className="mt-1 text-base font-medium text-slate-50">
-                {formatMoney(priceValue, currencyValue)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Target date
-              </dt>
-              <dd className="mt-1 text-base text-slate-100">
-                {formatDateTime(targetDateValue) ?? "Not set"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Created
-              </dt>
-              <dd className="mt-1 text-base text-slate-100">
-                {formatDateTime(quote.created_at, { includeTime: true })}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Updated
-              </dt>
-              <dd className="mt-1 text-base text-slate-100">
-                {formatDateTime(quote.updated_at, { includeTime: true })}
-              </dd>
-            </div>
-          </dl>
-
-          <p className="mt-4 text-xs text-slate-500">
-            Quote ID: <span className="font-mono text-slate-300">{quote.id}</span>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
+            <span>
+              Quote ID:{" "}
+              <span className="font-mono text-slate-300">{quote.id}</span>
+            </span>
             {quote.upload_id && (
-              <>
-                {" "}
-                • Upload ID:{" "}
-                <span className="font-mono text-slate-300">{quote.upload_id}</span>
-              </>
+              <span>
+                Upload ID:{" "}
+                <span className="font-mono text-slate-300">
+                  {quote.upload_id}
+                </span>
+              </span>
             )}
-          </p>
-        </section>
+            <span>
+              Created:{" "}
+              {formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
+            </span>
+            <span>
+              Updated:{" "}
+              {formatDateTime(quote.updated_at, { includeTime: true }) ?? "—"}
+            </span>
+          </div>
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <div className="space-y-5">
-            <QuoteFilesCard files={filePreviews} />
+          <div className="flex flex-wrap gap-3 text-sm text-slate-300">
+            <span className="font-medium text-slate-50">{customerName}</span>
+            {customerEmail && (
+              <a
+                href={`mailto:${customerEmail}`}
+                className="text-emerald-300 hover:underline"
+              >
+                {customerEmail}
+              </a>
+            )}
+            {contactPhone && (
+              <a
+                href={`tel:${contactPhone}`}
+                className="text-slate-400 hover:text-emerald-200"
+              >
+                {contactPhone}
+              </a>
+            )}
+            {companyName && <span className="text-slate-400">{companyName}</span>}
+          </div>
+        </div>
 
-            {intakeSummaryItems && (
-              <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)]">
+          <div className="space-y-4 lg:space-y-5">
+            <QuoteFilesCard
+              id={fileCardAnchorId}
+              files={filePreviews}
+              className="scroll-mt-20"
+            />
+
+            <section className={cardClasses}>
+              <div className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   RFQ summary
                 </p>
-                <dl className="mt-3 grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
+                <h2 className="text-base font-semibold text-slate-100">
+                  Intake snapshot
+                </h2>
+              </div>
+              {intakeSummaryItems ? (
+                <dl className="mt-4 grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
                   {intakeSummaryItems.map((item) => (
-                    <div key={item.label} className="space-y-1">
-                      <dt className="text-[12px] uppercase tracking-wide text-slate-500">
+                    <div key={item.label} className="space-y-1 rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+                      <dt className="text-[11px] uppercase tracking-wide text-slate-500">
                         {item.label}
                       </dt>
                       <dd className="font-medium text-slate-100">{item.value}</dd>
                     </div>
                   ))}
                 </dl>
-              </section>
-            )}
+              ) : (
+                <p className="mt-3 text-sm text-slate-400">
+                  No structured intake metadata was captured for this quote.
+                </p>
+              )}
+            </section>
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Project details / notes
-              </p>
+            <section className={cardClasses}>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Project details / notes
+                </p>
+                <h2 className="text-base font-semibold text-slate-100">
+                  Customer notes
+                </h2>
+              </div>
               <p className="mt-3 whitespace-pre-line text-sm text-slate-200">
                 {intakeNotes ?? "No additional notes captured during intake."}
               </p>
             </section>
           </div>
 
-          <div className="space-y-5">
-            <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+          <div className="space-y-4 self-start lg:sticky lg:top-6 lg:space-y-5">
+            <section className={cardClasses}>
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Messages
                   </p>
                   <div className="mt-1 space-y-1">
-                    <h2 className="text-lg font-semibold text-slate-50">Admin chat</h2>
+                    <h2 className="text-lg font-semibold text-slate-50">
+                      Admin chat
+                    </h2>
                     <p className="text-sm text-slate-400">
                       Chat-style thread visible only to the admin workspace.
                     </p>
@@ -841,12 +857,12 @@ export default async function QuoteDetailPage({
 
               <div className="mt-3">
                 {messages.length === 0 ? (
-                  <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-5 text-sm text-slate-400">
+                  <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
                     No messages yet. Use the composer below to start the thread for this quote.
                   </p>
                 ) : (
-                  <div className="md:max-h-[380px] md:overflow-y-auto md:pr-3">
-                    <ol className="flex flex-col gap-4">
+                  <div className="md:max-h-[380px] md:overflow-y-auto md:pr-2">
+                    <ol className="flex flex-col gap-3">
                       {messages.map((message) => {
                         const isAdmin = message.author_type === "admin";
                         return (
@@ -857,7 +873,7 @@ export default async function QuoteDetailPage({
                               isAdmin ? "justify-end" : "justify-start",
                             )}
                           >
-                            <div className="flex max-w-[92%] flex-col gap-2 sm:max-w-[70%]">
+                            <div className="flex max-w-[92%] flex-col gap-1.5 sm:max-w-[70%]">
                               <div
                                 className={clsx(
                                   "flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500",
@@ -876,7 +892,7 @@ export default async function QuoteDetailPage({
                               </div>
                               <div
                                 className={clsx(
-                                  "rounded-2xl border px-4 py-3 text-sm leading-relaxed whitespace-pre-line",
+                                  "rounded-2xl border px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-line",
                                   getMessageBubbleClasses(message.author_type),
                                   isAdmin ? "rounded-tr-sm" : "rounded-tl-sm",
                                 )}
@@ -892,7 +908,7 @@ export default async function QuoteDetailPage({
                 )}
               </div>
 
-              <div className="mt-5 border-t border-slate-900/60 pt-4">
+              <div className="mt-4 border-t border-slate-900/60 pt-4">
                 <p className="text-sm font-semibold text-slate-100">Post a message</p>
                 <p className="mt-1 text-xs text-slate-500">
                   Shared only with admins working on this quote.
@@ -903,7 +919,7 @@ export default async function QuoteDetailPage({
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+            <section className={cardClasses}>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Quote actions
               </p>
@@ -913,22 +929,20 @@ export default async function QuoteDetailPage({
               <p className="mt-1 text-sm text-slate-400">
                 Adjust status, pricing, currency, target date, and internal/DFM notes.
               </p>
-              <div className="mt-3">
-                <QuoteUpdateForm
-                  quote={{
-                    id: quote.id,
-                    status,
-                    price: priceValue,
-                    currency: currencyValue,
-                    targetDate: targetDateValue,
-                    internalNotes,
-                    dfmNotes,
-                  }}
-                />
-              </div>
+              <QuoteUpdateForm
+                quote={{
+                  id: quote.id,
+                  status,
+                  price: priceValue,
+                  currency: currencyValue,
+                  targetDate: targetDateValue,
+                  internalNotes,
+                  dfmNotes,
+                }}
+              />
             </section>
           </div>
         </div>
-      </main>
+      </AdminDashboardShell>
     );
 }

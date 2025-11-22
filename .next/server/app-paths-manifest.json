@@ -5,13 +5,13 @@
   "/api/quotes/route": "app/api/quotes/route.js",
   "/api/threads/route": "app/api/threads/route.js",
   "/api/upload/route": "app/api/upload/route.js",
-  "/quote/page": "app/quote/page.js",
   "/page": "app/page.js",
-  "/admin/uploads/[id]/page": "app/admin/uploads/[id]/page.js",
+  "/quote/page": "app/quote/page.js",
   "/(portals)/supplier/page": "app/(portals)/supplier/page.js",
-  "/admin/quotes/page": "app/admin/quotes/page.js",
-  "/(portals)/customer/page": "app/(portals)/customer/page.js",
+  "/admin/uploads/[id]/page": "app/admin/uploads/[id]/page.js",
   "/admin/page": "app/admin/page.js",
+  "/(portals)/customer/page": "app/(portals)/customer/page.js",
   "/admin/quotes/[id]/page": "app/admin/quotes/[id]/page.js",
+  "/admin/quotes/page": "app/admin/quotes/page.js",
   "/api/hello/route": "app/api/hello/route.js"
 }
