@@ -1,17 +1,17 @@
 {
   "/_not-found/page": "/_not-found",
-  "/api/files/route": "/api/files",
   "/api/messages/route": "/api/messages",
   "/api/quotes/route": "/api/quotes",
   "/api/threads/route": "/api/threads",
+  "/api/files/route": "/api/files",
   "/api/upload/route": "/api/upload",
-  "/page": "/",
   "/quote/page": "/quote",
+  "/page": "/",
   "/(portals)/supplier/page": "/supplier",
   "/admin/uploads/[id]/page": "/admin/uploads/[id]",
-  "/admin/quotes/page": "/admin/quotes",
-  "/admin/page": "/admin",
   "/(portals)/customer/page": "/customer",
+  "/admin/quotes/page": "/admin/quotes",
   "/admin/quotes/[id]/page": "/admin/quotes/[id]",
+  "/admin/page": "/admin",
   "/api/hello/route": "/api/hello"
 }
