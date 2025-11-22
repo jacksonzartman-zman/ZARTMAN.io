@@ -6,6 +6,11 @@ import CadViewerClient from "@/components/CadViewerClient";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { formatDateTime } from "@/lib/formatDate";
 import {
+  loadQuoteMessages,
+  type QuoteMessage,
+  type QuoteMessageAuthorType,
+} from "@/server/quotes/messages";
+import {
   DEFAULT_UPLOAD_STATUS,
   normalizeUploadStatus,
   type UploadStatus,
@@ -13,6 +18,7 @@ import {
 } from "../../constants";
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { SuccessBanner } from "../../uploads/[id]/SuccessBanner";
+import { QuoteMessageComposer } from "./QuoteMessageComposer";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +98,27 @@ const DEFAULT_CAD_BUCKET =
   "cad";
 
 const CAD_SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+const AUTHOR_BADGE_BASE_CLASSES =
+  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide";
+
+const AUTHOR_BADGE_VARIANTS: Record<QuoteMessageAuthorType, string> = {
+  admin: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+  customer: "border-sky-500/40 bg-sky-500/10 text-sky-300",
+  supplier: "border-amber-500/40 bg-amber-500/10 text-amber-200",
+};
+
+const AUTHOR_LABELS: Record<QuoteMessageAuthorType, string> = {
+  admin: "Admin",
+  customer: "Customer",
+  supplier: "Supplier",
+};
+
+function getAuthorBadgeClasses(type: QuoteMessageAuthorType): string {
+  return `${AUTHOR_BADGE_BASE_CLASSES} ${
+    AUTHOR_BADGE_VARIANTS[type] ?? AUTHOR_BADGE_VARIANTS.admin
+  }`;
+}
 
 function extractFileNames(row: QuoteWithUploadsRow): string[] {
   const names: string[] = [];
@@ -507,15 +534,27 @@ export default async function QuoteDetailPage({
     typeof cadPreview.reason === "string" && cadPreview.reason.trim().length > 0
       ? cadPreview.reason
       : undefined;
-  const dfmNotes =
-    typeof quote.dfm_notes === "string" && quote.dfm_notes.trim().length > 0
-      ? quote.dfm_notes
-      : null;
-  const internalNotes =
-    typeof quote.internal_notes === "string" &&
-    quote.internal_notes.trim().length > 0
-      ? quote.internal_notes
-      : null;
+    const dfmNotes =
+      typeof quote.dfm_notes === "string" && quote.dfm_notes.trim().length > 0
+        ? quote.dfm_notes
+        : null;
+    const internalNotes =
+      typeof quote.internal_notes === "string" &&
+      quote.internal_notes.trim().length > 0
+        ? quote.internal_notes
+        : null;
+    const {
+      data: quoteMessages,
+      error: quoteMessagesError,
+    } = await loadQuoteMessages(quote.id);
+
+    if (quoteMessagesError) {
+      console.error("Failed to load quote messages", {
+        quoteId: quote.id,
+        error: quoteMessagesError,
+      });
+    }
+    const messages: QuoteMessage[] = quoteMessages ?? [];
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-8">
@@ -636,7 +675,74 @@ export default async function QuoteDetailPage({
               </div>
             )}
 
-          <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
+            <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Messages
+                  </p>
+                  <p className="text-sm text-slate-400">
+                    Keep a running thread tied to this quote.
+                  </p>
+                </div>
+                <span className="text-xs text-slate-500">
+                  {messages.length} {messages.length === 1 ? "message" : "messages"}
+                </span>
+              </div>
+              {quoteMessagesError && (
+                <p className="mt-2 text-sm text-red-400">
+                  Unable to load every message right now. Refresh to retry.
+                </p>
+              )}
+              <div className="mt-4 space-y-4">
+                {messages.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-800/70 bg-black/20 px-3 py-4 text-sm text-slate-400">
+                    No messages yet. Use the form below to start a thread for this
+                    quote.
+                  </p>
+                ) : (
+                  <ol className="space-y-4">
+                    {messages.map((message) => (
+                      <li
+                        key={message.id}
+                        className="rounded-lg border border-slate-900/70 bg-slate-950/80 p-4"
+                      >
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                          <span className={getAuthorBadgeClasses(message.author_type)}>
+                            {AUTHOR_LABELS[message.author_type] ??
+                              AUTHOR_LABELS.admin}
+                          </span>
+                          <span className="text-slate-400">
+                            {formatDateTime(message.created_at, { includeTime: true })}
+                          </span>
+                          {message.author_name && (
+                            <span className="text-slate-500">
+                              {message.author_name}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-2 whitespace-pre-line text-sm text-slate-100">
+                          {message.body}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+              <div className="mt-6 border-t border-slate-900/60 pt-4">
+                <p className="text-sm font-semibold text-slate-100">
+                  Post a message
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Visible to the admin workspace for this quote.
+                </p>
+                <div className="mt-3">
+                  <QuoteMessageComposer quoteId={quote.id} />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-900/80 bg-slate-950/60 p-4">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 3D preview
