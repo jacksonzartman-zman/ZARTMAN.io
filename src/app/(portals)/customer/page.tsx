@@ -135,18 +135,23 @@ async function CustomerDashboardPage({
             {openQuotes.map((quote) => (
               <li
                 key={quote.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-900/70 bg-slate-900/30 px-4 py-3"
+                  className="rounded-xl border border-slate-900/70 bg-slate-900/30 px-0 py-0"
               >
-                <div>
-                  <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
-                  <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
-                </div>
-                <div className="flex flex-col items-end gap-2 text-right">
-                  <StatusBadge status={quote.status} />
-                  <p className="text-xs text-slate-400">
-                    {formatTargetDate(quote.targetDate) ?? "Target TBD"}
-                  </p>
-                </div>
+                  <Link
+                    href={`/customer/quotes/${quote.id}?email=${encodeURIComponent(emailNormalized)}`}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 transition hover:bg-slate-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+                  >
+                    <div>
+                      <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
+                      <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-2 text-right">
+                      <StatusBadge status={quote.status} />
+                      <p className="text-xs text-slate-400">
+                        {formatTargetDate(quote.targetDate) ?? "Target TBD"}
+                      </p>
+                    </div>
+                  </Link>
               </li>
             ))}
           </ul>
