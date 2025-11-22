@@ -6,7 +6,7 @@ import {
   createQuoteFromUploadAction,
   type CreateQuoteActionState,
 } from "./actions";
-import { primaryCtaClasses } from "@/lib/ctas";
+import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 type Alignment = "start" | "center" | "end";
 
@@ -32,37 +32,37 @@ export default function CreateQuoteButton({
     INITIAL_STATE,
   );
 
-  return (
-    <form
-      action={formAction}
-      className={clsx(
-        "flex flex-col gap-1",
-        align === "end"
-          ? "items-end text-right"
-          : align === "center"
-            ? "items-center text-center"
-            : "items-start text-left",
-        className,
-      )}
-    >
-      <input type="hidden" name="upload_id" value={uploadId} />
-      <CreateQuoteSubmit label={label} size={size} />
-      {state?.error && (
-        <p
-          className={clsx(
-            "text-xs text-red-400",
-            align === "end"
-              ? "text-right"
-              : align === "center"
-                ? "text-center"
-                : "text-left",
-          )}
-        >
-          {state.error}
-        </p>
-      )}
-    </form>
-  );
+    return (
+      <form
+        action={formAction}
+        className={clsx(
+          "flex flex-col gap-1.5",
+          align === "end"
+            ? "items-end text-right"
+            : align === "center"
+              ? "items-center text-center"
+              : "items-start text-left",
+          className,
+        )}
+      >
+        <input type="hidden" name="upload_id" value={uploadId} />
+        <CreateQuoteSubmit label={label} size={size} />
+        {state?.error && (
+          <p
+            className={clsx(
+              "text-[11px] leading-snug text-red-400",
+              align === "end"
+                ? "text-right"
+                : align === "center"
+                  ? "text-center"
+                  : "text-left",
+            )}
+          >
+            {state.error}
+          </p>
+        )}
+      </form>
+    );
 }
 
 type CreateQuoteSubmitProps = {
@@ -72,13 +72,16 @@ type CreateQuoteSubmitProps = {
 
 function CreateQuoteSubmit({ label, size }: CreateQuoteSubmitProps) {
   const { pending } = useFormStatus();
-  const sizeClasses = size === "sm" ? "px-4 py-1.5 text-xs" : "";
 
   return (
     <button
       type="submit"
       disabled={pending}
-      className={clsx(primaryCtaClasses, sizeClasses)}
+      className={clsx(
+        primaryCtaClasses,
+        "min-w-[9.5rem] justify-center",
+        size === "sm" && ctaSizeClasses.sm,
+      )}
     >
       {pending ? "Creating..." : label}
     </button>
