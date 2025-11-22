@@ -1,5 +1,7 @@
 // src/app/admin/uploads/[id]/page.tsx
 
+import clsx from "clsx";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { updateUpload } from "./actions";
@@ -10,6 +12,8 @@ import {
   UPLOAD_STATUS_OPTIONS,
   normalizeUploadStatus,
 } from "../../constants";
+import CreateQuoteButton from "@/app/admin/CreateQuoteButton";
+import { primaryCtaClasses } from "@/lib/ctas";
 
 type UploadRow = {
   id: string;
@@ -32,6 +36,7 @@ type UploadRow = {
   status: string | null;
   admin_notes: string | null;
   created_at: string | null;
+  quote_id: string | null;
 };
 
 export default async function UploadDetailPage(props: any) {
@@ -135,10 +140,33 @@ export default async function UploadDetailPage(props: any) {
 
       {/* Top card – customer + file details */}
       <section className="rounded-xl border border-slate-800 bg-slate-950/60 p-6 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-50">Upload detail</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Customer upload and context for this request.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-50">Upload detail</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Customer upload and context for this request.
+            </p>
+          </div>
+          <div className="w-full min-[420px]:w-auto">
+            {upload.quote_id ? (
+              <Link
+                href={`/admin/quotes/${upload.quote_id}`}
+                className={clsx(
+                  primaryCtaClasses,
+                  "w-full border border-emerald-400/60 bg-transparent text-emerald-200 hover:bg-emerald-400/10 min-[420px]:w-auto",
+                )}
+              >
+                Open quote
+              </Link>
+            ) : (
+              <CreateQuoteButton
+                uploadId={upload.id}
+                align="end"
+                className="w-full min-[420px]:w-auto"
+              />
+            )}
+          </div>
+        </div>
 
         <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           <div className="space-y-6">

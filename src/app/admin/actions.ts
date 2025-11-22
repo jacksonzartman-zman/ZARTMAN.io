@@ -3,9 +3,15 @@
 "use server";
 
 import { isRedirectError } from "next/dist/client/components/redirect-error";
-import { supabaseServer } from "@/lib/supabaseServer";
-import { DEFAULT_UPLOAD_STATUS, parseUploadStatusInput } from "./constants";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { supabaseServer } from "@/lib/supabaseServer";
+import {
+  DEFAULT_UPLOAD_STATUS,
+  normalizeUploadStatus,
+  parseUploadStatusInput,
+  type UploadStatus,
+} from "./constants";
 
 export async function updateQuote(formData: FormData) {
   const supabase = supabaseServer;
@@ -22,7 +28,7 @@ export async function updateQuote(formData: FormData) {
 
   const price = priceRaw && priceRaw.length > 0 ? parseFloat(priceRaw) : null;
 
-  const { error } = await supabase
+  const { data: updatedQuote, error } = await supabase
     .from("quotes")
     .update({
       status: statusValue,
@@ -36,13 +42,32 @@ export async function updateQuote(formData: FormData) {
           : null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("upload_id")
+    .maybeSingle<{ upload_id: string | null }>();
 
   if (error) {
     console.error("Quote update error", error);
     throw new Error("Failed to update quote.");
   }
 
+  if (updatedQuote?.upload_id) {
+    const { error: uploadSyncError } = await supabase
+      .from("uploads")
+      .update({
+        status: statusValue,
+        quote_id: id,
+      })
+      .eq("id", updatedQuote.upload_id);
+
+    if (uploadSyncError) {
+      console.error("Failed to sync upload status with quote", uploadSyncError);
+    } else {
+      revalidatePath(`/admin/uploads/${updatedQuote.upload_id}`);
+    }
+  }
+
+  revalidatePath("/admin");
   return redirect(`/admin/quotes/${id}?updated=1`);
 }
 
@@ -64,5 +89,155 @@ export async function handleQuoteFormSubmit(
 
     console.error("handleQuoteFormSubmit error", error);
     return { error: "Failed to save changes. Please try again." };
+  }
+}
+
+export type CreateQuoteActionState = {
+  error?: string;
+};
+
+type UploadForQuote = {
+  id: string;
+  quote_id: string | null;
+  customer_id: string | null;
+  status: UploadStatus | null;
+};
+
+type QuoteLookupRow = {
+  id: string;
+  status: UploadStatus | null;
+};
+
+async function syncUploadQuoteLink(
+  uploadId: string,
+  quoteId: string,
+  status: UploadStatus,
+) {
+  const { error } = await supabaseServer
+    .from("uploads")
+    .update({
+      quote_id: quoteId,
+      status,
+    })
+    .eq("id", uploadId);
+
+  if (error) {
+    console.error("Failed to sync upload.quote_id after quote creation", error);
+    return false;
+  }
+
+  return true;
+}
+
+export async function createQuoteFromUploadAction(
+  _prevState: CreateQuoteActionState,
+  formData: FormData,
+): Promise<CreateQuoteActionState> {
+  const rawUploadId = formData.get("upload_id");
+
+  if (typeof rawUploadId !== "string" || rawUploadId.trim().length === 0) {
+    return { error: "Missing upload ID, please refresh and try again." };
+  }
+
+  const uploadId = rawUploadId.trim();
+
+  try {
+    const { data: upload, error: uploadError } = await supabaseServer
+      .from("uploads")
+      .select("id, quote_id, customer_id, status")
+      .eq("id", uploadId)
+      .maybeSingle<UploadForQuote>();
+
+    if (uploadError || !upload) {
+      console.error("createQuoteFromUpload: upload lookup failed", uploadError);
+      return { error: "Could not create quote, please try again." };
+    }
+
+    if (upload.quote_id) {
+      revalidatePath("/admin");
+      revalidatePath(`/admin/uploads/${uploadId}`);
+      return redirect(`/admin/quotes/${upload.quote_id}`);
+    }
+
+    const desiredStatus = normalizeUploadStatus(
+      upload.status,
+      DEFAULT_UPLOAD_STATUS,
+    );
+
+    const { data: existingQuote, error: existingQuoteError } =
+      await supabaseServer
+        .from("quotes")
+        .select("id,status")
+        .eq("upload_id", uploadId)
+        .maybeSingle<QuoteLookupRow>();
+
+    if (existingQuoteError) {
+      console.error(
+        "createQuoteFromUpload: existing quote lookup failed",
+        existingQuoteError,
+      );
+    }
+
+    if (existingQuote?.id) {
+      const normalizedExistingStatus = normalizeUploadStatus(
+        existingQuote.status,
+        desiredStatus,
+      );
+      const linked = await syncUploadQuoteLink(
+        uploadId,
+        existingQuote.id,
+        normalizedExistingStatus,
+      );
+      if (!linked) {
+        return {
+          error:
+            "Found an existing quote, but linking it to the upload failed. Please retry.",
+        };
+      }
+      revalidatePath("/admin");
+      revalidatePath(`/admin/uploads/${uploadId}`);
+      return redirect(`/admin/quotes/${existingQuote.id}`);
+    }
+
+    const { data: newQuote, error: insertError } = await supabaseServer
+      .from("quotes")
+      .insert({
+        upload_id: uploadId,
+        customer_id: upload.customer_id ?? null,
+        status: desiredStatus,
+        currency: "USD",
+        internal_notes: `Created from upload ${uploadId}`,
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (insertError || !newQuote) {
+      console.error("createQuoteFromUpload: insert failed", insertError);
+      return { error: "Could not create quote, please try again." };
+    }
+
+    const linked = await syncUploadQuoteLink(
+      uploadId,
+      newQuote.id,
+      desiredStatus,
+    );
+
+    if (!linked) {
+      return {
+        error:
+          "Quote was created, but we could not update the upload. Click again to retry.",
+      };
+    }
+
+    revalidatePath("/admin");
+    revalidatePath(`/admin/uploads/${uploadId}`);
+    return redirect(`/admin/quotes/${newQuote.id}`);
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    console.error("createQuoteFromUpload: unexpected error", error);
+    return { error: "Could not create quote, please try again." };
   }
 }
