@@ -62,10 +62,22 @@
       "namedRegex": "^/admin/quotes(?:/)?$"
     },
     {
+      "page": "/customer",
+      "regex": "^/customer(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customer(?:/)?$"
+    },
+    {
       "page": "/quote",
       "regex": "^/quote(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/quote(?:/)?$"
+    },
+    {
+      "page": "/supplier",
+      "regex": "^/supplier(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/supplier(?:/)?$"
     }
   ],
   "dataRoutes": [],
