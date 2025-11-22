@@ -9,9 +9,9 @@
   "/quote/page": "app/quote/page.js",
   "/(portals)/supplier/page": "app/(portals)/supplier/page.js",
   "/admin/uploads/[id]/page": "app/admin/uploads/[id]/page.js",
+  "/admin/quotes/page": "app/admin/quotes/page.js",
   "/admin/page": "app/admin/page.js",
   "/(portals)/customer/page": "app/(portals)/customer/page.js",
   "/admin/quotes/[id]/page": "app/admin/quotes/[id]/page.js",
-  "/admin/quotes/page": "app/admin/quotes/page.js",
   "/api/hello/route": "app/api/hello/route.js"
 }
