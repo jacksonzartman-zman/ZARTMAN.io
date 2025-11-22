@@ -1,171 +1,135 @@
 // src/app/admin/AdminTable.tsx
-"use client";
-
-import { useMemo, useState } from "react";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
-import {
-  UPLOAD_STATUS_LABELS,
-  UPLOAD_STATUS_OPTIONS,
-  type UploadStatus,
-} from "./constants";
+import { UPLOAD_STATUS_LABELS, type UploadStatus } from "./constants";
 
-export type UploadRow = {
+export type InboxRow = {
   id: string;
-  customerName: string;
-  customerEmail: string;
-  company: string;
-  fileName: string;
+  quoteId: string | null;
+  createdAt: string | null;
+  company: string | null;
+  contactName: string;
+  contactEmail: string | null;
+  manufacturingProcess: string | null;
+  quantity: string | null;
   status: UploadStatus;
-  createdAt: string;
 };
 
 type AdminTableProps = {
-  uploads: UploadRow[];
+  rows: InboxRow[];
+  hasActiveFilters: boolean;
 };
 
-const STATUS_FILTERS: (UploadStatus | "all")[] = [
-  "all",
-  ...UPLOAD_STATUS_OPTIONS,
-];
+const columnClasses = "px-4 py-3 align-top text-sm";
 
-export default function AdminTable({ uploads }: AdminTableProps) {
-  const [filterStatus, setFilterStatus] = useState<UploadStatus | "all">("all");
-  const [search, setSearch] = useState("");
+export default function AdminTable({
+  rows,
+  hasActiveFilters,
+}: AdminTableProps) {
+  const isEmpty = rows.length === 0;
+  const statusPillClass =
+    "inline-flex items-center rounded-full border border-transparent px-3 py-1 text-xs font-semibold";
 
-  const filteredUploads = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    return uploads.filter((row) => {
-      const matchesStatus =
-        filterStatus === "all" ? true : row.status === filterStatus;
-
-      if (!query) return matchesStatus;
-
-      const haystack =
-        `${row.customerName} ${row.customerEmail} ${row.company} ${row.fileName} ${row.status}`
-          .toLowerCase()
-          .replace(/\s+/g, " ");
-
-      return matchesStatus && haystack.includes(query);
-    });
-  }, [uploads, filterStatus, search]);
-  const emptyStateMessage =
-    uploads.length === 0
-      ? "No uploads yet. Once customers upload files, they’ll appear here."
-      : "No uploads match your filters. Try clearing search or choosing a different status.";
+  const emptyHeadline = hasActiveFilters
+    ? "No RFQs match your filters yet."
+    : "No RFQs yet.";
+  const detailLabel = (quoteId: string | null) =>
+    quoteId ? "Open quote" : "Review upload";
 
   return (
-    <div className="space-y-4">
-      {/* Filters + search */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {STATUS_FILTERS.map((status) => {
-            const isActive = filterStatus === status;
-            const label =
-              status === "all" ? "All" : UPLOAD_STATUS_LABELS[status];
-
-            return (
-              <button
-                key={status}
-                type="button"
-                onClick={() =>
-                  setFilterStatus(status === "all" ? "all" : status)
-                }
-                className={[
-                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                  isActive
-                    ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
-                    : "border-slate-700 text-slate-300 hover:border-emerald-400 hover:text-emerald-200",
-                ].join(" ")}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="w-full sm:w-80">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by customer, email, company, file, or status..."
-            className="w-full rounded-md border border-slate-700 bg-black px-3 py-2 text-sm outline-none focus:border-emerald-400"
-          />
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/40">
-        <table className="min-w-full text-left text-sm">
-          <thead className="bg-slate-900/60 text-xs uppercase tracking-wide text-slate-400">
+    <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50 shadow-sm">
+      <table className="min-w-full text-left text-sm">
+        <thead className="border-b border-slate-800 bg-slate-900/60 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <tr>
+            <th className="px-4 py-3">Created</th>
+            <th className="px-4 py-3">Company</th>
+            <th className="px-4 py-3">Contact</th>
+            <th className="px-4 py-3">Process</th>
+            <th className="px-4 py-3">Quantity / volumes</th>
+            <th className="px-4 py-3">Status</th>
+            <th className="px-4 py-3 text-right">Details</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-900/70">
+          {isEmpty ? (
             <tr>
-              <th className="px-4 py-3">Customer</th>
-              <th className="px-4 py-3">Company</th>
-              <th className="px-4 py-3">File</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Created</th>
-              <th className="px-4 py-3 text-right">Open</th>
+              <td
+                colSpan={7}
+                className="px-6 py-12 text-center text-base text-slate-300"
+              >
+                <p className="font-medium text-slate-100">{emptyHeadline}</p>
+                <p className="mt-2 text-sm text-slate-400">
+                  Need to test the flow?{" "}
+                  <Link
+                    href="/quote"
+                    className="font-semibold text-emerald-300 hover:text-emerald-200"
+                  >
+                    Submit a new RFQ
+                  </Link>{" "}
+                  from the public intake form.
+                </p>
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {filteredUploads.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-4 py-6 text-center text-sm text-slate-500"
-                >
-                  {emptyStateMessage}
-                </td>
-              </tr>
-            ) : (
-              filteredUploads.map((row) => (
+          ) : (
+            rows.map((row) => {
+              const href = row.quoteId
+                ? `/admin/quotes/${row.quoteId}`
+                : `/admin/uploads/${row.id}`;
+
+              return (
                 <tr
                   key={row.id}
-                  className="border-t border-slate-900/60 odd:bg-slate-950/40 even:bg-slate-950/20"
+                  className="bg-slate-950/40 transition hover:bg-slate-900/40"
                 >
-                  <td className="px-4 py-3 align-top">
-                    <div className="flex flex-col">
-                      <Link
-                        href={`/admin/uploads/${row.id}`}
-                        className="font-medium text-slate-50 hover:text-emerald-300"
-                      >
-                        {row.customerName}
-                      </Link>
-                      <span className="text-xs text-emerald-400">
-                        {row.customerEmail}
-                      </span>
-                    </div>
+                  <td className={`${columnClasses} text-slate-400`}>
+                    {formatDateTime(row.createdAt, { includeTime: true }) ?? "—"}
                   </td>
-                  <td className="px-4 py-3 align-top text-slate-200">
+                  <td className={`${columnClasses} text-slate-100`}>
                     {row.company || "—"}
                   </td>
-                  <td className="px-4 py-3 align-top text-slate-300">
-                    {row.fileName}
+                  <td className={`${columnClasses} text-slate-100`}>
+                    <div className="flex flex-col">
+                      <Link
+                        href={href}
+                        className="text-sm font-medium text-emerald-100 hover:text-emerald-300"
+                      >
+                        {row.contactName}
+                      </Link>
+                      {row.contactEmail && (
+                        <a
+                          href={`mailto:${row.contactEmail}`}
+                          className="text-xs text-slate-400 hover:text-emerald-200"
+                        >
+                          {row.contactEmail}
+                        </a>
+                      )}
+                    </div>
                   </td>
-                  <td className="px-4 py-3 align-top">
-                    <span className="inline-flex rounded-full bg-slate-900 px-2 py-1 text-xs font-medium text-emerald-300">
+                  <td className={`${columnClasses} text-slate-200`}>
+                    {row.manufacturingProcess || "—"}
+                  </td>
+                  <td className={`${columnClasses} text-slate-200`}>
+                    {row.quantity || "—"}
+                  </td>
+                  <td className={`${columnClasses}`}>
+                    <span className={`${statusPillClass} bg-emerald-500/10 text-emerald-200`}>
                       {UPLOAD_STATUS_LABELS[row.status]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 align-top text-slate-300">
-                    {formatDateTime(row.createdAt, { includeTime: true })}
-                  </td>
-                  <td className="px-4 py-3 align-top text-right">
+                  <td className={`${columnClasses} text-right`}>
                     <Link
-                      href={`/admin/uploads/${row.id}`}
-                      className="text-sm font-medium text-emerald-300 hover:text-emerald-200"
+                      href={href}
+                      className="text-sm font-semibold text-emerald-300 hover:text-emerald-200"
                     >
-                      View
+                      {detailLabel(row.quoteId)}
                     </Link>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              );
+            })
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }
