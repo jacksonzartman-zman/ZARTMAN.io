@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import clsx from "clsx";
 import { handleQuoteFormSubmit, type QuoteFormState } from "@/app/admin/actions";
 import { formatDateInputValue } from "@/lib/formatDate";
 import {
@@ -10,7 +11,7 @@ import {
   UPLOAD_STATUS_LABELS,
   UPLOAD_STATUS_OPTIONS,
 } from "../constants";
-import { primaryCtaClasses } from "@/lib/ctas";
+import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 type QuoteUpdateFormProps = {
   quote: {
@@ -34,8 +35,8 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
     INITIAL_STATE,
   );
 
-  return (
-    <form className="mt-4 space-y-5" action={formAction}>
+    return (
+      <form className="mt-4 space-y-4" action={formAction}>
       <input type="hidden" name="id" value={quote.id} />
 
       <div className="space-y-1.5">
@@ -151,11 +152,11 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
         />
       </div>
 
-      {state?.error && (
-        <p className="text-sm text-red-400">{state.error}</p>
-      )}
+        {state?.error && <p className="text-sm text-red-400">{state.error}</p>}
 
-      <SubmitButton />
+        <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:justify-end">
+          <SubmitButton />
+        </div>
     </form>
   );
 }
@@ -167,7 +168,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className={primaryCtaClasses}
+        className={clsx(primaryCtaClasses, ctaSizeClasses.md, "w-full sm:w-auto")}
     >
       {pending ? "Saving..." : "Save changes"}
     </button>
