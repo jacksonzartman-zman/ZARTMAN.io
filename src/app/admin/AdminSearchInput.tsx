@@ -9,6 +9,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { primaryCtaClasses } from "@/lib/ctas";
 
 type AdminSearchInputProps = {
   initialValue?: string;
@@ -121,7 +122,7 @@ export default function AdminSearchInput({
       </div>
       <button
         type="submit"
-        className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-70"
+        className={`${primaryCtaClasses} whitespace-nowrap`}
         disabled={isPending}
       >
         Search
