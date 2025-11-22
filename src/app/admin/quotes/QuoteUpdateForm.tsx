@@ -10,6 +10,7 @@ import {
   UPLOAD_STATUS_LABELS,
   UPLOAD_STATUS_OPTIONS,
 } from "../constants";
+import { primaryCtaClasses } from "@/lib/ctas";
 
 type QuoteUpdateFormProps = {
   quote: {
@@ -166,7 +167,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="inline-flex items-center rounded-full bg-emerald-400 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-300 disabled:opacity-60"
+      className={primaryCtaClasses}
     >
       {pending ? "Saving..." : "Save changes"}
     </button>

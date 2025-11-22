@@ -1,36 +1,6 @@
 {
   "version": 3,
   "middleware": {},
-  "functions": {
-    "/api/hello/route": {
-      "files": [
-        "server/server-reference-manifest.js",
-        "server/app/api/hello/route_client-reference-manifest.js",
-        "server/middleware-build-manifest.js",
-        "server/middleware-react-loadable-manifest.js",
-        "server/next-font-manifest.js",
-        "server/interception-route-rewrite-manifest.js",
-        "server/edge-runtime-webpack.js",
-        "server/app/api/hello/route.js"
-      ],
-      "name": "app/api/hello/route",
-      "page": "/api/hello/route",
-      "matchers": [
-        {
-          "regexp": "^/api/hello$",
-          "originalSource": "/api/hello"
-        }
-      ],
-      "wasm": [],
-      "assets": [],
-      "env": {
-        "__NEXT_BUILD_ID": "MehXf-O2eSlPn2M8f7Z6B",
-        "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "eAh/gcPZ3TzGSmmb3z01c8/f5Zb1/1JpFuTM4xKtxV8=",
-        "__NEXT_PREVIEW_MODE_ID": "d25ee8031736229cc8c34854ba2393d1",
-        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "892253f558835b9e4685bff623cb86a6b17b0338a1ebf002d048db3cd3e44276",
-        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "e7ae2e2390d23ac6e9282f8d8bb4edba2d7ac63332d9a9785af0596a30e5bd08"
-      }
-    }
-  },
+  "functions": {},
   "sortedMiddleware": []
 }

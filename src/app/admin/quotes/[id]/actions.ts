@@ -5,15 +5,12 @@ import { createAdminQuoteMessage } from "@/server/quotes/messages";
 
 export type PostQuoteMessageActionState = {
   success: boolean;
-  error?: string;
+  error: string | null;
   messageId?: string;
 };
 
-export const INITIAL_POST_QUOTE_MESSAGE_STATE: PostQuoteMessageActionState = {
-  success: false,
-};
-
-const GENERIC_ERROR_MESSAGE = "Unable to send message right now. Please try again.";
+const GENERIC_ERROR_MESSAGE =
+  "Unable to send message right now. Please try again.";
 
 export async function postQuoteMessageAction(
   _prevState: PostQuoteMessageActionState,
@@ -54,19 +51,27 @@ export async function postQuoteMessageAction(
   }
 
   try {
+    // Soft-fail to keep the quote page responsive even if Supabase hiccups.
     const { data, error } = await createAdminQuoteMessage({
       quoteId,
       body,
     });
 
     if (error || !data) {
+      console.error("postQuoteMessageAction: failed to persist message", {
+        quoteId,
+        error,
+      });
       return { success: false, error: GENERIC_ERROR_MESSAGE };
     }
 
     revalidatePath(`/admin/quotes/${quoteId}`);
-    return { success: true, messageId: data.id };
+    return { success: true, error: null, messageId: data.id };
   } catch (error) {
-    console.error("postQuoteMessageAction error", error);
+    console.error("postQuoteMessageAction: unexpected error", {
+      quoteId,
+      error,
+    });
     return { success: false, error: GENERIC_ERROR_MESSAGE };
   }
 }

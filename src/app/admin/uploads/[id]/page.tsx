@@ -13,7 +13,7 @@ import {
   normalizeUploadStatus,
 } from "../../constants";
 import CreateQuoteButton from "@/app/admin/CreateQuoteButton";
-import { primaryCtaClasses } from "@/lib/ctas";
+import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 type UploadRow = {
   id: string;
@@ -152,8 +152,8 @@ export default async function UploadDetailPage(props: any) {
               <Link
                 href={`/admin/quotes/${upload.quote_id}`}
                 className={clsx(
-                  primaryCtaClasses,
-                  "w-full border border-emerald-400/60 bg-transparent text-emerald-200 hover:bg-emerald-400/10 min-[420px]:w-auto",
+                  secondaryCtaClasses,
+                  "w-full min-[420px]:w-auto",
                 )}
               >
                 Open quote
@@ -302,10 +302,7 @@ export default async function UploadDetailPage(props: any) {
             />
           </div>
 
-          <button
-            type="submit"
-            className="inline-flex items-center rounded-full bg-emerald-400 px-4 py-2 text-sm font-medium text-black hover:bg-emerald-300"
-          >
+          <button type="submit" className={primaryCtaClasses}>
             Save changes
           </button>
         </form>
