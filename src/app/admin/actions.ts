@@ -5,6 +5,7 @@
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
   DEFAULT_UPLOAD_STATUS,
@@ -12,6 +13,17 @@ import {
   parseUploadStatusInput,
   type UploadStatus,
 } from "./constants";
+
+const shouldBypassRevalidate =
+  process.env.ADMIN_ACTIONS_DISABLE_REVALIDATE === "1" ||
+  process.env.ADMIN_ACTIONS_DISABLE_REVALIDATE?.toLowerCase() === "true";
+
+function safeRevalidate(targetPath: string) {
+  if (shouldBypassRevalidate) {
+    return;
+  }
+  revalidatePath(targetPath);
+}
 
 export async function updateQuote(formData: FormData) {
   const supabase = supabaseServer;
@@ -63,11 +75,11 @@ export async function updateQuote(formData: FormData) {
     if (uploadSyncError) {
       console.error("Failed to sync upload status with quote", uploadSyncError);
     } else {
-      revalidatePath(`/admin/uploads/${updatedQuote.upload_id}`);
+      safeRevalidate(`/admin/uploads/${updatedQuote.upload_id}`);
     }
   }
 
-  revalidatePath("/admin");
+  safeRevalidate("/admin");
   return redirect(`/admin/quotes/${id}?updated=1`);
 }
 
@@ -153,25 +165,25 @@ export async function createQuoteFromUploadAction(
   const uploadId = rawUploadId.trim();
 
   try {
-      const { data: upload, error: uploadError } = await supabaseServer
-        .from("uploads")
-        .select(
-          "id, quote_id, customer_id, status, name, first_name, last_name, email, company, file_name",
-        )
-        .eq("id", uploadId)
-        .maybeSingle<UploadForQuote>();
+    const { data: upload, error: uploadError } = await supabaseServer
+      .from("uploads")
+      .select(
+        "id, quote_id, customer_id, status, name, first_name, last_name, email, company, file_name",
+      )
+      .eq("id", uploadId)
+      .maybeSingle<UploadForQuote>();
 
     if (uploadError || !upload) {
-        console.error("createQuoteFromUpload: upload lookup failed", {
-          uploadId,
-          error: uploadError,
-        });
+      console.error("createQuoteFromUpload: upload lookup failed", {
+        uploadId,
+        error: uploadError,
+      });
       return { error: "Could not create quote, please try again." };
     }
 
     if (upload.quote_id) {
-      revalidatePath("/admin");
-      revalidatePath(`/admin/uploads/${uploadId}`);
+      safeRevalidate("/admin");
+      safeRevalidate(`/admin/uploads/${uploadId}`);
       return redirect(`/admin/quotes/${upload.quote_id}`);
     }
 
@@ -210,61 +222,69 @@ export async function createQuoteFromUploadAction(
             "Found an existing quote, but linking it to the upload failed. Please retry.",
         };
       }
-      revalidatePath("/admin");
-      revalidatePath(`/admin/uploads/${uploadId}`);
+      safeRevalidate("/admin");
+      safeRevalidate(`/admin/uploads/${uploadId}`);
       return redirect(`/admin/quotes/${existingQuote.id}`);
     }
 
-      const contactPieces = [upload.first_name, upload.last_name]
-        .map((value) => (typeof value === "string" ? value.trim() : ""))
-        .filter((value) => value.length > 0);
-      const fallbackName =
-        typeof upload.name === "string" && upload.name.trim().length > 0
-          ? upload.name.trim()
-          : "";
-      const fallbackEmail =
-        typeof upload.email === "string" && upload.email.trim().length > 0
-          ? upload.email.trim()
-          : "";
-      const customerNameForQuote =
-        contactPieces.join(" ").trim() ||
-        fallbackName ||
-        fallbackEmail ||
-        "RFQ contact";
-      const sanitizedCompany =
-        typeof upload.company === "string" && upload.company.trim().length > 0
-          ? upload.company.trim()
-          : null;
-      const sanitizedEmail = fallbackEmail || null;
-      const sanitizedFileName =
-        typeof upload.file_name === "string" && upload.file_name.trim().length > 0
-          ? upload.file_name.trim()
-          : null;
+    const contactPieces = [upload.first_name, upload.last_name]
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .filter((value) => value.length > 0);
+    const fallbackName =
+      typeof upload.name === "string" && upload.name.trim().length > 0
+        ? upload.name.trim()
+        : "";
+    const fallbackEmail =
+      typeof upload.email === "string" && upload.email.trim().length > 0
+        ? upload.email.trim()
+        : "";
+    const customerNameForQuote =
+      contactPieces.join(" ").trim() ||
+      fallbackName ||
+      fallbackEmail ||
+      "RFQ contact";
+    const sanitizedCompany =
+      typeof upload.company === "string" && upload.company.trim().length > 0
+        ? upload.company.trim()
+        : null;
+    const sanitizedEmail = fallbackEmail || null;
+    const sanitizedFileName =
+      typeof upload.file_name === "string" && upload.file_name.trim().length > 0
+        ? upload.file_name.trim()
+        : null;
 
-      const quoteInsertPayload = {
-        upload_id: uploadId,
-        customer_id: upload.customer_id ?? undefined,
-        customer_name: customerNameForQuote,
-        customer_email: sanitizedEmail,
-        company: sanitizedCompany,
-        file_name: sanitizedFileName,
-        status: desiredStatus,
-        currency: "USD",
-        internal_notes: `Created from upload ${uploadId}`,
-      };
+    const quoteInsertPayload = {
+      upload_id: uploadId,
+      customer_name: customerNameForQuote,
+      customer_email: sanitizedEmail,
+      company: sanitizedCompany,
+      file_name: sanitizedFileName,
+      status: desiredStatus,
+      currency: "USD",
+      internal_notes: `Created from upload ${uploadId}`,
+    };
 
-      const { data: newQuote, error: insertError } = await supabaseServer
-        .from("quotes")
-        .insert(quoteInsertPayload)
-        .select("id")
-        .single<{ id: string }>();
+    const { data: newQuote, error: insertError } = await supabaseServer
+      .from("quotes")
+      .insert(quoteInsertPayload)
+      .select("id")
+      .single<{ id: string }>();
 
     if (insertError || !newQuote) {
-        console.error("createQuoteFromUpload: insert failed", {
-          uploadId,
-          payload: quoteInsertPayload,
-          error: insertError,
-        });
+      const sanitizedError =
+        insertError && typeof insertError === "object"
+          ? {
+              code: (insertError as PostgrestError).code ?? null,
+              message: (insertError as PostgrestError).message ?? null,
+              details: (insertError as PostgrestError).details ?? null,
+              hint: (insertError as PostgrestError).hint ?? null,
+            }
+          : (insertError ?? null);
+      console.error("createQuoteFromUpload: insert failed", {
+        uploadId,
+        payload: quoteInsertPayload,
+        error: sanitizedError,
+      });
       return { error: "Could not create quote, please try again." };
     }
 
@@ -281,8 +301,8 @@ export async function createQuoteFromUploadAction(
       };
     }
 
-    revalidatePath("/admin");
-    revalidatePath(`/admin/uploads/${uploadId}`);
+    safeRevalidate("/admin");
+    safeRevalidate(`/admin/uploads/${uploadId}`);
     return redirect(`/admin/quotes/${newQuote.id}`);
   } catch (error) {
     if (isRedirectError(error)) {
