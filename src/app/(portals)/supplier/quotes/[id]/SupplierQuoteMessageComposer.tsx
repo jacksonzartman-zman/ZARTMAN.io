@@ -10,6 +10,7 @@ import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 type SupplierQuoteMessageComposerProps = {
   quoteId: string;
+  supplierEmail: string;
   disabled?: boolean;
 };
 
@@ -20,6 +21,7 @@ const INITIAL_STATE: PostSupplierQuoteMessageState = {
 
 export function SupplierQuoteMessageComposer({
   quoteId,
+  supplierEmail,
   disabled = false,
 }: SupplierQuoteMessageComposerProps) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -42,6 +44,7 @@ export function SupplierQuoteMessageComposer({
   return (
       <form ref={formRef} action={formAction} className="space-y-3">
       <input type="hidden" name="quote_id" value={quoteId} />
+        <input type="hidden" name="identity_email" value={supplierEmail} />
       <div className="space-y-1">
         <label
           htmlFor="supplier-quote-message-body"

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/ssr";
+import { createAuthClient } from "@/server/auth";
 
 const DEFAULT_REDIRECT = "/customer";
 
@@ -10,9 +9,7 @@ export async function GET(request: Request) {
   const next = getSafeRedirectPath(requestUrl.searchParams.get("next"));
 
   if (code) {
-    const supabase = createRouteHandlerClient({
-      cookies,
-    });
+    const supabase = createAuthClient();
     await supabase.auth.exchangeCodeForSession(code);
   }
 

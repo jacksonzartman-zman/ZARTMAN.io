@@ -10,15 +10,12 @@ import {
 import {
   listSupplierBidsForSupplier,
   loadSupplierProfile,
-  loadSupplierProfileByUserId,
   matchQuotesToSupplier,
   type SupplierBidWithContext,
   type SupplierQuoteMatch,
   type SupplierProfile,
 } from "@/server/suppliers";
 import { requireSession } from "@/server/auth";
-
-const DEMO_SUPPLIER_EMAIL = "ops@supply-demo.com";
 
 export const dynamic = "force-dynamic";
 
@@ -30,153 +27,89 @@ async function SupplierDashboardPage({
   searchParams,
 }: SupplierDashboardPageProps) {
   const session = await requireSession({ redirectTo: "/supplier" });
-  const emailParam = getSearchParamValue(searchParams, "email");
-  const overrideEmail = normalizeEmailInput(emailParam);
-  const onboardFlag = getSearchParamValue(searchParams, "onboard");
-  const onboardingJustCompleted = onboardFlag === "1";
+  const supplierEmail = normalizeEmailInput(session.user.email ?? null);
+  const onboardingJustCompleted =
+    getSearchParamValue(searchParams, "onboard") === "1";
 
-  const sessionProfile = await loadSupplierProfileByUserId(session.user.id);
-  const sessionSupplier = sessionProfile?.supplier ?? null;
-  const sessionSupplierEmail = normalizeEmailInput(
-    sessionSupplier?.primary_email ?? session.user.email ?? null,
-  );
-
-  const usingOverride =
-    Boolean(overrideEmail) &&
-    overrideEmail !== sessionSupplierEmail &&
-    overrideEmail !== null;
-
-  const overrideProfile =
-    usingOverride && overrideEmail
-      ? await loadSupplierProfile(overrideEmail)
-      : null;
-
-  const viewProfile = usingOverride ? overrideProfile : sessionProfile;
-  const supplier = viewProfile?.supplier ?? null;
-  const capabilities = viewProfile?.capabilities ?? [];
-  const documents = viewProfile?.documents ?? [];
-  const readOnly = usingOverride;
-  const needsOnboarding = !readOnly && !sessionSupplier;
-  const supplierEmailLabel =
-    (usingOverride && overrideEmail) ||
-    sessionSupplier?.primary_email ||
-    session.user.email ||
-    "supplier";
-  const viewingSample = readOnly && !supplier;
-  const quoteLinkQuery =
-    readOnly && overrideEmail
-      ? `?email=${encodeURIComponent(overrideEmail)}`
-      : "";
-
-  let matches: SupplierQuoteMatch[] = [];
-  let bids: SupplierBidWithContext[] = [];
-
-  if (supplier) {
-    [matches, bids] = await Promise.all([
-      matchQuotesToSupplier(supplier.id),
-      listSupplierBidsForSupplier(supplier.id),
-    ]);
+  if (!supplierEmail) {
+    return (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
+        <p className="text-sm text-slate-300">
+          Sign in with a verified supplier email address to load your workspace.
+        </p>
+      </section>
+    );
   }
+
+  const profile = await loadSupplierProfile(supplierEmail);
+  const supplier = profile?.supplier ?? null;
+  const capabilities = profile?.capabilities ?? [];
+  const documents = profile?.documents ?? [];
+
+  if (!supplier) {
+    return (
+      <div className="space-y-6">
+        <PortalCard
+          title="Supplier onboarding"
+          description="Share your capabilities so we can route RFQs to your team."
+          action={
+            <Link
+              href="/supplier/onboarding"
+              className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-blue-300 transition hover:border-blue-400 hover:text-blue-200"
+            >
+              Start onboarding
+            </Link>
+          }
+        >
+          <p className="text-sm text-slate-300">
+            This account hasn’t completed onboarding yet. Knock out the profile once to unlock RFQ
+            matching, bids, and shared messaging.
+          </p>
+        </PortalCard>
+      </div>
+    );
+  }
+
+  const [matches, bids] = await Promise.all([
+    matchQuotesToSupplier(supplier.id),
+    listSupplierBidsForSupplier(supplier.id),
+  ]);
 
   return (
     <div className="space-y-6">
-        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
-          {readOnly ? (
-            supplier ? (
-              <>
-                <p>
-                  Read-only preview for{" "}
-                  <span className="font-semibold text-white">{supplierEmailLabel}</span>.
-                </p>
-                <p className="mt-2 text-xs text-slate-500">
-                  Remove ?email from the URL to return to your own workspace.
-                </p>
-              </>
-            ) : (
-              <>
-                <p>
-                  No supplier workspace found for{" "}
-                  <span className="font-semibold text-white">
-                    {overrideEmail ?? "that email"}
-                  </span>
-                  .
-                </p>
-                <p className="mt-2 text-xs text-slate-500">
-                  Double-check the address or onboard that supplier to unlock access.
-                </p>
-              </>
-            )
-          ) : needsOnboarding ? (
-            <>
-              <p>
-                Welcome! Complete onboarding so we can route RFQs to{" "}
-                <span className="font-semibold text-white">{session.user.email}</span>.
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Share your capabilities and documents to unlock the live supplier workspace.
-              </p>
-            </>
-          ) : (
-            <>
-              <p>
-                Viewing workspace data for{" "}
-                <span className="font-semibold text-white">{supplierEmailLabel}</span>.
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Every “View quote” link below carries your identity so we can confirm assignments automatically.
-              </p>
-            </>
-          )}
-          {!readOnly && onboardingJustCompleted ? (
-            <p className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-              Thanks — your profile is live! We’ll start routing matched RFQs to you automatically.
-            </p>
-          ) : null}
-        </section>
-
-        {needsOnboarding ? (
-          <PortalCard
-            title="Finish supplier onboarding"
-            description="Share your capabilities and compliance docs once so we can match RFQs to your team."
-            action={
-              <Link
-                href="/supplier/onboarding"
-                className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-blue-300 transition hover:border-blue-400 hover:text-blue-200"
-              >
-                Start onboarding
-              </Link>
-            }
-          >
-            <p className="text-sm text-slate-300">
-              Need a sample? Append{" "}
-              <code className="text-white">?email={DEMO_SUPPLIER_EMAIL}</code>{" "}
-              to the URL to preview a demo supplier workspace.
-            </p>
-          </PortalCard>
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
+        <p>
+          Viewing workspace data for{" "}
+          <span className="font-semibold text-white">
+            {supplier.primary_email ?? supplierEmail}
+          </span>
+          .
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Every “View quote” link below carries your identity so we can confirm assignments
+          automatically.
+        </p>
+        {onboardingJustCompleted ? (
+          <p className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            Thanks — your profile is live! We’ll start routing matched RFQs to you automatically.
+          </p>
         ) : null}
+      </section>
 
       <ProfileCard
-          supplierEmail={supplierEmailLabel}
-          supplier={supplier}
-          capabilities={capabilities}
-          documents={documents}
-          readOnly={readOnly}
+        supplierEmail={supplier.primary_email ?? supplierEmail}
+        supplier={supplier}
+        capabilities={capabilities}
+        documents={documents}
       />
 
-        <MatchesCard
-          supplierEmail={supplierEmailLabel}
-          supplierExists={Boolean(supplier)}
-          matches={matches}
-          viewingSample={viewingSample}
-          readOnly={readOnly}
-          quoteLinkQuery={quoteLinkQuery}
-        />
+      <MatchesCard
+        supplierEmail={supplier.primary_email ?? supplierEmail}
+        supplierExists={Boolean(supplier)}
+        matches={matches}
+      />
 
-        <BidsCard
-          supplierEmail={supplierEmailLabel}
-          bids={bids}
-          quoteLinkQuery={quoteLinkQuery}
-        />
+      <BidsCard supplierEmail={supplier.primary_email ?? supplierEmail} bids={bids} />
     </div>
   );
 }
@@ -186,13 +119,11 @@ function ProfileCard({
   capabilities,
   documents,
   supplierEmail,
-  readOnly,
 }: {
   supplier: SupplierProfile["supplier"] | null;
   capabilities: SupplierProfile["capabilities"];
   documents: SupplierProfile["documents"];
   supplierEmail: string;
-  readOnly: boolean;
 }) {
   const hasProfile = Boolean(supplier);
   return (
@@ -204,23 +135,14 @@ function ProfileCard({
           : "Complete onboarding so customers see verified company info."
       }
       action={
-        readOnly
-          ? null
-          : (
-            <Link
-              href="/supplier/onboarding"
-              className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-blue-300 transition hover:border-blue-400 hover:text-blue-200"
-            >
-              {hasProfile ? "Edit profile" : "Start onboarding"}
-            </Link>
-          )
+        <Link
+          href="/supplier/onboarding"
+          className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-blue-300 transition hover:border-blue-400 hover:text-blue-200"
+        >
+          {hasProfile ? "Edit profile" : "Start onboarding"}
+        </Link>
       }
     >
-      {readOnly ? (
-        <p className="mb-4 text-xs text-slate-500">
-          You’re previewing <span className="font-mono text-slate-300">{supplierEmail}</span> in read-only mode.
-        </p>
-      ) : null}
       {hasProfile ? (
         <div className="space-y-4 text-sm text-slate-200">
           <div className="grid gap-3 md:grid-cols-2">
@@ -312,16 +234,10 @@ function MatchesCard({
   supplierEmail,
   supplierExists,
   matches,
-  viewingSample,
-  readOnly,
-  quoteLinkQuery,
 }: {
   supplierEmail: string;
   supplierExists: boolean;
   matches: SupplierQuoteMatch[];
-  viewingSample: boolean;
-  readOnly: boolean;
-  quoteLinkQuery: string;
 }) {
   return (
     <PortalCard
@@ -351,15 +267,11 @@ function MatchesCard({
             const filesLabel =
               fileCount > 0 ? `${fileCount} file${fileCount === 1 ? "" : "s"}` : "No files";
             return (
-              <li key={quote.id}>
-                <Link
-                    href={
-                      quoteLinkQuery
-                        ? `/supplier/quotes/${quote.id}${quoteLinkQuery}`
-                        : `/supplier/quotes/${quote.id}`
-                    }
-                  className="block rounded-2xl border border-slate-900/80 bg-slate-950/40 px-4 py-3 transition hover:border-blue-400/40 hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
-                >
+                <li key={quote.id}>
+                  <Link
+                    href={`/supplier/quotes/${quote.id}`}
+                    className="block rounded-2xl border border-slate-900/80 bg-slate-950/40 px-4 py-3 transition hover:border-blue-400/40 hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                  >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">
@@ -384,15 +296,11 @@ function MatchesCard({
         </ul>
         ) : supplierExists ? (
           <p className="text-sm text-slate-400">
-            {readOnly
-              ? "Matches are read-only in preview mode."
-              : "No RFQs matched your latest capabilities yet. We’ll notify you as soon as there’s a fit."}
+            No RFQs matched your latest capabilities yet. We’ll notify you as soon as there’s a fit.
           </p>
         ) : (
           <p className="text-sm text-slate-400">
-            {viewingSample
-              ? "Add ?email=you@supplier.com to preview your real assignments."
-              : "Complete onboarding to unlock RFQ matching."}
+            Complete onboarding to unlock RFQ matching.
           </p>
         )}
     </PortalCard>
@@ -402,11 +310,9 @@ function MatchesCard({
 function BidsCard({
   supplierEmail,
   bids,
-  quoteLinkQuery,
 }: {
   supplierEmail: string;
   bids: SupplierBidWithContext[];
-  quoteLinkQuery: string;
 }) {
   return (
     <PortalCard
@@ -432,14 +338,10 @@ function BidsCard({
                 </div>
                 <StatusBadge status={bid.status} />
               </div>
-              <Link
-                  href={
-                    quoteLinkQuery
-                      ? `/supplier/quotes/${bid.quote_id}${quoteLinkQuery}`
-                      : `/supplier/quotes/${bid.quote_id}`
-                  }
-                className="mt-2 inline-flex text-xs font-semibold text-blue-300 underline-offset-4 hover:underline"
-              >
+                <Link
+                  href={`/supplier/quotes/${bid.quote_id}`}
+                  className="mt-2 inline-flex text-xs font-semibold text-blue-300 underline-offset-4 hover:underline"
+                >
                 View workspace
               </Link>
             </li>
