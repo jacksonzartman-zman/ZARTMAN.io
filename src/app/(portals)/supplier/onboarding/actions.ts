@@ -26,22 +26,32 @@ export async function submitSupplierOnboardingAction(
   _prevState: SupplierOnboardingState,
   formData: FormData,
 ): Promise<SupplierOnboardingState> {
-  const companyName = getText(formData, "company_name");
-  const primaryEmail = normalizeEmail(getText(formData, "primary_email"));
+  const rawCompanyName = getText(formData, "company_name");
+  const companyName = rawCompanyName ?? "";
+  const rawPrimaryEmail = getText(formData, "primary_email");
+  const normalizedPrimaryEmail = normalizeEmail(rawPrimaryEmail);
   const phone = getText(formData, "phone");
   const website = getText(formData, "website");
   const country = getText(formData, "country");
   const capabilitiesPayload = getText(formData, "capabilities_payload");
   const documentCount = Number(formData.get("document_count") ?? 0);
 
-  const fieldErrors: Record<string, string> = {};
-
-  if (!companyName) {
-    fieldErrors.company_name = "Enter your company name.";
+  if (!normalizedPrimaryEmail) {
+    return {
+      success: false,
+      error: "Check the highlighted fields.",
+      fieldErrors: {
+        primary_email: "Enter a valid primary email.",
+      },
+    };
   }
 
-  if (!primaryEmail) {
-    fieldErrors.primary_email = "Enter a valid primary email.";
+  const primaryEmail: string = normalizedPrimaryEmail;
+
+  const fieldErrors: Record<string, string> = {};
+
+  if (!rawCompanyName) {
+    fieldErrors.company_name = "Enter your company name.";
   }
 
   if (documentCount > MAX_DOCUMENTS) {
