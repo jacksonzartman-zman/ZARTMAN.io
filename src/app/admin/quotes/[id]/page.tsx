@@ -349,57 +349,41 @@ export default async function QuoteDetailPage({
       </div>
     );
 
-    const messagesContent = (
-      <section className={cardClasses}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Messages
-            </p>
-            <div className="mt-1 space-y-1">
-              <h2 className="text-lg font-semibold text-slate-50">Admin chat</h2>
-              <p className="text-sm text-slate-400">
-                Chat-style thread visible only to the admin workspace.
+      const messagesContent = (
+        <section className={cardClasses}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Messages
+          </p>
+          <QuoteMessagesThread
+            heading="Admin chat"
+            description="Chat-style thread visible only to the admin workspace."
+            messages={messages}
+            messageCount={messages.length}
+            error={
+              quoteMessagesError
+                ? "Unable to load every message right now. Refresh to retry."
+                : null
+            }
+            emptyState={
+              <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
+                No messages yet. Use the composer below to start the thread for
+                this quote.
               </p>
+            }
+            containerClassName="mt-3"
+          />
+
+          <div className="mt-4 border-t border-slate-900/60 pt-4">
+            <p className="text-sm font-semibold text-slate-100">Post a message</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Shared only with admins working on this quote.
+            </p>
+            <div className="mt-3">
+              <QuoteMessageComposer quoteId={quote.id} />
             </div>
           </div>
-          <span className="text-xs text-slate-500">
-            {messages.length} {messages.length === 1 ? "message" : "messages"}
-          </span>
-        </div>
-
-        {quoteMessagesError && (
-          <p
-            className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200"
-            role="status"
-          >
-            Unable to load every message right now. Refresh to retry.
-          </p>
-        )}
-
-        <div className="mt-3">
-            <QuoteMessagesThread
-              messages={messages}
-              emptyState={
-                <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
-                  No messages yet. Use the composer below to start the thread for
-                  this quote.
-                </p>
-              }
-            />
-        </div>
-
-        <div className="mt-4 border-t border-slate-900/60 pt-4">
-          <p className="text-sm font-semibold text-slate-100">Post a message</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Shared only with admins working on this quote.
-          </p>
-          <div className="mt-3">
-            <QuoteMessageComposer quoteId={quote.id} />
-          </div>
-        </div>
-      </section>
-    );
+        </section>
+      );
 
     const editContent = (
       <section className={cardClasses}>
