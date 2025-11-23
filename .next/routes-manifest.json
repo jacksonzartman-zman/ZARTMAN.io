@@ -78,6 +78,12 @@
       "namedRegex": "^/admin/quotes(?:/)?$"
     },
     {
+      "page": "/auth/callback",
+      "regex": "^/auth/callback(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/auth/callback(?:/)?$"
+    },
+    {
       "page": "/customer",
       "regex": "^/customer(?:/)?$",
       "routeKeys": {},

@@ -56,37 +56,6 @@ export async function getCustomerByUserId(
   }
 }
 
-export async function getCustomerByEmail(email?: string | null) {
-  const normalized = normalizeEmail(email);
-  if (!normalized) {
-    return null;
-  }
-
-  try {
-    const { data, error } = await supabaseServer
-      .from("customers")
-      .select("*")
-      .eq("email", normalized)
-      .maybeSingle<CustomerRow>();
-
-    if (error) {
-      console.error("getCustomerByEmail: lookup failed", {
-        email: normalized,
-        error,
-      });
-      return null;
-    }
-
-    return data ?? null;
-  } catch (error) {
-    console.error("getCustomerByEmail: unexpected error", {
-      email: normalized,
-      error,
-    });
-    return null;
-  }
-}
-
 type UpsertCustomerInput = {
   userId: string;
   email: string | null;
@@ -157,6 +126,37 @@ export async function upsertCustomerProfileForUser(
     console.error("upsertCustomerProfileForUser: unexpected error", {
       userId: input.userId,
       email: normalizedEmail,
+      error,
+    });
+    return null;
+  }
+}
+
+export async function getCustomerByEmail(email?: string | null) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("customers")
+      .select("*")
+      .eq("email", normalized)
+      .maybeSingle<CustomerRow>();
+
+    if (error) {
+      console.error("getCustomerByEmail: lookup failed", {
+        email: normalized,
+        error,
+      });
+      return null;
+    }
+
+    return data ?? null;
+  } catch (error) {
+    console.error("getCustomerByEmail: unexpected error", {
+      email: normalized,
       error,
     });
     return null;

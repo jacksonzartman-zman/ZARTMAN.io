@@ -11,7 +11,6 @@ import {
 export type SupplierAssignment = {
   supplier_email: string | null;
   supplier_name: string | null;
-  supplier_id: string | null;
 };
 
 export async function loadSupplierAssignments(
@@ -20,7 +19,7 @@ export async function loadSupplierAssignments(
   try {
     const { data, error } = await supabaseServer
       .from("quote_suppliers")
-      .select("supplier_email,supplier_name,supplier_id")
+      .select("supplier_email,supplier_name")
       .eq("quote_id", quoteId);
 
     if (error) {
@@ -51,16 +50,6 @@ export function supplierHasAccess(
   assignments: SupplierAssignment[],
   options?: SupplierAccessOptions,
 ): boolean {
-  const supplierId = options?.supplier?.id ?? null;
-  if (supplierId) {
-    const hasIdMatch = assignments.some(
-      (assignment) => assignment.supplier_id === supplierId,
-    );
-    if (hasIdMatch) {
-      return true;
-    }
-  }
-
   const normalizedEmail = normalizeEmailInput(supplierEmail);
   if (!normalizedEmail) {
     console.error("Supplier access: missing or invalid identity email", {

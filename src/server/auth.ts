@@ -12,39 +12,26 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   );
 }
 
-type CookieOptions = {
-  domain?: string;
-  path?: string;
-  secure?: boolean;
-  httpOnly?: boolean;
-  sameSite?: "strict" | "lax" | "none";
-  maxAge?: number;
-};
+const SUPABASE_URL_VALUE = SUPABASE_URL;
+const SUPABASE_ANON_VALUE = SUPABASE_ANON_KEY;
 
-function createAuthClient(): SupabaseClient {
-  const cookieStore = cookies();
-
-  return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+export function createAuthClient(): SupabaseClient {
+  return createServerClient(SUPABASE_URL_VALUE, SUPABASE_ANON_VALUE, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value;
+      async getAll() {
+        const cookieStore = await cookies();
+        return cookieStore
+          .getAll()
+          .map((cookie) => ({ name: cookie.name, value: cookie.value }));
       },
-      set(name: string, value: string, options?: CookieOptions) {
-        try {
+      async setAll(cookiesToSet) {
+        const cookieStore = await cookies();
+        cookiesToSet.forEach(({ name, value, options }) => {
           cookieStore.set({ name, value, ...(options ?? {}) });
-        } catch {
-          // Set is only allowed inside route handlers and server actions.
-        }
-      },
-      remove(name: string, options?: CookieOptions) {
-        try {
-          cookieStore.set({ name, value: "", ...(options ?? {}) });
-        } catch {
-          // Removal is only allowed inside route handlers and server actions.
-        }
+        });
       },
     },
-  });
+  }) as unknown as SupabaseClient;
 }
 
 export async function getCurrentSession(): Promise<Session | null> {
