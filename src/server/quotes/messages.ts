@@ -74,12 +74,12 @@ export async function loadQuoteMessages(
   }
 }
 
-export async function createAdminQuoteMessage({
-  quoteId,
-  body,
-}: CreateQuoteMessageParams): Promise<
-  QuoteMessageOperationResult<QuoteMessage | null>
-> {
+export async function createAdminQuoteMessage(params: {
+  quoteId: string;
+  body: string;
+}): Promise<QuoteMessageOperationResult<QuoteMessage | null>> {
+  const { quoteId, body } = params;
+
   return createQuoteMessage({
     quoteId,
     body,
