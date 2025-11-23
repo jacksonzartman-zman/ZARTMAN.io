@@ -2,10 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
-import {
-  createQuoteMessage,
-  type QuoteMessage,
-} from "@/server/quotes/messages";
+import { createSupplierQuoteMessage } from "@/server/quotes/messages";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import {
@@ -102,10 +99,9 @@ export async function postSupplierQuoteMessageAction(
       assignments,
     );
 
-    const { data, error } = await createQuoteMessage({
+    const { data, error } = await createSupplierQuoteMessage({
       quoteId,
       body,
-      authorType: "supplier",
       authorName: supplierName,
       authorEmail: identityEmail,
     });
@@ -119,7 +115,7 @@ export async function postSupplierQuoteMessageAction(
     }
 
     revalidatePath(`/supplier/quotes/${quoteId}`);
-    return { success: true, error: null, messageId: (data as QuoteMessage).id };
+    return { success: true, error: null, messageId: data.id };
   } catch (error) {
     console.error("Supplier post action: unexpected error", error);
     return { success: false, error: GENERIC_ERROR };

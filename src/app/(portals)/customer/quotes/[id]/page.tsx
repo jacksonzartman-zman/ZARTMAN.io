@@ -176,57 +176,44 @@ export default async function CustomerQuoteDetailPage({
     </div>
   );
 
-  const messagesContent = (
-    <section className={cardClasses}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Messages
-          </p>
-          <div className="mt-1 space-y-1">
-            <h2 className="text-lg font-semibold text-white">Shared chat</h2>
-            <p className="text-sm text-slate-400">
-              Collaborate directly with the Zartman admin team on this quote.
-            </p>
-          </div>
-        </div>
-        <span className="text-xs text-slate-500">
-          {messages.length} {messages.length === 1 ? "message" : "messages"}
-        </span>
-      </div>
-
-      {messagesError && (
-        <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-          Some messages may be missing. Refresh the page to try again.
+    const messagesContent = (
+      <section className={cardClasses}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Messages
         </p>
-      )}
-
-      <div className="mt-3">
         <QuoteMessagesThread
+          heading="Shared chat"
+          description="Collaborate directly with the Zartman admin team on this quote."
           messages={messages}
+          messageCount={messages.length}
+          error={
+            messagesError
+              ? "Some messages may be missing. Refresh the page to try again."
+              : null
+          }
           emptyState={
             <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
               No updates yet. Start the conversation below to keep things moving.
             </p>
           }
+          containerClassName="mt-3"
         />
-      </div>
 
-      <div className="mt-4 border-t border-slate-900/60 pt-4">
-        <p className="text-sm font-semibold text-slate-100">Post a message</p>
-        <p className="mt-1 text-xs text-slate-500">
-          Shared with admins and suppliers supporting this RFQ.
-        </p>
-        <div className="mt-3">
-          <CustomerQuoteMessageComposer
-            quoteId={quote.id}
-            customerEmail={identityEmailDisplay}
-            customerName={customerName}
-          />
+        <div className="mt-4 border-t border-slate-900/60 pt-4">
+          <p className="text-sm font-semibold text-slate-100">Post a message</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Shared with admins and suppliers supporting this RFQ.
+          </p>
+          <div className="mt-3">
+            <CustomerQuoteMessageComposer
+              quoteId={quote.id}
+              customerEmail={identityEmailDisplay}
+              customerName={customerName}
+            />
+          </div>
         </div>
-      </div>
-    </section>
-  );
+      </section>
+    );
 
   const filesContent = (
     <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />

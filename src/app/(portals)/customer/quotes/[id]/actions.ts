@@ -2,10 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
-import {
-  createQuoteMessage,
-  type QuoteMessage,
-} from "@/server/quotes/messages";
+import { createCustomerQuoteMessage } from "@/server/quotes/messages";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 
 export type PostCustomerQuoteMessageState = {
@@ -96,10 +93,9 @@ export async function postCustomerQuoteMessageAction(
       };
     }
 
-    const { data, error } = await createQuoteMessage({
+    const { data, error } = await createCustomerQuoteMessage({
       quoteId,
       body,
-      authorType: "customer",
       authorName: authorName || quote.customer_name || "Customer",
       authorEmail: identityEmail,
     });
@@ -113,7 +109,7 @@ export async function postCustomerQuoteMessageAction(
     }
 
     revalidatePath(`/customer/quotes/${quoteId}`);
-    return { success: true, error: null, messageId: (data as QuoteMessage).id };
+    return { success: true, error: null, messageId: data.id };
   } catch (error) {
     console.error("Customer post action: unexpected error", error);
     return { success: false, error: GENERIC_ERROR };
