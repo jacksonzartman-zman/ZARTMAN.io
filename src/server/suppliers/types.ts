@@ -59,17 +59,22 @@ export type SupplierCapabilityInput = {
   process: string;
   materials?: string[];
   certifications?: string[];
-  maxPartSize?: Record<string, unknown> | null;
+  maxPartSize?: {
+    x?: number | null;
+    y?: number | null;
+    z?: number | null;
+    units?: string | null;
+  } | null;
 };
 
 export type SupplierProfileUpsertInput = {
   supplierId?: string;
   primaryEmail: string;
-  companyName: string;
+  companyName?: string | null;
   phone?: string | null;
   website?: string | null;
   country?: string | null;
-  capabilities: SupplierCapabilityInput[];
+  capabilities?: SupplierCapabilityInput[];
 };
 
 export type SupplierDocumentInput = {

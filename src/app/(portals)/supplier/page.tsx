@@ -13,6 +13,7 @@ import {
   matchQuotesToSupplier,
   type SupplierBidWithContext,
   type SupplierQuoteMatch,
+  type SupplierProfile,
 } from "@/server/suppliers";
 
 const FALLBACK_SUPPLIER_EMAIL = "ops@supply-demo.com";
@@ -108,9 +109,9 @@ function ProfileCard({
   documents,
   supplierEmail,
 }: {
-  supplier: Awaited<ReturnType<typeof loadSupplierProfile>>["supplier"];
-  capabilities: Awaited<ReturnType<typeof loadSupplierProfile>>["capabilities"];
-  documents: Awaited<ReturnType<typeof loadSupplierProfile>>["documents"];
+  supplier: SupplierProfile["supplier"] | null;
+  capabilities: SupplierProfile["capabilities"];
+  documents: SupplierProfile["documents"];
   supplierEmail: string;
 }) {
   const hasProfile = Boolean(supplier);
