@@ -85,7 +85,7 @@ export function SupplierBidForm({
       </div>
       <div>
         <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Notes
+          Notes & certifications
         </label>
         <textarea
           name="notes"
@@ -93,7 +93,7 @@ export function SupplierBidForm({
           rows={4}
           disabled={isLocked}
           className="mt-1 w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none disabled:opacity-60"
-          placeholder="Add scope details, payment terms, or anything the customer should know."
+          placeholder="Call out certifications, MOQ, inspection plans, or anything the customer should know."
         />
       </div>
 
