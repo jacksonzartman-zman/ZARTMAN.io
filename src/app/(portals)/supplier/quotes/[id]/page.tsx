@@ -22,9 +22,16 @@ import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePrese
 import {
   getSupplierDisplayName,
   loadSupplierAssignments,
+  matchesSupplierProcess,
   supplierHasAccess,
   type SupplierAssignment,
 } from "./supplierAccess";
+import {
+  getSupplierBidForQuote,
+  loadSupplierProfile,
+  type SupplierBidRow,
+} from "@/server/suppliers";
+import { SupplierBidForm } from "./SupplierBidForm";
 
 export const dynamic = "force-dynamic";
 
@@ -64,47 +71,84 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-  const assignments = await loadSupplierAssignments(quoteId);
-    if (!supplierHasAccess(normalizedEmail, workspaceData.quote, assignments)) {
+    const [assignments, profile] = await Promise.all([
+      loadSupplierAssignments(quoteId),
+      loadSupplierProfile(normalizedEmail),
+    ]);
+
+    if (!profile?.supplier) {
+      return (
+        <PortalNoticeCard
+          title="Complete onboarding"
+          description="Finish the supplier onboarding form so we can confirm your company profile before loading this RFQ."
+        />
+      );
+    }
+
+    const verifiedProcessMatch = matchesSupplierProcess(
+      profile.capabilities ?? [],
+      workspaceData.uploadMeta?.manufacturing_process ?? null,
+    );
+
+    if (
+      !supplierHasAccess(normalizedEmail, workspaceData.quote, assignments, {
+        supplier: profile.supplier,
+        verifiedProcessMatch,
+      })
+    ) {
       console.error("Supplier portal: access denied", {
         quoteId,
         identityEmail: normalizedEmail,
         quoteEmail: workspaceData.quote.email,
         assignmentCount: assignments.length,
+        reason: "ACCESS_DENIED",
+        verifiedProcessMatch,
       });
+      return (
+        <PortalNoticeCard
+          title="Access denied"
+          description="This RFQ isn’t assigned to your inbox. Contact your Zartman rep if you believe this is an error."
+        />
+      );
+    }
+
+    const existingBid = await getSupplierBidForQuote(
+      quoteId,
+      profile.supplier.id,
+    );
+
     return (
-      <PortalNoticeCard
-        title="Access denied"
-        description="This RFQ isn’t assigned to your inbox. Contact your Zartman rep if you believe this is an error."
+      <SupplierQuoteWorkspace
+        data={workspaceData}
+        supplierEmail={normalizedEmail}
+        assignments={assignments}
+        supplierNameOverride={profile.supplier.company_name}
+        existingBid={existingBid}
+        messagingUnlocked={existingBid?.status === "accepted"}
       />
     );
-  }
-
-  return (
-    <SupplierQuoteWorkspace
-      data={workspaceData}
-      supplierEmail={normalizedEmail}
-      assignments={assignments}
-    />
-  );
 }
 
 function SupplierQuoteWorkspace({
   data,
   supplierEmail,
   assignments,
+    supplierNameOverride,
+    existingBid,
+    messagingUnlocked,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
   assignments: SupplierAssignment[];
+    supplierNameOverride?: string | null;
+    existingBid: SupplierBidRow | null;
+    messagingUnlocked: boolean;
 }) {
   const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
-  const supplierDisplayName = getSupplierDisplayName(
-    supplierEmail,
-    quote,
-    assignments,
-  );
+    const supplierDisplayName =
+      supplierNameOverride ??
+      getSupplierDisplayName(supplierEmail, quote, assignments);
   const cardClasses =
     "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
   const fileCountText =
@@ -219,10 +263,16 @@ function SupplierQuoteWorkspace({
           <p className="mt-1 text-xs text-slate-500">
             Your message notifies the Zartman admin team instantly.
           </p>
+          {!messagingUnlocked ? (
+            <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
+              Chat will unlock after you submit a bid and are selected by the customer.
+            </p>
+          ) : null}
           <div className="mt-3">
             <SupplierQuoteMessageComposer
               quoteId={quote.id}
               supplierEmail={supplierEmail}
+              disabled={!messagingUnlocked}
             />
           </div>
         </div>
@@ -248,57 +298,88 @@ function SupplierQuoteWorkspace({
     </section>
   );
 
-  const tabs: {
-    id: QuoteWorkspaceTab;
-    label: string;
-    count?: number;
-    content: ReactNode;
-  }[] = [
-    { id: "summary", label: "Summary", content: summaryContent },
-    {
-      id: "messages",
-      label: "Messages",
-      count: messages.length,
-      content: messagesContent,
-    },
-    { id: "viewer", label: "Files", content: filesContent },
-    { id: "tracking", label: "Tracking", content: trackingContent },
-  ];
+    const bidTabLabel = existingBid
+      ? existingBid.status === "accepted"
+        ? "Bid (accepted)"
+        : "Bid (submitted)"
+      : "Bid";
 
-  return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
-          Supplier workspace
+    const bidContent = (
+      <section className={cardClasses}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Bid
         </p>
-        <div className="mt-2 space-y-1">
-          <h1 className="text-2xl font-semibold text-white">
-            {formatQuoteId(quote.id)} · {derived.customerName}
-          </h1>
-          <p className="text-sm text-slate-400">
-            Files, DFM feedback, and shared chat for this assigned RFQ.
-          </p>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
-          <span>
-            Working as{" "}
-            <span className="font-semibold text-white">
-              {supplierDisplayName}
-            </span>{" "}
-            (<span className="font-mono text-slate-200">{supplierEmail}</span>)
-          </span>
-          <span>
-            Status:{" "}
-            <span className="font-semibold text-blue-200">
-              {derived.statusLabel}
-            </span>
-          </span>
+        <p className="mt-1 text-sm text-slate-300">
+          Pricing is only visible to the Zartman team and the customer tied to this RFQ.
+        </p>
+        <div className="mt-4">
+          <SupplierBidForm
+            quoteId={quote.id}
+            supplierEmail={supplierEmail}
+            existingBid={existingBid}
+            isLocked={existingBid?.status === "accepted"}
+          />
         </div>
       </section>
+    );
 
-      <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
-    </div>
-  );
+    const tabs: {
+      id: QuoteWorkspaceTab;
+      label: string;
+      count?: number;
+      content: ReactNode;
+    }[] = [
+      { id: "summary", label: "Summary", content: summaryContent },
+      {
+        id: "messages",
+        label: "Messages",
+        count: messages.length,
+        content: messagesContent,
+      },
+      { id: "bid", label: bidTabLabel, content: bidContent },
+      { id: "viewer", label: "Files", content: filesContent },
+      { id: "tracking", label: "Tracking", content: trackingContent },
+    ];
+
+    return (
+      <div className="space-y-6">
+        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
+            Supplier workspace
+          </p>
+          <div className="mt-2 space-y-1">
+            <h1 className="text-2xl font-semibold text-white">
+              {formatQuoteId(quote.id)} · {derived.customerName}
+            </h1>
+            <p className="text-sm text-slate-400">
+              Files, DFM feedback, and shared chat for this assigned RFQ.
+            </p>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
+            <span>
+              Working as{" "}
+              <span className="font-semibold text-white">
+                {supplierDisplayName}
+              </span>{" "}
+              (<span className="font-mono text-slate-200">{supplierEmail}</span>)
+            </span>
+            <span>
+              Status:{" "}
+              <span className="font-semibold text-blue-200">
+                {derived.statusLabel}
+              </span>
+            </span>
+            {existingBid?.status === "accepted" ? (
+              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+                Selected by customer
+              </span>
+            ) : null}
+          </div>
+        </section>
+
+        <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
+      </div>
+    );
 }
 
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {

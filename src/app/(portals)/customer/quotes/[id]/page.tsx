@@ -20,6 +20,8 @@ import {
   type QuoteWorkspaceData,
 } from "@/app/(portals)/quotes/workspaceData";
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
+import { listSupplierBidsForQuote, type SupplierBidWithContext } from "@/server/suppliers";
+import { BidDecisionButtons } from "./BidDecisionButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -76,9 +78,10 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
-  const derived = deriveQuotePresentation(quote, uploadMeta);
-  const { status, statusLabel, customerName, companyName, intakeNotes } =
-    derived;
+    const derived = deriveQuotePresentation(quote, uploadMeta);
+    const { status, statusLabel, customerName, companyName, intakeNotes } =
+      derived;
+    const supplierBids = await listSupplierBidsForQuote(quoteId);
   const fileCountText =
     filePreviews.length === 0
       ? "No files attached"
@@ -239,22 +242,91 @@ export default async function CustomerQuoteDetailPage({
     </section>
   );
 
-  const tabs: {
-    id: QuoteWorkspaceTab;
-    label: string;
-    count?: number;
-    content: ReactNode;
-  }[] = [
-    { id: "summary", label: "Summary", content: summaryContent },
-    {
-      id: "messages",
-      label: "Messages",
-      count: messages.length,
-      content: messagesContent,
-    },
-    { id: "viewer", label: "Files", content: filesContent },
-    { id: "tracking", label: "Tracking", content: trackingContent },
-  ];
+    const suppliersContent = (
+      <section className={cardClasses}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Supplier bids
+        </p>
+        {supplierBids.length > 0 ? (
+          <div className="mt-3 space-y-3">
+            {supplierBids.map((bid) => (
+              <article
+                key={bid.id}
+                className="rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {bid.supplier?.company_name ?? "Supplier"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {bid.supplier?.primary_email ?? "—"}
+                    </p>
+                  </div>
+                  <BidStatusBadge status={bid.status} />
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <DetailChip label="Unit price" value={formatBidPrice(bid)} />
+                  <DetailChip
+                    label="Lead time"
+                    value={
+                      bid.lead_time_days
+                        ? `${bid.lead_time_days} day${bid.lead_time_days === 1 ? "" : "s"}`
+                        : "Pending"
+                    }
+                  />
+                  <DetailChip
+                    label="Certifications"
+                    value={
+                      bid.certifications && bid.certifications.length > 0
+                        ? bid.certifications.join(", ")
+                        : "Not shared"
+                    }
+                  />
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Actions
+                    </p>
+                    <BidDecisionButtons
+                      bidId={bid.id}
+                      quoteId={quote.id}
+                      identityEmail={normalizedEmail}
+                      status={bid.status}
+                    />
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-slate-400">
+            No supplier bids yet. We’ll surface responses in real time as they arrive.
+          </p>
+        )}
+      </section>
+    );
+
+    const tabs: {
+      id: QuoteWorkspaceTab;
+      label: string;
+      count?: number;
+      content: ReactNode;
+    }[] = [
+      { id: "summary", label: "Summary", content: summaryContent },
+      {
+        id: "messages",
+        label: "Messages",
+        count: messages.length,
+        content: messagesContent,
+      },
+      {
+        id: "suppliers",
+        label: `Suppliers (${supplierBids.length})`,
+        content: suppliersContent,
+      },
+      { id: "viewer", label: "Files", content: filesContent },
+      { id: "tracking", label: "Tracking", content: trackingContent },
+    ];
 
   return (
     <div className="space-y-6">
@@ -302,4 +374,50 @@ function PortalNoticeCard({
       <p className="mt-2 text-sm text-slate-400">{description}</p>
     </section>
   );
+}
+
+function BidStatusBadge({ status }: { status: string }) {
+  const colorMap: Record<string, string> = {
+    accepted: "bg-emerald-500/20 text-emerald-200 border-emerald-500/30",
+    declined: "bg-red-500/10 text-red-200 border-red-500/30",
+    pending: "bg-blue-500/10 text-blue-200 border-blue-500/30",
+    withdrawn: "bg-slate-500/10 text-slate-200 border-slate-500/30",
+  };
+  const classes =
+    colorMap[status] ?? "bg-slate-500/10 text-slate-200 border-slate-500/30";
+  return (
+    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${classes}`}>
+      {status.charAt(0).toUpperCase() + status.slice(1)}
+    </span>
+  );
+}
+
+function DetailChip({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </p>
+      <p className="text-sm text-slate-100">{value}</p>
+    </div>
+  );
+}
+
+function formatBidPrice(bid: SupplierBidWithContext): string {
+  const numeric =
+    typeof bid.unit_price === "string" ? Number(bid.unit_price) : bid.unit_price;
+  if (typeof numeric !== "number" || !Number.isFinite(numeric)) {
+    return "Pending";
+  }
+
+  const currency = (bid.currency ?? "USD").toUpperCase();
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(numeric);
+  } catch {
+    return `${currency} ${numeric.toFixed(0)}`;
+  }
 }

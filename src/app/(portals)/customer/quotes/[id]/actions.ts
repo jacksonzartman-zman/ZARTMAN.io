@@ -4,11 +4,20 @@ import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { createCustomerQuoteMessage } from "@/server/quotes/messages";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import {
+  acceptSupplierBidForQuote,
+  declineSupplierBid,
+} from "@/server/suppliers";
 
 export type PostCustomerQuoteMessageState = {
   success: boolean;
   error: string | null;
   messageId?: string;
+};
+
+export type BidDecisionActionState = {
+  success: boolean;
+  error: string | null;
 };
 
 const GENERIC_ERROR =
@@ -118,5 +127,117 @@ export async function postCustomerQuoteMessageAction(
   } catch (error) {
     console.error("Customer post action: unexpected error", error);
     return { success: false, error: GENERIC_ERROR };
+  }
+}
+
+export async function acceptSupplierBidAction(
+  _prev: BidDecisionActionState,
+  formData: FormData,
+): Promise<BidDecisionActionState> {
+  return handleBidDecision(formData, "accept");
+}
+
+export async function declineSupplierBidAction(
+  _prev: BidDecisionActionState,
+  formData: FormData,
+): Promise<BidDecisionActionState> {
+  return handleBidDecision(formData, "decline");
+}
+
+async function handleBidDecision(formData: FormData, mode: "accept" | "decline") {
+  const rawBidId = formData.get("bid_id");
+  const rawQuoteId = formData.get("quote_id");
+  const rawEmail = formData.get("identity_email");
+
+  if (typeof rawBidId !== "string" || rawBidId.trim().length === 0) {
+    return { success: false, error: "Missing bid reference." };
+  }
+
+  if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
+    return { success: false, error: "Missing quote reference." };
+  }
+
+  if (typeof rawEmail !== "string") {
+    return { success: false, error: "Provide your email to continue." };
+  }
+
+  const bidId = rawBidId.trim();
+  const quoteId = rawQuoteId.trim();
+  const identityEmail = normalizeEmailInput(rawEmail);
+
+  if (!identityEmail) {
+    return {
+      success: false,
+      error: "Provide a valid email address.",
+    };
+  }
+
+  try {
+    const { data: quote, error } = await supabaseServer
+      .from("quotes_with_uploads")
+      .select("id,email")
+      .eq("id", quoteId)
+      .maybeSingle<{ id: string; email: string | null }>();
+
+    if (error) {
+      console.error("Bid decision action: quote lookup failed", {
+        quoteId,
+        error,
+      });
+    }
+
+    if (!quote) {
+      return { success: false, error: "Quote not found." };
+    }
+
+    const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
+    if (!normalizedQuoteEmail || normalizedQuoteEmail !== identityEmail) {
+      console.error("Bid decision action: access denied", {
+        quoteId,
+        identityEmail,
+        quoteEmail: quote.email,
+        mode,
+      });
+      return {
+        success: false,
+        error: "You do not have permission to update this bid.",
+      };
+    }
+
+    if (mode === "accept") {
+      const { accepted } = await acceptSupplierBidForQuote(bidId, quoteId);
+      if (!accepted) {
+        return {
+          success: false,
+          error: "Unable to accept this bid right now.",
+        };
+      }
+    } else {
+      const declined = await declineSupplierBid(bidId, quoteId);
+      if (!declined) {
+        return {
+          success: false,
+          error: "Unable to decline this bid right now.",
+        };
+      }
+    }
+
+    revalidatePath(`/customer/quotes/${quoteId}`);
+    revalidatePath(`/supplier/quotes/${quoteId}`);
+    revalidatePath(`/supplier`);
+    revalidatePath(`/admin/quotes/${quoteId}`);
+
+    return { success: true, error: null };
+  } catch (error) {
+    console.error("Bid decision action: unexpected error", {
+      quoteId,
+      bidId,
+      mode,
+      error,
+    });
+    return {
+      success: false,
+      error: "Unable to update the bid. Please try again.",
+    };
   }
 }
