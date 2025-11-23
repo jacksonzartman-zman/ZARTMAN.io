@@ -314,7 +314,7 @@ export async function submitSupplierBidAction(
     }
 
     revalidatePath(`/supplier/quotes/${quoteId}`);
-    revalidatePath(`/supplier?email=${encodeURIComponent(supplierEmail)}`);
+      revalidatePath(`/supplier`);
     revalidatePath(`/customer/quotes/${quoteId}`);
     return {
       success: true,

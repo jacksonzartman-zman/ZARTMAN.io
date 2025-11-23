@@ -37,8 +37,18 @@ const PROCESS_OPTIONS = ["CNC", "Sheet metal", "MJF", "FDM", "SLA", "Injection m
 
 export function SupplierOnboardingForm({
   defaultEmail,
+  defaultCompany,
+  defaultPhone,
+  defaultWebsite,
+  defaultCountry,
+  supplierId,
 }: {
   defaultEmail?: string | null;
+  defaultCompany?: string | null;
+  defaultPhone?: string | null;
+  defaultWebsite?: string | null;
+  defaultCountry?: string | null;
+  supplierId?: string | null;
 }) {
   const [capabilities, setCapabilities] = useState<CapabilityDraft[]>([
     createCapabilityDraft(),
@@ -73,6 +83,7 @@ export function SupplierOnboardingForm({
     <form action={formAction} className="space-y-6">
       <input type="hidden" name="capabilities_payload" value={capabilitiesPayload} />
       <input type="hidden" name="document_count" value={documents.length} />
+        <input type="hidden" name="supplier_id" value={supplierId ?? ""} />
 
       <Section title="Company profile" description="Basic info so customers know who they’re working with.">
         <div className="grid gap-4 md:grid-cols-2">
@@ -82,6 +93,7 @@ export function SupplierOnboardingForm({
             required
             placeholder="Lambda Precision"
             error={state.fieldErrors?.company_name}
+              defaultValue={defaultCompany ?? undefined}
           />
           <TextField
             label="Primary email"
@@ -96,16 +108,19 @@ export function SupplierOnboardingForm({
             label="Phone"
             name="phone"
             placeholder="+1 (555) 123-9876"
+              defaultValue={defaultPhone ?? undefined}
           />
           <TextField
             label="Website"
             name="website"
             placeholder="https://lambda-precision.com"
+              defaultValue={defaultWebsite ?? undefined}
           />
           <TextField
             label="Country"
             name="country"
             placeholder="United States"
+              defaultValue={defaultCountry ?? undefined}
           />
         </div>
       </Section>

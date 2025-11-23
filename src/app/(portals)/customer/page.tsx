@@ -11,6 +11,9 @@ import {
   getFirstParamValue,
   normalizeEmailInput,
 } from "@/app/(portals)/quotes/pageUtils";
+import { requireSession } from "@/server/auth";
+import { getCustomerByUserId } from "@/server/customers";
+import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +51,7 @@ type RawQuoteRecord = {
   file_name: string | null;
   email: string | null;
   company: string | null;
+  customer_id: string | null;
 };
 
 type PortalQuote = {
@@ -60,6 +64,7 @@ type PortalQuote = {
   fileName: string | null;
   customerEmail: string | null;
   company: string | null;
+  customerId: string | null;
 };
 
 type CustomerPortalData = {
@@ -68,54 +73,110 @@ type CustomerPortalData = {
   domainFallbackUsed: boolean;
 };
 
-type LoadCustomerPortalDataArgs = {
-  email: string;
-  domain?: string | null;
-};
+type LoadCustomerPortalDataArgs =
+  | {
+      customerId: string;
+    }
+  | {
+      email: string;
+      domain?: string | null;
+    };
 
 async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
-  const emailParam = getFirstParamValue(searchParams?.email);
-  const emailNormalized = normalizeEmailInput(emailParam);
-  const emailDomain = getEmailDomain(emailNormalized);
+  const session = await requireSession({ redirectTo: "/customer" });
+  const overrideParam = getFirstParamValue(searchParams?.email);
+  const overrideEmail = normalizeEmailInput(overrideParam);
+  const customer = await getCustomerByUserId(session.user.id);
 
-  if (!emailNormalized) {
+  if (!customer) {
     return (
       <div className="space-y-6">
+        <CompleteCustomerProfileCard
+          sessionEmail={session.user.email ?? null}
+          defaultCompanyName={
+            session.user.user_metadata?.company ??
+            session.user.user_metadata?.full_name ??
+            null
+          }
+        />
         <CustomerPortalDemoCard />
       </div>
     );
   }
 
-  const portalData = await loadCustomerPortalData({
-    email: emailNormalized,
-    domain: emailDomain,
-  });
+  const customerEmail = normalizeEmailInput(customer.email);
+  const sessionEmail = normalizeEmailInput(session.user.email ?? null);
+  const usingOverride =
+    Boolean(overrideEmail) && overrideEmail !== customerEmail;
+  const viewerEmail = usingOverride ? overrideEmail : customerEmail ?? sessionEmail;
+
+  if (usingOverride && !viewerEmail) {
+    return (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
+        <h2 className="text-xl font-semibold text-white">Invalid override</h2>
+        <p className="mt-2 text-sm text-slate-400">
+          Add ?email=you@company.com with a valid address to preview another account.
+        </p>
+      </section>
+    );
+  }
+
+  const portalData = usingOverride
+    ? await loadCustomerPortalData({
+        email: viewerEmail!,
+        domain: getEmailDomain(viewerEmail) ?? getEmailDomain(overrideParam),
+      })
+    : await loadCustomerPortalData({
+        customerId: customer.id,
+      });
 
   const openQuotes = portalData.quotes.filter((quote) =>
     OPEN_STATUSES.includes(quote.status),
   );
   const recentActivity = portalData.quotes.slice(0, RECENT_ACTIVITY_LIMIT);
   const hasAnyQuotes = portalData.quotes.length > 0;
+  const viewerDisplayEmail = viewerEmail ?? "customer";
+  const quoteLinkQuery =
+    usingOverride && viewerEmail
+      ? `?email=${encodeURIComponent(viewerEmail)}`
+      : "";
+  const viewerDomain = getEmailDomain(viewerDisplayEmail);
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
-        <p>
-          Showing read-only activity for{" "}
-          <span className="font-semibold text-white">{emailNormalized}</span>
-        </p>
-        {portalData.domainFallbackUsed && emailDomain ? (
-          <p className="mt-2 text-xs text-slate-500">
-            No direct matches found, so we’re showing other contacts at @{emailDomain}.
-          </p>
-        ) : (
-          <p className="mt-2 text-xs text-slate-500">
-            Share this link with teammates to preview the live portal experience.
-          </p>
-        )}
-      </section>
+        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
+          {usingOverride ? (
+            <>
+              <p>
+                Showing read-only activity for{" "}
+                <span className="font-semibold text-white">{viewerDisplayEmail}</span>.
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                Remove ?email from the URL to switch back to your own workspace.
+              </p>
+            </>
+          ) : (
+            <>
+              <p>
+                Signed in as{" "}
+                <span className="font-semibold text-white">
+                  {customer.company_name ?? viewerDisplayEmail}
+                </span>
+                .
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                Uploads from your account automatically sync back into this dashboard.
+              </p>
+            </>
+          )}
+          {portalData.domainFallbackUsed && viewerDomain ? (
+            <p className="mt-2 text-xs text-slate-500">
+              No direct matches found, so we’re showing other contacts at @{viewerDomain}.
+            </p>
+          ) : null}
+        </section>
 
       {portalData.error ? (
         <PortalCard
@@ -141,8 +202,12 @@ async function CustomerDashboardPage({
                 key={quote.id}
                   className="rounded-xl border border-slate-900/70 bg-slate-900/30 px-0 py-0"
               >
-                  <Link
-                    href={`/customer/quotes/${quote.id}?email=${encodeURIComponent(emailNormalized)}`}
+                    <Link
+                      href={
+                        quoteLinkQuery
+                          ? `/customer/quotes/${quote.id}${quoteLinkQuery}`
+                          : `/customer/quotes/${quote.id}`
+                      }
                     className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 transition hover:bg-slate-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
                   >
                     <div>
@@ -160,8 +225,8 @@ async function CustomerDashboardPage({
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-slate-400">
-            No open quotes yet for <span className="text-white">{emailNormalized}</span>.{" "}
+            <p className="text-sm text-slate-400">
+              No open quotes yet for <span className="text-white">{viewerDisplayEmail}</span>.{" "}
             <Link
               href="/quote"
               className="text-emerald-300 underline-offset-4 hover:underline"
@@ -195,8 +260,8 @@ async function CustomerDashboardPage({
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-slate-400">
-            We haven’t logged any RFQs yet for {emailNormalized}. They’ll flow in as soon as
+            <p className="text-sm text-slate-400">
+              We haven’t logged any RFQs yet for {viewerDisplayEmail}. They’ll flow in as soon as
             files are uploaded from the quote tool.
           </p>
         )}
@@ -233,10 +298,20 @@ function getEmailDomain(value?: string | null): string | null {
   return domain?.length ? domain : null;
 }
 
-async function loadCustomerPortalData({
-  email,
-  domain,
-}: LoadCustomerPortalDataArgs): Promise<CustomerPortalData> {
+async function loadCustomerPortalData(
+  args: LoadCustomerPortalDataArgs,
+): Promise<CustomerPortalData> {
+  if ("customerId" in args) {
+    return selectQuotesByCustomerId(args.customerId);
+  }
+
+  return loadCustomerPortalDataByEmail(args.email, args.domain ?? null);
+}
+
+async function loadCustomerPortalDataByEmail(
+  email: string,
+  domain: string | null,
+): Promise<CustomerPortalData> {
   const errors: string[] = [];
 
   const emailResponse = await selectQuotesByPattern(email);
@@ -275,21 +350,59 @@ async function loadCustomerPortalData({
   };
 }
 
+async function selectQuotesByCustomerId(
+  customerId: string,
+): Promise<CustomerPortalData> {
+  const { data, error } = await supabaseServer
+    .from("quotes_with_uploads")
+    .select(
+      `
+        id,
+        status,
+        created_at,
+        target_date,
+        price,
+        currency,
+        file_name,
+        email,
+        company,
+        customer_id
+      `,
+    )
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false })
+    .limit(QUOTE_LIMIT);
+
+  if (error) {
+    console.error("selectQuotesByCustomerId: query failed", {
+      customerId,
+      error,
+    });
+    return { quotes: [], domainFallbackUsed: false, error: "Unable to load quotes." };
+  }
+
+  return {
+    quotes: mapQuoteRecords((data as RawQuoteRecord[]) ?? []),
+    domainFallbackUsed: false,
+  };
+}
+
 function selectQuotesByPattern(pattern: string) {
   return supabaseServer
     .from("quotes_with_uploads")
     .select(
       `
-      id,
-      status,
-      created_at,
-      target_date,
-      price,
-      currency,
-      file_name,
-      email,
-      company
-    `,
+        id,
+        status,
+        created_at,
+        target_date,
+        price,
+        currency,
+        file_name,
+        email,
+        company,
+        customer_id
+      `,
     )
     .ilike("email", pattern)
     .order("created_at", { ascending: false })
@@ -307,6 +420,7 @@ function mapQuoteRecords(records: RawQuoteRecord[]): PortalQuote[] {
     fileName: record.file_name ?? null,
     customerEmail: record.email ?? null,
     company: record.company ?? null,
+    customerId: record.customer_id ?? null,
   }));
 }
 
@@ -386,7 +500,7 @@ function CustomerPortalDemoCard() {
   return (
     <PortalCard
       title="Customer portal demo"
-      description="Add ?email=you@company.com to this URL to load your actual RFQs."
+        description="Signed-in teammates can append ?email=you@company.com to preview other accounts for demos."
       action={
         <Link
           href="/quote"
@@ -397,8 +511,9 @@ function CustomerPortalDemoCard() {
       }
     >
       <p className="text-sm text-slate-300">
-        Example:{" "}
-        <code className="text-white">/customer?email=you@company.com</code>
+          Example:{" "}
+          <code className="text-white">/customer?email=you@company.com</code>
+          {" — "}remove the query string to go back to your own workspace.
       </p>
     </PortalCard>
   );
