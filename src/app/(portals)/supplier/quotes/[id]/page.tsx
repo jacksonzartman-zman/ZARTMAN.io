@@ -184,59 +184,44 @@ function SupplierQuoteWorkspace({
     </div>
   );
 
-  const messagesContent = (
-    <section className={cardClasses}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Messages
-          </p>
-          <div className="mt-1 space-y-1">
-            <h2 className="text-lg font-semibold text-white">
-              Supplier &lt;&gt; admin chat
-            </h2>
-            <p className="text-sm text-slate-400">
-              Keep build updates, questions, and risks in one shared thread.
-            </p>
-          </div>
-        </div>
-        <span className="text-xs text-slate-500">
-          {messages.length} {messages.length === 1 ? "message" : "messages"}
-        </span>
-      </div>
-
-      {messagesError && (
-        <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-          Some messages may be missing. Refresh the page to try again.
+    const messagesContent = (
+      <section className={cardClasses}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Messages
         </p>
-      )}
-
-      <div className="mt-3">
         <QuoteMessagesThread
+          heading="Supplier <> admin chat"
+          description="Keep build updates, questions, and risks in one shared thread."
           messages={messages}
+          messageCount={messages.length}
+          error={
+            messagesError
+              ? "Some messages may be missing. Refresh the page to try again."
+              : null
+          }
           emptyState={
             <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
               No updates yet. Share a build status, question, or risk to get the
               conversation going.
             </p>
           }
+          containerClassName="mt-3"
         />
-      </div>
 
-      <div className="mt-4 border-t border-slate-900/60 pt-4">
-        <p className="text-sm font-semibold text-slate-100">Post an update</p>
-        <p className="mt-1 text-xs text-slate-500">
-          Your message notifies the Zartman admin team instantly.
-        </p>
-        <div className="mt-3">
-          <SupplierQuoteMessageComposer
-            quoteId={quote.id}
-            supplierEmail={supplierEmail}
-          />
+        <div className="mt-4 border-t border-slate-900/60 pt-4">
+          <p className="text-sm font-semibold text-slate-100">Post an update</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Your message notifies the Zartman admin team instantly.
+          </p>
+          <div className="mt-3">
+            <SupplierQuoteMessageComposer
+              quoteId={quote.id}
+              supplierEmail={supplierEmail}
+            />
+          </div>
         </div>
-      </div>
-    </section>
-  );
+      </section>
+    );
 
   const filesContent = (
     <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />

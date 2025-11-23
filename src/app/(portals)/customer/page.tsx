@@ -7,6 +7,10 @@ import {
   type UploadStatus,
 } from "@/app/admin/constants";
 import { primaryCtaClasses } from "@/lib/ctas";
+import {
+  getFirstParamValue,
+  normalizeEmailInput,
+} from "@/app/(portals)/quotes/pageUtils";
 
 export const dynamic = "force-dynamic";
 
@@ -221,31 +225,12 @@ async function CustomerDashboardPage({
   );
 }
 
-function normalizeEmailInput(value?: string): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-}
-
 function getEmailDomain(value?: string | null): string | null {
   if (!value || !value.includes("@")) {
     return null;
   }
   const [, domain] = value.split("@");
   return domain?.length ? domain : null;
-}
-
-function getFirstParamValue(
-  value?: string | string[] | null,
-): string | undefined {
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-
-  return value ?? undefined;
 }
 
 async function loadCustomerPortalData({

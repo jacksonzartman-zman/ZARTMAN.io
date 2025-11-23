@@ -1,17 +1,19 @@
 {
-  "/_not-found/page": "/_not-found",
   "/api/files/route": "/api/files",
   "/api/messages/route": "/api/messages",
   "/api/quotes/route": "/api/quotes",
   "/api/threads/route": "/api/threads",
+  "/_not-found/page": "/_not-found",
   "/api/upload/route": "/api/upload",
   "/page": "/",
   "/quote/page": "/quote",
   "/(portals)/supplier/page": "/supplier",
   "/admin/uploads/[id]/page": "/admin/uploads/[id]",
-  "/admin/quotes/page": "/admin/quotes",
-  "/admin/page": "/admin",
   "/(portals)/customer/page": "/customer",
+  "/admin/page": "/admin",
+  "/admin/quotes/page": "/admin/quotes",
+  "/(portals)/supplier/quotes/[id]/page": "/supplier/quotes/[id]",
   "/admin/quotes/[id]/page": "/admin/quotes/[id]",
+  "/(portals)/customer/quotes/[id]/page": "/customer/quotes/[id]",
   "/api/hello/route": "/api/hello"
 }
