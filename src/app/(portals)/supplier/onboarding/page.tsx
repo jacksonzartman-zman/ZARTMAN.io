@@ -1,6 +1,7 @@
 import type React from "react";
 import Link from "next/link";
-import { getSearchParamValue, normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import { requireSession } from "@/server/auth";
+import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import PortalCard from "../../PortalCard";
 import { SupplierOnboardingForm } from "./SupplierOnboardingForm";
 
@@ -17,11 +18,12 @@ type SupplierOnboardingPageProps = {
   searchParams?: Record<string, string | string[] | undefined>;
 };
 
-function SupplierOnboardingPage({
+async function SupplierOnboardingPage({
   searchParams,
 }: SupplierOnboardingPageProps) {
-  const emailParam = getSearchParamValue(searchParams, "email");
-  const normalizedEmail = normalizeEmailInput(emailParam);
+  const session = await requireSession({ redirectTo: "/supplier/onboarding" });
+  const profile = await loadSupplierProfileByUserId(session.user.id);
+  const supplier = profile?.supplier ?? null;
 
   return (
     <div className="space-y-6">
@@ -43,7 +45,14 @@ function SupplierOnboardingPage({
         </p>
       </PortalCard>
 
-      <SupplierOnboardingForm defaultEmail={normalizedEmail ?? undefined} />
+        <SupplierOnboardingForm
+          defaultEmail={supplier?.primary_email ?? session.user.email ?? undefined}
+          defaultCompany={supplier?.company_name ?? undefined}
+          defaultPhone={supplier?.phone ?? undefined}
+          defaultWebsite={supplier?.website ?? undefined}
+          defaultCountry={supplier?.country ?? undefined}
+          supplierId={supplier?.id}
+        />
     </div>
   );
 }

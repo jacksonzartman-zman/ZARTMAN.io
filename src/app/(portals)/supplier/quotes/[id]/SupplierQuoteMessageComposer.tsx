@@ -44,7 +44,7 @@ export function SupplierQuoteMessageComposer({
   return (
       <form ref={formRef} action={formAction} className="space-y-3">
       <input type="hidden" name="quote_id" value={quoteId} />
-      <input type="hidden" name="identity_email" value={supplierEmail} />
+        <input type="hidden" name="identity_email" value={supplierEmail} />
       <div className="space-y-1">
         <label
           htmlFor="supplier-quote-message-body"

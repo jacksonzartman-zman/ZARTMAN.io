@@ -9,10 +9,7 @@ import { QuoteMessagesThread } from "@/components/quotes/QuoteMessagesThread";
 import { SupplierQuoteMessageComposer } from "./SupplierQuoteMessageComposer";
 import {
   formatQuoteId,
-  getSearchParamValue,
   normalizeEmailInput,
-  resolveMaybePromise,
-  type SearchParamsLike,
 } from "@/app/(portals)/quotes/pageUtils";
 import {
   loadQuoteWorkspaceData,
@@ -32,31 +29,39 @@ import {
   type SupplierBidRow,
 } from "@/server/suppliers";
 import { SupplierBidForm } from "./SupplierBidForm";
+import { requireSession } from "@/server/auth";
 
 export const dynamic = "force-dynamic";
 
 type SupplierQuotePageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<SearchParamsLike>;
 };
 
 export default async function SupplierQuoteDetailPage({
   params,
-  searchParams,
 }: SupplierQuotePageProps) {
-  const [{ id: quoteId }, resolvedSearchParams] = await Promise.all([
-    params,
-    resolveMaybePromise(searchParams),
-  ]);
+  const { id: quoteId } = await params;
 
-  const emailParam = getSearchParamValue(resolvedSearchParams, "email");
-  const normalizedEmail = normalizeEmailInput(emailParam);
+  const session = await requireSession({
+    redirectTo: `/supplier/quotes/${quoteId}`,
+  });
+  const supplierEmail = normalizeEmailInput(session.user.email ?? null);
 
-  if (!normalizedEmail) {
+  if (!supplierEmail) {
     return (
       <PortalNoticeCard
-        title="Add your email to view this quote"
-        description="Append ?email=you@supplier.com so we can confirm your assignment."
+        title="Sign in with a supplier email"
+        description="We couldn’t determine which supplier account you’re using. Try signing out and back in."
+      />
+    );
+  }
+
+  const profile = await loadSupplierProfile(supplierEmail);
+  if (!profile?.supplier) {
+    return (
+      <PortalNoticeCard
+        title="Complete onboarding"
+        description="Finish the supplier onboarding form before opening RFQs."
       />
     );
   }
@@ -71,78 +76,71 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-    const [assignments, profile] = await Promise.all([
-      loadSupplierAssignments(quoteId),
-      loadSupplierProfile(normalizedEmail),
-    ]);
+  const assignments = await loadSupplierAssignments(quoteId);
+  const capabilities = profile.capabilities ?? [];
+  const verifiedProcessMatch = matchesSupplierProcess(
+    capabilities,
+    workspaceData.uploadMeta?.manufacturing_process ?? null,
+  );
 
-    if (!profile?.supplier) {
-      return (
-        <PortalNoticeCard
-          title="Complete onboarding"
-          description="Finish the supplier onboarding form so we can confirm your company profile before loading this RFQ."
-        />
-      );
-    }
-
-    const verifiedProcessMatch = matchesSupplierProcess(
-      profile.capabilities ?? [],
-      workspaceData.uploadMeta?.manufacturing_process ?? null,
-    );
-
-    if (
-      !supplierHasAccess(normalizedEmail, workspaceData.quote, assignments, {
-        supplier: profile.supplier,
-        verifiedProcessMatch,
-      })
-    ) {
-      console.error("Supplier portal: access denied", {
-        quoteId,
-        identityEmail: normalizedEmail,
-        quoteEmail: workspaceData.quote.email,
-        assignmentCount: assignments.length,
-        reason: "ACCESS_DENIED",
-        verifiedProcessMatch,
-      });
-      return (
-        <PortalNoticeCard
-          title="Access denied"
-          description="This RFQ isn’t assigned to your inbox. Contact your Zartman rep if you believe this is an error."
-        />
-      );
-    }
-
-    const existingBid = await getSupplierBidForQuote(
+  if (
+    !supplierHasAccess(supplierEmail, workspaceData.quote, assignments, {
+      supplier: profile.supplier,
+      verifiedProcessMatch,
+    })
+  ) {
+    console.error("Supplier portal: access denied", {
       quoteId,
-      profile.supplier.id,
-    );
-
+      identityEmail: supplierEmail,
+      quoteEmail: workspaceData.quote.email,
+      assignmentCount: assignments.length,
+      reason: "ACCESS_DENIED",
+      verifiedProcessMatch,
+    });
     return (
-      <SupplierQuoteWorkspace
-        data={workspaceData}
-        supplierEmail={normalizedEmail}
-        assignments={assignments}
-        supplierNameOverride={profile.supplier.company_name}
-        existingBid={existingBid}
-        messagingUnlocked={existingBid?.status === "accepted"}
+      <PortalNoticeCard
+        title="Access denied"
+        description="This RFQ isn’t assigned to your inbox. Contact your Zartman rep if you believe this is an error."
       />
     );
+  }
+
+  const existingBid = await getSupplierBidForQuote(
+    quoteId,
+    profile.supplier.id,
+  );
+
+  return (
+    <SupplierQuoteWorkspace
+      data={workspaceData}
+      supplierEmail={
+        profile.supplier.primary_email ??
+        supplierEmail ??
+        session.user.email ??
+        "supplier"
+      }
+      assignments={assignments}
+      supplierNameOverride={profile.supplier.company_name}
+      existingBid={existingBid}
+      messagingUnlocked={existingBid?.status === "accepted"}
+    />
+  );
 }
 
 function SupplierQuoteWorkspace({
   data,
   supplierEmail,
   assignments,
-    supplierNameOverride,
-    existingBid,
-    messagingUnlocked,
+  supplierNameOverride,
+  existingBid,
+  messagingUnlocked,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
   assignments: SupplierAssignment[];
-    supplierNameOverride?: string | null;
-    existingBid: SupplierBidRow | null;
-    messagingUnlocked: boolean;
+  supplierNameOverride?: string | null;
+  existingBid: SupplierBidRow | null;
+  messagingUnlocked: boolean;
 }) {
   const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
