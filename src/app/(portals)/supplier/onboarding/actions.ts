@@ -57,7 +57,7 @@ export async function submitSupplierOnboardingAction(
   try {
     const profile = await upsertSupplierProfile({
       primaryEmail,
-      companyName,
+      companyName: companyName!,
       phone,
       website,
       country,
@@ -82,6 +82,7 @@ export async function submitSupplierOnboardingAction(
       error: "We couldn’t save your profile. Please try again.",
     };
   }
+
 }
 
 function getText(formData: FormData, key: string): string | null {
@@ -97,23 +98,17 @@ function normalizeEmail(value?: string | null): string {
   return value?.toLowerCase() ?? "";
 }
 
-function parseCapabilities(payload: string | null): SupplierCapabilityInput[] {
+function parseCapabilities(
+  payload: string | null | undefined,
+): SupplierCapabilityInput[] {
   if (!payload) {
     return [];
   }
 
-  try {
-    const parsed = JSON.parse(payload);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
+  let parsed: unknown;
 
-    return parsed
-      .map((entry) => normalizeCapability(entry))
-      .filter(
-        (cap): cap is SupplierCapabilityInput =>
-          Boolean(cap) && typeof cap.process === "string" && cap.process.trim().length > 0,
-      );
+  try {
+    parsed = JSON.parse(payload);
   } catch (error) {
     console.error("parseCapabilities: failed to parse payload", {
       payload,
@@ -121,53 +116,96 @@ function parseCapabilities(payload: string | null): SupplierCapabilityInput[] {
     });
     return [];
   }
+
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  const capabilities: SupplierCapabilityInput[] = [];
+
+  for (const raw of parsed) {
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
+
+    const cap = raw as {
+      id?: unknown;
+      process?: string | null;
+      materials?: unknown;
+      certifications?: unknown;
+      maxPartSize?: unknown;
+    };
+
+    const process =
+      typeof cap.process === "string" ? cap.process.trim() : "";
+    if (!process) {
+      continue;
+    }
+
+    const capability: SupplierCapabilityInput = { process };
+
+    if (typeof cap.id === "string" && cap.id.trim().length > 0) {
+      capability.id = cap.id.trim();
+    }
+
+    const materials = sanitizeStringList(cap.materials);
+    if (materials) {
+      capability.materials = materials;
+    }
+
+    const certifications = sanitizeStringList(cap.certifications);
+    if (certifications) {
+      capability.certifications = certifications;
+    }
+
+    const maxPartSize = sanitizeMaxPartSize(cap.maxPartSize);
+    if (maxPartSize !== null) {
+      capability.maxPartSize = maxPartSize;
+    }
+
+    capabilities.push(capability);
+  }
+
+  return capabilities;
 }
 
-function normalizeCapability(entry: any): SupplierCapabilityInput | null {
-  if (!entry) {
+function sanitizeStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const cleaned = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+function sanitizeMaxPartSize(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object") {
     return null;
   }
 
-  const process =
-    typeof entry.process === "string" ? entry.process.trim() : "";
-  if (!process) {
-    return null;
-  }
-
-  const materials = Array.isArray(entry.materials)
-    ? entry.materials
-        .map((value: unknown) =>
-          typeof value === "string" ? value.trim() : "",
-        )
-        .filter((value: string) => value.length > 0)
-    : [];
-
-  const certifications = Array.isArray(entry.certifications)
-    ? entry.certifications
-        .map((value: unknown) =>
-          typeof value === "string" ? value.trim() : "",
-        )
-        .filter((value: string) => value.length > 0)
-    : [];
-
-  const maxPartSize =
-    entry.maxPartSize && typeof entry.maxPartSize === "object"
-      ? {
-          x: sanitizeDimension(entry.maxPartSize.x),
-          y: sanitizeDimension(entry.maxPartSize.y),
-          z: sanitizeDimension(entry.maxPartSize.z),
-          units: typeof entry.maxPartSize.units === "string"
-            ? entry.maxPartSize.units.trim()
-            : undefined,
-        }
-      : null;
-
-  return {
-    process,
-    materials,
-    certifications,
-    maxPartSize,
+  const source = value as Record<string, unknown>;
+  const sanitized = {
+    x: sanitizeDimension(source.x),
+    y: sanitizeDimension(source.y),
+    z: sanitizeDimension(source.z),
+    units:
+      typeof source.units === "string" ? source.units.trim() : undefined,
   };
+
+  if (
+    sanitized.x === undefined &&
+    sanitized.y === undefined &&
+    sanitized.z === undefined &&
+    !sanitized.units
+  ) {
+    return null;
+  }
+
+  return sanitized;
 }
 
 function sanitizeDimension(value: unknown): number | undefined {
@@ -227,18 +265,14 @@ async function uploadDocumentAndPersist(
     throw new Error("Document upload failed");
   }
 
-  const {
-    data: publicUrlData,
-    error: publicUrlError,
-  } = supabaseServer.storage
+  const { data: publicUrlData } = supabaseServer.storage
     .from(SUPPLIER_DOCS_BUCKET)
     .getPublicUrl(storagePath);
 
-  if (publicUrlError || !publicUrlData?.publicUrl) {
+  if (!publicUrlData?.publicUrl) {
     console.error("uploadDocumentAndPersist: public URL failed", {
       supplierId,
       storagePath,
-      error: publicUrlError,
     });
     throw new Error("Document upload failed");
   }
