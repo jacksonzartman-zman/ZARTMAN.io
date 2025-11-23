@@ -8,6 +8,8 @@ import {
   acceptSupplierBidForQuote,
   declineSupplierBid,
 } from "@/server/suppliers";
+import { requireSession } from "@/server/auth";
+import { getCustomerByUserId } from "@/server/customers";
 
 export type PostCustomerQuoteMessageState = {
   success: boolean;
@@ -27,6 +29,7 @@ type QuoteRecipientRow = {
   id: string;
   email: string | null;
   customer_name: string | null;
+  customer_id: string | null;
 };
 
 export async function postCustomerQuoteMessageAction(
@@ -35,7 +38,6 @@ export async function postCustomerQuoteMessageAction(
 ): Promise<PostCustomerQuoteMessageState> {
   const rawQuoteId = formData.get("quote_id");
   const rawBody = formData.get("body");
-  const rawEmail = formData.get("identity_email");
   const rawAuthorName = formData.get("author_name");
 
   if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
@@ -46,24 +48,12 @@ export async function postCustomerQuoteMessageAction(
     return { success: false, error: "Enter a message before sending." };
   }
 
-  if (typeof rawEmail !== "string") {
-    return { success: false, error: "Provide your email to continue." };
-  }
-
   const quoteId = rawQuoteId.trim();
   const body = rawBody.trim();
-  const identityEmail = normalizeEmailInput(rawEmail);
   const authorName =
     typeof rawAuthorName === "string"
       ? rawAuthorName.trim().slice(0, 120)
       : null;
-
-  if (!identityEmail) {
-    return {
-      success: false,
-      error: "Provide a valid email address to continue.",
-    };
-  }
 
   if (body.length === 0) {
     return {
@@ -80,9 +70,18 @@ export async function postCustomerQuoteMessageAction(
   }
 
     try {
+    const session = await requireSession({ redirectTo: `/customer/quotes/${quoteId}` });
+    const customer = await getCustomerByUserId(session.user.id);
+    if (!customer) {
+      return {
+        success: false,
+        error: "Complete your profile before posting messages.",
+      };
+    }
+
       const { data: quote, error: quoteError } = await supabaseServer
         .from("quotes_with_uploads")
-        .select("id,email,customer_name")
+      .select("id,email,customer_name,customer_id")
       .eq("id", quoteId)
       .maybeSingle<QuoteRecipientRow>();
 
@@ -95,11 +94,19 @@ export async function postCustomerQuoteMessageAction(
     }
 
       const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
-      if (!normalizedQuoteEmail || normalizedQuoteEmail !== identityEmail) {
+    const customerEmail = normalizeEmailInput(customer.email);
+    const ownsQuote =
+      (quote.customer_id && quote.customer_id === customer.id) ||
+      (!quote.customer_id &&
+        normalizedQuoteEmail &&
+        customerEmail &&
+        normalizedQuoteEmail === customerEmail);
+    if (!ownsQuote) {
         console.error("Customer post action: access denied", {
           quoteId,
-          identityEmail,
+        customerId: customer.id,
           quoteEmail: quote.email,
+        quoteCustomerId: quote.customer_id,
         });
       return {
         success: false,
@@ -107,11 +114,17 @@ export async function postCustomerQuoteMessageAction(
       };
     }
 
+    const authorEmail =
+      customer.email ??
+      session.user.email ??
+      normalizedQuoteEmail ??
+      "customer@zartman.io";
+
     const { data, error } = await createCustomerQuoteMessage({
       quoteId,
       body,
-      authorName: authorName || quote.customer_name || "Customer",
-      authorEmail: identityEmail,
+      authorName: authorName || quote.customer_name || customer.company_name || "Customer",
+      authorEmail,
     });
 
     if (error || !data) {
@@ -147,7 +160,6 @@ export async function declineSupplierBidAction(
 async function handleBidDecision(formData: FormData, mode: "accept" | "decline") {
   const rawBidId = formData.get("bid_id");
   const rawQuoteId = formData.get("quote_id");
-  const rawEmail = formData.get("identity_email");
 
   if (typeof rawBidId !== "string" || rawBidId.trim().length === 0) {
     return { success: false, error: "Missing bid reference." };
@@ -157,27 +169,24 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
     return { success: false, error: "Missing quote reference." };
   }
 
-  if (typeof rawEmail !== "string") {
-    return { success: false, error: "Provide your email to continue." };
-  }
-
   const bidId = rawBidId.trim();
   const quoteId = rawQuoteId.trim();
-  const identityEmail = normalizeEmailInput(rawEmail);
-
-  if (!identityEmail) {
-    return {
-      success: false,
-      error: "Provide a valid email address.",
-    };
-  }
 
   try {
+    const session = await requireSession({ redirectTo: `/customer/quotes/${quoteId}` });
+    const customer = await getCustomerByUserId(session.user.id);
+    if (!customer) {
+      return {
+        success: false,
+        error: "Complete your profile before managing bids.",
+      };
+    }
+
     const { data: quote, error } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email")
+      .select("id,email,customer_id")
       .eq("id", quoteId)
-      .maybeSingle<{ id: string; email: string | null }>();
+      .maybeSingle<{ id: string; email: string | null; customer_id: string | null }>();
 
     if (error) {
       console.error("Bid decision action: quote lookup failed", {
@@ -191,11 +200,19 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
     }
 
     const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
-    if (!normalizedQuoteEmail || normalizedQuoteEmail !== identityEmail) {
+    const customerEmail = normalizeEmailInput(customer.email);
+    const ownsQuote =
+      (quote.customer_id && quote.customer_id === customer.id) ||
+      (!quote.customer_id &&
+        normalizedQuoteEmail &&
+        customerEmail &&
+        normalizedQuoteEmail === customerEmail);
+    if (!ownsQuote) {
       console.error("Bid decision action: access denied", {
         quoteId,
-        identityEmail,
+        customerId: customer.id,
         quoteEmail: quote.email,
+        quoteCustomerId: quote.customer_id,
         mode,
       });
       return {

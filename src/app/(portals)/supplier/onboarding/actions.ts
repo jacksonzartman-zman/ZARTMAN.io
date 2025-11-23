@@ -8,6 +8,7 @@ import {
   upsertSupplierProfile,
   type SupplierCapabilityInput,
 } from "@/server/suppliers";
+import { requireSession } from "@/server/auth";
 
 export type SupplierOnboardingState = {
   success: boolean;
@@ -26,14 +27,19 @@ export async function submitSupplierOnboardingAction(
   _prevState: SupplierOnboardingState,
   formData: FormData,
 ): Promise<SupplierOnboardingState> {
+  const session = await requireSession({ redirectTo: "/supplier/onboarding" });
+  const userId = session.user.id;
   const rawCompanyName = getText(formData, "company_name");
   const rawPrimaryEmail = getText(formData, "primary_email");
-  const normalizedPrimaryEmail = normalizeEmail(rawPrimaryEmail);
+  const normalizedPrimaryEmail =
+    normalizeEmail(rawPrimaryEmail) ??
+    normalizeEmail(session.user.email ?? null);
   const phone = getText(formData, "phone");
   const website = getText(formData, "website");
   const country = getText(formData, "country");
   const capabilitiesPayload = getText(formData, "capabilities_payload");
   const documentCount = Number(formData.get("document_count") ?? 0);
+  const supplierId = getText(formData, "supplier_id");
 
   const fieldErrors: Record<string, string> = {};
 
@@ -53,19 +59,21 @@ export async function submitSupplierOnboardingAction(
     return { success: false, error: "Check the highlighted fields.", fieldErrors };
   }
 
-  const primaryEmail: string = normalizedPrimaryEmail!;
+    const primaryEmail: string = normalizedPrimaryEmail!;
   const safeCompanyName: string = rawCompanyName!.trim();
 
   const capabilities = parseCapabilities(capabilitiesPayload);
 
   try {
     const profile = await upsertSupplierProfile({
+        supplierId: supplierId ?? undefined,
       primaryEmail,
       companyName: safeCompanyName,
       phone,
       website,
       country,
       capabilities,
+        userId,
     });
 
     if (!profile?.supplier) {
@@ -78,7 +86,7 @@ export async function submitSupplierOnboardingAction(
     await handleDocumentUploads(profile.supplier.id, formData, documentCount);
 
     revalidatePath("/supplier");
-    redirect(`/supplier?email=${encodeURIComponent(primaryEmail)}&onboard=1`);
+      redirect(`/supplier?onboard=1`);
   } catch (error) {
       console.error("submitSupplierOnboardingAction: unexpected failure", error);
     return {

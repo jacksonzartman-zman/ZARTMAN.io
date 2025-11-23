@@ -15,15 +15,15 @@ const INITIAL_STATE: BidDecisionActionState = {
 type BidDecisionButtonsProps = {
   bidId: string;
   quoteId: string;
-  identityEmail: string;
   status: string;
+  disabled?: boolean;
 };
 
 export function BidDecisionButtons({
   bidId,
   quoteId,
-  identityEmail,
   status,
+  disabled = false,
 }: BidDecisionButtonsProps) {
   const [acceptState, acceptAction] = useFormState<
     BidDecisionActionState,
@@ -34,8 +34,8 @@ export function BidDecisionButtons({
     FormData
   >(declineSupplierBidAction, INITIAL_STATE);
 
-  const acceptDisabled = status === "accepted";
-  const declineDisabled = status === "declined" || status === "withdrawn";
+  const acceptDisabled = disabled || status === "accepted";
+  const declineDisabled = disabled || status === "declined" || status === "withdrawn";
 
   return (
     <div className="space-y-2">
@@ -43,7 +43,6 @@ export function BidDecisionButtons({
         action={acceptAction}
         bidId={bidId}
         quoteId={quoteId}
-        identityEmail={identityEmail}
         label="Accept bid"
         intent="primary"
         disabled={acceptDisabled}
@@ -53,7 +52,6 @@ export function BidDecisionButtons({
         action={declineAction}
         bidId={bidId}
         quoteId={quoteId}
-        identityEmail={identityEmail}
         label="Decline"
         intent="secondary"
         disabled={declineDisabled}
@@ -67,7 +65,6 @@ type DecisionFormProps = {
   action: (formData: FormData) => void;
   bidId: string;
   quoteId: string;
-  identityEmail: string;
   label: string;
   intent: "primary" | "secondary";
   disabled?: boolean;
@@ -78,7 +75,6 @@ function DecisionForm({
   action,
   bidId,
   quoteId,
-  identityEmail,
   label,
   intent,
   disabled,
@@ -97,7 +93,6 @@ function DecisionForm({
     <form action={action} className="space-y-1">
       <input type="hidden" name="bid_id" value={bidId} />
       <input type="hidden" name="quote_id" value={quoteId} />
-      <input type="hidden" name="identity_email" value={identityEmail} />
       <button
         type="submit"
         disabled={isDisabled}
