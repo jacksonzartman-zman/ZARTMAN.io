@@ -294,17 +294,17 @@ export default async function CustomerQuoteDetailPage({
                   <div>
                     <p className="text-sm font-semibold text-white">
                       {bid.supplier?.company_name ?? "Supplier"}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {bid.supplier?.primary_email ?? "—"}
+                      <span className="ml-2 text-xs font-normal text-slate-400">
+                        {bid.supplier?.primary_email ?? "Email pending"}
+                      </span>
                     </p>
                   </div>
                   <BidStatusBadge status={bid.status} />
                 </div>
                 <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <DetailChip label="Unit price" value={formatBidPrice(bid)} />
+                  <DetailChip label="Unit price (per part)" value={formatBidPrice(bid)} />
                   <DetailChip
-                    label="Lead time"
+                    label="Lead time (days)"
                     value={
                       bid.lead_time_days
                         ? `${bid.lead_time_days} day${bid.lead_time_days === 1 ? "" : "s"}`
@@ -312,7 +312,7 @@ export default async function CustomerQuoteDetailPage({
                     }
                   />
                   <DetailChip
-                    label="Certifications"
+                    label="Certifications shared"
                     value={
                       bid.certifications && bid.certifications.length > 0
                         ? bid.certifications.join(", ")
@@ -321,7 +321,10 @@ export default async function CustomerQuoteDetailPage({
                   />
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Actions
+                      Decision
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Accepting one bid will auto-decline the rest.
                     </p>
                     <BidDecisionButtons
                       bidId={bid.id}
@@ -336,7 +339,7 @@ export default async function CustomerQuoteDetailPage({
           </div>
         ) : (
           <p className="mt-2 text-sm text-slate-400">
-            No supplier bids yet. We’ll surface responses in real time as they arrive.
+            We’ll surface bids here as suppliers respond.
           </p>
         )}
       </section>

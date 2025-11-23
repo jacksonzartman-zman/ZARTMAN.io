@@ -21,10 +21,11 @@ const ROLE_COPY: Record<
     cta: "Email me a link",
   },
   supplier: {
-    title: "Sign in to the supplier portal",
-    description: "We’ll email you a secure link so you can view RFQs and complete onboarding.",
+    title: "Sign in to your supplier workspace",
+    description:
+      "We’ll email a one-time magic link to the address tied to your onboarding profile. Use that same inbox to access RFQs.",
     accent: "text-blue-300",
-    cta: "Send link",
+    cta: "Send magic link",
   },
 };
 
@@ -32,6 +33,7 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [lastSentTo, setLastSentTo] = useState<string | null>(null);
   const pathname = usePathname();
   const supabase = supabaseBrowser();
 
@@ -50,7 +52,11 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
-      setError("Enter a valid work email.");
+      setError(
+        role === "supplier"
+          ? "Enter a business email that matches your onboarding profile."
+          : "Enter a valid work email.",
+      );
       setStatus("error");
       return;
     }
@@ -68,9 +74,14 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
         },
       });
       setStatus("sent");
+      setLastSentTo(normalizedEmail);
     } catch (err) {
       console.error("Portal login: failed to request magic link", err);
-      setError("We couldn’t send the link. Try again in a few seconds.");
+      setError(
+        role === "supplier"
+          ? "We couldn’t send the link. Check your connection and try again."
+          : "We couldn’t send the link. Try again in a few seconds.",
+      );
       setStatus("error");
     }
   }
@@ -97,16 +108,28 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
           placeholder="you@company.com"
           required
         />
-        <button
+          <button
           type="submit"
           disabled={status === "sending"}
           className="w-full rounded-full border border-slate-800 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:opacity-60"
         >
           {status === "sending" ? "Sending..." : copy.cta}
         </button>
-        {status === "sent" ? (
-          <p className="text-sm text-emerald-200">Check your inbox for the magic link.</p>
-        ) : null}
+          {status === "sent" ? (
+            <p className="text-sm text-emerald-200">
+              {role === "supplier" ? (
+                <>
+                  Link sent to{" "}
+                  <span className="font-mono text-white">
+                    {lastSentTo ?? email.trim().toLowerCase()}
+                  </span>{" "}
+                  – check your inbox.
+                </>
+              ) : (
+                "Check your inbox for the magic link."
+              )}
+            </p>
+          ) : null}
         {error ? (
           <p className="text-sm text-red-300" role="alert">
             {error}
