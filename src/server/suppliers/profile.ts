@@ -185,7 +185,8 @@ export async function upsertSupplierProfile(
       : null;
 
   const supplier =
-    baseSupplier ?? (await getOrCreateSupplierByEmail(email, input.companyName));
+    baseSupplier ??
+    (await getOrCreateSupplierByEmail(email, input.companyName ?? undefined));
 
   const updatePayload = {
     company_name: sanitizeText(input.companyName) ?? supplier.company_name,
@@ -210,10 +211,9 @@ export async function upsertSupplierProfile(
       throw new Error("Unable to update supplier record");
     }
 
-    const sanitizedCapabilities =
-      input.capabilities?.filter(
-        (cap) => typeof cap?.process === "string" && cap.process.trim().length > 0,
-      ) ?? [];
+    const sanitizedCapabilities = (input.capabilities ?? []).filter(
+      (cap) => typeof cap?.process === "string" && cap.process.trim().length > 0,
+    );
 
     await replaceSupplierCapabilities(supplier.id, sanitizedCapabilities);
 

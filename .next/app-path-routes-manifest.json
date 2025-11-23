@@ -1,0 +1,20 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/files/route": "/api/files",
+  "/api/messages/route": "/api/messages",
+  "/api/threads/route": "/api/threads",
+  "/api/quotes/route": "/api/quotes",
+  "/api/upload/route": "/api/upload",
+  "/page": "/",
+  "/quote/page": "/quote",
+  "/admin/uploads/[id]/page": "/admin/uploads/[id]",
+  "/(portals)/supplier/onboarding/page": "/supplier/onboarding",
+  "/admin/page": "/admin",
+  "/(portals)/customer/quotes/[id]/page": "/customer/quotes/[id]",
+  "/admin/quotes/page": "/admin/quotes",
+  "/(portals)/supplier/page": "/supplier",
+  "/(portals)/supplier/quotes/[id]/page": "/supplier/quotes/[id]",
+  "/(portals)/customer/page": "/customer",
+  "/admin/quotes/[id]/page": "/admin/quotes/[id]",
+  "/api/hello/route": "/api/hello"
+}

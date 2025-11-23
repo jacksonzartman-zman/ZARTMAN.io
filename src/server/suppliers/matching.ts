@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import type { UploadMeta } from "@/server/quotes/types";
+import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
 import {
   listSupplierCapabilities,
   loadSupplierById,
@@ -223,12 +223,29 @@ function computeMatchScore({
   return score;
 }
 
-async function selectOpenQuotes() {
+async function selectOpenQuotes(): Promise<QuoteWithUploadsRow[]> {
   try {
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
       .select(
-        "id,upload_id,customer_name,company,status,price,currency,created_at,target_date,file_name,assigned_supplier_email,assigned_supplier_name,dfm_notes",
+        [
+          "id",
+          "upload_id",
+          "customer_name",
+          "email",
+          "company",
+          "status",
+          "price",
+          "currency",
+          "created_at",
+          "updated_at",
+          "target_date",
+          "file_name",
+          "assigned_supplier_email",
+          "assigned_supplier_name",
+          "internal_notes",
+          "dfm_notes",
+        ].join(","),
       )
       .in("status", OPEN_QUOTE_STATUSES)
       .order("created_at", { ascending: false })
@@ -239,14 +256,14 @@ async function selectOpenQuotes() {
       return [];
     }
 
-    return data ?? [];
+    return ((data ?? []) as unknown) as QuoteWithUploadsRow[];
   } catch (error) {
     console.error("matchQuotesToSupplier: unexpected quote error", { error });
     return [];
   }
 }
 
-async function selectUploadMeta(quotes: any[]) {
+async function selectUploadMeta(quotes: QuoteWithUploadsRow[]) {
   const uploadIds = Array.from(
     new Set(
       quotes
