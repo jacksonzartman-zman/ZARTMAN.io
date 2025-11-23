@@ -201,17 +201,6 @@ export default function HomePage() {
           </p>
         </section>
 
-        {/* FOOTER */}
-        <footer className="border-t border-line-subtle pt-6 text-xs text-ink-muted flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <p>
-            Built by Zartman. Informed by too many manufacturing war stories to
-            count.
-          </p>
-          <p className="text-[11px] text-ink-muted">
-            Early experimental version. If you&apos;re curious, email or DM and
-            we&apos;ll talk shop.
-          </p>
-        </footer>
       </div>
     </main>
   );
