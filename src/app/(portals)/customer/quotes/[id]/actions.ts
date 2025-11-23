@@ -16,7 +16,7 @@ const GENERIC_ERROR =
 
 type QuoteRecipientRow = {
   id: string;
-  customer_email: string | null;
+  email: string | null;
   customer_name: string | null;
 };
 
@@ -70,10 +70,10 @@ export async function postCustomerQuoteMessageAction(
     };
   }
 
-  try {
-    const { data: quote, error: quoteError } = await supabaseServer
-      .from("quotes_with_uploads")
-      .select("id,customer_email,customer_name")
+    try {
+      const { data: quote, error: quoteError } = await supabaseServer
+        .from("quotes_with_uploads")
+        .select("id,email,customer_name")
       .eq("id", quoteId)
       .maybeSingle<QuoteRecipientRow>();
 
@@ -85,8 +85,13 @@ export async function postCustomerQuoteMessageAction(
       return { success: false, error: "Quote not found." };
     }
 
-    const normalizedQuoteEmail = normalizeEmailInput(quote.customer_email);
-    if (!normalizedQuoteEmail || normalizedQuoteEmail !== identityEmail) {
+      const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
+      if (!normalizedQuoteEmail || normalizedQuoteEmail !== identityEmail) {
+        console.error("Customer post action: access denied", {
+          quoteId,
+          identityEmail,
+          quoteEmail: quote.email,
+        });
       return {
         success: false,
         error: "You do not have access to post on this quote.",
