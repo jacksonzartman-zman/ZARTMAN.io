@@ -22,7 +22,7 @@ const GENERIC_ERROR =
 
 type QuoteAssignmentRow = Pick<
   QuoteWithUploadsRow,
-  "id" | "assigned_supplier_email" | "assigned_supplier_name"
+  "id" | "email" | "assigned_supplier_email" | "assigned_supplier_name"
 >;
 
 export async function postSupplierQuoteMessageAction(
@@ -71,9 +71,9 @@ export async function postSupplierQuoteMessageAction(
   }
 
   try {
-    const { data: quote, error: quoteError } = await supabaseServer
-      .from("quotes_with_uploads")
-      .select("id,assigned_supplier_email,assigned_supplier_name")
+      const { data: quote, error: quoteError } = await supabaseServer
+        .from("quotes_with_uploads")
+        .select("id,email,assigned_supplier_email,assigned_supplier_name")
       .eq("id", quoteId)
       .maybeSingle<QuoteAssignmentRow>();
 
@@ -85,8 +85,14 @@ export async function postSupplierQuoteMessageAction(
       return { success: false, error: "Quote not found." };
     }
 
-    const assignments = await loadSupplierAssignments(quoteId);
-    if (!supplierHasAccess(identityEmail, quote, assignments)) {
+      const assignments = await loadSupplierAssignments(quoteId);
+      if (!supplierHasAccess(identityEmail, quote, assignments)) {
+        console.error("Supplier post action: access denied", {
+          quoteId,
+          identityEmail,
+          quoteEmail: quote.email,
+          assignmentCount: assignments.length,
+        });
       return {
         success: false,
         error: "You do not have access to this quote.",

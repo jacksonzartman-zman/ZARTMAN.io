@@ -8,7 +8,7 @@ export type QuoteFileSource = {
 
 export type QuoteWithUploadsRow = QuoteFileSource & {
   customer_name: string | null;
-  customer_email: string | null;
+  email: string | null;
   company: string | null;
   status: string | null;
   price: number | string | null;

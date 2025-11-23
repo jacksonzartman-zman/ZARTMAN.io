@@ -162,9 +162,8 @@ export default async function QuoteDetailPage({
         ? quote.customer_name
         : "Unknown customer");
     const customerEmail =
-      typeof quote.customer_email === "string" &&
-      quote.customer_email.includes("@")
-        ? quote.customer_email
+      typeof quote.email === "string" && quote.email.includes("@")
+        ? quote.email
         : null;
     const companyName =
       (typeof uploadMeta?.company === "string" &&
