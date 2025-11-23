@@ -15,6 +15,12 @@ import {
   type SupplierQuoteMatch,
 } from "@/server/suppliers";
 
+type SupplierProfile = Awaited<ReturnType<typeof loadSupplierProfile>>;
+type SupplierProfileData = Exclude<SupplierProfile, null>;
+type SupplierEntity = SupplierProfileData["supplier"] | null;
+type SupplierCapabilities = SupplierProfileData["capabilities"];
+type SupplierDocuments = SupplierProfileData["documents"];
+
 const FALLBACK_SUPPLIER_EMAIL = "ops@supply-demo.com";
 
 export const dynamic = "force-dynamic";
@@ -38,9 +44,9 @@ async function SupplierDashboardPage({
     ? await loadSupplierProfile(normalizedEmail)
     : null;
 
-  const supplier = profile?.supplier ?? null;
-  const capabilities = profile?.capabilities ?? [];
-  const documents = profile?.documents ?? [];
+  const supplier: SupplierEntity = profile?.supplier ?? null;
+  const capabilities: SupplierCapabilities = profile?.capabilities ?? [];
+  const documents: SupplierDocuments = profile?.documents ?? [];
 
   let matches: SupplierQuoteMatch[] = [];
   let bids: SupplierBidWithContext[] = [];
@@ -108,9 +114,9 @@ function ProfileCard({
   documents,
   supplierEmail,
 }: {
-  supplier: Awaited<ReturnType<typeof loadSupplierProfile>>["supplier"];
-  capabilities: Awaited<ReturnType<typeof loadSupplierProfile>>["capabilities"];
-  documents: Awaited<ReturnType<typeof loadSupplierProfile>>["documents"];
+  supplier: SupplierEntity;
+  capabilities: SupplierCapabilities;
+  documents: SupplierDocuments;
   supplierEmail: string;
 }) {
   const hasProfile = Boolean(supplier);
