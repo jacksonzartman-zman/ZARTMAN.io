@@ -1,3 +1,4 @@
+import type React from "react";
 import Link from "next/link";
 import { getSearchParamValue, normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import PortalCard from "../../PortalCard";
@@ -8,7 +9,7 @@ type NextAppPage<P = any> = (
     params?: Promise<Record<string, unknown>>;
     searchParams?: Promise<any>;
   },
-) => JSX.Element | Promise<JSX.Element>;
+) => React.ReactElement | Promise<React.ReactElement>;
 
 export const dynamic = "force-dynamic";
 
