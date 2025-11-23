@@ -34,6 +34,22 @@
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/admin/uploads/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/customer/quotes/[id]",
+      "regex": "^/customer/quotes/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/customer/quotes/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/supplier/quotes/[id]",
+      "regex": "^/supplier/quotes/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/supplier/quotes/(?<nxtPid>[^/]+?)(?:/)?$"
     }
   ],
   "staticRoutes": [
