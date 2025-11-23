@@ -9,9 +9,11 @@
   "/quote/page": "/quote",
   "/(portals)/supplier/page": "/supplier",
   "/admin/uploads/[id]/page": "/admin/uploads/[id]",
-  "/admin/quotes/page": "/admin/quotes",
-  "/admin/page": "/admin",
-  "/(portals)/customer/page": "/customer",
   "/admin/quotes/[id]/page": "/admin/quotes/[id]",
+  "/admin/quotes/page": "/admin/quotes",
+  "/(portals)/supplier/quotes/[id]/page": "/supplier/quotes/[id]",
+  "/admin/page": "/admin",
+  "/(portals)/customer/quotes/[id]/page": "/customer/quotes/[id]",
+  "/(portals)/customer/page": "/customer",
   "/api/hello/route": "/api/hello"
 }

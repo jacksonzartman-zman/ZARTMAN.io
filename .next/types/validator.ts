@@ -53,10 +53,22 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   handler satisfies AppPageConfig<"/customer">
 }
 
+// Validate ../../src/app/(portals)/customer/quotes/[id]/page.tsx
+{
+  const handler = {} as typeof import("../../src/app/(portals)/customer/quotes/[id]/page.js")
+  handler satisfies AppPageConfig<"/customer/quotes/[id]">
+}
+
 // Validate ../../src/app/(portals)/supplier/page.tsx
 {
   const handler = {} as typeof import("../../src/app/(portals)/supplier/page.js")
   handler satisfies AppPageConfig<"/supplier">
+}
+
+// Validate ../../src/app/(portals)/supplier/quotes/[id]/page.tsx
+{
+  const handler = {} as typeof import("../../src/app/(portals)/supplier/quotes/[id]/page.js")
+  handler satisfies AppPageConfig<"/supplier/quotes/[id]">
 }
 
 // Validate ../../src/app/admin/page.tsx
