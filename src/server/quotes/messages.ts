@@ -74,10 +74,12 @@ export async function loadQuoteMessages(
   }
 }
 
+type CreateAdminQuoteMessageParams = Pick<CreateQuoteMessageParams, "quoteId" | "body">;
+
 export async function createAdminQuoteMessage({
   quoteId,
   body,
-}: CreateQuoteMessageParams): Promise<
+}: CreateAdminQuoteMessageParams): Promise<
   QuoteMessageOperationResult<QuoteMessage | null>
 > {
   return createQuoteMessage({
