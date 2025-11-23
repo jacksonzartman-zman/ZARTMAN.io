@@ -3,13 +3,20 @@ import { getSearchParamValue, normalizeEmailInput } from "@/app/(portals)/quotes
 import PortalCard from "../../PortalCard";
 import { SupplierOnboardingForm } from "./SupplierOnboardingForm";
 
+type NextAppPage<P = any> = (
+  props: Omit<P, "params" | "searchParams"> & {
+    params?: Promise<Record<string, unknown>>;
+    searchParams?: Promise<any>;
+  },
+) => JSX.Element | Promise<JSX.Element>;
+
 export const dynamic = "force-dynamic";
 
 type SupplierOnboardingPageProps = {
   searchParams?: Record<string, string | string[] | undefined>;
 };
 
-export default function SupplierOnboardingPage({
+function SupplierOnboardingPage({
   searchParams,
 }: SupplierOnboardingPageProps) {
   const emailParam = getSearchParamValue(searchParams, "email");
@@ -39,3 +46,5 @@ export default function SupplierOnboardingPage({
     </div>
   );
 }
+
+export default SupplierOnboardingPage as unknown as NextAppPage<SupplierOnboardingPageProps>;
