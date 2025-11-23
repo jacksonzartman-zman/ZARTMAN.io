@@ -61,3 +61,13 @@ export function formatQuoteId(id: string | null | undefined): string {
 
   return id.startsWith("Q-") ? id : `#${id.slice(0, 6)}`;
 }
+
+export function getFirstParamValue(
+  value?: string | string[] | null,
+): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value ?? undefined;
+}

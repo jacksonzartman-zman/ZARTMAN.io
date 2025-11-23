@@ -30,6 +30,14 @@ type QuoteMessagesLoadResult = {
   error: string | null;
 };
 
+type CreatePortalQuoteMessageParams = Pick<
+  CreateQuoteMessageParams,
+  "quoteId" | "body"
+> & {
+  authorName?: string | null;
+  authorEmail?: string | null;
+};
+
 const QUOTE_MESSAGE_COLUMNS =
   "id,quote_id,author_type,author_name,author_email,body,created_at";
 
@@ -88,6 +96,40 @@ export async function createAdminQuoteMessage({
     authorType: "admin",
     authorName: "Zartman admin",
     authorEmail: null,
+  });
+}
+
+export async function createCustomerQuoteMessage({
+  quoteId,
+  body,
+  authorName,
+  authorEmail,
+}: CreatePortalQuoteMessageParams): Promise<
+  QuoteMessageOperationResult<QuoteMessage | null>
+> {
+  return createQuoteMessage({
+    quoteId,
+    body,
+    authorType: "customer",
+    authorName: sanitizeAuthorName(authorName),
+    authorEmail: sanitizeAuthorEmail(authorEmail),
+  });
+}
+
+export async function createSupplierQuoteMessage({
+  quoteId,
+  body,
+  authorName,
+  authorEmail,
+}: CreatePortalQuoteMessageParams): Promise<
+  QuoteMessageOperationResult<QuoteMessage | null>
+> {
+  return createQuoteMessage({
+    quoteId,
+    body,
+    authorType: "supplier",
+    authorName: sanitizeAuthorName(authorName),
+    authorEmail: sanitizeAuthorEmail(authorEmail),
   });
 }
 
@@ -156,4 +198,24 @@ export async function createQuoteMessage({
       error: "Failed to post message.",
     };
   }
+}
+
+function sanitizeAuthorName(
+  value?: string | null,
+): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim().slice(0, 120);
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function sanitizeAuthorEmail(
+  value?: string | null,
+): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
 }
