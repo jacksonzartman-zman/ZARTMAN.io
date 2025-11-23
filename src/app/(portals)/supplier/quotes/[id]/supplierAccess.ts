@@ -32,16 +32,20 @@ export async function loadSupplierAssignments(
 
 type QuoteAssignmentSource = Pick<
   QuoteWithUploadsRow,
-  "assigned_supplier_email" | "assigned_supplier_name"
+  "id" | "email" | "assigned_supplier_email" | "assigned_supplier_name"
 >;
 
 export function supplierHasAccess(
-  supplierEmail: string,
+  supplierEmail: string | null,
   quote: QuoteAssignmentSource,
   assignments: SupplierAssignment[],
 ): boolean {
   const normalizedEmail = normalizeEmailInput(supplierEmail);
   if (!normalizedEmail) {
+    console.error("Supplier access: missing or invalid identity email", {
+      quoteId: quote.id,
+      supplierEmail,
+    });
     return false;
   }
 
@@ -50,10 +54,32 @@ export function supplierHasAccess(
     return true;
   }
 
-  return assignments.some(
+  const hasExplicitAssignment = assignments.some(
     (assignment) =>
       normalizeEmailInput(assignment.supplier_email) === normalizedEmail,
   );
+  if (hasExplicitAssignment) {
+    return true;
+  }
+
+  // TEMP: Dev/demo fallback so supplier portal can be exercised before quote_suppliers is populated.
+  const normalizedQuoteEmail = normalizeEmailInput(quote.email);
+  if (normalizedQuoteEmail && normalizedQuoteEmail === normalizedEmail) {
+    console.warn("Supplier access: using dev fallback via quote.email match", {
+      quoteId: quote.id,
+      supplierEmail: normalizedEmail,
+      quoteEmail: quote.email,
+    });
+    return true;
+  }
+
+  console.error("Supplier access denied", {
+    quoteId: quote.id,
+    supplierEmail: normalizedEmail,
+    quoteEmail: quote.email,
+    assignmentCount: assignments.length,
+  });
+  return false;
 }
 
 export function getSupplierDisplayName(

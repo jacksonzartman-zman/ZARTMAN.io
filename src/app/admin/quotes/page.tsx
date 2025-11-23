@@ -118,19 +118,19 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     );
   }
 
-  const rows: QuoteRow[] =
-    data?.map((row: any) => ({
-      id: row.id,
-      customerName: row.customer_name ?? "Unknown",
-      customerEmail: row.customer_email ?? "",
-      company: row.company ?? "",
-      fileName: row.file_name ?? "",
-      status: normalizeUploadStatus(row.status as UploadStatus | null),
-      price: row.price,
-      currency: row.currency,
-      targetDate: row.target_date,
-      createdAt: row.created_at,
-    })) ?? [];
+    const rows: QuoteRow[] =
+      data?.map((row: any) => ({
+        id: row.id,
+        customerName: row.customer_name ?? "Unknown",
+        customerEmail: row.email ?? "",
+        company: row.company ?? "",
+        fileName: row.file_name ?? "",
+        status: normalizeUploadStatus(row.status as UploadStatus | null),
+        price: row.price,
+        currency: row.currency,
+        targetDate: row.target_date,
+        createdAt: row.created_at,
+      })) ?? [];
 
   const filteredQuotes = rows.filter((row) => {
     const normalizedRowStatus = normalizeUploadStatus(row.status);
