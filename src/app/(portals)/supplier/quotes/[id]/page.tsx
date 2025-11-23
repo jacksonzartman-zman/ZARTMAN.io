@@ -29,7 +29,8 @@ import {
   type SupplierBidRow,
 } from "@/server/suppliers";
 import { SupplierBidForm } from "./SupplierBidForm";
-import { requireSession } from "@/server/auth";
+import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
+import { getCurrentSession } from "@/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +43,15 @@ export default async function SupplierQuoteDetailPage({
 }: SupplierQuotePageProps) {
   const { id: quoteId } = await params;
 
-  const session = await requireSession({
-    redirectTo: `/supplier/quotes/${quoteId}`,
-  });
+  const session = await getCurrentSession();
+  if (!session) {
+    return (
+      <PortalLoginPanel
+        role="supplier"
+        fallbackRedirect={`/supplier/quotes/${quoteId}`}
+      />
+    );
+  }
   const supplierEmail = normalizeEmailInput(session.user.email ?? null);
 
   if (!supplierEmail) {
