@@ -4,6 +4,7 @@ import { requireSession } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import PortalCard from "../../PortalCard";
 import { SupplierOnboardingForm } from "./SupplierOnboardingForm";
+import { secondaryCtaClasses } from "@/lib/ctas";
 
 type NextAppPage<P = any> = (
   props: Omit<P, "params" | "searchParams"> & {
@@ -33,7 +34,7 @@ async function SupplierOnboardingPage({
         action={
           <Link
             href="/supplier"
-            className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-blue-300 transition hover:border-blue-400 hover:text-blue-200"
+            className={secondaryCtaClasses}
           >
             Back to supplier portal
           </Link>

@@ -171,10 +171,10 @@ function SupplierQuoteWorkspace({
       <section className={cardClasses}>
         <header className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Build context
+            RFQ snapshot
           </p>
           <h2 className="text-lg font-semibold text-white">
-            Key RFQ details
+            Key details for your shop
           </h2>
         </header>
         <dl className="mt-4 grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
@@ -210,7 +210,7 @@ function SupplierQuoteWorkspace({
       <section className={cardClasses}>
         <header className="space-y-1">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Customer notes
+            Notes & guidance
           </p>
           <h2 className="text-lg font-semibold text-white">
             DFM & intake summary
@@ -239,50 +239,49 @@ function SupplierQuoteWorkspace({
     </div>
   );
 
-    const messagesContent = (
-      <section className={cardClasses}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Messages
-        </p>
-        <QuoteMessagesThread
-          heading="Supplier <> admin chat"
-          description="Keep build updates, questions, and risks in one shared thread."
-          messages={messages}
-          messageCount={messages.length}
-          error={
-            messagesError
-              ? "Some messages may be missing. Refresh the page to try again."
-              : null
-          }
-          emptyState={
-            <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
-              No updates yet. Share a build status, question, or risk to get the
-              conversation going.
-            </p>
-          }
-          containerClassName="mt-3"
-        />
-
-        <div className="mt-4 border-t border-slate-900/60 pt-4">
-          <p className="text-sm font-semibold text-slate-100">Post an update</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Your message notifies the Zartman admin team instantly.
+  const messagesContent = (
+    <section className={cardClasses}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Messages
+      </p>
+      <QuoteMessagesThread
+        heading="Shared chat"
+        description="Direct line to the Zartman admin team for build updates and questions."
+        messages={messages}
+        messageCount={messages.length}
+        error={
+          messagesError
+            ? "Some messages may be missing. Refresh the page to try again."
+            : null
+        }
+        emptyState={
+          <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
+            No messages yet. Once chat is active, share build status updates or questions here.
           </p>
-          {!messagingUnlocked ? (
-            <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
-              Chat will unlock after you submit a bid and are selected by the customer.
-            </p>
-          ) : null}
-          <div className="mt-3">
-            <SupplierQuoteMessageComposer
-              quoteId={quote.id}
-              supplierEmail={supplierEmail}
-              disabled={!messagingUnlocked}
-            />
-          </div>
+        }
+        containerClassName="mt-3"
+      />
+
+      <div className="mt-4 border-t border-slate-900/60 pt-4">
+        <p className="text-sm font-semibold text-slate-100">Post a message</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Your message notifies the Zartman admin team instantly.
+        </p>
+        {!messagingUnlocked ? (
+          <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
+            Chat unlocks after your bid is accepted for this RFQ.
+          </p>
+        ) : null}
+        <div className="mt-3">
+          <SupplierQuoteMessageComposer
+            quoteId={quote.id}
+            supplierEmail={supplierEmail}
+            disabled={!messagingUnlocked}
+          />
         </div>
-      </section>
-    );
+      </div>
+    </section>
+  );
 
   const filesContent = (
     <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
@@ -303,32 +302,42 @@ function SupplierQuoteWorkspace({
     </section>
   );
 
-    const bidTabLabel = existingBid
-      ? existingBid.status === "accepted"
-        ? "Bid (accepted)"
-        : "Bid (submitted)"
-      : "Bid";
+  const bidLocked = existingBid?.status === "accepted";
 
-    const bidContent = (
-      <section className={cardClasses}>
+  const bidContent = (
+    <section className={cardClasses}>
+      <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Bid
         </p>
-        <p className="mt-1 text-sm text-slate-300">
-          Pricing is only visible to the Zartman team and the customer tied to this RFQ.
+        <h2 className="text-lg font-semibold text-white">
+          Submit pricing and lead time
+        </h2>
+      </header>
+      <p className="mt-1 text-sm text-slate-300">
+        Only the Zartman team and the requesting customer can see these details.
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        Share a unit price, realistic lead time, and highlight any certifications or notes that help
+        the buyer approve your shop.
+      </p>
+      {bidLocked ? (
+        <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+          This bid is locked because the customer already accepted it.
         </p>
-        <div className="mt-4">
-          <SupplierBidForm
-            quoteId={quote.id}
-            supplierEmail={supplierEmail}
-            existingBid={existingBid}
-            isLocked={existingBid?.status === "accepted"}
-          />
-        </div>
-      </section>
-    );
+      ) : null}
+      <div className="mt-4">
+        <SupplierBidForm
+          quoteId={quote.id}
+          supplierEmail={supplierEmail}
+          existingBid={existingBid}
+          isLocked={bidLocked}
+        />
+      </div>
+    </section>
+  );
 
-    const tabs: {
+  const tabs: {
       id: QuoteWorkspaceTab;
       label: string;
       count?: number;
@@ -341,7 +350,7 @@ function SupplierQuoteWorkspace({
         count: messages.length,
         content: messagesContent,
       },
-      { id: "bid", label: bidTabLabel, content: bidContent },
+      { id: "bid", label: "Bid", content: bidContent },
       { id: "viewer", label: "Files", content: filesContent },
       { id: "tracking", label: "Tracking", content: trackingContent },
     ];
@@ -357,7 +366,8 @@ function SupplierQuoteWorkspace({
               {formatQuoteId(quote.id)} · {derived.customerName}
             </h1>
             <p className="text-sm text-slate-400">
-              Files, DFM feedback, and shared chat for this assigned RFQ.
+              Everything you need to respond — files, DFM guidance, bids, and shared chat once it
+              unlocks.
             </p>
           </div>
           <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">

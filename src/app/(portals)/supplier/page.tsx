@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
+import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "../PortalCard";
 import { PortalLoginPanel } from "../PortalLoginPanel";
 import {
@@ -54,21 +55,31 @@ async function SupplierDashboardPage({
     return (
       <div className="space-y-6">
         <PortalCard
-          title="Supplier onboarding"
-          description="Share your capabilities so we can route RFQs to your team."
+          title="Finish supplier onboarding"
+          description="Share your shop profile once so we know which RFQs, bids, and compliance docs belong to you."
           action={
-            <Link
-              href="/supplier/onboarding"
-              className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-blue-300 transition hover:border-blue-400 hover:text-blue-200"
-            >
-              Start onboarding
+            <Link href="/supplier/onboarding" className={primaryCtaClasses}>
+              Finish onboarding
             </Link>
           }
         >
-          <p className="text-sm text-slate-300">
-            This account hasn’t completed onboarding yet. Knock out the profile once to unlock RFQ
-            matching, bids, and shared messaging.
-          </p>
+          <div className="space-y-4 text-sm text-slate-300">
+            <p>
+              Add your capabilities, certifications, and compliance documents so we can auto-route
+              RFQs and unlock shared messaging with the Zartman team.
+            </p>
+            <div className="flex flex-col gap-3 text-xs sm:flex-row sm:items-center sm:gap-4">
+              <Link
+                href="/supplier"
+                className={`${secondaryCtaClasses} w-full sm:w-auto`}
+              >
+                Back to supplier portal
+              </Link>
+              <p className="text-slate-500">
+                Need help? Reply to your onboarding email and we’ll jump in.
+              </p>
+            </div>
+          </div>
         </PortalCard>
       </div>
     );
@@ -79,23 +90,36 @@ async function SupplierDashboardPage({
     listSupplierBidsForSupplier(supplier.id),
   ]);
 
+  const signedInEmail = supplier.primary_email ?? supplierEmail;
+  const companyLabel = supplier.company_name ?? supplier.primary_email ?? supplierEmail;
+
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
-        <p>
-          Viewing workspace data for{" "}
-          <span className="font-semibold text-white">
-            {supplier.primary_email ?? supplierEmail}
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6">
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
+          Supplier workspace
+        </p>
+        <h1 className="mt-2 text-2xl font-semibold text-white">
+          RFQs, bids, and compliance docs in one place
+        </h1>
+        <p className="mt-2 text-sm text-slate-400">
+          Review matched RFQs, submit bids, and keep your onboarding profile current without leaving
+          this dashboard.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
+          <span>
+            Signed in as{" "}
+            <span className="font-semibold text-white">{companyLabel}</span>{" "}
+            (<span className="font-mono text-slate-200">{signedInEmail}</span>)
           </span>
-          .
-        </p>
-        <p className="mt-2 text-xs text-slate-500">
-          Every “View quote” link below carries your identity so we can confirm assignments
-          automatically.
-        </p>
+          <span>
+            Every “View quote” link below carries your identity so we can confirm assignments
+            automatically.
+          </span>
+        </div>
         {onboardingJustCompleted ? (
-          <p className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-            Thanks — your profile is live! We’ll start routing matched RFQs to you automatically.
+          <p className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            Profile updated! We’ll start routing matched RFQs to you automatically.
           </p>
         ) : null}
       </section>
@@ -135,13 +159,13 @@ function ProfileCard({
       title="Supplier profile"
       description={
         hasProfile
-          ? "Update capabilities and docs anytime to improve RFQ matching."
+          ? "Keep company details, capabilities, and compliance docs current so RFQ matches stay accurate."
           : "Complete onboarding so customers see verified company info."
       }
       action={
         <Link
           href="/supplier/onboarding"
-          className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-blue-300 transition hover:border-blue-400 hover:text-blue-200"
+          className={secondaryCtaClasses}
         >
           {hasProfile ? "Edit profile" : "Start onboarding"}
         </Link>
@@ -248,7 +272,7 @@ function MatchesCard({
       title="Inbound RFQs"
       description={
         supplierExists
-          ? "RFQs that match your verified processes and certifications."
+          ? "RFQs that match your verified processes, certifications, and compliance documents."
           : "Complete onboarding to start receiving filtered RFQs."
       }
     >
@@ -271,11 +295,11 @@ function MatchesCard({
             const filesLabel =
               fileCount > 0 ? `${fileCount} file${fileCount === 1 ? "" : "s"}` : "No files";
             return (
-                <li key={quote.id}>
-                  <Link
-                    href={`/supplier/quotes/${quote.id}`}
-                    className="block rounded-2xl border border-slate-900/80 bg-slate-950/40 px-4 py-3 transition hover:border-blue-400/40 hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
-                  >
+              <li key={quote.id}>
+                <Link
+                  href={`/supplier/quotes/${quote.id}`}
+                  className="block rounded-2xl border border-slate-900/80 bg-slate-950/40 px-4 py-3 transition hover:border-blue-400/40 hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
+                >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">
@@ -299,9 +323,9 @@ function MatchesCard({
           })}
         </ul>
         ) : supplierExists ? (
-          <p className="text-sm text-slate-400">
-            No RFQs matched your latest capabilities yet. We’ll notify you as soon as there’s a fit.
-          </p>
+        <div className="rounded-2xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-4 text-sm text-slate-400">
+          No matches yet. We’ll email you as soon as there’s a fit and list the RFQ here.
+        </div>
         ) : (
           <p className="text-sm text-slate-400">
             Complete onboarding to unlock RFQ matching.
@@ -320,8 +344,8 @@ function BidsCard({
 }) {
   return (
     <PortalCard
-      title="My bids"
-      description="Track recent quotes you’ve priced."
+      title="Submitted bids"
+      description="Track the quotes you’ve priced and see where each bid stands."
     >
       {bids.length > 0 ? (
         <ul className="space-y-3">
@@ -342,19 +366,20 @@ function BidsCard({
                 </div>
                 <StatusBadge status={bid.status} />
               </div>
-                <Link
-                  href={`/supplier/quotes/${bid.quote_id}`}
-                  className="mt-2 inline-flex text-xs font-semibold text-blue-300 underline-offset-4 hover:underline"
-                >
+              <Link
+                href={`/supplier/quotes/${bid.quote_id}`}
+                className="mt-2 inline-flex text-xs font-semibold text-blue-300 underline-offset-4 hover:underline"
+              >
                 View workspace
               </Link>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-slate-400">
-          No bids yet. Open a matched RFQ to submit pricing and track your status.
-        </p>
+        <div className="rounded-2xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-4 text-sm text-slate-400">
+          No bids yet. Open a matched RFQ above to submit pricing, lead time, and certs — we’ll track
+          the status here once you send it.
+        </div>
       )}
     </PortalCard>
   );
