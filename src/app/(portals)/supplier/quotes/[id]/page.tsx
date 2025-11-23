@@ -65,7 +65,13 @@ export default async function SupplierQuoteDetailPage({
   }
 
   const assignments = await loadSupplierAssignments(quoteId);
-  if (!supplierHasAccess(normalizedEmail, workspaceData.quote, assignments)) {
+    if (!supplierHasAccess(normalizedEmail, workspaceData.quote, assignments)) {
+      console.error("Supplier portal: access denied", {
+        quoteId,
+        identityEmail: normalizedEmail,
+        quoteEmail: workspaceData.quote.email,
+        assignmentCount: assignments.length,
+      });
     return (
       <PortalNoticeCard
         title="Access denied"

@@ -26,30 +26,6 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/",
-      "dataRoute": "/index.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
     "/quote": {
       "experimentalBypassFor": [
         {
@@ -73,13 +49,37 @@
         "x-next-revalidated-tags",
         "x-next-revalidate-tag-token"
       ]
+    },
+    "/": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/",
+      "dataRoute": "/index.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
     }
   },
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "2d5adb85a0c7ab1fd37883c39a1932aa",
-    "previewModeSigningKey": "ca8b2e2438925ca083e6e8a47907b757148987019a80147d9b2b0fe954837568",
-    "previewModeEncryptionKey": "548bdeb60384dc6ef0a055ee5ac9ae22d5985b18ba4bdfc41bc4e196899bef60"
+    "previewModeId": "eef65812f3fa083b7e551536cf42ef8e",
+    "previewModeSigningKey": "0e22b4e600611804fad0fce8e6d06fdc589e737b537eaacf6a6b65b794979357",
+    "previewModeEncryptionKey": "6e67d7dae42c7d2e95f93ef4dd8153d61810d0b6fba909ae9211724ab74efcec"
   }
 }

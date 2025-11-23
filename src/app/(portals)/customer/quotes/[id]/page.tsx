@@ -59,10 +59,15 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
-  const { quote, uploadMeta, filePreviews, messages, messagesError } =
-    workspaceData;
-  const quoteEmail = normalizeEmailInput(quote.customer_email);
-  if (!quoteEmail || quoteEmail !== normalizedEmail) {
+    const { quote, uploadMeta, filePreviews, messages, messagesError } =
+      workspaceData;
+    const quoteEmail = normalizeEmailInput(quote.email);
+    if (!quoteEmail || quoteEmail !== normalizedEmail) {
+      console.error("Customer portal: access denied", {
+        quoteId,
+        identityEmail: normalizedEmail,
+        quoteEmail: quote.email,
+      });
     return (
       <PortalNoticeCard
         title="Access denied"
@@ -90,7 +95,7 @@ export default async function CustomerQuoteDetailPage({
     : "Not scheduled";
   const cardClasses =
     "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
-  const identityEmailDisplay = quote.customer_email ?? normalizedEmail;
+    const identityEmailDisplay = quote.email ?? normalizedEmail;
 
   const summaryContent = (
     <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)] lg:gap-4 lg:space-y-0">

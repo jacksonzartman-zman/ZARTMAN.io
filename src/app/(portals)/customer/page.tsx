@@ -46,7 +46,7 @@ type RawQuoteRecord = {
   price: number | string | null;
   currency: string | null;
   file_name: string | null;
-  customer_email: string | null;
+  email: string | null;
   company: string | null;
 };
 
@@ -287,11 +287,11 @@ function selectQuotesByPattern(pattern: string) {
       price,
       currency,
       file_name,
-      customer_email,
+      email,
       company
     `,
     )
-    .ilike("customer_email", pattern)
+    .ilike("email", pattern)
     .order("created_at", { ascending: false })
     .limit(QUOTE_LIMIT);
 }
@@ -305,7 +305,7 @@ function mapQuoteRecords(records: RawQuoteRecord[]): PortalQuote[] {
     price: record.price ?? null,
     currency: record.currency ?? null,
     fileName: record.file_name ?? null,
-    customerEmail: record.customer_email ?? null,
+    customerEmail: record.email ?? null,
     company: record.company ?? null,
   }));
 }
