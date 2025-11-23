@@ -17,6 +17,14 @@ type QuoteMessageOperationResult<T> = {
   error: string | null;
 };
 
+export type CreateQuoteMessageParams = {
+  quoteId: string;
+  body: string;
+  authorType: QuoteMessageAuthorType;
+  authorName?: string | null;
+  authorEmail?: string | null;
+};
+
 type QuoteMessagesLoadResult = {
   messages: QuoteMessage[];
   error: string | null;
@@ -66,21 +74,42 @@ export async function loadQuoteMessages(
   }
 }
 
-type CreateAdminQuoteMessageParams = {
-  quoteId: string;
-  body: string;
-};
-
 export async function createAdminQuoteMessage({
   quoteId,
   body,
-}: CreateAdminQuoteMessageParams): Promise<
+}: CreateQuoteMessageParams): Promise<
+  QuoteMessageOperationResult<QuoteMessage | null>
+> {
+  return createQuoteMessage({
+    quoteId,
+    body,
+    authorType: "admin",
+    authorName: "Zartman admin",
+    authorEmail: null,
+  });
+}
+
+export async function createQuoteMessage({
+  quoteId,
+  body,
+  authorType,
+  authorName,
+  authorEmail,
+}: CreateQuoteMessageParams): Promise<
   QuoteMessageOperationResult<QuoteMessage | null>
 > {
   const normalizedId = quoteId?.trim();
   const trimmedBody = body?.trim();
+  const normalizedAuthorType =
+    authorType === "admin" || authorType === "customer" || authorType === "supplier"
+      ? authorType
+      : null;
+  const trimmedAuthorName =
+    typeof authorName === "string" ? authorName.trim().slice(0, 120) : null;
+  const trimmedAuthorEmail =
+    typeof authorEmail === "string" ? authorEmail.trim().toLowerCase() : null;
 
-  if (!normalizedId || !trimmedBody) {
+  if (!normalizedId || !trimmedBody || !normalizedAuthorType) {
     return {
       data: null,
       error: "Missing message parameters.",
@@ -88,21 +117,24 @@ export async function createAdminQuoteMessage({
   }
 
   try {
+    const payload = {
+      quote_id: normalizedId,
+      author_type: normalizedAuthorType,
+      author_name: trimmedAuthorName,
+      author_email: trimmedAuthorEmail,
+      body: trimmedBody,
+    };
+
     const { data, error } = await supabaseServer
       .from("quote_messages")
-      .insert({
-        quote_id: normalizedId,
-        author_type: "admin",
-        author_name: "Zartman admin",
-        author_email: null,
-        body: trimmedBody,
-      })
+      .insert(payload)
       .select(QUOTE_MESSAGE_COLUMNS)
       .single<QuoteMessage>();
 
     if (error || !data) {
-      console.error("createAdminQuoteMessage: insert failed", {
+      console.error("createQuoteMessage: insert failed", {
         quoteId: normalizedId,
+        authorType: normalizedAuthorType,
         error,
       });
       return {
@@ -116,10 +148,7 @@ export async function createAdminQuoteMessage({
       error: null,
     };
   } catch (unexpectedError) {
-    console.error(
-      "createAdminQuoteMessage: unexpected error",
-      unexpectedError,
-    );
+    console.error("createQuoteMessage: unexpected error", unexpectedError);
     return {
       data: null,
       error: "Failed to post message.",
