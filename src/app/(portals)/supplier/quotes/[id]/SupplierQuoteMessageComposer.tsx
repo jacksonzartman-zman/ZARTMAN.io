@@ -11,6 +11,7 @@ import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 type SupplierQuoteMessageComposerProps = {
   quoteId: string;
   supplierEmail: string;
+  disabled?: boolean;
 };
 
 const INITIAL_STATE: PostSupplierQuoteMessageState = {
@@ -21,6 +22,7 @@ const INITIAL_STATE: PostSupplierQuoteMessageState = {
 export function SupplierQuoteMessageComposer({
   quoteId,
   supplierEmail,
+  disabled = false,
 }: SupplierQuoteMessageComposerProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -40,7 +42,7 @@ export function SupplierQuoteMessageComposer({
   }, [state.success, state.messageId]);
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-3">
+      <form ref={formRef} action={formAction} className="space-y-3">
       <input type="hidden" name="quote_id" value={quoteId} />
       <input type="hidden" name="identity_email" value={supplierEmail} />
       <div className="space-y-1">
@@ -50,15 +52,16 @@ export function SupplierQuoteMessageComposer({
         >
           Message
         </label>
-        <textarea
-          id="supplier-quote-message-body"
-          name="body"
-          ref={textareaRef}
-          rows={4}
-          maxLength={2000}
-          className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none"
-          placeholder="Share build progress, questions, or risks with the Zartman team..."
-        />
+          <textarea
+            id="supplier-quote-message-body"
+            name="body"
+            ref={textareaRef}
+            rows={4}
+            maxLength={2000}
+            disabled={disabled}
+            className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none disabled:opacity-60"
+            placeholder="Share build progress, questions, or risks with the Zartman team..."
+          />
       </div>
 
       {state.error && (
@@ -67,18 +70,18 @@ export function SupplierQuoteMessageComposer({
         </p>
       )}
 
-      <ComposerSubmitButton />
+        <ComposerSubmitButton disabled={disabled} />
     </form>
   );
 }
 
-function ComposerSubmitButton() {
+function ComposerSubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
 
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || disabled}
       className={`${primaryCtaClasses} ${ctaSizeClasses.md} w-full sm:w-auto`}
     >
       {pending ? "Sending..." : "Send update"}
