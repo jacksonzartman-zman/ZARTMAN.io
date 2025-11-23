@@ -4,6 +4,7 @@ export type SupplierRow = {
   id: string;
   company_name: string;
   primary_email: string;
+  user_id: string | null;
   phone: string | null;
   website: string | null;
   country: string | null;
@@ -75,6 +76,7 @@ export type SupplierProfileUpsertInput = {
   website?: string | null;
   country?: string | null;
   capabilities?: SupplierCapabilityInput[];
+  userId?: string | null;
 };
 
 export type SupplierDocumentInput = {

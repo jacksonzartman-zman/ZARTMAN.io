@@ -10,8 +10,8 @@ import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 type CustomerQuoteMessageComposerProps = {
   quoteId: string;
-  customerEmail: string;
   customerName?: string | null;
+  disabled?: boolean;
 };
 
 const INITIAL_STATE: PostCustomerQuoteMessageState = {
@@ -21,8 +21,8 @@ const INITIAL_STATE: PostCustomerQuoteMessageState = {
 
 export function CustomerQuoteMessageComposer({
   quoteId,
-  customerEmail,
   customerName,
+  disabled = false,
 }: CustomerQuoteMessageComposerProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -44,7 +44,6 @@ export function CustomerQuoteMessageComposer({
   return (
     <form ref={formRef} action={formAction} className="space-y-3">
       <input type="hidden" name="quote_id" value={quoteId} />
-      <input type="hidden" name="identity_email" value={customerEmail} />
       <input type="hidden" name="author_name" value={customerName ?? ""} />
       <div className="space-y-1">
         <label
@@ -59,6 +58,7 @@ export function CustomerQuoteMessageComposer({
           ref={textareaRef}
           rows={4}
           maxLength={2000}
+          disabled={disabled}
           className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
           placeholder="Share files, timing updates, or questions for the Zartman team..."
         />
@@ -70,18 +70,18 @@ export function CustomerQuoteMessageComposer({
         </p>
       )}
 
-      <ComposerSubmitButton />
+      <ComposerSubmitButton disabled={disabled} />
     </form>
   );
 }
 
-function ComposerSubmitButton() {
+function ComposerSubmitButton({ disabled }: { disabled?: boolean }) {
   const { pending } = useFormStatus();
 
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || disabled}
       className={`${primaryCtaClasses} ${ctaSizeClasses.md} w-full sm:w-auto`}
     >
       {pending ? "Sending..." : "Send message"}

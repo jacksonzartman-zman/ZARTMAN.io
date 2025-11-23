@@ -10,6 +10,7 @@ export type QuoteWithUploadsRow = QuoteFileSource & {
   customer_name: string | null;
   email: string | null;
   company: string | null;
+  customer_id?: string | null;
   status: string | null;
   price: number | string | null;
   currency: string | null;

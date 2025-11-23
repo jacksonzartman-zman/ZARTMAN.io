@@ -37,6 +37,7 @@ function sanitizeStringArray(values?: string[] | null): string[] {
 export async function getOrCreateSupplierByEmail(
   primaryEmail: string,
   companyName?: string,
+  userId?: string | null,
 ): Promise<SupplierRow> {
   const email = normalizeEmail(primaryEmail);
 
@@ -58,9 +59,25 @@ export async function getOrCreateSupplierByEmail(
       });
     }
 
-    if (existing) {
-      return existing;
-    }
+      if (existing) {
+        if (!existing.user_id && userId) {
+          const { error: linkError } = await supabaseServer
+            .from("suppliers")
+            .update({ user_id: userId })
+            .eq("id", existing.id);
+
+          if (linkError) {
+            console.error("getOrCreateSupplierByEmail: failed to link user", {
+              email,
+              userId,
+              error: linkError,
+            });
+          } else {
+            existing.user_id = userId;
+          }
+        }
+        return existing;
+      }
 
     const payload = {
       primary_email: email,
@@ -72,6 +89,7 @@ export async function getOrCreateSupplierByEmail(
       website: null,
       country: null,
       verified: false,
+        user_id: userId ?? null,
     };
 
     const { data: created, error: insertError } = await supabaseServer
@@ -171,6 +189,55 @@ export async function loadSupplierById(
   }
 }
 
+export async function loadSupplierProfileByUserId(
+  userId: string,
+): Promise<SupplierProfile | null> {
+  const supplier = await loadSupplierByUserId(userId);
+  if (!supplier) {
+    return null;
+  }
+
+  const [capabilities, documents] = await Promise.all([
+    listSupplierCapabilities(supplier.id),
+    listSupplierDocuments(supplier.id),
+  ]);
+
+  return {
+    supplier,
+    capabilities,
+    documents,
+  };
+}
+
+export async function loadSupplierByUserId(
+  userId: string,
+): Promise<SupplierRow | null> {
+  if (!userId) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("suppliers")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle<SupplierRow>();
+
+    if (error) {
+      console.error("loadSupplierByUserId: lookup failed", {
+        userId,
+        error,
+      });
+      return null;
+    }
+
+    return data ?? null;
+  } catch (error) {
+    console.error("loadSupplierByUserId: unexpected error", { userId, error });
+    return null;
+  }
+}
+
 export async function upsertSupplierProfile(
   input: SupplierProfileUpsertInput,
 ): Promise<SupplierProfile | null> {
@@ -183,16 +250,27 @@ export async function upsertSupplierProfile(
     input.supplierId && input.supplierId.length > 0
       ? await loadSupplierById(input.supplierId)
       : null;
+  const userLinkedSupplier =
+    !baseSupplier && input.userId
+      ? await loadSupplierByUserId(input.userId)
+      : null;
 
   const supplier =
     baseSupplier ??
-    (await getOrCreateSupplierByEmail(email, input.companyName ?? undefined));
+    userLinkedSupplier ??
+    (await getOrCreateSupplierByEmail(
+      email,
+      input.companyName ?? undefined,
+      input.userId ?? null,
+    ));
 
   const updatePayload = {
     company_name: sanitizeText(input.companyName) ?? supplier.company_name,
     phone: sanitizeText(input.phone),
     website: sanitizeText(input.website),
     country: sanitizeText(input.country),
+    primary_email: email,
+    user_id: input.userId ?? supplier.user_id,
   };
 
   try {

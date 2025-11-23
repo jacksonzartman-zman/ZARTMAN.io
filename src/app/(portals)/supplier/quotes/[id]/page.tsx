@@ -29,9 +29,11 @@ import {
 import {
   getSupplierBidForQuote,
   loadSupplierProfile,
+  loadSupplierProfileByUserId,
   type SupplierBidRow,
 } from "@/server/suppliers";
 import { SupplierBidForm } from "./SupplierBidForm";
+import { requireSession } from "@/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -49,17 +51,39 @@ export default async function SupplierQuoteDetailPage({
     resolveMaybePromise(searchParams),
   ]);
 
+  const session = await requireSession({
+    redirectTo: `/supplier/quotes/${quoteId}`,
+  });
   const emailParam = getSearchParamValue(resolvedSearchParams, "email");
-  const normalizedEmail = normalizeEmailInput(emailParam);
+  const overrideEmail = normalizeEmailInput(emailParam);
+  const sessionProfile = await loadSupplierProfileByUserId(session.user.id);
+  const sessionSupplier = sessionProfile?.supplier ?? null;
+  const sessionSupplierEmail = normalizeEmailInput(
+    sessionSupplier?.primary_email ?? session.user.email ?? null,
+  );
+  const usingOverride =
+    Boolean(overrideEmail) &&
+    overrideEmail !== sessionSupplierEmail &&
+    overrideEmail !== null;
+  const activeProfile =
+    usingOverride && overrideEmail
+      ? await loadSupplierProfile(overrideEmail)
+      : sessionProfile;
 
-  if (!normalizedEmail) {
+  if (!activeProfile?.supplier) {
     return (
       <PortalNoticeCard
-        title="Add your email to view this quote"
-        description="Append ?email=you@supplier.com so we can confirm your assignment."
+        title={usingOverride ? "Supplier not found" : "Complete onboarding"}
+        description={
+          usingOverride
+            ? "We couldn’t find a supplier workspace for that email."
+            : "Finish the supplier onboarding form before opening RFQs."
+        }
       />
     );
   }
+  const supplierProfile = activeProfile;
+  const supplier = supplierProfile.supplier;
 
   const workspaceData = await loadQuoteWorkspaceData(quoteId);
   if (!workspaceData) {
@@ -71,34 +95,32 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-    const [assignments, profile] = await Promise.all([
-      loadSupplierAssignments(quoteId),
-      loadSupplierProfile(normalizedEmail),
-    ]);
+  const [assignments] = await Promise.all([
+    loadSupplierAssignments(quoteId),
+  ]);
 
-    if (!profile?.supplier) {
-      return (
-        <PortalNoticeCard
-          title="Complete onboarding"
-          description="Finish the supplier onboarding form so we can confirm your company profile before loading this RFQ."
-        />
-      );
-    }
-
+  const capabilities = supplierProfile.capabilities ?? [];
     const verifiedProcessMatch = matchesSupplierProcess(
-      profile.capabilities ?? [],
+    capabilities,
       workspaceData.uploadMeta?.manufacturing_process ?? null,
     );
 
     if (
-      !supplierHasAccess(normalizedEmail, workspaceData.quote, assignments, {
-        supplier: profile.supplier,
+    !supplierHasAccess(
+      (usingOverride && overrideEmail) ||
+        supplier.primary_email ||
+        session.user.email,
+      workspaceData.quote,
+      assignments,
+      {
+        supplier,
         verifiedProcessMatch,
-      })
+      },
+    )
     ) {
       console.error("Supplier portal: access denied", {
         quoteId,
-        identityEmail: normalizedEmail,
+      identityEmail: overrideEmail ?? supplier.primary_email,
         quoteEmail: workspaceData.quote.email,
         assignmentCount: assignments.length,
         reason: "ACCESS_DENIED",
@@ -112,37 +134,46 @@ export default async function SupplierQuoteDetailPage({
       );
     }
 
-    const existingBid = await getSupplierBidForQuote(
-      quoteId,
-      profile.supplier.id,
-    );
+  const existingBid = await getSupplierBidForQuote(
+    quoteId,
+    supplier.id,
+  );
+  const readOnly = usingOverride;
 
-    return (
-      <SupplierQuoteWorkspace
-        data={workspaceData}
-        supplierEmail={normalizedEmail}
-        assignments={assignments}
-        supplierNameOverride={profile.supplier.company_name}
-        existingBid={existingBid}
-        messagingUnlocked={existingBid?.status === "accepted"}
-      />
-    );
+  return (
+    <SupplierQuoteWorkspace
+      data={workspaceData}
+      supplierEmail={
+        (usingOverride && overrideEmail) ||
+        supplier.primary_email ||
+        session.user.email ||
+        "supplier"
+      }
+      assignments={assignments}
+      supplierNameOverride={supplier.company_name}
+      existingBid={existingBid}
+      messagingUnlocked={!readOnly && existingBid?.status === "accepted"}
+      readOnly={readOnly}
+    />
+  );
 }
 
 function SupplierQuoteWorkspace({
   data,
   supplierEmail,
   assignments,
-    supplierNameOverride,
-    existingBid,
-    messagingUnlocked,
+  supplierNameOverride,
+  existingBid,
+  messagingUnlocked,
+  readOnly,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
   assignments: SupplierAssignment[];
-    supplierNameOverride?: string | null;
-    existingBid: SupplierBidRow | null;
-    messagingUnlocked: boolean;
+  supplierNameOverride?: string | null;
+  existingBid: SupplierBidRow | null;
+  messagingUnlocked: boolean;
+  readOnly: boolean;
 }) {
   const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
@@ -263,16 +294,20 @@ function SupplierQuoteWorkspace({
           <p className="mt-1 text-xs text-slate-500">
             Your message notifies the Zartman admin team instantly.
           </p>
-          {!messagingUnlocked ? (
-            <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
-              Chat will unlock after you submit a bid and are selected by the customer.
-            </p>
-          ) : null}
+            {readOnly ? (
+              <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
+                Read-only preview. Remove the ?email override to post updates.
+              </p>
+            ) : !messagingUnlocked ? (
+              <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
+                Chat will unlock after you submit a bid and are selected by the customer.
+              </p>
+            ) : null}
           <div className="mt-3">
             <SupplierQuoteMessageComposer
               quoteId={quote.id}
               supplierEmail={supplierEmail}
-              disabled={!messagingUnlocked}
+                disabled={!messagingUnlocked || readOnly}
             />
           </div>
         </div>
@@ -317,7 +352,7 @@ function SupplierQuoteWorkspace({
             quoteId={quote.id}
             supplierEmail={supplierEmail}
             existingBid={existingBid}
-            isLocked={existingBid?.status === "accepted"}
+              isLocked={existingBid?.status === "accepted" || readOnly}
           />
         </div>
       </section>
@@ -355,7 +390,7 @@ function SupplierQuoteWorkspace({
               Files, DFM feedback, and shared chat for this assigned RFQ.
             </p>
           </div>
-          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
+            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
             <span>
               Working as{" "}
               <span className="font-semibold text-white">
@@ -369,6 +404,11 @@ function SupplierQuoteWorkspace({
                 {derived.statusLabel}
               </span>
             </span>
+              {readOnly ? (
+                <span className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-slate-300">
+                  Read-only preview
+                </span>
+              ) : null}
             {existingBid?.status === "accepted" ? (
               <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
                 Selected by customer

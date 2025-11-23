@@ -22,6 +22,8 @@ import {
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
 import { listSupplierBidsForQuote, type SupplierBidWithContext } from "@/server/suppliers";
 import { BidDecisionButtons } from "./BidDecisionButtons";
+import { requireSession } from "@/server/auth";
+import { getCustomerByUserId } from "@/server/customers";
 
 export const dynamic = "force-dynamic";
 
@@ -39,14 +41,18 @@ export default async function CustomerQuoteDetailPage({
     resolveMaybePromise(searchParams),
   ]);
 
+  const session = await requireSession({
+    redirectTo: `/customer/quotes/${quoteId}`,
+  });
   const emailParam = getSearchParamValue(resolvedSearchParams, "email");
-  const normalizedEmail = normalizeEmailInput(emailParam);
+  const overrideEmail = normalizeEmailInput(emailParam);
+  const customer = await getCustomerByUserId(session.user.id);
 
-  if (!normalizedEmail) {
+  if (!customer) {
     return (
       <PortalNoticeCard
-        title="Add your email to view this quote"
-        description="Append ?email=you@company.com to the URL so we can verify which RFQs to load."
+        title="Complete your profile"
+        description="Finish the quick setup on /customer before opening quote workspaces."
       />
     );
   }
@@ -61,22 +67,42 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
-    const { quote, uploadMeta, filePreviews, messages, messagesError } =
-      workspaceData;
-    const quoteEmail = normalizeEmailInput(quote.email);
-    if (!quoteEmail || quoteEmail !== normalizedEmail) {
-      console.error("Customer portal: access denied", {
-        quoteId,
-        identityEmail: normalizedEmail,
-        quoteEmail: quote.email,
-      });
+  const { quote, uploadMeta, filePreviews, messages, messagesError } =
+    workspaceData;
+  const normalizedQuoteEmail = normalizeEmailInput(quote.email);
+  const customerEmail = normalizeEmailInput(customer.email);
+  const quoteCustomerMatches =
+    (quote.customer_id && quote.customer_id === customer.id) ||
+    (!quote.customer_id &&
+      normalizedQuoteEmail &&
+      customerEmail &&
+      normalizedQuoteEmail === customerEmail);
+  const usingOverride =
+    Boolean(overrideEmail) && overrideEmail !== customerEmail;
+  const overrideMatchesQuote =
+    usingOverride &&
+    overrideEmail &&
+    normalizedQuoteEmail &&
+    normalizedQuoteEmail === overrideEmail;
+
+  if (!quoteCustomerMatches && !overrideMatchesQuote) {
+    console.error("Customer portal: access denied", {
+      quoteId,
+      identityEmail: customerEmail,
+      overrideEmail,
+      quoteEmail: quote.email,
+      quoteCustomerId: quote.customer_id,
+      customerId: customer.id,
+    });
     return (
       <PortalNoticeCard
         title="Access denied"
-        description="This quote is not linked to your email address. Confirm you’re using the right mailbox or request access from your admin."
+        description="This quote is not linked to your account. Confirm you’re using the right workspace or request access from your admin."
       />
     );
   }
+
+  const readOnly = usingOverride;
 
     const derived = deriveQuotePresentation(quote, uploadMeta);
     const { status, statusLabel, customerName, companyName, intakeNotes } =
@@ -98,7 +124,12 @@ export default async function CustomerQuoteDetailPage({
     : "Not scheduled";
   const cardClasses =
     "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
-    const identityEmailDisplay = quote.email ?? normalizedEmail;
+  const identityEmailDisplay =
+    (usingOverride && overrideEmail) ||
+    quote.email ||
+    customer.email ||
+    session.user.email ||
+    "customer";
 
   const summaryContent = (
     <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)] lg:gap-4 lg:space-y-0">
@@ -212,11 +243,16 @@ export default async function CustomerQuoteDetailPage({
           <p className="mt-1 text-xs text-slate-500">
             Shared with admins and suppliers supporting this RFQ.
           </p>
+            {readOnly ? (
+              <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
+                Read-only preview. Remove the ?email override to reply as the customer.
+              </p>
+            ) : null}
           <div className="mt-3">
             <CustomerQuoteMessageComposer
               quoteId={quote.id}
-              customerEmail={identityEmailDisplay}
               customerName={customerName}
+                disabled={readOnly}
             />
           </div>
         </div>
@@ -290,8 +326,8 @@ export default async function CustomerQuoteDetailPage({
                     <BidDecisionButtons
                       bidId={bid.id}
                       quoteId={quote.id}
-                      identityEmail={normalizedEmail}
                       status={bid.status}
+                      disabled={readOnly}
                     />
                   </div>
                 </div>
@@ -353,6 +389,11 @@ export default async function CustomerQuoteDetailPage({
             {statusLabel}
             </span>
           </span>
+            {readOnly ? (
+              <span className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-slate-300">
+                Read-only preview
+              </span>
+            ) : null}
         </div>
       </section>
 
