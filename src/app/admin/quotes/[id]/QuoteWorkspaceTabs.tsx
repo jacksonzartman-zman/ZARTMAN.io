@@ -9,7 +9,9 @@ export type QuoteWorkspaceTab =
   | "messages"
   | "edit"
   | "viewer"
-  | "tracking";
+  | "tracking"
+  | "bid"
+  | "suppliers";
 
 type TabItem = {
   id: QuoteWorkspaceTab;

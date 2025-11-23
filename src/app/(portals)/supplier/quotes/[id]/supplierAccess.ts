@@ -1,5 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
+import type {
+  SupplierCapabilityRow,
+  SupplierRow,
+} from "@/server/suppliers";
 import {
   normalizeEmailInput,
 } from "@/app/(portals)/quotes/pageUtils";
@@ -35,10 +39,16 @@ type QuoteAssignmentSource = Pick<
   "id" | "email" | "assigned_supplier_email" | "assigned_supplier_name"
 >;
 
+type SupplierAccessOptions = {
+  supplier?: SupplierRow | null;
+  verifiedProcessMatch?: boolean;
+};
+
 export function supplierHasAccess(
   supplierEmail: string | null,
   quote: QuoteAssignmentSource,
   assignments: SupplierAssignment[],
+  options?: SupplierAccessOptions,
 ): boolean {
   const normalizedEmail = normalizeEmailInput(supplierEmail);
   if (!normalizedEmail) {
@@ -59,6 +69,19 @@ export function supplierHasAccess(
       normalizeEmailInput(assignment.supplier_email) === normalizedEmail,
   );
   if (hasExplicitAssignment) {
+    return true;
+  }
+
+  if (
+    options?.supplier &&
+    options.supplier.verified &&
+    options.verifiedProcessMatch &&
+    normalizeEmailInput(options.supplier.primary_email) === normalizedEmail
+  ) {
+    console.warn("Supplier access: allowing via verified capability match", {
+      quoteId: quote.id,
+      supplierEmail: normalizedEmail,
+    });
     return true;
   }
 
@@ -102,4 +125,33 @@ export function getSupplierDisplayName(
   }
 
   return normalizedEmail ?? "Supplier";
+}
+
+export function matchesSupplierProcess(
+  capabilities: SupplierCapabilityRow[],
+  processHint?: string | null,
+): boolean {
+  if (!processHint || capabilities.length === 0) {
+    return false;
+  }
+
+  const normalizedProcess = processHint.trim().toLowerCase();
+  if (!normalizedProcess) {
+    return false;
+  }
+
+  return capabilities.some((capability) => {
+    if (!capability?.process) {
+      return false;
+    }
+    const capabilityProcess = capability.process.trim().toLowerCase();
+    if (!capabilityProcess) {
+      return false;
+    }
+    return (
+      capabilityProcess === normalizedProcess ||
+      normalizedProcess.includes(capabilityProcess) ||
+      capabilityProcess.includes(normalizedProcess)
+    );
+  });
 }
