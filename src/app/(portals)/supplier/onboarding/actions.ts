@@ -26,8 +26,9 @@ export async function submitSupplierOnboardingAction(
   _prevState: SupplierOnboardingState,
   formData: FormData,
 ): Promise<SupplierOnboardingState> {
-  const companyName = getText(formData, "company_name");
-  const primaryEmail = normalizeEmail(getText(formData, "primary_email"));
+  const rawCompanyName = getText(formData, "company_name");
+  const rawPrimaryEmail = getText(formData, "primary_email");
+  const normalizedPrimaryEmail = normalizeEmail(rawPrimaryEmail);
   const phone = getText(formData, "phone");
   const website = getText(formData, "website");
   const country = getText(formData, "country");
@@ -36,11 +37,11 @@ export async function submitSupplierOnboardingAction(
 
   const fieldErrors: Record<string, string> = {};
 
-  if (!companyName) {
+  if (!rawCompanyName) {
     fieldErrors.company_name = "Enter your company name.";
   }
 
-  if (!primaryEmail) {
+  if (!normalizedPrimaryEmail) {
     fieldErrors.primary_email = "Enter a valid primary email.";
   }
 
@@ -52,12 +53,16 @@ export async function submitSupplierOnboardingAction(
     return { success: false, error: "Check the highlighted fields.", fieldErrors };
   }
 
+  // Narrow types after validation
+  const primaryEmail: string = normalizedPrimaryEmail!;
+  const safeCompanyName: string = rawCompanyName!.trim();
+
   const capabilities = parseCapabilities(capabilitiesPayload);
 
   try {
     const profile = await upsertSupplierProfile({
       primaryEmail,
-      companyName,
+      companyName: safeCompanyName,
       phone,
       website,
       country,
@@ -110,10 +115,13 @@ function parseCapabilities(payload: string | null): SupplierCapabilityInput[] {
 
     return parsed
       .map((entry) => normalizeCapability(entry))
-      .filter(
-        (cap): cap is SupplierCapabilityInput =>
-          Boolean(cap) && typeof cap.process === "string" && cap.process.trim().length > 0,
-      );
+      .filter((cap): cap is SupplierCapabilityInput => {
+        if (!cap) {
+          return false;
+        }
+
+        return typeof cap.process === "string" && cap.process.trim().length > 0;
+      });
   } catch (error) {
     console.error("parseCapabilities: failed to parse payload", {
       payload,
@@ -227,18 +235,15 @@ async function uploadDocumentAndPersist(
     throw new Error("Document upload failed");
   }
 
-  const {
-    data: publicUrlData,
-    error: publicUrlError,
-  } = supabaseServer.storage
+  const { data: publicUrlData } = supabaseServer.storage
     .from(SUPPLIER_DOCS_BUCKET)
     .getPublicUrl(storagePath);
 
-  if (publicUrlError || !publicUrlData?.publicUrl) {
+  if (!publicUrlData?.publicUrl) {
     console.error("uploadDocumentAndPersist: public URL failed", {
       supplierId,
       storagePath,
-      error: publicUrlError,
+      error: "Missing public URL",
     });
     throw new Error("Document upload failed");
   }
