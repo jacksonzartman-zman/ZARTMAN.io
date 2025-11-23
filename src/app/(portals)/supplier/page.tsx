@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import PortalCard from "../PortalCard";
+import { PortalLoginPanel } from "../PortalLoginPanel";
 import {
   getSearchParamValue,
   normalizeEmailInput,
@@ -15,7 +16,7 @@ import {
   type SupplierQuoteMatch,
   type SupplierProfile,
 } from "@/server/suppliers";
-import { requireSession } from "@/server/auth";
+import { getCurrentSession } from "@/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,10 @@ type SupplierDashboardPageProps = {
 async function SupplierDashboardPage({
   searchParams,
 }: SupplierDashboardPageProps) {
-  const session = await requireSession({ redirectTo: "/supplier" });
+  const session = await getCurrentSession();
+  if (!session) {
+    return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
+  }
   const supplierEmail = normalizeEmailInput(session.user.email ?? null);
   const onboardingJustCompleted =
     getSearchParamValue(searchParams, "onboard") === "1";
