@@ -15,12 +15,17 @@ import {
 import { requireSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
+import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
+import { EmptyStateNotice } from "../EmptyStateNotice";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 
 export const dynamic = "force-dynamic";
 
 const QUOTE_LIMIT = 20;
 const RECENT_ACTIVITY_LIMIT = 10;
 const OPEN_STATUSES: UploadStatus[] = ["submitted", "in_review", "quoted"];
+const IN_PROGRESS_STATUSES: UploadStatus[] = ["in_review", "quoted"];
+const COMPLETED_STATUSES: UploadStatus[] = ["approved"];
 
 const TARGET_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -153,6 +158,9 @@ async function CustomerDashboardPage({
       ? `?email=${encodeURIComponent(viewerEmail)}`
       : "";
   const viewerDomain = getEmailDomain(viewerDisplayEmail);
+  const customerMetrics = deriveCustomerMetrics(portalData.quotes);
+  const lastUpdatedTimestamp = getLatestCustomerActivityTimestamp(portalData.quotes);
+  const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
 
   return (
     <div className="space-y-6">
@@ -163,6 +171,11 @@ async function CustomerDashboardPage({
           viewerDisplayEmail ??
           sessionCompanyName
         }
+      />
+      <WorkspaceMetrics
+        role="customer"
+        metrics={customerMetrics}
+        lastUpdatedLabel={lastUpdatedLabel}
       />
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
           {usingOverride ? (
@@ -243,16 +256,18 @@ async function CustomerDashboardPage({
             ))}
           </ul>
         ) : (
-            <p className="text-sm text-slate-400">
-              No open quotes yet for <span className="text-white">{viewerDisplayEmail}</span>.{" "}
-            <Link
-              href="/quote"
-              className="text-emerald-300 underline-offset-4 hover:underline"
-            >
-              Submit a new RFQ
-            </Link>{" "}
-            to see it here.
-          </p>
+          <EmptyStateNotice
+            title="No open quotes yet"
+            description={`We’ll list every active RFQ for ${viewerDisplayEmail} the moment uploads start processing.`}
+            action={
+              <Link
+                href="/quote"
+                className="text-sm font-semibold text-emerald-300 underline-offset-4 hover:underline"
+              >
+                Submit a new RFQ
+              </Link>
+            }
+          />
         )}
       </PortalCard>
 
@@ -278,10 +293,10 @@ async function CustomerDashboardPage({
             ))}
           </ul>
         ) : (
-            <p className="text-sm text-slate-400">
-              We haven’t logged any RFQs yet for {viewerDisplayEmail}. They’ll flow in as soon as
-            files are uploaded from the quote tool.
-          </p>
+          <EmptyStateNotice
+            title="No activity to show"
+            description={`We’ll display the latest submissions, approvals, and reviews for ${viewerDisplayEmail} as soon as they happen.`}
+          />
         )}
       </PortalCard>
 
@@ -501,6 +516,53 @@ function formatQuoteId(id: string): string {
   }
 
   return id.startsWith("Q-") ? id : `#${id.slice(0, 6)}`;
+}
+
+function deriveCustomerMetrics(quotes: PortalQuote[]): WorkspaceMetric[] {
+  const submitted = quotes.length;
+  const inProgress = quotes.filter((quote) =>
+    IN_PROGRESS_STATUSES.includes(quote.status),
+  ).length;
+  const completed = quotes.filter((quote) =>
+    COMPLETED_STATUSES.includes(quote.status),
+  ).length;
+
+  return [
+    {
+      label: "Quotes submitted",
+      value: submitted,
+      helper:
+        submitted > 0
+          ? `${submitted} file${submitted === 1 ? "" : "s"} synced from /quote`
+          : "Upload parts from /quote to populate this workspace.",
+    },
+    {
+      label: "Quotes in progress",
+      value: inProgress,
+      helper:
+        inProgress > 0
+          ? "In review or quoted by Zartman"
+          : "We’ll highlight live reviews here.",
+    },
+    {
+      label: "Quotes completed",
+      value: completed,
+      helper:
+        completed > 0
+          ? "Approved and ready to move forward"
+          : "Completed quotes will land once approvals happen.",
+    },
+  ];
+}
+
+function getLatestCustomerActivityTimestamp(quotes: PortalQuote[]): number | null {
+  return quotes.reduce<number | null>((latest, quote) => {
+    const created = toTimestamp(quote.createdAt);
+    if (created && (!latest || created > latest)) {
+      return created;
+    }
+    return latest;
+  }, null);
 }
 
 function StatusBadge({
