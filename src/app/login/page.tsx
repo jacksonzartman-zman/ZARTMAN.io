@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import clsx from "clsx";
 import { primaryCtaClasses } from "@/lib/ctas";
-import { getCurrentSession } from "@/server/auth";
+import { createAuthClient, getCurrentSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierByUserId } from "@/server/suppliers";
 import LoginTokenBridge from "./LoginTokenBridge";
@@ -42,33 +42,19 @@ const DEFAULT_CARDS: LoginCard[] = [
   },
 ];
 
-const WORKSPACE_CARDS: LoginCard[] = [
-  {
-    role: "Customer access",
-    title: "Customer workspace",
-    description: "Open the customer dashboard with RFQs, quotes, and order tracking.",
-    href: "/customer",
-    accent: "from-emerald-400/20 via-emerald-500/10 to-transparent",
-    button: "Enter customer workspace",
-  },
-  {
-    role: "Supplier access",
-    title: "Supplier workspace",
-    description: "Jump into supplier tools to review matches and manage bids.",
-    href: "/supplier",
-    accent: "from-blue-400/20 via-blue-500/10 to-transparent",
-    button: "Enter supplier workspace",
-  },
-];
-
-export default async function LoginHubPage() {
+export default async function LoginPage() {
   const session = await getCurrentSession();
 
   if (!session) {
     return (
       <>
         <LoginTokenBridge />
-        <LoginHubView cards={DEFAULT_CARDS} />
+        <LoginHubView
+          cards={DEFAULT_CARDS}
+          eyebrow="Debug"
+          title="Log in to Zartman"
+          description="No Supabase session detected on the server. Use a magic link to sign in."
+        />
       </>
     );
   }
@@ -78,32 +64,98 @@ export default async function LoginHubPage() {
     loadSupplierByUserId(session.user.id),
   ]);
 
-  if (customer && !supplier) {
-    redirect("/customer");
-  }
-
-  if (supplier && !customer) {
-    redirect("/supplier");
-  }
-
-  if (!customer && !supplier) {
-    return (
-      <>
-        <LoginTokenBridge />
-        <LoginHubView cards={DEFAULT_CARDS} />
-      </>
-    );
-  }
+  const roleSummary = {
+    hasCustomer: Boolean(customer),
+    hasSupplier: Boolean(supplier),
+  };
 
   return (
     <>
       <LoginTokenBridge />
-      <LoginHubView
-        cards={WORKSPACE_CARDS}
-        eyebrow="Multi-role"
-        title="Choose your workspace"
-        description="You have access to both portals — pick where you’d like to go."
-      />
+      <main className="mx-auto flex min-h-[60vh] max-w-page flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8">
+        <section className="rounded-3xl border border-slate-900 bg-slate-950/80 p-6 text-sm text-slate-200 shadow-[0_18px_40px_rgba(2,6,23,0.85)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+            Auth debug
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold text-white">
+            Server sees an authenticated Supabase session
+          </h1>
+          <p className="mt-2 text-sm text-slate-400">
+            Email:{" "}
+            <span className="font-mono text-emerald-300">
+              {session.user.email ?? "unknown"}
+            </span>
+          </p>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-900 bg-slate-950/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Customer profile
+              </p>
+              <p className="mt-2 text-sm text-slate-200">
+                {roleSummary.hasCustomer
+                  ? `Found customer record for ${
+                      (customer?.company_name ?? "").trim() || "this account"
+                    }.`
+                  : "No customer record linked to this user yet."}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-900 bg-slate-950/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Supplier profile
+              </p>
+              <p className="mt-2 text-sm text-slate-200">
+                {roleSummary.hasSupplier
+                  ? `Found supplier profile for ${
+                      (
+                        supplier?.company_name ??
+                        supplier?.primary_email ??
+                        ""
+                      ).trim() || "this account"
+                    }.`
+                  : "No supplier profile linked to this user yet."}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-900 bg-slate-950/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Would redirect to
+              </p>
+              <p className="mt-2 text-sm text-slate-200">
+                {roleSummary.hasCustomer && !roleSummary.hasSupplier
+                  ? "/customer"
+                  : !roleSummary.hasCustomer && roleSummary.hasSupplier
+                  ? "/supplier"
+                  : roleSummary.hasCustomer && roleSummary.hasSupplier
+                  ? "Dual-role: login hub asking you to pick a workspace"
+                  : "Login hub (no roles yet)"}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href="/customer"
+              className="inline-flex items-center justify-center rounded-full border border-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-700 hover:text-white"
+            >
+              Go to customer portal
+            </Link>
+            <Link
+              href="/supplier"
+              className="inline-flex items-center justify-center rounded-full border border-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-slate-700 hover:text-white"
+            >
+              Go to supplier portal
+            </Link>
+            <form action={signOutAction} className="inline-flex">
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-full bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/20"
+              >
+                Log out
+              </button>
+            </form>
+          </div>
+        </section>
+      </main>
     </>
   );
 }
@@ -156,4 +208,16 @@ function LoginHubView({
       </div>
     </main>
   );
+}
+
+async function signOutAction() {
+  "use server";
+
+  const supabase = createAuthClient();
+  try {
+    await supabase.auth.signOut();
+  } catch (error) {
+    console.error("[login page] sign out failed", error);
+  }
+  redirect("/");
 }
