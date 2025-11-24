@@ -31,6 +31,8 @@ import {
 import { SupplierBidForm } from "./SupplierBidForm";
 import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
 import { getCurrentSession } from "@/server/auth";
+import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
+import { getNextWorkflowState } from "@/lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -151,6 +153,7 @@ function SupplierQuoteWorkspace({
 }) {
   const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
+  const nextWorkflowState = getNextWorkflowState(derived.status);
     const supplierDisplayName =
       supplierNameOverride ??
       getSupplierDisplayName(supplierEmail, quote, assignments);
@@ -205,6 +208,12 @@ function SupplierQuoteWorkspace({
             value={formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
           />
         </dl>
+        <WorkflowStatusCallout
+          currentLabel={derived.statusLabel}
+          nextState={nextWorkflowState}
+          variant="blue"
+          className="mt-4"
+        />
       </section>
 
       <section className={cardClasses}>
