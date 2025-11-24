@@ -34,7 +34,7 @@ export async function requestMagicLinkForEmail(
   }
 
   const supabase = supabasePublic();
-  const safeNextPath = getSafeNextPath(input.nextPath, input.role);
+  const safeNextPath = getSafeNextPath(input.nextPath);
   const origin = resolveSiteOrigin();
 
   try {
@@ -62,24 +62,26 @@ export async function requestMagicLinkForEmail(
   }
 }
 
-function getSafeNextPath(
-  value: string | null | undefined,
-  role: PortalRole,
-): string {
-  const fallback = role === "supplier" ? "/supplier" : "/customer";
-  if (!value || typeof value !== "string") {
+function getSafeNextPath(value: string | null | undefined): string {
+  const fallback = "/login";
+  if (typeof value !== "string") {
     return fallback;
   }
 
-  if (!value.startsWith("/") || value.startsWith("//")) {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/")) {
     return fallback;
   }
 
-  if (value === "/auth/callback" || value.startsWith("/auth/callback?")) {
+  if (trimmed.startsWith("//")) {
     return fallback;
   }
 
-  return value;
+  if (trimmed === "/auth" || trimmed.startsWith("/auth/")) {
+    return fallback;
+  }
+
+  return trimmed;
 }
 
 function resolveSiteOrigin(): string {
