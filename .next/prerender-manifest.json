@@ -1,7 +1,8 @@
 {
   "version": 4,
   "routes": {
-    "/": {
+    "/_not-found": {
+      "initialStatus": 404,
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -14,8 +15,8 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/",
-      "dataRoute": "/index.rsc",
+      "srcRoute": "/_not-found",
+      "dataRoute": "/_not-found.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -49,7 +50,7 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/login": {
+    "/": {
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -62,8 +63,8 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/login",
-      "dataRoute": "/login.rsc",
+      "srcRoute": "/",
+      "dataRoute": "/index.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -121,8 +122,7 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/_not-found": {
-      "initialStatus": 404,
+    "/login": {
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -135,8 +135,8 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/_not-found",
-      "dataRoute": "/_not-found.rsc",
+      "srcRoute": "/login",
+      "dataRoute": "/login.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -150,8 +150,8 @@
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "ece3c028b64947d8c1f2d4063aae9cce",
-    "previewModeSigningKey": "a6443122baa800ba1e75fb3c44b15e1149350e9ed8f563cca9a88605a37265a4",
-    "previewModeEncryptionKey": "877d5c824cecb09f644d7cf1d4931da119289e0bad92e77907342f04c71738d8"
+    "previewModeId": "1f72e2dadd3aaa39a2895b439643dc82",
+    "previewModeSigningKey": "4b1baf02eba9554d4d3c8dea2515cc4214c9dfc7a6d2ac0fb6e4d4675df0f1f9",
+    "previewModeEncryptionKey": "a7f9b8870d94d5d39e6d5b8107523ae4958d7bfa50700f5a8be31df97e21edda"
   }
 }

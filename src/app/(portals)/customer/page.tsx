@@ -19,6 +19,8 @@ import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
+import { loadCustomerActivityFeed } from "@/server/activity";
+import type { ActivityItem } from "@/types/activity";
 
 export const dynamic = "force-dynamic";
 
@@ -151,7 +153,6 @@ async function CustomerDashboardPage({
   const openQuotes = portalData.quotes.filter((quote) =>
     OPEN_STATUSES.includes(quote.status),
   );
-  const recentActivity = portalData.quotes.slice(0, RECENT_ACTIVITY_LIMIT);
   const hasAnyQuotes = portalData.quotes.length > 0;
   const viewerDisplayEmail = viewerEmail ?? "customer";
   const quoteLinkQuery =
@@ -159,6 +160,19 @@ async function CustomerDashboardPage({
       ? `?email=${encodeURIComponent(viewerEmail)}`
       : "";
   const viewerDomain = getEmailDomain(viewerDisplayEmail);
+  const activityFeed = await loadCustomerActivityFeed({
+    customerId: usingOverride ? null : customer.id,
+    email: viewerEmail ?? sessionEmail,
+    domain: viewerDomain,
+    limit: RECENT_ACTIVITY_LIMIT,
+  });
+  const recentActivity: ActivityItem[] = activityFeed.map((item) => ({
+    ...item,
+    href:
+      item.href && quoteLinkQuery
+        ? `${item.href}${quoteLinkQuery}`
+        : item.href,
+  }));
   const customerMetrics = deriveCustomerMetrics(portalData.quotes);
   const lastUpdatedTimestamp = getLatestCustomerActivityTimestamp(portalData.quotes);
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
@@ -282,26 +296,39 @@ async function CustomerDashboardPage({
         )}
       </PortalCard>
 
-      <PortalCard title="Recent activity" description="Latest RFQ and quote updates.">
+      <PortalCard title="Recent activity" description="Latest RFQ, bid, and status updates.">
         {recentActivity.length > 0 ? (
           <ul className="space-y-3">
-            {recentActivity.map((quote) => (
-              <li
-                key={quote.id}
-                className="flex flex-col gap-2 rounded-xl border border-slate-900/60 bg-slate-900/20 p-4 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div>
-                  <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
-                  <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
+            {recentActivity.map((item) => {
+              const inner = (
+                <div className="flex flex-col gap-2 rounded-xl border border-slate-900/60 bg-slate-900/20 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <ActivityTypeBadge type={item.type} />
+                    <p className="font-medium text-white">{item.title}</p>
+                    <p className="text-xs text-slate-400">{item.description}</p>
+                  </div>
+                  <div className="flex flex-col items-start gap-1 text-left sm:items-end sm:text-right">
+                    <p className="text-xs text-slate-500">
+                      {formatActivityDate(item.timestamp) ?? "Date pending"}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex flex-col items-start gap-1 text-left sm:items-end sm:text-right">
-                  <StatusBadge status={quote.status} size="sm" />
-                  <p className="text-xs text-slate-500">
-                    {formatActivityDate(quote.createdAt) ?? "Date pending"}
-                  </p>
-                </div>
-              </li>
-            ))}
+              );
+              return (
+                <li key={item.id}>
+                  {item.href ? (
+                    <Link
+                      href={item.href}
+                      className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+                    >
+                      {inner}
+                    </Link>
+                  ) : (
+                    inner
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <EmptyStateNotice
@@ -591,6 +618,26 @@ function StatusBadge({
   return (
     <span className={`inline-flex items-center rounded-full bg-emerald-500/10 font-semibold text-emerald-200 ${sizeClasses}`}>
       {UPLOAD_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function ActivityTypeBadge({ type }: { type: ActivityItem["type"] }) {
+  const labelMap: Record<ActivityItem["type"], string> = {
+    quote: "Quote",
+    bid: "Bid",
+    status: "Status",
+  };
+  const colorMap: Record<ActivityItem["type"], string> = {
+    quote: "bg-emerald-500/10 text-emerald-200 border-emerald-500/30",
+    bid: "bg-sky-500/10 text-sky-200 border-sky-500/30",
+    status: "bg-slate-500/10 text-slate-200 border-slate-500/30",
+  };
+  return (
+    <span
+      className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${colorMap[type]}`}
+    >
+      {labelMap[type]}
     </span>
   );
 }

@@ -7,19 +7,12 @@ import clsx from "clsx";
 import type { PortalRole } from "@/types/portal";
 import { primaryCtaClasses } from "@/lib/ctas";
 import type { HeaderUser } from "./AppHeader";
+import type { NotificationPayload } from "@/types/notifications";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 
 type NavLink = {
   label: string;
   href: string;
-};
-
-type NotificationItem = {
-  id: string;
-  title: string;
-  description: string;
-  href?: string;
-  timestampLabel?: string;
-  read?: boolean;
 };
 
 const ROLE_BADGE_COPY: Record<PortalRole, string> = {
@@ -47,39 +40,15 @@ const NAV_LINKS: Record<PortalRole, NavLink[]> = {
   ],
 };
 
-const MOCK_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: "notif-1",
-    title: "New RFQ matched",
-    description: "Quote Q-104 now has 3 vetted suppliers attached.",
-    href: "/customer/quotes",
-    timestampLabel: "5m ago",
-    read: false,
-  },
-  {
-    id: "notif-2",
-    title: "Bid accepted",
-    description: "Your bid on Q-087 was accepted. Prep kickoff details.",
-    href: "/supplier/quotes/Q-087",
-    timestampLabel: "18m ago",
-    read: false,
-  },
-  {
-    id: "notif-3",
-    title: "Workspace reminder",
-    description: "Finish onboarding docs to unlock instant RFQ routing.",
-    timestampLabel: "1h ago",
-    read: true,
-  },
-];
-
 export type AppHeaderClientProps = {
   user: HeaderUser | null;
+  notifications?: NotificationPayload[];
   signOutAction?: () => Promise<void> | void;
 };
 
 export default function AppHeaderClient({
   user,
+  notifications = [],
   signOutAction,
 }: AppHeaderClientProps) {
   const pathname = usePathname() ?? "/";
@@ -121,7 +90,7 @@ export default function AppHeaderClient({
           <div className="flex items-center gap-3">
             {user ? (
             <>
-              <NotificationsBell notifications={MOCK_NOTIFICATIONS} />
+              <NotificationsBell notifications={notifications} />
               <UserDropdown
                 user={user}
                 role={role}
@@ -173,7 +142,7 @@ export default function AppHeaderClient({
 function NotificationsBell({
   notifications,
 }: {
-  notifications: NotificationItem[];
+  notifications: NotificationPayload[];
 }) {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -249,8 +218,23 @@ function NotificationsBell({
 function NotificationPreview({
   notification,
 }: {
-  notification: NotificationItem;
+  notification: NotificationPayload;
 }) {
+  const timestampLabel =
+    formatRelativeTimeFromTimestamp(toTimestamp(notification.timestamp)) ??
+    "Just now";
+  const typeLabel =
+    notification.type === "bid"
+      ? "Bid"
+      : notification.type === "status"
+        ? "Status"
+        : "Quote";
+  const badgeClasses: Record<string, string> = {
+    Quote: "bg-emerald-500/10 text-emerald-200 border-emerald-500/30",
+    Bid: "bg-blue-500/10 text-blue-200 border-blue-500/30",
+    Status: "bg-slate-500/10 text-slate-200 border-slate-500/30",
+  };
+
   const content = (
     <div
       className={clsx(
@@ -258,10 +242,18 @@ function NotificationPreview({
         notification.read ? "border-slate-900/70 opacity-80" : "border-blue-500/30",
       )}
     >
+      <span
+        className={clsx(
+          "mb-2 inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+          badgeClasses[typeLabel] ?? "",
+        )}
+      >
+        {typeLabel}
+      </span>
       <p className="text-sm font-semibold text-white">{notification.title}</p>
       <p className="text-xs text-slate-400">{notification.description}</p>
       <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">
-        {notification.timestampLabel ?? "Just now"}
+        {timestampLabel}
       </p>
     </div>
   );
