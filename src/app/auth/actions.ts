@@ -34,16 +34,14 @@ export async function requestMagicLinkForEmail(
   }
 
   const supabase = supabasePublic();
-  const safeNextPath = getSafeNextPath(input.nextPath);
   const origin = getSiteOrigin();
+  const emailRedirectTo = `${origin}/auth/callback`;
 
   try {
     await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
-        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(
-          safeNextPath,
-        )}`,
+        emailRedirectTo,
       },
     });
     return {
@@ -54,7 +52,8 @@ export async function requestMagicLinkForEmail(
     console.error("requestMagicLinkForEmail: failed to send OTP", {
       role: input.role,
       email: normalizedEmail,
-      nextPath: safeNextPath,
+      requestedNextPath: input.nextPath,
+      emailRedirectTo,
       error,
     });
     return {
@@ -62,27 +61,6 @@ export async function requestMagicLinkForEmail(
       error: MAGIC_LINK_ERROR_MESSAGE,
     };
   }
-}
-
-function getSafeNextPath(value: string | null | undefined): string {
-  const fallback = "/login";
-  if (!value || typeof value !== "string") {
-    return fallback;
-  }
-
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return fallback;
-  }
-
-  if (value.startsWith("/auth/")) {
-    return fallback;
-  }
-
-  if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//.test(value)) {
-    return fallback;
-  }
-
-  return value;
 }
 
 function getSiteOrigin(): string {
