@@ -16,9 +16,9 @@ const FOOTER_COLUMNS: {
       { label: "Customer portal", href: "/customer" },
       {
         label: "Become a customer",
-        href: "/quote",
+        href: "/customer/signup",
         description:
-          "Submit your first RFQ and we’ll spin up your workspace behind the scenes.",
+          "Create your workspace and send your first RFQ.",
       },
     ],
   },
@@ -28,8 +28,9 @@ const FOOTER_COLUMNS: {
       { label: "Supplier portal", href: "/supplier" },
       {
         label: "Become a supplier",
-        href: "/supplier",
-        description: "Use the magic-link portal to finish onboarding and unlock matches.",
+        href: "/supplier/signup",
+        description:
+          "Create a supplier profile and get a magic link to finish onboarding.",
       },
     ],
   },

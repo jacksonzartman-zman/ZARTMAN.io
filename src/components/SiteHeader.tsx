@@ -53,6 +53,12 @@ export default function SiteHeader() {
               {link.label}
             </Link>
           ))}
+          <Link
+            href="/login"
+            className="rounded-full px-3 py-1.5 text-ink-soft transition-colors hover:text-ink"
+          >
+            Log in
+          </Link>
           <Link href="/quote" className={primaryCtaClasses}>
             Get quote
           </Link>

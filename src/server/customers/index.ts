@@ -223,3 +223,56 @@ async function updateCustomer(
 
   return data ?? null;
 }
+
+type UpsertCustomerByEmailInput = {
+  email: string;
+  companyName: string;
+  phone?: string | null;
+};
+
+export async function upsertCustomerByEmail(
+  input: UpsertCustomerByEmailInput,
+): Promise<CustomerRow | null> {
+  const normalizedEmail = normalizeEmail(input.email);
+  if (!normalizedEmail) {
+    throw new Error("A valid email address is required.");
+  }
+
+  const companyName =
+    sanitizeText(input.companyName) ||
+    normalizedEmail.split("@")[0]?.replace(/\W+/g, " ").trim() ||
+    "Customer";
+  const phone = sanitizeText(input.phone);
+
+  const payload = {
+    email: normalizedEmail,
+    company_name: companyName,
+    phone,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("customers")
+      .upsert(payload, { onConflict: "email" })
+      .select("*")
+      .single<CustomerRow>();
+
+    if (error) {
+      console.error("upsertCustomerByEmail: upsert failed", {
+        email: normalizedEmail,
+        payload,
+        error,
+      });
+      return null;
+    }
+
+    return data ?? null;
+  } catch (error) {
+    console.error("upsertCustomerByEmail: unexpected error", {
+      email: normalizedEmail,
+      error,
+    });
+    return null;
+  }
+}
