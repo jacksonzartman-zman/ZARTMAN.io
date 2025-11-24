@@ -1,4 +1,5 @@
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
+import type { FairnessScore } from "@/lib/fairness";
 
 export type SupplierRow = {
   id: string;
@@ -110,4 +111,5 @@ export type SupplierQuoteMatch = {
   score: number;
   createdAt: string | null;
   quantityHint?: string | null;
+  fairness?: FairnessScore;
 };

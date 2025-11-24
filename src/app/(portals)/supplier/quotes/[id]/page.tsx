@@ -33,6 +33,7 @@ import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
 import { getCurrentSession } from "@/server/auth";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
+import { canUserBid } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -154,6 +155,14 @@ function SupplierQuoteWorkspace({
   const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
   const nextWorkflowState = getNextWorkflowState(derived.status);
+  const canSubmitBid = canUserBid("supplier", {
+    status: quote.status,
+    existingBidStatus: existingBid?.status ?? null,
+    accessGranted: true,
+  });
+  const bidLocked = !canSubmitBid;
+  const acceptedLock = existingBid?.status === "accepted";
+  const closedWindowLock = bidLocked && !acceptedLock;
     const supplierDisplayName =
       supplierNameOverride ??
       getSupplierDisplayName(supplierEmail, quote, assignments);
@@ -311,8 +320,6 @@ function SupplierQuoteWorkspace({
     </section>
   );
 
-  const bidLocked = existingBid?.status === "accepted";
-
   const bidContent = (
     <section className={cardClasses}>
       <header className="space-y-1">
@@ -330,9 +337,14 @@ function SupplierQuoteWorkspace({
         Share a unit price, realistic lead time, and highlight any certifications or notes that help
         the buyer approve your shop.
       </p>
-      {bidLocked ? (
+      {acceptedLock ? (
         <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
           This bid is locked because the customer already accepted it.
+        </p>
+      ) : null}
+      {closedWindowLock ? (
+        <p className="mt-3 rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
+          Bidding is disabled because this RFQ is no longer accepting new proposals.
         </p>
       ) : null}
       <div className="mt-4">

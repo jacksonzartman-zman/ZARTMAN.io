@@ -405,6 +405,7 @@ function MatchesCard({
                 : "Value pending";
             const filesLabel =
               fileCount > 0 ? `${fileCount} file${fileCount === 1 ? "" : "s"}` : "No files";
+            const fairnessReason = match.fairness?.reasons?.[0] ?? null;
             return (
               <li key={quote.id}>
                 <Link
@@ -427,6 +428,11 @@ function MatchesCard({
                   <div className="mt-2 text-xs text-slate-500">
                     <p>{materialsText}</p>
                     <p>Created {createdLabel ?? "recently"}</p>
+                    {fairnessReason ? (
+                      <p className="text-[11px] text-blue-200/80">
+                        Fairness boost: {fairnessReason}
+                      </p>
+                    ) : null}
                   </div>
                 </Link>
               </li>
