@@ -59,6 +59,18 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   handler satisfies AppPageConfig<"/customer/quotes/[id]">
 }
 
+// Validate ../../src/app/(portals)/customer/quotes/page.tsx
+{
+  const handler = {} as typeof import("../../src/app/(portals)/customer/quotes/page.js")
+  handler satisfies AppPageConfig<"/customer/quotes">
+}
+
+// Validate ../../src/app/(portals)/customer/settings/page.tsx
+{
+  const handler = {} as typeof import("../../src/app/(portals)/customer/settings/page.js")
+  handler satisfies AppPageConfig<"/customer/settings">
+}
+
 // Validate ../../src/app/(portals)/supplier/onboarding/page.tsx
 {
   const handler = {} as typeof import("../../src/app/(portals)/supplier/onboarding/page.js")
@@ -75,6 +87,18 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   const handler = {} as typeof import("../../src/app/(portals)/supplier/quotes/[id]/page.js")
   handler satisfies AppPageConfig<"/supplier/quotes/[id]">
+}
+
+// Validate ../../src/app/(portals)/supplier/rfqs/page.tsx
+{
+  const handler = {} as typeof import("../../src/app/(portals)/supplier/rfqs/page.js")
+  handler satisfies AppPageConfig<"/supplier/rfqs">
+}
+
+// Validate ../../src/app/(portals)/supplier/settings/page.tsx
+{
+  const handler = {} as typeof import("../../src/app/(portals)/supplier/settings/page.js")
+  handler satisfies AppPageConfig<"/supplier/settings">
 }
 
 // Validate ../../src/app/admin/page.tsx

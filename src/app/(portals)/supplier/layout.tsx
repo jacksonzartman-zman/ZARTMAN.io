@@ -6,5 +6,5 @@ export default function SupplierPortalLayout({
 }: {
   children: ReactNode;
 }) {
-  return <PortalLayout role="supplier">{children}</PortalLayout>;
+  return <PortalLayout>{children}</PortalLayout>;
 }

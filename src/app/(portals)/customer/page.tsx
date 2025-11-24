@@ -1,5 +1,6 @@
 import Link from "next/link";
 import PortalCard from "../PortalCard";
+import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
   normalizeUploadStatus,
@@ -86,6 +87,11 @@ async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
   const session = await requireSession({ redirectTo: "/customer" });
+  const sessionCompanyName =
+    sanitizeDisplayName(session.user.user_metadata?.company) ??
+    sanitizeDisplayName(session.user.user_metadata?.full_name) ??
+    sanitizeDisplayName(session.user.email) ??
+    "your team";
   const overrideParam = getFirstParamValue(searchParams?.email);
   const overrideEmail = normalizeEmailInput(overrideParam);
   const customer = await getCustomerByUserId(session.user.id);
@@ -93,6 +99,10 @@ async function CustomerDashboardPage({
   if (!customer) {
     return (
       <div className="space-y-6">
+        <WorkspaceWelcomeBanner
+          role="customer"
+          companyName={sessionCompanyName}
+        />
         <CompleteCustomerProfileCard
           sessionEmail={session.user.email ?? null}
           defaultCompanyName={
@@ -146,7 +156,15 @@ async function CustomerDashboardPage({
 
   return (
     <div className="space-y-6">
-        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
+      <WorkspaceWelcomeBanner
+        role="customer"
+        companyName={
+          sanitizeDisplayName(customer.company_name) ??
+          viewerDisplayEmail ??
+          sessionCompanyName
+        }
+      />
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
           {usingOverride ? (
             <>
               <p>
@@ -176,7 +194,7 @@ async function CustomerDashboardPage({
               No direct matches found, so we’re showing other contacts at @{viewerDomain}.
             </p>
           ) : null}
-        </section>
+      </section>
 
       {portalData.error ? (
         <PortalCard
@@ -296,6 +314,14 @@ function getEmailDomain(value?: string | null): string | null {
   }
   const [, domain] = value.split("@");
   return domain?.length ? domain : null;
+}
+
+function sanitizeDisplayName(value?: string | null): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 async function loadCustomerPortalData(
