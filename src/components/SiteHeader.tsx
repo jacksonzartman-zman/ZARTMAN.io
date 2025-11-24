@@ -53,7 +53,7 @@ export default function SiteHeader() {
               {link.label}
             </Link>
           ))}
-          <Link href="/customer/signup" className={primaryCtaClasses}>
+          <Link href="/quote" className={primaryCtaClasses}>
             Get quote
           </Link>
         </div>
