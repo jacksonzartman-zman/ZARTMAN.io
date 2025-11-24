@@ -4,9 +4,8 @@ import type {
   SupplierCapabilityRow,
   SupplierRow,
 } from "@/server/suppliers";
-import {
-  normalizeEmailInput,
-} from "@/app/(portals)/quotes/pageUtils";
+import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import { canUserViewQuote } from "@/lib/permissions";
 
 export type SupplierAssignment = {
   supplier_email: string | null;
@@ -60,39 +59,50 @@ export function supplierHasAccess(
   }
 
   const normalizedAssigned = normalizeEmailInput(quote.assigned_supplier_email);
-  if (normalizedAssigned && normalizedAssigned === normalizedEmail) {
-    return true;
-  }
-
   const hasExplicitAssignment = assignments.some(
     (assignment) =>
       normalizeEmailInput(assignment.supplier_email) === normalizedEmail,
   );
-  if (hasExplicitAssignment) {
-    return true;
-  }
-
-  if (
-    options?.supplier &&
-    options.supplier.verified &&
-    options.verifiedProcessMatch &&
-    normalizeEmailInput(options.supplier.primary_email) === normalizedEmail
-  ) {
-    console.warn("Supplier access: allowing via verified capability match", {
-      quoteId: quote.id,
-      supplierEmail: normalizedEmail,
-    });
-    return true;
-  }
-
-  // TEMP: Dev/demo fallback so supplier portal can be exercised before quote_suppliers is populated.
+  const supplierPrimaryEmail = normalizeEmailInput(
+    options?.supplier?.primary_email ?? null,
+  );
+  const verifiedAccess =
+    Boolean(options?.supplier?.verified) &&
+    Boolean(options?.verifiedProcessMatch) &&
+    supplierPrimaryEmail === normalizedEmail;
   const normalizedQuoteEmail = normalizeEmailInput(quote.email);
-  if (normalizedQuoteEmail && normalizedQuoteEmail === normalizedEmail) {
-    console.warn("Supplier access: using dev fallback via quote.email match", {
-      quoteId: quote.id,
-      supplierEmail: normalizedEmail,
-      quoteEmail: quote.email,
-    });
+
+  const permissionPayload = {
+    ...quote,
+    supplierAssignments: assignments,
+    allowedSupplierEmails: assignments
+      .map((assignment) => assignment.supplier_email)
+      .filter((value): value is string => Boolean(value)),
+    supplierContext: {
+      verifiedAccess,
+      verifiedEmails: [supplierPrimaryEmail, normalizedEmail].filter(
+        (value): value is string => Boolean(value),
+      ),
+    },
+  };
+
+  if (canUserViewQuote("supplier", normalizedEmail, permissionPayload)) {
+    if (!hasExplicitAssignment && !normalizedAssigned && verifiedAccess) {
+      console.warn("Supplier access: allowing via verified capability match", {
+        quoteId: quote.id,
+        supplierEmail: normalizedEmail,
+      });
+    } else if (
+      !hasExplicitAssignment &&
+      !normalizedAssigned &&
+      normalizedQuoteEmail === normalizedEmail
+    ) {
+      console.warn("Supplier access: using dev fallback via quote.email match", {
+        quoteId: quote.id,
+        supplierEmail: normalizedEmail,
+        quoteEmail: quote.email,
+      });
+    }
     return true;
   }
 
