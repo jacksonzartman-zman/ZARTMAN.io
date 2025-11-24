@@ -26,6 +26,30 @@
         "x-next-revalidate-tag-token"
       ]
     },
+    "/customer/signup": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/customer/signup",
+      "dataRoute": "/customer/signup.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    },
     "/quote": {
       "experimentalBypassFor": [
         {
@@ -74,54 +98,6 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/login": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/login",
-      "dataRoute": "/login.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
-    "/customer/signup": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/customer/signup",
-      "dataRoute": "/customer/signup.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
     "/supplier/signup": {
       "experimentalBypassFor": [
         {
@@ -150,8 +126,8 @@
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "553cf860061fd593210f4bd741dd04a2",
-    "previewModeSigningKey": "16616674c07d4b314ae3ef39152293e8f00927ccc3ba0764e725e4a7458a1a5e",
-    "previewModeEncryptionKey": "7371aa0b69e57a06c0c20199862374007693b3d768f3d5d9032cc87dcddcf2a1"
+    "previewModeId": "af9495605b98d0d6539f938606a8b988",
+    "previewModeSigningKey": "7a05a3338c068fb32c3619c71a50ce24c4e972cbed7a45a2bf5897a30d61fa80",
+    "previewModeEncryptionKey": "a6bd94a8a6a36d39a09c9a8c46a359e713d5ccb9c8c674e91a94caeb8357d7c6"
   }
 }
