@@ -1,18 +1,36 @@
 import Link from "next/link";
 
-const FOOTER_COLUMNS = [
+type FooterLink = {
+  label: string;
+  href: string;
+  description?: string;
+};
+
+const FOOTER_COLUMNS: {
+  title: string;
+  links: FooterLink[];
+}[] = [
   {
     title: "Customers",
     links: [
       { label: "Customer portal", href: "/customer" },
-      { label: "Become a customer", href: "/customer/signup" },
+      {
+        label: "Become a customer",
+        href: "/quote",
+        description:
+          "Submit your first RFQ and we’ll spin up your workspace behind the scenes.",
+      },
     ],
   },
   {
     title: "Suppliers",
     links: [
       { label: "Supplier portal", href: "/supplier" },
-      { label: "Become a supplier", href: "/supplier/onboarding" },
+      {
+        label: "Become a supplier",
+        href: "/supplier",
+        description: "Use the magic-link portal to finish onboarding and unlock matches.",
+      },
     ],
   },
   {
@@ -37,13 +55,16 @@ export default function SiteFooter() {
               </p>
               <ul className="space-y-2 text-sm text-ink-soft">
                 {column.links.map((link) => (
-                  <li key={link.href}>
+                  <li key={link.href} className="space-y-1">
                     <Link
                       href={link.href}
                       className="transition-colors hover:text-ink"
                     >
                       {link.label}
                     </Link>
+                    {link.description ? (
+                      <p className="text-xs text-ink-muted">{link.description}</p>
+                    ) : null}
                   </li>
                 ))}
               </ul>

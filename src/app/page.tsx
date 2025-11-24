@@ -61,19 +61,21 @@ export default function HomePage() {
               </li>
             </ul>
 
+            <div id="early-access">
               <EarlyAccessForm />
+            </div>
 
-              <div className="flex flex-wrap items-center gap-4">
-                <Link href="/quote" className={primaryCtaClasses}>
-                  Get a quote
-                </Link>
-                <Link
-                  href="#how-it-works"
-                  className="inline-flex items-center justify-center rounded-pill border border-line-subtle px-6 py-2 text-sm font-semibold text-ink transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-                >
-                  See how it works
-                </Link>
-              </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <Link href="/quote" className={primaryCtaClasses}>
+                Get a quote
+              </Link>
+              <Link
+                href="#how-it-works"
+                className="inline-flex items-center justify-center rounded-pill border border-line-subtle px-6 py-2 text-sm font-semibold text-ink transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              >
+                See how it works
+              </Link>
+            </div>
           </div>
 
           {/* Right side: admin preview + intake */}
@@ -116,31 +118,31 @@ export default function HomePage() {
                 ))}
               </div>
             </div>
-                <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-5 shadow-lift-sm space-y-4">
-                <p className="text-sm font-semibold text-ink">
-                  CAD intake lives on /quote
-                </p>
-                <p className="text-sm text-ink-muted">
-                  STEP, IGES, STL, SolidWorks &amp; zipped assemblies. Uploads land in
-                  Supabase storage and show up instantly in the admin dashboard.
-                </p>
-                <ul className="space-y-2 text-sm text-ink-soft">
-                  <li>• Secure storage with automatic filename sanitizing.</li>
-                  <li>• Status tracking that mirrors the admin cockpit.</li>
-                  <li>• DFM notes + pricing threads kept in one place.</li>
-                </ul>
-                <Link
-                  href="/quote"
-                  className={clsx(primaryCtaClasses, "w-full")}
-                >
-                    Get a quote
-                  </Link>
-              </div>
+            <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-5 shadow-lift-sm space-y-4">
+              <p className="text-sm font-semibold text-ink">
+                CAD intake lives on /quote
+              </p>
+              <p className="text-sm text-ink-muted">
+                STEP, IGES, STL, SolidWorks &amp; zipped assemblies. Uploads land in
+                Supabase storage and show up instantly in the admin dashboard.
+              </p>
+              <ul className="space-y-2 text-sm text-ink-soft">
+                <li>• Secure storage with automatic filename sanitizing.</li>
+                <li>• Status tracking that mirrors the admin cockpit.</li>
+                <li>• DFM notes + pricing threads kept in one place.</li>
+              </ul>
+              <Link
+                href="/quote"
+                className={clsx(primaryCtaClasses, "w-full")}
+              >
+                Upload RFQ
+              </Link>
+            </div>
           </div>
         </section>
 
         {/* HOW IT WORKS */}
-          <section id="how-it-works" className="space-y-6 scroll-mt-24">
+        <section id="how-it-works" className="space-y-6 scroll-mt-24">
           <header className="space-y-2">
             <h2 className="text-lg sm:text-xl font-semibold text-ink">
               How it works
