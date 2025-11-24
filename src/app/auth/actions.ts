@@ -34,14 +34,16 @@ export async function requestMagicLinkForEmail(
   }
 
   const supabase = supabasePublic();
-  const safeNextPath = getSafeNextPath(input.nextPath, input.role);
+  const safeNextPath = getSafeNextPath(input.nextPath);
   const origin = resolveSiteOrigin();
 
   try {
     await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
-        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(safeNextPath)}`,
+        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(
+          safeNextPath,
+        )}`,
       },
     });
     return {
@@ -62,11 +64,8 @@ export async function requestMagicLinkForEmail(
   }
 }
 
-function getSafeNextPath(
-  value: string | null | undefined,
-  role: PortalRole,
-): string {
-  const fallback = role === "supplier" ? "/supplier" : "/customer";
+function getSafeNextPath(value: string | null | undefined): string {
+  const fallback = "/login";
   if (!value || typeof value !== "string") {
     return fallback;
   }
@@ -75,7 +74,11 @@ function getSafeNextPath(
     return fallback;
   }
 
-  if (value === "/auth/callback" || value.startsWith("/auth/callback?")) {
+  if (value.startsWith("/auth/")) {
+    return fallback;
+  }
+
+  if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//.test(value)) {
     return fallback;
   }
 
