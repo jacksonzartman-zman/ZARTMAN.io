@@ -90,6 +90,18 @@
       "namedRegex": "^/customer(?:/)?$"
     },
     {
+      "page": "/customer/signup",
+      "regex": "^/customer/signup(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customer/signup(?:/)?$"
+    },
+    {
+      "page": "/login",
+      "regex": "^/login(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/login(?:/)?$"
+    },
+    {
       "page": "/quote",
       "regex": "^/quote(?:/)?$",
       "routeKeys": {},
@@ -106,6 +118,12 @@
       "regex": "^/supplier/onboarding(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/supplier/onboarding(?:/)?$"
+    },
+    {
+      "page": "/supplier/signup",
+      "regex": "^/supplier/signup(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/supplier/signup(?:/)?$"
     }
   ],
   "dataRoutes": [],

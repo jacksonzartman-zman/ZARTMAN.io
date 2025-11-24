@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabase.client";
-import type { PortalRole } from "./PortalLayout";
+import { requestMagicLinkForEmail } from "@/app/auth/actions";
+import type { PortalRole } from "@/types/portal";
 
 type PortalLoginPanelProps = {
   role: PortalRole;
@@ -35,7 +35,6 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
   const [error, setError] = useState<string | null>(null);
   const [lastSentTo, setLastSentTo] = useState<string | null>(null);
   const pathname = usePathname();
-  const supabase = supabaseBrowser();
 
   const redirectPath =
     typeof pathname === "string" && pathname.startsWith(`/${role}`)
@@ -44,12 +43,6 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!supabase) {
-      setError("Supabase client not configured. Check env vars.");
-      setStatus("error");
-      return;
-    }
-
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
       setError(
@@ -64,17 +57,23 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
     try {
       setStatus("sending");
       setError(null);
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : process.env.NEXT_PUBLIC_SITE_URL;
-      const nextUrl = encodeURIComponent(redirectPath);
-      await supabase.auth.signInWithOtp({
+      const result = await requestMagicLinkForEmail({
+        role,
         email: normalizedEmail,
-        options: {
-          emailRedirectTo: `${origin}/auth/callback?next=${nextUrl}`,
-        },
+        nextPath: redirectPath,
       });
+      if (!result.success) {
+        setStatus("error");
+        setError(
+          result.error ??
+            (role === "supplier"
+              ? "We couldn’t send the link. Check your connection and try again."
+              : "We couldn’t send the link. Try again in a few seconds."),
+        );
+        return;
+      }
       setStatus("sent");
-      setLastSentTo(normalizedEmail);
+      setLastSentTo(result.normalizedEmail ?? normalizedEmail);
     } catch (err) {
       console.error("Portal login: failed to request magic link", err);
       setError(

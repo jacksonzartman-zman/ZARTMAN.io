@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-
-export type PortalRole = "customer" | "supplier";
+import type { PortalRole } from "@/types/portal";
 
 const ROLE_COPY: Record<
   PortalRole,
