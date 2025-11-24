@@ -5,6 +5,8 @@ import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "../PortalCard";
 import { PortalLoginPanel } from "../PortalLoginPanel";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
+import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
+import { EmptyStateNotice } from "../EmptyStateNotice";
 import {
   getSearchParamValue,
   normalizeEmailInput,
@@ -19,6 +21,7 @@ import {
   type SupplierProfile,
 } from "@/server/suppliers";
 import { getCurrentSession } from "@/server/auth";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 
 export const dynamic = "force-dynamic";
 
@@ -79,12 +82,20 @@ async function SupplierDashboardPage({
     sanitizeDisplayName(supplier?.company_name) ??
     sanitizeDisplayName(companyLabel) ??
     sessionCompanyName;
+  const supplierMetrics = deriveSupplierMetrics(matches, bids);
+  const lastUpdatedTimestamp = getLatestSupplierActivityTimestamp(matches, bids);
+  const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
 
   return (
     <div className="space-y-6">
       <WorkspaceWelcomeBanner
         role="supplier"
         companyName={workspaceCompanyName}
+      />
+      <WorkspaceMetrics
+        role="supplier"
+        metrics={supplierMetrics}
+        lastUpdatedLabel={lastUpdatedLabel}
       />
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
@@ -353,15 +364,25 @@ function MatchesCard({
             );
           })}
         </ul>
-        ) : supplierExists ? (
-        <div className="rounded-2xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-4 text-sm text-slate-400">
-          No matches yet. We’ll email you as soon as there’s a fit and list the RFQ here.
-        </div>
-        ) : (
-          <p className="text-sm text-slate-400">
-            Complete onboarding to unlock RFQ matching.
-          </p>
-        )}
+      ) : supplierExists ? (
+        <EmptyStateNotice
+          title="No RFQs matched yet"
+          description="We continuously scan your capabilities against active RFQs. As soon as there’s a fit, it will appear here and hit your inbox."
+        />
+      ) : (
+        <EmptyStateNotice
+          title="Unlock RFQ matching"
+          description="Tell us about your processes, materials, and certs so we can start routing inbound RFQs directly to you."
+          action={
+            <Link
+              href="/supplier/onboarding"
+              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+            >
+              Finish onboarding
+            </Link>
+          }
+        />
+      )}
     </PortalCard>
   );
 }
@@ -407,10 +428,10 @@ function BidsCard({
           ))}
         </ul>
       ) : (
-        <div className="rounded-2xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-4 text-sm text-slate-400">
-          No bids yet. Open a matched RFQ above to submit pricing, lead time, and certs — we’ll track
-          the status here once you send it.
-        </div>
+        <EmptyStateNotice
+          title="No bids submitted"
+          description="Open a matched RFQ to send pricing, lead time, and certs. Every bid you send will be tracked right here."
+        />
       )}
     </PortalCard>
   );
@@ -469,6 +490,69 @@ function sanitizeDisplayName(value?: string | null): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function deriveSupplierMetrics(
+  matches: SupplierQuoteMatch[],
+  bids: SupplierBidWithContext[],
+): WorkspaceMetric[] {
+  const rfqsMatched = matches.length;
+  const bidsSubmitted = bids.length;
+  const bidsAccepted = bids.filter((bid) => bid.status === "accepted").length;
+
+  return [
+    {
+      label: "RFQs matched",
+      value: rfqsMatched,
+      helper:
+        rfqsMatched > 0
+          ? "Capability-aligned RFQs waiting for review"
+          : "We’ll auto-populate this once your profile attracts matches.",
+    },
+    {
+      label: "Bids submitted",
+      value: bidsSubmitted,
+      helper:
+        bidsSubmitted > 0
+          ? "Tracked across every quote you’ve priced"
+          : "Send your first bid from an RFQ match above.",
+    },
+    {
+      label: "Bids accepted",
+      value: bidsAccepted,
+      helper:
+        bidsAccepted > 0
+          ? "Customers accepted these proposals"
+          : "We’ll highlight wins to celebrate momentum.",
+    },
+  ];
+}
+
+function getLatestSupplierActivityTimestamp(
+  matches: SupplierQuoteMatch[],
+  bids: SupplierBidWithContext[],
+): number | null {
+  const timestamps: number[] = [];
+
+  for (const match of matches) {
+    const ts = toTimestamp(match.createdAt);
+    if (typeof ts === "number") {
+      timestamps.push(ts);
+    }
+  }
+
+  for (const bid of bids) {
+    const ts = toTimestamp(bid.updated_at ?? bid.created_at);
+    if (typeof ts === "number") {
+      timestamps.push(ts);
+    }
+  }
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+
+  return Math.max(...timestamps);
 }
 
 type NextAppPage = (props: {

@@ -13,6 +13,15 @@ type NavLink = {
   href: string;
 };
 
+type NotificationItem = {
+  id: string;
+  title: string;
+  description: string;
+  href?: string;
+  timestampLabel?: string;
+  read?: boolean;
+};
+
 const ROLE_BADGE_COPY: Record<PortalRole, string> = {
   customer: "Customer workspace",
   supplier: "Supplier workspace",
@@ -37,6 +46,32 @@ const NAV_LINKS: Record<PortalRole, NavLink[]> = {
     { label: "Settings", href: "/supplier/settings" },
   ],
 };
+
+const MOCK_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: "notif-1",
+    title: "New RFQ matched",
+    description: "Quote Q-104 now has 3 vetted suppliers attached.",
+    href: "/customer/quotes",
+    timestampLabel: "5m ago",
+    read: false,
+  },
+  {
+    id: "notif-2",
+    title: "Bid accepted",
+    description: "Your bid on Q-087 was accepted. Prep kickoff details.",
+    href: "/supplier/quotes/Q-087",
+    timestampLabel: "18m ago",
+    read: false,
+  },
+  {
+    id: "notif-3",
+    title: "Workspace reminder",
+    description: "Finish onboarding docs to unlock instant RFQ routing.",
+    timestampLabel: "1h ago",
+    read: true,
+  },
+];
 
 export type AppHeaderClientProps = {
   user: HeaderUser | null;
@@ -85,11 +120,14 @@ export default function AppHeaderClient({
 
           <div className="flex items-center gap-3">
             {user ? (
+            <>
+              <NotificationsBell notifications={MOCK_NOTIFICATIONS} />
               <UserDropdown
                 user={user}
                 role={role}
                 signOutAction={signOutAction}
               />
+            </>
             ) : (
               <div className="flex items-center gap-3 text-sm font-semibold text-ink-soft">
                 <Link
@@ -129,6 +167,137 @@ export default function AppHeaderClient({
         ) : null}
       </div>
     </header>
+  );
+}
+
+function NotificationsBell({
+  notifications,
+}: {
+  notifications: NotificationItem[];
+}) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const pathname = usePathname();
+  const hasNotifications = notifications.length > 0;
+  const unreadCount = notifications.filter((item) => item.read === false).length;
+
+  useEffect(() => {
+    function handleClick(event: MouseEvent) {
+      if (!dropdownRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClick);
+    }
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-800 bg-slate-950/60 text-slate-300 transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={hasNotifications ? "View notifications" : "No notifications"}
+      >
+        <BellIcon className="h-5 w-5" />
+        {hasNotifications ? (
+          <span className="absolute -right-0.5 -top-0.5 inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow ring-2 ring-slate-950">
+            <span className="sr-only">
+              {unreadCount > 0
+                ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`
+                : "You have notifications"}
+            </span>
+          </span>
+        ) : null}
+      </button>
+      {open ? (
+        <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-slate-900 bg-slate-950/95 p-4 text-sm text-slate-200 shadow-lg shadow-black/40">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-white">Notifications</p>
+            <span className="text-xs text-slate-500">
+              {hasNotifications
+                ? `${unreadCount || notifications.length} new`
+                : "All caught up"}
+            </span>
+          </div>
+          <div className="mt-3 space-y-2">
+            {hasNotifications ? (
+              notifications.map((notification) => (
+                <NotificationPreview
+                  key={notification.id}
+                  notification={notification}
+                />
+              ))
+            ) : (
+              <p className="text-xs text-slate-500">
+                We’ll surface quote and bid updates here soon.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function NotificationPreview({
+  notification,
+}: {
+  notification: NotificationItem;
+}) {
+  const content = (
+    <div
+      className={clsx(
+        "flex flex-col rounded-2xl border px-3 py-2 transition hover:border-emerald-400/30 hover:bg-slate-900/40",
+        notification.read ? "border-slate-900/70 opacity-80" : "border-emerald-500/30",
+      )}
+    >
+      <p className="text-sm font-semibold text-white">{notification.title}</p>
+      <p className="text-xs text-slate-400">{notification.description}</p>
+      <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">
+        {notification.timestampLabel ?? "Just now"}
+      </p>
+    </div>
+  );
+
+  if (notification.href) {
+    return (
+      <Link
+        href={notification.href}
+        className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return content;
+}
+
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 4a4 4 0 0 0-4 4v2.26c0 .46-.18.9-.5 1.22L6.2 12.78A1 1 0 0 0 6.9 14h10.2a1 1 0 0 0 .7-1.72l-1.3-1.3a1.73 1.73 0 0 1-.5-1.22V8a4 4 0 0 0-4-4Z" />
+      <path d="M10 17a2 2 0 0 0 4 0" />
+    </svg>
   );
 }
 
