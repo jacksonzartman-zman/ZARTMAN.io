@@ -12,21 +12,11 @@ export default async function CustomerPortalLayout({
 
   if (!session) {
     return (
-      <PortalLayout role="customer">
+      <PortalLayout>
         <PortalLoginPanel role="customer" fallbackRedirect="/customer" />
       </PortalLayout>
     );
   }
 
-  const displayName =
-    session.user.user_metadata?.full_name ??
-    session.user.email ??
-    session.user.phone ??
-    "Signed-in user";
-
-  return (
-    <PortalLayout role="customer" userName={displayName}>
-      {children}
-    </PortalLayout>
-  );
+  return <PortalLayout>{children}</PortalLayout>;
 }

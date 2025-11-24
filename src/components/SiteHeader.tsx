@@ -1,4 +1,7 @@
+'use client';
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { primaryCtaClasses } from "@/lib/ctas";
 
 const CENTER_LINKS = [
@@ -12,6 +15,11 @@ const RIGHT_LINKS = [
 ];
 
 export default function SiteHeader() {
+  const pathname = usePathname();
+  if (pathname?.startsWith("/customer") || pathname?.startsWith("/supplier")) {
+    return null;
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b border-slate-900/70 bg-neutral-950/90 backdrop-blur-md">
       <div className="mx-auto grid w-full max-w-page grid-cols-1 gap-4 px-4 py-4 sm:px-6 md:grid-cols-[auto_minmax(0,1fr)_auto] lg:px-8">
