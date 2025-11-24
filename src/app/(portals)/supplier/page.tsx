@@ -51,47 +51,18 @@ async function SupplierDashboardPage({
   const capabilities = profile?.capabilities ?? [];
   const documents = profile?.documents ?? [];
 
-  if (!supplier) {
-    return (
-      <div className="space-y-6">
-        <PortalCard
-          title="Finish supplier onboarding"
-          description="Share your shop profile once so we know which RFQs, bids, and compliance docs belong to you."
-          action={
-            <Link href="/supplier/onboarding" className={primaryCtaClasses}>
-              Finish onboarding
-            </Link>
-          }
-        >
-          <div className="space-y-4 text-sm text-slate-300">
-            <p>
-              Add your capabilities, certifications, and compliance documents so we can auto-route
-              RFQs and unlock shared messaging with the Zartman team.
-            </p>
-            <div className="flex flex-col gap-3 text-xs sm:flex-row sm:items-center sm:gap-4">
-              <Link
-                href="/supplier"
-                className={`${secondaryCtaClasses} w-full sm:w-auto`}
-              >
-                Back to supplier portal
-              </Link>
-              <p className="text-slate-500">
-                Need help? Reply to your onboarding email and we’ll jump in.
-              </p>
-            </div>
-          </div>
-        </PortalCard>
-      </div>
-    );
+  let matches: SupplierQuoteMatch[] = [];
+  let bids: SupplierBidWithContext[] = [];
+  if (supplier) {
+    [matches, bids] = await Promise.all([
+      matchQuotesToSupplier(supplier.id),
+      listSupplierBidsForSupplier(supplier.id),
+    ]);
   }
 
-  const [matches, bids] = await Promise.all([
-    matchQuotesToSupplier(supplier.id),
-    listSupplierBidsForSupplier(supplier.id),
-  ]);
-
-  const signedInEmail = supplier.primary_email ?? supplierEmail;
-  const companyLabel = supplier.company_name ?? supplier.primary_email ?? supplierEmail;
+  const signedInEmail = supplier?.primary_email ?? supplierEmail;
+  const companyLabel =
+    supplier?.company_name ?? supplier?.primary_email ?? supplierEmail;
 
   return (
     <div className="space-y-6">
@@ -124,21 +95,61 @@ async function SupplierDashboardPage({
         ) : null}
       </section>
 
+      <OnboardingPromptCard supplierExists={Boolean(supplier)} />
+
       <ProfileCard
-        supplierEmail={supplier.primary_email ?? supplierEmail}
+        supplierEmail={supplier?.primary_email ?? supplierEmail}
         supplier={supplier}
         capabilities={capabilities}
         documents={documents}
       />
 
       <MatchesCard
-        supplierEmail={supplier.primary_email ?? supplierEmail}
+        supplierEmail={supplier?.primary_email ?? supplierEmail}
         supplierExists={Boolean(supplier)}
         matches={matches}
       />
 
-      <BidsCard supplierEmail={supplier.primary_email ?? supplierEmail} bids={bids} />
+      <BidsCard
+        supplierEmail={supplier?.primary_email ?? supplierEmail}
+        bids={bids}
+      />
     </div>
+  );
+}
+
+function OnboardingPromptCard({
+  supplierExists,
+}: {
+  supplierExists: boolean;
+}) {
+  return (
+    <PortalCard
+      title="Finish supplier onboarding"
+      description="Share your shop profile once so we know which RFQs, bids, and compliance docs belong to you."
+      action={
+        <Link href="/supplier/onboarding" className={primaryCtaClasses}>
+          {supplierExists ? "Update profile" : "Finish onboarding"}
+        </Link>
+      }
+    >
+      <div className="space-y-3 text-sm text-slate-300">
+        <p>
+          We’ll keep using the same email-only magic link to confirm it’s you. Once the form is
+          complete, matched RFQs and compliance requests unlock automatically.
+        </p>
+        {supplierExists ? (
+          <p className="text-xs text-slate-500">
+            Need to tweak capabilities or certs? Re-open the onboarding form any time and your
+            workspace stays in sync.
+          </p>
+        ) : (
+          <p className="text-xs text-slate-500">
+            Add capabilities, certifications, and documents so we can auto-route RFQs to your inbox.
+          </p>
+        )}
+      </div>
+    </PortalCard>
   );
 }
 

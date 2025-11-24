@@ -1,10 +1,10 @@
 import type React from "react";
 import Link from "next/link";
-import { requireSession } from "@/server/auth";
+import { getCurrentSession } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import PortalCard from "../../PortalCard";
 import { SupplierOnboardingForm } from "./SupplierOnboardingForm";
-import { secondaryCtaClasses } from "@/lib/ctas";
+import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 type NextAppPage<P = any> = (
   props: Omit<P, "params" | "searchParams"> & {
@@ -22,7 +22,27 @@ type SupplierOnboardingPageProps = {
 async function SupplierOnboardingPage({
   searchParams,
 }: SupplierOnboardingPageProps) {
-  const session = await requireSession({ redirectTo: "/supplier/onboarding" });
+  const session = await getCurrentSession();
+  if (!session) {
+    return (
+      <div className="space-y-6">
+        <PortalCard
+          title="Sign in to finish onboarding"
+          description="We sent you a one-time magic link the last time you accessed the supplier portal."
+          action={
+            <Link href="/supplier" className={primaryCtaClasses}>
+              Back to supplier portal
+            </Link>
+          }
+        >
+          <p className="text-sm text-slate-300">
+            Open the portal again to request another email-only magic link. From there, the onboarding
+            form will reopen automatically.
+          </p>
+        </PortalCard>
+      </div>
+    );
+  }
   const profile = await loadSupplierProfileByUserId(session.user.id);
   const supplier = profile?.supplier ?? null;
 
