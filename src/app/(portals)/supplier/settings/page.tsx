@@ -2,6 +2,11 @@ import Link from "next/link";
 import { requireSession } from "@/server/auth";
 import { loadSupplierProfile } from "@/server/suppliers";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import type { Org } from "@/types/org";
+import {
+  deriveOrgFromSession,
+  deriveOrgSeatSummary,
+} from "@/types/org";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +24,9 @@ export default async function SupplierSettingsPage() {
   const phone = supplier?.phone ?? "Not provided";
   const website = supplier?.website ?? "Not provided";
   const country = supplier?.country ?? "Not provided";
+  const org = deriveOrgFromSession(session, companyName);
+  const seatSummary = deriveOrgSeatSummary(org, session);
+  const planLabel = formatPlanLabel(org.plan);
 
   const notificationPrefs = [
     {
@@ -81,6 +89,28 @@ export default async function SupplierSettingsPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
+        <h2 className="text-lg font-semibold text-white">Organization</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Track which plan you&apos;re on and how many teammates can join the supplier portal.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <SettingsField label="Org name" value={org.name} />
+          <SettingsField label="Plan" value={planLabel} />
+          <SettingsField
+            label="Seats in use"
+            value={`${seatSummary.used} / ${seatSummary.total}`}
+          />
+          <SettingsField
+            label="Seats available"
+            value={`${seatSummary.available}`}
+          />
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Seat management is read-only today. We&apos;ll unlock invites and removals soon.
+        </p>
+      </section>
+
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
         <h2 className="text-lg font-semibold text-white">Notification preferences</h2>
         <p className="mt-1 text-sm text-slate-400">
           We’re still sending these via email only. Toggles stay on until the inbox is live.
@@ -139,6 +169,17 @@ function SettingsField({ label, value }: { label: string; value: string }) {
       />
     </label>
   );
+}
+
+function formatPlanLabel(plan: Org["plan"]): string {
+  switch (plan) {
+    case "enterprise":
+      return "Enterprise";
+    case "pro":
+      return "Pro";
+    default:
+      return "Basic";
+  }
 }
 
 function IntegrationPlaceholder({

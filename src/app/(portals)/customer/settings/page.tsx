@@ -1,5 +1,10 @@
 import { requireSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
+import type { Org } from "@/types/org";
+import {
+  deriveOrgFromSession,
+  deriveOrgSeatSummary,
+} from "@/types/org";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +16,9 @@ export default async function CustomerSettingsPage() {
     customer?.company_name ??
     (session.user.user_metadata?.company as string | undefined) ??
     "Your company";
+  const org = deriveOrgFromSession(session, companyName);
+  const seatSummary = deriveOrgSeatSummary(org, session);
+  const planLabel = formatPlanLabel(org.plan);
 
   const notificationPrefs = [
     {
@@ -58,6 +66,28 @@ export default async function CustomerSettingsPage() {
         >
           Saving soon
         </button>
+      </section>
+
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
+        <h2 className="text-lg font-semibold text-white">Organization</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Plan details and seat controls will live here as we roll out enterprise admin tooling.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <SettingsField label="Org name" value={org.name} />
+          <SettingsField label="Plan" value={planLabel} />
+          <SettingsField
+            label="Seats in use"
+            value={`${seatSummary.used} / ${seatSummary.total}`}
+          />
+          <SettingsField
+            label="Seats available"
+            value={`${seatSummary.available}`}
+          />
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Seat management is read-only today. Ping us if you need to increase capacity ahead of time.
+        </p>
       </section>
 
       <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
@@ -120,6 +150,17 @@ function SettingsField({ label, value }: { label: string; value: string }) {
       />
     </label>
   );
+}
+
+function formatPlanLabel(plan: Org["plan"]): string {
+  switch (plan) {
+    case "enterprise":
+      return "Enterprise";
+    case "pro":
+      return "Pro";
+    default:
+      return "Basic";
+  }
 }
 
 function IntegrationPlaceholder({
