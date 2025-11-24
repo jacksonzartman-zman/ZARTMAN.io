@@ -6,6 +6,7 @@ import { createSupplierQuoteMessage } from "@/server/quotes/messages";
 import { createOrUpdateBid, getSupplierBidForQuote } from "@/server/suppliers";
 import { loadSupplierProfile } from "@/server/suppliers";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import { canUserBid } from "@/lib/permissions";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import {
   getSupplierDisplayName,
@@ -39,6 +40,7 @@ type QuoteAssignmentRow = Pick<
 
 type QuoteAccessRow = QuoteAssignmentRow & {
   upload_id: string | null;
+  status: string | null;
 };
 
 export async function postSupplierQuoteMessageAction(
@@ -296,6 +298,28 @@ export async function submitSupplierBidAction(
       };
     }
 
+    const existingBid = await getSupplierBidForQuote(
+      quoteId,
+      profile.supplier.id,
+    );
+
+    const canBid = canUserBid("supplier", {
+      status: quote.status,
+      existingBidStatus: existingBid?.status ?? null,
+      accessGranted: true,
+    });
+
+    if (!canBid) {
+      return {
+        success: false,
+        error:
+          existingBid?.status === "accepted"
+            ? "This bid is locked because it was already accepted."
+            : "Bidding is closed for this quote.",
+        status: existingBid?.status ?? null,
+      };
+    }
+
     const bid = await createOrUpdateBid({
       quoteId,
       supplierId: profile.supplier.id,
@@ -330,7 +354,9 @@ export async function submitSupplierBidAction(
 async function loadQuoteAccessRow(quoteId: string): Promise<QuoteAccessRow | null> {
   const { data, error } = await supabaseServer
     .from("quotes_with_uploads")
-    .select("id,email,assigned_supplier_email,assigned_supplier_name,upload_id")
+    .select(
+      "id,email,assigned_supplier_email,assigned_supplier_name,upload_id,status",
+    )
     .eq("id", quoteId)
     .maybeSingle<QuoteAccessRow>();
 

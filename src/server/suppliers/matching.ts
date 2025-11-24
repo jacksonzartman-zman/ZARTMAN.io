@@ -1,14 +1,13 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
-import {
-  listSupplierCapabilities,
-  loadSupplierById,
-} from "./profile";
+import { listSupplierCapabilities, loadSupplierById } from "./profile";
 import type {
   SupplierCapabilityRow,
   SupplierQuoteMatch,
   SupplierRow,
 } from "./types";
+import { canUserBid } from "@/lib/permissions";
+import { computeFairnessBoost } from "@/lib/fairness";
 
 const OPEN_QUOTE_STATUSES = ["submitted", "in_review", "quoted"];
 const MATCH_LIMIT = 20;
@@ -19,6 +18,8 @@ type QuoteAssignmentRow = {
 
 type SupplierBidRef = {
   quote_id: string | null;
+  status: string | null;
+  updated_at: string | null;
 };
 
 type UploadMatchingRow = Pick<
@@ -68,6 +69,12 @@ export async function matchQuotesToSupplier(
 
   const uploadMetaMap = await selectUploadMeta(quotes);
 
+  const fairness = computeFairnessBoost({
+    assignmentCount: assignmentRows.length,
+    recentBidOutcomes: bidRows,
+    supplierCreatedAt: supplier.created_at,
+  });
+
   const matches: SupplierQuoteMatch[] = [];
 
   for (const quote of quotes) {
@@ -93,15 +100,27 @@ export async function matchQuotesToSupplier(
       continue;
     }
 
+    const supplierBidMeta = bidRows.find((bid) => bid.quote_id === quoteId);
+    const canBid = canUserBid("supplier", {
+      status: quote.status,
+      existingBidStatus: supplierBidMeta?.status ?? null,
+      accessGranted: canAccess,
+    });
+
+    if (!canBid) {
+      continue;
+    }
+
     const materialMatches = findMaterialMatches(
       uploadMeta,
       normalizedCapabilities.materials,
     );
 
-    const score = computeMatchScore({
+    const baseScore = computeMatchScore({
       createdAt: quote.created_at,
       materialMatches,
     });
+    const score = baseScore + fairness.modifier;
 
     matches.push({
       quoteId,
@@ -111,6 +130,7 @@ export async function matchQuotesToSupplier(
       score,
       createdAt: quote.created_at ?? null,
       quantityHint: uploadMeta?.quantity ?? null,
+      fairness: fairness.reasons.length > 0 ? fairness : undefined,
     });
 
     if (matches.length >= MATCH_LIMIT) {
@@ -339,7 +359,7 @@ async function selectBidQuoteRefs(supplierId: string) {
   try {
     const { data, error } = await supabaseServer
       .from("supplier_bids")
-      .select("quote_id")
+      .select("quote_id,status,updated_at")
       .eq("supplier_id", supplierId);
 
     if (error) {
