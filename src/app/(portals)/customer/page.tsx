@@ -18,6 +18,7 @@ import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
 import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { SystemStatusBar } from "../SystemStatusBar";
 
 export const dynamic = "force-dynamic";
 
@@ -161,6 +162,11 @@ async function CustomerDashboardPage({
   const customerMetrics = deriveCustomerMetrics(portalData.quotes);
   const lastUpdatedTimestamp = getLatestCustomerActivityTimestamp(portalData.quotes);
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
+  const systemStatusMessage = portalData.error
+    ? "Sync delayed"
+    : hasAnyQuotes
+      ? "All systems operational"
+      : "Standing by for your first upload";
 
   return (
     <div className="space-y-6">
@@ -171,6 +177,11 @@ async function CustomerDashboardPage({
           viewerDisplayEmail ??
           sessionCompanyName
         }
+      />
+      <SystemStatusBar
+        role="customer"
+        statusMessage={systemStatusMessage}
+        syncedLabel={lastUpdatedLabel}
       />
       <WorkspaceMetrics
         role="customer"
@@ -258,7 +269,7 @@ async function CustomerDashboardPage({
         ) : (
           <EmptyStateNotice
             title="No open quotes yet"
-            description={`We’ll list every active RFQ for ${viewerDisplayEmail} the moment uploads start processing.`}
+            description={`Waiting for the first upload from ${viewerDisplayEmail}. Fresh RFQs drop here as soon as they sync.`}
             action={
               <Link
                 href="/quote"
@@ -295,7 +306,7 @@ async function CustomerDashboardPage({
         ) : (
           <EmptyStateNotice
             title="No activity to show"
-            description={`We’ll display the latest submissions, approvals, and reviews for ${viewerDisplayEmail} as soon as they happen.`}
+            description="No activity yet. We’ll stream quote updates here the moment anything moves."
           />
         )}
       </PortalCard>

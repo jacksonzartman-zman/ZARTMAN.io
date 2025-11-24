@@ -202,24 +202,22 @@ function NotificationsBell({
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-800 bg-slate-950/60 text-slate-300 transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-900/70 bg-slate-950/70 text-slate-300 transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-300"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={hasNotifications ? "View notifications" : "No notifications"}
       >
         <BellIcon className="h-5 w-5" />
-        {hasNotifications ? (
-          <span className="absolute -right-0.5 -top-0.5 inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow ring-2 ring-slate-950">
+        {unreadCount > 0 ? (
+          <span className="absolute -right-0.5 -top-0.5 inline-flex h-2.5 w-2.5 rounded-full bg-sky-400/90 ring-2 ring-slate-950">
             <span className="sr-only">
-              {unreadCount > 0
-                ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`
-                : "You have notifications"}
+              {`${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`}
             </span>
           </span>
         ) : null}
       </button>
       {open ? (
-        <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-slate-900 bg-slate-950/95 p-4 text-sm text-slate-200 shadow-lg shadow-black/40">
+        <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-slate-900/80 bg-slate-950/95 p-4 text-sm text-slate-200 shadow-[0_18px_40px_rgba(2,6,23,0.65)]">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-white">Notifications</p>
             <span className="text-xs text-slate-500">
@@ -256,8 +254,8 @@ function NotificationPreview({
   const content = (
     <div
       className={clsx(
-        "flex flex-col rounded-2xl border px-3 py-2 transition hover:border-emerald-400/30 hover:bg-slate-900/40",
-        notification.read ? "border-slate-900/70 opacity-80" : "border-emerald-500/30",
+        "flex flex-col rounded-2xl border px-3 py-2 transition hover:border-blue-400/30 hover:bg-slate-900/40",
+        notification.read ? "border-slate-900/70 opacity-80" : "border-blue-500/30",
       )}
     >
       <p className="text-sm font-semibold text-white">{notification.title}</p>
