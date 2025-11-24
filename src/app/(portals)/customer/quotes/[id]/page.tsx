@@ -24,6 +24,8 @@ import { listSupplierBidsForQuote, type SupplierBidWithContext } from "@/server/
 import { BidDecisionButtons } from "./BidDecisionButtons";
 import { requireSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
+import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
+import { getNextWorkflowState } from "@/lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -107,6 +109,7 @@ export default async function CustomerQuoteDetailPage({
     const derived = deriveQuotePresentation(quote, uploadMeta);
     const { status, statusLabel, customerName, companyName, intakeNotes } =
       derived;
+    const nextWorkflowState = getNextWorkflowState(status);
     const supplierBids = await listSupplierBidsForQuote(quoteId);
   const fileCountText =
     filePreviews.length === 0
@@ -153,6 +156,11 @@ export default async function CustomerQuoteDetailPage({
             Estimate: {priceChipText}
           </span>
         </div>
+        <WorkflowStatusCallout
+          currentLabel={statusLabel}
+          nextState={nextWorkflowState}
+          className="mt-3"
+        />
         <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
           <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
             <dt className="text-[11px] uppercase tracking-wide text-slate-500">
