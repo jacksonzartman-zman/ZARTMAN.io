@@ -6,10 +6,11 @@ const LOGIN_REDIRECT_PATH = "/login";
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const nextParam = requestUrl.searchParams.get("next");
+  const rawNext = requestUrl.searchParams.get("next");
+  const decodedNext = safelyDecodeURIComponent(rawNext);
 
-  console.log("[auth/callback] next param:", nextParam);
-
+  console.log("[auth/callback] next param (raw):", rawNext);
+  console.log("[auth/callback] next param (decoded):", decodedNext);
   if (!code) {
     console.warn("Auth callback invoked without a Supabase code");
     return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
@@ -28,13 +29,29 @@ export async function GET(request: Request) {
   }
 
   const redirectPath =
-    typeof nextParam === "string" && isSafeInternalPath(nextParam)
-      ? nextParam
+    typeof decodedNext === "string" && isSafeInternalPath(decodedNext)
+      ? decodedNext
       : LOGIN_REDIRECT_PATH;
 
   console.log("[auth/callback] redirecting to:", redirectPath);
 
   return NextResponse.redirect(new URL(redirectPath, requestUrl.origin));
+}
+
+function safelyDecodeURIComponent(value: string | null): string | null {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return decodeURIComponent(value);
+  } catch (error) {
+    console.warn("[auth/callback] failed to decode next param, using raw value", {
+      value,
+      error,
+    });
+    return value;
+  }
 }
 
 function isSafeInternalPath(path: string): boolean {
