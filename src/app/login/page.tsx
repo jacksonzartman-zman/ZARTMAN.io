@@ -6,6 +6,7 @@ import { primaryCtaClasses } from "@/lib/ctas";
 import { getCurrentSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierByUserId } from "@/server/suppliers";
+import LoginTokenBridge from "./LoginTokenBridge";
 
 export const metadata: Metadata = {
   title: "Log in | Zartman",
@@ -64,7 +65,12 @@ export default async function LoginHubPage() {
   const session = await getCurrentSession();
 
   if (!session) {
-    return <LoginHubView cards={DEFAULT_CARDS} />;
+    return (
+      <>
+        <LoginTokenBridge />
+        <LoginHubView cards={DEFAULT_CARDS} />
+      </>
+    );
   }
 
   const [customer, supplier] = await Promise.all([
@@ -81,16 +87,24 @@ export default async function LoginHubPage() {
   }
 
   if (!customer && !supplier) {
-    return <LoginHubView cards={DEFAULT_CARDS} />;
+    return (
+      <>
+        <LoginTokenBridge />
+        <LoginHubView cards={DEFAULT_CARDS} />
+      </>
+    );
   }
 
   return (
-    <LoginHubView
-      cards={WORKSPACE_CARDS}
-      eyebrow="Multi-role"
-      title="Choose your workspace"
-      description="You have access to both portals — pick where you’d like to go."
-    />
+    <>
+      <LoginTokenBridge />
+      <LoginHubView
+        cards={WORKSPACE_CARDS}
+        eyebrow="Multi-role"
+        title="Choose your workspace"
+        description="You have access to both portals — pick where you’d like to go."
+      />
+    </>
   );
 }
 
