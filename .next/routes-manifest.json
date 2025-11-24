@@ -90,6 +90,18 @@
       "namedRegex": "^/customer(?:/)?$"
     },
     {
+      "page": "/customer/quotes",
+      "regex": "^/customer/quotes(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customer/quotes(?:/)?$"
+    },
+    {
+      "page": "/customer/settings",
+      "regex": "^/customer/settings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customer/settings(?:/)?$"
+    },
+    {
       "page": "/customer/signup",
       "regex": "^/customer/signup(?:/)?$",
       "routeKeys": {},
@@ -118,6 +130,18 @@
       "regex": "^/supplier/onboarding(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/supplier/onboarding(?:/)?$"
+    },
+    {
+      "page": "/supplier/rfqs",
+      "regex": "^/supplier/rfqs(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/supplier/rfqs(?:/)?$"
+    },
+    {
+      "page": "/supplier/settings",
+      "regex": "^/supplier/settings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/supplier/settings(?:/)?$"
     },
     {
       "page": "/supplier/signup",

@@ -4,6 +4,7 @@ import { formatDateTime } from "@/lib/formatDate";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "../PortalCard";
 import { PortalLoginPanel } from "../PortalLoginPanel";
+import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import {
   getSearchParamValue,
   normalizeEmailInput,
@@ -32,17 +33,28 @@ async function SupplierDashboardPage({
   if (!session) {
     return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
   }
+  const sessionCompanyName =
+    sanitizeDisplayName(session.user.user_metadata?.company) ??
+    sanitizeDisplayName(session.user.user_metadata?.full_name) ??
+    sanitizeDisplayName(session.user.email) ??
+    "your team";
   const supplierEmail = normalizeEmailInput(session.user.email ?? null);
   const onboardingJustCompleted =
     getSearchParamValue(searchParams, "onboard") === "1";
 
   if (!supplierEmail) {
     return (
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
-        <p className="text-sm text-slate-300">
-          Sign in with a verified supplier email address to load your workspace.
-        </p>
-      </section>
+      <div className="space-y-6">
+        <WorkspaceWelcomeBanner
+          role="supplier"
+          companyName={sessionCompanyName}
+        />
+        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
+          <p className="text-sm text-slate-300">
+            Sign in with a verified supplier email address to load your workspace.
+          </p>
+        </section>
+      </div>
     );
   }
 
@@ -63,9 +75,17 @@ async function SupplierDashboardPage({
   const signedInEmail = supplier?.primary_email ?? supplierEmail;
   const companyLabel =
     supplier?.company_name ?? supplier?.primary_email ?? supplierEmail;
+  const workspaceCompanyName =
+    sanitizeDisplayName(supplier?.company_name) ??
+    sanitizeDisplayName(companyLabel) ??
+    sessionCompanyName;
 
   return (
     <div className="space-y-6">
+      <WorkspaceWelcomeBanner
+        role="supplier"
+        companyName={workspaceCompanyName}
+      />
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
           Supplier workspace
@@ -441,6 +461,14 @@ function formatCurrency(
   } catch {
     return `$${numericValue.toFixed(0)}`;
   }
+}
+
+function sanitizeDisplayName(value?: string | null): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 type NextAppPage = (props: {
