@@ -22,6 +22,7 @@ import {
 } from "@/server/suppliers";
 import { getCurrentSession } from "@/server/auth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { SystemStatusBar } from "../SystemStatusBar";
 
 export const dynamic = "force-dynamic";
 
@@ -85,12 +86,23 @@ async function SupplierDashboardPage({
   const supplierMetrics = deriveSupplierMetrics(matches, bids);
   const lastUpdatedTimestamp = getLatestSupplierActivityTimestamp(matches, bids);
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
+  const hasActivity = matches.length > 0 || bids.length > 0;
+  const systemStatusMessage = supplier
+    ? hasActivity
+      ? "All systems operational"
+      : "Waiting for your first match"
+    : "Finish onboarding to unlock matches";
 
   return (
     <div className="space-y-6">
       <WorkspaceWelcomeBanner
         role="supplier"
         companyName={workspaceCompanyName}
+      />
+      <SystemStatusBar
+        role="supplier"
+        statusMessage={systemStatusMessage}
+        syncedLabel={lastUpdatedLabel}
       />
       <WorkspaceMetrics
         role="supplier"
@@ -367,12 +379,12 @@ function MatchesCard({
       ) : supplierExists ? (
         <EmptyStateNotice
           title="No RFQs matched yet"
-          description="We continuously scan your capabilities against active RFQs. As soon as there’s a fit, it will appear here and hit your inbox."
+          description="We’re scanning your capabilities constantly. The first compatible RFQ drops here immediately."
         />
       ) : (
         <EmptyStateNotice
           title="Unlock RFQ matching"
-          description="Tell us about your processes, materials, and certs so we can start routing inbound RFQs directly to you."
+          description="Share capabilities and certs to start routing RFQs straight into this list."
           action={
             <Link
               href="/supplier/onboarding"
@@ -430,7 +442,7 @@ function BidsCard({
       ) : (
         <EmptyStateNotice
           title="No bids submitted"
-          description="Open a matched RFQ to send pricing, lead time, and certs. Every bid you send will be tracked right here."
+          description="No bids yet. Open a matched RFQ to send pricing—every submission lands here."
         />
       )}
     </PortalCard>
