@@ -3,16 +3,15 @@ import { createAuthClient } from "@/server/auth";
 
 const LOGIN_REDIRECT_PATH = "/login";
 
+/**
+ * Supabase magic links now point to /login via SITE_URL, so this callback only
+ * exchanges the code for a session cookie and hands control back to /login for
+ * role-based routing.
+ */
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const rawNext = requestUrl.searchParams.get("next");
-  const decodedNext = safelyDecodeURIComponent(rawNext);
 
-  console.log("[auth/callback] next param payload:", {
-    raw: rawNext,
-    decoded: decodedNext,
-  });
   if (!code) {
     console.warn("Auth callback invoked without a Supabase code");
     return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
@@ -30,48 +29,5 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
   }
 
-  const redirectPath =
-    typeof decodedNext === "string" && isSafeInternalPath(decodedNext)
-      ? decodedNext
-      : LOGIN_REDIRECT_PATH;
-
-  console.log("[auth/callback] final redirect path:", redirectPath);
-
-  return NextResponse.redirect(new URL(redirectPath, requestUrl.origin));
-}
-
-function safelyDecodeURIComponent(value: string | null): string | null {
-  if (typeof value !== "string") {
-    return value;
-  }
-
-  try {
-    return decodeURIComponent(value);
-  } catch (error) {
-    console.warn("[auth/callback] failed to decode next param, using raw value", {
-      value,
-      error,
-    });
-    return value;
-  }
-}
-
-function isSafeInternalPath(path: string): boolean {
-  if (!path.startsWith("/")) {
-    return false;
-  }
-
-  if (path.startsWith("//")) {
-    return false;
-  }
-
-  if (path.startsWith("/auth/")) {
-    return false;
-  }
-
-  if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//.test(path)) {
-    return false;
-  }
-
-  return true;
+  return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
 }
