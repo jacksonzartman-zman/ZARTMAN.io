@@ -9,8 +9,10 @@ export async function GET(request: Request) {
   const rawNext = requestUrl.searchParams.get("next");
   const decodedNext = safelyDecodeURIComponent(rawNext);
 
-  console.log("[auth/callback] next param (raw):", rawNext);
-  console.log("[auth/callback] next param (decoded):", decodedNext);
+  console.log("[auth/callback] next param payload:", {
+    raw: rawNext,
+    decoded: decodedNext,
+  });
   if (!code) {
     console.warn("Auth callback invoked without a Supabase code");
     return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
@@ -33,7 +35,7 @@ export async function GET(request: Request) {
       ? decodedNext
       : LOGIN_REDIRECT_PATH;
 
-  console.log("[auth/callback] redirecting to:", redirectPath);
+  console.log("[auth/callback] final redirect path:", redirectPath);
 
   return NextResponse.redirect(new URL(redirectPath, requestUrl.origin));
 }

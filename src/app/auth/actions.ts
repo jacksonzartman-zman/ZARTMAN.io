@@ -35,7 +35,7 @@ export async function requestMagicLinkForEmail(
 
   const supabase = supabasePublic();
   const safeNextPath = getSafeNextPath(input.nextPath);
-  const origin = resolveSiteOrigin();
+  const origin = getSiteOrigin();
 
   try {
     await supabase.auth.signInWithOtp({
@@ -85,18 +85,11 @@ function getSafeNextPath(value: string | null | undefined): string {
   return value;
 }
 
-function resolveSiteOrigin(): string {
-  if (process.env.NEXT_PUBLIC_SITE_URL) {
-    return process.env.NEXT_PUBLIC_SITE_URL;
-  }
-  if (process.env.SITE_URL) {
-    return process.env.SITE_URL;
+function getSiteOrigin(): string {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (configured && configured.startsWith("http")) {
+    return configured.replace(/\/+$/, "");
   }
 
-  const vercelUrl = process.env.VERCEL_URL;
-  if (vercelUrl) {
-    return vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`;
-  }
-
-  return "http://localhost:3000";
+  return "https://www.zartman.io";
 }
