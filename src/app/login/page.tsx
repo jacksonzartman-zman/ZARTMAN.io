@@ -44,6 +44,7 @@ const DEFAULT_CARDS: LoginCard[] = [
 
 export default async function LoginPage() {
   const session = await getCurrentSession();
+  console.log("[login] server session email:", session?.user?.email ?? null);
 
   if (!session) {
     return (
