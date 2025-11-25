@@ -26,7 +26,8 @@ type SupplierRecord = Awaited<ReturnType<typeof loadSupplierByUserId>>;
 const SHOW_LOGIN_DEBUG = process.env.NEXT_PUBLIC_SHOW_LOGIN_DEBUG === "true";
 
 export default async function LoginPage() {
-  const cookieHeader = headers().get("cookie") ?? "";
+  const headerList = await headers();
+  const cookieHeader = headerList.get("cookie") ?? "";
   const cookieNames = cookieHeader
     .split(";")
     .map((cookie) => cookie.trim().split("=")[0])
