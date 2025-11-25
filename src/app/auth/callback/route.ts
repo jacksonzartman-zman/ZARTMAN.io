@@ -4,16 +4,16 @@ import { createAuthClient } from "@/server/auth";
 const LOGIN_REDIRECT_PATH = "/login";
 
 /**
- * Supabase magic links now point to /login via SITE_URL, so this callback only
- * exchanges the code for a session cookie and hands control back to /login for
- * role-based routing.
+ * This route is the target of Supabase magic link redirects.
+ * It exchanges the "code" for a Supabase session and then
+ * redirects back to /login, where role-based logic runs.
  */
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
 
   if (!code) {
-    console.warn("Auth callback invoked without a Supabase code");
+    console.warn("[auth/callback] invoked without code");
     return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
   }
 
