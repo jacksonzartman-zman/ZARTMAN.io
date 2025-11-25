@@ -44,7 +44,7 @@ async function SupplierDashboardPage({
     decision: string,
     overrides?: { roles?: UserRoleSummary | null },
   ) => {
-    console.log("[supplier portal] portal intent decision", {
+    console.log("[supplier portal] decision", {
       portalIntent: portalIntent ?? "none",
       roles: overrides?.roles ?? roles,
       decision,

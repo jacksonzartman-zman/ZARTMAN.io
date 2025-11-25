@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createAuthClient, getCurrentSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierByUserId } from "@/server/suppliers";
+import { resolveUserRoles } from "@/server/users/roles";
 import LoginTokenBridge from "./LoginTokenBridge";
 
 export const metadata: Metadata = {
@@ -58,10 +59,13 @@ export default async function LoginPage() {
     getCustomerByUserId(session.user.id),
     loadSupplierByUserId(session.user.id),
   ]);
-
+  const resolvedRoles = await resolveUserRoles(session.user.id, {
+    customer,
+    supplier,
+  });
   const roleSummary = {
-    hasCustomer: Boolean(customer),
-    hasSupplier: Boolean(supplier),
+    hasCustomer: resolvedRoles.isCustomer,
+    hasSupplier: resolvedRoles.isSupplier,
   };
   console.log("[auth] supplier lookup:", {
     found: roleSummary.hasSupplier,
@@ -89,7 +93,7 @@ export default async function LoginPage() {
   console.log("[login] redirect decision", {
     portalIntent: portalIntent ?? "none",
     roleSummary,
-    redirectDecision,
+    redirect: redirectDecision,
   });
 
   if (redirectDecision === "customer") {
@@ -248,11 +252,14 @@ function deriveRedirectDecision({
   if (portalIntent === "supplier") {
     return "supplier";
   }
-  if (roleSummary.hasSupplier) {
-    return "supplier";
+  if (roleSummary.hasCustomer && roleSummary.hasSupplier) {
+    return "customer";
   }
   if (roleSummary.hasCustomer) {
     return "customer";
+  }
+  if (roleSummary.hasSupplier) {
+    return "supplier";
   }
   return "none";
 }
@@ -265,5 +272,7 @@ async function signOutAction() {
   } catch (error) {
     console.error("[login page] sign out failed", error);
   }
+  // NOTE: This redirect("/") is the last hop we see in the /login -> /portal -> /
+  // sequence from the logs whenever a post-login sign-out fires immediately.
   redirect("/");
 }
