@@ -107,6 +107,13 @@ async function CustomerDashboardPage({
   const overrideParam = getFirstParamValue(searchParams?.email);
   const overrideEmail = normalizeEmailInput(overrideParam);
   const customer = await getCustomerByUserId(session.user.id);
+  let decisions: CustomerDecision[] = [];
+  let hasDecisions = false;
+
+  if (customer) {
+    decisions = await getCustomerDecisions(customer.id);
+    hasDecisions = decisions.length > 0;
+  }
 
   if (!customer) {
     return (
@@ -170,8 +177,6 @@ async function CustomerDashboardPage({
     domain: viewerDomain,
     limit: RECENT_ACTIVITY_LIMIT,
   });
-  const decisions = await getCustomerDecisions(customer.id);
-  const hasDecisions = decisions.length > 0;
   const recentActivity: ActivityItem[] = activityFeed.map((item) => ({
     ...item,
     href:
