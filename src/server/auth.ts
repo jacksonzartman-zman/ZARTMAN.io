@@ -50,8 +50,20 @@ export function createAuthClient() {
 }
 
 export async function getCurrentSession(): Promise<Session | null> {
+  const cookieStore = await cookies();
+  console.log(
+    "[auth] cookies seen by server:",
+    cookieStore.getAll?.() ?? "no cookies helper",
+  );
+
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.auth.getSession();
+
+  console.log("[auth] getSession result:", {
+    hasSession: Boolean(data.session),
+    email: data.session?.user?.email ?? null,
+    error: error?.message ?? null,
+  });
 
   if (error) {
     console.error("[auth] getSession failed", error);
