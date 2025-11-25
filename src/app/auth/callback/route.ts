@@ -13,7 +13,8 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
 
-  console.log("[auth/callback] received code:", Boolean(code));
+  console.log("[auth/callback] incoming url", request.url);
+  console.log("[auth/callback] code present", Boolean(code));
 
   if (!code) {
     console.warn("[auth/callback] invoked without code");
