@@ -35,8 +35,18 @@ export function createAuthClient(): SupabaseClient {
 }
 
 export async function getCurrentSession(): Promise<Session | null> {
+  const cookieStore = await cookies();
+  console.log(
+    "[auth] cookies seen by server:",
+    cookieStore.getAll?.() ?? "no cookies helper",
+  );
   const supabase = createAuthClient();
   const { data, error } = await supabase.auth.getSession();
+  console.log("[auth] getSession result:", {
+    hasSession: Boolean(data.session),
+    email: data.session?.user?.email ?? null,
+    error: error?.message ?? null,
+  });
 
   if (error) {
     console.error("getCurrentSession: failed to load session", error);
