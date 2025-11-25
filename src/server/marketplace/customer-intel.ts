@@ -37,6 +37,14 @@ import type { MarketplaceRfq, RfqBidRecord } from "./types";
  *   lastRefreshed: "2025-11-25T16:05:00.000Z"
  * }
  */
+export type OpticsTone = "executive" | "partner" | "guide";
+
+export type OpticsPlaybook = {
+  tone: OpticsTone;
+  proofPoints: string[];
+  supportLevers: string[];
+};
+
 export type CustomerPowerProfile = {
   customerId: string | null;
   anchorRfqId: string | null;
@@ -50,11 +58,7 @@ export type CustomerPowerProfile = {
     medianDecisionDays: number | null;
     cadenceDays: number | null;
   };
-  opticsPlaybook: {
-    tone: "executive" | "partner" | "guide";
-    proofPoints: string[];
-    supportLevers: string[];
-  };
+  opticsPlaybook: OpticsPlaybook;
   marketRead: {
     supplierPosture: MarketPowerProfile["supplierPosture"] | null;
     responsePressureLevel: MarketPowerProfile["responsePressure"]["level"] | null;
@@ -503,6 +507,7 @@ async function summarizeCustomerBids(rfqIds: string[]) {
         map[id] = { live: 0, withdrawn: 0, prices: [] };
         return map;
       },
+      {},
     );
 
     const leadTimes: number[] = [];
@@ -679,9 +684,9 @@ function buildOpticsPlaybook(
   tier: CustomerPowerProfile["influenceTier"],
   summary: ReturnType<typeof summarizeRfqHistory>,
   bids: Awaited<ReturnType<typeof summarizeCustomerBids>>,
-) {
-  const tone =
-    tier === "flagship" ? "executive" : tier === "growth" ? "partner" : "guide";
+): OpticsPlaybook {
+  const rawTone = tier === "flagship" ? "executive" : tier === "growth" ? "partner" : "guide";
+  const tone = normalizeTone(rawTone);
 
   const proofPoints: string[] = [];
   if (summary.winRate >= 0.5) {
@@ -783,7 +788,17 @@ function buildSupplierShortlist(
   const minPrice = priceValues.length > 0 ? Math.min(...priceValues) : null;
   const minLead = leadValues.length > 0 ? Math.min(...leadValues) : null;
 
-  const parsed = bids
+  type SupplierRole = SupplierStrategyRecommendation["supplierShortlist"][number]["role"];
+  type ParsedBid = {
+    bidId: string;
+    supplierId: string;
+    supplierLabel: string;
+    price: number | null;
+    leadTime: number | null;
+    role: SupplierRole;
+  };
+
+  const parsed: ParsedBid[] = bids
     .map((bid) => {
       const price =
         typeof bid.price_total === "string"
@@ -794,7 +809,7 @@ function buildSupplierShortlist(
           ? Number.parseInt(bid.lead_time_days, 10)
           : bid.lead_time_days ?? null;
 
-      const role =
+      const role: SupplierRole =
         minLead !== null && Number.isFinite(leadTime ?? NaN) && (leadTime as number) <= minLead * 1.1
           ? "pace-setter"
           : minPrice !== null &&
@@ -915,6 +930,17 @@ function computeMedian(values: number[]): number | null {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function normalizeTone(rawTone: string): OpticsTone {
+  const lower = rawTone.toLowerCase();
+  if (lower.includes("exec")) {
+    return "executive";
+  }
+  if (lower.includes("partner")) {
+    return "partner";
+  }
+  return "guide";
 }
 
 function buildEmptyCustomerProfile(customerId: string | null): CustomerPowerProfile {
