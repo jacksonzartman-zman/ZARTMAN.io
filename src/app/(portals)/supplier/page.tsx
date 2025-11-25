@@ -146,6 +146,16 @@ async function SupplierDashboardPage({
             Profile updated! We’ll start routing matched RFQs to you automatically.
           </p>
         ) : null}
+        <p className="mt-4 text-xs text-slate-400">
+          Ready to browse new work? Visit{" "}
+          <Link
+            href="/supplier/marketplace"
+            className="font-semibold text-blue-200 underline-offset-4 hover:underline"
+          >
+            the marketplace
+          </Link>{" "}
+          to bid on open RFQs.
+        </p>
       </section>
 
       <OnboardingPromptCard supplierExists={supplierExists} />
