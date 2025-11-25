@@ -34,15 +34,17 @@ export async function requestMagicLinkForEmail(
   }
 
   const supabase = supabasePublic();
-  const origin = getSiteOrigin();
-  const portalQuery = new URLSearchParams({ portal: input.role });
-  const emailRedirectTo = `${origin}/auth/callback?${portalQuery.toString()}`;
+  const baseUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000");
 
   try {
     await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
-        emailRedirectTo,
+        emailRedirectTo: `${baseUrl}/auth/callback`,
       },
     });
     return {
@@ -54,7 +56,7 @@ export async function requestMagicLinkForEmail(
       role: input.role,
       email: normalizedEmail,
       requestedNextPath: input.nextPath,
-      emailRedirectTo,
+      emailRedirectTo: `${baseUrl}/auth/callback`,
       error,
     });
     return {
@@ -64,11 +66,3 @@ export async function requestMagicLinkForEmail(
   }
 }
 
-function getSiteOrigin(): string {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (configured && configured.startsWith("http")) {
-    return configured.replace(/\/+$/, "");
-  }
-
-  return "https://www.zartman.io";
-}
