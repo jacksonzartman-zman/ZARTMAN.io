@@ -126,8 +126,10 @@ export function fastLanePlacementLogic(args: {
 
   const eligible =
     priorityScore >= 0.5 ||
-    (args.marketProfile?.customerPriorityTier === "critical" &&
-      (args.preferredSupplierReady || args.trustedBuyer));
+    Boolean(
+      args.marketProfile?.customerPriorityTier === "critical" &&
+        (args.preferredSupplierReady || args.trustedBuyer),
+    );
 
   const reasons: string[] = [];
   if (args.marketProfile?.customerPriorityTier === "critical") {

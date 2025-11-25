@@ -16,16 +16,18 @@ export type ProcessImbalanceSignal = {
   tension: "shortage" | "balanced" | "surplus";
 };
 
+export type ResponsePressure = {
+  level: "low" | "medium" | "high";
+  index: number;
+  drivers: string[];
+};
+
 export type MarketPowerProfile = {
   rfqId: string;
   supplierCompetitiveness: number;
   supplierPosture: "supplier_power" | "balanced" | "buyer_power";
   supplyDemand: ProcessImbalanceSignal[];
-  responsePressure: {
-    level: "low" | "medium" | "high";
-    index: number;
-    drivers: string[];
-  };
+  responsePressure: ResponsePressure;
   customerPriorityTier: CustomerPriorityTier;
   customerPriorityScore: number;
   diagnostics: {
@@ -581,7 +583,7 @@ function computeResponsePressure(args: {
   scarcityIndex: number;
   coverage: number;
   bidCount: number;
-}) {
+}): ResponsePressure {
   const now = Date.now();
   const createdAt = Date.parse(args.rfq.created_at ?? "");
   const daysOpen =
