@@ -18,7 +18,7 @@ import { formatRelativeTimeFromTimestamp } from "@/lib/relativeTime";
 export const dynamic = "force-dynamic";
 
 export default async function SupplierDecisionsPage() {
-  const { session } = await getCurrentSession();
+  const session = await getCurrentSession();
 
   if (!session) {
     return (

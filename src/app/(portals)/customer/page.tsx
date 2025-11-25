@@ -1,6 +1,5 @@
 import Link from "next/link";
 import PortalCard from "../PortalCard";
-import { PortalLoginPanel } from "../PortalLoginPanel";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
@@ -13,11 +12,8 @@ import {
   getFirstParamValue,
   normalizeEmailInput,
 } from "@/app/(portals)/quotes/pageUtils";
-import { getCurrentSession } from "@/server/auth";
+import { requireSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
-import { ensureCustomerWorkspaceForUser } from "@/server/customers/ensureCustomerWorkspace";
-import { resolveUserRoles } from "@/server/users/roles";
-import type { UserRoleSummary } from "@/server/users/roles";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
 import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
@@ -102,55 +98,7 @@ type LoadCustomerPortalDataArgs =
 async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
-  const { session, portalIntent } = await getCurrentSession();
-  let roles: UserRoleSummary | null = null;
-
-  const logPortalDecision = (
-    decision: string,
-    overrides?: { roles?: UserRoleSummary | null },
-  ) => {
-    console.log("[customer portal] decision", {
-      portalIntent: portalIntent ?? "none",
-      roles: overrides?.roles ?? roles,
-      decision,
-    });
-  };
-
-  if (!session) {
-    logPortalDecision("render_login_panel", { roles: null });
-    return (
-      <PortalLoginPanel
-        role="customer"
-        fallbackRedirect="/customer"
-      />
-    );
-  }
-
-  roles = await resolveUserRoles(session.user.id);
-
-  if (!roles.isCustomer && session?.user?.id) {
-    const created = await ensureCustomerWorkspaceForUser({
-      userId: session.user.id,
-      email: session.user.email ?? null,
-      name: session.user.user_metadata?.full_name ?? null,
-      company: session.user.user_metadata?.company ?? null,
-    });
-
-    if (created) {
-      roles = await resolveUserRoles(session.user.id);
-    }
-  }
-
-  if (!roles.isCustomer) {
-    logPortalDecision("workspace_missing");
-    return (
-      <CustomerWorkspaceMissingNotice
-        sessionEmail={session.user.email}
-      />
-    );
-  }
-  logPortalDecision("render_customer_workspace");
-
+  const session = await requireSession({ redirectTo: "/customer" });
   const sessionCompanyName =
     sanitizeDisplayName(session.user.user_metadata?.company) ??
     sanitizeDisplayName(session.user.user_metadata?.full_name) ??
@@ -777,41 +725,6 @@ function CustomerPortalDemoCard() {
           {" — "}remove the query string to go back to your own workspace.
       </p>
     </PortalCard>
-  );
-}
-
-function CustomerWorkspaceMissingNotice({
-  sessionEmail,
-}: {
-  sessionEmail?: string | null;
-}) {
-  return (
-    <main className="mx-auto max-w-3xl space-y-6 px-4 py-12">
-      <PortalCard
-        title="Customer workspace not set up yet"
-        description="This account is authenticated but doesn’t have a customer workspace linked yet."
-        action={
-          <Link href="/supplier" className={primaryCtaClasses}>
-            Go to supplier portal
-          </Link>
-        }
-      >
-        <p className="text-sm text-slate-300">
-          Signed in as{" "}
-          <span className="font-mono text-white">
-            {sessionEmail ?? "workspace user"}
-          </span>
-          . If you were expecting customer dashboards here, email{" "}
-          <a
-            href="mailto:support@zartman.app"
-            className="text-emerald-200 underline-offset-2 hover:underline"
-          >
-            support@zartman.app
-          </a>{" "}
-          so we can connect your account.
-        </p>
-      </PortalCard>
-    </main>
   );
 }
 
