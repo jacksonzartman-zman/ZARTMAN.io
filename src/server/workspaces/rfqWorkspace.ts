@@ -139,7 +139,12 @@ async function loadCollaborationThreads(
     }
 
     const rows = Array.isArray(data)
-      ? (data as RawCollaborationMessage[])
+      ? (data as unknown as RawCollaborationMessage[]).filter(
+          (row): row is RawCollaborationMessage =>
+            row != null &&
+            typeof (row as any).id === "string" &&
+            typeof (row as any).rfq_id === "string",
+        )
       : [];
     return groupMessagesIntoThreads(rows);
   } catch (error) {
