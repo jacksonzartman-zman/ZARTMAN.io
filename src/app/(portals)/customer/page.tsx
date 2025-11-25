@@ -1,5 +1,6 @@
 import Link from "next/link";
 import PortalCard from "../PortalCard";
+import { PortalLoginPanel } from "../PortalLoginPanel";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
@@ -12,8 +13,9 @@ import {
   getFirstParamValue,
   normalizeEmailInput,
 } from "@/app/(portals)/quotes/pageUtils";
-import { requireSession } from "@/server/auth";
+import { getCurrentSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
+import { resolveUserRoles } from "@/server/users/roles";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
 import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
@@ -98,7 +100,62 @@ type LoadCustomerPortalDataArgs =
 async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
-  const session = await requireSession({ redirectTo: "/customer" });
+  const session = await getCurrentSession();
+
+  if (!session) {
+    return (
+      <PortalLoginPanel
+        role="customer"
+        fallbackRedirect="/customer"
+      />
+    );
+  }
+
+  const roles = await resolveUserRoles(session.user.id);
+
+  if (!roles.isCustomer) {
+    if (roles.isSupplier) {
+      return (
+        <main className="mx-auto max-w-3xl px-4 py-12 space-y-6">
+          <WorkspaceWelcomeBanner
+            role="customer"
+            companyName={session.user.email ?? "This account"}
+          />
+          <PortalCard
+            title="Customer workspace not set up yet"
+            description="This account is linked to a supplier profile, but doesn't have a customer workspace yet."
+          >
+            <p className="text-sm text-slate-400">
+              If you'd like to manage jobs as a customer, email{" "}
+              <a
+                href="mailto:support@zartman.app"
+                className="font-medium text-slate-100 underline"
+              >
+                support@zartman.app
+              </a>{" "}
+              and we'll get a workspace wired up.
+            </p>
+            <div className="mt-4 flex gap-3">
+              <a
+                href="/supplier"
+                className="inline-flex items-center rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-100 hover:border-slate-500"
+              >
+                Go to supplier portal
+              </a>
+            </div>
+          </PortalCard>
+        </main>
+      );
+    }
+
+    return (
+      <PortalLoginPanel
+        role="customer"
+        fallbackRedirect="/customer"
+      />
+    );
+  }
+
   const sessionCompanyName =
     sanitizeDisplayName(session.user.user_metadata?.company) ??
     sanitizeDisplayName(session.user.user_metadata?.full_name) ??
