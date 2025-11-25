@@ -25,6 +25,9 @@ import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime
 import { SystemStatusBar } from "../SystemStatusBar";
 import { loadSupplierActivityFeed } from "@/server/activity";
 import type { ActivityItem } from "@/types/activity";
+import { resolveUserRoles } from "@/server/users/roles";
+import { DataFallbackNotice } from "../DataFallbackNotice";
+import { DEBUG_PORTALS } from "../debug";
 
 export const dynamic = "force-dynamic";
 
@@ -36,9 +39,14 @@ async function SupplierDashboardPage({
   searchParams,
 }: SupplierDashboardPageProps) {
   const session = await getCurrentSession();
+  const roles = session ? await resolveUserRoles(session.user.id) : null;
   if (!session) {
     return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
   }
+  console.log("[portal] user id", session.user.id);
+  console.log("[portal] email", session.user.email);
+  console.log("[portal] isSupplier", roles?.isSupplier);
+  console.log("[portal] isCustomer", roles?.isCustomer);
   const sessionCompanyName =
     sanitizeDisplayName(session.user.user_metadata?.company) ??
     sanitizeDisplayName(session.user.user_metadata?.full_name) ??
@@ -69,15 +77,40 @@ async function SupplierDashboardPage({
   const capabilities = profile?.capabilities ?? [];
   const documents = profile?.documents ?? [];
   const supplierExists = Boolean(supplier);
+  const supplierProfileUnavailable = Boolean(supplierEmail) && !profile;
 
-  let matches: SupplierQuoteMatch[] = [];
-  let bids: SupplierBidWithContext[] = [];
+  let matches: SupplierQuoteMatch[] | null = supplier ? [] : null;
+  let bids: SupplierBidWithContext[] | null = supplier ? [] : null;
   if (supplier) {
-    [matches, bids] = await Promise.all([
+    const [matchesResult, bidsResult] = await Promise.allSettled([
       matchQuotesToSupplier(supplier.id),
       listSupplierBidsForSupplier(supplier.id),
     ]);
+
+    if (matchesResult.status === "fulfilled") {
+      matches = matchesResult.value ?? [];
+    } else {
+      console.error("Supplier portal: failed to load matches", {
+        supplierId: supplier.id,
+        error: matchesResult.reason,
+      });
+      matches = null;
+    }
+
+    if (bidsResult.status === "fulfilled") {
+      bids = bidsResult.value ?? [];
+    } else {
+      console.error("Supplier portal: failed to load bids", {
+        supplierId: supplier.id,
+        error: bidsResult.reason,
+      });
+      bids = null;
+    }
   }
+  const matchesData = matches ?? [];
+  const bidsData = bids ?? [];
+  const matchesUnavailable = supplierExists && matches === null;
+  const bidsUnavailable = supplierExists && bids === null;
   const recentActivity: ActivityItem[] = supplier
     ? await loadSupplierActivityFeed({
         supplierId: supplier.id,
@@ -93,10 +126,13 @@ async function SupplierDashboardPage({
     sanitizeDisplayName(supplier?.company_name) ??
     sanitizeDisplayName(companyLabel) ??
     sessionCompanyName;
-  const supplierMetrics = deriveSupplierMetrics(matches, bids);
-  const lastUpdatedTimestamp = getLatestSupplierActivityTimestamp(matches, bids);
+  const supplierMetrics = deriveSupplierMetrics(matchesData, bidsData);
+  const lastUpdatedTimestamp = getLatestSupplierActivityTimestamp(
+    matchesData,
+    bidsData,
+  );
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
-  const hasActivity = matches.length > 0 || bids.length > 0;
+  const hasActivity = matchesData.length > 0 || bidsData.length > 0;
   const systemStatusMessage = supplier
     ? hasActivity
       ? "All systems operational"
@@ -156,6 +192,9 @@ async function SupplierDashboardPage({
         capabilities={capabilities}
         documents={documents}
       />
+      {supplierProfileUnavailable ? (
+        <DataFallbackNotice className="mt-2" />
+      ) : null}
 
       <PortalCard
         title="Recent activity"
@@ -207,13 +246,24 @@ async function SupplierDashboardPage({
       <MatchesCard
         supplierEmail={supplier?.primary_email ?? supplierEmail}
         supplierExists={supplierExists}
-        matches={matches}
+        matches={matchesData}
       />
+      {matchesUnavailable ? (
+        <DataFallbackNotice className="mt-2" />
+      ) : null}
 
       <BidsCard
         supplierEmail={supplier?.primary_email ?? supplierEmail}
-        bids={bids}
+        bids={bidsData}
       />
+      {bidsUnavailable ? (
+        <DataFallbackNotice className="mt-2" />
+      ) : null}
+      {DEBUG_PORTALS ? (
+        <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
+          {JSON.stringify({ session, roles }, null, 2)}
+        </pre>
+      ) : null}
     </div>
   );
 }
