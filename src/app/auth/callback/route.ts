@@ -1,6 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createAuthClient } from "@/server/auth";
+import {
+  PORTAL_INTENT_COOKIE,
+  PORTAL_INTENT_TTL_SECONDS,
+  createAuthClient,
+} from "@/server/auth";
 
 const LOGIN_REDIRECT_PATH = "/login";
 
@@ -12,6 +16,11 @@ const LOGIN_REDIRECT_PATH = "/login";
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
+  const portalParam = requestUrl.searchParams.get("portal");
+  const portalIntent =
+    portalParam === "customer" || portalParam === "supplier"
+      ? portalParam
+      : null;
 
   console.log("[auth/callback] received code:", Boolean(code));
 
@@ -46,5 +55,17 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
   }
 
-  return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
+  const response = NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
+  if (portalIntent) {
+    response.cookies.set({
+      name: PORTAL_INTENT_COOKIE,
+      value: portalIntent,
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: PORTAL_INTENT_TTL_SECONDS,
+      path: "/",
+    });
+  }
+  return response;
 }

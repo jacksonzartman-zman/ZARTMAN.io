@@ -35,7 +35,8 @@ export async function requestMagicLinkForEmail(
 
   const supabase = supabasePublic();
   const origin = getSiteOrigin();
-  const emailRedirectTo = `${origin}/auth/callback`;
+  const portalQuery = new URLSearchParams({ portal: input.role });
+  const emailRedirectTo = `${origin}/auth/callback?${portalQuery.toString()}`;
 
   try {
     await supabase.auth.signInWithOtp({

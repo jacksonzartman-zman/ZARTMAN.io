@@ -22,6 +22,7 @@ import {
 } from "@/server/suppliers";
 import { getCurrentSession } from "@/server/auth";
 import { resolveUserRoles } from "@/server/users/roles";
+import type { UserRoleSummary } from "@/server/users/roles";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
 import { loadSupplierActivityFeed } from "@/server/activity";
@@ -36,12 +37,26 @@ type SupplierDashboardPageProps = {
 async function SupplierDashboardPage({
   searchParams,
 }: SupplierDashboardPageProps) {
-  const session = await getCurrentSession();
+  const { session, portalIntent } = await getCurrentSession();
+  let roles: UserRoleSummary | null = null;
+
+  const logPortalDecision = (
+    decision: string,
+    overrides?: { roles?: UserRoleSummary | null },
+  ) => {
+    console.log("[supplier portal] portal intent decision", {
+      portalIntent: portalIntent ?? "none",
+      roles: overrides?.roles ?? roles,
+      decision,
+    });
+  };
+
   if (!session) {
+    logPortalDecision("render_login_panel", { roles: null });
     return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
   }
 
-  const roles = await resolveUserRoles(session.user.id);
+  roles = await resolveUserRoles(session.user.id);
 
   const sessionCompanyName =
     sanitizeDisplayName(session.user.user_metadata?.company) ??
@@ -52,8 +67,9 @@ async function SupplierDashboardPage({
   const onboardingJustCompleted =
     getSearchParamValue(searchParams, "onboard") === "1";
 
-  if (!roles.isSupplier) {
-    if (roles.isCustomer) {
+  if (!roles?.isSupplier) {
+    if (roles?.isCustomer) {
+      logPortalDecision("workspace_missing_supplier");
       return (
         <main className="mx-auto max-w-3xl px-4 py-12 space-y-6">
           <WorkspaceWelcomeBanner
@@ -87,8 +103,10 @@ async function SupplierDashboardPage({
       );
     }
 
+    logPortalDecision("render_login_panel_no_roles");
     return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
   }
+  logPortalDecision("render_supplier_workspace");
 
   if (!supplierEmail) {
     return (

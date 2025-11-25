@@ -22,7 +22,7 @@ type SupplierOnboardingPageProps = {
 async function SupplierOnboardingPage({
   searchParams,
 }: SupplierOnboardingPageProps) {
-  const session = await getCurrentSession();
+  const { session } = await getCurrentSession();
   if (!session) {
     return (
       <div className="space-y-6">
