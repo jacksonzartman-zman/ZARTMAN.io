@@ -141,7 +141,11 @@ async function fetchOpenCustomerRfqs(
       return [];
     }
 
-    return Array.isArray(data) ? (data as CustomerRfqRecord[]) : [];
+    const rows = Array.isArray(data)
+      ? (data as unknown as CustomerRfqRecord[])
+      : [];
+
+    return rows;
   } catch (error) {
     console.error("decisions: fetchOpenCustomerRfqs unexpected error", {
       customerId,
@@ -172,7 +176,9 @@ async function fetchBidsForRfqs(rfqIds: string[]): Promise<BidWithSupplier[]> {
       return [];
     }
 
-    const rows = Array.isArray(data) ? (data as RawBidRow[]) : [];
+    const rows = Array.isArray(data)
+      ? (data as unknown as RawBidRow[])
+      : [];
     return rows.map(normalizeBidRow);
   } catch (error) {
     console.error("decisions: fetchBidsForRfqs unexpected error", {
