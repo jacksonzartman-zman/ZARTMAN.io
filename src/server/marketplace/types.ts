@@ -128,7 +128,10 @@ export type MarketplaceEventType =
   | "visibility_filtered"
   | "market_pressure_calculated"
   | "supplier_advantage_shifted"
-  | "pricing_band_recommended";
+  | "pricing_band_recommended"
+  | "customer_strategy_recommended"
+  | "customer_view_transformed"
+  | "trust_explained";
 
 export type MarketplaceEventInput = {
   rfqId: string;
