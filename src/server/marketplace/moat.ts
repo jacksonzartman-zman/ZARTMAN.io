@@ -128,6 +128,7 @@ export function fastLanePlacementLogic(args: {
     priorityScore >= 0.5 ||
     (args.marketProfile?.customerPriorityTier === "critical" &&
       (args.preferredSupplierReady || args.trustedBuyer));
+  const isEligible = eligible ?? false;
 
   const reasons: string[] = [];
   if (args.marketProfile?.customerPriorityTier === "critical") {
@@ -144,7 +145,7 @@ export function fastLanePlacementLogic(args: {
   }
 
   return {
-    eligible,
+    eligible: isEligible,
     priorityScore: Math.min(Math.max(Number(priorityScore.toFixed(2)), 0), 1),
     slotsRequested,
     reasons,

@@ -581,7 +581,7 @@ function computeResponsePressure(args: {
   scarcityIndex: number;
   coverage: number;
   bidCount: number;
-}) {
+}): MarketPowerProfile["responsePressure"] {
   const now = Date.now();
   const createdAt = Date.parse(args.rfq.created_at ?? "");
   const daysOpen =
@@ -603,7 +603,8 @@ function computeResponsePressure(args: {
     0,
     1,
   );
-  const level = index >= 0.7 ? "high" : index >= 0.4 ? "medium" : "low";
+  const level: MarketPowerProfile["responsePressure"]["level"] =
+    index >= 0.7 ? "high" : index >= 0.4 ? "medium" : "low";
 
   const drivers: string[] = [];
   if (urgency > 0.6) {
