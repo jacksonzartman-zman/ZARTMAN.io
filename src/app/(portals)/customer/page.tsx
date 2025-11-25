@@ -25,6 +25,9 @@ import {
   getCustomerDecisions,
   type CustomerDecision,
 } from "@/server/marketplace/decisions";
+import { resolveUserRoles } from "@/server/users/roles";
+import { DataFallbackNotice } from "../DataFallbackNotice";
+import { DEBUG_PORTALS } from "../debug";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +102,11 @@ async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
   const session = await requireSession({ redirectTo: "/customer" });
+  const roles = await resolveUserRoles(session.user.id);
+  console.log("[portal] user id", session.user.id);
+  console.log("[portal] email", session.user.email);
+  console.log("[portal] isSupplier", roles?.isSupplier);
+  console.log("[portal] isCustomer", roles?.isCustomer);
   const sessionCompanyName =
     sanitizeDisplayName(session.user.user_metadata?.company) ??
     sanitizeDisplayName(session.user.user_metadata?.full_name) ??
@@ -131,6 +139,12 @@ async function CustomerDashboardPage({
           }
         />
         <CustomerPortalDemoCard />
+        <DataFallbackNotice className="mt-2" />
+        {DEBUG_PORTALS ? (
+          <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
+            {JSON.stringify({ session, roles }, null, 2)}
+          </pre>
+        ) : null}
       </div>
     );
   }
@@ -333,6 +347,9 @@ async function CustomerDashboardPage({
             }
           />
         )}
+        {portalData.error ? (
+          <DataFallbackNotice className="mt-4" />
+        ) : null}
       </PortalCard>
 
       <PortalCard title="Recent activity" description="Latest RFQ, bid, and status updates.">
@@ -396,6 +413,11 @@ async function CustomerDashboardPage({
           <li>Uploads from /quote will sync back into this workspace automatically.</li>
         </ul>
       </PortalCard>
+      {DEBUG_PORTALS ? (
+        <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
+          {JSON.stringify({ session, roles }, null, 2)}
+        </pre>
+      ) : null}
     </div>
   );
 }
