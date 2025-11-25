@@ -2,13 +2,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { Session } from "@supabase/supabase-js";
-import type { PortalRole } from "@/types/portal";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export const PORTAL_INTENT_COOKIE = "z_portal_intent";
-export const PORTAL_INTENT_TTL_SECONDS = 60 * 5;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error(
@@ -51,18 +47,6 @@ function createServerSupabaseClient() {
 
 type SupabaseClientType = ReturnType<typeof createServerSupabaseClient>;
 
-type SessionWithPortalIntent = {
-  session: Session | null;
-  portalIntent: PortalRole | null;
-};
-
-function parsePortalIntent(value: string | null | undefined): PortalRole | null {
-  if (value === "customer" || value === "supplier") {
-    return value;
-  }
-  return null;
-}
-
 export function createAuthClient() {
   return createServerSupabaseClient();
 }
@@ -93,11 +77,8 @@ export function createReadOnlyAuthClient(): SupabaseClientType {
   });
 }
 
-export async function getCurrentSession(): Promise<SessionWithPortalIntent> {
+export async function getCurrentSession(): Promise<Session | null> {
   const cookieStore = await cookies();
-  const portalIntent = parsePortalIntent(
-    cookieStore.get(PORTAL_INTENT_COOKIE)?.value,
-  );
   const cookieNames =
     typeof cookieStore.getAll === "function"
       ? cookieStore.getAll().map((entry) => entry.name)
@@ -111,19 +92,18 @@ export async function getCurrentSession(): Promise<SessionWithPortalIntent> {
     hasSession: Boolean(data.session),
     email: data.session?.user?.email ?? null,
     error: error?.message ?? null,
-    portalIntent,
   });
 
   if (error) {
     console.error("[auth] getSession failed", error);
-    return { session: null, portalIntent };
+    return null;
   }
 
-  return { session: data.session ?? null, portalIntent };
+  return data.session ?? null;
 }
 
 export async function getCurrentUser() {
-  const { session } = await getCurrentSession();
+  const session = await getCurrentSession();
   return session?.user ?? null;
 }
 
@@ -138,7 +118,7 @@ export async function requireSession(options?: {
   redirectTo?: string;
   message?: string;
 }): Promise<Session> {
-  const { session } = await getCurrentSession();
+  const session = await getCurrentSession();
   if (session) {
     return session;
   }

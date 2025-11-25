@@ -46,7 +46,7 @@ export default async function SupplierQuoteDetailPage({
 }: SupplierQuotePageProps) {
   const { id: quoteId } = await params;
 
-  const { session } = await getCurrentSession();
+  const session = await getCurrentSession();
   if (!session) {
     return (
       <PortalLoginPanel
