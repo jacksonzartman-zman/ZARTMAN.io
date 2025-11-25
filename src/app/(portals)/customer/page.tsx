@@ -109,7 +109,7 @@ async function CustomerDashboardPage({
     decision: string,
     overrides?: { roles?: UserRoleSummary | null },
   ) => {
-    console.log("[customer portal] portal intent decision", {
+    console.log("[customer portal] decision", {
       portalIntent: portalIntent ?? "none",
       roles: overrides?.roles ?? roles,
       decision,
