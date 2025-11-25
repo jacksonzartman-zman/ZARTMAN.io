@@ -20,12 +20,15 @@ export async function resolveUserRoles(
   },
 ): Promise<UserRoleSummary> {
   if (!userId) {
+    console.log("[roles] resolveUserRoles called without user id");
     return {
       primaryRole: "unknown",
       isCustomer: false,
       isSupplier: false,
     };
   }
+
+  console.log("[roles] resolving roles", { userId });
 
   let customer = preloaded?.customer;
   let supplier = preloaded?.supplier;
@@ -48,6 +51,13 @@ export async function resolveUserRoles(
   } else if (!isCustomer && isSupplier) {
     primaryRole = "supplier";
   }
+
+  console.log("[roles] resolved roles", {
+    userId,
+    primaryRole,
+    isCustomer,
+    isSupplier,
+  });
 
   return {
     primaryRole,
