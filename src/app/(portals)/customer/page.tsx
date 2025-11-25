@@ -15,6 +15,7 @@ import {
 } from "@/app/(portals)/quotes/pageUtils";
 import { getCurrentSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
+import { ensureCustomerWorkspaceForUser } from "@/server/customers/ensureCustomerWorkspace";
 import { resolveUserRoles } from "@/server/users/roles";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
 import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
@@ -111,43 +112,22 @@ async function CustomerDashboardPage({
     );
   }
 
-  const roles = await resolveUserRoles(session.user.id);
+  let roles = await resolveUserRoles(session.user.id);
+
+  if (!roles.isCustomer && session?.user?.id) {
+    const created = await ensureCustomerWorkspaceForUser({
+      userId: session.user.id,
+      email: session.user.email ?? null,
+      name: session.user.user_metadata?.full_name ?? null,
+      company: session.user.user_metadata?.company ?? null,
+    });
+
+    if (created) {
+      roles = await resolveUserRoles(session.user.id);
+    }
+  }
 
   if (!roles.isCustomer) {
-    if (roles.isSupplier) {
-      return (
-        <main className="mx-auto max-w-3xl px-4 py-12 space-y-6">
-          <WorkspaceWelcomeBanner
-            role="customer"
-            companyName={session.user.email ?? "This account"}
-          />
-          <PortalCard
-            title="Customer workspace not set up yet"
-            description="This account is linked to a supplier profile, but doesn't have a customer workspace yet."
-          >
-            <p className="text-sm text-slate-400">
-              If you'd like to manage jobs as a customer, email{" "}
-              <a
-                href="mailto:support@zartman.app"
-                className="font-medium text-slate-100 underline"
-              >
-                support@zartman.app
-              </a>{" "}
-              and we'll get a workspace wired up.
-            </p>
-            <div className="mt-4 flex gap-3">
-              <a
-                href="/supplier"
-                className="inline-flex items-center rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-100 hover:border-slate-500"
-              >
-                Go to supplier portal
-              </a>
-            </div>
-          </PortalCard>
-        </main>
-      );
-    }
-
     return (
       <PortalLoginPanel
         role="customer"
