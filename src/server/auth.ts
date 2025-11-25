@@ -45,18 +45,47 @@ function createServerSupabaseClient() {
   });
 }
 
+type SupabaseClientType = ReturnType<typeof createServerSupabaseClient>;
+
 export function createAuthClient() {
   return createServerSupabaseClient();
 }
 
+export function createReadOnlyAuthClient(): SupabaseClientType {
+  const getCookieStore = async () => await cookies();
+
+  return createServerClient(SUPABASE_URL_VALUE, SUPABASE_ANON_KEY_VALUE, {
+    cookies: {
+      async get(name: string) {
+        const cookieStore = await getCookieStore();
+        return cookieStore.get(name)?.value;
+      },
+      async set(
+        _name: string,
+        _value: string,
+        _options: CookieOptions,
+      ) {
+        // no-op: read-only in server components
+      },
+      async remove(
+        _name: string,
+        _options: CookieOptions,
+      ) {
+        // no-op: read-only in server components
+      },
+    },
+  });
+}
+
 export async function getCurrentSession(): Promise<Session | null> {
   const cookieStore = await cookies();
-  console.log(
-    "[auth] cookies seen by server:",
-    cookieStore.getAll?.() ?? "no cookies helper",
-  );
+  const cookieNames =
+    typeof cookieStore.getAll === "function"
+      ? cookieStore.getAll().map((entry) => entry.name)
+      : [];
+  console.log("[auth] cookies seen by server:", cookieNames);
 
-  const supabase = createServerSupabaseClient();
+  const supabase = createReadOnlyAuthClient();
   const { data, error } = await supabase.auth.getSession();
 
   console.log("[auth] getSession result:", {
