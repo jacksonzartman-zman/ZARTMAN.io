@@ -125,7 +125,10 @@ export type MarketplaceEventType =
   | "bid_updated"
   | "bid_withdrawn"
   | "rfq_awarded"
-  | "visibility_filtered";
+  | "visibility_filtered"
+  | "market_pressure_calculated"
+  | "supplier_advantage_shifted"
+  | "pricing_band_recommended";
 
 export type MarketplaceEventInput = {
   rfqId: string;
