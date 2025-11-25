@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createAuthClient } from "@/server/auth";
 
@@ -12,13 +13,29 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
 
+  console.log("[auth/callback] received code:", Boolean(code));
+
   if (!code) {
     console.warn("[auth/callback] invoked without code");
     return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
   }
 
+  const cookieStoreBefore = await cookies();
+  console.log(
+    "[auth/callback] cookies BEFORE exchange:",
+    cookieStoreBefore.getAll?.() ?? "unavailable",
+  );
+
   const supabase = createAuthClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+  console.log("[auth/callback] exchange error:", error?.message ?? null);
+
+  const cookieStoreAfter = await cookies();
+  console.log(
+    "[auth/callback] cookies AFTER exchange:",
+    cookieStoreAfter.getAll?.() ?? "unavailable",
+  );
 
   if (error) {
     console.error("[auth/callback] failed to exchange code", {
