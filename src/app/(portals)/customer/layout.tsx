@@ -8,7 +8,7 @@ export default async function CustomerPortalLayout({
 }: {
   children: ReactNode;
 }) {
-  const { session } = await getCurrentSession();
+  const session = await getCurrentSession();
   console.log("[customer layout] server session email:", session?.user?.email ?? null);
 
   if (!session) {
