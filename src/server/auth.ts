@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createServerClient } from "@supabase/ssr";
-import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import type { Session } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -13,33 +13,48 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 }
 
 const SUPABASE_URL_VALUE = SUPABASE_URL;
-const SUPABASE_ANON_VALUE = SUPABASE_ANON_KEY;
+const SUPABASE_ANON_KEY_VALUE = SUPABASE_ANON_KEY;
 
-export function createAuthClient(): SupabaseClient {
-  return createServerClient(SUPABASE_URL_VALUE, SUPABASE_ANON_VALUE, {
+function createServerSupabaseClient() {
+  const getCookieStore = async () =>
+    (await cookies()) as unknown as {
+      get(name: string): { value: string } | undefined;
+      set(options: { name: string; value: string } & CookieOptions): void;
+    };
+
+  return createServerClient(SUPABASE_URL_VALUE, SUPABASE_ANON_KEY_VALUE, {
     cookies: {
-      async getAll() {
-        const cookieStore = await cookies();
-        return cookieStore
-          .getAll()
-          .map((cookie) => ({ name: cookie.name, value: cookie.value }));
+      async get(name: string) {
+        const cookieStore = await getCookieStore();
+        return cookieStore.get(name)?.value;
       },
-      async setAll(cookiesToSet) {
-        const cookieStore = await cookies();
-        cookiesToSet.forEach(({ name, value, options }) => {
-          cookieStore.set({ name, value, ...(options ?? {}) });
+      async set(name: string, value: string, options: CookieOptions) {
+        const cookieStore = await getCookieStore();
+        cookieStore.set({ name, value, ...options });
+      },
+      async remove(name: string, options: CookieOptions) {
+        const cookieStore = await getCookieStore();
+        cookieStore.set({
+          name,
+          value: "",
+          ...options,
+          maxAge: 0,
         });
       },
     },
-  }) as unknown as SupabaseClient;
+  });
+}
+
+export function createAuthClient() {
+  return createServerSupabaseClient();
 }
 
 export async function getCurrentSession(): Promise<Session | null> {
-  const supabase = createAuthClient();
+  const supabase = createServerSupabaseClient();
   const { data, error } = await supabase.auth.getSession();
 
   if (error) {
-    console.error("getCurrentSession: failed to load session", error);
+    console.error("[auth] getSession failed", error);
     return null;
   }
 
