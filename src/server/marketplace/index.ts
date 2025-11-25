@@ -6,3 +6,6 @@ export * from "./events";
 export * from "./strategy";
 export * from "./pricing";
 export * from "./moat";
+export * from "./customer-intel";
+export * from "./decision-framing";
+export * from "./trust";
