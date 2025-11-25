@@ -157,38 +157,45 @@ export default async function SupplierDecisionsPage() {
 function DecisionList({ decisions }: { decisions: SupplierDecision[] }) {
   return (
     <ul className="space-y-3">
-      {decisions.map((decision) => (
-        <li
-          key={decision.id}
-          className="rounded-2xl border border-slate-900/70 bg-slate-950/40 p-4"
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-white">{decision.title}</p>
-              <p className="mt-1 text-xs text-slate-400">{decision.description}</p>
-              {decision.metadata?.assignment ? (
-                <p className="mt-2 text-[11px] text-slate-500">
-                  Routed to {decision.metadata.assignment}
-                </p>
-              ) : null}
-              {decision.metadata?.bidStatus ? (
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Bid status: {String(decision.metadata.bidStatus)}
-                </p>
-              ) : null}
+      {decisions.map((decision) => {
+        const assignmentLabel =
+          typeof decision.metadata?.assignment === "string"
+            ? decision.metadata.assignment
+            : null;
+        const bidStatusLabel =
+          typeof decision.metadata?.bidStatus === "string"
+            ? decision.metadata.bidStatus
+            : null;
+
+        return (
+          <li
+            key={decision.id}
+            className="rounded-2xl border border-slate-900/70 bg-slate-950/40 p-4"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-white">{decision.title}</p>
+                <p className="mt-1 text-xs text-slate-400">{decision.description}</p>
+                {assignmentLabel ? (
+                  <p className="mt-2 text-[11px] text-slate-500">Routed to {assignmentLabel}</p>
+                ) : null}
+                {bidStatusLabel ? (
+                  <p className="mt-1 text-[11px] text-slate-500">Bid status: {bidStatusLabel}</p>
+                ) : null}
+              </div>
+              <UrgencyBadge level={decision.urgencyLevel} />
             </div>
-            <UrgencyBadge level={decision.urgencyLevel} />
-          </div>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link href={decision.href} className={primaryCtaClasses}>
-              {decision.ctaLabel}
-            </Link>
-            <span className="inline-flex items-center rounded-full border border-slate-800 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-              {decision.type === "bid_follow_up" ? "Follow-up" : "RFQ invite"}
-            </span>
-          </div>
-        </li>
-      ))}
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Link href={decision.href} className={primaryCtaClasses}>
+                {decision.ctaLabel}
+              </Link>
+              <span className="inline-flex items-center rounded-full border border-slate-800 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                {decision.type === "bid_follow_up" ? "Follow-up" : "RFQ invite"}
+              </span>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
