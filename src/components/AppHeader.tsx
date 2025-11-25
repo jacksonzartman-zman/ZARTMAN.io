@@ -9,7 +9,7 @@ export type HeaderUser = {
 };
 
 export default async function AppHeader() {
-  const { session } = await getCurrentSession();
+  const session = await getCurrentSession();
   const notifications = session
     ? await loadNotificationsForUser({
         userId: session.user.id,

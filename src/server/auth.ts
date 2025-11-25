@@ -2,13 +2,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { Session } from "@supabase/supabase-js";
-import type { PortalRole } from "@/types/portal";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export const PORTAL_INTENT_COOKIE = "z_portal_intent";
-export const PORTAL_INTENT_TTL_SECONDS = 60 * 5;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error(
@@ -51,41 +47,37 @@ function createServerSupabaseClient() {
 
 type SupabaseClientType = ReturnType<typeof createServerSupabaseClient>;
 
-type SessionWithPortalIntent = {
-  session: Session | null;
-  portalIntent: PortalRole | null;
-};
-
-function parsePortalIntent(value: string | null | undefined): PortalRole | null {
-  if (value === "customer" || value === "supplier") {
-    return value;
-  }
-  return null;
-}
-
 export function createAuthClient() {
   return createServerSupabaseClient();
 }
 
-export async function createReadOnlyAuthClient(): Promise<SupabaseClientType> {
-  const cookieStore = await cookies();
+export function createReadOnlyAuthClient(): SupabaseClientType {
+  const getCookieStore = async () => await cookies();
 
   return createServerClient(SUPABASE_URL_VALUE, SUPABASE_ANON_KEY_VALUE, {
     cookies: {
-      get(name: string) {
+      async get(name: string) {
+        const cookieStore = await getCookieStore();
         return cookieStore.get(name)?.value;
       },
-      set() {
-        // no-op for server components
+      async set(
+        _name: string,
+        _value: string,
+        _options: CookieOptions,
+      ) {
+        // no-op: read-only in server components
       },
-      remove() {
-        // no-op for server components
+      async remove(
+        _name: string,
+        _options: CookieOptions,
+      ) {
+        // no-op: read-only in server components
       },
     },
   });
 }
 
-export async function getCurrentSession(): Promise<SessionWithPortalIntent> {
+export async function getCurrentSession(): Promise<Session | null> {
   const cookieStore = await cookies();
   const cookieNames =
     typeof cookieStore.getAll === "function"
@@ -93,19 +85,25 @@ export async function getCurrentSession(): Promise<SessionWithPortalIntent> {
       : [];
   console.log("[auth] cookies seen by server:", cookieNames);
 
-  const supabase = await createReadOnlyAuthClient();
+  const supabase = createReadOnlyAuthClient();
   const { data, error } = await supabase.auth.getSession();
+
+  console.log("[auth] getSession result:", {
+    hasSession: Boolean(data.session),
+    email: data.session?.user?.email ?? null,
+    error: error?.message ?? null,
+  });
 
   if (error) {
     console.error("[auth] getSession failed", error);
-    return { session: null, portalIntent: null };
+    return null;
   }
 
-  return { session: data.session ?? null, portalIntent: null };
+  return data.session ?? null;
 }
 
 export async function getCurrentUser() {
-  const { session } = await getCurrentSession();
+  const session = await getCurrentSession();
   return session?.user ?? null;
 }
 
@@ -120,7 +118,7 @@ export async function requireSession(options?: {
   redirectTo?: string;
   message?: string;
 }): Promise<Session> {
-  const { session } = await getCurrentSession();
+  const session = await getCurrentSession();
   if (session) {
     return session;
   }
