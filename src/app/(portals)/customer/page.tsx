@@ -355,6 +355,16 @@ async function CustomerDashboardPage({
               : "Watch for new quotes here as soon as uploads are processed."}
           </li>
           <li>Uploads from /quote will sync back into this workspace automatically.</li>
+          <li>
+            Prefer typing the brief here? Visit{" "}
+            <Link
+              href="/customer/rfqs"
+              className="font-semibold text-emerald-200 underline-offset-4 hover:underline"
+            >
+              Jobs & RFQs
+            </Link>{" "}
+            to create marketplace posts inside the portal.
+          </li>
         </ul>
       </PortalCard>
     </div>
