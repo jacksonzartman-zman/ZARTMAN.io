@@ -67,27 +67,19 @@ export function createAuthClient() {
   return createServerSupabaseClient();
 }
 
-export function createReadOnlyAuthClient(): SupabaseClientType {
-  const getCookieStore = async () => await cookies();
+export async function createReadOnlyAuthClient(): Promise<SupabaseClientType> {
+  const cookieStore = await cookies();
 
   return createServerClient(SUPABASE_URL_VALUE, SUPABASE_ANON_KEY_VALUE, {
     cookies: {
-      async get(name: string) {
-        const cookieStore = await getCookieStore();
+      get(name: string) {
         return cookieStore.get(name)?.value;
       },
-      async set(
-        _name: string,
-        _value: string,
-        _options: CookieOptions,
-      ) {
-        // no-op: read-only in server components
+      set() {
+        // no-op for server components
       },
-      async remove(
-        _name: string,
-        _options: CookieOptions,
-      ) {
-        // no-op: read-only in server components
+      remove() {
+        // no-op for server components
       },
     },
   });
@@ -95,31 +87,21 @@ export function createReadOnlyAuthClient(): SupabaseClientType {
 
 export async function getCurrentSession(): Promise<SessionWithPortalIntent> {
   const cookieStore = await cookies();
-  const portalIntent = parsePortalIntent(
-    cookieStore.get(PORTAL_INTENT_COOKIE)?.value,
-  );
   const cookieNames =
     typeof cookieStore.getAll === "function"
       ? cookieStore.getAll().map((entry) => entry.name)
       : [];
   console.log("[auth] cookies seen by server:", cookieNames);
 
-  const supabase = createReadOnlyAuthClient();
+  const supabase = await createReadOnlyAuthClient();
   const { data, error } = await supabase.auth.getSession();
-
-  console.log("[auth] getSession result:", {
-    hasSession: Boolean(data.session),
-    email: data.session?.user?.email ?? null,
-    error: error?.message ?? null,
-    portalIntent,
-  });
 
   if (error) {
     console.error("[auth] getSession failed", error);
-    return { session: null, portalIntent };
+    return { session: null, portalIntent: null };
   }
 
-  return { session: data.session ?? null, portalIntent };
+  return { session: data.session ?? null, portalIntent: null };
 }
 
 export async function getCurrentUser() {
