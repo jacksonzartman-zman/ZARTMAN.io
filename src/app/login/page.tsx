@@ -96,12 +96,12 @@ export default async function LoginPage() {
     redirect: redirectDecision,
   });
 
-  if (redirectDecision === "customer") {
-    redirect("/customer");
+  if (roleSummary.hasSupplier) {
+    redirect("/supplier");
   }
 
-  if (redirectDecision === "supplier") {
-    redirect("/supplier");
+  if (roleSummary.hasCustomer) {
+    redirect("/customer");
   }
 
   return (
