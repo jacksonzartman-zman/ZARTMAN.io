@@ -7,7 +7,7 @@ export default async function SupplierPortalLayout({
 }: {
   children: ReactNode;
 }) {
-  const session = await getCurrentSession();
+  const { session } = await getCurrentSession();
   console.log("[supplier layout] server session email:", session?.user?.email ?? null);
 
   return <PortalLayout>{children}</PortalLayout>;

@@ -33,8 +33,6 @@ export async function resolveUserRoles(
     primaryRole = "customer";
   } else if (!isCustomer && isSupplier) {
     primaryRole = "supplier";
-  } else if (isCustomer && isSupplier) {
-    primaryRole = "customer";
   }
 
   return {

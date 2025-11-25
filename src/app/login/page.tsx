@@ -15,11 +15,13 @@ export const dynamic = "force-dynamic";
 
 // Behavior:
 // - If not authenticated: show message linking to /supplier to request magic link
-// - If authenticated and supplier profile exists: redirect("/supplier")
-// - If authenticated and no supplier profile: show small "no profile found" message
+// - If authenticated: honor portal intent ("customer" or "supplier") when present
+// - Otherwise fall back to supplier/customer roles to pick a destination
+// - If neither role exists: show small "no profile found" message
 // - If NEXT_PUBLIC_SHOW_LOGIN_DEBUG === "true": render extended debug panel instead of redirect
 
-type SupabaseSession = NonNullable<Awaited<ReturnType<typeof getCurrentSession>>>;
+type SessionResult = Awaited<ReturnType<typeof getCurrentSession>>;
+type SupabaseSession = NonNullable<SessionResult["session"]>;
 type CustomerRecord = Awaited<ReturnType<typeof getCustomerByUserId>>;
 type SupplierRecord = Awaited<ReturnType<typeof loadSupplierByUserId>>;
 
@@ -34,11 +36,12 @@ export default async function LoginPage() {
     .filter(Boolean);
   console.log("[auth] login cookies on /login:", cookieNames);
 
-  const session = await getCurrentSession();
+  const { session, portalIntent } = await getCurrentSession();
   const sessionSummary = {
     userId: session?.user?.id ?? null,
     email: session?.user?.email ?? null,
     isAuthenticated: Boolean(session),
+    portalIntent,
   };
   console.log("[auth] session summary:", sessionSummary);
 
@@ -79,7 +82,21 @@ export default async function LoginPage() {
     );
   }
 
-  if (roleSummary.hasSupplier) {
+  const redirectDecision = deriveRedirectDecision({
+    portalIntent,
+    roleSummary,
+  });
+  console.log("[login] redirect decision", {
+    portalIntent: portalIntent ?? "none",
+    roleSummary,
+    redirectDecision,
+  });
+
+  if (redirectDecision === "customer") {
+    redirect("/customer");
+  }
+
+  if (redirectDecision === "supplier") {
     redirect("/supplier");
   }
 
@@ -218,6 +235,27 @@ function LoginDebugPanel({
   );
 }
 
+function deriveRedirectDecision({
+  portalIntent,
+  roleSummary,
+}: {
+  portalIntent: SessionResult["portalIntent"];
+  roleSummary: { hasCustomer: boolean; hasSupplier: boolean };
+}): "customer" | "supplier" | "none" {
+  if (portalIntent === "customer") {
+    return "customer";
+  }
+  if (portalIntent === "supplier") {
+    return "supplier";
+  }
+  if (roleSummary.hasSupplier) {
+    return "supplier";
+  }
+  if (roleSummary.hasCustomer) {
+    return "customer";
+  }
+  return "none";
+}
 async function signOutAction() {
   "use server";
 
