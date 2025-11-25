@@ -1,6 +1,28 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { SupplierBidRow } from "@/server/suppliers/types";
 
+export type SupplierDecisionRfqStatus =
+  | "needs_quote"
+  | "quote_due_soon"
+  | "awaiting_reply"
+  | "awaiting_files"
+  | "ready_to_submit";
+
+export type SupplierDecisionRfq = {
+  id: string;
+  title: string;
+  customerName: string | null;
+  status: SupplierDecisionRfqStatus;
+  summary: string | null;
+  updatedAt: string;
+  metadata?: {
+    assignment?: string | null;
+    bidStatus?: string | null;
+  };
+};
+
+type SupplierDecisionMetadata = SupplierDecisionRfq["metadata"];
+
 export type SupplierDecision = {
   id: string;
   type: "rfq_invite" | "bid_follow_up" | "win";
@@ -10,7 +32,7 @@ export type SupplierDecision = {
   urgencyLevel: "low" | "medium" | "high";
   href: string;
   ctaLabel: string;
-  metadata?: Record<string, unknown>;
+  metadata?: SupplierDecisionMetadata;
 };
 
 type SupplierDecisionInput = {
@@ -239,7 +261,9 @@ async function fetchQuotesByIds(
       return new Map();
     }
 
-    const rows = (data as QuoteSummaryRow[]) ?? [];
+    const rows = Array.isArray(data)
+      ? (data as unknown as QuoteSummaryRow[])
+      : [];
     return new Map(rows.map((row) => [row.id, row]));
   } catch (error) {
     console.error("supplier decisions: quote lookup error", {
@@ -271,7 +295,9 @@ async function fetchRecentBids(supplierId: string): Promise<SupplierBidRow[]> {
       return [];
     }
 
-    return (data as SupplierBidRow[]) ?? [];
+    return Array.isArray(data)
+      ? (data as unknown as SupplierBidRow[])
+      : [];
   } catch (error) {
     console.error("supplier decisions: bid query error", {
       supplierId,
@@ -283,19 +309,30 @@ async function fetchRecentBids(supplierId: string): Promise<SupplierBidRow[]> {
 
 function buildBidNeededDecision(quote: QuoteSummaryRow): SupplierDecision {
   const quoteLabel = getQuoteLabel(quote);
-  return {
+  const description = buildBidNeededDescription(quote);
+  const rfq: SupplierDecisionRfq = {
+    id: quote.id,
+    title: quoteLabel,
+    customerName: quote.customer_name ?? quote.company ?? null,
+    status: "needs_quote",
+    summary: description,
+    updatedAt: quote.created_at ?? new Date().toISOString(),
+    metadata: {
+      assignment:
+        quote.assigned_supplier_name ?? quote.assigned_supplier_email ?? null,
+    },
+  };
+
+  return transformRfqToDecision(rfq, {
     id: `rfq_invite:${quote.id}`,
     type: "rfq_invite",
     title: `Share pricing for ${quoteLabel}`,
-    description: buildBidNeededDescription(quote),
+    description,
     relatedQuoteId: quote.id,
     urgencyLevel: deriveUrgencyLevel(quote.target_date, quote.created_at),
     href: `/supplier/quotes/${quote.id}`,
     ctaLabel: "Open RFQ",
-    metadata: {
-      assignment: quote.assigned_supplier_name ?? quote.assigned_supplier_email ?? null,
-    },
-  };
+  });
 }
 
 function buildBidFollowUpDecision(
@@ -308,6 +345,10 @@ function buildBidFollowUpDecision(
   const ageDescription =
     ageDays !== null ? `Last touched ${ageDays} day${ageDays === 1 ? "" : "s"} ago.` : "";
 
+  const metadata = normalizeSupplierDecisionMetadata({
+    bidStatus: bid.status ?? null,
+  });
+
   return {
     id: `bid_follow_up:${bid.id}`,
     type: "bid_follow_up",
@@ -317,10 +358,48 @@ function buildBidFollowUpDecision(
     urgencyLevel: deriveUrgencyLevel(quote.target_date, quote.created_at, true),
     href: `/supplier/quotes/${quote.id}`,
     ctaLabel: "Update bid",
-    metadata: {
-      bidStatus: bid.status,
-    },
+    metadata,
   };
+}
+
+function transformRfqToDecision(
+  rfq: SupplierDecisionRfq,
+  decision: Omit<SupplierDecision, "metadata">,
+): SupplierDecision {
+  const metadata = normalizeSupplierDecisionMetadata(rfq.metadata);
+  return metadata ? { ...decision, metadata } : decision;
+}
+
+function normalizeSupplierDecisionMetadata(
+  metadata?: SupplierDecisionMetadata,
+): SupplierDecisionMetadata | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+
+  const normalized: SupplierDecisionMetadata = {};
+
+  const assignment =
+    typeof metadata.assignment === "string"
+      ? metadata.assignment
+      : metadata.assignment === null
+        ? null
+        : undefined;
+  if (assignment !== undefined) {
+    normalized.assignment = assignment;
+  }
+
+  const bidStatus =
+    typeof metadata.bidStatus === "string"
+      ? metadata.bidStatus
+      : metadata.bidStatus === null
+        ? null
+        : undefined;
+  if (bidStatus !== undefined) {
+    normalized.bidStatus = bidStatus;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 function buildBidNeededDescription(quote: QuoteSummaryRow): string {
