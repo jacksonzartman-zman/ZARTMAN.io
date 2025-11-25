@@ -21,6 +21,7 @@ import {
   type SupplierProfile,
 } from "@/server/suppliers";
 import { getCurrentSession } from "@/server/auth";
+import { resolveUserRoles } from "@/server/users/roles";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
 import { loadSupplierActivityFeed } from "@/server/activity";
@@ -39,6 +40,9 @@ async function SupplierDashboardPage({
   if (!session) {
     return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
   }
+
+  const roles = await resolveUserRoles(session.user.id);
+
   const sessionCompanyName =
     sanitizeDisplayName(session.user.user_metadata?.company) ??
     sanitizeDisplayName(session.user.user_metadata?.full_name) ??
@@ -47,6 +51,44 @@ async function SupplierDashboardPage({
   const supplierEmail = normalizeEmailInput(session.user.email ?? null);
   const onboardingJustCompleted =
     getSearchParamValue(searchParams, "onboard") === "1";
+
+  if (!roles.isSupplier) {
+    if (roles.isCustomer) {
+      return (
+        <main className="mx-auto max-w-3xl px-4 py-12 space-y-6">
+          <WorkspaceWelcomeBanner
+            role="supplier"
+            companyName={sessionCompanyName}
+          />
+          <PortalCard
+            title="Supplier workspace not set up yet"
+            description="This account is linked to a customer workspace, but doesn't have a supplier profile yet."
+          >
+            <p className="text-sm text-slate-400">
+              Head over to the customer portal to keep work moving, or email{" "}
+              <a
+                href="mailto:support@zartman.app"
+                className="font-medium text-slate-100 underline"
+              >
+                support@zartman.app
+              </a>{" "}
+              and we'll help connect a supplier profile.
+            </p>
+            <div className="mt-4 flex gap-3">
+              <a
+                href="/customer"
+                className="inline-flex items-center rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-100 hover:border-slate-500"
+              >
+                Go to customer portal
+              </a>
+            </div>
+          </PortalCard>
+        </main>
+      );
+    }
+
+    return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
+  }
 
   if (!supplierEmail) {
     return (
