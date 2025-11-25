@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { createAuthClient, getCurrentSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierByUserId } from "@/server/suppliers";
-import { resolveUserRoles } from "@/server/users/roles";
 import LoginTokenBridge from "./LoginTokenBridge";
 
 export const metadata: Metadata = {
@@ -16,13 +15,11 @@ export const dynamic = "force-dynamic";
 
 // Behavior:
 // - If not authenticated: show message linking to /supplier to request magic link
-// - If authenticated: honor portal intent ("customer" or "supplier") when present
-// - Otherwise fall back to supplier/customer roles to pick a destination
-// - If neither role exists: show small "no profile found" message
+// - If authenticated and supplier profile exists: redirect("/supplier")
+// - If authenticated and no supplier profile: show small "no profile found" message
 // - If NEXT_PUBLIC_SHOW_LOGIN_DEBUG === "true": render extended debug panel instead of redirect
 
-type SessionResult = Awaited<ReturnType<typeof getCurrentSession>>;
-type SupabaseSession = NonNullable<SessionResult["session"]>;
+type SupabaseSession = NonNullable<Awaited<ReturnType<typeof getCurrentSession>>>;
 type CustomerRecord = Awaited<ReturnType<typeof getCustomerByUserId>>;
 type SupplierRecord = Awaited<ReturnType<typeof loadSupplierByUserId>>;
 
@@ -37,12 +34,11 @@ export default async function LoginPage() {
     .filter(Boolean);
   console.log("[auth] login cookies on /login:", cookieNames);
 
-  const { session, portalIntent } = await getCurrentSession();
+  const session = await getCurrentSession();
   const sessionSummary = {
     userId: session?.user?.id ?? null,
     email: session?.user?.email ?? null,
     isAuthenticated: Boolean(session),
-    portalIntent,
   };
   console.log("[auth] session summary:", sessionSummary);
 
@@ -59,13 +55,10 @@ export default async function LoginPage() {
     getCustomerByUserId(session.user.id),
     loadSupplierByUserId(session.user.id),
   ]);
-  const resolvedRoles = await resolveUserRoles(session.user.id, {
-    customer,
-    supplier,
-  });
+
   const roleSummary = {
-    hasCustomer: resolvedRoles.isCustomer,
-    hasSupplier: resolvedRoles.isSupplier,
+    hasCustomer: Boolean(customer),
+    hasSupplier: Boolean(supplier),
   };
   console.log("[auth] supplier lookup:", {
     found: roleSummary.hasSupplier,
@@ -86,22 +79,8 @@ export default async function LoginPage() {
     );
   }
 
-  const redirectDecision = deriveRedirectDecision({
-    portalIntent,
-    roleSummary,
-  });
-  console.log("[login] redirect decision", {
-    portalIntent: portalIntent ?? "none",
-    roleSummary,
-    redirect: redirectDecision,
-  });
-
   if (roleSummary.hasSupplier) {
     redirect("/supplier");
-  }
-
-  if (roleSummary.hasCustomer) {
-    redirect("/customer");
   }
 
   return (
@@ -239,30 +218,6 @@ function LoginDebugPanel({
   );
 }
 
-function deriveRedirectDecision({
-  portalIntent,
-  roleSummary,
-}: {
-  portalIntent: SessionResult["portalIntent"];
-  roleSummary: { hasCustomer: boolean; hasSupplier: boolean };
-}): "customer" | "supplier" | "none" {
-  if (portalIntent === "customer") {
-    return "customer";
-  }
-  if (portalIntent === "supplier") {
-    return "supplier";
-  }
-  if (roleSummary.hasCustomer && roleSummary.hasSupplier) {
-    return "customer";
-  }
-  if (roleSummary.hasCustomer) {
-    return "customer";
-  }
-  if (roleSummary.hasSupplier) {
-    return "supplier";
-  }
-  return "none";
-}
 async function signOutAction() {
   "use server";
 
@@ -272,7 +227,5 @@ async function signOutAction() {
   } catch (error) {
     console.error("[login page] sign out failed", error);
   }
-  // NOTE: This redirect("/") is the last hop we see in the /login -> /portal -> /
-  // sequence from the logs whenever a post-login sign-out fires immediately.
   redirect("/");
 }
