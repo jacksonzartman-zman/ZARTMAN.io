@@ -21,6 +21,10 @@ import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime
 import { SystemStatusBar } from "../SystemStatusBar";
 import { loadCustomerActivityFeed } from "@/server/activity";
 import type { ActivityItem } from "@/types/activity";
+import {
+  getCustomerDecisions,
+  type CustomerDecision,
+} from "@/server/marketplace/decisions";
 
 export const dynamic = "force-dynamic";
 
@@ -166,6 +170,8 @@ async function CustomerDashboardPage({
     domain: viewerDomain,
     limit: RECENT_ACTIVITY_LIMIT,
   });
+  const decisions = await getCustomerDecisions(customer.id);
+  const hasDecisions = decisions.length > 0;
   const recentActivity: ActivityItem[] = activityFeed.map((item) => ({
     ...item,
     href:
@@ -202,6 +208,34 @@ async function CustomerDashboardPage({
         metrics={customerMetrics}
         lastUpdatedLabel={lastUpdatedLabel}
       />
+      <PortalCard
+        title="Decisions Needed"
+        description="Quick calls that keep bids and builds moving."
+      >
+        {hasDecisions ? (
+          <ul className="space-y-3">
+            {decisions.map((decision) => (
+              <li
+                key={decision.id}
+                className="rounded-xl border border-slate-900/70 bg-slate-900/30 p-4"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-medium text-white">{decision.title}</p>
+                    <p className="text-xs text-slate-400">{decision.description}</p>
+                  </div>
+                  <UrgencyBadge level={decision.urgencyLevel} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">
+            Nothing needs a decision right now. We’ll surface supplier-ready moves
+            here the moment they exist.
+          </div>
+        )}
+      </PortalCard>
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
           {usingOverride ? (
             <>
@@ -638,6 +672,30 @@ function ActivityTypeBadge({ type }: { type: ActivityItem["type"] }) {
       className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${colorMap[type]}`}
     >
       {labelMap[type]}
+    </span>
+  );
+}
+
+function UrgencyBadge({
+  level,
+}: {
+  level: CustomerDecision["urgencyLevel"];
+}) {
+  const palette: Record<CustomerDecision["urgencyLevel"], string> = {
+    high: "border-red-500/40 bg-red-500/10 text-red-200",
+    medium: "border-amber-500/40 bg-amber-500/10 text-amber-200",
+    low: "border-slate-500/40 bg-slate-500/10 text-slate-200",
+  };
+  const labelMap: Record<CustomerDecision["urgencyLevel"], string> = {
+    high: "High urgency",
+    medium: "Needs attention",
+    low: "Low pressure",
+  };
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${palette[level]}`}
+    >
+      {labelMap[level]}
     </span>
   );
 }
