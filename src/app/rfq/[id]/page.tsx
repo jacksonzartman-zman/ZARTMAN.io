@@ -82,8 +82,8 @@ export default async function RfqWorkspacePage({
       <div className="mt-8 space-y-6">
         <RfqSummaryCard rfq={workspace.rfq} />
         <SupplierActivityFeed
-          bids={workspace.supplierBids}
-          error={workspace.supplierBidError}
+          supplierBids={workspace.supplierBids}
+          supplierBidError={workspace.supplierBidError}
         />
         <CollaborationPanel threads={workspace.collaborationThreads} />
         <FilesAndRevisions attachments={workspace.fileAttachments} />
@@ -126,10 +126,15 @@ function RfqSummaryCard({ rfq }: { rfq: MarketplaceRfq }) {
   );
 }
 
+type SupplierActivityFeedProps = {
+  supplierBids: RfqWorkspaceData["supplierBids"];
+  supplierBidError: RfqWorkspaceData["supplierBidError"];
+};
+
 function SupplierActivityFeed({
-  bids,
-  error,
-}: Pick<RfqWorkspaceData, "supplierBids" | "supplierBidError">) {
+  supplierBids,
+  supplierBidError,
+}: SupplierActivityFeedProps) {
   return (
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-5">
       <header className="flex flex-wrap items-center justify-between gap-3">
@@ -142,23 +147,23 @@ function SupplierActivityFeed({
           </p>
         </div>
         <span className="text-xs text-slate-500">
-          {bids.length} bid{bids.length === 1 ? "" : "s"}
+          {supplierBids.length} bid{supplierBids.length === 1 ? "" : "s"}
         </span>
       </header>
 
-      {error ? (
+      {supplierBidError ? (
         <p className="mt-4 rounded-xl border border-dashed border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-          {error}
+          {supplierBidError}
         </p>
       ) : null}
 
       <div className="mt-4 space-y-3">
-        {bids.length === 0 ? (
+        {supplierBids.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-800 bg-black/20 px-3 py-4 text-sm text-slate-400">
             No supplier responses yet. Once bids arrive, we’ll note amounts, lead times, and decision history here.
           </p>
         ) : (
-          bids.map((bid) => (
+          supplierBids.map((bid) => (
             <article
               key={bid.id}
               className="rounded-2xl border border-slate-900 bg-slate-950/60 p-4"
