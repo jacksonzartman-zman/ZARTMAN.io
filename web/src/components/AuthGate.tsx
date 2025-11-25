@@ -29,7 +29,19 @@ function LoginForm() {
 
   async function sendLink(e: React.FormEvent) {
     e.preventDefault();
-    await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href } });
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000");
+
+    await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${baseUrl}/auth/callback`,
+      },
+    });
     setSent(true);
   }
 

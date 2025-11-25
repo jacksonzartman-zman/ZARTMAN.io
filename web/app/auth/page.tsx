@@ -9,7 +9,17 @@ export default function AuthPage() {
   async function send() {
     const supabase = sbBrowser()
     if (!supabase) return alert('Supabase not configured')
-    const { error } = await supabase.auth.signInWithOtp({ email })
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      (process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "http://localhost:3000")
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${baseUrl}/auth/callback`,
+      },
+    })
     if (!error) setSent(true)
     else alert(error.message)
   }
