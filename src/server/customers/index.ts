@@ -74,6 +74,38 @@ export async function getCustomerByUserId(
   }
 }
 
+export async function getCustomerById(
+  customerId: string,
+): Promise<CustomerRow | null> {
+  if (!customerId) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("customers")
+      .select("*")
+      .eq("id", customerId)
+      .maybeSingle<CustomerRow>();
+
+    if (error) {
+      console.error("getCustomerById: lookup failed", {
+        customerId,
+        error,
+      });
+      return null;
+    }
+
+    return data ?? null;
+  } catch (error) {
+    console.error("getCustomerById: unexpected error", {
+      customerId,
+      error,
+    });
+    return null;
+  }
+}
+
 type UpsertCustomerInput = {
   userId: string;
   email: string | null;
