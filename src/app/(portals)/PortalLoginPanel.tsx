@@ -35,9 +35,16 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
   const [error, setError] = useState<string | null>(null);
   const [lastSentTo, setLastSentTo] = useState<string | null>(null);
   const pathname = usePathname();
+  const roleIsKnown = Object.prototype.hasOwnProperty.call(ROLE_COPY, role);
+  if (!roleIsKnown) {
+    console.warn("[portal-login] unknown role received, defaulting to customer", {
+      role,
+    });
+  }
+  const resolvedRole: PortalRole = roleIsKnown ? role : "customer";
 
   const redirectPath =
-    typeof pathname === "string" && pathname.startsWith(`/${role}`)
+    typeof pathname === "string" && pathname.startsWith(`/${resolvedRole}`)
       ? pathname
       : fallbackRedirect;
 
@@ -46,7 +53,7 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
       setError(
-        role === "supplier"
+        resolvedRole === "supplier"
           ? "Enter a business email that matches your onboarding profile."
           : "Enter a valid work email.",
       );
@@ -58,7 +65,7 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
       setStatus("sending");
       setError(null);
       const result = await requestMagicLinkForEmail({
-        role,
+        role: resolvedRole,
         email: normalizedEmail,
         nextPath: redirectPath,
       });
@@ -66,7 +73,7 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
         setStatus("error");
         setError(
           result.error ??
-            (role === "supplier"
+            (resolvedRole === "supplier"
               ? "We couldn’t send the link. Check your connection and try again."
               : "We couldn’t send the link. Try again in a few seconds."),
         );
@@ -77,7 +84,7 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
     } catch (err) {
       console.error("Portal login: failed to request magic link", err);
       setError(
-        role === "supplier"
+        resolvedRole === "supplier"
           ? "We couldn’t send the link. Check your connection and try again."
           : "We couldn’t send the link. Try again in a few seconds.",
       );
@@ -85,12 +92,12 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
     }
   }
 
-  const copy = ROLE_COPY[role];
+  const copy = ROLE_COPY[resolvedRole];
 
   return (
     <section className="mx-auto max-w-lg rounded-2xl border border-slate-900 bg-slate-950/50 p-6">
       <p className={`text-xs font-semibold uppercase tracking-[0.3em] ${copy.accent}`}>
-        {role} portal
+        {resolvedRole} portal
       </p>
       <h2 className="mt-2 text-xl font-semibold text-white">{copy.title}</h2>
       <p className="mt-1 text-sm text-slate-400">{copy.description}</p>
@@ -114,9 +121,9 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
         >
           {status === "sending" ? "Sending..." : copy.cta}
         </button>
-          {status === "sent" ? (
+        {status === "sent" ? (
             <p className="text-sm text-emerald-200">
-              {role === "supplier" ? (
+              {resolvedRole === "supplier" ? (
                 <>
                   Link sent to{" "}
                   <span className="font-mono text-white">

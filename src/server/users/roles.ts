@@ -34,12 +34,24 @@ export async function resolveUserRoles(
   let supplier = preloaded?.supplier;
 
   if (customer === undefined || supplier === undefined) {
-    const [resolvedCustomer, resolvedSupplier] = await Promise.all([
-      customer === undefined ? getCustomerByUserId(userId) : Promise.resolve(customer),
-      supplier === undefined ? loadSupplierByUserId(userId) : Promise.resolve(supplier),
-    ]);
-    customer = resolvedCustomer;
-    supplier = resolvedSupplier;
+    try {
+      const [resolvedCustomer, resolvedSupplier] = await Promise.all([
+        customer === undefined ? getCustomerByUserId(userId) : Promise.resolve(customer),
+        supplier === undefined ? loadSupplierByUserId(userId) : Promise.resolve(supplier),
+      ]);
+      customer = resolvedCustomer;
+      supplier = resolvedSupplier;
+    } catch (error) {
+      console.error("[roles] resolveUserRoles lookup failed", {
+        userId,
+        error,
+      });
+      return {
+        primaryRole: "unknown",
+        isCustomer: false,
+        isSupplier: false,
+      };
+    }
   }
 
   const isCustomer = Boolean(customer);
