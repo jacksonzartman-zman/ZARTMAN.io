@@ -349,7 +349,7 @@ export async function POST(req: NextRequest) {
         normalizedSessionEmail;
       const quoteInsertPayload = {
         upload_id: uploadRow.id,
-        customer_id: customerId,
+        // Production quotes omit customer_id; link remains via email for now.
         customer_name: quoteCustomerName,
         customer_email: contactEmail,
         company: company || null,
