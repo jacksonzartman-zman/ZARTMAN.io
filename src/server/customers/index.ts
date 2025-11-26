@@ -1,3 +1,4 @@
+import type { PostgrestError } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 export type CustomerRow = {
@@ -10,6 +11,23 @@ export type CustomerRow = {
   created_at: string;
   updated_at: string;
 };
+
+export type CustomerProfileSaveOperation =
+  | "updated_user"
+  | "linked_email"
+  | "inserted";
+
+export type UpsertCustomerProfileResult =
+  | {
+      ok: true;
+      customer: CustomerRow;
+      operation: CustomerProfileSaveOperation;
+    }
+  | {
+      ok: false;
+      error: string;
+      details?: unknown;
+    };
 
 function normalizeEmail(value?: string | null): string | null {
   if (typeof value !== "string") {
@@ -66,10 +84,14 @@ type UpsertCustomerInput = {
 
 export async function upsertCustomerProfileForUser(
   input: UpsertCustomerInput,
-): Promise<CustomerRow | null> {
+): Promise<UpsertCustomerProfileResult> {
   const normalizedEmail = normalizeEmail(input.email);
   if (!normalizedEmail) {
-    throw new Error("A valid email address is required.");
+    return {
+      ok: false,
+      error: "Your session is missing a valid email address.",
+      details: { reason: "missing-email" },
+    };
   }
 
   const companyName =
@@ -84,51 +106,100 @@ export async function upsertCustomerProfileForUser(
     const existingByEmail = await getCustomerByEmail(normalizedEmail);
 
     if (existingByUser) {
-      return await updateCustomer(existingByUser.id, {
+      const updated = await updateCustomer(existingByUser.id, {
         company_name: companyName,
         phone,
         website,
       });
+      if (!updated) {
+        return {
+          ok: false,
+          error: "We couldn’t update your existing profile record.",
+          details: {
+            reason: "update-existing-user",
+            customerId: existingByUser.id,
+          },
+        };
+      }
+      return { ok: true, customer: updated, operation: "updated_user" };
     }
 
     if (existingByEmail) {
-      return await updateCustomer(existingByEmail.id, {
+      const updated = await updateCustomer(existingByEmail.id, {
         user_id: input.userId,
         company_name: companyName,
         phone,
         website,
       });
+      if (!updated) {
+        return {
+          ok: false,
+          error: "We couldn’t link your profile to this account.",
+          details: {
+            reason: "update-existing-email",
+            customerId: existingByEmail.id,
+          },
+        };
+      }
+      return { ok: true, customer: updated, operation: "linked_email" };
     }
+
+    const insertPayload = {
+      user_id: input.userId,
+      email: normalizedEmail,
+      company_name: companyName,
+      phone,
+      website,
+      updated_at: new Date().toISOString(),
+    };
 
     const { data, error } = await supabaseServer
       .from("customers")
-      .insert({
-        user_id: input.userId,
-        email: normalizedEmail,
-        company_name: companyName,
-        phone,
-        website,
-      })
+      .insert(insertPayload)
       .select("*")
       .single<CustomerRow>();
 
-    if (error) {
+    if (error || !data) {
+      if (isUniqueConstraintError(error)) {
+        const conflicting = await getCustomerByEmail(normalizedEmail);
+        if (conflicting) {
+          const updated = await updateCustomer(conflicting.id, {
+            user_id: input.userId,
+            company_name: companyName,
+            phone,
+            website,
+          });
+          if (updated) {
+            return { ok: true, customer: updated, operation: "linked_email" };
+          }
+        }
+      }
+
       console.error("upsertCustomerProfileForUser: insert failed", {
         userId: input.userId,
         email: normalizedEmail,
+        payload: insertPayload,
         error,
       });
-      return null;
+      return {
+        ok: false,
+        error: "We couldn’t create your customer profile right now.",
+        details: error,
+      };
     }
 
-    return data ?? null;
+    return { ok: true, customer: data, operation: "inserted" };
   } catch (error) {
     console.error("upsertCustomerProfileForUser: unexpected error", {
       userId: input.userId,
       email: normalizedEmail,
       error,
     });
-    return null;
+    return {
+      ok: false,
+      error: "Unexpected error while saving your customer profile.",
+      details: error,
+    };
   }
 }
 
@@ -142,7 +213,7 @@ export async function getCustomerByEmail(email?: string | null) {
     const { data, error } = await supabaseServer
       .from("customers")
       .select("*")
-      .eq("email", normalized)
+      .ilike("email", normalized)
       .maybeSingle<CustomerRow>();
 
     if (error) {
@@ -222,6 +293,10 @@ async function updateCustomer(
   }
 
   return data ?? null;
+}
+
+function isUniqueConstraintError(error?: PostgrestError | null): boolean {
+  return Boolean(error?.code && error.code === "23505");
 }
 
 type UpsertCustomerByEmailInput = {
