@@ -84,7 +84,14 @@ export async function loadCustomerActivityFeed(args: {
     ...bids.map((bid) => buildBidActivityItem(bid, "customer")),
   ];
 
-  return finalizeActivity(items, limit);
+  const finalized = finalizeActivity(items, limit);
+  console.log("[customer activity] feed result", {
+    customerId: args.customerId ?? null,
+    email: args.email ?? null,
+    domain: args.domain ?? null,
+    count: finalized.length,
+  });
+  return finalized;
 }
 
 export async function loadSupplierActivityFeed(
