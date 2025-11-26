@@ -1,6 +1,11 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { UploadMeta } from "@/server/quotes/types";
-import { listSupplierCapabilities, loadSupplierById } from "./profile";
+import {
+  getSupplierApprovalStatus,
+  isSupplierApproved,
+  listSupplierCapabilities,
+  loadSupplierById,
+} from "./profile";
 import {
   logSupplierActivityQueryFailure,
   resolveSupplierActivityQuery,
@@ -17,6 +22,7 @@ import {
 } from "./types";
 import { canUserBid } from "@/lib/permissions";
 import { computeFairnessBoost } from "@/lib/fairness";
+import { approvalsEnabled } from "./flags";
 
 const OPEN_QUOTE_STATUSES = ["submitted", "in_review", "quoted"];
 const MATCH_LIMIT = 20;
@@ -74,6 +80,25 @@ export async function matchQuotesToSupplier(
         ok: false,
         data: [],
         error: "Supplier profile missing",
+      };
+    }
+
+    const approvalStatus = getSupplierApprovalStatus(supplier);
+    const approvalsOn = approvalsEnabled();
+    const approved = approvalsOn ? isSupplierApproved(supplier) : true;
+
+    if (approvalsOn && !approved) {
+      console.log("[supplier activity] approvals gate active", {
+        ...logContext,
+        approvalStatus,
+      });
+      return {
+        ok: true,
+        data: [],
+        approvalGate: {
+          enabled: true,
+          status: approvalStatus,
+        },
       };
     }
 
