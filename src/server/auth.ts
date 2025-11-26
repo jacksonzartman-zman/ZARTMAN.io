@@ -70,28 +70,38 @@ export async function createReadOnlyAuthClient(): Promise<SupabaseClientType> {
 }
 
 export async function getCurrentSession(): Promise<Session | null> {
-  const cookieStore = await cookies();
-  const cookieNames =
-    typeof cookieStore.getAll === "function"
-      ? cookieStore.getAll().map((entry) => entry.name)
-      : [];
-  console.log("[auth] cookies seen by server:", cookieNames);
+  try {
+    const cookieStore = await cookies();
+    const cookieNames =
+      typeof cookieStore.getAll === "function"
+        ? cookieStore.getAll().map((entry) => entry.name)
+        : [];
+    console.log("[auth] cookies seen by server:", cookieNames);
 
-  const supabase = await createReadOnlyAuthClient();
-  const { data, error } = await supabase.auth.getSession();
+    const supabase = await createReadOnlyAuthClient();
+    const { data, error } = await supabase.auth.getSession();
 
-  console.log("[auth] getSession result:", {
-    hasSession: Boolean(data.session),
-    email: data.session?.user?.email ?? null,
-    error: error?.message ?? null,
-  });
+    const sessionPresent = Boolean(data.session);
+    console.log("[auth] getSession result:", {
+      hasSession: sessionPresent,
+      email: data.session?.user?.email ?? null,
+      error: error?.message ?? null,
+    });
 
-  if (error) {
-    console.error("[auth] getSession failed", error);
+    if (error) {
+      console.error("[auth] getSession failed", error);
+      return null;
+    }
+
+    if (!sessionPresent) {
+      console.warn("[auth] no active session returned by Supabase");
+    }
+
+    return data.session ?? null;
+  } catch (error) {
+    console.error("[auth] getCurrentSession: unexpected failure", error);
     return null;
   }
-
-  return data.session ?? null;
 }
 
 export async function getCurrentUser() {

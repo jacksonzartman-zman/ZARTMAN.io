@@ -282,10 +282,17 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (customerError) {
-      logUploadError("Customer upsert failed", {
-        ...logContext,
-        error: serializeSupabaseError(customerError),
-      });
+      const serializedError = serializeSupabaseError(customerError);
+      const missingTable = isMissingTableError(customerError);
+      const logFn = missingTable ? logUploadDebug : logUploadError;
+      logFn(
+        missingTable ? "Customer upsert skipped (table missing)" : "Customer upsert failed",
+        {
+          ...logContext,
+          error: serializedError,
+          missingTable,
+        },
+      );
     } else if (customer?.id) {
       customerId = customer.id as string;
     }
@@ -383,32 +390,41 @@ export async function POST(req: NextRequest) {
         error: quoteErrorMessage,
       });
 
+      const quoteTableMissing = isMissingTableError(quoteInsertError);
       if (quoteInsertError || !createdQuote) {
-        return buildError(
-          "We couldn’t create your quote record. Please retry.",
-          500,
-          {
-            step: "db-insert-quote",
-          },
-        );
-      }
+        if (quoteTableMissing) {
+          logUploadDebug("Quote insert skipped (table missing)", {
+            ...logContext,
+            uploadId: uploadRow.id,
+            error: quoteErrorMessage,
+          });
+        } else {
+          return buildError(
+            "We couldn’t create your quote record. Please retry.",
+            500,
+            {
+              step: "db-insert-quote",
+            },
+          );
+        }
+      } else {
+        quoteId = createdQuote.id;
+        logContext.quoteId = quoteId;
 
-      quoteId = createdQuote.id;
-      logContext.quoteId = quoteId;
+        const { error: uploadLinkError } = await supabase
+          .from("uploads")
+          .update({
+            quote_id: quoteId,
+            status: DEFAULT_UPLOAD_STATUS,
+          })
+          .eq("id", uploadRow.id);
 
-      const { error: uploadLinkError } = await supabase
-        .from("uploads")
-        .update({
-          quote_id: quoteId,
-          status: DEFAULT_UPLOAD_STATUS,
-        })
-        .eq("id", uploadRow.id);
-
-      if (uploadLinkError) {
-        logUploadError("Upload quote link failed", {
-          ...logContext,
-          error: serializeSupabaseError(uploadLinkError),
-        });
+        if (uploadLinkError) {
+          logUploadError("Upload quote link failed", {
+            ...logContext,
+            error: serializeSupabaseError(uploadLinkError),
+          });
+        }
       }
     } else {
       logContext.quoteId = quoteId;
@@ -437,18 +453,34 @@ export async function POST(req: NextRequest) {
       });
 
       if (fileMetadataError) {
-        logUploadError("File metadata insert failed", {
-          ...logContext,
-          error: serializeSupabaseError(fileMetadataError),
-        });
+        const missingTable = isMissingTableError(fileMetadataError);
+        const logFn = missingTable ? logUploadDebug : logUploadError;
+        logFn(
+          missingTable
+            ? "File metadata insert skipped (table missing)"
+            : "File metadata insert failed",
+          {
+            ...logContext,
+            error: serializeSupabaseError(fileMetadataError),
+            missingTable,
+          },
+        );
       } else {
         metadataRecorded = true;
       }
     } catch (metadataError) {
-      logUploadError("Unexpected metadata insert error", {
-        ...logContext,
-        error: serializeSupabaseError(metadataError),
-      });
+      const missingTable = isMissingTableError(metadataError);
+      const logFn = missingTable ? logUploadDebug : logUploadError;
+      logFn(
+        missingTable
+          ? "File metadata insert skipped (table missing)"
+          : "Unexpected metadata insert error",
+        {
+          ...logContext,
+          error: serializeSupabaseError(metadataError),
+          missingTable,
+        },
+      );
     }
 
     logUploadDebug("Upload finished successfully", {
@@ -662,6 +694,17 @@ function sanitizeContext(context: UploadLogContext) {
     sanitized[key] = value;
   });
   return sanitized;
+}
+
+function isMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const code =
+    "code" in error && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code?: string }).code
+      : null;
+  return code === "PGRST205";
 }
 
 function serializeSupabaseError(error: unknown) {
