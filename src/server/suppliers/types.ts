@@ -25,6 +25,13 @@ export type SupplierQuoteRow = Pick<
 > &
   Partial<Pick<QuoteWithUploadsRow, "file_names" | "upload_file_names">>;
 
+export type SupplierApprovalStatus = "approved" | "pending" | "rejected" | "unknown";
+
+export type SupplierApprovalGate = {
+  enabled: boolean;
+  status: SupplierApprovalStatus;
+};
+
 export type SupplierRow = {
   id: string;
   company_name: string;
@@ -35,6 +42,7 @@ export type SupplierRow = {
   country: string | null;
   verified: boolean;
   created_at: string;
+  status?: string | null;
 };
 
 export type SupplierCapabilityRow = {
@@ -78,6 +86,8 @@ export type SupplierProfile = {
   supplier: SupplierRow;
   capabilities: SupplierCapabilityRow[];
   documents: SupplierDocumentRow[];
+  approvalStatus: SupplierApprovalStatus;
+  approved: boolean;
 };
 
 export type SupplierCapabilityInput = {
@@ -140,6 +150,7 @@ export type SupplierActivityResult<TData> = {
   ok: boolean;
   data: TData;
   error?: string | null;
+  approvalGate?: SupplierApprovalGate;
 };
 
 export type SupplierActivityIdentity = {
