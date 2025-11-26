@@ -20,6 +20,11 @@ import { EmptyStateNotice } from "../EmptyStateNotice";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
 import { loadCustomerActivityFeed } from "@/server/activity";
+import {
+  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
+  type SafeQuoteWithUploadsField,
+  type SupplierQuoteRow,
+} from "@/server/suppliers/types";
 import type { ActivityItem } from "@/types/activity";
 import {
   getCustomerDecisions,
@@ -36,6 +41,7 @@ const RECENT_ACTIVITY_LIMIT = 10;
 const OPEN_STATUSES: UploadStatus[] = ["submitted", "in_review", "quoted"];
 const IN_PROGRESS_STATUSES: UploadStatus[] = ["in_review", "quoted"];
 const COMPLETED_STATUSES: UploadStatus[] = ["approved"];
+const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
 
 const TARGET_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -57,30 +63,21 @@ type CustomerPageProps = {
   searchParams?: CustomerPageSearchParams;
 };
 
-type RawQuoteRecord = {
-  id: string;
-  status: string | null;
-  created_at: string | null;
-  target_date: string | null;
-  price: number | string | null;
-  currency: string | null;
-  file_name: string | null;
-  email: string | null;
-  company: string | null;
-  customer_id: string | null;
-};
+type RawQuoteRecord = Pick<SupplierQuoteRow, SafeQuoteWithUploadsField>;
 
 type PortalQuote = {
   id: string;
   status: UploadStatus;
   createdAt: string | null;
+  updatedAt: string | null;
   targetDate: string | null;
   price: number | string | null;
   currency: string | null;
   fileName: string | null;
   customerEmail: string | null;
+  customerName: string | null;
   company: string | null;
-  customerId: string | null;
+  uploadId: string | null;
 };
 
 type CustomerPortalData = {
@@ -542,20 +539,7 @@ async function selectQuotesByCustomerId(
 function selectQuotesByPattern(pattern: string) {
   return supabaseServer
     .from("quotes_with_uploads")
-    .select(
-      `
-        id,
-        status,
-        created_at,
-        target_date,
-        price,
-        currency,
-        file_name,
-        email,
-        company,
-        customer_id
-      `,
-    )
+    .select(QUOTE_FIELDS.join(","))
     .ilike("email", pattern)
     .order("created_at", { ascending: false })
     .limit(QUOTE_LIMIT);
@@ -566,13 +550,15 @@ function mapQuoteRecords(records: RawQuoteRecord[]): PortalQuote[] {
     id: record.id,
     status: normalizeUploadStatus(record.status),
     createdAt: record.created_at ?? null,
+    updatedAt: record.updated_at ?? null,
     targetDate: record.target_date ?? null,
     price: record.price ?? null,
     currency: record.currency ?? null,
     fileName: record.file_name ?? null,
     customerEmail: record.email ?? null,
+    customerName: record.customer_name ?? null,
     company: record.company ?? null,
-    customerId: record.customer_id ?? null,
+    uploadId: record.upload_id ?? null,
   }));
 }
 
