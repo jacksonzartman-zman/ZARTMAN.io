@@ -73,6 +73,10 @@ const BID_SELECT_FIELDS = [
 
 const LIVE_BID_STATUSES: RfqBidStatus[] = ["submitted", "accepted"];
 
+const RFQS_FEATURE_ENABLED =
+  process.env.RFQS_ENABLED === "true" ||
+  process.env.NEXT_PUBLIC_RFQS_ENABLED === "true";
+
 export async function getCustomerDecisions(
   customerId: string,
 ): Promise<CustomerDecision[]> {
@@ -125,6 +129,10 @@ export async function getCustomerDecisions(
 async function fetchOpenCustomerRfqs(
   customerId: string,
 ): Promise<CustomerRfqRecord[]> {
+  if (!RFQS_FEATURE_ENABLED) {
+    return [];
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from("rfqs")
@@ -134,6 +142,10 @@ async function fetchOpenCustomerRfqs(
       .order("created_at", { ascending: false });
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return [];
+      }
+
       console.error("decisions: fetchOpenCustomerRfqs failed", {
         customerId,
         error,
@@ -147,6 +159,10 @@ async function fetchOpenCustomerRfqs(
 
     return rows;
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return [];
+    }
+
     console.error("decisions: fetchOpenCustomerRfqs unexpected error", {
       customerId,
       error,
@@ -269,4 +285,17 @@ function buildSupplierReadyDescription(
 ): string {
   const rfqFragment = rfqTitle ? ` for ${rfqTitle}` : "";
   return `${supplierLabel} shared a fresh bid${rfqFragment}. We can review the details together and decide on next steps whenever it feels right.`;
+}
+
+function isMissingRfqTableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const code =
+    "code" in error && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code?: string }).code
+      : undefined;
+
+  return code === "PGRST205";
 }
