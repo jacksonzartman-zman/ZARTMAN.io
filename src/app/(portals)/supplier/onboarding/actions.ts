@@ -29,6 +29,17 @@ const SUPPLIER_DOCS_BUCKET =
 
 const MAX_DOCUMENTS = 5;
 
+function isNextRedirectError(error: unknown): error is { digest?: string } {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const digest =
+    "digest" in error && typeof (error as { digest?: unknown }).digest === "string"
+      ? (error as { digest: string }).digest
+      : null;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
+}
+
 export async function submitSupplierOnboardingAction(
   _prevState: SupplierOnboardingState,
   formData: FormData,
@@ -162,6 +173,10 @@ export async function submitSupplierOnboardingAction(
       fieldErrors: {},
     };
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
     console.error("[supplier onboarding] unexpected failure", {
       ...logContext,
       error: serializeSupabaseError(error),
@@ -169,6 +184,7 @@ export async function submitSupplierOnboardingAction(
     return {
       ok: false,
       profileSaved: false,
+      partial: false,
       error: GENERIC_ONBOARDING_ERROR,
       fieldErrors: {},
     };

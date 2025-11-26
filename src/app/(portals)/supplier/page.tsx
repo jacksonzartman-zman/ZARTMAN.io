@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
-import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { primaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "../PortalCard";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
@@ -191,10 +191,7 @@ async function SupplierDashboardPage({
         ) : null}
       </section>
 
-      <OnboardingPromptCard supplierExists={supplierExists} />
-
       <ProfileCard
-        supplierEmail={supplier?.primary_email ?? supplierEmail}
         supplier={supplier}
         capabilities={capabilities}
         documents={documents}
@@ -279,51 +276,14 @@ async function SupplierDashboardPage({
   );
 }
 
-function OnboardingPromptCard({
-  supplierExists,
-}: {
-  supplierExists: boolean;
-}) {
-  return (
-    <PortalCard
-      title="Finish supplier onboarding"
-      description="Share your shop profile once so we know which RFQs, bids, and compliance docs belong to you."
-      action={
-        <Link href="/supplier/onboarding" className={primaryCtaClasses}>
-          {supplierExists ? "Update profile" : "Finish onboarding"}
-        </Link>
-      }
-    >
-      <div className="space-y-3 text-sm text-slate-300">
-        <p>
-          We’ll keep using the same email-only magic link to confirm it’s you. Once the form is
-          complete, matched RFQs and compliance requests unlock automatically.
-        </p>
-        {supplierExists ? (
-          <p className="text-xs text-slate-500">
-            Need to tweak capabilities or certs? Re-open the onboarding form any time and your
-            workspace stays in sync.
-          </p>
-        ) : (
-          <p className="text-xs text-slate-500">
-            Add capabilities, certifications, and documents so we can auto-route RFQs to your inbox.
-          </p>
-        )}
-      </div>
-    </PortalCard>
-  );
-}
-
 function ProfileCard({
   supplier,
   capabilities,
   documents,
-  supplierEmail,
 }: {
   supplier: SupplierProfile["supplier"] | null;
   capabilities: SupplierProfile["capabilities"];
   documents: SupplierProfile["documents"];
-  supplierEmail: string;
 }) {
   const hasProfile = Boolean(supplier);
   return (
@@ -337,7 +297,7 @@ function ProfileCard({
       action={
         <Link
           href="/supplier/onboarding"
-          className={secondaryCtaClasses}
+          className={primaryCtaClasses}
         >
           {hasProfile ? "Edit profile" : "Start onboarding"}
         </Link>
