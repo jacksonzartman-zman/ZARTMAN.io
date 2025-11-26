@@ -258,6 +258,9 @@ export default function UploadBox() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [successDetailMessage, setSuccessDetailMessage] = useState<string | null>(
+    null,
+  );
   const [isIOSDevice, setIsIOSDevice] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
@@ -320,6 +323,7 @@ export default function UploadBox() {
       setStatusMessage(null);
       setSuccess(false);
       setSuccessMessage(null);
+      setSuccessDetailMessage(null);
       setState((prev) => ({ ...prev, file: null, fileName: null }));
       return;
     }
@@ -328,6 +332,7 @@ export default function UploadBox() {
     setError(null);
     setSuccess(false);
     setSuccessMessage(null);
+    setSuccessDetailMessage(null);
     setStatusMessage(null);
     setState((prev) => ({ ...prev, file, fileName: file.name }));
   };
@@ -343,6 +348,7 @@ export default function UploadBox() {
       setStatusMessage(null);
       setSuccess(false);
       setSuccessMessage(null);
+      setSuccessDetailMessage(null);
       setState((prev) => ({ ...prev, file: null, fileName: null }));
       e.target.value = "";
       return;
@@ -352,6 +358,7 @@ export default function UploadBox() {
     setError(null);
     setSuccess(false);
     setSuccessMessage(null);
+    setSuccessDetailMessage(null);
     setStatusMessage(null);
     setState((prev) => ({ ...prev, file, fileName: file.name }));
   };
@@ -397,6 +404,7 @@ export default function UploadBox() {
     setError(null);
     setSuccess(false);
     setSuccessMessage(null);
+    setSuccessDetailMessage(null);
     setStatusMessage("Validating file…");
 
     const validationErrors = validateFormFields(state);
@@ -518,26 +526,27 @@ export default function UploadBox() {
         );
       }
 
-      const metadataLine =
+      const storageDetail =
         structuredPayload.file?.storagePath &&
         structuredPayload.metadataRecorded
           ? `Stored as ${structuredPayload.file.storagePath}.`
-          : structuredPayload.metadataRecorded === false
-            ? "Upload succeeded but metadata logging failed. Please check admin logs."
-            : null;
+          : null;
 
-      const responseMessage = [
-        payloadMessage ?? "Upload complete. We'll review your CAD shortly.",
-        metadataLine,
-      ]
-        .filter(Boolean)
-        .join(" ");
+      const metadataWarning =
+        structuredPayload.metadataRecorded === false
+          ? "Some advanced file details may be unavailable. This won’t affect your quote."
+          : null;
+
+      const responseMessage =
+        payloadMessage ?? "Upload complete. We'll review your CAD shortly.";
+      const detailMessage = metadataWarning ?? storageDetail ?? null;
 
       setStatusMessage(null);
       setState(initialState);
       setFieldErrors({});
       setSuccess(true);
       setSuccessMessage(responseMessage);
+      setSuccessDetailMessage(detailMessage);
       setError(null);
     } catch (err: unknown) {
       console.error(err);
@@ -549,6 +558,7 @@ export default function UploadBox() {
       );
       setSuccess(false);
       setSuccessMessage(null);
+      setSuccessDetailMessage(null);
     } finally {
       setSubmitting(false);
     }
@@ -1011,9 +1021,14 @@ export default function UploadBox() {
             </p>
           )}
           {!error && !statusMessage && success && successMessage && (
-            <p className="text-xs text-emerald-400" role="status">
-              {successMessage}
-            </p>
+            <div className="space-y-1" role="status">
+              <p className="text-xs text-emerald-400">{successMessage}</p>
+              {successDetailMessage && (
+                <p className="text-[11px] text-emerald-200">
+                  {successDetailMessage}
+                </p>
+              )}
+            </div>
           )}
         </div>
       </form>
