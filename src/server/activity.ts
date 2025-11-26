@@ -6,6 +6,10 @@ import {
   toSupplierActivityQueryError,
 } from "@/server/suppliers/activityLogging";
 import {
+  isMissingSupplierAssignmentsColumnError,
+  isSupplierAssignmentsEnabled,
+} from "@/server/suppliers/flags";
+import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SupplierActivityIdentity,
   type SupplierActivityResult,
@@ -115,6 +119,7 @@ export async function loadSupplierActivityFeed(
     supplierEmail,
     loader: "activity",
   };
+  const assignmentsEnabled = isSupplierAssignmentsEnabled();
 
   if (!supplierId && !supplierEmail) {
     console.warn("[supplier activity] loading skipped", {
@@ -129,6 +134,16 @@ export async function loadSupplierActivityFeed(
   }
 
   console.log("[supplier activity] loading", loggingPayload);
+
+  if (!assignmentsEnabled) {
+    console.log("[supplier activity] assignments disabled: skipping activity feed", {
+      ...loggingPayload,
+    });
+    return {
+      ok: true,
+      data: [],
+    };
+  }
 
   try {
     const assignmentQuoteIds = supplierEmail
@@ -149,6 +164,7 @@ export async function loadSupplierActivityFeed(
         limit: Math.max(limit * 2, 20),
       },
       logContext,
+      assignmentsEnabled,
     );
 
     const items = [
@@ -235,8 +251,10 @@ async function fetchSupplierQuotes(
     limit: number;
   },
   context?: ActivityQueryContext,
+  assignmentsEnabled?: boolean,
 ): Promise<QuoteSummaryRow[]> {
   const { quoteIds, supplierEmail, limit } = args;
+  const assignmentsFeatureEnabled = assignmentsEnabled ?? true;
 
   if (quoteIds.length > 0) {
     return selectQuotesByFilter(
@@ -254,8 +272,10 @@ async function fetchSupplierQuotes(
       query
         .or(
           [
-            `assigned_supplier_email.ilike.${supplierEmail}`,
             `email.ilike.${supplierEmail}`,
+            ...(assignmentsFeatureEnabled
+              ? [`assigned_supplier_email.ilike.${supplierEmail}`]
+              : []),
           ].join(","),
         )
         .limit(limit),
@@ -276,6 +296,10 @@ async function selectQuotesByFilter(
     const query = build(baseQuery);
     const { data, error } = await query;
     if (error) {
+      if (shouldSkipAssignmentsColumnError(error, context)) {
+        logAssignmentsColumnWarning(context, error);
+        return [];
+      }
       logQuoteError(error, context);
       if (shouldThrow) {
         throw toSupplierActivityQueryError("quotes_with_uploads", error);
@@ -284,6 +308,10 @@ async function selectQuotesByFilter(
     }
     return (data as QuoteSummaryRow[]) ?? [];
   } catch (error) {
+    if (shouldSkipAssignmentsColumnError(error, context)) {
+      logAssignmentsColumnWarning(context, error);
+      return [];
+    }
     logQuoteError(error, context);
     if (shouldThrow) {
       throw toSupplierActivityQueryError("quotes_with_uploads", error);
@@ -340,6 +368,59 @@ function logSupplierActivityError(
           : String(rawError),
     ...extra,
   });
+}
+
+function shouldSkipAssignmentsColumnError(
+  error: unknown,
+  context?: ActivityQueryContext,
+): boolean {
+  if (context?.label !== SUPPLIER_ACTIVITY_LABEL) {
+    return false;
+  }
+  return isMissingSupplierAssignmentsColumnError(extractSupabaseSource(error));
+}
+
+function logAssignmentsColumnWarning(
+  context: ActivityQueryContext | undefined,
+  rawError: unknown,
+) {
+  console.warn("[supplier activity] assignments disabled: missing column", {
+    loader: context?.loader ?? null,
+    supplierId: context?.supplierId ?? null,
+    supplierEmail: context?.supplierEmail ?? null,
+    stage: context?.loader ?? null,
+    supabaseError: formatSupabaseError(extractSupabaseSource(rawError)),
+  });
+}
+
+function extractSupabaseSource(error: unknown): unknown {
+  if (
+    error &&
+    typeof error === "object" &&
+    "supabaseError" in error &&
+    (error as { supabaseError?: unknown }).supabaseError
+  ) {
+    return (error as { supabaseError?: unknown }).supabaseError;
+  }
+  return error;
+}
+
+function formatSupabaseError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return error ?? null;
+  }
+  const maybeError = error as {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+    hint?: unknown;
+  };
+  return {
+    code: typeof maybeError.code === "string" ? maybeError.code : null,
+    message: typeof maybeError.message === "string" ? maybeError.message : null,
+    details: typeof maybeError.details === "string" ? maybeError.details : null,
+    hint: typeof maybeError.hint === "string" ? maybeError.hint : null,
+  };
 }
 
 async function fetchBids(
