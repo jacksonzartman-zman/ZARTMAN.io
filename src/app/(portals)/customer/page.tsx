@@ -461,7 +461,9 @@ async function loadCustomerPortalDataByEmail(
 
   const emailResponse = await selectQuotesByPattern(email);
   if (emailResponse.error) {
-    console.error("Failed to load customer quotes by email", emailResponse.error);
+    logCustomerPortalQueryFailure("quotes-by-email", emailResponse.error, {
+      pattern: email,
+    });
     errors.push("email");
   }
 
@@ -474,10 +476,9 @@ async function loadCustomerPortalDataByEmail(
   if (quotes.length === 0 && domain) {
     const domainResponse = await selectQuotesByPattern(`%@${domain}`);
     if (domainResponse.error) {
-      console.error(
-        "Failed to load customer quotes by domain",
-        domainResponse.error,
-      );
+      logCustomerPortalQueryFailure("quotes-by-domain", domainResponse.error, {
+        pattern: `%@${domain}`,
+      });
       errors.push("domain");
     }
 
@@ -499,6 +500,24 @@ async function loadCustomerPortalDataByEmail(
         ? "We had trouble loading every data point. Refresh to try again."
         : undefined,
   };
+}
+
+function logCustomerPortalQueryFailure(
+  scope: string,
+  error: unknown,
+  context: Record<string, unknown>,
+) {
+  console.error("[customer portal] query failed", {
+    scope,
+    ...context,
+    error:
+      error instanceof Error
+        ? {
+            message: error.message,
+            stack: error.stack,
+          }
+        : error,
+  });
 }
 
 async function selectQuotesByCustomerId(

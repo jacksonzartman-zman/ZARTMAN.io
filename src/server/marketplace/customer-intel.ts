@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
 import { logMarketplaceEvent } from "./events";
 import { listBidsForRfq } from "./bids";
 import { loadRfqById, OPEN_RFQ_STATUSES } from "./rfqs";
@@ -448,6 +449,10 @@ export async function recommendTimelineStrategy(
 }
 
 async function fetchRecentCustomerRfqs(customerId: string): Promise<MarketplaceRfq[]> {
+  if (!isRfqsFeatureEnabled()) {
+    return [];
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from("rfqs")
@@ -459,19 +464,25 @@ async function fetchRecentCustomerRfqs(customerId: string): Promise<MarketplaceR
       .limit(MAX_RFQ_HISTORY);
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return [];
+      }
       console.error("customer-intel: rfq history query failed", { customerId, error });
       return [];
     }
 
     return (data as MarketplaceRfq[]) ?? [];
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return [];
+    }
     console.error("customer-intel: rfq history unexpected error", { customerId, error });
     return [];
   }
 }
 
 async function summarizeCustomerBids(rfqIds: string[]) {
-  if (rfqIds.length === 0) {
+  if (rfqIds.length === 0 || !isRfqsFeatureEnabled()) {
     return {
       avgBidsPerRfq: 0,
       medianLeadTime: null,
@@ -488,6 +499,15 @@ async function summarizeCustomerBids(rfqIds: string[]) {
       .in("rfq_id", rfqIds);
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return {
+          avgBidsPerRfq: 0,
+          medianLeadTime: null,
+          typicalPrice: null,
+          spread: null,
+          perRfq: {},
+        };
+      }
       console.error("customer-intel: bid summary query failed", { rfqIds, error });
       return {
         avgBidsPerRfq: 0,
@@ -557,6 +577,15 @@ async function summarizeCustomerBids(rfqIds: string[]) {
       perRfq,
     };
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return {
+        avgBidsPerRfq: 0,
+        medianLeadTime: null,
+        typicalPrice: null,
+        spread: null,
+        perRfq: {},
+      };
+    }
     console.error("customer-intel: bid summary unexpected error", { rfqIds, error });
     return {
       avgBidsPerRfq: 0,

@@ -60,13 +60,13 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
-  const workspaceData = await loadQuoteWorkspaceData(quoteId, {
+  const workspaceResult = await loadQuoteWorkspaceData(quoteId, {
     safeOnly: true,
   });
-  if (!workspaceData) {
+  if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[customer quote] load failed", {
       quoteId,
-      error: "Quote not found",
+      error: workspaceResult.error ?? "Quote not found",
     });
     return (
       <PortalNoticeCard
@@ -83,7 +83,7 @@ export default async function CustomerQuoteDetailPage({
     messages,
     messagesError,
     filesUnavailable,
-  } = workspaceData;
+  } = workspaceResult.data;
   const normalizedQuoteEmail = normalizeEmailInput(quote.email);
   const customerEmail = normalizeEmailInput(customer.email);
   const quoteCustomerMatches =
@@ -289,7 +289,13 @@ export default async function CustomerQuoteDetailPage({
     <div className="space-y-2">
       <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
       {filesUnavailable ? (
-        <DataFallbackNotice className="px-1" />
+        <>
+          <p className="px-1 text-xs text-slate-500">
+            File metadata is temporarily unavailable. Download links fall back to the
+            original upload while we resync.
+          </p>
+          <DataFallbackNotice className="px-1" />
+        </>
       ) : null}
     </div>
   );
