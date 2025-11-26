@@ -1,5 +1,4 @@
 <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- Outer plate: rounded square -->
   <rect
     x="4"
     y="4"
@@ -11,7 +10,6 @@
     stroke-width="1.5"
     fill="none"
   />
-  <!-- Forward-facing Z: top horizontal, diag down-left, bottom horizontal -->
   <path
     d="M10 11H22L13 21H22"
     stroke="white"
