@@ -28,7 +28,8 @@ type DocumentDraft = {
 };
 
 const INITIAL_STATE: SupplierOnboardingState = {
-  success: false,
+  ok: false,
+  profileSaved: false,
   error: null,
   fieldErrors: {},
 };
@@ -324,7 +325,11 @@ export function SupplierOnboardingForm({
         )}
       </Section>
 
-      {state.error ? (
+      {state.partial ? (
+        <p className="text-sm text-amber-200" role="status">
+          Profile saved. Some advanced details couldn’t be stored yet.
+        </p>
+      ) : state.error ? (
         <p className="text-sm text-red-300" role="alert">
           {state.error}
         </p>
