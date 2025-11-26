@@ -1,3 +1,4 @@
+import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
   logSupplierActivityQueryFailure,
@@ -15,6 +16,7 @@ import {
   UPLOAD_STATUS_LABELS,
 } from "@/app/admin/constants";
 import type { ActivityItem } from "@/types/activity";
+import { getCustomerById } from "@/server/customers";
 
 type ActivityContext = "customer" | "supplier";
 
@@ -195,11 +197,7 @@ async function fetchCustomerQuotes(args: {
   const filters: Array<() => Promise<QuoteSummaryRow[]>> = [];
 
   if (customerId) {
-    filters.push(() =>
-      selectQuotesByFilter((query) =>
-        query.eq("customer_id", customerId!).limit(limit),
-      ),
-    );
+    filters.push(() => selectQuotesByCustomerId(customerId, limit));
   }
 
   const normalizedEmail = normalizeEmail(email);
@@ -601,11 +599,7 @@ function buildQuoteDescription(
 }
 
 function normalizeEmail(value?: string | null): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
+  return normalizeEmailInput(value);
 }
 
 function normalizeDomain(value?: string | null): string | null {
@@ -649,5 +643,63 @@ function formatCurrencyValue(
     }).format(numeric);
   } catch {
     return `${resolvedCurrency} ${numeric.toFixed(0)}`;
+  }
+}
+
+async function selectQuotesByCustomerId(
+  customerId?: string | null,
+  limit?: number,
+): Promise<QuoteSummaryRow[]> {
+  if (!customerId) {
+    return [];
+  }
+
+  const customer = await getCustomerById(customerId);
+  if (!customer) {
+    console.warn("selectQuotesByCustomerId: customer not found", {
+      customerId,
+    });
+    return [];
+  }
+
+  const normalizedEmail = normalizeEmailInput(customer.email ?? null);
+  if (!normalizedEmail) {
+    console.warn("selectQuotesByCustomerId: customer missing email", {
+      customerId,
+    });
+    return [];
+  }
+
+  console.log("selectQuotesByCustomerId: resolving via email", {
+    customerId,
+    email: normalizedEmail,
+  });
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes_with_uploads")
+      .select(QUOTE_FIELDS.join(","))
+      .ilike("email", normalizedEmail)
+      .order("created_at", { ascending: false })
+      .limit(limit ?? DEFAULT_ACTIVITY_LIMIT * 2);
+
+    if (error) {
+      console.error("selectQuotesByCustomerId: query failed", {
+        customerId,
+        email: normalizedEmail,
+        error,
+      });
+      return [];
+    }
+
+    const rows = (data ?? []) as unknown as QuoteSummaryRow[];
+    return rows;
+  } catch (error) {
+    console.error("selectQuotesByCustomerId: query failed", {
+      customerId,
+      email: normalizedEmail,
+      error,
+    });
+    return [];
   }
 }
