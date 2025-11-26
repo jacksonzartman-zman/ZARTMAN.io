@@ -107,7 +107,7 @@ function NotLoggedInMessage({ nextPath }: { nextPath?: string | null }) {
         <p className="text-xs text-slate-500">
           Supplier?{" "}
           <Link
-            href="/supplier"
+            href="/login"
             className="font-semibold text-blue-300 underline-offset-4 hover:underline"
           >
             Sign in as a supplier instead
@@ -118,18 +118,23 @@ function NotLoggedInMessage({ nextPath }: { nextPath?: string | null }) {
   }
 
   return (
-    <main className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center gap-4 px-4 py-12 text-center">
-      <p className="text-lg font-semibold text-white">You&apos;re not logged in.</p>
-      <p className="text-sm text-slate-300">
-        To request a magic link, head to the supplier portal. Use the same email you used during
-        onboarding and we&apos;ll send the link right away.
-      </p>
-      <Link
-        href="/supplier"
-        className="inline-flex items-center justify-center rounded-full bg-blue-500 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-400"
-      >
-        Go to supplier portal
-      </Link>
+    <main className="mx-auto flex min-h-[70vh] w-full max-w-6xl flex-col gap-8 px-4 py-12">
+      <div className="mx-auto max-w-2xl text-center">
+        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-500">
+          Choose your workspace
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">
+          Log in with a magic link
+        </h1>
+        <p className="mt-3 text-sm text-slate-300">
+          Pick the portal that matches your role. We&apos;ll email a secure link that drops you back
+          into your workspace.
+        </p>
+      </div>
+      <div className="grid w-full gap-6 md:grid-cols-2">
+        <PortalLoginPanel role="customer" fallbackRedirect="/customer" />
+        <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />
+      </div>
     </main>
   );
 }
