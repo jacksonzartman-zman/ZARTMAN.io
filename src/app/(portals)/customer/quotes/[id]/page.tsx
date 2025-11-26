@@ -26,6 +26,7 @@ import { requireSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
+import { DataFallbackNotice } from "@/app/(portals)/DataFallbackNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -59,8 +60,14 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
-  const workspaceData = await loadQuoteWorkspaceData(quoteId);
+  const workspaceData = await loadQuoteWorkspaceData(quoteId, {
+    safeOnly: true,
+  });
   if (!workspaceData) {
+    console.error("[customer quote] load failed", {
+      quoteId,
+      error: "Quote not found",
+    });
     return (
       <PortalNoticeCard
         title="Quote not found"
@@ -69,8 +76,14 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
-  const { quote, uploadMeta, filePreviews, messages, messagesError } =
-    workspaceData;
+  const {
+    quote,
+    uploadMeta,
+    filePreviews,
+    messages,
+    messagesError,
+    filesUnavailable,
+  } = workspaceData;
   const normalizedQuoteEmail = normalizeEmailInput(quote.email);
   const customerEmail = normalizeEmailInput(customer.email);
   const quoteCustomerMatches =
@@ -105,6 +118,11 @@ export default async function CustomerQuoteDetailPage({
   }
 
   const readOnly = usingOverride;
+  console.log("[customer quote] loaded", {
+    quoteId: quote.id,
+    uploadId: quote.upload_id,
+    customerEmail: quote.email,
+  });
 
     const derived = deriveQuotePresentation(quote, uploadMeta);
     const { status, statusLabel, customerName, companyName, intakeNotes } =
@@ -268,7 +286,12 @@ export default async function CustomerQuoteDetailPage({
     );
 
   const filesContent = (
-    <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
+    <div className="space-y-2">
+      <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
+      {filesUnavailable ? (
+        <DataFallbackNotice className="px-1" />
+      ) : null}
+    </div>
   );
 
   const trackingContent = (
