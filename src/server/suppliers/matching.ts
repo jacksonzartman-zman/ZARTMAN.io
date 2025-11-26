@@ -2,6 +2,8 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
 import { listSupplierCapabilities, loadSupplierById } from "./profile";
 import type {
+  SupplierActivityIdentity,
+  SupplierActivityResult,
   SupplierCapabilityRow,
   SupplierQuoteMatch,
   SupplierRow,
@@ -30,115 +32,181 @@ type UploadMatchingRow = Pick<
 };
 
 export async function matchQuotesToSupplier(
-  supplierId: string,
-): Promise<SupplierQuoteMatch[]> {
-  const supplier = await loadSupplierById(supplierId);
-  if (!supplier) {
-    return [];
+  args: SupplierActivityIdentity,
+): Promise<SupplierActivityResult<SupplierQuoteMatch[]>> {
+  const supplierId = args.supplierId ?? null;
+  const supplierEmail = normalizeEmail(args.supplierEmail);
+  const logContext = {
+    supplierId,
+    supplierEmail,
+    loader: "matches" as const,
+  };
+
+  if (!supplierId) {
+    console.warn("[supplier activity] loading skipped", {
+      ...logContext,
+      error: "Missing supplier identity",
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Missing supplier identity",
+    };
   }
 
-  const [capabilities, assignmentRows, bidRows] = await Promise.all([
-    listSupplierCapabilities(supplier.id),
-    selectQuoteAssignmentsByEmail(supplier.primary_email),
-    selectBidQuoteRefs(supplier.id),
-  ]);
+  console.log("[supplier activity] loading", logContext);
 
-  const normalizedCapabilities = normalizeCapabilities(capabilities);
-  if (normalizedCapabilities.processes.size === 0) {
-    return [];
-  }
-
-  const authorizedQuoteIds = new Set<string>();
-  assignmentRows.forEach((row) => {
-    if (row?.quote_id) {
-      authorizedQuoteIds.add(row.quote_id);
-    }
-  });
-  bidRows.forEach((row) => {
-    if (row?.quote_id) {
-      authorizedQuoteIds.add(row.quote_id);
-    }
-  });
-
-  const canViewGlobalMatches = supplier.verified;
-
-  const quotes = await selectOpenQuotes();
-  if (quotes.length === 0) {
-    return [];
-  }
-
-  const uploadMetaMap = await selectUploadMeta(quotes);
-
-  const fairness = computeFairnessBoost({
-    assignmentCount: assignmentRows.length,
-    recentBidOutcomes: bidRows,
-    supplierCreatedAt: supplier.created_at,
-  });
-
-  const matches: SupplierQuoteMatch[] = [];
-
-  for (const quote of quotes) {
-    const uploadMeta = quote.upload_id
-      ? uploadMetaMap.get(quote.upload_id)
-      : null;
-
-    const processHint = uploadMeta?.manufacturing_process ?? null;
-    const normalizedProcess = normalizeProcess(processHint);
-    const hasProcessMatch = normalizedProcess
-      ? hasMatchingProcess(normalizedProcess, normalizedCapabilities.processes)
-      : false;
-
-    if (!hasProcessMatch) {
-      continue;
+  try {
+    const supplier = await loadSupplierById(supplierId);
+    if (!supplier) {
+      console.warn("[supplier activity] loading skipped", {
+        ...logContext,
+        error: "Supplier profile missing",
+      });
+      return {
+        ok: false,
+        data: [],
+        error: "Supplier profile missing",
+      };
     }
 
-    const quoteId = quote.id;
-    const canAccess =
-      canViewGlobalMatches || (quoteId ? authorizedQuoteIds.has(quoteId) : false);
+    const [capabilities, assignmentRows, bidRows] = await Promise.all([
+      listSupplierCapabilities(supplier.id),
+      selectQuoteAssignmentsByEmail(supplier.primary_email),
+      selectBidQuoteRefs(supplier.id),
+    ]);
 
-    if (!canAccess) {
-      continue;
+    const normalizedCapabilities = normalizeCapabilities(capabilities);
+    if (normalizedCapabilities.processes.size === 0) {
+      console.log("[supplier activity] quote query result", {
+        ...logContext,
+        count: 0,
+      });
+      return {
+        ok: true,
+        data: [],
+      };
     }
 
-    const supplierBidMeta = bidRows.find((bid) => bid.quote_id === quoteId);
-    const canBid = canUserBid("supplier", {
-      status: quote.status,
-      existingBidStatus: supplierBidMeta?.status ?? null,
-      accessGranted: canAccess,
+    const authorizedQuoteIds = new Set<string>();
+    assignmentRows.forEach((row) => {
+      if (row?.quote_id) {
+        authorizedQuoteIds.add(row.quote_id);
+      }
+    });
+    bidRows.forEach((row) => {
+      if (row?.quote_id) {
+        authorizedQuoteIds.add(row.quote_id);
+      }
     });
 
-    if (!canBid) {
-      continue;
+    const canViewGlobalMatches = supplier.verified;
+
+    const quotes = await selectOpenQuotes();
+    if (quotes.length === 0) {
+      console.log("[supplier activity] quote query result", {
+        ...logContext,
+        count: 0,
+      });
+      return {
+        ok: true,
+        data: [],
+      };
     }
 
-    const materialMatches = findMaterialMatches(
-      uploadMeta,
-      normalizedCapabilities.materials,
-    );
+    const uploadMetaMap = await selectUploadMeta(quotes);
 
-    const baseScore = computeMatchScore({
-      createdAt: quote.created_at,
-      materialMatches,
-    });
-    const score = baseScore + fairness.modifier;
-
-    matches.push({
-      quoteId,
-      quote,
-      processHint,
-      materialMatches,
-      score,
-      createdAt: quote.created_at ?? null,
-      quantityHint: uploadMeta?.quantity ?? null,
-      fairness: fairness.reasons.length > 0 ? fairness : undefined,
+    const fairness = computeFairnessBoost({
+      assignmentCount: assignmentRows.length,
+      recentBidOutcomes: bidRows,
+      supplierCreatedAt: supplier.created_at,
     });
 
-    if (matches.length >= MATCH_LIMIT) {
-      break;
+    const matches: SupplierQuoteMatch[] = [];
+
+    for (const quote of quotes) {
+      const uploadMeta = quote.upload_id
+        ? uploadMetaMap.get(quote.upload_id)
+        : null;
+
+      const processHint = uploadMeta?.manufacturing_process ?? null;
+      const normalizedProcess = normalizeProcess(processHint);
+      const hasProcessMatch = normalizedProcess
+        ? hasMatchingProcess(normalizedProcess, normalizedCapabilities.processes)
+        : false;
+
+      if (!hasProcessMatch) {
+        continue;
+      }
+
+      const quoteId = quote.id;
+      const canAccess =
+        canViewGlobalMatches || (quoteId ? authorizedQuoteIds.has(quoteId) : false);
+
+      if (!canAccess) {
+        continue;
+      }
+
+      const supplierBidMeta = bidRows.find((bid) => bid.quote_id === quoteId);
+      const canBid = canUserBid("supplier", {
+        status: quote.status,
+        existingBidStatus: supplierBidMeta?.status ?? null,
+        accessGranted: canAccess,
+      });
+
+      if (!canBid) {
+        continue;
+      }
+
+      const materialMatches = findMaterialMatches(
+        uploadMeta,
+        normalizedCapabilities.materials,
+      );
+
+      const baseScore = computeMatchScore({
+        createdAt: quote.created_at,
+        materialMatches,
+      });
+      const score = baseScore + fairness.modifier;
+
+      matches.push({
+        quoteId,
+        quote,
+        processHint,
+        materialMatches,
+        score,
+        createdAt: quote.created_at ?? null,
+        quantityHint: uploadMeta?.quantity ?? null,
+        fairness: fairness.reasons.length > 0 ? fairness : undefined,
+      });
+
+      if (matches.length >= MATCH_LIMIT) {
+        break;
+      }
     }
+
+    const sortedMatches = matches.sort((a, b) => b.score - a.score);
+
+    console.log("[supplier activity] quote query result", {
+      ...logContext,
+      count: sortedMatches.length,
+    });
+
+    return {
+      ok: true,
+      data: sortedMatches,
+    };
+  } catch (error) {
+    console.error("[supplier activity] quote query failed", {
+      ...logContext,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Unable to load matches right now",
+    };
   }
-
-  return matches.sort((a, b) => b.score - a.score);
 }
 
 function normalizeCapabilities(capabilities: SupplierCapabilityRow[]) {
@@ -241,6 +309,14 @@ function computeMatchScore({
   }
 
   return score;
+}
+
+function normalizeEmail(value?: string | null): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
 }
 
 async function selectOpenQuotes(): Promise<QuoteWithUploadsRow[]> {
