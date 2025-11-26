@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
 import { createAuthClient, getCurrentSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierByUserId } from "@/server/suppliers";
@@ -25,7 +26,11 @@ type SupplierRecord = Awaited<ReturnType<typeof loadSupplierByUserId>>;
 
 const SHOW_LOGIN_DEBUG = process.env.NEXT_PUBLIC_SHOW_LOGIN_DEBUG === "true";
 
-export default async function LoginPage() {
+type LoginPageProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
+async function LoginPage({ searchParams }: LoginPageProps) {
   const headerList = await headers();
   const cookieHeader = headerList.get("cookie") ?? "";
   const cookieNames = cookieHeader
@@ -35,6 +40,7 @@ export default async function LoginPage() {
   console.log("[auth] login cookies on /login:", cookieNames);
 
   const session = await getCurrentSession();
+  const nextPath = resolveNextPath(searchParams);
   const sessionSummary = {
     userId: session?.user?.id ?? null,
     email: session?.user?.email ?? null,
@@ -46,7 +52,7 @@ export default async function LoginPage() {
     return (
       <>
         <LoginTokenBridge />
-        <NotLoggedInMessage />
+        <NotLoggedInMessage nextPath={nextPath} />
       </>
     );
   }
@@ -91,13 +97,32 @@ export default async function LoginPage() {
   );
 }
 
-function NotLoggedInMessage() {
+function NotLoggedInMessage({ nextPath }: { nextPath?: string | null }) {
+  const quoteFlow = isQuoteFlow(nextPath);
+
+  if (quoteFlow) {
+    return (
+      <main className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center gap-4 px-4 py-12">
+        <PortalLoginPanel role="customer" fallbackRedirect="/quote" nextPath={nextPath ?? "/quote"} />
+        <p className="text-xs text-slate-500">
+          Supplier?{" "}
+          <Link
+            href="/supplier"
+            className="font-semibold text-blue-300 underline-offset-4 hover:underline"
+          >
+            Sign in as a supplier instead
+          </Link>
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center gap-4 px-4 py-12 text-center">
       <p className="text-lg font-semibold text-white">You&apos;re not logged in.</p>
       <p className="text-sm text-slate-300">
-        To request a magic link, head to the supplier portal. Use the same email you used
-        during onboarding and we&apos;ll send the link right away.
+        To request a magic link, head to the supplier portal. Use the same email you used during
+        onboarding and we&apos;ll send the link right away.
       </p>
       <Link
         href="/supplier"
@@ -229,3 +254,29 @@ async function signOutAction() {
   }
   redirect("/");
 }
+
+function resolveNextPath(searchParams?: Record<string, string | string[] | undefined>): string | null {
+  if (!searchParams) {
+    return null;
+  }
+  const rawNext = searchParams.next;
+  const value = Array.isArray(rawNext) ? rawNext[0] : rawNext;
+  if (typeof value !== "string") {
+    return null;
+  }
+  return value.startsWith("/") ? value : null;
+}
+
+function isQuoteFlow(nextPath?: string | null) {
+  if (!nextPath) {
+    return false;
+  }
+  return nextPath === "/quote" || nextPath.startsWith("/quote");
+}
+
+type NextLoginPage = (props: {
+  params?: Promise<Record<string, unknown>>;
+  searchParams?: Promise<any>;
+}) => ReturnType<typeof LoginPage>;
+
+export default LoginPage as unknown as NextLoginPage;

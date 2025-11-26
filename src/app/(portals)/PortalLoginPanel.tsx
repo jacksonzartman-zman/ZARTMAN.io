@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { requestMagicLinkForEmail } from "@/app/auth/actions";
 import type { PortalRole } from "@/types/portal";
@@ -8,6 +8,7 @@ import type { PortalRole } from "@/types/portal";
 type PortalLoginPanelProps = {
   role: PortalRole;
   fallbackRedirect: string;
+  nextPath?: string | null;
 };
 
 const ROLE_COPY: Record<
@@ -29,7 +30,14 @@ const ROLE_COPY: Record<
   },
 };
 
-export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelProps) {
+function isQuoteFlow(nextPath?: string | null) {
+  if (!nextPath) {
+    return false;
+  }
+  return nextPath === "/quote" || nextPath.startsWith("/quote");
+}
+
+export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLoginPanelProps) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -43,10 +51,20 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
   }
   const resolvedRole: PortalRole = roleIsKnown ? role : "customer";
 
+  const normalizedNextPath =
+    typeof nextPath === "string" && nextPath.startsWith("/") ? nextPath : null;
   const redirectPath =
-    typeof pathname === "string" && pathname.startsWith(`/${resolvedRole}`)
+    normalizedNextPath ??
+    (typeof pathname === "string" && pathname.startsWith(`/${resolvedRole}`)
       ? pathname
-      : fallbackRedirect;
+      : fallbackRedirect);
+  const quoteFlow = isQuoteFlow(normalizedNextPath);
+
+  useEffect(() => {
+    if (quoteFlow) {
+      console.log("[login] rendering quote-flow login", { nextPath: normalizedNextPath });
+    }
+  }, [quoteFlow, normalizedNextPath]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -92,7 +110,16 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
     }
   }
 
-  const copy = ROLE_COPY[resolvedRole];
+  const baseCopy = ROLE_COPY[resolvedRole];
+  const copy = quoteFlow
+    ? {
+        ...baseCopy,
+        title: "Log in to request a quote",
+        description:
+          "Use your work email and we'll send you a magic link to your customer workspace.",
+        cta: "Send magic link",
+      }
+    : baseCopy;
 
   return (
     <section className="mx-auto max-w-lg rounded-2xl border border-slate-900 bg-slate-950/50 p-6">
@@ -114,7 +141,7 @@ export function PortalLoginPanel({ role, fallbackRedirect }: PortalLoginPanelPro
           placeholder="you@company.com"
           required
         />
-          <button
+        <button
           type="submit"
           disabled={status === "sending"}
           className="w-full rounded-full border border-slate-800 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:opacity-60"
