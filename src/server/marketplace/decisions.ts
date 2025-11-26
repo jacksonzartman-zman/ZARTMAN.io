@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { OPEN_RFQ_STATUSES } from "./rfqs";
+import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
 import type {
   RfqBidRecord,
   RfqBidStatus,
@@ -73,10 +74,6 @@ const BID_SELECT_FIELDS = [
 
 const LIVE_BID_STATUSES: RfqBidStatus[] = ["submitted", "accepted"];
 
-const RFQS_FEATURE_ENABLED =
-  process.env.RFQS_ENABLED === "true" ||
-  process.env.NEXT_PUBLIC_RFQS_ENABLED === "true";
-
 export async function getCustomerDecisions(
   customerId: string,
 ): Promise<CustomerDecision[]> {
@@ -129,7 +126,7 @@ export async function getCustomerDecisions(
 async function fetchOpenCustomerRfqs(
   customerId: string,
 ): Promise<CustomerRfqRecord[]> {
-  if (!RFQS_FEATURE_ENABLED) {
+  if (!isRfqsFeatureEnabled()) {
     return [];
   }
 
@@ -172,7 +169,7 @@ async function fetchOpenCustomerRfqs(
 }
 
 async function fetchBidsForRfqs(rfqIds: string[]): Promise<BidWithSupplier[]> {
-  if (rfqIds.length === 0) {
+  if (rfqIds.length === 0 || !isRfqsFeatureEnabled()) {
     return [];
   }
 
@@ -185,6 +182,9 @@ async function fetchBidsForRfqs(rfqIds: string[]): Promise<BidWithSupplier[]> {
       .order("created_at", { ascending: false });
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return [];
+      }
       console.error("decisions: fetchBidsForRfqs failed", {
         rfqIds,
         error,
@@ -197,6 +197,9 @@ async function fetchBidsForRfqs(rfqIds: string[]): Promise<BidWithSupplier[]> {
       : [];
     return rows.map(normalizeBidRow);
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return [];
+    }
     console.error("decisions: fetchBidsForRfqs unexpected error", {
       rfqIds,
       error,
@@ -287,15 +290,3 @@ function buildSupplierReadyDescription(
   return `${supplierLabel} shared a fresh bid${rfqFragment}. We can review the details together and decide on next steps whenever it feels right.`;
 }
 
-function isMissingRfqTableError(error: unknown): boolean {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-
-  const code =
-    "code" in error && typeof (error as { code?: unknown }).code === "string"
-      ? (error as { code?: string }).code
-      : undefined;
-
-  return code === "PGRST205";
-}

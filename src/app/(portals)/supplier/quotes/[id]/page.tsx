@@ -76,8 +76,12 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-  const workspaceData = await loadQuoteWorkspaceData(quoteId);
-  if (!workspaceData) {
+  const workspaceResult = await loadQuoteWorkspaceData(quoteId);
+  if (!workspaceResult.ok || !workspaceResult.data) {
+    console.error("[supplier quote] load failed", {
+      quoteId,
+      error: workspaceResult.error ?? "Quote not found",
+    });
     return (
       <PortalNoticeCard
         title="Quote not found"
@@ -85,6 +89,7 @@ export default async function SupplierQuoteDetailPage({
       />
     );
   }
+  const workspaceData = workspaceResult.data;
 
   const assignments = await loadSupplierAssignments(quoteId);
   const capabilities = profile.capabilities ?? [];

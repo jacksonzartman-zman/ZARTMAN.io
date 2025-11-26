@@ -3,6 +3,7 @@ import { loadSupplierById } from "@/server/suppliers/profile";
 import type { SupplierRow } from "@/server/suppliers/types";
 import { explainScore, MIN_MATCH_SCORE } from "./matching";
 import { logMarketplaceEvent } from "./events";
+import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
 import type {
   ListOpenRfqsResult,
   MarketplaceRfq,
@@ -35,7 +36,7 @@ export const OPEN_RFQ_STATUSES: MarketplaceRfqStatus[] = [
 ];
 
 export async function loadRfqById(rfqId: string): Promise<MarketplaceRfq | null> {
-  if (!rfqId) {
+  if (!rfqId || !isRfqsFeatureEnabled()) {
     return null;
   }
 
@@ -47,12 +48,18 @@ export async function loadRfqById(rfqId: string): Promise<MarketplaceRfq | null>
       .maybeSingle<MarketplaceRfq>();
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return null;
+      }
       console.error("marketplace: loadRfqById failed", { rfqId, error });
       return null;
     }
 
     return data ?? null;
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return null;
+    }
     console.error("marketplace: loadRfqById unexpected error", { rfqId, error });
     return null;
   }
@@ -63,6 +70,10 @@ export async function listOpenRfqsForSupplier(
 ): Promise<ListOpenRfqsResult> {
   if (!supplierId) {
     return { rfqs: [], error: "Supplier ID is required" };
+  }
+
+  if (!isRfqsFeatureEnabled()) {
+    return { rfqs: [], error: null };
   }
 
   const supplier = await loadSupplierById(supplierId);
@@ -78,6 +89,9 @@ export async function listOpenRfqsForSupplier(
       .order("created_at", { ascending: false });
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return { rfqs: [], error: null };
+      }
       console.error("marketplace: listOpenRfqsForSupplier query failed", {
         supplierId,
         error,
@@ -107,6 +121,9 @@ export async function listOpenRfqsForSupplier(
       error: null,
     };
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return { rfqs: [], error: null };
+    }
     console.error("marketplace: listOpenRfqsForSupplier unexpected error", {
       supplierId,
       error,
@@ -119,7 +136,7 @@ export async function updateRfqStatus(
   rfqId: string,
   status: MarketplaceRfqStatus,
 ): Promise<MarketplaceRfq | null> {
-  if (!rfqId) {
+  if (!rfqId || !isRfqsFeatureEnabled()) {
     return null;
   }
 
@@ -137,6 +154,9 @@ export async function updateRfqStatus(
       .maybeSingle<MarketplaceRfq>();
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return null;
+      }
       console.error("marketplace: updateRfqStatus failed", { rfqId, status, error });
       return null;
     }
@@ -162,6 +182,9 @@ export async function updateRfqStatus(
 
     return updated;
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return null;
+    }
     console.error("marketplace: updateRfqStatus unexpected error", {
       rfqId,
       status,
