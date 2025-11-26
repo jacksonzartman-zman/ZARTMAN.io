@@ -465,7 +465,10 @@ async function loadCustomerPortalDataByEmail(
     errors.push("email");
   }
 
-  let quotes = mapQuoteRecords(emailResponse.data ?? []);
+  const emailRecords = isRawQuoteRecordArray(emailResponse.data)
+    ? emailResponse.data
+    : [];
+  let quotes = mapQuoteRecords(emailRecords);
   let domainFallbackUsed = false;
 
   if (quotes.length === 0 && domain) {
@@ -478,7 +481,10 @@ async function loadCustomerPortalDataByEmail(
       errors.push("domain");
     }
 
-    const domainQuotes = mapQuoteRecords(domainResponse.data ?? []);
+    const domainRecords = isRawQuoteRecordArray(domainResponse.data)
+      ? domainResponse.data
+      : [];
+    const domainQuotes = mapQuoteRecords(domainRecords);
     if (domainQuotes.length > 0) {
       quotes = domainQuotes;
       domainFallbackUsed = true;
@@ -543,6 +549,15 @@ function selectQuotesByPattern(pattern: string) {
     .ilike("email", pattern)
     .order("created_at", { ascending: false })
     .limit(QUOTE_LIMIT);
+}
+
+function isRawQuoteRecordArray(value: unknown): value is RawQuoteRecord[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return false;
+  }
+
+  const [first] = value;
+  return typeof first === "object" && first !== null && "status" in first;
 }
 
 function mapQuoteRecords(records: RawQuoteRecord[]): PortalQuote[] {
