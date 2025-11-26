@@ -1,6 +1,30 @@
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import type { FairnessScore } from "@/lib/fairness";
 
+export const SAFE_QUOTE_WITH_UPLOADS_FIELDS = [
+  "id",
+  "upload_id",
+  "customer_name",
+  "email",
+  "company",
+  "status",
+  "price",
+  "currency",
+  "created_at",
+  "updated_at",
+  "target_date",
+  "file_name",
+] as const;
+
+export type SafeQuoteWithUploadsField =
+  (typeof SAFE_QUOTE_WITH_UPLOADS_FIELDS)[number];
+
+export type SupplierQuoteRow = Pick<
+  QuoteWithUploadsRow,
+  SafeQuoteWithUploadsField
+> &
+  Partial<Pick<QuoteWithUploadsRow, "file_names" | "upload_file_names">>;
+
 export type SupplierRow = {
   id: string;
   company_name: string;
@@ -99,13 +123,11 @@ export type SupplierBidWithContext = SupplierBidRow & {
   certifications?: string[];
 };
 
-export type QuoteMatchCandidate = QuoteWithUploadsRow & {
-  upload_id: string | null;
-};
+export type QuoteMatchCandidate = SupplierQuoteRow;
 
 export type SupplierQuoteMatch = {
   quoteId: string;
-  quote: QuoteWithUploadsRow;
+  quote: SupplierQuoteRow;
   processHint: string | null;
   materialMatches: string[];
   score: number;

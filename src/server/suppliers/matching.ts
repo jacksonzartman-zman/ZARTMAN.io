@@ -1,17 +1,19 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
+import type { UploadMeta } from "@/server/quotes/types";
 import { listSupplierCapabilities, loadSupplierById } from "./profile";
 import {
   logSupplierActivityQueryFailure,
   resolveSupplierActivityQuery,
   toSupplierActivityQueryError,
 } from "./activityLogging";
-import type {
-  SupplierActivityIdentity,
-  SupplierActivityResult,
-  SupplierCapabilityRow,
-  SupplierQuoteMatch,
-  SupplierRow,
+import {
+  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
+  type SupplierActivityIdentity,
+  type SupplierActivityResult,
+  type SupplierCapabilityRow,
+  type SupplierQuoteMatch,
+  type SupplierQuoteRow,
+  type SupplierRow,
 } from "./types";
 import { canUserBid } from "@/lib/permissions";
 import { computeFairnessBoost } from "@/lib/fairness";
@@ -325,30 +327,11 @@ function normalizeEmail(value?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-async function selectOpenQuotes(): Promise<QuoteWithUploadsRow[]> {
+async function selectOpenQuotes(): Promise<SupplierQuoteRow[]> {
   try {
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
-      .select(
-        [
-          "id",
-          "upload_id",
-          "customer_name",
-          "email",
-          "company",
-          "status",
-          "price",
-          "currency",
-          "created_at",
-          "updated_at",
-          "target_date",
-          "file_name",
-          "assigned_supplier_email",
-          "assigned_supplier_name",
-          "internal_notes",
-          "dfm_notes",
-        ].join(","),
-      )
+      .select(SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(","))
       .in("status", OPEN_QUOTE_STATUSES)
       .order("created_at", { ascending: false })
       .limit(50);
@@ -357,13 +340,13 @@ async function selectOpenQuotes(): Promise<QuoteWithUploadsRow[]> {
       throw toSupplierActivityQueryError("quotes_with_uploads", error);
     }
 
-    return ((data ?? []) as unknown) as QuoteWithUploadsRow[];
+    return ((data ?? []) as unknown) as SupplierQuoteRow[];
   } catch (error) {
     throw toSupplierActivityQueryError("quotes_with_uploads", error);
   }
 }
 
-async function selectUploadMeta(quotes: QuoteWithUploadsRow[]) {
+async function selectUploadMeta(quotes: SupplierQuoteRow[]) {
   const uploadIds = Array.from(
     new Set(
       quotes
