@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { primaryCtaClasses } from "@/lib/ctas";
+import { BrandMark } from "@/components/BrandMark";
 
 const CENTER_LINKS = [
   { label: "Capabilities", href: "/capabilities" },
@@ -18,21 +19,12 @@ export default function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-900/70 bg-neutral-950/90 backdrop-blur-md">
       <div className="mx-auto grid w-full max-w-page grid-cols-1 gap-4 px-4 py-4 sm:px-6 md:grid-cols-[auto_minmax(0,1fr)_auto] lg:px-8">
-        <Link
-          href="/"
-          className="flex items-center gap-3 text-base font-semibold text-ink transition-colors hover:text-ink-soft"
-          aria-label="Zartman front door"
-        >
-          <span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-emerald-400/50 bg-emerald-400/10 text-sm font-bold uppercase tracking-wide text-emerald-200">
-            Z
-          </span>
-          <div className="flex flex-col leading-tight">
-            <span>Zartman</span>
-            <span className="text-xs font-normal uppercase tracking-[0.35em] text-ink-muted">
-              marketplace
-            </span>
-          </div>
-        </Link>
+        <BrandMark
+          withWordmark
+          subLabel="Marketplace"
+          size={32}
+          className="text-base font-semibold text-ink transition-colors hover:text-ink-soft"
+        />
 
         <nav className="flex flex-wrap items-center justify-center gap-4 text-sm font-medium text-ink-soft md:justify-center">
           {CENTER_LINKS.map((link) => (
