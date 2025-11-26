@@ -3,30 +3,6 @@ import clsx from "clsx";
 import EarlyAccessForm from "@/components/EarlyAccessForm";
 import { primaryCtaClasses } from "@/lib/ctas";
 
-const HERO_PREVIEW_ROWS = [
-  {
-    id: "QT-1082",
-    customer: "Atlas Motion",
-    file: "stanchion-plate.step",
-    status: "In review",
-    detail: "Ops • Supabase",
-  },
-  {
-    id: "QT-1081",
-    customer: "Nomad Hydraulics",
-    file: "valve-body.stp",
-    status: "Quoted",
-    detail: "Sales • Supabase",
-  },
-  {
-    id: "QT-1079",
-    customer: "Bright Robotics",
-    file: "armature-v6.sldprt",
-    status: "Submitted",
-    detail: "Uploads • Supabase",
-  },
-];
-
 export default function HomePage() {
   return (
     <main className="main-shell">
@@ -78,46 +54,8 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Right side: admin preview + intake */}
+          {/* Right side: intake summary */}
           <div className="space-y-4 lg:pl-4">
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-lift-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-ink">
-                    Quotes dashboard preview
-                  </p>
-                  <p className="text-xs text-ink-muted">
-                    Supabase view · status filters live
-                  </p>
-                </div>
-                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                  /admin/quotes
-                </span>
-              </div>
-              <div className="mt-4 space-y-3">
-                {HERO_PREVIEW_ROWS.map((row) => (
-                  <div
-                    key={row.id}
-                    className="rounded-2xl border border-slate-900/70 bg-slate-900/40 p-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-ink">
-                          {row.customer}
-                        </p>
-                        <p className="text-xs text-ink-muted">{row.file}</p>
-                      </div>
-                      <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-emerald-300">
-                        {row.status}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-[11px] uppercase tracking-wide text-ink-soft">
-                      {row.detail}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
             <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-5 shadow-lift-sm space-y-4">
               <p className="text-sm font-semibold text-ink">
                 CAD intake lives on /quote
