@@ -1,6 +1,14 @@
+import { redirect } from "next/navigation";
 import UploadBox from "@/components/UploadBox";
+import { getCurrentSession } from "@/server/auth";
 
-export default function QuotePage() {
+export default async function QuotePage() {
+  const session = await getCurrentSession();
+
+  if (!session) {
+    redirect("/login?next=/quote");
+  }
+
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-14">
