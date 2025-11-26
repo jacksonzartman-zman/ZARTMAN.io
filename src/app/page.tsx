@@ -1,5 +1,4 @@
 import Link from "next/link";
-import clsx from "clsx";
 import EarlyAccessForm from "@/components/EarlyAccessForm";
 import { primaryCtaClasses } from "@/lib/ctas";
 
@@ -8,7 +7,7 @@ export default function HomePage() {
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
         {/* HERO */}
-        <section className="grid gap-10 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
+        <section className="grid gap-10 lg:grid-cols-2 items-start">
           <div className="space-y-6">
             <div className="badge-soft">
               <span className="h-1.5 w-1.5 rounded-full bg-brand" />
@@ -26,6 +25,27 @@ export default function HomePage() {
               </p>
             </div>
 
+            <div className="flex flex-wrap items-center gap-4">
+              <Link href="/quote" className={primaryCtaClasses}>
+                Get a quote
+              </Link>
+              <Link
+                href="#how-it-works"
+                className="inline-flex items-center justify-center rounded-pill border border-line-subtle px-6 py-2 text-sm font-semibold text-ink transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              >
+                See how it works
+              </Link>
+            </div>
+            <p className="text-xs text-ink-soft">
+              CAD uploads still land on{" "}
+              <Link href="/quote" className="font-semibold text-ink">
+                /quote
+              </Link>{" "}
+              and sync straight into the cockpit in seconds.
+            </p>
+          </div>
+
+          <div className="space-y-6 lg:pl-4">
             <ul className="grid gap-3 text-sm text-ink-muted sm:grid-cols-2">
               <li className="surface-card p-3 shadow-lift-sm">
                 Live dashboards for uploads + quotes, with filters and status
@@ -39,42 +59,6 @@ export default function HomePage() {
 
             <div id="early-access">
               <EarlyAccessForm />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <Link href="/quote" className={primaryCtaClasses}>
-                Get a quote
-              </Link>
-              <Link
-                href="#how-it-works"
-                className="inline-flex items-center justify-center rounded-pill border border-line-subtle px-6 py-2 text-sm font-semibold text-ink transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-              >
-                See how it works
-              </Link>
-            </div>
-          </div>
-
-          {/* Right side: intake summary */}
-          <div className="space-y-4 lg:pl-4">
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-5 shadow-lift-sm space-y-4">
-              <p className="text-sm font-semibold text-ink">
-                CAD intake lives on /quote
-              </p>
-              <p className="text-sm text-ink-muted">
-                STEP, IGES, STL, SolidWorks &amp; zipped assemblies. Uploads land in
-                Supabase storage and show up instantly in the admin dashboard.
-              </p>
-              <ul className="space-y-2 text-sm text-ink-soft">
-                <li>• Secure storage with automatic filename sanitizing.</li>
-                <li>• Status tracking that mirrors the admin cockpit.</li>
-                <li>• DFM notes + pricing threads kept in one place.</li>
-              </ul>
-              <Link
-                href="/quote"
-                className={clsx(primaryCtaClasses, "w-full")}
-              >
-                Upload RFQ
-              </Link>
             </div>
           </div>
         </section>
