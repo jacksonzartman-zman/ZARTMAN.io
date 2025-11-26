@@ -13,7 +13,7 @@ import {
   normalizeEmailInput,
 } from "@/app/(portals)/quotes/pageUtils";
 import { requireSession } from "@/server/auth";
-import { getCustomerByUserId } from "@/server/customers";
+import { getCustomerById, getCustomerByUserId } from "@/server/customers";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
 import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
@@ -501,38 +501,42 @@ async function loadCustomerPortalDataByEmail(
 async function selectQuotesByCustomerId(
   customerId: string,
 ): Promise<CustomerPortalData> {
-  const { data, error } = await supabaseServer
-    .from("quotes_with_uploads")
-    .select(
-      `
-        id,
-        status,
-        created_at,
-        target_date,
-        price,
-        currency,
-        file_name,
-        email,
-        company,
-        customer_id
-      `,
-    )
-    .eq("customer_id", customerId)
-    .order("created_at", { ascending: false })
-    .limit(QUOTE_LIMIT);
+  if (!customerId) {
+    return { quotes: [], domainFallbackUsed: false };
+  }
 
-  if (error) {
-    console.error("selectQuotesByCustomerId: query failed", {
+  const customer = await getCustomerById(customerId);
+  if (!customer) {
+    console.warn("selectQuotesByCustomerId: customer not found", { customerId });
+    return { quotes: [], domainFallbackUsed: false, error: "Unable to load quotes." };
+  }
+
+  const normalizedEmail = normalizeEmailInput(customer.email);
+  if (!normalizedEmail) {
+    console.warn("selectQuotesByCustomerId: customer missing email", {
       customerId,
-      error,
     });
     return { quotes: [], domainFallbackUsed: false, error: "Unable to load quotes." };
   }
 
-  return {
-    quotes: mapQuoteRecords((data as RawQuoteRecord[]) ?? []),
-    domainFallbackUsed: false,
-  };
+  console.log("selectQuotesByCustomerId: resolving via email", {
+    customerId,
+    email: normalizedEmail,
+  });
+
+  try {
+    return await loadCustomerPortalDataByEmail(
+      normalizedEmail,
+      getEmailDomain(normalizedEmail),
+    );
+  } catch (error) {
+    console.error("selectQuotesByCustomerId: query failed", {
+      customerId,
+      email: normalizedEmail,
+      error,
+    });
+    return { quotes: [], domainFallbackUsed: false, error: "Unable to load quotes." };
+  }
 }
 
 function selectQuotesByPattern(pattern: string) {
