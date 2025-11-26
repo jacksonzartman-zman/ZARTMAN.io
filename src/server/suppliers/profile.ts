@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type {
+  SupplierApprovalStatus,
   SupplierCapabilityInput,
   SupplierCapabilityRow,
   SupplierDocumentInput,
@@ -32,6 +33,28 @@ function sanitizeStringArray(values?: string[] | null): string[] {
   return values
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter((value) => value.length > 0);
+}
+
+export function getSupplierApprovalStatus(raw?: {
+  status?: string | null;
+}): SupplierApprovalStatus {
+  const value = (raw?.status ?? "").toLowerCase().trim();
+  if (!value) {
+    return "unknown";
+  }
+  if (value === "approved") {
+    return "approved";
+  }
+  if (value === "rejected") {
+    return "rejected";
+  }
+  return "pending";
+}
+
+export function isSupplierApproved(raw?: {
+  status?: string | null;
+}): boolean {
+  return getSupplierApprovalStatus(raw) === "approved";
 }
 
 export async function getOrCreateSupplierByEmail(
@@ -149,13 +172,49 @@ export async function loadSupplierProfile(
       listSupplierDocuments(supplier.id),
     ]);
 
+    const approvalStatus = getSupplierApprovalStatus(supplier);
     return {
       supplier,
       capabilities,
       documents,
+      approvalStatus,
+      approved: approvalStatus === "approved",
     };
   } catch (error) {
     console.error("loadSupplierProfile: unexpected error", { email, error });
+    return null;
+  }
+}
+
+export async function loadSupplierByPrimaryEmail(
+  primaryEmail: string,
+): Promise<SupplierRow | null> {
+  const email = normalizeEmail(primaryEmail);
+  if (!email) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("suppliers")
+      .select("*")
+      .eq("primary_email", email)
+      .maybeSingle<SupplierRow>();
+
+    if (error) {
+      console.error("loadSupplierByPrimaryEmail: lookup failed", {
+        email,
+        error,
+      });
+      return null;
+    }
+
+    return data ?? null;
+  } catch (error) {
+    console.error("loadSupplierByPrimaryEmail: unexpected error", {
+      email,
+      error,
+    });
     return null;
   }
 }
@@ -202,10 +261,13 @@ export async function loadSupplierProfileByUserId(
     listSupplierDocuments(supplier.id),
   ]);
 
+  const approvalStatus = getSupplierApprovalStatus(supplier);
   return {
     supplier,
     capabilities,
     documents,
+    approvalStatus,
+    approved: approvalStatus === "approved",
   };
 }
 
@@ -303,10 +365,14 @@ export async function upsertSupplierProfile(
       listSupplierDocuments(supplier.id),
     ]);
 
+    const resolvedSupplier = updatedSupplier ?? supplier;
+    const approvalStatus = getSupplierApprovalStatus(resolvedSupplier);
     return {
-      supplier: updatedSupplier ?? supplier,
+      supplier: resolvedSupplier,
       capabilities,
       documents,
+      approvalStatus,
+      approved: approvalStatus === "approved",
     };
   } catch (error) {
     console.error("upsertSupplierProfile: unexpected error", {

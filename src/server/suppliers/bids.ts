@@ -1,5 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import { loadSupplierById } from "./profile";
+import {
+  getSupplierApprovalStatus,
+  isSupplierApproved,
+  loadSupplierById,
+} from "./profile";
 import {
   logSupplierActivityQueryFailure,
   resolveSupplierActivityQuery,
@@ -14,6 +18,7 @@ import type {
   SupplierCapabilityRow,
   SupplierRow,
 } from "./types";
+import { approvalsEnabled } from "./flags";
 
 const DEFAULT_CURRENCY = "USD";
 
@@ -75,6 +80,37 @@ export async function listSupplierBidsForSupplier(
   console.log("[supplier activity] loading", logContext);
 
   try {
+    const approvalsOn = approvalsEnabled();
+    if (approvalsOn) {
+      const supplier = await loadSupplierById(supplierId);
+      if (!supplier) {
+        console.warn("[supplier activity] loading skipped", {
+          ...logContext,
+          error: "Supplier profile missing",
+        });
+        return {
+          ok: false,
+          data: [],
+          error: "Supplier profile missing",
+        };
+      }
+      const approvalStatus = getSupplierApprovalStatus(supplier);
+      if (!isSupplierApproved(supplier)) {
+        console.log("[supplier activity] approvals gate active", {
+          ...logContext,
+          approvalStatus,
+        });
+        return {
+          ok: true,
+          data: [],
+          approvalGate: {
+            enabled: true,
+            status: approvalStatus,
+          },
+        };
+      }
+    }
+
     const { data, error } = await supabaseServer
       .from("supplier_bids")
       .select("*")

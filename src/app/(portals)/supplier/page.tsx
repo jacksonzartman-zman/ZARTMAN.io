@@ -12,10 +12,13 @@ import {
   type SearchParamsLike,
 } from "@/app/(portals)/quotes/pageUtils";
 import {
+  getSupplierApprovalStatus,
   listSupplierBidsForSupplier,
   loadSupplierProfile,
   matchQuotesToSupplier,
   type SupplierActivityResult,
+  type SupplierApprovalGate,
+  type SupplierApprovalStatus,
   type SupplierBidWithContext,
   type SupplierQuoteMatch,
   type SupplierProfile,
@@ -28,6 +31,7 @@ import type { ActivityItem } from "@/types/activity";
 import { resolveUserRoles } from "@/server/users/roles";
 import { DataFallbackNotice } from "../DataFallbackNotice";
 import { DEBUG_PORTALS } from "../debug";
+import { approvalsEnabled } from "@/server/suppliers/flags";
 
 export const dynamic = "force-dynamic";
 
@@ -95,6 +99,18 @@ async function SupplierDashboardPage({
   const documents = profile?.documents ?? [];
   const supplierExists = Boolean(supplier);
   const supplierProfileUnavailable = Boolean(supplierEmail) && !profile;
+  const approvalsOn = approvalsEnabled();
+  const approvalStatus: SupplierApprovalStatus =
+    profile?.approvalStatus ??
+    getSupplierApprovalStatus(supplier ?? undefined);
+  const supplierApproved = approvalsOn ? approvalStatus === "approved" : true;
+  const approvalGate: SupplierApprovalGate | undefined =
+    approvalsOn && !supplierApproved
+      ? {
+          enabled: true,
+          status: approvalStatus,
+        }
+      : undefined;
 
   const [matchesResult, bidsResult] = supplier
     ? await Promise.all([
@@ -125,6 +141,8 @@ async function SupplierDashboardPage({
       })
     : { ok: true, data: [] };
   const recentActivity = recentActivityResult.data ?? [];
+  const activityApprovalGate = recentActivityResult.approvalGate ?? approvalGate;
+  const activityHoldCopy = getApprovalHoldCopy(activityApprovalGate?.status);
 
   const signedInEmail = supplier?.primary_email ?? supplierEmail;
   const companyLabel =
@@ -140,11 +158,13 @@ async function SupplierDashboardPage({
   );
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
   const hasActivity = matchesData.length > 0 || bidsData.length > 0;
-  const systemStatusMessage = supplier
-    ? hasActivity
-      ? "All systems operational"
-      : "Waiting for your first match"
-    : "Finish onboarding to unlock matches";
+  const systemStatusMessage = !supplier
+    ? "Finish onboarding to unlock matches"
+    : approvalsOn && !supplierApproved
+      ? "Pending supplier review"
+      : hasActivity
+        ? "All systems operational"
+        : "Waiting for your first match";
 
   return (
     <div className="space-y-6">
@@ -184,6 +204,18 @@ async function SupplierDashboardPage({
             automatically.
           </span>
         </div>
+        {approvalsOn && supplierExists ? (
+          supplierApproved ? (
+            <span className="mt-4 inline-flex w-fit rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-100">
+              Status: Approved
+            </span>
+          ) : (
+            <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
+              Your supplier profile is pending review. You can keep editing your profile; RFQs will
+              start flowing in once you’re approved.
+            </p>
+          )
+        ) : null}
         {onboardingJustCompleted ? (
           <p className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
             Profile updated! We’ll start routing matched RFQs to you automatically.
@@ -195,6 +227,8 @@ async function SupplierDashboardPage({
         supplier={supplier}
         capabilities={capabilities}
         documents={documents}
+        approvalsEnabled={approvalsOn}
+        approvalStatus={approvalStatus}
       />
       {supplierProfileUnavailable ? (
         <DataFallbackNotice className="mt-2" />
@@ -204,7 +238,12 @@ async function SupplierDashboardPage({
         title="Recent activity"
         description="Quick pulse on RFQs, bids, and status changes routed to your shop."
       >
-        {recentActivityResult.ok ? (
+        {isApprovalGateActive(activityApprovalGate) ? (
+          <EmptyStateNotice
+            title={activityHoldCopy.title}
+            description={activityHoldCopy.description}
+          />
+        ) : recentActivityResult.ok ? (
           recentActivity.length > 0 ? (
             <ul className="space-y-3">
               {recentActivity.map((item) => {
@@ -255,6 +294,7 @@ async function SupplierDashboardPage({
         supplierEmail={supplier?.primary_email ?? supplierEmail}
         supplierExists={supplierExists}
         result={matchesResult}
+        approvalGate={matchesResult.approvalGate ?? approvalGate}
       />
       {matchesUnavailable ? (
         <DataFallbackNotice className="mt-2" />
@@ -263,6 +303,7 @@ async function SupplierDashboardPage({
       <BidsCard
         supplierEmail={supplier?.primary_email ?? supplierEmail}
         result={bidsResult}
+        approvalGate={bidsResult.approvalGate ?? approvalGate}
       />
       {bidsUnavailable ? (
         <DataFallbackNotice className="mt-2" />
@@ -276,14 +317,35 @@ async function SupplierDashboardPage({
   );
 }
 
+function isApprovalGateActive(gate?: SupplierApprovalGate | null): boolean {
+  return Boolean(gate?.enabled && gate.status !== "approved");
+}
+
+function getApprovalHoldCopy(status?: SupplierApprovalStatus) {
+  if (status === "rejected") {
+    return {
+      title: "Account needs review",
+      description: "Reach out to our team so we can revisit your approval status.",
+    };
+  }
+  return {
+    title: "RFQs unlock after approval",
+    description: "RFQs and bids will appear here once your account is approved.",
+  };
+}
+
 function ProfileCard({
   supplier,
   capabilities,
   documents,
+  approvalsEnabled,
+  approvalStatus,
 }: {
   supplier: SupplierProfile["supplier"] | null;
   capabilities: SupplierProfile["capabilities"];
   documents: SupplierProfile["documents"];
+  approvalsEnabled: boolean;
+  approvalStatus: SupplierApprovalStatus;
 }) {
   const hasProfile = Boolean(supplier);
   return (
@@ -314,11 +376,23 @@ function ProfileCard({
             <Detail
               label="Status"
               value={
-                supplier?.verified ? (
-                  <span className="text-emerald-200">Verified marketplace supplier</span>
-                ) : (
-                  "Pending review"
-                )
+                approvalsEnabled
+                  ? approvalStatus === "approved"
+                    ? (
+                      <span className="text-emerald-200">Approved marketplace supplier</span>
+                      )
+                    : approvalStatus === "rejected"
+                      ? (
+                        <span className="text-red-200">Review required</span>
+                        )
+                      : (
+                        <span className="text-amber-200">Pending review</span>
+                        )
+                  : supplier?.verified
+                      ? (
+                        <span className="text-emerald-200">Verified marketplace supplier</span>
+                        )
+                      : "Pending review"
               }
             />
           </div>
@@ -391,15 +465,28 @@ function ProfileCard({
 }
 
 function MatchesCard({
-  supplierEmail,
+  supplierEmail: _supplierEmail,
   supplierExists,
   result,
+  approvalGate,
 }: {
   supplierEmail: string;
   supplierExists: boolean;
   result: SupplierActivityResult<SupplierQuoteMatch[]>;
+  approvalGate?: SupplierApprovalGate | null;
 }) {
   const matches = result.data ?? [];
+  if (isApprovalGateActive(approvalGate)) {
+    const copy = getApprovalHoldCopy(approvalGate?.status);
+    return (
+      <PortalCard
+        title="Inbound RFQs"
+        description="RFQs that match your verified processes, certifications, and compliance documents."
+      >
+        <EmptyStateNotice title={copy.title} description={copy.description} />
+      </PortalCard>
+    );
+  }
   return (
     <PortalCard
       title="Inbound RFQs"
@@ -485,13 +572,26 @@ function MatchesCard({
 }
 
 function BidsCard({
-  supplierEmail,
+  supplierEmail: _supplierEmail,
   result,
+  approvalGate,
 }: {
   supplierEmail: string;
   result: SupplierActivityResult<SupplierBidWithContext[]>;
+  approvalGate?: SupplierApprovalGate | null;
 }) {
   const bids = result.data ?? [];
+  if (isApprovalGateActive(approvalGate)) {
+    const copy = getApprovalHoldCopy(approvalGate?.status);
+    return (
+      <PortalCard
+        title="Submitted bids"
+        description="Track the quotes you’ve priced and see where each bid stands."
+      >
+        <EmptyStateNotice title={copy.title} description={copy.description} />
+      </PortalCard>
+    );
+  }
   return (
     <PortalCard
       title="Submitted bids"

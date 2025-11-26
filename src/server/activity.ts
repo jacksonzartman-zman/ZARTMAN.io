@@ -6,6 +6,7 @@ import {
   toSupplierActivityQueryError,
 } from "@/server/suppliers/activityLogging";
 import {
+  approvalsEnabled,
   isMissingSupplierAssignmentsColumnError,
   isSupplierAssignmentsEnabled,
 } from "@/server/suppliers/flags";
@@ -15,6 +16,12 @@ import {
   type SupplierActivityResult,
   type SupplierQuoteRow,
 } from "@/server/suppliers/types";
+import {
+  getSupplierApprovalStatus,
+  isSupplierApproved,
+  loadSupplierById,
+  loadSupplierByPrimaryEmail,
+} from "@/server/suppliers/profile";
 import {
   normalizeUploadStatus,
   UPLOAD_STATUS_LABELS,
@@ -134,6 +141,31 @@ export async function loadSupplierActivityFeed(
   }
 
   console.log("[supplier activity] loading", loggingPayload);
+
+  const approvalsOn = approvalsEnabled();
+  if (approvalsOn) {
+    const supplierRecord = supplierId
+      ? await loadSupplierById(supplierId)
+      : supplierEmail
+        ? await loadSupplierByPrimaryEmail(supplierEmail)
+        : null;
+    const approvalStatus = getSupplierApprovalStatus(supplierRecord ?? undefined);
+    const approved = isSupplierApproved(supplierRecord ?? undefined);
+    if (!approved) {
+      console.log("[supplier activity] approvals gate active", {
+        ...loggingPayload,
+        approvalStatus,
+      });
+      return {
+        ok: true,
+        data: [],
+        approvalGate: {
+          enabled: true,
+          status: approvalStatus,
+        },
+      };
+    }
+  }
 
   if (!assignmentsEnabled) {
     console.log("[supplier activity] assignments disabled: skipping activity feed", {
