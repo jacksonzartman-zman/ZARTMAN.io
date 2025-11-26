@@ -664,6 +664,7 @@ type UploadLogContext = {
   allowedExtensions?: string;
   maxBytes?: number;
   metadataRecorded?: boolean;
+  missingTable?: boolean;
   error?: unknown;
   errorMessage?: string;
   stack?: string;
