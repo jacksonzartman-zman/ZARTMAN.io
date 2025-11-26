@@ -17,7 +17,7 @@ export type BrandMarkProps = {
 };
 
 export function BrandMark({
-  size = 24,
+  size = 32,
   withWordmark = false,
   subLabel,
   className,
