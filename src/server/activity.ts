@@ -1,4 +1,8 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import type {
+  SupplierActivityIdentity,
+  SupplierActivityResult,
+} from "@/server/suppliers/types";
 import {
   normalizeUploadStatus,
   UPLOAD_STATUS_LABELS,
@@ -41,6 +45,12 @@ type BidWithSupplier = BidSummaryRow & {
 };
 
 const DEFAULT_ACTIVITY_LIMIT = 10;
+const SUPPLIER_ACTIVITY_LABEL = "supplier activity";
+
+type ActivityQueryContext = SupplierActivityIdentity & {
+  label: string;
+  loader?: string;
+};
 const QUOTE_FIELDS = [
   "id",
   "status",
@@ -88,40 +98,91 @@ export async function loadCustomerActivityFeed(args: {
   return finalizeActivity(items, limit);
 }
 
-export async function loadSupplierActivityFeed(args: {
-  supplierId?: string | null;
-  supplierEmail?: string | null;
-  limit?: number;
-}): Promise<ActivityItem[]> {
+export async function loadSupplierActivityFeed(
+  args: SupplierActivityIdentity & {
+    limit?: number;
+  },
+): Promise<SupplierActivityResult<ActivityItem[]>> {
   const limit = args.limit ?? DEFAULT_ACTIVITY_LIMIT;
-  if (!args.supplierId && !args.supplierEmail) {
-    return [];
+  const supplierId = args.supplierId ?? null;
+  const supplierEmail = normalizeEmail(args.supplierEmail);
+  const logContext: ActivityQueryContext = {
+    label: SUPPLIER_ACTIVITY_LABEL,
+    supplierId,
+    supplierEmail,
+    loader: "activity",
+  };
+  const loggingPayload = {
+    supplierId,
+    supplierEmail,
+    loader: "activity",
+  };
+
+  if (!supplierId && !supplierEmail) {
+    console.warn("[supplier activity] loading skipped", {
+      ...loggingPayload,
+      error: "Missing supplier identity",
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Missing supplier identity",
+    };
   }
 
-  const normalizedEmail = normalizeEmail(args.supplierEmail);
-  const assignmentQuoteIds = await selectSupplierQuoteIds(normalizedEmail);
-  const bids = await fetchBids(
-    { supplierId: args.supplierId ?? null },
-    limit * 3,
-    false,
-  );
-  const bidQuoteIds = bids.map((bid) => bid.quote_id);
+  console.log("[supplier activity] loading", loggingPayload);
 
-  const quotes = await fetchSupplierQuotes({
-    quoteIds: Array.from(new Set([...assignmentQuoteIds, ...bidQuoteIds])),
-    supplierEmail: normalizedEmail,
-    limit: Math.max(limit * 2, 20),
-  });
+  try {
+    const assignmentQuoteIds = supplierEmail
+      ? await selectSupplierQuoteIds(supplierEmail, logContext)
+      : [];
+    const bids = await fetchBids(
+      { supplierId },
+      limit * 3,
+      false,
+      logContext,
+    );
+    const bidQuoteIds = bids.map((bid) => bid.quote_id);
 
-  const items = [
-    ...quotes.map((quote) => buildQuoteActivityItem(quote, "supplier")),
-    ...quotes
-      .map((quote) => buildStatusActivityItem(quote, "supplier"))
-      .filter((item): item is ActivityItem => Boolean(item)),
-    ...bids.map((bid) => buildBidActivityItem(bid, "supplier")),
-  ];
+    const quotes = await fetchSupplierQuotes(
+      {
+        quoteIds: Array.from(new Set([...assignmentQuoteIds, ...bidQuoteIds])),
+        supplierEmail,
+        limit: Math.max(limit * 2, 20),
+      },
+      logContext,
+    );
 
-  return finalizeActivity(items, limit);
+    const items = [
+      ...quotes.map((quote) => buildQuoteActivityItem(quote, "supplier")),
+      ...quotes
+        .map((quote) => buildStatusActivityItem(quote, "supplier"))
+        .filter((item): item is ActivityItem => Boolean(item)),
+      ...bids.map((bid) => buildBidActivityItem(bid, "supplier")),
+    ];
+
+    const finalized = finalizeActivity(items, limit);
+
+    console.log("[supplier activity] quote query result", {
+      ...loggingPayload,
+      count: finalized.length,
+    });
+
+    return {
+      ok: true,
+      data: finalized,
+    };
+  } catch (error) {
+    console.error("[supplier activity] quote query failed", {
+      ...loggingPayload,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Unable to load activity right now",
+    };
+  }
 }
 
 async function fetchCustomerQuotes(args: {
@@ -169,16 +230,20 @@ async function fetchCustomerQuotes(args: {
   return [];
 }
 
-async function fetchSupplierQuotes(args: {
-  quoteIds: string[];
-  supplierEmail: string | null;
-  limit: number;
-}): Promise<QuoteSummaryRow[]> {
+async function fetchSupplierQuotes(
+  args: {
+    quoteIds: string[];
+    supplierEmail: string | null;
+    limit: number;
+  },
+  context?: ActivityQueryContext,
+): Promise<QuoteSummaryRow[]> {
   const { quoteIds, supplierEmail, limit } = args;
 
   if (quoteIds.length > 0) {
-    return selectQuotesByFilter((query) =>
-      query.in("id", quoteIds).limit(limit),
+    return selectQuotesByFilter(
+      (query) => query.in("id", quoteIds).limit(limit),
+      context,
     );
   }
 
@@ -186,20 +251,23 @@ async function fetchSupplierQuotes(args: {
     return [];
   }
 
-  return selectQuotesByFilter((query) =>
-    query
-      .or(
-        [
-          `assigned_supplier_email.ilike.${supplierEmail}`,
-          `email.ilike.${supplierEmail}`,
-        ].join(","),
-      )
-      .limit(limit),
+  return selectQuotesByFilter(
+    (query) =>
+      query
+        .or(
+          [
+            `assigned_supplier_email.ilike.${supplierEmail}`,
+            `email.ilike.${supplierEmail}`,
+          ].join(","),
+        )
+        .limit(limit),
+    context,
   );
 }
 
 async function selectQuotesByFilter(
   build: (query: any) => any,
+  context?: ActivityQueryContext,
 ): Promise<QuoteSummaryRow[]> {
   try {
     const baseQuery = supabaseServer
@@ -209,20 +277,60 @@ async function selectQuotesByFilter(
     const query = build(baseQuery);
     const { data, error } = await query;
     if (error) {
-      console.error("activity: quote query failed", { error });
+      logQuoteError(error, context);
       return [];
     }
     return (data as QuoteSummaryRow[]) ?? [];
   } catch (error) {
-    console.error("activity: quote query error", { error });
+    logQuoteError(error, context);
     return [];
   }
+}
+
+function logQuoteError(
+  rawError: unknown,
+  context?: ActivityQueryContext,
+) {
+  const label = context?.label ?? "activity";
+  console.error(`[${label}] quote query failed`, {
+    loader: context?.loader ?? null,
+    supplierId: context?.supplierId ?? null,
+    supplierEmail: context?.supplierEmail ?? null,
+    error:
+      rawError instanceof Error
+        ? rawError.message
+        : typeof rawError === "object"
+          ? JSON.stringify(rawError)
+          : String(rawError),
+  });
+}
+
+function logSupplierActivityError(
+  message: string,
+  rawError: unknown,
+  context?: ActivityQueryContext,
+  extra?: Record<string, unknown>,
+) {
+  const label = context?.label ?? "activity";
+  console.error(`[${label}] ${message}`, {
+    loader: context?.loader ?? null,
+    supplierId: context?.supplierId ?? null,
+    supplierEmail: context?.supplierEmail ?? null,
+    error:
+      rawError instanceof Error
+        ? rawError.message
+        : typeof rawError === "object"
+          ? JSON.stringify(rawError)
+          : String(rawError),
+    ...extra,
+  });
 }
 
 async function fetchBids(
   filter: { quoteIds?: string[]; supplierId?: string | null },
   limit: number,
   includeSupplierContext: boolean,
+  context?: ActivityQueryContext,
 ): Promise<BidWithSupplier[]> {
   if (
     (!filter.quoteIds || filter.quoteIds.length === 0) &&
@@ -250,7 +358,7 @@ async function fetchBids(
 
     const { data, error } = await query;
     if (error) {
-      console.error("activity: bid query failed", { error, filter });
+      logSupplierActivityError("bid query failed", error, context, filter);
       return [];
     }
 
@@ -278,7 +386,7 @@ async function fetchBids(
       supplier: supplierMap.get(bid.supplier_id ?? "") ?? null,
     }));
   } catch (error) {
-    console.error("activity: bid query error", { error, filter });
+    logSupplierActivityError("bid query failed", error, context, filter);
     return [];
   }
 }
@@ -310,6 +418,7 @@ async function fetchSuppliersByIds(
 
 async function selectSupplierQuoteIds(
   supplierEmail: string | null,
+  context?: ActivityQueryContext,
 ): Promise<string[]> {
   if (!supplierEmail) {
     return [];
@@ -322,10 +431,12 @@ async function selectSupplierQuoteIds(
       .ilike("supplier_email", supplierEmail);
 
     if (error) {
-      console.error("activity: assignment query failed", {
+      logSupplierActivityError(
+        "assignment query failed",
         error,
-        supplierEmail,
-      });
+        context,
+        { supplierEmail },
+      );
       return [];
     }
 
@@ -333,10 +444,12 @@ async function selectSupplierQuoteIds(
       .map((row) => row.quote_id)
       .filter((id): id is string => Boolean(id));
   } catch (error) {
-    console.error("activity: assignment query error", {
+    logSupplierActivityError(
+      "assignment query failed",
       error,
-      supplierEmail,
-    });
+      context,
+      { supplierEmail },
+    );
     return [];
   }
 }
