@@ -1,6 +1,8 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { loadSupplierById } from "./profile";
 import type {
+  SupplierActivityIdentity,
+  SupplierActivityResult,
   SupplierBidInput,
   SupplierBidRow,
   SupplierBidStatus,
@@ -44,11 +46,29 @@ export async function listSupplierBidsForQuote(
 }
 
 export async function listSupplierBidsForSupplier(
-  supplierId: string,
-): Promise<SupplierBidWithContext[]> {
+  args: SupplierActivityIdentity,
+): Promise<SupplierActivityResult<SupplierBidWithContext[]>> {
+  const supplierId = args.supplierId ?? null;
+  const supplierEmail = normalizeEmail(args.supplierEmail);
+  const logContext = {
+    supplierId,
+    supplierEmail,
+    loader: "bids" as const,
+  };
+
   if (!supplierId) {
-    return [];
+    console.warn("[supplier activity] loading skipped", {
+      ...logContext,
+      error: "Missing supplier identity",
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Missing supplier identity",
+    };
   }
+
+  console.log("[supplier activity] loading", logContext);
 
   try {
     const { data, error } = await supabaseServer
@@ -58,20 +78,38 @@ export async function listSupplierBidsForSupplier(
       .order("updated_at", { ascending: false });
 
     if (error) {
-      console.error("listSupplierBidsForSupplier: query failed", {
-        supplierId,
-        error,
+      console.error("[supplier activity] quote query failed", {
+        ...logContext,
+        error: error.message ?? String(error),
       });
-      return [];
+      return {
+        ok: false,
+        data: [],
+        error: "Unable to load bids right now",
+      };
     }
 
-    return enrichWithSupplierContext((data as SupplierBidRow[]) ?? []);
-  } catch (error) {
-    console.error("listSupplierBidsForSupplier: unexpected error", {
-      supplierId,
-      error,
+    const rows = await enrichWithSupplierContext((data as SupplierBidRow[]) ?? []);
+
+    console.log("[supplier activity] quote query result", {
+      ...logContext,
+      count: rows.length,
     });
-    return [];
+
+    return {
+      ok: true,
+      data: rows,
+    };
+  } catch (error) {
+    console.error("[supplier activity] quote query failed", {
+      ...logContext,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Unable to load bids right now",
+    };
   }
 }
 
@@ -505,4 +543,12 @@ async function updateQuoteAssignedSupplier(
       error,
     });
   }
+}
+
+function normalizeEmail(value?: string | null): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
 }
