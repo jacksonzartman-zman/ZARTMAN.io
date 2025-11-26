@@ -9,11 +9,6 @@ const CENTER_LINKS = [
   { label: "Resources", href: "/resources" },
 ];
 
-const RIGHT_LINKS = [
-  { label: "Customer portal", href: "/customer" },
-  { label: "Supplier portal", href: "/supplier" },
-];
-
 export default function SiteHeader() {
   const pathname = usePathname();
   if (pathname?.startsWith("/customer") || pathname?.startsWith("/supplier")) {
@@ -51,16 +46,7 @@ export default function SiteHeader() {
           ))}
         </nav>
 
-        <div className="flex flex-wrap items-center justify-start gap-3 text-sm font-medium text-ink-soft md:justify-end">
-          {RIGHT_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="rounded-full border border-transparent px-3 py-1.5 transition-colors hover:border-slate-800 hover:text-ink"
-            >
-              {link.label}
-            </Link>
-          ))}
+        <nav className="flex flex-wrap items-center justify-start gap-3 text-sm font-medium text-ink-soft md:justify-end">
           <Link
             href="/login"
             className="rounded-full px-3 py-1.5 text-ink-soft transition-colors hover:text-ink"
@@ -70,7 +56,7 @@ export default function SiteHeader() {
           <Link href="/quote" className={primaryCtaClasses}>
             Get quote
           </Link>
-        </div>
+        </nav>
       </div>
     </header>
   );
