@@ -3,7 +3,6 @@ import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "../PortalCard";
-import { PortalLoginPanel } from "../PortalLoginPanel";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
@@ -42,7 +41,24 @@ async function SupplierDashboardPage({
   const session = await getCurrentSession();
   const roles = session ? await resolveUserRoles(session.user.id) : null;
   if (!session) {
-    return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
+    return (
+      <section className="mx-auto max-w-3xl rounded-3xl border border-slate-900 bg-slate-950/70 p-8 text-center shadow-[0_18px_40px_rgba(2,6,23,0.85)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
+          Supplier workspace
+        </p>
+        <h1 className="mt-4 text-3xl font-semibold text-white">You&apos;re not logged in</h1>
+        <p className="mt-3 text-sm text-slate-300">
+          Use the email you onboarded with to request a magic link. We&apos;ll redirect you back to
+          your supplier dashboard once you&apos;re in.
+        </p>
+        <Link
+          href="/login?next=/supplier"
+          className="mt-6 inline-flex items-center justify-center rounded-full bg-white/90 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white"
+        >
+          Go to login
+        </Link>
+      </section>
+    );
   }
   console.log("[portal] user id", session.user.id);
   console.log("[portal] email", session.user.email);

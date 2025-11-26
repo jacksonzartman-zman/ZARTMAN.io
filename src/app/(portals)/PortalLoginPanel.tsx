@@ -16,15 +16,14 @@ const ROLE_COPY: Record<
   { title: string; description: string; accent: string; cta: string }
 > = {
   customer: {
-    title: "Sign in to the customer portal",
-    description: "Use the email you shared with the Zartman team to receive your magic link.",
+    title: "Customer workspace",
+    description: "Use your work email and we’ll send you a magic link to your workspace.",
     accent: "text-emerald-300",
     cta: "Email me a link",
   },
   supplier: {
-    title: "Sign in to your supplier workspace",
-    description:
-      "We’ll email a one-time magic link to the address tied to your onboarding profile. Use that same inbox to access RFQs.",
+    title: "Supplier workspace",
+    description: "Use the email you onboarded with and we’ll send you a magic link.",
     accent: "text-blue-300",
     cta: "Send magic link",
   },
