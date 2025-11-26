@@ -4,9 +4,11 @@ import {
   resolveSupplierActivityQuery,
   toSupplierActivityQueryError,
 } from "@/server/suppliers/activityLogging";
-import type {
-  SupplierActivityIdentity,
-  SupplierActivityResult,
+import {
+  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
+  type SupplierActivityIdentity,
+  type SupplierActivityResult,
+  type SupplierQuoteRow,
 } from "@/server/suppliers/types";
 import {
   normalizeUploadStatus,
@@ -16,16 +18,7 @@ import type { ActivityItem } from "@/types/activity";
 
 type ActivityContext = "customer" | "supplier";
 
-type QuoteSummaryRow = {
-  id: string;
-  status: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-  file_name: string | null;
-  company: string | null;
-  customer_name: string | null;
-  email: string | null;
-};
+type QuoteSummaryRow = SupplierQuoteRow;
 
 type BidSummaryRow = {
   id: string;
@@ -56,16 +49,7 @@ type ActivityQueryContext = SupplierActivityIdentity & {
   label: string;
   loader?: string;
 };
-const QUOTE_FIELDS = [
-  "id",
-  "status",
-  "created_at",
-  "updated_at",
-  "file_name",
-  "company",
-  "customer_name",
-  "email",
-];
+const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
 
 export async function loadCustomerActivityFeed(args: {
   customerId?: string | null;
