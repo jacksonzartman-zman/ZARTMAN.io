@@ -1,5 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { loadSupplierById } from "./profile";
+import {
+  logSupplierActivityQueryFailure,
+  resolveSupplierActivityQuery,
+} from "./activityLogging";
 import type {
   SupplierActivityIdentity,
   SupplierActivityResult,
@@ -78,9 +82,10 @@ export async function listSupplierBidsForSupplier(
       .order("updated_at", { ascending: false });
 
     if (error) {
-      console.error("[supplier activity] quote query failed", {
+      logSupplierActivityQueryFailure({
         ...logContext,
-        error: error.message ?? String(error),
+        query: "supplier_bids",
+        error,
       });
       return {
         ok: false,
@@ -101,9 +106,10 @@ export async function listSupplierBidsForSupplier(
       data: rows,
     };
   } catch (error) {
-    console.error("[supplier activity] quote query failed", {
+    logSupplierActivityQueryFailure({
       ...logContext,
-      error: error instanceof Error ? error.message : String(error),
+      query: resolveSupplierActivityQuery(error, "supplier_bids"),
+      error,
     });
     return {
       ok: false,
