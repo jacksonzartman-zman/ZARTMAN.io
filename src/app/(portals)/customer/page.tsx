@@ -174,6 +174,14 @@ async function CustomerDashboardPage({
     : await loadCustomerPortalData({
         customerId: customer.id,
       });
+  console.log("[customer workspace] quotes loaded", {
+    userId: session.user.id,
+    customerId: usingOverride ? null : customer.id,
+    viewerEmail: viewerEmail ?? session.user.email ?? null,
+    quoteCount: portalData.quotes.length,
+    domainFallbackUsed: portalData.domainFallbackUsed,
+    error: portalData.error ?? null,
+  });
 
   const openQuotes = portalData.quotes.filter((quote) =>
     OPEN_STATUSES.includes(quote.status),
