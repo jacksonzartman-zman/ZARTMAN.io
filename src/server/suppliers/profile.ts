@@ -240,6 +240,7 @@ export async function loadSupplierByUserId(
 
 export async function upsertSupplierProfile(
   input: SupplierProfileUpsertInput,
+  options?: { skipCapabilities?: boolean },
 ): Promise<SupplierProfile | null> {
   const email = normalizeEmail(input.primaryEmail);
   if (!email) {
@@ -293,7 +294,9 @@ export async function upsertSupplierProfile(
       (cap) => typeof cap?.process === "string" && cap.process.trim().length > 0,
     );
 
-    await replaceSupplierCapabilities(supplier.id, sanitizedCapabilities);
+    if (!options?.skipCapabilities) {
+      await upsertSupplierCapabilities(supplier.id, sanitizedCapabilities);
+    }
 
     const [capabilities, documents] = await Promise.all([
       listSupplierCapabilities(supplier.id),
@@ -344,7 +347,7 @@ export async function addSupplierDocument(
         supplierId,
         error,
       });
-      return null;
+      throw error;
     }
 
     return data ?? null;
@@ -421,7 +424,7 @@ export async function listSupplierDocuments(
   }
 }
 
-async function replaceSupplierCapabilities(
+export async function upsertSupplierCapabilities(
   supplierId: string,
   capabilities: SupplierCapabilityInput[],
 ) {
@@ -432,38 +435,44 @@ async function replaceSupplierCapabilities(
       .eq("supplier_id", supplierId);
 
     if (deleteError) {
-      console.error("replaceSupplierCapabilities: delete failed", {
-        supplierId,
-        error: deleteError,
-      });
+      throw deleteError;
     }
 
     if (capabilities.length === 0) {
       return;
     }
 
-    const payload = capabilities.map((capability) => ({
-      supplier_id: supplierId,
-      process: capability.process.trim(),
-      materials: sanitizeStringArray(capability.materials),
-      certifications: sanitizeStringArray(capability.certifications),
-      max_part_size: capability.maxPartSize ?? null,
-    }));
+    const payload = capabilities
+      .filter(
+        (capability) =>
+          typeof capability.process === "string" &&
+          capability.process.trim().length > 0,
+      )
+      .map((capability) => ({
+        supplier_id: supplierId,
+        process:
+          typeof capability.process === "string" ? capability.process.trim() : "",
+        materials: sanitizeStringArray(capability.materials),
+        certifications: sanitizeStringArray(capability.certifications),
+        max_part_size: capability.maxPartSize ?? null,
+      }));
+
+    if (payload.length === 0) {
+      return;
+    }
 
     const { error: insertError } = await supabaseServer
       .from("supplier_capabilities")
       .insert(payload);
 
     if (insertError) {
-      console.error("replaceSupplierCapabilities: insert failed", {
-        supplierId,
-        error: insertError,
-      });
+      throw insertError;
     }
   } catch (error) {
-    console.error("replaceSupplierCapabilities: unexpected error", {
+    console.error("upsertSupplierCapabilities: unexpected error", {
       supplierId,
       error,
     });
+    throw error;
   }
 }
