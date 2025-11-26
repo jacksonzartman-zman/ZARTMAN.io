@@ -1,4 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import {
+  logSupplierActivityQueryFailure,
+  resolveSupplierActivityQuery,
+  toSupplierActivityQueryError,
+} from "@/server/suppliers/activityLogging";
 import type {
   SupplierActivityIdentity,
   SupplierActivityResult,
@@ -173,9 +178,13 @@ export async function loadSupplierActivityFeed(
       data: finalized,
     };
   } catch (error) {
-    console.error("[supplier activity] quote query failed", {
-      ...loggingPayload,
-      error: error instanceof Error ? error.message : String(error),
+    logSupplierActivityQueryFailure({
+      loader: logContext.loader,
+      supplierId: logContext.supplierId,
+      supplierEmail: logContext.supplierEmail,
+      query: resolveSupplierActivityQuery(error, "supplier_activity_feed"),
+      error,
+      stage: "loader",
     });
     return {
       ok: false,
@@ -269,6 +278,7 @@ async function selectQuotesByFilter(
   build: (query: any) => any,
   context?: ActivityQueryContext,
 ): Promise<QuoteSummaryRow[]> {
+  const shouldThrow = context?.label === SUPPLIER_ACTIVITY_LABEL;
   try {
     const baseQuery = supabaseServer
       .from("quotes_with_uploads")
@@ -278,11 +288,17 @@ async function selectQuotesByFilter(
     const { data, error } = await query;
     if (error) {
       logQuoteError(error, context);
+      if (shouldThrow) {
+        throw toSupplierActivityQueryError("quotes_with_uploads", error);
+      }
       return [];
     }
     return (data as QuoteSummaryRow[]) ?? [];
   } catch (error) {
     logQuoteError(error, context);
+    if (shouldThrow) {
+      throw toSupplierActivityQueryError("quotes_with_uploads", error);
+    }
     return [];
   }
 }
@@ -292,6 +308,17 @@ function logQuoteError(
   context?: ActivityQueryContext,
 ) {
   const label = context?.label ?? "activity";
+  if (label === SUPPLIER_ACTIVITY_LABEL) {
+    logSupplierActivityQueryFailure({
+      loader: context?.loader ?? null,
+      supplierId: context?.supplierId ?? null,
+      supplierEmail: context?.supplierEmail ?? null,
+      query: "quotes_with_uploads",
+      error: rawError,
+      stage: context?.loader ?? null,
+    });
+    return;
+  }
   console.error(`[${label}] quote query failed`, {
     loader: context?.loader ?? null,
     supplierId: context?.supplierId ?? null,

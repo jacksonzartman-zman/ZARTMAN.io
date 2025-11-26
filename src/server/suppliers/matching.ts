@@ -1,6 +1,11 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
 import { listSupplierCapabilities, loadSupplierById } from "./profile";
+import {
+  logSupplierActivityQueryFailure,
+  resolveSupplierActivityQuery,
+  toSupplierActivityQueryError,
+} from "./activityLogging";
 import type {
   SupplierActivityIdentity,
   SupplierActivityResult,
@@ -197,9 +202,10 @@ export async function matchQuotesToSupplier(
       data: sortedMatches,
     };
   } catch (error) {
-    console.error("[supplier activity] quote query failed", {
+    logSupplierActivityQueryFailure({
       ...logContext,
-      error: error instanceof Error ? error.message : String(error),
+      query: resolveSupplierActivityQuery(error, "matchQuotesToSupplier"),
+      error,
     });
     return {
       ok: false,
@@ -348,14 +354,12 @@ async function selectOpenQuotes(): Promise<QuoteWithUploadsRow[]> {
       .limit(50);
 
     if (error) {
-      console.error("matchQuotesToSupplier: quote query failed", { error });
-      return [];
+      throw toSupplierActivityQueryError("quotes_with_uploads", error);
     }
 
     return ((data ?? []) as unknown) as QuoteWithUploadsRow[];
   } catch (error) {
-    console.error("matchQuotesToSupplier: unexpected quote error", { error });
-    return [];
+    throw toSupplierActivityQueryError("quotes_with_uploads", error);
   }
 }
 
@@ -381,8 +385,7 @@ async function selectUploadMeta(quotes: QuoteWithUploadsRow[]) {
       .in("id", uploadIds);
 
     if (error) {
-      console.error("matchQuotesToSupplier: upload query failed", { error });
-      return new Map();
+      throw toSupplierActivityQueryError("uploads", error);
     }
 
     const map = new Map<string, UploadMatchingRow>();
@@ -393,8 +396,7 @@ async function selectUploadMeta(quotes: QuoteWithUploadsRow[]) {
     });
     return map;
   } catch (error) {
-    console.error("matchQuotesToSupplier: unexpected upload error", { error });
-    return new Map();
+    throw toSupplierActivityQueryError("uploads", error);
   }
 }
 
@@ -410,20 +412,12 @@ async function selectQuoteAssignmentsByEmail(email: string) {
       .eq("supplier_email", email);
 
     if (error) {
-      console.error("matchQuotesToSupplier: assignment query failed", {
-        email,
-        error,
-      });
-      return [];
+      throw toSupplierActivityQueryError("quote_suppliers", error);
     }
 
     return (data as QuoteAssignmentRow[]) ?? [];
   } catch (error) {
-    console.error("matchQuotesToSupplier: assignment unexpected error", {
-      email,
-      error,
-    });
-    return [];
+    throw toSupplierActivityQueryError("quote_suppliers", error);
   }
 }
 
@@ -439,19 +433,11 @@ async function selectBidQuoteRefs(supplierId: string) {
       .eq("supplier_id", supplierId);
 
     if (error) {
-      console.error("matchQuotesToSupplier: bid query failed", {
-        supplierId,
-        error,
-      });
-      return [];
+      throw toSupplierActivityQueryError("supplier_bids", error);
     }
 
     return (data as SupplierBidRef[]) ?? [];
   } catch (error) {
-    console.error("matchQuotesToSupplier: bid unexpected error", {
-      supplierId,
-      error,
-    });
-    return [];
+    throw toSupplierActivityQueryError("supplier_bids", error);
   }
 }
