@@ -113,3 +113,14 @@ export type SupplierQuoteMatch = {
   quantityHint?: string | null;
   fairness?: FairnessScore;
 };
+
+export type SupplierActivityResult<TData> = {
+  ok: boolean;
+  data: TData;
+  error?: string | null;
+};
+
+export type SupplierActivityIdentity = {
+  supplierId?: string | null;
+  supplierEmail?: string | null;
+};

@@ -16,6 +16,7 @@ import {
   listSupplierBidsForSupplier,
   loadSupplierProfile,
   matchQuotesToSupplier,
+  type SupplierActivityResult,
   type SupplierBidWithContext,
   type SupplierQuoteMatch,
   type SupplierProfile,
@@ -79,45 +80,35 @@ async function SupplierDashboardPage({
   const supplierExists = Boolean(supplier);
   const supplierProfileUnavailable = Boolean(supplierEmail) && !profile;
 
-  let matches: SupplierQuoteMatch[] | null = supplier ? [] : null;
-  let bids: SupplierBidWithContext[] | null = supplier ? [] : null;
-  if (supplier) {
-    const [matchesResult, bidsResult] = await Promise.allSettled([
-      matchQuotesToSupplier(supplier.id),
-      listSupplierBidsForSupplier(supplier.id),
-    ]);
-
-    if (matchesResult.status === "fulfilled") {
-      matches = matchesResult.value ?? [];
-    } else {
-      console.error("Supplier portal: failed to load matches", {
-        supplierId: supplier.id,
-        error: matchesResult.reason,
-      });
-      matches = null;
-    }
-
-    if (bidsResult.status === "fulfilled") {
-      bids = bidsResult.value ?? [];
-    } else {
-      console.error("Supplier portal: failed to load bids", {
-        supplierId: supplier.id,
-        error: bidsResult.reason,
-      });
-      bids = null;
-    }
-  }
-  const matchesData = matches ?? [];
-  const bidsData = bids ?? [];
-  const matchesUnavailable = supplierExists && matches === null;
-  const bidsUnavailable = supplierExists && bids === null;
-  const recentActivity: ActivityItem[] = supplier
+  const [matchesResult, bidsResult] = supplier
+    ? await Promise.all([
+        matchQuotesToSupplier({
+          supplierId: supplier.id,
+          supplierEmail: supplier.primary_email ?? supplierEmail,
+        }),
+        listSupplierBidsForSupplier({
+          supplierId: supplier.id,
+          supplierEmail: supplier.primary_email ?? supplierEmail,
+        }),
+      ])
+    : [
+        { ok: true, data: [] } satisfies SupplierActivityResult<SupplierQuoteMatch[]>,
+        { ok: true, data: [] } satisfies SupplierActivityResult<
+          SupplierBidWithContext[]
+        >,
+      ];
+  const matchesData = matchesResult.data ?? [];
+  const bidsData = bidsResult.data ?? [];
+  const matchesUnavailable = supplierExists && !matchesResult.ok;
+  const bidsUnavailable = supplierExists && !bidsResult.ok;
+  const recentActivityResult: SupplierActivityResult<ActivityItem[]> = supplier
     ? await loadSupplierActivityFeed({
         supplierId: supplier.id,
         supplierEmail: supplier.primary_email ?? supplierEmail,
         limit: 10,
       })
-    : [];
+    : { ok: true, data: [] };
+  const recentActivity = recentActivityResult.data ?? [];
 
   const signedInEmail = supplier?.primary_email ?? supplierEmail;
   const companyLabel =
@@ -200,53 +191,57 @@ async function SupplierDashboardPage({
         title="Recent activity"
         description="Quick pulse on RFQs, bids, and status changes routed to your shop."
       >
-        {recentActivity.length > 0 ? (
-          <ul className="space-y-3">
-            {recentActivity.map((item) => {
-              const inner = (
-                <div className="flex flex-col gap-2 rounded-2xl border border-slate-900/70 bg-slate-950/50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <ActivityTypeBadge type={item.type} />
-                    <p className="text-sm font-semibold text-white">{item.title}</p>
-                    <p className="text-xs text-slate-400">{item.description}</p>
+        {recentActivityResult.ok ? (
+          recentActivity.length > 0 ? (
+            <ul className="space-y-3">
+              {recentActivity.map((item) => {
+                const inner = (
+                  <div className="flex flex-col gap-2 rounded-2xl border border-slate-900/70 bg-slate-950/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <ActivityTypeBadge type={item.type} />
+                      <p className="text-sm font-semibold text-white">{item.title}</p>
+                      <p className="text-xs text-slate-400">{item.description}</p>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {formatActivityTimestamp(item.timestamp) ?? "Date pending"}
+                    </p>
                   </div>
-                  <p className="text-xs text-slate-500">
-                    {formatActivityTimestamp(item.timestamp) ?? "Date pending"}
-                  </p>
-                </div>
-              );
-              return (
-                <li key={item.id}>
-                  {item.href ? (
-                    <Link
-                      href={item.href}
-                      className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-300"
-                    >
-                      {inner}
-                    </Link>
-                  ) : (
-                    inner
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                );
+                return (
+                  <li key={item.id}>
+                    {item.href ? (
+                      <Link
+                        href={item.href}
+                        className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-300"
+                      >
+                        {inner}
+                      </Link>
+                    ) : (
+                      inner
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <EmptyStateNotice
+              title={supplierExists ? "No activity yet" : "Activity unlocks after onboarding"}
+              description={
+                supplierExists
+                  ? "We’ll stream RFQ assignments and bid updates here as they happen."
+                  : "Finish onboarding to start tracking RFQs and bids in this feed."
+              }
+            />
+          )
         ) : (
-          <EmptyStateNotice
-            title={supplierExists ? "No activity yet" : "Activity unlocks after onboarding"}
-            description={
-              supplierExists
-                ? "We’ll stream RFQ assignments and bid updates here as they happen."
-                : "Finish onboarding to start tracking RFQs and bids in this feed."
-            }
-          />
+          <DataFallbackNotice className="mt-2" />
         )}
       </PortalCard>
 
       <MatchesCard
         supplierEmail={supplier?.primary_email ?? supplierEmail}
         supplierExists={supplierExists}
-        matches={matchesData}
+        result={matchesResult}
       />
       {matchesUnavailable ? (
         <DataFallbackNotice className="mt-2" />
@@ -254,7 +249,7 @@ async function SupplierDashboardPage({
 
       <BidsCard
         supplierEmail={supplier?.primary_email ?? supplierEmail}
-        bids={bidsData}
+        result={bidsResult}
       />
       {bidsUnavailable ? (
         <DataFallbackNotice className="mt-2" />
@@ -422,12 +417,13 @@ function ProfileCard({
 function MatchesCard({
   supplierEmail,
   supplierExists,
-  matches,
+  result,
 }: {
   supplierEmail: string;
   supplierExists: boolean;
-  matches: SupplierQuoteMatch[];
+  result: SupplierActivityResult<SupplierQuoteMatch[]>;
 }) {
+  const matches = result.data ?? [];
   return (
     <PortalCard
       title="Inbound RFQs"
@@ -514,11 +510,12 @@ function MatchesCard({
 
 function BidsCard({
   supplierEmail,
-  bids,
+  result,
 }: {
   supplierEmail: string;
-  bids: SupplierBidWithContext[];
+  result: SupplierActivityResult<SupplierBidWithContext[]>;
 }) {
+  const bids = result.data ?? [];
   return (
     <PortalCard
       title="Submitted bids"
