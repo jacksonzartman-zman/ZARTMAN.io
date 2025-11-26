@@ -31,31 +31,30 @@ export function BrandMark({
         className,
       )}
     >
-      <span className="flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
-        <span
-  className="flex shrink-0 items-center justify-center"
-  style={{ width: size, height: size }}
->
-  <svg viewBox="0 0 32 32" aria-hidden="true">
-    <rect
-      x="4"
-      y="4"
-      width="24"
-      height="24"
-      rx="6"
-      ry="6"
-      stroke="white"
-      strokeWidth="1.5"
-      fill="none"
-    />
-    <path
-      d="M10 11H22L13 21H22"
-      stroke="white"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
+      <span
+        className="flex shrink-0 items-center justify-center"
+        style={{ width: size, height: size }}
+      >
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <rect
+            x="4"
+            y="4"
+            width="24"
+            height="24"
+            rx="6"
+            ry="6"
+            stroke="white"
+            strokeWidth="1.5"
+            fill="none"
+          />
+          <path
+            d="M10 11H22L13 21H22"
+            stroke="white"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </span>
 
       {withWordmark ? (
