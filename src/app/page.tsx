@@ -7,60 +7,41 @@ export default function HomePage() {
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
         {/* HERO */}
-        <section className="grid gap-10 lg:grid-cols-2 items-start">
-          <div className="space-y-6">
-            <div className="badge-soft">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-              <span>Built for quoting &amp; AM teams</span>
-            </div>
+        <section className="mx-auto max-w-3xl space-y-6">
+          <div className="badge-soft">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+            <span>Built for quoting &amp; AM teams</span>
+          </div>
 
-            <div className="space-y-4">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-                Zartman.io — an admin cockpit for your quoting workflow
-              </h1>
-              <p className="max-w-copy text-sm sm:text-base text-ink-muted">
-                One dark-mode hub that shows uploads, quote status, pricing, and
-                target dates — all synced from Supabase. Keep sales, AM, and ops
-                aligned without duct-taped spreadsheets.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <Link href="/quote" className={primaryCtaClasses}>
-                Get a quote
-              </Link>
-              <Link
-                href="#how-it-works"
-                className="inline-flex items-center justify-center rounded-pill border border-line-subtle px-6 py-2 text-sm font-semibold text-ink transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-              >
-                See how it works
-              </Link>
-            </div>
-            <p className="text-xs text-ink-soft">
-              CAD uploads still land on{" "}
-              <Link href="/quote" className="font-semibold text-ink">
-                /quote
-              </Link>{" "}
-              and sync straight into the cockpit in seconds.
+          <div className="space-y-4">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-ink">
+              Zartman.io — an admin cockpit for your quoting workflow
+            </h1>
+            <p className="text-sm sm:text-base text-ink-muted">
+              One dark-mode hub that shows uploads, quote status, pricing, and
+              target dates — all synced from Supabase. Keep sales, AM, and ops
+              aligned without duct-taped spreadsheets.
             </p>
           </div>
 
-          <div className="space-y-6 lg:pl-4">
-            <ul className="grid gap-3 text-sm text-ink-muted sm:grid-cols-2">
-              <li className="surface-card p-3 shadow-lift-sm">
-                Live dashboards for uploads + quotes, with filters and status
-                pills that mirror your admin view.
-              </li>
-              <li className="surface-card p-3 shadow-lift-sm">
-                Server actions + Supabase service role keep edits in sync,
-                including price, currency, target date, and notes.
-              </li>
-            </ul>
-
-            <div id="early-access">
-              <EarlyAccessForm />
-            </div>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/quote" className={primaryCtaClasses}>
+              Get a quote
+            </Link>
+            <Link
+              href="#request-demo"
+              className="inline-flex items-center justify-center rounded-full border border-ink-soft px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink-soft/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              Request a demo
+            </Link>
           </div>
+          <p className="text-xs text-ink-soft">
+            CAD uploads still land on{" "}
+            <Link href="/quote" className="font-semibold text-ink">
+              /quote
+            </Link>{" "}
+            and sync straight into the cockpit in seconds.
+          </p>
         </section>
 
         {/* HOW IT WORKS */}
@@ -104,6 +85,20 @@ export default function HomePage() {
               </p>
             </div>
           </div>
+        </section>
+
+        {/* REQUEST DEMO */}
+        <section
+          id="request-demo"
+          className="mx-auto mt-16 max-w-2xl space-y-4 px-4 pb-16"
+        >
+          <h2 className="text-lg font-semibold text-ink">Request a live demo</h2>
+          <p className="text-sm text-ink-soft">
+            Prefer a walkthrough before sending parts? Share your work email and
+            we'll follow up to schedule a short demo and talk through your
+            quoting workflow.
+          </p>
+          <EarlyAccessForm />
         </section>
 
         {/* WHY THIS EXISTS */}

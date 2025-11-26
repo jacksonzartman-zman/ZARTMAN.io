@@ -22,7 +22,7 @@ export default function EarlyAccessForm() {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <label htmlFor="email" className="sr-only">
-          Email
+          Work email
         </label>
         <input
           id="email"
@@ -35,6 +35,9 @@ export default function EarlyAccessForm() {
         <SubmitButton />
       </div>
 
+      <p className="text-xs text-slate-400">
+        We'll email you to coordinate a time that works.
+      </p>
       {state?.error && (
         <p className="text-sm text-red-400">{state.error}</p>
       )}
@@ -49,12 +52,12 @@ function SubmitButton() {
   const { pending } = useFormStatus();
 
   return (
-      <button
-        type="submit"
-        disabled={pending}
-        className={primaryCtaClasses}
-      >
-      {pending ? "Sending..." : "Request early access"}
+    <button
+      type="submit"
+      disabled={pending}
+      className={primaryCtaClasses}
+    >
+      {pending ? "Sending..." : "Request demo"}
     </button>
   );
 }
