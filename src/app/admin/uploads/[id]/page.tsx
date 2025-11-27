@@ -11,7 +11,11 @@ import {
   normalizeUploadStatus,
 } from "../../constants";
 import CreateQuoteButton from "@/app/admin/CreateQuoteButton";
-import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import {
+  ctaSizeClasses,
+  primaryCtaClasses,
+  secondaryCtaClasses,
+} from "@/lib/ctas";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
 
 export default async function UploadDetailPage(props: any) {

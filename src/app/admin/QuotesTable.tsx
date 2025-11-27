@@ -19,7 +19,7 @@ export type QuoteRow = {
   price: number | null;
   currency: string | null;
   targetDate: string | null;
-  createdAt: string;
+  createdAt: string | null;
 };
 
 type QuotesTableProps = {
