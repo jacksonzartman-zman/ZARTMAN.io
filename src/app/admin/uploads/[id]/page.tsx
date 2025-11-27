@@ -2,8 +2,6 @@
 
 import clsx from "clsx";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { supabaseServer } from "@/lib/supabaseServer";
 import { updateUpload } from "./actions";
 import { SuccessBanner } from "./SuccessBanner";
 import {
@@ -14,30 +12,7 @@ import {
 } from "../../constants";
 import CreateQuoteButton from "@/app/admin/CreateQuoteButton";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
-
-type UploadRow = {
-  id: string;
-  name: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  email: string | null;
-  company: string | null;
-  phone: string | null;
-  manufacturing_process: string | null;
-  quantity: string | null;
-  shipping_postal_code: string | null;
-  export_restriction: string | null;
-  rfq_reason: string | null;
-  itar_acknowledged: boolean | null;
-  terms_accepted: boolean | null;
-  file_name: string | null;
-  file_path: string | null;
-  notes: string | null;
-  status: string | null;
-  admin_notes: string | null;
-  created_at: string | null;
-  quote_id: string | null;
-};
+import { loadAdminUploadDetail } from "@/server/admin/uploads";
 
 export default async function UploadDetailPage(props: any) {
   const { params, searchParams } = props as {
@@ -45,25 +20,64 @@ export default async function UploadDetailPage(props: any) {
     searchParams?: { updated?: string };
   };
 
-  const supabase = supabaseServer;
+  const uploadResult = await loadAdminUploadDetail(params.id);
 
-  // Fetch upload by ID
-  const { data, error } = await supabase
-    .from("uploads")
-    .select("*")
-    .eq("id", params.id)
-    .maybeSingle<UploadRow>();
-
-  if (error) {
-    console.error("Error fetching upload", error);
-    notFound();
+  if (!uploadResult.ok) {
+    return (
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <section className="rounded-2xl border border-red-500/30 bg-red-950/40 p-6 text-center">
+          <h1 className="text-xl font-semibold text-red-50">
+            We had trouble loading this upload.
+          </h1>
+          <p className="mt-2 text-sm text-red-100">
+            Check logs and try again. The upload itself was not modified.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/admin"
+              className={clsx(
+                secondaryCtaClasses,
+                ctaSizeClasses.sm,
+                "inline-flex",
+              )}
+            >
+              Back to RFQ inbox
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
   }
 
-  if (!data) {
-    notFound();
-  }
+  const upload = uploadResult.data;
 
-  const upload = data;
+  if (!upload) {
+    return (
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-center">
+          <h1 className="text-xl font-semibold text-slate-50">
+            Upload not found
+          </h1>
+          <p className="mt-2 text-sm text-slate-400">
+            We couldn’t find an upload with ID{" "}
+            <span className="font-mono text-slate-200">{params.id}</span>.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/admin"
+              className={clsx(
+                secondaryCtaClasses,
+                ctaSizeClasses.sm,
+                "inline-flex",
+              )}
+            >
+              Back to RFQ inbox
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
   const resolvedStatus = normalizeUploadStatus(
     upload.status,
     DEFAULT_UPLOAD_STATUS,

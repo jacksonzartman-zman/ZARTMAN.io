@@ -4,11 +4,10 @@ import clsx from "clsx";
 import Link from "next/link";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { supabaseServer } from "@/lib/supabaseServer";
 import { formatDateTime } from "@/lib/formatDate";
 import { loadQuoteMessages, type QuoteMessage } from "@/server/quotes/messages";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
-import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
+import type { UploadMeta } from "@/server/quotes/types";
 import {
   DEFAULT_UPLOAD_STATUS,
   normalizeUploadStatus,
@@ -26,6 +25,8 @@ import {
 } from "./QuoteWorkspaceTabs";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { QuoteMessagesThread } from "@/components/quotes/QuoteMessagesThread";
+import { loadAdminQuoteDetail } from "@/server/admin/quotes";
+import { loadAdminUploadDetail } from "@/server/admin/uploads";
 
 export const dynamic = "force-dynamic";
 
@@ -88,15 +89,36 @@ export default async function QuoteDetailPage({
   const wasUpdated =
     getSearchParamValue(resolvedSearchParams, "updated") === "1";
 
-  const { data: quote, error } = await supabaseServer
-    .from("quotes_with_uploads")
-    .select("*")
-    .eq("id", resolvedParams.id)
-    .maybeSingle<QuoteWithUploadsRow>();
+  const quoteResult = await loadAdminQuoteDetail(resolvedParams.id);
 
-  if (error) {
-    console.error("Quote load error", error);
+  if (!quoteResult.ok) {
+    return (
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <section className="rounded-2xl border border-red-500/30 bg-red-950/40 p-6 text-center">
+          <h1 className="text-xl font-semibold text-red-50">
+            We had trouble loading this quote.
+          </h1>
+          <p className="mt-2 text-sm text-red-100">
+            Check logs and try again. The quote data stayed untouched.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/admin/quotes"
+              className={clsx(
+                secondaryCtaClasses,
+                ctaSizeClasses.sm,
+                "inline-flex",
+              )}
+            >
+              Back to quotes
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
   }
+
+  const quote = quoteResult.data;
 
   if (!quote) {
     return (
@@ -131,22 +153,28 @@ export default async function QuoteDetailPage({
 
   let uploadMeta: UploadMeta | null = null;
   if (quote.upload_id) {
-    const { data: meta, error: metaError } = await supabaseServer
-      .from("uploads")
-      .select(
-        "first_name,last_name,phone,company,manufacturing_process,quantity,shipping_postal_code,export_restriction,rfq_reason,notes,itar_acknowledged,terms_accepted",
-      )
-      .eq("id", quote.upload_id)
-      .maybeSingle<UploadMeta>();
-
-    if (metaError) {
-      console.error(
-        "Failed to load upload metadata for quote",
-        quote.upload_id,
-        metaError,
-      );
-    } else {
-      uploadMeta = meta;
+    const uploadResult = await loadAdminUploadDetail(quote.upload_id);
+    if (!uploadResult.ok) {
+      console.warn("Failed to load upload metadata for quote", {
+        uploadId: quote.upload_id,
+        error: uploadResult.error,
+      });
+    } else if (uploadResult.data) {
+      const data = uploadResult.data;
+      uploadMeta = {
+        first_name: data.first_name,
+        last_name: data.last_name,
+        phone: data.phone,
+        company: data.company,
+        manufacturing_process: data.manufacturing_process,
+        quantity: data.quantity,
+        shipping_postal_code: data.shipping_postal_code,
+        export_restriction: data.export_restriction,
+        rfq_reason: data.rfq_reason,
+        notes: data.notes,
+        itar_acknowledged: data.itar_acknowledged,
+        terms_accepted: data.terms_accepted,
+      };
     }
   }
 
