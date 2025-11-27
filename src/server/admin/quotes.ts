@@ -23,18 +23,22 @@ const ADMIN_QUOTE_LIST_FIELDS: QuoteListField[] = [
   ...SAFE_QUOTE_WITH_UPLOADS_FIELDS,
 ];
 
-const ADMIN_QUOTE_DETAIL_FIELDS: (QuoteListField | QuoteFileField | "internal_notes" | "dfm_notes" | "created_at" | "updated_at")[] =
-  [
-    ...new Set([
-      ...ADMIN_QUOTE_LIST_FIELDS,
-      "internal_notes",
-      "dfm_notes",
-      "file_names",
-      "upload_file_names",
-      "created_at",
-      "updated_at",
-    ]),
-  ];
+const ADMIN_QUOTE_DETAIL_FIELDS = [
+  ...ADMIN_QUOTE_LIST_FIELDS,
+  "internal_notes",
+  "dfm_notes",
+  "file_names",
+  "upload_file_names",
+  "created_at",
+  "updated_at",
+] satisfies ReadonlyArray<
+  | QuoteListField
+  | QuoteFileField
+  | "internal_notes"
+  | "dfm_notes"
+  | "created_at"
+  | "updated_at"
+>;
 
 export type AdminQuoteListRow = Pick<QuoteWithUploadsRow, QuoteListField>;
 export type AdminQuoteDetailRow = Pick<
@@ -59,7 +63,8 @@ export async function loadAdminQuotesList(
       .from("quotes_with_uploads")
       .select(ADMIN_QUOTE_LIST_FIELDS.join(","))
       .order("created_at", { ascending: false })
-      .limit(QUOTE_LIST_LIMIT);
+      .limit(QUOTE_LIST_LIMIT)
+      .returns<AdminQuoteListRow[]>();
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
