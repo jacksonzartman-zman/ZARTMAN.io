@@ -1,9 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
+import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
-import { handleQuoteFormSubmit, type QuoteFormState } from "@/app/admin/actions";
 import { formatDateInputValue } from "@/lib/formatDate";
 import {
   DEFAULT_UPLOAD_STATUS,
@@ -12,6 +10,11 @@ import {
   UPLOAD_STATUS_OPTIONS,
 } from "../constants";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
+import {
+  initialAdminQuoteUpdateState,
+  submitAdminQuoteUpdateAction,
+  type AdminQuoteUpdateState,
+} from "./[id]/actions";
 
 type QuoteUpdateFormProps = {
   quote: {
@@ -27,18 +30,15 @@ type QuoteUpdateFormProps = {
 
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP"];
 
-const INITIAL_STATE: QuoteFormState = {};
-
 export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
-  const [state, formAction] = useActionState(
-    handleQuoteFormSubmit,
-    INITIAL_STATE,
+  const boundAction = submitAdminQuoteUpdateAction.bind(null, quote.id);
+  const [state, formAction] = useFormState<AdminQuoteUpdateState, FormData>(
+    boundAction,
+    initialAdminQuoteUpdateState,
   );
 
-    return (
-      <form className="mt-4 space-y-4" action={formAction}>
-      <input type="hidden" name="id" value={quote.id} />
-
+  return (
+    <form className="mt-4 space-y-4" action={formAction}>
       <div className="space-y-1.5">
         <label
           htmlFor="status"
@@ -102,61 +102,66 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
 
       <div className="space-y-1.5">
         <label
-          htmlFor="target_date"
+          htmlFor="targetDate"
           className="block text-sm font-medium text-slate-200"
         >
           Target date
         </label>
         <input
-          id="target_date"
-          name="target_date"
+          id="targetDate"
+          name="targetDate"
           type="date"
           defaultValue={formatDateInputValue(quote.targetDate)}
           className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
         />
       </div>
 
-        <div className="space-y-1.5">
-          <label
-            htmlFor="dfm_notes"
-            className="block text-sm font-medium text-slate-200"
-          >
-            DFM notes (visible to customer)
-          </label>
-          <textarea
-            id="dfm_notes"
-            name="dfm_notes"
-            defaultValue={quote.dfmNotes ?? ""}
-            rows={4}
-            className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
-            placeholder="Call out manufacturability feedback you want to share"
-          />
-          <p className="text-xs text-slate-500">
-            Customers will eventually see these notes on their quote.
-          </p>
-        </div>
+      <div className="space-y-1.5">
+        <label
+          htmlFor="dfmNotes"
+          className="block text-sm font-medium text-slate-200"
+        >
+          DFM notes (visible to customer)
+        </label>
+        <textarea
+          id="dfmNotes"
+          name="dfmNotes"
+          defaultValue={quote.dfmNotes ?? ""}
+          rows={4}
+          className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
+          placeholder="Call out manufacturability feedback you want to share"
+        />
+        <p className="text-xs text-slate-500">
+          Customers will eventually see these notes on their quote.
+        </p>
+      </div>
 
       <div className="space-y-1.5">
         <label
-          htmlFor="internal_notes"
+          htmlFor="internalNotes"
           className="block text-sm font-medium text-slate-200"
         >
           Internal notes
         </label>
         <textarea
-          id="internal_notes"
-          name="internal_notes"
+          id="internalNotes"
+          name="internalNotes"
           defaultValue={quote.internalNotes ?? ""}
           rows={4}
           className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
         />
       </div>
 
-        {state?.error && <p className="text-sm text-red-400">{state.error}</p>}
+      {!state.ok && state.error && (
+        <p className="text-sm text-red-400">{state.error}</p>
+      )}
+      {state.ok && state.message && (
+        <p className="text-sm text-emerald-300">{state.message}</p>
+      )}
 
-        <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:justify-end">
-          <SubmitButton />
-        </div>
+      <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:justify-end">
+        <SubmitButton />
+      </div>
     </form>
   );
 }
