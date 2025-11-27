@@ -1,0 +1,48 @@
+Admin cockpit hardening summary
+================================
+
+Files changed
+-------------
+- src/server/admin/logging.ts — shared admin logging helpers, Supabase error serialization, and missing table/column detection.
+- src/server/admin/types.ts — lightweight { ok, data, error } result contract for loaders.
+- src/server/admin/quotes.ts — safe-field quote list/detail loaders with logging + graceful fallbacks.
+- src/server/admin/uploads.ts — uploads inbox/detail loaders that reuse safe fields, guard file lookups, and normalize filters.
+- src/app/admin/page.tsx — RFQ inbox now uses the hardened loader and shows error banners instead of crashing.
+- src/app/admin/quotes/page.tsx — quotes table reuses the loader, keeps SAFE fields, and renders the requested empty/error messages.
+- src/app/admin/quotes/[id]/page.tsx — quote detail uses the loader contract, reuses upload loader for intake metadata, and surfaces clear failure states.
+- src/app/admin/uploads/[id]/page.tsx — upload detail uses the loader, replaces notFound() with explicit empty/error UIs, and keeps actions intact.
+
+New helpers & types
+-------------------
+- logAdminQuotes*/logAdminUploads* and isMissingTableOrColumnError centralize logging & schema checks.
+- AdminLoaderResult<T> enforces the { ok, data, error } contract.
+- loadAdminQuotesList/loadAdminQuoteDetail & loadAdminUploadsInbox/loadAdminUploadDetail expose admin-safe Supabase accessors.
+
+Missing schema handling
+-----------------------
+- All loaders catch Supabase errors, route PGRST205/42703 codes through isMissingTableOrColumnError, warn with `[admin ...] missing schema`, and return harmless empty results plus human-readable `error` strings for the UI to display instead of throwing.
+
+Example log lines
+-----------------
+- `[admin quotes] list loaded { count, status, search }`
+- `[admin quotes] detail missing schema { quoteId, supabaseError }`
+- `[admin uploads] inbox query failed { status, search, supabaseError }`
+- `[admin uploads] detail loaded { uploadId }`
+
+Commands executed
+-----------------
+- `npm run lint` (fails until dependencies installed — eslint binary missing)
+- `npm install`
+- `npm run lint` (fails: react/no-unescaped-entities in src/app/page.tsx and src/components/EarlyAccessForm.tsx, pre-existing)
+
+Repo status
+-----------
+- Branch: cursor/harden-admin-cockpit-pages-gpt-5.1-codex-0ad7
+- HEAD: 900eedb5f7782d6374ec720c9b426081fc94a5a4
+- git status -sb:
+    ## cursor/harden-admin-cockpit-pages-gpt-5.1-codex-0ad7
+     M src/app/admin/page.tsx
+     M src/app/admin/quotes/[id]/page.tsx
+     M src/app/admin/quotes/page.tsx
+     M src/app/admin/uploads/[id]/page.tsx
+    ?? src/server/admin/

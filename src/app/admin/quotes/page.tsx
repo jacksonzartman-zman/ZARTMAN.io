@@ -1,6 +1,5 @@
 // src/app/admin/quotes/page.tsx
-
-import { supabaseServer } from "@/lib/supabaseServer";
+import { loadAdminQuotesList } from "@/server/admin/quotes";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import {
   UPLOAD_STATUS_OPTIONS,
@@ -101,25 +100,13 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       : "";
   const normalizedSearch = searchTerm.trim().toLowerCase().replace(/\s+/g, " ");
 
-  const { data, error } = await supabaseServer
-    .from("quotes_with_uploads")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const quotesResult = await loadAdminQuotesList({
+    status: statusFilter === "all" ? null : statusFilter,
+    search: normalizedSearch || null,
+  });
 
-  if (error) {
-    console.error("Error loading quotes for admin:", error);
-    return (
-      <main className="mx-auto max-w-5xl px-4 py-10">
-        <p className="text-sm text-red-400">
-          Failed to load quotes dashboard: {error.message}
-        </p>
-      </main>
-    );
-  }
-
-    const rows: QuoteRow[] =
-      data?.map((row: any) => ({
+  const rows: QuoteRow[] =
+    quotesResult.data?.map((row) => ({
         id: row.id,
         customerName: row.customer_name ?? "Unknown",
         customerEmail: row.email ?? "",
@@ -155,6 +142,11 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
         title="Quotes"
         description="Recent quotes created from uploads."
       >
+      {!quotesResult.ok ? (
+        <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-100">
+          We had trouble loading quotes. Check logs and try again.
+        </div>
+      ) : null}
         <AdminFiltersBar
           filters={
             <StatusFilterChips

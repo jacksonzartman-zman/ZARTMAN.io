@@ -8,22 +8,11 @@ import {
   isUploadStatus,
   type UploadStatus,
 } from "./constants";
-import { supabaseServer } from "@/lib/supabaseServer";
 import AdminDashboardShell from "./AdminDashboardShell";
 import AdminFiltersBar from "./AdminFiltersBar";
+import { loadAdminUploadsInbox } from "@/server/admin/uploads";
 
 export const dynamic = "force-dynamic";
-
-const PAGE_SIZE = 25;
-const MAX_FILE_MATCH_IDS = 50;
-const SEARCHABLE_UPLOAD_FIELDS = [
-  "company",
-  "name",
-  "first_name",
-  "last_name",
-  "email",
-  "file_name",
-] as const satisfies readonly string[];
 
 type AdminPageProps = {
   searchParams?: Promise<ReadonlyURLSearchParams>;
@@ -88,11 +77,7 @@ const resolveSearchParams = async (
   };
 };
 
-const escapeForOrFilter = (value: string) =>
-  value.replace(/\\/g, "\\\\").replace(/,/g, "\\,").replace(/\*/g, "\\*");
-
 export default async function AdminPage({ searchParams }: AdminPageProps) {
-  const supabase = supabaseServer;
   const resolvedSearchParams = await resolveSearchParams(searchParams);
 
   const rawStatus = resolvedSearchParams.status?.trim().toLowerCase();
@@ -106,83 +91,13 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       : "";
   const normalizedSearch = searchInputValue.trim().toLowerCase();
 
-  let fileQuoteIds: string[] = [];
-  if (normalizedSearch) {
-    const { data: fileMatches, error: filesError } = await supabase
-      .from("files")
-      .select("quote_id")
-      .ilike("filename", `%${normalizedSearch}%`)
-      .limit(200);
-
-    if (filesError) {
-      console.error("Failed to search files for admin inbox", filesError);
-    } else {
-      fileQuoteIds =
-        fileMatches
-          ?.map((row) => row.quote_id)
-          .filter(
-            (id): id is string => typeof id === "string" && id.trim().length > 0,
-          ) ?? [];
-    }
-  }
-
-  let query = supabase
-    .from("uploads")
-    .select(
-      `
-      id,
-      quote_id,
-      name,
-      first_name,
-      last_name,
-      email,
-      company,
-      file_name,
-      status,
-      created_at,
-      manufacturing_process,
-      quantity
-    `,
-    )
-    .order("created_at", { ascending: false })
-    .limit(PAGE_SIZE);
-
-  if (statusFilter) {
-    query = query.eq("status", statusFilter);
-  }
-
-  if (normalizedSearch) {
-    const pattern = `*${escapeForOrFilter(normalizedSearch)}*`;
-    const orFilters = SEARCHABLE_UPLOAD_FIELDS.map(
-      (column) => `${column}.ilike.${pattern}`,
-    );
-
-    const uniqueQuoteIds = Array.from(new Set(fileQuoteIds)).slice(
-      0,
-      MAX_FILE_MATCH_IDS,
-    );
-    if (uniqueQuoteIds.length > 0) {
-      orFilters.push(`quote_id.in.(${uniqueQuoteIds.join(",")})`);
-    }
-
-    query = query.or(orFilters.join(","));
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error("Error loading uploads for admin inbox", error);
-    return (
-      <main className="mx-auto max-w-5xl px-4 py-10">
-        <p className="text-sm text-red-400">
-          Failed to load RFQ inbox: {error.message}
-        </p>
-      </main>
-    );
-  }
+  const inboxResult = await loadAdminUploadsInbox({
+    status: statusFilter ?? null,
+    search: normalizedSearch || null,
+  });
 
   const rows: InboxRow[] =
-    data?.map((row) => {
+    inboxResult.data?.map((row) => {
       const contactPieces = [row.first_name, row.last_name]
         .map((value) => (typeof value === "string" ? value.trim() : ""))
         .filter((value) => value.length > 0);
@@ -213,29 +128,34 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       };
     }) ?? [];
 
-    const hasActiveFilters = Boolean(statusFilter || normalizedSearch);
+  const hasActiveFilters = Boolean(statusFilter || normalizedSearch);
 
-    return (
-      <AdminDashboardShell
-        title="RFQ inbox"
-        description="Filter, search, and jump into the latest submissions from customers."
-      >
-        <AdminFiltersBar
-          filters={
-            <StatusFilterChips
-              currentStatus={statusFilter ?? ""}
-              basePath="/admin"
-            />
-          }
-          search={
-            <AdminSearchInput
-              initialValue={searchInputValue}
-              basePath="/admin"
-              placeholder="Search company, contact, email, or file name..."
-            />
-          }
-        />
-        <AdminTable rows={rows} hasActiveFilters={hasActiveFilters} />
-      </AdminDashboardShell>
-    );
+  return (
+    <AdminDashboardShell
+      title="RFQ inbox"
+      description="Filter, search, and jump into the latest submissions from customers."
+    >
+      {!inboxResult.ok ? (
+        <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-100">
+          We had trouble loading the inbox. Check logs and try again.
+        </div>
+      ) : null}
+      <AdminFiltersBar
+        filters={
+          <StatusFilterChips
+            currentStatus={statusFilter ?? ""}
+            basePath="/admin"
+          />
+        }
+        search={
+          <AdminSearchInput
+            initialValue={searchInputValue}
+            basePath="/admin"
+            placeholder="Search company, contact, email, or file name..."
+          />
+        }
+      />
+      <AdminTable rows={rows} hasActiveFilters={hasActiveFilters} />
+    </AdminDashboardShell>
+  );
 }
