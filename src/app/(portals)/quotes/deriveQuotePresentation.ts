@@ -1,13 +1,13 @@
 import {
-  DEFAULT_UPLOAD_STATUS,
-  normalizeUploadStatus,
-  type UploadStatus,
-  UPLOAD_STATUS_LABELS,
-} from "@/app/admin/constants";
+  DEFAULT_QUOTE_STATUS,
+  QUOTE_STATUS_LABELS,
+  normalizeQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
 
 export type QuotePresentation = {
-  status: UploadStatus;
+  status: QuoteStatus;
   statusLabel: string;
   customerName: string;
   customerEmail: string | null;
@@ -23,11 +23,8 @@ export function deriveQuotePresentation(
   quote: QuoteWithUploadsRow,
   uploadMeta: UploadMeta | null,
 ): QuotePresentation {
-  const status = normalizeUploadStatus(
-    quote.status as UploadStatus,
-    DEFAULT_UPLOAD_STATUS,
-  );
-  const statusLabel = UPLOAD_STATUS_LABELS[status] ?? "Unknown";
+  const status = normalizeQuoteStatus(quote.status ?? DEFAULT_QUOTE_STATUS);
+  const statusLabel = QUOTE_STATUS_LABELS[status] ?? "Unknown";
   const customerName =
     [uploadMeta?.first_name, uploadMeta?.last_name]
       .filter((value) => typeof value === "string" && value.trim().length > 0)

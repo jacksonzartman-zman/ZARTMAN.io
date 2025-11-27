@@ -23,8 +23,8 @@ import {
 import { canUserBid } from "@/lib/permissions";
 import { computeFairnessBoost } from "@/lib/fairness";
 import { approvalsEnabled } from "./flags";
+import { QUOTE_OPEN_STATUSES } from "@/server/quotes/status";
 
-const OPEN_QUOTE_STATUSES = ["submitted", "in_review", "quoted"];
 const MATCH_LIMIT = 20;
 
 type QuoteAssignmentRow = {
@@ -357,7 +357,7 @@ async function selectOpenQuotes(): Promise<SupplierQuoteRow[]> {
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
       .select(SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(","))
-      .in("status", OPEN_QUOTE_STATUSES)
+      .in("status", Array.from(QUOTE_OPEN_STATUSES))
       .order("created_at", { ascending: false })
       .limit(50);
 
