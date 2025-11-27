@@ -1,8 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import type {
-  QuoteFileSource,
-  QuoteWithUploadsRow,
-} from "@/server/quotes/types";
+import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
@@ -17,34 +14,21 @@ import {
 import type { AdminLoaderResult } from "./types";
 
 type QuoteListField = SafeQuoteWithUploadsField;
-type QuoteFileField = keyof QuoteFileSource;
 
 const ADMIN_QUOTE_LIST_FIELDS: QuoteListField[] = [
   ...SAFE_QUOTE_WITH_UPLOADS_FIELDS,
 ];
 
-const ADMIN_QUOTE_DETAIL_FIELDS = [
+const ADMIN_QUOTE_DETAIL_FIELDS: readonly QuoteListField[] = [
   ...ADMIN_QUOTE_LIST_FIELDS,
-  "internal_notes",
-  "dfm_notes",
-  "file_names",
-  "upload_file_names",
-  "created_at",
-  "updated_at",
-] satisfies ReadonlyArray<
-  | QuoteListField
-  | QuoteFileField
-  | "internal_notes"
-  | "dfm_notes"
-  | "created_at"
-  | "updated_at"
->;
+];
 
 export type AdminQuoteListRow = Pick<QuoteWithUploadsRow, QuoteListField>;
-export type AdminQuoteDetailRow = Pick<
-  QuoteWithUploadsRow,
-  (typeof ADMIN_QUOTE_DETAIL_FIELDS)[number]
->;
+export type QuoteNotesRow = {
+  dfm_notes: string | null;
+  internal_notes: string | null;
+};
+export type AdminQuoteDetailRow = AdminQuoteListRow & QuoteNotesRow;
 
 export type AdminQuotesListFilter = {
   status?: string | null;
@@ -54,6 +38,7 @@ export type AdminQuotesListFilter = {
 const QUOTE_LIST_LIMIT = 100;
 const QUOTE_LIST_ERROR =
   "Unable to load quotes right now. Please refresh to try again.";
+const QUOTE_DETAIL_ERROR = "Unable to load this quote right now.";
 
 export async function loadAdminQuotesList(
   filter: AdminQuotesListFilter,
@@ -130,7 +115,7 @@ export async function loadAdminQuoteDetail(
       .from("quotes_with_uploads")
       .select(ADMIN_QUOTE_DETAIL_FIELDS.join(","))
       .eq("id", quoteId)
-      .maybeSingle<AdminQuoteDetailRow>();
+      .maybeSingle<AdminQuoteListRow>();
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
@@ -147,12 +132,12 @@ export async function loadAdminQuoteDetail(
       return {
         ok: false,
         data: null,
-        error: "Unable to load this quote right now.",
+        error: QUOTE_DETAIL_ERROR,
       };
     }
 
     if (!data) {
-      logAdminQuotesWarn("detail not found", { quoteId });
+      logAdminQuotesInfo("detail not found", { quoteId });
       return {
         ok: true,
         data: null,
@@ -160,10 +145,16 @@ export async function loadAdminQuoteDetail(
       };
     }
 
+    const notes = await loadQuoteNotes(quoteId);
+    const merged: AdminQuoteDetailRow = {
+      ...data,
+      ...notes,
+    };
+
     logAdminQuotesInfo("detail loaded", { quoteId });
     return {
       ok: true,
-      data,
+      data: merged,
       error: null,
     };
   } catch (error) {
@@ -174,7 +165,45 @@ export async function loadAdminQuoteDetail(
     return {
       ok: false,
       data: null,
-      error: "Unable to load this quote right now.",
+      error: QUOTE_DETAIL_ERROR,
     };
+  }
+}
+
+async function loadQuoteNotes(quoteId: string): Promise<QuoteNotesRow> {
+  const fallback: QuoteNotesRow = {
+    dfm_notes: null,
+    internal_notes: null,
+  };
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes")
+      .select("dfm_notes,internal_notes")
+      .eq("id", quoteId)
+      .maybeSingle<QuoteNotesRow>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[admin quotes] notes missing schema", {
+          quoteId,
+          supabaseError: serializeSupabaseError(error),
+        });
+      } else {
+        console.error("[admin quotes] notes query failed", {
+          quoteId,
+          supabaseError: serializeSupabaseError(error),
+        });
+      }
+      return fallback;
+    }
+
+    return data ?? fallback;
+  } catch (error) {
+    console.error("[admin quotes] notes crashed", {
+      quoteId,
+      error: serializeSupabaseError(error),
+    });
+    return fallback;
   }
 }
