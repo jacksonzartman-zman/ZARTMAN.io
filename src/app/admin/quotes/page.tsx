@@ -40,6 +40,17 @@ const getFirstParamValue = (
   return value ?? undefined;
 };
 
+const normalizePriceValue = (
+  price: number | string | null,
+): number | null => {
+  if (price == null) {
+    return null;
+  }
+
+  const parsed = typeof price === "number" ? price : Number(price);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 type ResolvableSearchParams =
   | QuotesPageProps["searchParams"]
   | URLSearchParams
@@ -113,7 +124,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
         company: row.company ?? "",
         fileName: row.file_name ?? "",
         status: normalizeUploadStatus(row.status as UploadStatus | null),
-        price: row.price,
+        price: normalizePriceValue(row.price),
         currency: row.currency,
         targetDate: row.target_date,
         createdAt: row.created_at,
