@@ -167,7 +167,7 @@ export async function loadAdminUploadsInbox(
       query = query.or(orFilters.join(","));
     }
 
-    const { data, error } = await query;
+    const { data, error } = await query.returns<AdminUploadInboxRow[]>();
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
