@@ -1,8 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import type {
-  QuoteFileSource,
-  QuoteWithUploadsRow,
-} from "@/server/quotes/types";
+import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
@@ -17,34 +14,24 @@ import {
 import type { AdminLoaderResult } from "./types";
 
 type QuoteListField = SafeQuoteWithUploadsField;
-type QuoteFileField = keyof QuoteFileSource;
-
 const ADMIN_QUOTE_LIST_FIELDS: QuoteListField[] = [
   ...SAFE_QUOTE_WITH_UPLOADS_FIELDS,
 ];
 
-const ADMIN_QUOTE_DETAIL_FIELDS = [
+const ADMIN_QUOTE_DETAIL_FIELDS: ReadonlyArray<QuoteListField> = [
   ...ADMIN_QUOTE_LIST_FIELDS,
-  "internal_notes",
-  "dfm_notes",
-  "file_names",
-  "upload_file_names",
-  "created_at",
-  "updated_at",
-] satisfies ReadonlyArray<
-  | QuoteListField
-  | QuoteFileField
-  | "internal_notes"
-  | "dfm_notes"
-  | "created_at"
-  | "updated_at"
->;
+];
+
+const ADMIN_QUOTE_DETAIL_EXTRA_FIELDS = ["internal_notes", "dfm_notes"] as const;
+type QuoteDetailExtraField =
+  (typeof ADMIN_QUOTE_DETAIL_EXTRA_FIELDS)[number];
 
 export type AdminQuoteListRow = Pick<QuoteWithUploadsRow, QuoteListField>;
-export type AdminQuoteDetailRow = Pick<
+type AdminQuoteDetailExtrasRow = Pick<
   QuoteWithUploadsRow,
-  (typeof ADMIN_QUOTE_DETAIL_FIELDS)[number]
+  QuoteDetailExtraField
 >;
+export type AdminQuoteDetailRow = AdminQuoteListRow & AdminQuoteDetailExtrasRow;
 
 export type AdminQuotesListFilter = {
   status?: string | null;
@@ -54,6 +41,7 @@ export type AdminQuotesListFilter = {
 const QUOTE_LIST_LIMIT = 100;
 const QUOTE_LIST_ERROR =
   "Unable to load quotes right now. Please refresh to try again.";
+const QUOTE_DETAIL_ERROR = "Unable to load this quote right now.";
 
 export async function loadAdminQuotesList(
   filter: AdminQuotesListFilter,
@@ -130,7 +118,8 @@ export async function loadAdminQuoteDetail(
       .from("quotes_with_uploads")
       .select(ADMIN_QUOTE_DETAIL_FIELDS.join(","))
       .eq("id", quoteId)
-      .maybeSingle<AdminQuoteDetailRow>();
+      .returns<AdminQuoteListRow | null>()
+      .maybeSingle();
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
@@ -147,7 +136,7 @@ export async function loadAdminQuoteDetail(
       return {
         ok: false,
         data: null,
-        error: "Unable to load this quote right now.",
+        error: QUOTE_DETAIL_ERROR,
       };
     }
 
@@ -160,10 +149,17 @@ export async function loadAdminQuoteDetail(
       };
     }
 
+    const baseDetail: AdminQuoteListRow = data;
+    const detailExtras = await loadQuoteDetailExtras(quoteId);
+    const detail: AdminQuoteDetailRow = {
+      ...baseDetail,
+      ...detailExtras,
+    };
+
     logAdminQuotesInfo("detail loaded", { quoteId });
     return {
       ok: true,
-      data,
+      data: detail,
       error: null,
     };
   } catch (error) {
@@ -174,7 +170,43 @@ export async function loadAdminQuoteDetail(
     return {
       ok: false,
       data: null,
-      error: "Unable to load this quote right now.",
+      error: QUOTE_DETAIL_ERROR,
     };
+  }
+}
+
+async function loadQuoteDetailExtras(
+  quoteId: string,
+): Promise<AdminQuoteDetailExtrasRow> {
+  const fallback: AdminQuoteDetailExtrasRow = {
+    internal_notes: null,
+    dfm_notes: null,
+  };
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes")
+      .select(ADMIN_QUOTE_DETAIL_EXTRA_FIELDS.join(","))
+      .eq("id", quoteId)
+      .maybeSingle<AdminQuoteDetailExtrasRow>();
+
+    if (error) {
+      logAdminQuotesWarn("detail extras query failed", {
+        quoteId,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return fallback;
+    }
+
+    return {
+      internal_notes: data?.internal_notes ?? null,
+      dfm_notes: data?.dfm_notes ?? null,
+    };
+  } catch (error) {
+    logAdminQuotesWarn("detail extras crashed", {
+      quoteId,
+      supabaseError: serializeSupabaseError(error),
+    });
+    return fallback;
   }
 }
