@@ -2,7 +2,6 @@
 
 import clsx from "clsx";
 import Link from "next/link";
-import type { ReadonlyURLSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { loadQuoteMessages, type QuoteMessage } from "@/server/quotes/messages";
@@ -16,9 +15,8 @@ import {
 } from "../../constants";
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
-import { SuccessBanner } from "../../uploads/[id]/SuccessBanner";
 import { QuoteMessageComposer } from "./QuoteMessageComposer";
-import { QuoteFilesCard, type QuoteFileItem } from "./QuoteFilesCard";
+import { QuoteFilesCard } from "./QuoteFilesCard";
 import {
   QuoteWorkspaceTabs,
   type QuoteWorkspaceTab,
@@ -30,64 +28,12 @@ import { loadAdminUploadDetail } from "@/server/admin/uploads";
 
 export const dynamic = "force-dynamic";
 
-type SearchParamsLike =
-  | ReadonlyURLSearchParams
-  | URLSearchParams
-  | Record<string, string | string[] | undefined>;
-
 type QuoteDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<SearchParamsLike>;
 };
 
-function hasGetMethod(
-  params: SearchParamsLike,
-): params is URLSearchParams | ReadonlyURLSearchParams {
-  return typeof (params as URLSearchParams).get === "function";
-}
-
-async function resolveMaybePromise<T>(
-  value?: Promise<T> | T,
-): Promise<T | undefined> {
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-
-  return await value;
-}
-
-function getSearchParamValue(
-  params: SearchParamsLike | undefined,
-  key: string,
-): string | undefined {
-  if (!params) {
-    return undefined;
-  }
-
-  if (hasGetMethod(params)) {
-    return params.get(key) ?? undefined;
-  }
-
-  const recordValue = (params as Record<string, string | string[] | undefined>)[
-    key
-  ];
-
-  if (Array.isArray(recordValue)) {
-    return recordValue[0];
-  }
-
-  return recordValue;
-}
-
-
-export default async function QuoteDetailPage({
-  params,
-  searchParams,
-}: QuoteDetailPageProps) {
+export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) {
   const resolvedParams = await params;
-  const resolvedSearchParams = await resolveMaybePromise(searchParams);
-  const wasUpdated =
-    getSearchParamValue(resolvedSearchParams, "updated") === "1";
 
   const quoteResult = await loadAdminQuoteDetail(resolvedParams.id);
 
@@ -509,8 +455,6 @@ export default async function QuoteDetailPage({
           ) : null
         }
       >
-        {wasUpdated && <SuccessBanner message="Quote updated." />}
-
         <div className="space-y-6">
           <div className="space-y-3">
             <div className="overflow-x-auto pb-1">
