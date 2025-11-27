@@ -8,11 +8,11 @@ import { loadQuoteMessages, type QuoteMessage } from "@/server/quotes/messages";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
 import {
-  DEFAULT_UPLOAD_STATUS,
-  normalizeUploadStatus,
-  type UploadStatus,
-  UPLOAD_STATUS_LABELS,
-} from "../../constants";
+  DEFAULT_QUOTE_STATUS,
+  QUOTE_STATUS_LABELS,
+  normalizeQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { QuoteMessageComposer } from "./QuoteMessageComposer";
@@ -124,7 +124,9 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     }
   }
 
-    const status = normalizeUploadStatus(quote.status, DEFAULT_UPLOAD_STATUS);
+    const status: QuoteStatus = normalizeQuoteStatus(
+      quote.status ?? DEFAULT_QUOTE_STATUS,
+    );
     const customerName =
       [uploadMeta?.first_name, uploadMeta?.last_name]
         .filter((value) => typeof value === "string" && value.trim().length > 0)
@@ -209,7 +211,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       typeof quote.target_date === "string" && quote.target_date.trim().length > 0
         ? quote.target_date
         : null;
-    const statusLabel = UPLOAD_STATUS_LABELS[status] ?? "Unknown";
+    const statusLabel = QUOTE_STATUS_LABELS[status] ?? "Unknown";
     const filePreviews = await getQuoteFilePreviews(quote);
     const dfmNotes =
       typeof quote.dfm_notes === "string" && quote.dfm_notes.trim().length > 0
