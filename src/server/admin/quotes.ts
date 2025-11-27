@@ -9,6 +9,9 @@ import {
   logAdminQuotesError,
   logAdminQuotesInfo,
   logAdminQuotesWarn,
+  logAdminUploadsError,
+  logAdminUploadsInfo,
+  logAdminUploadsWarn,
   serializeSupabaseError,
 } from "./logging";
 import type { AdminLoaderResult } from "./types";
@@ -228,6 +231,10 @@ export async function updateAdminQuote(
   input: AdminQuoteUpdateInput,
 ): Promise<AdminQuoteUpdateResult> {
   const normalized = normalizeAdminQuoteUpdateInput(input);
+  const hasStatusUpdate = Object.prototype.hasOwnProperty.call(
+    normalized?.updates ?? {},
+    "status",
+  );
 
   if (!normalized) {
     logAdminQuotesWarn("update invalid input", {
@@ -252,8 +259,12 @@ export async function updateAdminQuote(
       .from("quotes")
       .update(updatePayload)
       .eq("id", normalized.quoteId)
-      .select("id")
-      .maybeSingle<{ id: string }>();
+      .select("id, upload_id, status")
+      .maybeSingle<{
+        id: string;
+        upload_id: string | null;
+        status: string | null;
+      }>();
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
@@ -279,6 +290,15 @@ export async function updateAdminQuote(
       quoteId: normalized.quoteId,
       fields,
     });
+
+    if (hasStatusUpdate) {
+      await syncUploadStatus({
+        quoteId: normalized.quoteId,
+        uploadId: data.upload_id,
+        status: data.status ?? null,
+      });
+    }
+
     return { ok: true };
   } catch (error) {
     logAdminQuotesError("update crashed", {
@@ -286,6 +306,60 @@ export async function updateAdminQuote(
       supabaseError: serializeSupabaseError(error),
     });
     return { ok: false, error: QUOTE_UPDATE_ERROR };
+  }
+}
+
+async function syncUploadStatus({
+  quoteId,
+  uploadId,
+  status,
+}: {
+  quoteId: string;
+  uploadId: string | null;
+  status: string | null;
+}) {
+  if (!uploadId) {
+    logAdminUploadsInfo("status sync skipped", {
+      quoteId,
+      uploadId: null,
+      status,
+    });
+    return;
+  }
+
+  try {
+    const { error: uploadError } = await supabaseServer
+      .from("uploads")
+      .update({ status })
+      .eq("id", uploadId);
+
+    if (uploadError) {
+      const context = {
+        quoteId,
+        uploadId,
+        status,
+        supabaseError: serializeSupabaseError(uploadError),
+      };
+      if (isMissingTableOrColumnError(uploadError)) {
+        logAdminUploadsWarn("status sync missing schema", context);
+      } else {
+        logAdminUploadsError("status sync failed", context);
+      }
+      return;
+    }
+
+    logAdminUploadsInfo("status sync success", {
+      quoteId,
+      uploadId,
+      status,
+    });
+  } catch (error) {
+    logAdminUploadsError("status sync crashed", {
+      quoteId,
+      uploadId,
+      status,
+      supabaseError: serializeSupabaseError(error),
+    });
   }
 }
 
