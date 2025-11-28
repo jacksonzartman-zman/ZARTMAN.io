@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatCurrency } from "@/lib/formatCurrency";
 import { loadQuoteMessages, type QuoteMessage } from "@/server/quotes/messages";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
@@ -24,6 +25,7 @@ import {
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { QuoteMessagesThread } from "@/components/quotes/QuoteMessagesThread";
 import { loadAdminQuoteDetail } from "@/server/admin/quotes";
+import { loadBidsForQuote } from "@/server/bids";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
 
 export const dynamic = "force-dynamic";
@@ -234,6 +236,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       });
     }
     const messages: QuoteMessage[] = quoteMessages ?? [];
+    const bidsResult = await loadBidsForQuote(quote.id);
+    const bids = bidsResult.ok ? bidsResult.data : [];
 
     const headerTitleSource = companyName || customerName || "Unnamed customer";
     const headerTitle = `Quote for ${headerTitleSource}`;
@@ -536,6 +540,82 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           </div>
 
           <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
+
+          <section className="mt-8 rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-100">
+                Supplier bids
+              </h2>
+              {!bidsResult.ok ? (
+                <span className="text-xs text-slate-400">
+                  We had trouble loading bids. Check logs and try again.
+                </span>
+              ) : null}
+            </div>
+
+            {bidsResult.ok && bids.length === 0 ? (
+              <p className="text-xs text-slate-400">
+                No bids have been submitted for this quote yet.
+              </p>
+            ) : null}
+
+            {bidsResult.ok && bids.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-xs text-slate-200">
+                  <thead className="border-b border-slate-800 text-[11px] uppercase tracking-wide text-slate-400">
+                    <tr>
+                      <th className="py-2 pr-3">Supplier</th>
+                      <th className="py-2 pr-3">Amount</th>
+                      <th className="py-2 pr-3">Lead time</th>
+                      <th className="py-2 pr-3">Status</th>
+                      <th className="py-2 pr-3">Submitted</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bids.map((bid) => (
+                      <tr
+                        key={bid.id}
+                        className="border-b border-slate-900/60 last:border-0"
+                      >
+                        <td className="py-2 pr-3">
+                          <span className="font-mono text-[11px] text-slate-400">
+                            {bid.supplier_id}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3">
+                          {typeof bid.amount === "number"
+                            ? formatCurrency(bid.amount, bid.currency, {
+                                maximumFractionDigits: 2,
+                              })
+                            : "—"}
+                          {bid.currency ? (
+                            <span className="ml-1 text-[11px] text-slate-400">
+                              {bid.currency}
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {typeof bid.lead_time_days === "number"
+                            ? `${bid.lead_time_days} day${
+                                bid.lead_time_days === 1 ? "" : "s"
+                              }`
+                            : "—"}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span className="inline-flex rounded-full bg-slate-800/60 px-2 py-0.5 text-[11px] capitalize">
+                            {(bid.status ?? "submitted").toString()}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3">
+                          {bid.created_at ? formatDateTime(bid.created_at) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </section>
         </div>
       </AdminDashboardShell>
     );

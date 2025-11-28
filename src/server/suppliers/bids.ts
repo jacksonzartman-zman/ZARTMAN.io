@@ -1,5 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
+  serializeSupabaseError,
+  isMissingTableOrColumnError,
+} from "@/server/admin/logging";
+import {
   getSupplierApprovalStatus,
   isSupplierApproved,
   loadSupplierById,
@@ -20,7 +24,194 @@ import type {
 } from "./types";
 import { approvalsEnabled } from "./flags";
 
+export type BidStatus = "submitted" | "revised" | "withdrawn";
+
+export type BidRow = {
+  id: string;
+  quote_id: string;
+  supplier_id: string;
+  amount: number | null;
+  currency: string | null;
+  lead_time_days: number | null;
+  notes: string | null;
+  status: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type BidLoaderResult<T> = {
+  ok: boolean;
+  data: T;
+  error: string | null;
+};
+
+const BIDS_TABLE_NAME = "supplier_bids";
+const BIDS_MISSING_SCHEMA_MESSAGE =
+  "Bids are not available in this environment.";
+const BIDS_GENERIC_ERROR_MESSAGE = "We had trouble loading bids.";
+const BID_SELECTION_COLUMNS =
+  "id,quote_id,supplier_id,unit_price,currency,lead_time_days,notes,status,created_at,updated_at";
+
 const DEFAULT_CURRENCY = "USD";
+
+export async function loadBidsForQuote(
+  quoteId: string,
+): Promise<BidLoaderResult<BidRow[]>> {
+  if (!quoteId) {
+    return {
+      ok: false,
+      data: [],
+      error: "Quote ID is required.",
+    };
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(BIDS_TABLE_NAME)
+      .select(BID_SELECTION_COLUMNS)
+      .eq("quote_id", quoteId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      const serialized = serializeSupabaseError(error);
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[bids] list missing schema", {
+          quoteId,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          data: [],
+          error: BIDS_MISSING_SCHEMA_MESSAGE,
+        };
+      }
+
+      console.error("[bids] list query failed", {
+        quoteId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        data: [],
+        error: BIDS_GENERIC_ERROR_MESSAGE,
+      };
+    }
+
+    const rows =
+      (Array.isArray(data) ? data : [])?.map((row) =>
+        normalizeBidRow(row as SupplierBidRow),
+      ) ?? [];
+
+    return {
+      ok: true,
+      data: rows.filter((row): row is BidRow => Boolean(row)),
+      error: null,
+    };
+  } catch (error) {
+    const serialized = serializeSupabaseError(error);
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[bids] list missing schema", {
+        quoteId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        data: [],
+        error: BIDS_MISSING_SCHEMA_MESSAGE,
+      };
+    }
+
+    console.error("[bids] list crashed", {
+      quoteId,
+      error: serialized ?? error,
+    });
+    return {
+      ok: false,
+      data: [],
+      error: BIDS_GENERIC_ERROR_MESSAGE,
+    };
+  }
+}
+
+export async function loadBidForSupplierAndQuote(
+  supplierId: string,
+  quoteId: string,
+): Promise<BidLoaderResult<BidRow | null>> {
+  if (!supplierId || !quoteId) {
+    return {
+      ok: false,
+      data: null,
+      error: "Supplier and quote are required.",
+    };
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(BIDS_TABLE_NAME)
+      .select(BID_SELECTION_COLUMNS)
+      .eq("quote_id", quoteId)
+      .eq("supplier_id", supplierId)
+      .maybeSingle<SupplierBidRow>();
+
+    if (error) {
+      const serialized = serializeSupabaseError(error);
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[bids] detail missing schema", {
+          supplierId,
+          quoteId,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          data: null,
+          error: BIDS_MISSING_SCHEMA_MESSAGE,
+        };
+      }
+
+      console.error("[bids] detail query failed", {
+        supplierId,
+        quoteId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        data: null,
+        error: BIDS_GENERIC_ERROR_MESSAGE,
+      };
+    }
+
+    return {
+      ok: true,
+      data: normalizeBidRow(data),
+      error: null,
+    };
+  } catch (error) {
+    const serialized = serializeSupabaseError(error);
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[bids] detail missing schema", {
+        supplierId,
+        quoteId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        data: null,
+        error: BIDS_MISSING_SCHEMA_MESSAGE,
+      };
+    }
+
+    console.error("[bids] detail crashed", {
+      supplierId,
+      quoteId,
+      error: serialized ?? error,
+    });
+    return {
+      ok: false,
+      data: null,
+      error: BIDS_GENERIC_ERROR_MESSAGE,
+    };
+  }
+}
 
 export async function listSupplierBidsForQuote(
   quoteId: string,
@@ -416,6 +607,38 @@ export async function declineSupplierBid(
     });
     return null;
   }
+}
+
+function normalizeBidRow(row?: SupplierBidRow | null): BidRow | null {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    quote_id: row.quote_id,
+    supplier_id: row.supplier_id,
+    amount: normalizeBidAmount(row.unit_price),
+    currency: row.currency ?? null,
+    lead_time_days:
+      typeof row.lead_time_days === "number" && Number.isFinite(row.lead_time_days)
+        ? row.lead_time_days
+        : null,
+    notes: row.notes ?? null,
+    status: row.status ?? null,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+}
+
+function normalizeBidAmount(
+  value: number | string | null | undefined,
+): number | null {
+  const numeric = typeof value === "string" ? Number(value) : value;
+  if (typeof numeric === "number" && Number.isFinite(numeric)) {
+    return numeric;
+  }
+  return null;
 }
 
 async function getBidById(bidId: string): Promise<SupplierBidRow | null> {
