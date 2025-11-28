@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, type ComponentProps } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import type { BidRow } from "@/server/bids";
 import {
@@ -28,16 +28,27 @@ export function SupplierBidPanel({
   bidsUnavailableMessage,
 }: SupplierBidPanelProps) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [state, formAction] = useFormState<
+  const [rawState, formAction] = useFormState<
     SupplierBidActionState,
     FormData
   >(submitSupplierBidAction, initialSupplierBidState);
+  const state = useMemo(
+    () => normalizeSupplierBidState(rawState),
+    [rawState],
+  );
+
+  const handleSubmit = (formData: FormData) => {
+    formData.set("amount", normalizeBidAmountInput(formData.get("amount")));
+    return formAction(formData);
+  };
+
+  const successMessage = state.ok ? state.message : "";
 
   useEffect(() => {
-    if (state.ok && state.message) {
+    if (successMessage) {
       formRef.current?.reset();
     }
-  }, [state]);
+  }, [successMessage]);
 
   const formDisabled =
     (approvalsOn && !approved) || Boolean(bidsUnavailableMessage);
@@ -58,19 +69,20 @@ export function SupplierBidPanel({
         </p>
       ) : null}
 
-      <form ref={formRef} action={formAction} className="space-y-4">
+      <form ref={formRef} action={handleSubmit} className="space-y-4">
         <input type="hidden" name="quoteId" value={quoteId} />
         <div className="grid gap-4 md:grid-cols-3">
           <Field
             label="Amount"
             name="amount"
-            type="number"
-            step="0.01"
+            type="text"
+            inputMode="decimal"
             placeholder="15000"
             defaultValue={initialBid?.amount ?? undefined}
             disabled={formDisabled}
             prefix="$"
-            error={!state.ok ? state.fieldErrors?.amount : undefined}
+            autoComplete="off"
+            error={!state.ok ? state.fieldErrors.amount : undefined}
           />
           <Field
             label="Currency"
@@ -90,7 +102,7 @@ export function SupplierBidPanel({
                 : undefined
             }
             disabled={formDisabled}
-            error={!state.ok ? state.fieldErrors?.leadTimeDays : undefined}
+            error={!state.ok ? state.fieldErrors.leadTimeDays : undefined}
           />
         </div>
 
@@ -188,6 +200,8 @@ function Field({
   step,
   prefix,
   error,
+  inputMode,
+  autoComplete,
 }: {
   label: string;
   name: string;
@@ -198,6 +212,8 @@ function Field({
   step?: string;
   prefix?: string;
   error?: string;
+  inputMode?: ComponentProps<"input">["inputMode"];
+  autoComplete?: ComponentProps<"input">["autoComplete"];
 }) {
   return (
     <div>
@@ -213,6 +229,8 @@ function Field({
           defaultValue={defaultValue}
           disabled={disabled}
           step={step}
+          inputMode={inputMode}
+          autoComplete={autoComplete}
           className="w-full bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none disabled:opacity-60"
         />
       </div>
@@ -223,6 +241,63 @@ function Field({
       ) : null}
     </div>
   );
+}
+
+type NormalizedSupplierBidState =
+  | { ok: true; message: string }
+  | { ok: false; error: string; fieldErrors: Record<string, string> };
+
+const SUPPLIER_BID_FALLBACK_ERROR =
+  "We couldn't submit your bid. Please try again.";
+
+function normalizeSupplierBidState(
+  value: SupplierBidActionState | null | undefined,
+): NormalizedSupplierBidState {
+  if (!value || typeof value !== "object" || typeof value.ok !== "boolean") {
+    return {
+      ok: false,
+      error: SUPPLIER_BID_FALLBACK_ERROR,
+      fieldErrors: {},
+    };
+  }
+
+  if (value.ok) {
+    return {
+      ok: true,
+      message: typeof value.message === "string" ? value.message : "",
+    };
+  }
+
+  return {
+    ok: false,
+    error: value.error || SUPPLIER_BID_FALLBACK_ERROR,
+    fieldErrors: normalizeFieldErrors(value.fieldErrors),
+  };
+}
+
+function normalizeFieldErrors(
+  rawErrors?: Record<string, unknown>,
+): Record<string, string> {
+  if (!rawErrors || typeof rawErrors !== "object") {
+    return {};
+  }
+
+  return Object.entries(rawErrors).reduce<Record<string, string>>(
+    (acc, [key, value]) => {
+      if (typeof value === "string" && value.length > 0) {
+        acc[key] = value;
+      }
+      return acc;
+    },
+    {},
+  );
+}
+
+function normalizeBidAmountInput(value: FormDataEntryValue | null): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().replace(/[,\s]/g, "");
 }
 
 function SubmitButton({
