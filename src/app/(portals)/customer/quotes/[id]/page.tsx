@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatCurrency } from "@/lib/formatCurrency";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import {
   QuoteWorkspaceTabs,
@@ -20,8 +21,7 @@ import {
   type QuoteWorkspaceData,
 } from "@/app/(portals)/quotes/workspaceData";
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
-import { listSupplierBidsForQuote, type SupplierBidWithContext } from "@/server/suppliers";
-import { BidDecisionButtons } from "./BidDecisionButtons";
+import { loadBidsForQuote, type BidRow } from "@/server/bids";
 import { requireSession } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
@@ -133,7 +133,44 @@ export default async function CustomerQuoteDetailPage({
   const normalizedQuoteStatus = normalizeQuoteStatus(quote.status ?? undefined);
   const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined);
   const nextWorkflowState = getNextWorkflowState(normalizedQuoteStatus);
-  const supplierBids = await listSupplierBidsForQuote(quoteId);
+  const bidsResult = await loadBidsForQuote(quote.id);
+  const bidsUnavailable = !bidsResult.ok;
+  const bids = bidsResult.ok && Array.isArray(bidsResult.data)
+    ? (bidsResult.data ?? [])
+    : [];
+  const bidCount = bids.length;
+  const pricedBids = bids.filter(
+    (bid): bid is BidRow & { amount: number } => {
+      const value = bid.amount;
+      return typeof value === "number" && Number.isFinite(value);
+    },
+  );
+  const bestPriceBid = pricedBids.reduce<BidRow & { amount: number } | null>(
+    (currentBest, bid) => {
+      if (!currentBest || bid.amount < currentBest.amount) {
+        return bid;
+      }
+      return currentBest;
+    },
+    null,
+  );
+  const bestPriceValue = bestPriceBid?.amount ?? null;
+  const bestPriceCurrency = bestPriceBid?.currency ?? null;
+  const leadTimeBids = bids.filter(
+    (bid): bid is BidRow & { lead_time_days: number } => {
+      const value = bid.lead_time_days;
+      return typeof value === "number" && Number.isFinite(value);
+    },
+  );
+  const fastestLeadTime = leadTimeBids.reduce<number | null>(
+    (currentBest, bid) => {
+      if (currentBest === null || bid.lead_time_days < currentBest) {
+        return bid.lead_time_days;
+      }
+      return currentBest;
+    },
+    null,
+  );
   const submittedAtRaw = quote.created_at ?? null;
   const updatedAtRaw = quote.updated_at ?? null;
   const submittedAtText = submittedAtRaw
@@ -332,94 +369,22 @@ export default async function CustomerQuoteDetailPage({
     </section>
   );
 
-    const suppliersContent = (
-      <section className={cardClasses}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Supplier bids
-        </p>
-        {supplierBids.length > 0 ? (
-          <div className="mt-3 space-y-3">
-            {supplierBids.map((bid) => (
-              <article
-                key={bid.id}
-                className="rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      {bid.supplier?.company_name ?? "Supplier"}
-                      <span className="ml-2 text-xs font-normal text-slate-400">
-                        {bid.supplier?.primary_email ?? "Email pending"}
-                      </span>
-                    </p>
-                  </div>
-                  <BidStatusBadge status={bid.status} />
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <DetailChip label="Unit price (per part)" value={formatBidPrice(bid)} />
-                  <DetailChip
-                    label="Lead time (days)"
-                    value={
-                      bid.lead_time_days
-                        ? `${bid.lead_time_days} day${bid.lead_time_days === 1 ? "" : "s"}`
-                        : "Pending"
-                    }
-                  />
-                  <DetailChip
-                    label="Certifications shared"
-                    value={
-                      bid.certifications && bid.certifications.length > 0
-                        ? bid.certifications.join(", ")
-                        : "Not shared"
-                    }
-                  />
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Decision
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Accepting one bid will auto-decline the rest.
-                    </p>
-                    <BidDecisionButtons
-                      bidId={bid.id}
-                      quoteId={quote.id}
-                      status={bid.status}
-                      disabled={readOnly}
-                    />
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-slate-400">
-            We’ll surface bids here as suppliers respond.
-          </p>
-        )}
-      </section>
-    );
-
-    const tabs: {
-      id: QuoteWorkspaceTab;
-      label: string;
-      count?: number;
-      content: ReactNode;
-    }[] = [
-      { id: "summary", label: "Summary", content: summaryContent },
-      {
-        id: "messages",
-        label: "Messages",
-        count: messages.length,
-        content: messagesContent,
-      },
-      {
-        id: "suppliers",
-        label: `Suppliers (${supplierBids.length})`,
-        content: suppliersContent,
-      },
-      { id: "viewer", label: "Files", content: filesContent },
-      { id: "tracking", label: "Tracking", content: trackingContent },
-    ];
+  const tabs: {
+    id: QuoteWorkspaceTab;
+    label: string;
+    count?: number;
+    content: ReactNode;
+  }[] = [
+    { id: "summary", label: "Summary", content: summaryContent },
+    {
+      id: "messages",
+      label: "Messages",
+      count: messages.length,
+      content: messagesContent,
+    },
+    { id: "viewer", label: "Files", content: filesContent },
+    { id: "tracking", label: "Tracking", content: trackingContent },
+  ];
 
   return (
     <div className="space-y-6">
@@ -485,6 +450,67 @@ export default async function CustomerQuoteDetailPage({
         ) : null}
       </section>
 
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Supplier bids
+            </p>
+            <p className="text-sm text-slate-300">
+              We collect bids from vetted suppliers, then review options before finalizing your quote.
+            </p>
+          </div>
+          {bidCount > 0 ? (
+            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+              {bidCount} bid{bidCount === 1 ? "" : "s"} received
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-3 text-xs text-slate-400">
+          Once bids are in, we&apos;ll review options and update your quote status.
+        </p>
+        {bidsUnavailable ? (
+          <p className="mt-3 text-xs text-slate-400">
+            Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
+          </p>
+        ) : bidCount === 0 ? (
+          <p className="mt-3 text-xs text-slate-400">
+            No bids have been submitted yet. We&apos;ll update this page as soon as suppliers respond.
+          </p>
+        ) : (
+          <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Best price
+              </dt>
+              <dd className="mt-1">
+                {bestPriceValue != null
+                  ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
+                  : "Pending"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Fastest lead time
+              </dt>
+              <dd className="mt-1">
+                {fastestLeadTime != null
+                  ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
+                  : "Pending"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Total bids
+              </dt>
+              <dd className="mt-1">
+                {bidCount} bid{bidCount === 1 ? "" : "s"}
+              </dd>
+            </div>
+          </dl>
+        )}
+      </section>
+
       <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
     </div>
   );
@@ -503,50 +529,4 @@ function PortalNoticeCard({
       <p className="mt-2 text-sm text-slate-400">{description}</p>
     </section>
   );
-}
-
-function BidStatusBadge({ status }: { status: string }) {
-  const colorMap: Record<string, string> = {
-    accepted: "bg-emerald-500/20 text-emerald-200 border-emerald-500/30",
-    declined: "bg-red-500/10 text-red-200 border-red-500/30",
-    pending: "bg-blue-500/10 text-blue-200 border-blue-500/30",
-    withdrawn: "bg-slate-500/10 text-slate-200 border-slate-500/30",
-  };
-  const classes =
-    colorMap[status] ?? "bg-slate-500/10 text-slate-200 border-slate-500/30";
-  return (
-    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${classes}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
-  );
-}
-
-function DetailChip({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </p>
-      <p className="text-sm text-slate-100">{value}</p>
-    </div>
-  );
-}
-
-function formatBidPrice(bid: SupplierBidWithContext): string {
-  const numeric =
-    typeof bid.unit_price === "string" ? Number(bid.unit_price) : bid.unit_price;
-  if (typeof numeric !== "number" || !Number.isFinite(numeric)) {
-    return "Pending";
-  }
-
-  const currency = (bid.currency ?? "USD").toUpperCase();
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 0,
-    }).format(numeric);
-  } catch {
-    return `${currency} ${numeric.toFixed(0)}`;
-  }
 }
