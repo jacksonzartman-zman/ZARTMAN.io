@@ -1,1 +1,1 @@
-export { logAdminQuotesError } from "../logging";
+export { logAdminQuotesError, logAdminQuotesWarn } from "../logging";
