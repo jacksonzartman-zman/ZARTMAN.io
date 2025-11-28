@@ -88,6 +88,8 @@ const DEFAULT_METRICS: AdminDashboardMetrics = {
   totalLost: 0,
   openQuotedValue: 0,
   wonQuotedValue: 0,
+  newToday: 0,
+  stale48h: 0,
 };
 
 export default async function AdminPage({ searchParams }: AdminPageProps) {
@@ -175,6 +177,16 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           label="Won quoted value"
           value={formatCurrency(metrics.wonQuotedValue)}
           hint="Sum of closed-won quotes"
+        />
+        <MetricCard
+          label="New today"
+          value={metrics.newToday}
+          hint="Created in last 24h"
+        />
+        <MetricCard
+          label="Stale RFQs"
+          value={metrics.stale48h}
+          hint="Open > 48h"
         />
       </section>
       {!inboxResult.ok ? (
