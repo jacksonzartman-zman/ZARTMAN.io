@@ -200,14 +200,40 @@ export default function UploadBox() {
     QuoteIntakeActionState,
     FormData
   >(submitQuoteIntakeAction, initialQuoteIntakeState);
-  const formState = useMemo(
-    () => normalizeActionState(rawFormState),
-    [rawFormState],
-  );
+  const formState = useMemo<NormalizedActionState | null>(() => {
+    if (rawFormState === initialQuoteIntakeState) {
+      return null;
+    }
+    return normalizeActionState(rawFormState);
+  }, [rawFormState]);
   const resetUploadState = useCallback(() => {
     setState(() => ({ ...initialState }));
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  }, []);
+
+  const syncFileInputWithFile = useCallback((file: File | null) => {
+    const input = fileInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    if (!file) {
+      input.value = "";
+      return;
+    }
+
+    if (typeof DataTransfer === "undefined") {
+      return;
+    }
+
+    try {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      input.files = dataTransfer.files;
+    } catch (syncError) {
+      console.warn("[quote intake] unable to sync file input", syncError);
     }
   }, []);
 
@@ -217,7 +243,7 @@ export default function UploadBox() {
   }, []);
 
   useEffect(() => {
-    if (!hasSubmitted) {
+    if (!hasSubmitted || !formState) {
       return;
     }
 
@@ -226,13 +252,12 @@ export default function UploadBox() {
       setSuccessMessage(formState.message || "RFQ received.");
       setFieldErrors({});
       resetUploadState();
-      setHasSubmitted(false);
-      return;
+    } else {
+      setError(formState.error);
+      setSuccessMessage(null);
+      setFieldErrors(formState.fieldErrors);
     }
 
-    setError(formState.error);
-    setSuccessMessage(null);
-    setFieldErrors(formState.fieldErrors);
     setHasSubmitted(false);
   }, [formState, hasSubmitted, resetUploadState]);
 
@@ -292,6 +317,7 @@ export default function UploadBox() {
         setFieldErrors((prev) => ({ ...prev, file: validationError }));
         setSuccessMessage(null);
         setState((prev) => ({ ...prev, file: null, fileName: null }));
+        syncFileInputWithFile(null);
         return;
       }
 
@@ -299,6 +325,7 @@ export default function UploadBox() {
       setError(null);
       setSuccessMessage(null);
       setState((prev) => ({ ...prev, file, fileName: file.name }));
+      syncFileInputWithFile(file);
     } catch (dropError) {
       console.error("[quote intake] client drop failed", dropError);
       setError(QUOTE_INTAKE_FALLBACK_ERROR);

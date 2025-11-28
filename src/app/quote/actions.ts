@@ -34,6 +34,7 @@ export async function submitQuoteIntakeAction(
   let attemptedQuoteId: string | null = null;
 
   try {
+    console.log("[quote intake] submit action invoked");
     const session = await requireSession({
       message: "Sign in to submit RFQs.",
     });
@@ -45,7 +46,13 @@ export async function submitQuoteIntakeAction(
     }
 
     const fieldErrors = validateQuoteIntakeFields(parsed.payload);
-    if (Object.keys(fieldErrors).length > 0) {
+    const fieldErrorKeys = Object.keys(fieldErrors);
+    console.log("[quote intake] parsed payload", {
+      hasFile: Boolean(parsed.payload.file),
+      email: parsed.payload.email || null,
+      fieldErrorCount: fieldErrorKeys.length,
+    });
+    if (fieldErrorKeys.length > 0) {
       return buildFailureState(
         "Please fix the highlighted fields before submitting.",
         fieldErrors,
