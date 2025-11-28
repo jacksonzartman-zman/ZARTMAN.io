@@ -44,6 +44,14 @@
       "namedRegex": "^/customer/quotes/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/rfq/[id]",
+      "regex": "^/rfq/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/rfq/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/supplier/quotes/[id]",
       "regex": "^/supplier/quotes/([^/]+?)(?:/)?$",
       "routeKeys": {
@@ -124,6 +132,12 @@
       "regex": "^/supplier(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/supplier(?:/)?$"
+    },
+    {
+      "page": "/supplier/decisions",
+      "regex": "^/supplier/decisions(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/supplier/decisions(?:/)?$"
     },
     {
       "page": "/supplier/onboarding",

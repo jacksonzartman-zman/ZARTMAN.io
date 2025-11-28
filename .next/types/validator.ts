@@ -71,6 +71,12 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   handler satisfies AppPageConfig<"/customer/settings">
 }
 
+// Validate ../../src/app/(portals)/supplier/decisions/page.tsx
+{
+  const handler = {} as typeof import("../../src/app/(portals)/supplier/decisions/page.js")
+  handler satisfies AppPageConfig<"/supplier/decisions">
+}
+
 // Validate ../../src/app/(portals)/supplier/onboarding/page.tsx
 {
   const handler = {} as typeof import("../../src/app/(portals)/supplier/onboarding/page.js")
@@ -147,6 +153,12 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   const handler = {} as typeof import("../../src/app/quote/page.js")
   handler satisfies AppPageConfig<"/quote">
+}
+
+// Validate ../../src/app/rfq/[id]/page.tsx
+{
+  const handler = {} as typeof import("../../src/app/rfq/[id]/page.js")
+  handler satisfies AppPageConfig<"/rfq/[id]">
 }
 
 // Validate ../../src/app/supplier/signup/page.tsx
