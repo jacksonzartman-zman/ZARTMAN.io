@@ -2,12 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
 import { createSupplierQuoteMessage } from "@/server/quotes/messages";
-import { createOrUpdateBid, getSupplierBidForQuote } from "@/server/suppliers";
-import { loadSupplierProfile } from "@/server/suppliers";
+import {
+  getSupplierBidForQuote,
+  loadSupplierProfile,
+  loadSupplierProfileByUserId,
+  getSupplierApprovalStatus,
+  isSupplierApproved,
+} from "@/server/suppliers";
+import type { SupplierBidRow } from "@/server/suppliers";
+import { loadBidForSupplierAndQuote } from "@/server/bids";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { canUserBid } from "@/lib/permissions";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
+import { getCurrentSession } from "@/server/auth";
+import { approvalsEnabled } from "@/server/suppliers/flags";
 import {
   getSupplierDisplayName,
   loadSupplierAssignments,
@@ -24,14 +34,17 @@ export type PostSupplierQuoteMessageState = {
 const GENERIC_ERROR =
   "Unable to send your message right now. Please try again.";
 
-export type SupplierBidActionState = {
-  success: boolean;
-  error: string | null;
-  status: string | null;
+export type SupplierBidActionState =
+  | { ok: true; message: string }
+  | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+export const initialSupplierBidState: SupplierBidActionState = {
+  ok: true,
+  message: "",
 };
 
-const BID_ERROR_MESSAGE =
-  "Unable to save your bid right now. Please try again.";
+const BID_SUBMIT_ERROR = "We couldn’t save your bid. Please try again.";
+const BID_ENV_DISABLED_ERROR = "Bids are not enabled in this environment yet.";
 
 type QuoteAssignmentRow = Pick<
   QuoteWithUploadsRow,
@@ -187,167 +200,251 @@ export async function submitSupplierBidAction(
   _prevState: SupplierBidActionState,
   formData: FormData,
 ): Promise<SupplierBidActionState> {
-  const rawQuoteId = formData.get("quote_id");
-  const rawEmail = formData.get("supplier_email");
-  const rawUnitPrice = formData.get("unit_price");
-  const rawCurrency = formData.get("currency");
-  const rawLeadTime = formData.get("lead_time_days");
-  const rawNotes = formData.get("notes");
-
-  if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
-    return { success: false, error: "Missing quote reference.", status: null };
-  }
-
-  if (typeof rawEmail !== "string") {
+  const session = await getCurrentSession();
+  if (!session) {
     return {
-      success: false,
-      error: "Provide your email to continue.",
-      status: null,
+      ok: false,
+      error: "You need to be logged in to submit a bid.",
     };
   }
 
-  if (typeof rawUnitPrice !== "string" || rawUnitPrice.trim().length === 0) {
+  const quoteId = String(formData.get("quoteId") ?? "").trim();
+  const amountInput = formData.get("amount");
+  const currencyInput = String(formData.get("currency") ?? "USD").trim();
+  const leadTimeInput = formData.get("leadTimeDays");
+  const notesInput = formData.get("notes");
+
+  const fieldErrors: Record<string, string> = {};
+
+  if (!quoteId) {
+    fieldErrors.quoteId = "Missing quote reference.";
+  }
+
+  const amount =
+    typeof amountInput === "string" && amountInput.trim().length > 0
+      ? Number(amountInput)
+      : NaN;
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    fieldErrors.amount = "Enter a valid amount greater than zero.";
+  }
+
+  let leadTimeDays: number | null = null;
+  if (typeof leadTimeInput === "string" && leadTimeInput.trim().length > 0) {
+    const parsedLeadTime = Number(leadTimeInput);
+    if (!Number.isFinite(parsedLeadTime) || parsedLeadTime < 0) {
+      fieldErrors.leadTimeDays = "Lead time must be zero or more days.";
+    } else {
+      leadTimeDays = parsedLeadTime;
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
     return {
-      success: false,
-      error: "Enter a unit price.",
-      status: null,
+      ok: false,
+      error: "Fix the errors highlighted below.",
+      fieldErrors,
     };
   }
 
-  const quoteId = rawQuoteId.trim();
-  const supplierEmail = normalizeEmailInput(rawEmail);
+  let supplierProfile =
+    session.user.id ? await loadSupplierProfileByUserId(session.user.id) : null;
+
+  if (!supplierProfile && session.user.email) {
+    supplierProfile = await loadSupplierProfile(session.user.email);
+  }
+
+  if (!supplierProfile?.supplier) {
+    return {
+      ok: false,
+      error: "Complete onboarding before submitting bids.",
+    };
+  }
+
+  const supplier = supplierProfile.supplier;
+  const supplierEmail =
+    normalizeEmailInput(
+      supplier.primary_email ?? session.user.email ?? null,
+    ) ?? null;
+
   if (!supplierEmail) {
     return {
-      success: false,
-      error: "Provide a valid email address.",
-      status: null,
+      ok: false,
+      error: "We couldn’t determine which supplier profile to use.",
     };
   }
 
-  const unitPrice = Number(rawUnitPrice);
-  if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+  const approvalsOn = approvalsEnabled();
+  const approvalStatus = getSupplierApprovalStatus(supplier);
+  const approved = approvalsOn ? isSupplierApproved(supplier) : true;
+
+  if (approvalsOn && !approved) {
+    console.log("[bids] submit blocked: approvals pending", {
+      supplierId: supplier.id,
+      approvalStatus,
+    });
     return {
-      success: false,
-      error: "Enter a valid unit price greater than zero.",
-      status: null,
+      ok: false,
+      error:
+        "Your profile is pending review. You’ll be able to bid once you’re approved.",
     };
   }
 
-  const leadTimeDays =
-    typeof rawLeadTime === "string" && rawLeadTime.trim().length > 0
-      ? Number(rawLeadTime)
-      : null;
-
-  if (leadTimeDays !== null && (!Number.isFinite(leadTimeDays) || leadTimeDays < 0)) {
+  const quote = await loadQuoteAccessRow(quoteId);
+  if (!quote) {
     return {
-      success: false,
-      error: "Lead time must be a positive number of days.",
-      status: null,
+      ok: false,
+      error: "Quote not found.",
+    };
+  }
+
+  const [assignments, uploadProcess] = await Promise.all([
+    loadSupplierAssignments(quoteId),
+    loadUploadProcessHint(quote.upload_id ?? null),
+  ]);
+
+  const verifiedProcessMatch = matchesSupplierProcess(
+    supplierProfile.capabilities ?? [],
+    uploadProcess,
+  );
+
+  if (
+    !supplierHasAccess(supplierEmail, quote, assignments, {
+      supplier,
+      verifiedProcessMatch,
+    })
+  ) {
+    console.error("Supplier bid action: access denied", {
+      quoteId,
+      supplierEmail,
+      supplierId: supplier.id,
+      reason: "ACCESS_DENIED",
+    });
+    return {
+      ok: false,
+      error: "You do not have access to this quote.",
+    };
+  }
+
+  const bidResult = await loadBidForSupplierAndQuote(supplier.id, quoteId);
+  if (!bidResult.ok) {
+    return {
+      ok: false,
+      error: bidResult.error ?? BID_SUBMIT_ERROR,
+    };
+  }
+
+  const existingBid = bidResult.data;
+  const canBid = canUserBid("supplier", {
+    status: quote.status,
+    existingBidStatus: existingBid?.status ?? null,
+    accessGranted: true,
+  });
+
+  if (!canBid) {
+    return {
+      ok: false,
+      error:
+        existingBid?.status === "accepted"
+          ? "This bid is locked because it was already accepted."
+          : "Bidding is closed for this quote.",
     };
   }
 
   const currency =
-    typeof rawCurrency === "string" && rawCurrency.trim().length > 0
-      ? rawCurrency.trim().toUpperCase()
-      : "USD";
+    currencyInput.length > 0 ? currencyInput.toUpperCase() : "USD";
   const notes =
-    typeof rawNotes === "string" && rawNotes.trim().length > 0
-      ? rawNotes.trim()
+    typeof notesInput === "string" && notesInput.trim().length > 0
+      ? notesInput.trim()
       : null;
 
   try {
-    const [quote, assignments, profile] = await Promise.all([
-      loadQuoteAccessRow(quoteId),
-      loadSupplierAssignments(quoteId),
-      loadSupplierProfile(supplierEmail),
-    ]);
+    const { data, error } = await supabaseServer
+      .from("supplier_bids")
+      .upsert(
+        [
+          {
+            quote_id: quoteId,
+            supplier_id: supplier.id,
+            unit_price: amount,
+            currency,
+            lead_time_days: leadTimeDays,
+            notes,
+            status: "submitted",
+          },
+        ],
+        { onConflict: "quote_id,supplier_id" },
+      )
+      .select("id,status,updated_at")
+      .maybeSingle<SupplierBidRow>();
 
-    if (!quote) {
-      return { success: false, error: "Quote not found.", status: null };
-    }
+    if (error) {
+      const serialized = serializeSupabaseError(error);
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[bids] submit missing schema", {
+          quoteId,
+          supplierId: supplier.id,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          error: BID_ENV_DISABLED_ERROR,
+        };
+      }
 
-    if (!profile?.supplier) {
-      return {
-        success: false,
-        error: "Complete onboarding before submitting bids.",
-        status: null,
-      };
-    }
-
-    const uploadProcess = await loadUploadProcessHint(quote.upload_id ?? null);
-    const verifiedProcessMatch = matchesSupplierProcess(
-      profile.capabilities ?? [],
-      uploadProcess,
-    );
-
-    if (
-      !supplierHasAccess(supplierEmail, quote, assignments, {
-        supplier: profile.supplier,
-        verifiedProcessMatch,
-      })
-    ) {
-      console.error("Supplier bid action: access denied", {
+      console.error("[bids] submit failed", {
         quoteId,
-        supplierEmail,
-        reason: "ACCESS_DENIED",
+        supplierId: supplier.id,
+        error: serialized,
       });
       return {
-        success: false,
-        error: "You do not have access to this quote.",
-        status: null,
+        ok: false,
+        error: BID_SUBMIT_ERROR,
       };
     }
 
-    const existingBid = await getSupplierBidForQuote(
+    console.log("[bids] submit success", {
       quoteId,
-      profile.supplier.id,
-    );
-
-    const canBid = canUserBid("supplier", {
-      status: quote.status,
-      existingBidStatus: existingBid?.status ?? null,
-      accessGranted: true,
-    });
-
-    if (!canBid) {
-      return {
-        success: false,
-        error:
-          existingBid?.status === "accepted"
-            ? "This bid is locked because it was already accepted."
-            : "Bidding is closed for this quote.",
-        status: existingBid?.status ?? null,
-      };
-    }
-
-    const bid = await createOrUpdateBid({
-      quoteId,
-      supplierId: profile.supplier.id,
-      unitPrice,
+      supplierId: supplier.id,
+      amount,
       currency,
       leadTimeDays,
-      notes,
+      bidId: data?.id ?? null,
     });
 
-    if (!bid) {
-      return {
-        success: false,
-        error: BID_ERROR_MESSAGE,
-        status: null,
-      };
-    }
-
     revalidatePath(`/supplier/quotes/${quoteId}`);
-      revalidatePath(`/supplier`);
+    revalidatePath("/supplier");
+    revalidatePath("/admin");
+    revalidatePath("/admin/quotes");
+    revalidatePath(`/admin/quotes/${quoteId}`);
     revalidatePath(`/customer/quotes/${quoteId}`);
+
     return {
-      success: true,
-      error: null,
-      status: bid.status,
+      ok: true,
+      message: "Your bid has been submitted.",
     };
   } catch (error) {
-    console.error("Supplier bid action: unexpected error", error);
-    return { success: false, error: BID_ERROR_MESSAGE, status: null };
+    const serialized = serializeSupabaseError(error);
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[bids] submit missing schema", {
+        quoteId,
+        supplierId: supplier.id,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: BID_ENV_DISABLED_ERROR,
+      };
+    }
+    console.error("[bids] submit crashed", {
+      quoteId,
+      supplierId: supplier.id,
+      error: serialized ?? error,
+    });
+    return {
+      ok: false,
+      error: BID_SUBMIT_ERROR,
+    };
   }
 }
 

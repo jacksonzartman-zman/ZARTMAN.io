@@ -23,17 +23,15 @@ import {
   supplierHasAccess,
   type SupplierAssignment,
 } from "./supplierAccess";
-import {
-  getSupplierBidForQuote,
-  loadSupplierProfile,
-  type SupplierBidRow,
-} from "@/server/suppliers";
-import { SupplierBidForm } from "./SupplierBidForm";
+import { loadSupplierProfile } from "@/server/suppliers";
+import { loadBidForSupplierAndQuote, type BidRow } from "@/server/bids";
+import { SupplierBidPanel } from "./SupplierBidPanel";
 import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
 import { getCurrentSession } from "@/server/auth";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { canUserBid } from "@/lib/permissions";
+import { approvalsEnabled } from "@/server/suppliers/flags";
 
 export const dynamic = "force-dynamic";
 
@@ -120,10 +118,15 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-  const existingBid = await getSupplierBidForQuote(
-    quoteId,
+  const approvalsOn = approvalsEnabled();
+  const approved = approvalsOn ? profile.approved : true;
+  const bidResult = await loadBidForSupplierAndQuote(
     profile.supplier.id,
+    quoteId,
   );
+  const initialBid = bidResult.ok ? bidResult.data : null;
+  const bidsUnavailableMessage = bidResult.ok ? null : bidResult.error ?? null;
+  const existingBid = initialBid;
 
   return (
     <SupplierQuoteWorkspace
@@ -137,6 +140,10 @@ export default async function SupplierQuoteDetailPage({
       assignments={assignments}
       supplierNameOverride={profile.supplier.company_name}
       existingBid={existingBid}
+      initialBid={initialBid}
+      bidsUnavailableMessage={bidsUnavailableMessage}
+      approvalsOn={approvalsOn}
+      approved={approved}
       messagingUnlocked={existingBid?.status === "accepted"}
     />
   );
@@ -148,13 +155,21 @@ function SupplierQuoteWorkspace({
   assignments,
   supplierNameOverride,
   existingBid,
+  initialBid,
+  bidsUnavailableMessage,
+  approvalsOn,
+  approved,
   messagingUnlocked,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
   assignments: SupplierAssignment[];
   supplierNameOverride?: string | null;
-  existingBid: SupplierBidRow | null;
+  existingBid: BidRow | null;
+  initialBid: BidRow | null;
+  bidsUnavailableMessage: string | null;
+  approvalsOn: boolean;
+  approved: boolean;
   messagingUnlocked: boolean;
 }) {
   const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
@@ -353,11 +368,12 @@ function SupplierQuoteWorkspace({
         </p>
       ) : null}
       <div className="mt-4">
-        <SupplierBidForm
+        <SupplierBidPanel
           quoteId={quote.id}
-          supplierEmail={supplierEmail}
-          existingBid={existingBid}
-          isLocked={bidLocked}
+          initialBid={initialBid}
+          approvalsOn={approvalsOn}
+          approved={approved}
+          bidsUnavailableMessage={bidsUnavailableMessage}
         />
       </div>
     </section>
