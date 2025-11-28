@@ -28,6 +28,8 @@ export const initialQuoteIntakeState: QuoteIntakeActionState = {
 };
 
 const SUCCESS_MESSAGE = "RFQ received – we’ll review and follow up shortly.";
+export const QUOTE_INTAKE_FALLBACK_ERROR =
+  "Unexpected error while submitting your RFQ. Please retry.";
 
 export async function submitQuoteIntakeAction(
   _prevState: QuoteIntakeActionState,
@@ -45,22 +47,27 @@ export async function submitQuoteIntakeAction(
 
     const fieldErrors = validateQuoteIntakeFields(parsed.payload);
     if (Object.keys(fieldErrors).length > 0) {
-      return {
-        ok: false,
-        error: "Please fix the highlighted fields before submitting.",
+      return buildFailureState(
+        "Please fix the highlighted fields before submitting.",
         fieldErrors,
-      };
+      );
     }
 
     const result = await persistQuoteIntake(parsed.payload, session);
     if (!result.ok) {
-      return {
-        ok: false,
-        error:
-          result.error ||
+      return buildFailureState(
+        result.error ||
           "We couldn’t process your RFQ. Please try again or contact support.",
-        fieldErrors: result.fieldErrors,
-      };
+        result.fieldErrors,
+      );
+    }
+
+    if (!result.uploadId) {
+      console.error("[quote intake] missing upload id in success result", {
+        userId: session.user.id,
+        quoteId: result.quoteId ?? null,
+      });
+      return buildFailureState(QUOTE_INTAKE_FALLBACK_ERROR);
     }
 
     revalidatePath("/admin");
@@ -78,12 +85,43 @@ export async function submitQuoteIntakeAction(
       message: SUCCESS_MESSAGE,
     };
   } catch (error) {
-    console.error("[quote intake] action failed", error);
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+    console.error("[quote intake] action failed", serializeUnknownError(error));
+    return buildFailureState(QUOTE_INTAKE_FALLBACK_ERROR);
+  }
+}
+
+function buildFailureState(
+  message: string,
+  fieldErrors?: QuoteIntakeFieldErrors,
+): QuoteIntakeActionState {
+  return {
+    ok: false,
+    error: message,
+    fieldErrors:
+      fieldErrors && Object.keys(fieldErrors).length > 0 ? fieldErrors : undefined,
+  };
+}
+
+function serializeUnknownError(error: unknown) {
+  if (error instanceof Error) {
     return {
-      ok: false,
-      error: "Unexpected error while submitting your RFQ. Please retry.",
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
     };
   }
+  return { value: error };
+}
+
+function isNextRedirectError(error: unknown): error is { digest?: string } {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const digest = "digest" in error ? (error as { digest?: unknown }).digest : null;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
 }
 
 function parseQuoteIntakeFormData(
