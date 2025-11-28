@@ -8,6 +8,10 @@ import {
   type QuoteIntakeFieldErrors,
   type QuoteIntakePayload,
 } from "@/server/quotes/intake";
+import {
+  QUOTE_INTAKE_FALLBACK_ERROR,
+  QUOTE_INTAKE_SUCCESS_MESSAGE,
+} from "@/lib/quote/messages";
 
 export type QuoteIntakeActionState =
   | {
@@ -21,15 +25,6 @@ export type QuoteIntakeActionState =
       error: string;
       fieldErrors?: QuoteIntakeFieldErrors;
     };
-
-export const initialQuoteIntakeState: QuoteIntakeActionState = {
-  ok: false,
-  error: "",
-};
-
-const SUCCESS_MESSAGE = "RFQ received – we’ll review and follow up shortly.";
-const QUOTE_INTAKE_FALLBACK_ERROR =
-  "Unexpected error while submitting your RFQ. Please retry.";
 
 export async function submitQuoteIntakeAction(
   _prevState: QuoteIntakeActionState,
@@ -94,7 +89,7 @@ export async function submitQuoteIntakeAction(
       ok: true,
       quoteId: result.quoteId,
       uploadId: result.uploadId,
-      message: SUCCESS_MESSAGE,
+      message: QUOTE_INTAKE_SUCCESS_MESSAGE,
     };
   } catch (error) {
     if (isNextRedirectError(error)) {
