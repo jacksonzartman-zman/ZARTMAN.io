@@ -23,8 +23,9 @@ import {
   loadSupplierByPrimaryEmail,
 } from "@/server/suppliers/profile";
 import {
-  QUOTE_STATUS_LABELS,
+  getQuoteStatusLabel,
   normalizeQuoteStatus,
+  type QuoteStatus,
 } from "@/server/quotes/status";
 import type { ActivityItem } from "@/types/activity";
 import { getCustomerById } from "@/server/customers";
@@ -63,6 +64,14 @@ type ActivityQueryContext = SupplierActivityIdentity & {
   loader?: string;
 };
 const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
+const QUOTE_ACTIVITY_TITLES: Record<QuoteStatus, string> = {
+  submitted: "RFQ submitted",
+  in_review: "RFQ under review",
+  quoted: "Quote prepared",
+  won: "Quote won",
+  lost: "Quote closed as lost",
+  cancelled: "RFQ cancelled",
+};
 
 export async function loadCustomerActivityFeed(args: {
   customerId?: string | null;
@@ -587,13 +596,17 @@ function buildQuoteActivityItem(
   quote: QuoteSummaryRow,
   context: ActivityContext,
 ): ActivityItem {
+  const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
+  const statusLabel =
+    QUOTE_ACTIVITY_TITLES[normalizedStatus] ??
+    getQuoteStatusLabel(quote.status ?? undefined);
   const hrefBase =
     context === "customer" ? "/customer/quotes" : "/supplier/quotes";
 
   return {
     id: `${context}:quote:${quote.id}`,
     type: "quote",
-    title: `${getQuoteTitle(quote)} submitted`,
+    title: `${getQuoteTitle(quote)}: ${statusLabel}`,
     description: buildQuoteDescription(quote, context),
     timestamp: safeTimestamp(quote.created_at ?? quote.updated_at),
     href: `${hrefBase}/${quote.id}`,
@@ -609,14 +622,16 @@ function buildStatusActivityItem(
   }
 
   const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
-  const statusLabel = QUOTE_STATUS_LABELS[normalizedStatus] ?? "Status update";
+  const statusLabel =
+    QUOTE_ACTIVITY_TITLES[normalizedStatus] ??
+    getQuoteStatusLabel(quote.status ?? undefined);
   const hrefBase =
     context === "customer" ? "/customer/quotes" : "/supplier/quotes";
 
   return {
     id: `${context}:status:${quote.id}:${quote.updated_at}`,
     type: "status",
-    title: `${getQuoteTitle(quote)} moved to ${statusLabel}`,
+    title: `${getQuoteTitle(quote)}: ${statusLabel}`,
     description:
       context === "customer"
         ? "We updated this RFQ status in your workspace."

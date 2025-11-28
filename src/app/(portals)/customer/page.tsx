@@ -3,7 +3,7 @@ import PortalCard from "../PortalCard";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
-  QUOTE_STATUS_LABELS,
+  getQuoteStatusLabel,
   type QuoteStatus,
   normalizeQuoteStatus,
   isOpenQuoteStatus,
@@ -707,10 +707,11 @@ function StatusBadge({
     size === "sm"
       ? "px-2 py-0.5 text-[11px]"
       : "px-3 py-1 text-xs";
+  const label = getQuoteStatusLabel(status);
 
   return (
     <span className={`inline-flex items-center rounded-full bg-emerald-500/10 font-semibold text-emerald-200 ${sizeClasses}`}>
-      {QUOTE_STATUS_LABELS[status]}
+      {label}
     </span>
   );
 }
