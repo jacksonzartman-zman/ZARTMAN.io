@@ -12,6 +12,10 @@ import {
   isSupplierApproved,
 } from "@/server/suppliers";
 import type { SupplierBidRow } from "@/server/suppliers";
+import {
+  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
+  type SafeQuoteWithUploadsField,
+} from "@/server/suppliers/types";
 import { loadBidForSupplierAndQuote } from "@/server/bids";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { canUserBid } from "@/lib/permissions";
@@ -42,15 +46,7 @@ const BID_SUBMIT_ERROR = "We couldn't submit your bid. Please try again.";
 const BID_ENV_DISABLED_ERROR = "Bids are not enabled in this environment yet.";
 const BID_AMOUNT_INVALID_ERROR = "Enter a valid bid amount greater than 0.";
 
-type QuoteAssignmentRow = Pick<
-  QuoteWithUploadsRow,
-  "id" | "email" | "assigned_supplier_email" | "assigned_supplier_name"
->;
-
-type QuoteAccessRow = QuoteAssignmentRow & {
-  upload_id: string | null;
-  status: string | null;
-};
+type QuoteAccessRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
 
 export async function postSupplierQuoteMessageAction(
   _prevState: PostSupplierQuoteMessageState,
@@ -98,11 +94,22 @@ export async function postSupplierQuoteMessageAction(
   }
 
   try {
-    const [quote, assignments, profile] = await Promise.all([
+    const [quoteResult, assignments, profile] = await Promise.all([
       loadQuoteAccessRow(quoteId),
       loadSupplierAssignments(quoteId),
       loadSupplierProfile(identityEmail),
     ]);
+
+    const quote = quoteResult.data;
+    const quoteError = quoteResult.error;
+
+    if (quoteError) {
+      console.error("Supplier post action: quote lookup failed", {
+        quoteId,
+        error: serializeSupabaseError(quoteError),
+      });
+      return { success: false, error: GENERIC_ERROR };
+    }
 
     if (!quote) {
       return { success: false, error: "Quote not found." };
@@ -288,8 +295,40 @@ export async function submitSupplierBidAction(
       };
     }
 
-    const quote = await loadQuoteAccessRow(quoteId);
+    const quoteResult = await loadQuoteAccessRow(quoteId);
+    const quote = quoteResult.data;
+    const quoteError = quoteResult.error;
+
+    if (quoteError) {
+      const serialized = serializeSupabaseError(quoteError);
+      if (isMissingTableOrColumnError(quoteError)) {
+        console.warn("[bids] quote lookup missing schema", {
+          quoteId,
+          supplierId: supplier.id,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          error: BID_ENV_DISABLED_ERROR,
+        };
+      }
+
+      console.error("[bids] quote lookup failed", {
+        quoteId,
+        supplierId: supplier.id,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: BID_SUBMIT_ERROR,
+      };
+    }
+
     if (!quote) {
+      console.warn("[bids] quote not found", {
+        quoteId,
+        supplierId: supplier.id,
+      });
       return {
         ok: false,
         error: "Quote not found.",
@@ -460,21 +499,14 @@ export async function submitSupplierBidAction(
   }
 }
 
-async function loadQuoteAccessRow(quoteId: string): Promise<QuoteAccessRow | null> {
-  const { data, error } = await supabaseServer
+const QUOTE_ACCESS_SELECT = SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(",");
+
+async function loadQuoteAccessRow(quoteId: string) {
+  return supabaseServer
     .from("quotes_with_uploads")
-    .select(
-      "id,email,assigned_supplier_email,assigned_supplier_name,upload_id,status",
-    )
+    .select(QUOTE_ACCESS_SELECT)
     .eq("id", quoteId)
     .maybeSingle<QuoteAccessRow>();
-
-  if (error) {
-    console.error("Supplier bid action: quote lookup failed", error);
-    return null;
-  }
-
-  return data ?? null;
 }
 
 async function loadUploadProcessHint(
