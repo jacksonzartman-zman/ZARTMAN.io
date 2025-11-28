@@ -3,6 +3,7 @@ import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import {
   QUOTE_STATUS_LABELS,
+  isOpenQuoteStatus,
   type QuoteStatus,
 } from "@/server/quotes/status";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
@@ -73,49 +74,63 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
             </td>
           </tr>
         ) : (
-          quotes.map((row) => (
-            <tr
-              key={row.id}
-              className="bg-slate-950/40 transition hover:bg-slate-900/40"
-            >
-              <td className={adminTableCellClass}>
-                <div className="flex flex-col">
-                  <Link
-                    href={`/admin/quotes/${row.id}`}
-                    className="text-sm font-medium text-emerald-100 hover:text-emerald-300"
-                  >
-                    {row.customerName}
-                  </Link>
-                  {row.customerEmail && (
-                    <a
-                      href={`mailto:${row.customerEmail}`}
-                      className="text-xs text-slate-400 hover:text-emerald-200"
+          quotes.map((row) => {
+            const createdAtDate =
+              typeof row.createdAt === "string" ? new Date(row.createdAt) : null;
+            const isStale =
+              createdAtDate &&
+              !Number.isNaN(createdAtDate.getTime()) &&
+              isOpenQuoteStatus(row.status) &&
+              (Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60) > 48;
+
+            return (
+              <tr
+                key={row.id}
+                className="bg-slate-950/40 transition hover:bg-slate-900/40"
+              >
+                <td className={adminTableCellClass}>
+                  <div className="flex flex-col">
+                    <Link
+                      href={`/admin/quotes/${row.id}`}
+                      className="text-sm font-medium text-emerald-100 hover:text-emerald-300"
                     >
-                      {row.customerEmail}
-                    </a>
-                  )}
-                </div>
-              </td>
-              <td className={`${adminTableCellClass} text-slate-100`}>
-                {row.company || "—"}
-              </td>
-              <td className={`${adminTableCellClass} text-xs text-slate-300`}>
-                {row.fileName || "—"}
-              </td>
-              <td className={adminTableCellClass}>
-                <span className="inline-flex items-center rounded-full border border-transparent bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                  {QUOTE_STATUS_LABELS[row.status]}
-                </span>
-              </td>
-              <td className={`${adminTableCellClass} text-xs text-slate-200`}>
-                {formatMoney(row.price, row.currency)}
-              </td>
-              <td className={`${adminTableCellClass} text-xs text-slate-400`}>
-                {formatDateTime(row.targetDate)}
-              </td>
-              <td className={`${adminTableCellClass} text-xs text-slate-400`}>
-                {formatDateTime(row.createdAt, { includeTime: true })}
-              </td>
+                      {row.customerName}
+                    </Link>
+                    {row.customerEmail && (
+                      <a
+                        href={`mailto:${row.customerEmail}`}
+                        className="text-xs text-slate-400 hover:text-emerald-200"
+                      >
+                        {row.customerEmail}
+                      </a>
+                    )}
+                  </div>
+                </td>
+                <td className={`${adminTableCellClass} text-slate-100`}>
+                  {row.company || "—"}
+                </td>
+                <td className={`${adminTableCellClass} text-xs text-slate-300`}>
+                  {row.fileName || "—"}
+                </td>
+                <td className={adminTableCellClass}>
+                  <span className="inline-flex items-center rounded-full border border-transparent bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+                    {QUOTE_STATUS_LABELS[row.status]}
+                  </span>
+                  {isStale ? (
+                    <span className="ml-2 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                      Aging
+                    </span>
+                  ) : null}
+                </td>
+                <td className={`${adminTableCellClass} text-xs text-slate-200`}>
+                  {formatMoney(row.price, row.currency)}
+                </td>
+                <td className={`${adminTableCellClass} text-xs text-slate-400`}>
+                  {formatDateTime(row.targetDate)}
+                </td>
+                <td className={`${adminTableCellClass} text-xs text-slate-400`}>
+                  {formatDateTime(row.createdAt, { includeTime: true })}
+                </td>
                 <td className={`${adminTableCellClass} text-right`}>
                   <Link
                     href={`/admin/quotes/${row.id}`}
@@ -128,8 +143,9 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                     Open quote
                   </Link>
                 </td>
-            </tr>
-          ))
+              </tr>
+            );
+          })
         )
       }
     />
