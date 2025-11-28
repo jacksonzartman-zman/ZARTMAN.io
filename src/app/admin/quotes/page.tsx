@@ -1,5 +1,6 @@
 // src/app/admin/quotes/page.tsx
 import { loadAdminQuotesList } from "@/server/admin/quotes";
+import { normalizePriceValue } from "@/server/admin/price";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import {
   QUOTE_STATUS_LABELS,
@@ -43,17 +44,6 @@ const getFirstParamValue = (
   }
 
   return value ?? undefined;
-};
-
-const normalizePriceValue = (
-  price: number | string | null,
-): number | null => {
-  if (price == null) {
-    return null;
-  }
-
-  const parsed = typeof price === "number" ? price : Number(price);
-  return Number.isFinite(parsed) ? parsed : null;
 };
 
 type ResolvableSearchParams =
