@@ -69,8 +69,16 @@ export function logAdminUploadsError(message: string, context?: LogContext) {
   logWithScope("uploads", "error", message, context);
 }
 
+export function logAdminDashboardInfo(message: string, context?: LogContext) {
+  logWithScope("dashboard", "info", message, context);
+}
+
 export function logAdminDashboardWarn(message: string, context?: LogContext) {
   logWithScope("dashboard", "warn", message, context);
+}
+
+export function logAdminDashboardError(message: string, context?: LogContext) {
+  logWithScope("dashboard", "error", message, context);
 }
 
 export function extractSupabaseSource(error: unknown): unknown {

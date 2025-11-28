@@ -1,5 +1,6 @@
 // src/app/admin/page.tsx
 import type { ReadonlyURLSearchParams } from "next/navigation";
+import type { ReactNode } from "react";
 import AdminTable, { type InboxRow } from "./AdminTable";
 import StatusFilterChips from "./StatusFilterChips";
 import AdminSearchInput from "./AdminSearchInput";
@@ -11,6 +12,10 @@ import {
 import AdminDashboardShell from "./AdminDashboardShell";
 import AdminFiltersBar from "./AdminFiltersBar";
 import { loadAdminUploadsInbox } from "@/server/admin/uploads";
+import {
+  loadAdminDashboardMetrics,
+  type AdminDashboardMetrics,
+} from "@/server/admin/dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +82,14 @@ const resolveSearchParams = async (
   };
 };
 
+const DEFAULT_METRICS: AdminDashboardMetrics = {
+  totalOpen: 0,
+  totalWon: 0,
+  totalLost: 0,
+  openQuotedValue: 0,
+  wonQuotedValue: 0,
+};
+
 export default async function AdminPage({ searchParams }: AdminPageProps) {
   const resolvedSearchParams = await resolveSearchParams(searchParams);
 
@@ -91,10 +104,15 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       : "";
   const normalizedSearch = searchInputValue.trim().toLowerCase();
 
-  const inboxResult = await loadAdminUploadsInbox({
-    status: statusFilter ?? null,
-    search: normalizedSearch || null,
-  });
+  const [metricsResult, inboxResult] = await Promise.all([
+    loadAdminDashboardMetrics(),
+    loadAdminUploadsInbox({
+      status: statusFilter ?? null,
+      search: normalizedSearch || null,
+    }),
+  ]);
+
+  const metrics = metricsResult.data ?? DEFAULT_METRICS;
 
   const rows: InboxRow[] =
     inboxResult.data?.map((row) => {
@@ -135,6 +153,30 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       title="RFQ inbox"
       description="Filter, search, and jump into the latest submissions from customers."
     >
+      {!metricsResult.ok ? (
+        <p className="mb-2 text-sm text-slate-400">
+          Some metrics are temporarily unavailable.
+        </p>
+      ) : null}
+      <section className="mb-6 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+        <MetricCard
+          label="Open RFQs"
+          value={metrics.totalOpen}
+          hint="Submitted, in review, or quoted"
+        />
+        <MetricCard label="Won quotes" value={metrics.totalWon} hint="Closed as won" />
+        <MetricCard label="Lost quotes" value={metrics.totalLost} hint="Closed as lost" />
+        <MetricCard
+          label="Open quoted value"
+          value={formatCurrency(metrics.openQuotedValue)}
+          hint="Sum of quoted open RFQs"
+        />
+        <MetricCard
+          label="Won quoted value"
+          value={formatCurrency(metrics.wonQuotedValue)}
+          hint="Sum of closed-won quotes"
+        />
+      </section>
       {!inboxResult.ok ? (
         <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-100">
           We had trouble loading the inbox. Check logs and try again.
@@ -158,4 +200,34 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       <AdminTable rows={rows} hasActiveFilters={hasActiveFilters} />
     </AdminDashboardShell>
   );
+}
+
+type MetricCardProps = {
+  label: string;
+  value: ReactNode;
+  hint?: string;
+};
+
+function MetricCard({ label, value, hint }: MetricCardProps) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
+    </div>
+  );
+}
+
+function formatCurrency(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
