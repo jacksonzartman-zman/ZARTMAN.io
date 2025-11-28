@@ -20,6 +20,8 @@ export type AdminDashboardMetrics = {
   totalLost: number;
   openQuotedValue: number;
   wonQuotedValue: number;
+  newToday: number;
+  stale48h: number;
 };
 
 const EMPTY_METRICS: AdminDashboardMetrics = {
@@ -28,6 +30,8 @@ const EMPTY_METRICS: AdminDashboardMetrics = {
   totalLost: 0,
   openQuotedValue: 0,
   wonQuotedValue: 0,
+  newToday: 0,
+  stale48h: 0,
 };
 
 const SAFE_FIELDS = [...SAFE_QUOTE_WITH_UPLOADS_FIELDS];
@@ -61,9 +65,24 @@ export async function loadAdminDashboardMetrics(): Promise<
     }
 
     const rows = data ?? [];
+    const now = new Date();
     const metrics = rows.reduce<AdminDashboardMetrics>((acc, row) => {
       const status = normalizeQuoteStatus(row.status);
       const price = normalizePriceValue(row.price);
+      const createdAt =
+        typeof row.created_at === "string" ? new Date(row.created_at) : null;
+
+      if (createdAt && !Number.isNaN(createdAt.getTime())) {
+        const hoursOld = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+
+        if (hoursOld <= 24) {
+          acc.newToday += 1;
+        }
+
+        if (OPEN_STATUS_SET.has(status) && hoursOld > 48) {
+          acc.stale48h += 1;
+        }
+      }
 
       if (OPEN_STATUS_SET.has(status)) {
         acc.totalOpen += 1;
