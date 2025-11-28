@@ -7,6 +7,8 @@ import {
   FormEvent,
   useEffect,
   useRef,
+  useMemo,
+  useCallback,
 } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
@@ -22,6 +24,7 @@ import {
   initialQuoteIntakeState,
   submitQuoteIntakeAction,
   type QuoteIntakeActionState,
+  QUOTE_INTAKE_FALLBACK_ERROR,
 } from "@/app/quote/actions";
 
 const MANUFACTURING_PROCESS_OPTIONS = [
@@ -75,17 +78,21 @@ type UploadState = {
   termsAccepted: boolean;
 };
 
-type FieldErrorKey =
-  | "file"
-  | "firstName"
-  | "lastName"
-  | "email"
-  | "manufacturingProcess"
-  | "quantity"
-  | "shippingPostalCode"
-  | "exportRestriction"
-  | "itarAcknowledged"
-  | "termsAccepted";
+const FIELD_ERROR_KEYS = [
+  "file",
+  "firstName",
+  "lastName",
+  "email",
+  "manufacturingProcess",
+  "quantity",
+  "shippingPostalCode",
+  "exportRestriction",
+  "itarAcknowledged",
+  "termsAccepted",
+] as const;
+
+type FieldErrorKey = (typeof FIELD_ERROR_KEYS)[number];
+const FIELD_ERROR_KEY_SET = new Set<FieldErrorKey>(FIELD_ERROR_KEYS);
 
 type FieldErrors = Partial<Record<FieldErrorKey, string>>;
 
@@ -183,7 +190,7 @@ const hasErrors = (fieldErrors: FieldErrors) =>
   Object.keys(fieldErrors).length > 0;
 
 export default function UploadBox() {
-  const [state, setState] = useState<UploadState>(initialState);
+  const [state, setState] = useState<UploadState>({ ...initialState });
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,10 +198,20 @@ export default function UploadBox() {
   const [isIOSDevice, setIsIOSDevice] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [formState, formAction] = useFormState<
+  const [rawFormState, formAction] = useFormState<
     QuoteIntakeActionState,
     FormData
   >(submitQuoteIntakeAction, initialQuoteIntakeState);
+  const formState = useMemo(
+    () => normalizeActionState(rawFormState),
+    [rawFormState],
+  );
+  const resetUploadState = useCallback(() => {
+    setState(() => ({ ...initialState }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof navigator === "undefined") return;
@@ -208,20 +225,18 @@ export default function UploadBox() {
 
     if (formState.ok) {
       setError(null);
-      setSuccessMessage(formState.message ?? "RFQ received.");
+      setSuccessMessage(formState.message || "RFQ received.");
       setFieldErrors({});
-      setState(initialState);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      resetUploadState();
       setHasSubmitted(false);
-    } else if (formState.error) {
-      setError(formState.error);
-      setSuccessMessage(null);
-      setFieldErrors(formState.fieldErrors ?? {});
-      setHasSubmitted(false);
+      return;
     }
-  }, [formState, hasSubmitted]);
+
+    setError(formState.error);
+    setSuccessMessage(null);
+    setFieldErrors(formState.fieldErrors);
+    setHasSubmitted(false);
+  }, [formState, hasSubmitted, resetUploadState]);
 
   const canSubmit = Boolean(
     state.file &&
@@ -267,42 +282,57 @@ export default function UploadBox() {
     e.stopPropagation();
     setIsDragging(false);
 
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
+    try {
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) {
+        return;
+      }
 
-    const validationError = validateCadFile(file);
-    if (validationError) {
-      setError(validationError);
-      setFieldErrors((prev) => ({ ...prev, file: validationError }));
+      const validationError = validateCadFile(file);
+      if (validationError) {
+        setError(validationError);
+        setFieldErrors((prev) => ({ ...prev, file: validationError }));
+        setSuccessMessage(null);
+        setState((prev) => ({ ...prev, file: null, fileName: null }));
+        return;
+      }
+
+      clearFieldError("file");
+      setError(null);
       setSuccessMessage(null);
-      setState((prev) => ({ ...prev, file: null, fileName: null }));
-      return;
+      setState((prev) => ({ ...prev, file, fileName: file.name }));
+    } catch (dropError) {
+      console.error("[quote intake] client drop failed", dropError);
+      setError(QUOTE_INTAKE_FALLBACK_ERROR);
+      setSuccessMessage(null);
     }
-
-    clearFieldError("file");
-    setError(null);
-    setSuccessMessage(null);
-    setState((prev) => ({ ...prev, file, fileName: file.name }));
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    if (!file) return;
+    try {
+      const file = e.target.files?.[0] ?? null;
+      if (!file) return;
 
-    const validationError = validateCadFile(file);
-    if (validationError) {
-      setError(validationError);
-      setFieldErrors((prev) => ({ ...prev, file: validationError }));
+      const validationError = validateCadFile(file);
+      if (validationError) {
+        setError(validationError);
+        setFieldErrors((prev) => ({ ...prev, file: validationError }));
+        setSuccessMessage(null);
+        setState((prev) => ({ ...prev, file: null, fileName: null }));
+        e.target.value = "";
+        return;
+      }
+
+      clearFieldError("file");
+      setError(null);
       setSuccessMessage(null);
-      setState((prev) => ({ ...prev, file: null, fileName: null }));
+      setState((prev) => ({ ...prev, file, fileName: file.name }));
+    } catch (changeError) {
+      console.error("[quote intake] file picker failed", changeError);
+      setError(QUOTE_INTAKE_FALLBACK_ERROR);
+      setSuccessMessage(null);
       e.target.value = "";
-      return;
     }
-
-    clearFieldError("file");
-    setError(null);
-    setSuccessMessage(null);
-    setState((prev) => ({ ...prev, file, fileName: file.name }));
   };
 
   type InputFieldKey =
@@ -344,37 +374,45 @@ export default function UploadBox() {
     };
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    setError(null);
-    setSuccessMessage(null);
+    try {
+      setError(null);
+      setSuccessMessage(null);
 
-    const validationErrors = validateFormFields(state);
-    if (hasErrors(validationErrors)) {
+      const validationErrors = validateFormFields(state);
+      if (hasErrors(validationErrors)) {
+        e.preventDefault();
+        setFieldErrors(validationErrors);
+        setError("Please fix the highlighted fields before submitting.");
+        return;
+      }
+
+      if (!state.file) {
+        e.preventDefault();
+        setFieldErrors((prev) => ({
+          ...prev,
+          file: "Attach your CAD file before submitting.",
+        }));
+        setError("Attach your CAD file before submitting.");
+        return;
+      }
+
+      const fileValidationError = validateCadFile(state.file);
+      if (fileValidationError) {
+        e.preventDefault();
+        setFieldErrors((prev) => ({ ...prev, file: fileValidationError }));
+        setError(fileValidationError);
+        return;
+      }
+
+      setFieldErrors({});
+      setHasSubmitted(true);
+    } catch (submitError) {
+      console.error("[quote intake] submit handler failed", submitError);
       e.preventDefault();
-      setFieldErrors(validationErrors);
-      setError("Please fix the highlighted fields before submitting.");
-      return;
+      setError(QUOTE_INTAKE_FALLBACK_ERROR);
+      setSuccessMessage(null);
+      setHasSubmitted(false);
     }
-
-    if (!state.file) {
-      e.preventDefault();
-      setFieldErrors((prev) => ({
-        ...prev,
-        file: "Attach your CAD file before submitting.",
-      }));
-      setError("Attach your CAD file before submitting.");
-      return;
-    }
-
-    const fileValidationError = validateCadFile(state.file);
-    if (fileValidationError) {
-      e.preventDefault();
-      setFieldErrors((prev) => ({ ...prev, file: fileValidationError }));
-      setError(fileValidationError);
-      return;
-    }
-
-    setFieldErrors({});
-    setHasSubmitted(true);
   };
 
   return (
@@ -862,4 +900,65 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
       {pending ? "Submitting…" : "Submit RFQ"}
     </button>
   );
+}
+
+type NormalizedActionState =
+  | {
+      ok: true;
+      quoteId: string | null;
+      uploadId: string;
+      message: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors: FieldErrors;
+    };
+
+function normalizeActionState(
+  state: QuoteIntakeActionState | null | undefined,
+): NormalizedActionState {
+  if (!state || typeof state !== "object" || typeof state.ok !== "boolean") {
+    return {
+      ok: false,
+      error: QUOTE_INTAKE_FALLBACK_ERROR,
+      fieldErrors: {},
+    };
+  }
+
+  if (state.ok) {
+    return {
+      ok: true,
+      quoteId: state.quoteId ?? null,
+      uploadId: state.uploadId ?? "",
+      message: state.message ?? "RFQ received.",
+    };
+  }
+
+  return {
+    ok: false,
+    error: state.error || QUOTE_INTAKE_FALLBACK_ERROR,
+    fieldErrors: normalizeActionFieldErrors(
+      state.fieldErrors as Record<string, unknown> | undefined,
+    ),
+  };
+}
+
+function normalizeActionFieldErrors(
+  rawErrors?: Record<string, unknown>,
+): FieldErrors {
+  if (!rawErrors) {
+    return {};
+  }
+
+  return Object.entries(rawErrors).reduce<FieldErrors>((acc, [key, value]) => {
+    if (
+      FIELD_ERROR_KEY_SET.has(key as FieldErrorKey) &&
+      typeof value === "string" &&
+      value.length > 0
+    ) {
+      acc[key as FieldErrorKey] = value;
+    }
+    return acc;
+  }, {});
 }
