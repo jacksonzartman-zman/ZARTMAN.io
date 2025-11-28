@@ -12,7 +12,6 @@ import {
 } from "@/server/quotes/status";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import {
-  initialAdminQuoteUpdateState,
   submitAdminQuoteUpdateAction,
   type AdminQuoteUpdateState,
 } from "./[id]/actions";
@@ -37,11 +36,16 @@ const STATUS_OPTIONS: { value: QuoteStatus; label: string }[] =
     label: QUOTE_STATUS_LABELS[status],
   }));
 
+const INITIAL_ADMIN_QUOTE_UPDATE_STATE: AdminQuoteUpdateState = {
+  ok: true,
+  message: "",
+};
+
 export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
   const boundAction = submitAdminQuoteUpdateAction.bind(null, quote.id);
   const [state, formAction] = useFormState<AdminQuoteUpdateState, FormData>(
     boundAction,
-    initialAdminQuoteUpdateState,
+    INITIAL_ADMIN_QUOTE_UPDATE_STATE,
   );
 
   return (

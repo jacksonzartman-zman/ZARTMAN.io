@@ -14,11 +14,6 @@ export type AdminQuoteUpdateState =
   | { ok: true; message: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
 
-export const initialAdminQuoteUpdateState: AdminQuoteUpdateState = {
-  ok: true,
-  message: "",
-};
-
 const ADMIN_QUOTE_UPDATE_AUTH_ERROR =
   "You must be signed in to update this quote.";
 const ADMIN_QUOTE_UPDATE_ID_ERROR =
