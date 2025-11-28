@@ -45,6 +45,8 @@ export type SupplierBidActionState =
 const BID_SUBMIT_ERROR = "We couldn't submit your bid. Please try again.";
 const BID_ENV_DISABLED_ERROR = "Bids are not enabled in this environment yet.";
 const BID_AMOUNT_INVALID_ERROR = "Enter a valid bid amount greater than 0.";
+const SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE =
+  "Bids are not available in this environment.";
 
 type QuoteAccessRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
 
@@ -206,6 +208,8 @@ export async function submitSupplierBidAction(
   let quoteId: string | null = null;
   let supplierId: string | null = null;
 
+  console.log("[bids] submit action invoked");
+
   try {
     const session = await getCurrentSession();
     if (!session) {
@@ -243,10 +247,29 @@ export async function submitSupplierBidAction(
       }
     }
 
+    console.log("[bids] submit parsed fields", {
+      quoteId,
+      supplierId,
+      amountInput,
+      normalizedAmount: amount,
+      currency: currencyInput,
+      leadTimeDays,
+    });
+
     if (Object.keys(fieldErrors).length > 0) {
+      logBidSubmitFailure({
+        quoteId,
+        supplierId,
+        reason: "validation-error",
+        phase: "input-validation",
+        details: fieldErrors,
+      });
+      const amountError = fieldErrors.amount
+        ? BID_AMOUNT_INVALID_ERROR
+        : "Fix the errors highlighted below.";
       return {
         ok: false,
-        error: "Fix the errors highlighted below.",
+        error: amountError,
         fieldErrors,
       };
     }
@@ -307,16 +330,25 @@ export async function submitSupplierBidAction(
           supplierId: supplier.id,
           error: serialized,
         });
+        logBidSubmitFailure({
+          quoteId,
+          supplierId: supplier.id,
+          reason: "env-disabled",
+          phase: "quote-lookup",
+          supabaseError: serialized,
+        });
         return {
           ok: false,
           error: BID_ENV_DISABLED_ERROR,
         };
       }
 
-      console.error("[bids] quote lookup failed", {
+      logBidSubmitFailure({
         quoteId,
         supplierId: supplier.id,
-        error: serialized,
+        reason: "supabase-error",
+        phase: "quote-lookup",
+        supabaseError: serialized,
       });
       return {
         ok: false,
@@ -365,6 +397,26 @@ export async function submitSupplierBidAction(
 
     const bidResult = await loadBidForSupplierAndQuote(supplier.id, quoteId);
     if (!bidResult.ok) {
+      if (isBidsEnvErrorMessage(bidResult.error)) {
+        logBidSubmitFailure({
+          quoteId,
+          supplierId: supplier.id,
+          reason: "env-disabled",
+          phase: "bid-lookup",
+          supabaseError: bidResult.error,
+        });
+        return {
+          ok: false,
+          error: BID_ENV_DISABLED_ERROR,
+        };
+      }
+      logBidSubmitFailure({
+        quoteId,
+        supplierId: supplier.id,
+        reason: "bid-loader-error",
+        phase: "bid-lookup",
+        supabaseError: bidResult.error,
+      });
       return {
         ok: false,
         error: bidResult.error ?? BID_SUBMIT_ERROR,
@@ -425,16 +477,25 @@ export async function submitSupplierBidAction(
             supplierId: supplier.id,
             error: serialized,
           });
+          logBidSubmitFailure({
+            quoteId,
+            supplierId: supplier.id,
+            reason: "env-disabled",
+            phase: "bid-upsert",
+            supabaseError: serialized,
+          });
           return {
             ok: false,
             error: BID_ENV_DISABLED_ERROR,
           };
         }
 
-        console.error("[bids] submit failed", {
+        logBidSubmitFailure({
           quoteId,
           supplierId: supplier.id,
-          error: serialized,
+          reason: "supabase-error",
+          phase: "bid-upsert",
+          supabaseError: serialized,
         });
         return {
           ok: false,
@@ -470,15 +531,24 @@ export async function submitSupplierBidAction(
           supplierId: supplier.id,
           error: serialized,
         });
+        logBidSubmitFailure({
+          quoteId,
+          supplierId: supplier.id,
+          reason: "env-disabled",
+          phase: "bid-upsert",
+          supabaseError: serialized,
+        });
         return {
           ok: false,
           error: BID_ENV_DISABLED_ERROR,
         };
       }
-      console.error("[bids] submit crashed", {
+      logBidSubmitFailure({
         quoteId,
         supplierId: supplier.id,
-        error: serialized ?? error,
+        reason: "unexpected-error",
+        phase: "bid-upsert",
+        supabaseError: serialized ?? error,
       });
       return {
         ok: false,
@@ -544,4 +614,30 @@ function parseSupplierBidAmount(
     return null;
   }
   return parsed;
+}
+
+function logBidSubmitFailure(args: {
+  quoteId: string | null;
+  supplierId: string | null;
+  reason: string;
+  phase?: string;
+  supabaseError?: unknown;
+  details?: unknown;
+}) {
+  const { quoteId, supplierId, reason, phase, supabaseError, details } = args;
+  console.error("[bids] submit failed", {
+    quoteId,
+    supplierId,
+    reason,
+    phase,
+    supabaseError,
+    details,
+  });
+}
+
+function isBidsEnvErrorMessage(message?: string | null): boolean {
+  if (!message) {
+    return false;
+  }
+  return message.includes(SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE);
 }
