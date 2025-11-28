@@ -50,6 +50,10 @@ export function SupplierBidPanel({
     () => normalizeSupplierBidState(rawState),
     [rawState],
   );
+  const persistedSuccessMessage = useMemo(
+    () => buildPersistedSuccessMessage(initialBid),
+    [initialBid],
+  );
 
   const handleSubmit = (formData: FormData) => {
     setHasSubmitted(true);
@@ -57,18 +61,24 @@ export function SupplierBidPanel({
     return formAction(formData);
   };
 
-  const successMessage = state.ok ? state.message : "";
+  const showLiveSuccess = hasSubmitted && state.ok && Boolean(state.message);
+  const showPersistedSuccess = !hasSubmitted && Boolean(initialBid);
+  const successMessage = showLiveSuccess
+    ? state.message
+    : showPersistedSuccess
+      ? persistedSuccessMessage
+      : "";
 
   useEffect(() => {
-    if (successMessage) {
+    if (showLiveSuccess) {
       formRef.current?.reset();
     }
-  }, [successMessage]);
+  }, [showLiveSuccess]);
 
   const formDisabled =
     (approvalsOn && !approved) || Boolean(bidsUnavailableMessage);
   const buttonLabel = initialBid ? "Update bid" : "Submit bid";
-  const lastSubmittedAt = initialBid?.created_at ?? initialBid?.updated_at ?? null;
+  const lastSubmittedAt = initialBid?.updated_at ?? initialBid?.created_at ?? null;
 
   return (
     <div className="space-y-4">
@@ -145,9 +155,9 @@ export function SupplierBidPanel({
           </p>
         ) : null}
 
-        {hasSubmitted && state.ok && state.message ? (
+        {(showLiveSuccess || showPersistedSuccess) && successMessage ? (
           <p className="text-sm text-emerald-300" role="status">
-            {state.message}
+            {successMessage}
           </p>
         ) : null}
 
@@ -313,6 +323,37 @@ function normalizeBidAmountInput(value: FormDataEntryValue | null): string {
     return "";
   }
   return value.trim().replace(/[,\s]/g, "");
+}
+
+function buildPersistedSuccessMessage(bid: BidRow | null): string {
+  if (!bid) {
+    return "";
+  }
+
+  const formattedAmountValue =
+    typeof bid.amount === "number"
+      ? formatCurrency(bid.amount, bid.currency, { maximumFractionDigits: 2 })
+      : null;
+  const formattedAmount =
+    formattedAmountValue && formattedAmountValue !== "—"
+      ? formattedAmountValue
+      : null;
+  const submittedAt = bid.updated_at ?? bid.created_at;
+  const submittedLabel = submittedAt ? formatDateTime(submittedAt) : null;
+
+  if (formattedAmount && submittedLabel) {
+    return `${formattedAmount} bid on file (submitted ${submittedLabel}). Update it anytime.`;
+  }
+
+  if (formattedAmount) {
+    return `${formattedAmount} bid on file. Update it anytime.`;
+  }
+
+  if (submittedLabel) {
+    return `Bid submitted ${submittedLabel}. Update it anytime.`;
+  }
+
+  return "Your latest bid is on file. Update it anytime.";
 }
 
 function SubmitButton({
