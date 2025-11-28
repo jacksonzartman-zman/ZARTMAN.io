@@ -1,12 +1,12 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatDateTime } from "@/lib/formatDate";
 import type { BidRow } from "@/server/bids";
 import type { QuoteStatus } from "@/server/quotes/status";
 import {
-  initialAdminSelectWinningBidState,
   submitSelectWinningBidAction,
   type AdminSelectWinningBidState,
 } from "./actions";
@@ -21,6 +21,30 @@ type SupplierBidsCardProps = {
 
 const TERMINAL_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
 
+const INITIAL_ADMIN_SELECT_WINNING_BID_STATE: AdminSelectWinningBidState = {
+  ok: true,
+  message: "",
+};
+
+type NormalizedAdminSelectWinningBidState =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+function normalizeAdminSelectWinningBidState(
+  value: AdminSelectWinningBidState | null | undefined,
+): NormalizedAdminSelectWinningBidState {
+  if (!value) {
+    return { ok: true, message: "" };
+  }
+  if (value.ok) {
+    return { ok: true, message: value.message ?? "" };
+  }
+  return {
+    ok: false,
+    error: value.error || "We couldn't update this quote. Please try again.",
+  };
+}
+
 export function SupplierBidsCard({
   quoteId,
   quoteStatus,
@@ -28,15 +52,23 @@ export function SupplierBidsCard({
   bidsLoaded,
   errorMessage,
 }: SupplierBidsCardProps) {
-  const boundAction = submitSelectWinningBidAction.bind(null, quoteId);
-  const [state, formAction] = useFormState<
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [rawState, formAction] = useFormState<
     AdminSelectWinningBidState,
     FormData
-  >(boundAction, initialAdminSelectWinningBidState);
+  >(
+    submitSelectWinningBidAction.bind(null, quoteId),
+    INITIAL_ADMIN_SELECT_WINNING_BID_STATE,
+  );
 
-  const selectionLocked = TERMINAL_STATUSES.includes(quoteStatus);
-  const showSuccess = state.ok && Boolean(state.message);
-  const showError = !state.ok && Boolean(state.error);
+  const state = useMemo(
+    () => normalizeAdminSelectWinningBidState(rawState),
+    [rawState],
+  );
+
+  const quoteIsInTerminalStatus = TERMINAL_STATUSES.includes(quoteStatus);
+  const showError = hasSubmitted && !state.ok;
+  const showSuccess = hasSubmitted && state.ok && Boolean(state.message);
 
   return (
     <section className="mt-8 rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
@@ -50,13 +82,13 @@ export function SupplierBidsCard({
       </div>
 
       {showSuccess ? (
-        <p className="mb-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-200">
+        <p className="mb-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-200" role="status">
           {state.message}
         </p>
       ) : null}
 
       {showError ? (
-        <p className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-200">
+        <p className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-200" role="alert">
           {state.error}
         </p>
       ) : null}
@@ -97,7 +129,7 @@ export function SupplierBidsCard({
                   : "—";
                 const bidStatus = (bid.status ?? "submitted").toString();
                 const bidWon = bidStatus.toLowerCase() === "won";
-                const canSelect = !selectionLocked && !bidWon;
+                const canSelect = !quoteIsInTerminalStatus && !bidWon;
 
                 return (
                   <tr
@@ -137,7 +169,10 @@ export function SupplierBidsCard({
                         </span>
                       ) : canSelect ? (
                         <form
-                          action={formAction}
+                          action={(formData) => {
+                            setHasSubmitted(true);
+                            return formAction(formData);
+                          }}
                           className="flex justify-end"
                         >
                           <input type="hidden" name="bidId" value={bid.id} />
