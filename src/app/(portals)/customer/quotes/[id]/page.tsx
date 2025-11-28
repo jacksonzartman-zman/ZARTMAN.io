@@ -27,6 +27,10 @@ import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { DataFallbackNotice } from "@/app/(portals)/DataFallbackNotice";
+import {
+  getQuoteStatusLabel,
+  normalizeQuoteStatus,
+} from "@/server/quotes/status";
 
 export const dynamic = "force-dynamic";
 
@@ -124,11 +128,24 @@ export default async function CustomerQuoteDetailPage({
     customerEmail: quote.email,
   });
 
-    const derived = deriveQuotePresentation(quote, uploadMeta);
-    const { status, statusLabel, customerName, companyName, intakeNotes } =
-      derived;
-    const nextWorkflowState = getNextWorkflowState(status);
-    const supplierBids = await listSupplierBidsForQuote(quoteId);
+  const derived = deriveQuotePresentation(quote, uploadMeta);
+  const { customerName, companyName, intakeNotes } = derived;
+  const normalizedQuoteStatus = normalizeQuoteStatus(quote.status ?? undefined);
+  const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined);
+  const nextWorkflowState = getNextWorkflowState(normalizedQuoteStatus);
+  const supplierBids = await listSupplierBidsForQuote(quoteId);
+  const submittedAtRaw = quote.created_at ?? null;
+  const updatedAtRaw = quote.updated_at ?? null;
+  const submittedAtText = submittedAtRaw
+    ? formatDateTime(submittedAtRaw, { includeTime: true })
+    : null;
+  const updatedAtText = updatedAtRaw
+    ? formatDateTime(updatedAtRaw, { includeTime: true })
+    : null;
+  const lifecycleLastUpdatedText =
+    updatedAtRaw && (!submittedAtRaw || updatedAtRaw !== submittedAtRaw)
+      ? updatedAtText
+      : null;
   const fileCountText =
     filePreviews.length === 0
       ? "No files attached"
@@ -165,7 +182,7 @@ export default async function CustomerQuoteDetailPage({
         </header>
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
-            Status: {statusLabel}
+            Status: {quoteStatusLabel}
           </span>
           <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
             Target date: {targetDateChipText}
@@ -175,7 +192,7 @@ export default async function CustomerQuoteDetailPage({
           </span>
         </div>
         <WorkflowStatusCallout
-          currentLabel={statusLabel}
+          currentLabel={quoteStatusLabel}
           nextState={nextWorkflowState}
           className="mt-3"
         />
@@ -197,7 +214,7 @@ export default async function CustomerQuoteDetailPage({
               Submitted
             </dt>
             <dd className="text-slate-100">
-              {formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
+              {submittedAtText ?? "—"}
             </dd>
           </div>
           <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
@@ -205,7 +222,7 @@ export default async function CustomerQuoteDetailPage({
               Last updated
             </dt>
             <dd className="text-slate-100">
-              {formatDateTime(quote.updated_at, { includeTime: true }) ?? "—"}
+              {updatedAtText ?? "—"}
             </dd>
           </div>
         </dl>
@@ -426,7 +443,7 @@ export default async function CustomerQuoteDetailPage({
           <span>
             Quote status:{" "}
             <span className="font-semibold text-emerald-200">
-            {statusLabel}
+              {quoteStatusLabel}
             </span>
           </span>
             {readOnly ? (
@@ -435,6 +452,37 @@ export default async function CustomerQuoteDetailPage({
               </span>
             ) : null}
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Quote status
+          </p>
+          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+            {quoteStatusLabel}
+          </span>
+        </div>
+        {submittedAtText || lifecycleLastUpdatedText ? (
+          <dl className="mt-3 space-y-2 text-sm text-slate-300">
+            {submittedAtText ? (
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Submitted
+                </dt>
+                <dd className="text-slate-100">{submittedAtText}</dd>
+              </div>
+            ) : null}
+            {lifecycleLastUpdatedText ? (
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Last updated
+                </dt>
+                <dd className="text-slate-100">{lifecycleLastUpdatedText}</dd>
+              </div>
+            ) : null}
+          </dl>
+        ) : null}
       </section>
 
       <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />

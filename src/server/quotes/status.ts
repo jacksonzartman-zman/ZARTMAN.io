@@ -20,9 +20,9 @@ export const QUOTE_OPEN_STATUSES: readonly QuoteStatus[] = [
 ] as const;
 
 export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
-  submitted: "Submitted",
+  submitted: "RFQ submitted",
   in_review: "In review",
-  quoted: "Quoted",
+  quoted: "Quote prepared",
   won: "Won",
   lost: "Lost",
   cancelled: "Cancelled",
@@ -44,4 +44,9 @@ export function isOpenQuoteStatus(
   status: string | null | undefined,
 ): boolean {
   return QUOTE_OPEN_STATUSES.includes(normalizeQuoteStatus(status));
+}
+
+export function getQuoteStatusLabel(raw: string | null | undefined): string {
+  const normalized = normalizeQuoteStatus(raw);
+  return QUOTE_STATUS_LABELS[normalized] ?? "Status update";
 }
