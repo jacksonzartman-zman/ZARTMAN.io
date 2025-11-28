@@ -2,10 +2,11 @@
 import { loadAdminQuotesList } from "@/server/admin/quotes";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import {
-  UPLOAD_STATUS_OPTIONS,
-  normalizeUploadStatus,
-  type UploadStatus,
-} from "../constants";
+  QUOTE_STATUS_LABELS,
+  QUOTE_STATUS_OPTIONS,
+  normalizeQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
 import StatusFilterChips from "../StatusFilterChips";
 import AdminDashboardShell from "../AdminDashboardShell";
@@ -28,7 +29,11 @@ type QuotesPageProps = {
   searchParams?: Promise<ReadonlyURLSearchParams>;
 };
 
-const VALID_STATUS_VALUES: UploadStatus[] = [...UPLOAD_STATUS_OPTIONS];
+const VALID_STATUS_VALUES: QuoteStatus[] = [...QUOTE_STATUS_OPTIONS];
+const QUOTE_STATUS_FILTER_OPTIONS = QUOTE_STATUS_OPTIONS.map((status) => ({
+  value: status,
+  label: QUOTE_STATUS_LABELS[status],
+}));
 
 const getFirstParamValue = (
   value?: string | string[] | null,
@@ -99,10 +104,10 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     typeof resolvedSearchParams.status === "string"
       ? resolvedSearchParams.status.trim().toLowerCase()
       : "";
-  const statusFilter: UploadStatus | "all" = VALID_STATUS_VALUES.includes(
-    normalizedStatus as UploadStatus,
+  const statusFilter: QuoteStatus | "all" = VALID_STATUS_VALUES.includes(
+    normalizedStatus as QuoteStatus,
   )
-    ? (normalizedStatus as UploadStatus)
+    ? (normalizedStatus as QuoteStatus)
     : "all";
 
   const searchTerm =
@@ -123,7 +128,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
         customerEmail: row.email ?? "",
         company: row.company ?? "",
         fileName: row.file_name ?? "",
-        status: normalizeUploadStatus(row.status as UploadStatus | null),
+        status: normalizeQuoteStatus(row.status),
         price: normalizePriceValue(row.price),
         currency: row.currency,
         targetDate: row.target_date,
@@ -131,9 +136,8 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       })) ?? [];
 
   const filteredQuotes = rows.filter((row) => {
-    const normalizedRowStatus = normalizeUploadStatus(row.status);
     const matchesStatus =
-      statusFilter === "all" ? true : normalizedRowStatus === statusFilter;
+      statusFilter === "all" ? true : row.status === statusFilter;
 
     if (!normalizedSearch) {
       return matchesStatus;
@@ -163,6 +167,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
             <StatusFilterChips
               currentStatus={statusFilter === "all" ? "" : statusFilter}
               basePath="/admin/quotes"
+              options={QUOTE_STATUS_FILTER_OPTIONS}
             />
           }
           search={
