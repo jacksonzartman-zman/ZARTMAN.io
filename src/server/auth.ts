@@ -69,6 +69,40 @@ export async function createReadOnlyAuthClient(): Promise<SupabaseClientType> {
   });
 }
 
+const DYNAMIC_SERVER_USAGE_DIGEST = "DYNAMIC_SERVER_USAGE";
+
+function isDynamicServerUsageError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+
+  const hasDigest = (candidate: unknown): boolean => {
+    if (!candidate) {
+      return false;
+    }
+
+    if (typeof candidate === "string") {
+      return candidate.startsWith(DYNAMIC_SERVER_USAGE_DIGEST);
+    }
+
+    if (typeof candidate === "object") {
+      const digest = (candidate as { digest?: unknown }).digest;
+      if (typeof digest === "string" && digest.startsWith(DYNAMIC_SERVER_USAGE_DIGEST)) {
+        return true;
+      }
+
+      const cause = (candidate as { cause?: unknown }).cause;
+      if (cause && hasDigest(cause)) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  return hasDigest(error) || (error instanceof Error && hasDigest(error.message));
+}
+
 export async function getCurrentSession(): Promise<Session | null> {
   try {
     const cookieStore = await cookies();
@@ -89,6 +123,13 @@ export async function getCurrentSession(): Promise<Session | null> {
     });
 
     if (error) {
+      if (isDynamicServerUsageError(error)) {
+        console.info(
+          "[auth] getSession run skipped during static generation (dynamic route only)",
+        );
+        return null;
+      }
+
       console.error("[auth] getSession failed", error);
       return null;
     }
@@ -99,6 +140,13 @@ export async function getCurrentSession(): Promise<Session | null> {
 
     return data.session ?? null;
   } catch (error) {
+    if (isDynamicServerUsageError(error)) {
+      console.info(
+        "[auth] getCurrentSession skipped during static generation (dynamic route only)",
+      );
+      return null;
+    }
+
     console.error("[auth] getCurrentSession: unexpected failure", error);
     return null;
   }
