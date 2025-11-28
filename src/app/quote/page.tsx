@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { redirect } from "next/navigation";
 import UploadBox from "@/components/UploadBox";
 import { getCurrentSession } from "@/server/auth";
