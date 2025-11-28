@@ -3,10 +3,11 @@ import PortalCard from "../PortalCard";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
-  normalizeUploadStatus,
-  UPLOAD_STATUS_LABELS,
-  type UploadStatus,
-} from "@/app/admin/constants";
+  QUOTE_STATUS_LABELS,
+  type QuoteStatus,
+  normalizeQuoteStatus,
+  isOpenQuoteStatus,
+} from "@/server/quotes/status";
 import { primaryCtaClasses } from "@/lib/ctas";
 import {
   getFirstParamValue,
@@ -38,9 +39,8 @@ export const dynamic = "force-dynamic";
 
 const QUOTE_LIMIT = 20;
 const RECENT_ACTIVITY_LIMIT = 10;
-const OPEN_STATUSES: UploadStatus[] = ["submitted", "in_review", "quoted"];
-const IN_PROGRESS_STATUSES: UploadStatus[] = ["in_review", "quoted"];
-const COMPLETED_STATUSES: UploadStatus[] = ["approved"];
+const IN_PROGRESS_STATUSES: QuoteStatus[] = ["in_review", "quoted"];
+const COMPLETED_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
 const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
 
 const TARGET_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
@@ -67,7 +67,7 @@ type RawQuoteRecord = Pick<SupplierQuoteRow, SafeQuoteWithUploadsField>;
 
 type PortalQuote = {
   id: string;
-  status: UploadStatus;
+  status: QuoteStatus;
   createdAt: string | null;
   updatedAt: string | null;
   targetDate: string | null;
@@ -181,7 +181,7 @@ async function CustomerDashboardPage({
   });
 
   const openQuotes = portalData.quotes.filter((quote) =>
-    OPEN_STATUSES.includes(quote.status),
+    isOpenQuoteStatus(quote.status),
   );
   const hasAnyQuotes = portalData.quotes.length > 0;
   const viewerDisplayEmail = viewerEmail ?? "customer";
@@ -582,7 +582,7 @@ function isRawQuoteRecordArray(value: unknown): value is RawQuoteRecord[] {
 function mapQuoteRecords(records: RawQuoteRecord[]): PortalQuote[] {
   return records.map((record) => ({
     id: record.id,
-    status: normalizeUploadStatus(record.status),
+    status: normalizeQuoteStatus(record.status),
     createdAt: record.created_at ?? null,
     updatedAt: record.updated_at ?? null,
     targetDate: record.target_date ?? null,
@@ -700,7 +700,7 @@ function StatusBadge({
   status,
   size = "md",
 }: {
-  status: UploadStatus;
+  status: QuoteStatus;
   size?: "md" | "sm";
 }) {
   const sizeClasses =
@@ -710,7 +710,7 @@ function StatusBadge({
 
   return (
     <span className={`inline-flex items-center rounded-full bg-emerald-500/10 font-semibold text-emerald-200 ${sizeClasses}`}>
-      {UPLOAD_STATUS_LABELS[status]}
+      {QUOTE_STATUS_LABELS[status]}
     </span>
   );
 }

@@ -23,9 +23,9 @@ import {
   loadSupplierByPrimaryEmail,
 } from "@/server/suppliers/profile";
 import {
-  normalizeUploadStatus,
-  UPLOAD_STATUS_LABELS,
-} from "@/app/admin/constants";
+  QUOTE_STATUS_LABELS,
+  normalizeQuoteStatus,
+} from "@/server/quotes/status";
 import type { ActivityItem } from "@/types/activity";
 import { getCustomerById } from "@/server/customers";
 
@@ -608,10 +608,8 @@ function buildStatusActivityItem(
     return null;
   }
 
-  const normalizedStatus = normalizeUploadStatus(
-    quote.status ?? undefined,
-  );
-  const statusLabel = UPLOAD_STATUS_LABELS[normalizedStatus] ?? "Status update";
+  const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
+  const statusLabel = QUOTE_STATUS_LABELS[normalizedStatus] ?? "Status update";
   const hrefBase =
     context === "customer" ? "/customer/quotes" : "/supplier/quotes";
 

@@ -2,10 +2,9 @@ import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import {
-  UPLOAD_STATUS_LABELS,
-  normalizeUploadStatus,
-  type UploadStatus,
-} from "./constants";
+  QUOTE_STATUS_LABELS,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 
@@ -15,7 +14,7 @@ export type QuoteRow = {
   customerEmail: string;
   company: string;
   fileName: string;
-  status: UploadStatus;
+  status: QuoteStatus;
   price: number | null;
   currency: string | null;
   targetDate: string | null;
@@ -105,7 +104,7 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
               </td>
               <td className={adminTableCellClass}>
                 <span className="inline-flex items-center rounded-full border border-transparent bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                  {UPLOAD_STATUS_LABELS[normalizeUploadStatus(row.status)]}
+                  {QUOTE_STATUS_LABELS[row.status]}
                 </span>
               </td>
               <td className={`${adminTableCellClass} text-xs text-slate-200`}>

@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
+import { normalizeQuoteStatus } from "@/server/quotes/status";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
@@ -379,9 +380,8 @@ function normalizeAdminQuoteUpdateInput(
 
   const updates: Record<string, string | number | null> = {};
 
-  const status = normalizeOptionalString(input.status);
-  if (typeof status !== "undefined") {
-    updates.status = status;
+  if (typeof input.status !== "undefined") {
+    updates.status = normalizeQuoteStatus(input.status);
   }
 
   const price = normalizeOptionalPrice(input.price);

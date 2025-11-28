@@ -6,7 +6,7 @@ import {
   bytesToMegabytes,
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
-import { DEFAULT_UPLOAD_STATUS } from "@/app/admin/constants";
+import { DEFAULT_QUOTE_STATUS } from "@/server/quotes/status";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { serializeSupabaseError } from "@/server/admin/logging";
 
@@ -228,7 +228,7 @@ export async function persistQuoteIntake(
         company: sanitizeNullable(payload.company),
         notes: sanitizeNullable(payload.notes),
         customer_id: customerId,
-        status: DEFAULT_UPLOAD_STATUS,
+        status: DEFAULT_QUOTE_STATUS,
         first_name: sanitizeNullable(payload.firstName),
         last_name: sanitizeNullable(payload.lastName),
         phone: sanitizeNullable(payload.phone),
@@ -266,7 +266,7 @@ export async function persistQuoteIntake(
         customer_email: contactEmail,
         company: sanitizeNullable(payload.company),
         file_name: payload.file.name,
-        status: DEFAULT_UPLOAD_STATUS,
+        status: DEFAULT_QUOTE_STATUS,
         currency: "USD",
         price: null,
         customer_id: customerId,
@@ -294,7 +294,7 @@ export async function persistQuoteIntake(
       .from("uploads")
       .update({
         quote_id: quoteId,
-        status: DEFAULT_UPLOAD_STATUS,
+        status: DEFAULT_QUOTE_STATUS,
       })
       .eq("id", uploadId);
 

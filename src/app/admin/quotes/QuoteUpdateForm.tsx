@@ -4,11 +4,12 @@ import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
 import { formatDateInputValue } from "@/lib/formatDate";
 import {
-  DEFAULT_UPLOAD_STATUS,
-  type UploadStatus,
-  UPLOAD_STATUS_LABELS,
-  UPLOAD_STATUS_OPTIONS,
-} from "../constants";
+  DEFAULT_QUOTE_STATUS,
+  QUOTE_STATUS_LABELS,
+  QUOTE_STATUS_OPTIONS,
+  normalizeQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import {
   initialAdminQuoteUpdateState,
@@ -19,7 +20,7 @@ import {
 type QuoteUpdateFormProps = {
   quote: {
     id: string;
-    status: UploadStatus;
+    status: QuoteStatus;
     price: number | null;
     currency: string | null;
     targetDate: string | null;
@@ -29,6 +30,12 @@ type QuoteUpdateFormProps = {
 };
 
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP"];
+
+const STATUS_OPTIONS: { value: QuoteStatus; label: string }[] =
+  QUOTE_STATUS_OPTIONS.map((status) => ({
+    value: status,
+    label: QUOTE_STATUS_LABELS[status],
+  }));
 
 export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
   const boundAction = submitAdminQuoteUpdateAction.bind(null, quote.id);
@@ -49,12 +56,12 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
         <select
           id="status"
           name="status"
-          defaultValue={quote.status ?? DEFAULT_UPLOAD_STATUS}
+          defaultValue={normalizeQuoteStatus(quote.status ?? DEFAULT_QUOTE_STATUS)}
           className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
         >
-          {UPLOAD_STATUS_OPTIONS.map((status) => (
-            <option key={status} value={status}>
-              {UPLOAD_STATUS_LABELS[status]}
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
             </option>
           ))}
         </select>
