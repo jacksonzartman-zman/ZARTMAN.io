@@ -38,12 +38,7 @@ export type SupplierBidActionState =
   | { ok: true; message: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
 
-export const initialSupplierBidState: SupplierBidActionState = {
-  ok: true,
-  message: "",
-};
-
-const BID_SUBMIT_ERROR = "We couldn’t save your bid. Please try again.";
+const BID_SUBMIT_ERROR = "We couldn't submit your bid. Please try again.";
 const BID_ENV_DISABLED_ERROR = "Bids are not enabled in this environment yet.";
 const BID_AMOUNT_INVALID_ERROR = "Enter a valid bid amount greater than 0.";
 
