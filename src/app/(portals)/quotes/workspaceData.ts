@@ -10,6 +10,10 @@ import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
 } from "@/server/suppliers/types";
+import {
+  serializeSupabaseError,
+  isMissingTableOrColumnError,
+} from "@/server/admin/logging";
 
 export type QuoteWorkspaceData = {
   quote: QuoteWithUploadsRow;
@@ -143,11 +147,24 @@ export async function loadQuoteWorkspaceData(
       filePreviewOptions.uploadFileOverride = uploadFileReference;
     }
     filePreviewOptions.onFilesError = (error) => {
+      const serializedError = serializeSupabaseError(error);
+
+      if (isMissingTableOrColumnError(error)) {
+        console.warn(
+          "Portal workspace loader: files schema missing; treating as zero files",
+          {
+            quoteId,
+            error: serializedError,
+          },
+        );
+        return;
+      }
+
       filesUnavailable = true;
       filesErrorLogged = true;
       console.error("Portal workspace loader: files query failed", {
         quoteId,
-        error,
+        error: serializedError,
       });
     };
 
