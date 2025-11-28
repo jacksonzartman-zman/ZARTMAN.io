@@ -15,6 +15,7 @@ import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SupplierActivityIdentity,
   type SupplierActivityResult,
+  type SupplierApprovalStatus,
   type SupplierCapabilityRow,
   type SupplierQuoteMatch,
   type SupplierQuoteRow,
@@ -23,7 +24,7 @@ import {
 import { canUserBid } from "@/lib/permissions";
 import { computeFairnessBoost } from "@/lib/fairness";
 import { approvalsEnabled } from "./flags";
-import { QUOTE_OPEN_STATUSES } from "@/server/quotes/status";
+import { QUOTE_OPEN_STATUSES, isOpenQuoteStatus } from "@/server/quotes/status";
 
 const MATCH_LIMIT = 20;
 
@@ -83,11 +84,21 @@ export async function matchQuotesToSupplier(
       };
     }
 
+    const decisionContext = {
+      supplierId: supplier.id,
+      supplierEmail: supplier.primary_email ?? supplierEmail,
+    };
     const approvalStatus = getSupplierApprovalStatus(supplier);
     const approvalsOn = approvalsEnabled();
     const approved = approvalsOn ? isSupplierApproved(supplier) : true;
 
     if (approvalsOn && !approved) {
+      logMatchDecision("supplier skipped - not approved", {
+        ...decisionContext,
+        approvalStatus,
+        approvalsEnabled: approvalsOn,
+        supplierApproved: approved,
+      });
       console.log("[supplier activity] approvals gate active", {
         ...logContext,
         approvalStatus,
@@ -110,6 +121,10 @@ export async function matchQuotesToSupplier(
 
     const normalizedCapabilities = normalizeCapabilities(capabilities);
     if (normalizedCapabilities.processes.size === 0) {
+      logMatchDecision("supplier skipped - capability mismatch", {
+        ...decisionContext,
+        reason: "No manufacturing processes recorded",
+      });
       console.log("[supplier activity] quote query result", {
         ...logContext,
         count: 0,
@@ -132,7 +147,7 @@ export async function matchQuotesToSupplier(
       }
     });
 
-    const canViewGlobalMatches = supplier.verified;
+    const canViewGlobalMatches = supplier.verified || (approvalsOn && approved);
 
     const quotes = await selectOpenQuotes();
     if (quotes.length === 0) {
@@ -157,6 +172,19 @@ export async function matchQuotesToSupplier(
     const matches: SupplierQuoteMatch[] = [];
 
     for (const quote of quotes) {
+      const quoteId = quote.id;
+      const quoteStatus = quote.status ?? null;
+      const decisionPayload = {
+        ...decisionContext,
+        quoteId,
+        quoteStatus,
+      };
+
+      if (!isOpenQuoteStatus(quoteStatus)) {
+        logMatchDecision("supplier skipped - RFQ not open", decisionPayload);
+        continue;
+      }
+
       const uploadMeta = quote.upload_id
         ? uploadMetaMap.get(quote.upload_id)
         : null;
@@ -168,14 +196,26 @@ export async function matchQuotesToSupplier(
         : false;
 
       if (!hasProcessMatch) {
+        logMatchDecision("supplier skipped - capability mismatch", {
+          ...decisionPayload,
+          processHint,
+        });
         continue;
       }
 
-      const quoteId = quote.id;
       const canAccess =
         canViewGlobalMatches || (quoteId ? authorizedQuoteIds.has(quoteId) : false);
 
       if (!canAccess) {
+        logMatchDecision("supplier skipped - supplier inactive", {
+          ...decisionPayload,
+          approvalsEnabled: approvalsOn,
+          supplierApproved: approved,
+          supplierVerified: supplier.verified,
+          reason: supplier.verified
+            ? "supplier not assigned to RFQ"
+            : "supplier not verified for global feed",
+        });
         continue;
       }
 
@@ -187,6 +227,11 @@ export async function matchQuotesToSupplier(
       });
 
       if (!canBid) {
+        logMatchDecision("supplier skipped - bidding blocked", {
+          ...decisionPayload,
+          existingBidStatus: supplierBidMeta?.status ?? null,
+          reason: "permission matrix denied bidding",
+        });
         continue;
       }
 
@@ -210,6 +255,12 @@ export async function matchQuotesToSupplier(
         createdAt: quote.created_at ?? null,
         quantityHint: uploadMeta?.quantity ?? null,
         fairness: fairness.reasons.length > 0 ? fairness : undefined,
+      });
+
+      logMatchDecision("supplier matched", {
+        ...decisionPayload,
+        processHint,
+        score,
       });
 
       if (matches.length >= MATCH_LIMIT) {
@@ -240,6 +291,33 @@ export async function matchQuotesToSupplier(
       error: "Unable to load matches right now",
     };
   }
+}
+
+type MatchDecisionEvent =
+  | "supplier skipped - not approved"
+  | "supplier skipped - capability mismatch"
+  | "supplier skipped - RFQ not open"
+  | "supplier skipped - supplier inactive"
+  | "supplier skipped - bidding blocked"
+  | "supplier matched";
+
+type MatchDecisionPayload = {
+  supplierId: string | null;
+  supplierEmail: string | null;
+  quoteId?: string | null;
+  quoteStatus?: string | null;
+  processHint?: string | null;
+  reason?: string;
+  approvalsEnabled?: boolean;
+  supplierApproved?: boolean;
+  supplierVerified?: boolean;
+  approvalStatus?: SupplierApprovalStatus;
+  score?: number;
+  existingBidStatus?: string | null;
+};
+
+function logMatchDecision(event: MatchDecisionEvent, payload: MatchDecisionPayload) {
+  console.log(`[matching] ${event}`, payload);
 }
 
 function normalizeCapabilities(capabilities: SupplierCapabilityRow[]) {

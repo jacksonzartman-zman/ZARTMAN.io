@@ -62,7 +62,8 @@ export function SupplierOnboardingForm({
     SupplierOnboardingState,
     FormData
   >(submitSupplierOnboardingAction, INITIAL_STATE);
-  const hasHardError = state?.ok === false;
+  const isInitialState = state === INITIAL_STATE;
+  const hasHardError = !isInitialState && state?.ok === false;
   const isPartialSuccess = state?.partial === true;
 
   const capabilitiesPayload = useMemo(
