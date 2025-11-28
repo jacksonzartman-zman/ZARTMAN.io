@@ -2,6 +2,8 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import {
   serializeSupabaseError,
   isMissingTableOrColumnError,
+  logAdminQuotesError,
+  logAdminQuotesInfo,
 } from "@/server/admin/logging";
 import {
   getSupplierApprovalStatus,
@@ -23,8 +25,14 @@ import type {
   SupplierRow,
 } from "./types";
 import { approvalsEnabled } from "./flags";
+import { QUOTE_UPDATE_ERROR, updateAdminQuote } from "@/server/admin/quotes";
 
-export type BidStatus = "submitted" | "revised" | "withdrawn";
+export type BidStatus =
+  | "submitted"
+  | "revised"
+  | "withdrawn"
+  | "won"
+  | "lost";
 
 export type BidRow = {
   id: string;
@@ -49,10 +57,22 @@ const BIDS_TABLE_NAME = "supplier_bids";
 const BIDS_MISSING_SCHEMA_MESSAGE =
   "Bids are not available in this environment.";
 const BIDS_GENERIC_ERROR_MESSAGE = "We had trouble loading bids.";
+const BID_WINNER_GENERIC_ERROR_MESSAGE =
+  "We couldn't select that bid. Please check logs and try again.";
 const BID_SELECTION_COLUMNS =
   "id,quote_id,supplier_id,unit_price,currency,lead_time_days,notes,status,created_at,updated_at";
 
 const DEFAULT_CURRENCY = "USD";
+
+type MarkWinningBidParams = {
+  quoteId: string;
+  bidId: string;
+};
+
+type MarkWinningBidResult = {
+  ok: boolean;
+  error: string | null;
+};
 
 export async function loadBidsForQuote(
   quoteId: string,
@@ -209,6 +229,204 @@ export async function loadBidForSupplierAndQuote(
       ok: false,
       data: null,
       error: BIDS_GENERIC_ERROR_MESSAGE,
+    };
+  }
+}
+
+export async function markWinningBidForQuote(
+  params: MarkWinningBidParams,
+): Promise<MarkWinningBidResult> {
+  const quoteId =
+    typeof params?.quoteId === "string" ? params.quoteId.trim() : "";
+  const bidId = typeof params?.bidId === "string" ? params.bidId.trim() : "";
+
+  if (!quoteId || !bidId) {
+    console.warn("[bids] winner selection missing identifiers", {
+      quoteId,
+      bidId,
+    });
+    return {
+      ok: false,
+      error: BID_WINNER_GENERIC_ERROR_MESSAGE,
+    };
+  }
+
+  try {
+    const {
+      data: bidRow,
+      error: bidError,
+    } = await supabaseServer
+      .from(BIDS_TABLE_NAME)
+      .select(BID_SELECTION_COLUMNS)
+      .eq("id", bidId)
+      .maybeSingle<SupplierBidRow>();
+
+    if (bidError) {
+      const serialized = serializeSupabaseError(bidError);
+      if (isMissingTableOrColumnError(bidError)) {
+        console.warn("[bids] winner lookup missing schema", {
+          quoteId,
+          bidId,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          error: BIDS_MISSING_SCHEMA_MESSAGE,
+        };
+      }
+      console.error("[bids] winner lookup failed", {
+        quoteId,
+        bidId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: BID_WINNER_GENERIC_ERROR_MESSAGE,
+      };
+    }
+
+    if (!bidRow || bidRow.quote_id !== quoteId) {
+      console.warn("[bids] winner lookup mismatch", {
+        quoteId,
+        bidId,
+        bidQuoteId: bidRow?.quote_id ?? null,
+      });
+      return {
+        ok: false,
+        error: BID_WINNER_GENERIC_ERROR_MESSAGE,
+      };
+    }
+
+    const normalizedBid = normalizeBidRow(bidRow);
+    if (!normalizedBid) {
+      console.error("[bids] winner normalize failed", {
+        quoteId,
+        bidId,
+      });
+      return {
+        ok: false,
+        error: BID_WINNER_GENERIC_ERROR_MESSAGE,
+      };
+    }
+
+    const now = new Date().toISOString();
+
+    const { error: winError } = await supabaseServer
+      .from(BIDS_TABLE_NAME)
+      .update({
+        status: "won",
+        updated_at: now,
+      })
+      .eq("id", bidId);
+
+    if (winError) {
+      const serialized = serializeSupabaseError(winError);
+      if (isMissingTableOrColumnError(winError)) {
+        console.warn("[bids] winner update missing schema", {
+          quoteId,
+          bidId,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          error: BIDS_MISSING_SCHEMA_MESSAGE,
+        };
+      }
+      console.error("[bids] winner update failed", {
+        quoteId,
+        bidId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: BID_WINNER_GENERIC_ERROR_MESSAGE,
+      };
+    }
+
+    const { error: loseError } = await supabaseServer
+      .from(BIDS_TABLE_NAME)
+      .update({
+        status: "lost",
+        updated_at: now,
+      })
+      .eq("quote_id", quoteId)
+      .neq("id", bidId);
+
+    if (loseError) {
+      console.warn("[bids] losing peer bids failed", {
+        quoteId,
+        bidId,
+        error: serializeSupabaseError(loseError),
+      });
+    }
+
+    const price =
+      typeof normalizedBid.amount === "number" &&
+      Number.isFinite(normalizedBid.amount)
+        ? normalizedBid.amount
+        : null;
+    const currency =
+      typeof normalizedBid.currency === "string" &&
+      normalizedBid.currency.trim().length > 0
+        ? normalizedBid.currency.trim().toUpperCase()
+        : DEFAULT_CURRENCY;
+
+    const quoteResult = await updateAdminQuote({
+      quoteId,
+      status: "won",
+      price,
+      currency,
+    });
+
+    if (!quoteResult.ok) {
+      logAdminQuotesError("winner update failed", {
+        quoteId,
+        bidId,
+        error: quoteResult.error,
+      });
+      return {
+        ok: false,
+        error: quoteResult.error ?? QUOTE_UPDATE_ERROR,
+      };
+    }
+
+    logAdminQuotesInfo("winner update success", {
+      quoteId,
+      bidId,
+      price,
+      currency,
+    });
+
+    console.log("[bids] winner selected", {
+      quoteId,
+      bidId,
+    });
+
+    return {
+      ok: true,
+      error: null,
+    };
+  } catch (error) {
+    const serialized = serializeSupabaseError(error);
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[bids] winner selection missing schema", {
+        quoteId,
+        bidId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: BIDS_MISSING_SCHEMA_MESSAGE,
+      };
+    }
+    console.error("[bids] winner selection crashed", {
+      quoteId,
+      bidId,
+      error: serialized ?? error,
+    });
+    return {
+      ok: false,
+      error: BID_WINNER_GENERIC_ERROR_MESSAGE,
     };
   }
 }

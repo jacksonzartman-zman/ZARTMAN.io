@@ -65,9 +65,13 @@ export type SupplierDocumentRow = {
 
 export type SupplierBidStatus =
   | "pending"
+  | "submitted"
+  | "revised"
   | "accepted"
   | "declined"
-  | "withdrawn";
+  | "withdrawn"
+  | "won"
+  | "lost";
 
 export type SupplierBidRow = {
   id: string;
