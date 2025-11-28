@@ -1,16 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useRef, type ComponentProps } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+} from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import type { BidRow } from "@/server/bids";
 import {
-  initialSupplierBidState,
   submitSupplierBidAction,
   type SupplierBidActionState,
 } from "./actions";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
+
+const INITIAL_SUPPLIER_BID_STATE: SupplierBidActionState = {
+  ok: true,
+  message: "",
+};
+
+const SUPPLIER_BID_FALLBACK_ERROR =
+  "We couldn't submit your bid. Please try again.";
 
 type SupplierBidPanelProps = {
   quoteId: string;
@@ -28,16 +41,18 @@ export function SupplierBidPanel({
   bidsUnavailableMessage,
 }: SupplierBidPanelProps) {
   const formRef = useRef<HTMLFormElement>(null);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
   const [rawState, formAction] = useFormState<
     SupplierBidActionState,
     FormData
-  >(submitSupplierBidAction, initialSupplierBidState);
+  >(submitSupplierBidAction, INITIAL_SUPPLIER_BID_STATE);
   const state = useMemo(
     () => normalizeSupplierBidState(rawState),
     [rawState],
   );
 
   const handleSubmit = (formData: FormData) => {
+    setHasSubmitted(true);
     formData.set("amount", normalizeBidAmountInput(formData.get("amount")));
     return formAction(formData);
   };
@@ -82,7 +97,9 @@ export function SupplierBidPanel({
             disabled={formDisabled}
             prefix="$"
             autoComplete="off"
-            error={!state.ok ? state.fieldErrors.amount : undefined}
+          error={
+            hasSubmitted && !state.ok ? state.fieldErrors.amount : undefined
+          }
           />
           <Field
             label="Currency"
@@ -102,7 +119,9 @@ export function SupplierBidPanel({
                 : undefined
             }
             disabled={formDisabled}
-            error={!state.ok ? state.fieldErrors.leadTimeDays : undefined}
+          error={
+            hasSubmitted && !state.ok ? state.fieldErrors.leadTimeDays : undefined
+          }
           />
         </div>
 
@@ -120,13 +139,13 @@ export function SupplierBidPanel({
           />
         </div>
 
-        {!state.ok ? (
+        {hasSubmitted && !state.ok ? (
           <p className="text-sm text-red-300" role="alert">
             {state.error}
           </p>
         ) : null}
 
-        {state.ok && state.message ? (
+        {hasSubmitted && state.ok && state.message ? (
           <p className="text-sm text-emerald-300" role="status">
             {state.message}
           </p>
@@ -247,24 +266,20 @@ type NormalizedSupplierBidState =
   | { ok: true; message: string }
   | { ok: false; error: string; fieldErrors: Record<string, string> };
 
-const SUPPLIER_BID_FALLBACK_ERROR =
-  "We couldn't submit your bid. Please try again.";
-
 function normalizeSupplierBidState(
   value: SupplierBidActionState | null | undefined,
 ): NormalizedSupplierBidState {
-  if (!value || typeof value !== "object" || typeof value.ok !== "boolean") {
+  if (!value) {
     return {
-      ok: false,
-      error: SUPPLIER_BID_FALLBACK_ERROR,
-      fieldErrors: {},
+      ok: true,
+      message: "",
     };
   }
 
   if (value.ok) {
     return {
       ok: true,
-      message: typeof value.message === "string" ? value.message : "",
+      message: value.message ?? "",
     };
   }
 
