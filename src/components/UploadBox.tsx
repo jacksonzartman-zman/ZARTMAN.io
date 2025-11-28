@@ -20,11 +20,10 @@ import {
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
 import { primaryCtaClasses } from "@/lib/ctas";
-import {
-  initialQuoteIntakeState,
-  submitQuoteIntakeAction,
-  type QuoteIntakeActionState,
-} from "@/app/quote/actions";
+import { submitQuoteIntakeAction } from "@/app/quote/actions";
+import type { QuoteIntakeActionState } from "@/app/quote/actions";
+import { initialQuoteIntakeState } from "@/lib/quote/intakeState";
+import { QUOTE_INTAKE_FALLBACK_ERROR } from "@/lib/quote/messages";
 
 const MANUFACTURING_PROCESS_OPTIONS = [
   "CNC machining",
@@ -48,9 +47,6 @@ const RFQ_REASON_OPTIONS = [
   "Existing production, looking for backup",
   "Just exploring capabilities",
 ] as const;
-
-const QUOTE_INTAKE_FALLBACK_ERROR =
-  "Unexpected error while submitting your RFQ. Please retry.";
 
 /**
  * Minimal, easily testable iOS/iPadOS detector. Modern iPadOS (13+) reports
