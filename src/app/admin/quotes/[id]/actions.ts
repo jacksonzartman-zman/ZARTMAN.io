@@ -1,15 +1,23 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getFormString, serializeActionError } from "@/lib/forms";
 import { getCurrentSession } from "@/server/auth";
 import {
   QUOTE_UPDATE_ERROR,
   updateAdminQuote,
   type AdminQuoteUpdateInput,
 } from "@/server/admin/quotes";
-import { logAdminQuotesError } from "@/server/admin/logging";
-import { createAdminQuoteMessage } from "@/server/quotes/messages";
+import {
+  ADMIN_QUOTE_UPDATE_AUTH_ERROR,
+  ADMIN_QUOTE_UPDATE_ID_ERROR,
+  ADMIN_QUOTE_UPDATE_SUCCESS_MESSAGE,
+  ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE,
+  ADMIN_SELECT_WINNING_BID_SUCCESS_MESSAGE,
+} from "@/server/admin/quotes/messages";
+import { logAdminQuotesError } from "@/server/admin/quotes/logging";
 import { markWinningBidForQuote } from "@/server/bids";
+import { createAdminQuoteMessage } from "@/server/quotes/messages";
 
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
@@ -18,21 +26,6 @@ export type AdminQuoteUpdateState =
 export type AdminSelectWinningBidState =
   | { ok: true; message: string }
   | { ok: false; error: string };
-
-const ADMIN_QUOTE_UPDATE_AUTH_ERROR =
-  "You must be signed in to update this quote.";
-const ADMIN_QUOTE_UPDATE_ID_ERROR =
-  "We couldn't determine which quote to update.";
-const ADMIN_QUOTE_UPDATE_SUCCESS_MESSAGE = "Quote updated.";
-const ADMIN_SELECT_WINNING_BID_SUCCESS_MESSAGE =
-  "Winning bid selected. Quote status updated to Won.";
-const ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE =
-  "We couldn't select that bid. Please check logs and try again.";
-
-export const initialAdminSelectWinningBidState: AdminSelectWinningBidState = {
-  ok: true,
-  message: "",
-};
 
 export async function submitAdminQuoteUpdateAction(
   quoteId: string,
@@ -90,8 +83,11 @@ export async function submitSelectWinningBidAction(
   formData: FormData,
 ): Promise<AdminSelectWinningBidState> {
   try {
+    console.log("[admin bids] select winner invoked", { quoteId });
+
     const session = await getCurrentSession();
     if (!session || !session.user) {
+      console.warn("[admin bids] select winner auth failed", { quoteId });
       return { ok: false, error: ADMIN_QUOTE_UPDATE_AUTH_ERROR };
     }
 
@@ -99,20 +95,31 @@ export async function submitSelectWinningBidAction(
       typeof quoteId === "string" ? quoteId.trim() : "";
 
     if (!normalizedQuoteId) {
+      console.warn("[admin bids] select winner missing quote id", { quoteId });
       return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
     }
 
     const bidId = getFormString(formData, "bidId");
     if (typeof bidId !== "string" || bidId.trim().length === 0) {
+      console.warn("[admin bids] select winner missing bid id", {
+        quoteId: normalizedQuoteId,
+      });
       return { ok: false, error: ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE };
     }
 
+    const trimmedBidId = bidId.trim();
+
     const result = await markWinningBidForQuote({
       quoteId: normalizedQuoteId,
-      bidId: bidId.trim(),
+      bidId: trimmedBidId,
     });
 
     if (!result.ok) {
+      console.error("[admin bids] select winner failed", {
+        quoteId: normalizedQuoteId,
+        bidId: trimmedBidId,
+        error: result.error ?? null,
+      });
       return {
         ok: false,
         error: result.error ?? ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE,
@@ -127,39 +134,27 @@ export async function submitSelectWinningBidAction(
     revalidatePath("/supplier");
     revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
+    console.log("[admin bids] select winner success", {
+      quoteId: normalizedQuoteId,
+      bidId: trimmedBidId,
+    });
+
     return {
       ok: true,
       message: ADMIN_SELECT_WINNING_BID_SUCCESS_MESSAGE,
     };
   } catch (error) {
+    const serialized = serializeActionError(error);
     logAdminQuotesError("select winner action crashed", {
       quoteId,
-      error: serializeActionError(error),
+      error: serialized,
+    });
+    console.error("[admin bids] select winner crashed", {
+      quoteId,
+      error: serialized,
     });
     return { ok: false, error: ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE };
   }
-}
-
-function getFormString(
-  formData: FormData,
-  key: string,
-): string | null | undefined {
-  const value = formData.get(key);
-  if (typeof value === "string") {
-    return value;
-  }
-  return undefined;
-}
-
-function serializeActionError(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      message: error.message,
-      stack: error.stack,
-      name: error.name,
-    };
-  }
-  return error ?? null;
 }
 
 export type PostQuoteMessageActionState = {
