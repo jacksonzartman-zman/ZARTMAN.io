@@ -238,13 +238,11 @@ export async function submitSupplierBidAction(
     }
 
     let leadTimeDays: number | null = null;
-    if (typeof leadTimeInput === "string" && leadTimeInput.trim().length > 0) {
-      const parsedLeadTime = Number(leadTimeInput);
-      if (!Number.isFinite(parsedLeadTime) || parsedLeadTime < 0) {
-        fieldErrors.leadTimeDays = "Lead time must be zero or more days.";
-      } else {
-        leadTimeDays = parsedLeadTime;
-      }
+    const leadTimeParse = parseLeadTimeDays(leadTimeInput);
+    if (!leadTimeParse.ok) {
+      fieldErrors.leadTimeDays = leadTimeParse.error;
+    } else {
+      leadTimeDays = leadTimeParse.value;
     }
 
     console.log("[bids] submit parsed fields", {
@@ -557,10 +555,12 @@ export async function submitSupplierBidAction(
     }
   } catch (error) {
     const serialized = serializeSupabaseError(error);
-    console.error("[bids] submit crashed unexpectedly", {
+    logBidSubmitFailure({
       quoteId,
       supplierId,
-      error: serialized ?? error,
+      reason: "unexpected-error",
+      phase: "action-crash",
+      supabaseError: serialized ?? error,
     });
     return {
       ok: false,
@@ -633,6 +633,26 @@ function logBidSubmitFailure(args: {
     supabaseError,
     details,
   });
+}
+
+function parseLeadTimeDays(
+  value: FormDataEntryValue | null,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (typeof value !== "string") {
+    return { ok: true, value: null };
+  }
+
+  const normalized = value.trim().replace(/[,]/g, "");
+  if (normalized.length === 0) {
+    return { ok: true, value: null };
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { ok: false, error: "Lead time must be zero or more days." };
+  }
+
+  return { ok: true, value: parsed };
 }
 
 function isBidsEnvErrorMessage(message?: string | null): boolean {

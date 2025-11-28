@@ -26,6 +26,9 @@ const INITIAL_ADMIN_SELECT_WINNING_BID_STATE: AdminSelectWinningBidState = {
   message: "",
 };
 
+const PERSISTED_SUCCESS_MESSAGE =
+  "Winning bid selected. Quote status updated to Won.";
+
 type NormalizedAdminSelectWinningBidState =
   | { ok: true; message: string }
   | { ok: false; error: string };
@@ -67,8 +70,23 @@ export function SupplierBidsCard({
   );
 
   const quoteIsInTerminalStatus = TERMINAL_STATUSES.includes(quoteStatus);
+  const hasWinningBid = useMemo(
+    () =>
+      bids.some(
+        (bid) => (bid.status ?? "").toLowerCase() === "won",
+      ),
+    [bids],
+  );
+  const showPersistedSuccess = !hasSubmitted && hasWinningBid;
+  const showLiveSuccess = hasSubmitted && state.ok && Boolean(state.message);
+  const liveSuccessMessage = state.ok ? state.message : "";
+  const successMessage = showPersistedSuccess
+    ? PERSISTED_SUCCESS_MESSAGE
+    : liveSuccessMessage;
+  const showSuccess =
+    (showPersistedSuccess && Boolean(PERSISTED_SUCCESS_MESSAGE)) ||
+    (showLiveSuccess && Boolean(liveSuccessMessage));
   const showError = hasSubmitted && !state.ok;
-  const showSuccess = hasSubmitted && state.ok && Boolean(state.message);
 
   return (
     <section className="mt-8 rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
@@ -81,9 +99,9 @@ export function SupplierBidsCard({
         ) : null}
       </div>
 
-      {showSuccess ? (
+      {showSuccess && successMessage ? (
         <p className="mb-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-medium text-emerald-200" role="status">
-          {state.message}
+          {successMessage}
         </p>
       ) : null}
 

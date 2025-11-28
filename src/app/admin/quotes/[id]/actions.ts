@@ -15,7 +15,10 @@ import {
   ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE,
   ADMIN_SELECT_WINNING_BID_SUCCESS_MESSAGE,
 } from "@/server/admin/quotes/messages";
-import { logAdminQuotesError } from "@/server/admin/quotes/logging";
+import {
+  logAdminQuotesError,
+  logAdminQuotesWarn,
+} from "@/server/admin/quotes/logging";
 import { markWinningBidForQuote } from "@/server/bids";
 import { createAdminQuoteMessage } from "@/server/quotes/messages";
 
@@ -58,6 +61,10 @@ export async function submitAdminQuoteUpdateAction(
     const result = await updateAdminQuote(payload);
 
     if (!result.ok) {
+      logAdminQuotesWarn("update action validation failed", {
+        quoteId: normalizedQuoteId,
+        error: result.error ?? null,
+      });
       return { ok: false, error: result.error };
     }
 
@@ -82,32 +89,35 @@ export async function submitSelectWinningBidAction(
   _prevState: AdminSelectWinningBidState,
   formData: FormData,
 ): Promise<AdminSelectWinningBidState> {
+  let normalizedQuoteId = "";
+  let selectedBidId: string | null = null;
+
   try {
     console.log("[admin bids] select winner invoked", { quoteId });
 
     const session = await getCurrentSession();
     if (!session || !session.user) {
-      console.warn("[admin bids] select winner auth failed", { quoteId });
+      logAdminQuotesWarn("select winner auth failed", { quoteId });
       return { ok: false, error: ADMIN_QUOTE_UPDATE_AUTH_ERROR };
     }
 
-    const normalizedQuoteId =
-      typeof quoteId === "string" ? quoteId.trim() : "";
+    normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
 
     if (!normalizedQuoteId) {
-      console.warn("[admin bids] select winner missing quote id", { quoteId });
+      logAdminQuotesWarn("select winner missing quote id", { quoteId });
       return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
     }
 
     const bidId = getFormString(formData, "bidId");
     if (typeof bidId !== "string" || bidId.trim().length === 0) {
-      console.warn("[admin bids] select winner missing bid id", {
+      logAdminQuotesWarn("select winner missing bid id", {
         quoteId: normalizedQuoteId,
       });
       return { ok: false, error: ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE };
     }
 
     const trimmedBidId = bidId.trim();
+    selectedBidId = trimmedBidId;
 
     const result = await markWinningBidForQuote({
       quoteId: normalizedQuoteId,
@@ -115,7 +125,7 @@ export async function submitSelectWinningBidAction(
     });
 
     if (!result.ok) {
-      console.error("[admin bids] select winner failed", {
+      logAdminQuotesError("select winner failed", {
         quoteId: normalizedQuoteId,
         bidId: trimmedBidId,
         error: result.error ?? null,
@@ -146,11 +156,8 @@ export async function submitSelectWinningBidAction(
   } catch (error) {
     const serialized = serializeActionError(error);
     logAdminQuotesError("select winner action crashed", {
-      quoteId,
-      error: serialized,
-    });
-    console.error("[admin bids] select winner crashed", {
-      quoteId,
+      quoteId: normalizedQuoteId || quoteId,
+      bidId: selectedBidId,
       error: serialized,
     });
     return { ok: false, error: ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE };
