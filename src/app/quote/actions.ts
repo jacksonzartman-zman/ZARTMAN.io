@@ -35,10 +35,14 @@ export async function submitQuoteIntakeAction(
   _prevState: QuoteIntakeActionState,
   formData: FormData,
 ): Promise<QuoteIntakeActionState> {
+  let sessionUserId: string | null = null;
+  let attemptedQuoteId: string | null = null;
+
   try {
     const session = await requireSession({
       message: "Sign in to submit RFQs.",
     });
+    sessionUserId = session.user.id;
 
     const parsed = parseQuoteIntakeFormData(formData);
     if ("error" in parsed) {
@@ -55,6 +59,12 @@ export async function submitQuoteIntakeAction(
 
     const result = await persistQuoteIntake(parsed.payload, session);
     if (!result.ok) {
+      console.warn("[quote intake] persist failed", {
+        userId: sessionUserId,
+        quoteId: attemptedQuoteId,
+        reason: result.error ?? "unknown-error",
+        fieldErrors: result.fieldErrors ?? null,
+      });
       return buildFailureState(
         result.error ||
           "We couldn’t process your RFQ. Please try again or contact support.",
@@ -62,10 +72,12 @@ export async function submitQuoteIntakeAction(
       );
     }
 
+    attemptedQuoteId = result.quoteId ?? null;
+
     if (!result.uploadId) {
       console.error("[quote intake] missing upload id in success result", {
-        userId: session.user.id,
-        quoteId: result.quoteId ?? null,
+        userId: sessionUserId,
+        quoteId: attemptedQuoteId,
       });
       return buildFailureState(QUOTE_INTAKE_FALLBACK_ERROR);
     }
@@ -88,7 +100,12 @@ export async function submitQuoteIntakeAction(
     if (isNextRedirectError(error)) {
       throw error;
     }
-    console.error("[quote intake] action failed", serializeUnknownError(error));
+    console.error("[quote intake] action failed", {
+      userId: sessionUserId,
+      quoteId: attemptedQuoteId,
+      reason: "unexpected-error",
+      error: serializeUnknownError(error),
+    });
     return buildFailureState(QUOTE_INTAKE_FALLBACK_ERROR);
   }
 }
