@@ -11,7 +11,11 @@ import {
 } from "./constants";
 import AdminDashboardShell from "./AdminDashboardShell";
 import AdminFiltersBar from "./AdminFiltersBar";
-import { loadAdminUploadsInbox } from "@/server/admin/uploads";
+import {
+  loadAdminUploadsInbox,
+  loadAdminInboxBidAggregates,
+  type AdminInboxBidAggregate,
+} from "@/server/admin/uploads";
 import {
   loadAdminDashboardMetrics,
   type AdminDashboardMetrics,
@@ -115,9 +119,25 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   ]);
 
   const metrics = metricsResult.data ?? DEFAULT_METRICS;
+  let bidAggregates: Record<string, AdminInboxBidAggregate> = {};
+
+  if (inboxResult.ok) {
+    const quoteIds =
+      inboxResult.data
+        ?.map((row) => row.quote_id)
+        .filter(
+          (value): value is string =>
+            typeof value === "string" && value.trim().length > 0,
+        ) ?? [];
+
+    if (quoteIds.length > 0) {
+      bidAggregates = await loadAdminInboxBidAggregates(quoteIds);
+    }
+  }
 
   const rows: InboxRow[] =
     inboxResult.data?.map((row) => {
+      const aggregate = row.quote_id ? bidAggregates[row.quote_id] : undefined;
       const contactPieces = [row.first_name, row.last_name]
         .map((value) => (typeof value === "string" ? value.trim() : ""))
         .filter((value) => value.length > 0);
@@ -145,8 +165,27 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         manufacturingProcess: row.manufacturing_process ?? null,
         quantity: row.quantity ?? null,
         status: normalizeUploadStatus(row.status),
+        bidCount: aggregate?.bidCount ?? 0,
+        lastBidAt: aggregate?.lastBidAt ?? null,
+        hasWinningBid: aggregate?.hasWinningBid ?? false,
       };
     }) ?? [];
+
+  if (inboxResult.ok) {
+    const totalQuotes = rows.length;
+    const withBids = rows.filter((row) => row.bidCount > 0).length;
+    const withoutBids = totalQuotes - withBids;
+    const wonCount = rows.filter((row) => row.status === "approved").length;
+    const lostCount = rows.filter((row) => row.status === "rejected").length;
+
+    console.info("[admin inbox] loaded", {
+      totalQuotes,
+      withBids,
+      withoutBids,
+      wonCount,
+      lostCount,
+    });
+  }
 
   const hasActiveFilters = Boolean(statusFilter || normalizedSearch);
 
