@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getFormString, serializeActionError } from "@/lib/forms";
-import { getCurrentSession } from "@/server/auth";
+import { getServerAuthUser } from "@/server/auth";
 import {
   QUOTE_UPDATE_ERROR,
   updateAdminQuote,
@@ -36,8 +36,8 @@ export async function submitAdminQuoteUpdateAction(
   formData: FormData,
 ): Promise<AdminQuoteUpdateState> {
   try {
-    const session = await getCurrentSession();
-    if (!session || !session.user) {
+    const { user } = await getServerAuthUser();
+    if (!user) {
       return { ok: false, error: ADMIN_QUOTE_UPDATE_AUTH_ERROR };
     }
 
@@ -95,8 +95,8 @@ export async function submitSelectWinningBidAction(
   try {
     console.log("[admin bids] select winner invoked", { quoteId });
 
-    const session = await getCurrentSession();
-    if (!session || !session.user) {
+    const { user } = await getServerAuthUser();
+    if (!user) {
       logAdminQuotesWarn("select winner auth failed", { quoteId });
       return { ok: false, error: ADMIN_QUOTE_UPDATE_AUTH_ERROR };
     }

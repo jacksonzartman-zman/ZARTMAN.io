@@ -1,10 +1,10 @@
 import PortalCard from "../../PortalCard";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function CustomerQuotesPlaceholder() {
-  await requireSession({ redirectTo: "/customer" });
+  await requireUser({ redirectTo: "/customer" });
 
   return (
     <PortalCard

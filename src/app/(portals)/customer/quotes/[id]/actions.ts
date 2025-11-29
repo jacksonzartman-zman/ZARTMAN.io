@@ -8,7 +8,7 @@ import {
   acceptSupplierBidForQuote,
   declineSupplierBid,
 } from "@/server/suppliers";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { markWinningBidForQuote } from "@/server/bids";
 import { getFormString, serializeActionError } from "@/lib/forms";
@@ -81,8 +81,8 @@ export async function postCustomerQuoteMessageAction(
   }
 
     try {
-    const session = await requireSession({ redirectTo: `/customer/quotes/${quoteId}` });
-    const customer = await getCustomerByUserId(session.user.id);
+    const user = await requireUser({ redirectTo: `/customer/quotes/${quoteId}` });
+    const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return {
         success: false,
@@ -123,10 +123,7 @@ export async function postCustomerQuoteMessageAction(
     }
 
     const authorEmail =
-      customer.email ??
-      session.user.email ??
-      normalizedQuoteEmail ??
-      "customer@zartman.io";
+      customer.email ?? user.email ?? normalizedQuoteEmail ?? "customer@zartman.io";
 
     const { data, error } = await createCustomerQuoteMessage({
       quoteId,
@@ -179,8 +176,8 @@ export async function submitCustomerSelectWinningBidAction(
     const redirectPath = normalizedQuoteId
       ? `/customer/quotes/${normalizedQuoteId}`
       : "/customer/quotes";
-    const session = await requireSession({ redirectTo: redirectPath });
-    const customer = await getCustomerByUserId(session.user.id);
+    const user = await requireUser({ redirectTo: redirectPath });
+    const customer = await getCustomerByUserId(user.id);
 
     if (!customer) {
       console.error("[customer decisions] select winner failed", {
@@ -333,8 +330,8 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
   const quoteId = rawQuoteId.trim();
 
   try {
-    const session = await requireSession({ redirectTo: `/customer/quotes/${quoteId}` });
-    const customer = await getCustomerByUserId(session.user.id);
+    const user = await requireUser({ redirectTo: `/customer/quotes/${quoteId}` });
+    const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return {
         success: false,

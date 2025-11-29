@@ -23,7 +23,7 @@ import {
   type SupplierQuoteMatch,
   type SupplierProfile,
 } from "@/server/suppliers";
-import { getCurrentSession } from "@/server/auth";
+import { getServerAuthUser } from "@/server/auth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
 import { loadSupplierActivityFeed } from "@/server/activity";
@@ -42,9 +42,9 @@ type SupplierDashboardPageProps = {
 async function SupplierDashboardPage({
   searchParams,
 }: SupplierDashboardPageProps) {
-  const session = await getCurrentSession();
-  const roles = session ? await resolveUserRoles(session.user.id) : null;
-  if (!session) {
+  const { user } = await getServerAuthUser();
+  const roles = user ? await resolveUserRoles(user.id) : null;
+  if (!user) {
     return (
       <section className="mx-auto max-w-3xl rounded-3xl border border-slate-900 bg-slate-950/70 p-8 text-center shadow-[0_18px_40px_rgba(2,6,23,0.85)]">
         <p className="text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
@@ -64,16 +64,16 @@ async function SupplierDashboardPage({
       </section>
     );
   }
-  console.log("[portal] user id", session.user.id);
-  console.log("[portal] email", session.user.email);
+  console.log("[portal] user id", user.id);
+  console.log("[portal] email", user.email);
   console.log("[portal] isSupplier", roles?.isSupplier);
   console.log("[portal] isCustomer", roles?.isCustomer);
   const sessionCompanyName =
-    sanitizeDisplayName(session.user.user_metadata?.company) ??
-    sanitizeDisplayName(session.user.user_metadata?.full_name) ??
-    sanitizeDisplayName(session.user.email) ??
+    sanitizeDisplayName(user.user_metadata?.company) ??
+    sanitizeDisplayName(user.user_metadata?.full_name) ??
+    sanitizeDisplayName(user.email) ??
     "your team";
-  const supplierEmail = normalizeEmailInput(session.user.email ?? null);
+  const supplierEmail = normalizeEmailInput(user.email ?? null);
   const onboardingJustCompleted =
     getSearchParamValue(searchParams, "onboard") === "1";
 
@@ -310,7 +310,7 @@ async function SupplierDashboardPage({
       ) : null}
       {DEBUG_PORTALS ? (
         <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
-          {JSON.stringify({ session, roles }, null, 2)}
+          {JSON.stringify({ user, roles }, null, 2)}
         </pre>
       ) : null}
     </div>

@@ -1,6 +1,6 @@
 import type React from "react";
 import Link from "next/link";
-import { getCurrentSession } from "@/server/auth";
+import { getServerAuthUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import PortalCard from "../../PortalCard";
 import { SupplierOnboardingForm } from "./SupplierOnboardingForm";
@@ -22,8 +22,8 @@ type SupplierOnboardingPageProps = {
 async function SupplierOnboardingPage({
   searchParams,
 }: SupplierOnboardingPageProps) {
-  const session = await getCurrentSession();
-  if (!session) {
+  const { user } = await getServerAuthUser();
+  if (!user) {
     return (
       <div className="space-y-6">
         <PortalCard
@@ -43,7 +43,7 @@ async function SupplierOnboardingPage({
       </div>
     );
   }
-  const profile = await loadSupplierProfileByUserId(session.user.id);
+  const profile = await loadSupplierProfileByUserId(user.id);
   const supplier = profile?.supplier ?? null;
 
   return (
@@ -67,7 +67,7 @@ async function SupplierOnboardingPage({
       </PortalCard>
 
         <SupplierOnboardingForm
-          defaultEmail={supplier?.primary_email ?? session.user.email ?? undefined}
+          defaultEmail={supplier?.primary_email ?? user.email ?? undefined}
           defaultCompany={supplier?.company_name ?? undefined}
           defaultPhone={supplier?.phone ?? undefined}
           defaultWebsite={supplier?.website ?? undefined}

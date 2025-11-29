@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { DEFAULT_UPLOAD_STATUS } from "@/app/admin/constants";
-import { requireSession, UnauthorizedError } from "@/server/auth";
+import { requireUser, UnauthorizedError } from "@/server/auth";
 import {
   CAD_EXTENSIONS,
   CAD_FILE_TYPE_DESCRIPTION,
@@ -89,11 +89,11 @@ export async function POST(req: NextRequest) {
   const logContext: UploadLogContext = {};
 
   try {
-    const session = await requireSession();
-    const normalizedSessionEmail = normalizeEmailInput(session.user.email ?? null);
+    const user = await requireUser();
+    const normalizedSessionEmail = normalizeEmailInput(user.email ?? null);
     if (!normalizedSessionEmail) {
       console.error("[quote] session missing email", {
-        userId: session.user.id,
+        userId: user.id,
       });
       return buildError(
         "Your session is missing a verified email. Refresh or sign in again.",
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
         { step: "auth" },
       );
     }
-    logContext.userId = session.user.id;
+    logContext.userId = user.id;
     logContext.sessionEmail = normalizedSessionEmail;
 
     const formData = await req.formData();
@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
       name: contactName,
       email: normalizedSessionEmail,
       company: company || null,
-      user_id: session.user.id,
+      user_id: user.id,
     };
     const { data: customer, error: customerError } = await supabase
       .from("customers")
@@ -352,7 +352,7 @@ export async function POST(req: NextRequest) {
     if (!quoteId) {
       const quoteCustomerName =
         contactName ||
-        buildSessionDisplayName(session.user) ||
+        buildSessionDisplayName(user) ||
         normalizedSessionEmail;
       const quoteInsertPayload = {
         upload_id: uploadRow.id,
@@ -370,7 +370,7 @@ export async function POST(req: NextRequest) {
         material: null,
       };
       console.log("[quote] create requested", {
-        userId: session.user.id,
+        userId: user.id,
         email: contactEmail,
         payloadSummary,
       });
@@ -383,7 +383,7 @@ export async function POST(req: NextRequest) {
 
       const quoteErrorMessage = serializeSupabaseError(quoteInsertError);
       console.log("[quote] create result", {
-        userId: session.user.id,
+        userId: user.id,
         email: contactEmail,
         quoteId: createdQuote?.id ?? null,
         uploadId: uploadRow.id,
