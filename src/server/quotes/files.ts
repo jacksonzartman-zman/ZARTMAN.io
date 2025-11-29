@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
+import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
 import type { QuoteFileSource } from "./types";
 
 type FileStorageRow = {
@@ -50,20 +51,46 @@ export async function getQuoteFilePreviews(
     const includeFilesTable = options?.includeFilesTable !== false;
     let files: FileStorageRow[] = [];
     if (includeFilesTable) {
-      const { data, error: filesError } = await supabaseServer
-        .from("files")
-        .select("storage_path,bucket_id,filename,mime")
-        .eq("quote_id", quote.id)
-        .order("created_at", { ascending: true });
+      try {
+        const { data, error: filesError } = await supabaseServer
+          .from("files")
+          .select("storage_path,bucket_id,filename,mime")
+          .eq("quote_id", quote.id)
+          .order("created_at", { ascending: true });
 
-      if (filesError) {
-        if (options?.onFilesError) {
-          options.onFilesError(filesError);
+        if (filesError) {
+          const serializedError = serializeSupabaseError(filesError);
+          // Some environments omit public.files; downgrade PGRST205/42703 to a warning and surface zero files instead of failing.
+          if (isMissingTableOrColumnError(filesError)) {
+            console.warn(
+              "[admin uploads] files schema missing; treating as zero files",
+              {
+                quoteId: quote.id,
+                error: serializedError,
+              },
+            );
+          } else {
+            console.error("Failed to load files for quote", {
+              quoteId: quote.id,
+              error: serializedError,
+            });
+          }
+
+          if (options?.onFilesError) {
+            options.onFilesError(filesError);
+          }
         } else {
-          console.error("Failed to load files for quote", quote.id, filesError);
+          files = data ?? [];
         }
-      } else {
-        files = data ?? [];
+      } catch (error) {
+        const serializedError = serializeSupabaseError(error);
+        console.error("Failed to load files for quote", {
+          quoteId: quote.id,
+          error: serializedError,
+        });
+        if (options?.onFilesError) {
+          options.onFilesError(error);
+        }
       }
     }
 
