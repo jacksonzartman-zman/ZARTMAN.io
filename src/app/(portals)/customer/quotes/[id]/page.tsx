@@ -93,11 +93,9 @@ export default async function CustomerQuoteDetailPage({
   const normalizedQuoteEmail = normalizeEmailInput(quote.email);
   const customerEmail = normalizeEmailInput(customer.email);
   const quoteCustomerMatches =
-    (quote.customer_id && quote.customer_id === customer.id) ||
-    (!quote.customer_id &&
-      normalizedQuoteEmail &&
-      customerEmail &&
-      normalizedQuoteEmail === customerEmail);
+    normalizedQuoteEmail !== null &&
+    customerEmail !== null &&
+    normalizedQuoteEmail === customerEmail;
   const usingOverride =
     Boolean(overrideEmail) && overrideEmail !== customerEmail;
   const overrideMatchesQuote =
@@ -112,7 +110,6 @@ export default async function CustomerQuoteDetailPage({
       identityEmail: customerEmail,
       overrideEmail,
       quoteEmail: quote.email,
-      quoteCustomerId: quote.customer_id,
       customerId: customer.id,
     });
     return (
