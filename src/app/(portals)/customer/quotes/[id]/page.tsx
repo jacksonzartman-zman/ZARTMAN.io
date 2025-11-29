@@ -30,7 +30,9 @@ import { DataFallbackNotice } from "@/app/(portals)/DataFallbackNotice";
 import {
   getQuoteStatusLabel,
   normalizeQuoteStatus,
+  isOpenQuoteStatus,
 } from "@/server/quotes/status";
+import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
 
 export const dynamic = "force-dynamic";
 
@@ -139,6 +141,31 @@ export default async function CustomerQuoteDetailPage({
     ? (bidsResult.data ?? [])
     : [];
   const bidCount = bids.length;
+  const quoteIsOpen = isOpenQuoteStatus(quote.status ?? undefined);
+  const quoteIsWon = normalizedQuoteStatus === "won";
+  const winningBid =
+    bids.find(
+      (bid) =>
+        typeof bid.status === "string" &&
+        bid.status.trim().toLowerCase() === "won",
+    ) ?? null;
+  const winningBidId = winningBid?.id ?? null;
+  const winningBidSelectedAt = winningBid?.updated_at ?? winningBid?.created_at ?? null;
+  const canSelectWinner = !readOnly && quoteIsOpen && !quoteIsWon && bidCount > 0;
+  let selectWinnerDisabledReason: string | null = null;
+  if (readOnly) {
+    selectWinnerDisabledReason =
+      "Selecting a winner is disabled while you are viewing this workspace in read-only mode.";
+  } else if (!quoteIsOpen) {
+    selectWinnerDisabledReason =
+      "This quote is no longer open for supplier selection.";
+  } else if (quoteIsWon) {
+    selectWinnerDisabledReason =
+      "A winning supplier has already been selected for this quote.";
+  } else if (bidCount === 0) {
+    selectWinnerDisabledReason =
+      "At least one supplier bid is required before awarding the quote.";
+  }
   const pricedBids = bids.filter(
     (bid): bid is BidRow & { amount: number } => {
       const value = bid.amount;
@@ -475,39 +502,53 @@ export default async function CustomerQuoteDetailPage({
           </p>
         ) : bidCount === 0 ? (
           <p className="mt-3 text-xs text-slate-400">
-            No bids have been submitted yet. We&apos;ll update this page as soon as suppliers respond.
+            No supplier bids yet. We&apos;ll notify you when bids arrive.
           </p>
         ) : (
-          <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
-            <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Best price
-              </dt>
-              <dd className="mt-1">
-                {bestPriceValue != null
-                  ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
-                  : "Pending"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Fastest lead time
-              </dt>
-              <dd className="mt-1">
-                {fastestLeadTime != null
-                  ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
-                  : "Pending"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Total bids
-              </dt>
-              <dd className="mt-1">
-                {bidCount} bid{bidCount === 1 ? "" : "s"}
-              </dd>
-            </div>
-          </dl>
+          <>
+            <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Best price
+                </dt>
+                <dd className="mt-1">
+                  {bestPriceValue != null
+                    ? formatCurrency(
+                        bestPriceValue,
+                        bestPriceCurrency ?? undefined,
+                      )
+                    : "Pending"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Fastest lead time
+                </dt>
+                <dd className="mt-1">
+                  {fastestLeadTime != null
+                    ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
+                    : "Pending"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Total bids
+                </dt>
+                <dd className="mt-1">
+                  {bidCount} bid{bidCount === 1 ? "" : "s"}
+                </dd>
+              </div>
+            </dl>
+            <CustomerBidSelectionCard
+              quoteId={quote.id}
+              bids={bids}
+              canSelectWinner={canSelectWinner}
+              disableReason={selectWinnerDisabledReason}
+              winningBidId={winningBidId}
+              winningBidSelectedAt={winningBidSelectedAt}
+              quoteWon={quoteIsWon}
+            />
+          </>
         )}
       </section>
 
