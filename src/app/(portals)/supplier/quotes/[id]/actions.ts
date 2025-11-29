@@ -20,7 +20,7 @@ import { loadBidForSupplierAndQuote } from "@/server/bids";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { canUserBid } from "@/lib/permissions";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
-import { getCurrentSession } from "@/server/auth";
+import { getServerAuthUser } from "@/server/auth";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import {
   getSupplierDisplayName,
@@ -211,8 +211,8 @@ export async function submitSupplierBidAction(
   console.log("[bids] submit action invoked");
 
   try {
-    const session = await getCurrentSession();
-    if (!session) {
+    const { user } = await getServerAuthUser();
+    if (!user) {
       return {
         ok: false,
         error: "You need to be logged in to submit a bid.",
@@ -272,11 +272,10 @@ export async function submitSupplierBidAction(
       };
     }
 
-    let supplierProfile =
-      session.user.id ? await loadSupplierProfileByUserId(session.user.id) : null;
+    let supplierProfile = user.id ? await loadSupplierProfileByUserId(user.id) : null;
 
-    if (!supplierProfile && session.user.email) {
-      supplierProfile = await loadSupplierProfile(session.user.email);
+    if (!supplierProfile && user.email) {
+      supplierProfile = await loadSupplierProfile(user.email);
     }
 
     if (!supplierProfile?.supplier) {
@@ -290,7 +289,7 @@ export async function submitSupplierBidAction(
     supplierId = supplier.id;
     const supplierEmail =
       normalizeEmailInput(
-        supplier.primary_email ?? session.user.email ?? null,
+        supplier.primary_email ?? user.email ?? null,
       ) ?? null;
 
     if (!supplierEmail) {

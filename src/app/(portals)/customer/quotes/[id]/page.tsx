@@ -22,7 +22,7 @@ import {
 } from "@/app/(portals)/quotes/workspaceData";
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
 import { loadBidsForQuote, type BidRow } from "@/server/bids";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
@@ -50,12 +50,12 @@ export default async function CustomerQuoteDetailPage({
     resolveMaybePromise(searchParams),
   ]);
 
-  const session = await requireSession({
+  const user = await requireUser({
     redirectTo: `/customer/quotes/${quoteId}`,
   });
   const emailParam = getSearchParamValue(resolvedSearchParams, "email");
   const overrideEmail = normalizeEmailInput(emailParam);
-  const customer = await getCustomerByUserId(session.user.id);
+  const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {
     return (
@@ -225,10 +225,7 @@ export default async function CustomerQuoteDetailPage({
     "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
   const identityEmailDisplay =
     (usingOverride && overrideEmail) ||
-    quote.email ||
-    customer.email ||
-    session.user.email ||
-    "customer";
+    quote.email || customer.email || user.email || "customer";
 
   const summaryContent = (
     <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)] lg:gap-4 lg:space-y-0">

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { Session } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 import {
   CAD_FILE_TYPE_DESCRIPTION,
   MAX_UPLOAD_SIZE_BYTES,
@@ -131,10 +131,10 @@ export function validateQuoteIntakeFields(
 
 export async function persistQuoteIntake(
   payload: QuoteIntakePayload,
-  session: Session,
+  user: User,
   options?: { contactEmailOverride?: string | null },
 ): Promise<QuoteIntakePersistResult> {
-  const sessionEmail = normalizeEmailInput(session.user.email ?? null);
+  const sessionEmail = normalizeEmailInput(user.email ?? null);
   const formEmail = normalizeEmailInput(payload.email);
   const contactEmail =
     normalizeEmailInput(options?.contactEmailOverride ?? null) ??
@@ -165,7 +165,7 @@ export async function persistQuoteIntake(
     sanitizeNullable(payload.company) ||
     contactEmail;
   const logContext = {
-    userId: session.user.id,
+    userId: user.id,
     contactEmail,
     sessionEmail,
     fileName: payload.file.name,
@@ -213,7 +213,7 @@ export async function persistQuoteIntake(
       contactEmail,
       contactName,
       company: sanitizeNullable(payload.company),
-      session,
+      user,
       sessionEmail,
     });
 
@@ -364,10 +364,10 @@ async function upsertCustomerRecord(args: {
   contactEmail: string;
   contactName: string;
   company: string | null;
-  session: Session;
+  user: User;
   sessionEmail: string | null;
 }): Promise<string | null> {
-  const { contactEmail, contactName, company, session, sessionEmail } = args;
+  const { contactEmail, contactName, company, user, sessionEmail } = args;
   const payload: Record<string, unknown> = {
     name: contactName,
     email: contactEmail,
@@ -375,7 +375,7 @@ async function upsertCustomerRecord(args: {
   };
 
   if (sessionEmail && sessionEmail === contactEmail) {
-    payload.user_id = session.user.id;
+    payload.user_id = user.id;
   }
 
   try {

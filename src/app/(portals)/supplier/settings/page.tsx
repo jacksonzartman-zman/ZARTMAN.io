@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { loadSupplierProfile } from "@/server/suppliers";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import type { Org } from "@/types/org";
@@ -11,21 +11,21 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function SupplierSettingsPage() {
-  const session = await requireSession({ redirectTo: "/supplier" });
-  const supplierEmail = normalizeEmailInput(session.user.email ?? null);
+  const user = await requireUser({ redirectTo: "/supplier" });
+  const supplierEmail = normalizeEmailInput(user.email ?? null);
   const profile = supplierEmail ? await loadSupplierProfile(supplierEmail) : null;
   const supplier = profile?.supplier ?? null;
   const hasProfile = Boolean(supplier);
   const companyName =
     supplier?.company_name ??
-    (session.user.user_metadata?.company as string | undefined) ??
+    (user.user_metadata?.company as string | undefined) ??
     "Your shop";
   const primaryEmail = supplier?.primary_email ?? supplierEmail ?? "shop@example.com";
   const phone = supplier?.phone ?? "Not provided";
   const website = supplier?.website ?? "Not provided";
   const country = supplier?.country ?? "Not provided";
-  const org = deriveOrgFromSession(session, companyName);
-  const seatSummary = deriveOrgSeatSummary(org, session);
+  const org = deriveOrgFromSession(user, companyName);
+  const seatSummary = deriveOrgSeatSummary(org, user);
   const planLabel = formatPlanLabel(org.plan);
 
   const notificationPrefs = [
