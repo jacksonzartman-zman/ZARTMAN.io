@@ -17,6 +17,9 @@ export type InboxRow = {
   manufacturingProcess: string | null;
   quantity: string | null;
   status: UploadStatus;
+  bidCount: number;
+  lastBidAt: string | null;
+  hasWinningBid: boolean;
 };
 
 type AdminTableProps = {
@@ -30,7 +33,7 @@ export default function AdminTable({
 }: AdminTableProps) {
   const isEmpty = rows.length === 0;
   const statusPillClass =
-    "inline-flex items-center rounded-full border border-transparent px-3 py-1 text-xs font-semibold";
+    "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold";
 
   const emptyHeadline = hasActiveFilters
     ? "No RFQs match your filters yet."
@@ -44,6 +47,7 @@ export default function AdminTable({
           <th className="px-4 py-3">Contact</th>
           <th className="px-4 py-3">Process</th>
           <th className="px-4 py-3">Quantity / volumes</th>
+          <th className="px-4 py-3">Bids</th>
           <th className="px-4 py-3">Status</th>
           <th className="px-4 py-3 text-right">Details</th>
         </tr>
@@ -52,7 +56,7 @@ export default function AdminTable({
         isEmpty ? (
           <tr>
             <td
-              colSpan={7}
+              colSpan={8}
               className="px-6 py-12 text-center text-base text-slate-300"
             >
               <p className="font-medium text-slate-100">{emptyHeadline}</p>
@@ -73,6 +77,18 @@ export default function AdminTable({
             const href = row.quoteId
               ? `/admin/quotes/${row.quoteId}`
               : `/admin/uploads/${row.id}`;
+            const bidSummary =
+              row.bidCount === 0
+                ? "No bids"
+                : `${row.bidCount} bid${row.bidCount === 1 ? "" : "s"}${
+                    row.hasWinningBid ? " • winner selected" : ""
+                  }`;
+            const formattedLastBid = formatDateTime(row.lastBidAt);
+            const lastBidLabel =
+              row.bidCount > 0 && row.lastBidAt
+                ? `Last bid: ${formattedLastBid}`
+                : "Last bid: —";
+            const statusVariant = STATUS_BADGE_VARIANTS[row.status];
 
             return (
               <tr
@@ -109,9 +125,19 @@ export default function AdminTable({
                 <td className={`${adminTableCellClass} text-slate-200`}>
                   {row.quantity || "—"}
                 </td>
+                <td className={`${adminTableCellClass}`}>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-slate-100">
+                      {bidSummary}
+                    </span>
+                    <span className="text-xs text-slate-400">{lastBidLabel}</span>
+                  </div>
+                </td>
                 <td className={adminTableCellClass}>
-                  <span className={`${statusPillClass} bg-emerald-500/10 text-emerald-200`}>
-                    {UPLOAD_STATUS_LABELS[row.status]}
+                  <span
+                    className={clsx(statusPillClass, statusVariant.className)}
+                  >
+                    {statusVariant.label}
                   </span>
                 </td>
                   <td className={`${adminTableCellClass} text-right`}>
@@ -145,3 +171,31 @@ export default function AdminTable({
     />
   );
 }
+
+type StatusBadgeVariant = {
+  label: string;
+  className: string;
+};
+
+const STATUS_BADGE_VARIANTS: Record<UploadStatus, StatusBadgeVariant> = {
+  submitted: {
+    label: UPLOAD_STATUS_LABELS.submitted,
+    className: "border-sky-400/40 bg-sky-500/10 text-sky-100",
+  },
+  in_review: {
+    label: UPLOAD_STATUS_LABELS.in_review,
+    className: "border-sky-400/40 bg-sky-500/10 text-sky-100",
+  },
+  quoted: {
+    label: UPLOAD_STATUS_LABELS.quoted,
+    className: "border-amber-400/40 bg-amber-500/10 text-amber-100",
+  },
+  approved: {
+    label: "Won",
+    className: "border-emerald-400/40 bg-emerald-500/10 text-emerald-100",
+  },
+  rejected: {
+    label: "Lost",
+    className: "border-rose-400/40 bg-rose-500/10 text-rose-100",
+  },
+};

@@ -86,6 +86,13 @@ export type AdminUploadDetailRow = AdminUploadInboxRow & {
   admin_notes: string | null;
 };
 
+export type AdminInboxBidAggregate = {
+  quoteId: string;
+  bidCount: number;
+  lastBidAt: string | null;
+  hasWinningBid: boolean;
+};
+
 export type AdminUploadsInboxFilter = {
   status?: UploadStatus | null;
   search?: string | null;
@@ -280,6 +287,101 @@ export async function loadAdminUploadDetail(
       error: "Unable to load this upload right now.",
     };
   }
+}
+
+type SupplierBidAggregateRow = {
+  quote_id: string | null;
+  status: string | null;
+  created_at: string | null;
+};
+
+export async function loadAdminInboxBidAggregates(
+  quoteIds: readonly (string | null | undefined)[],
+): Promise<Record<string, AdminInboxBidAggregate>> {
+  const normalizedIds = Array.from(
+    new Set(
+      (quoteIds ?? [])
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter((value) => value.length > 0),
+    ),
+  );
+
+  if (normalizedIds.length === 0) {
+    return {};
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("supplier_bids")
+      .select("quote_id,status,created_at")
+      .in("quote_id", normalizedIds)
+      .returns<SupplierBidAggregateRow[]>();
+
+    if (error) {
+      logBidAggregateError(error);
+      return {};
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    return rows.reduce<Record<string, AdminInboxBidAggregate>>((acc, row) => {
+      const quoteId =
+        typeof row?.quote_id === "string" && row.quote_id.trim().length > 0
+          ? row.quote_id
+          : null;
+
+      if (!quoteId) {
+        return acc;
+      }
+
+      if (!acc[quoteId]) {
+        acc[quoteId] = {
+          quoteId,
+          bidCount: 0,
+          lastBidAt: null,
+          hasWinningBid: false,
+        };
+      }
+
+      const aggregate = acc[quoteId];
+      aggregate.bidCount += 1;
+
+      const createdAt =
+        typeof row.created_at === "string" && row.created_at.trim().length > 0
+          ? row.created_at
+          : null;
+      if (createdAt) {
+        if (
+          !aggregate.lastBidAt ||
+          new Date(createdAt).getTime() > new Date(aggregate.lastBidAt).getTime()
+        ) {
+          aggregate.lastBidAt = createdAt;
+        }
+      }
+
+      if (isWinningBidStatus(row.status)) {
+        aggregate.hasWinningBid = true;
+      }
+
+      return acc;
+    }, {});
+  } catch (error) {
+    logBidAggregateError(error);
+    return {};
+  }
+}
+
+function logBidAggregateError(error: unknown) {
+  const serialized = serializeSupabaseError(error);
+  console.error("[admin inbox] failed to load bid aggregates", {
+    error: serialized ?? error ?? null,
+  });
+}
+
+function isWinningBidStatus(status: unknown): boolean {
+  if (typeof status !== "string") {
+    return false;
+  }
+  return status.trim().toLowerCase() === "won";
 }
 
 function escapeForOrFilter(value: string) {
