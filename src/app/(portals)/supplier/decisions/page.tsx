@@ -6,7 +6,7 @@ import { SystemStatusBar } from "../../SystemStatusBar";
 import { EmptyStateNotice } from "../../EmptyStateNotice";
 import { primaryCtaClasses } from "@/lib/ctas";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
-import { getCurrentSession } from "@/server/auth";
+import { getServerAuthUser } from "@/server/auth";
 import { resolveUserRoles } from "@/server/users/roles";
 import { loadSupplierProfile } from "@/server/suppliers";
 import {
@@ -18,9 +18,9 @@ import { formatRelativeTimeFromTimestamp } from "@/lib/relativeTime";
 export const dynamic = "force-dynamic";
 
 export default async function SupplierDecisionsPage() {
-  const session = await getCurrentSession();
+  const { user } = await getServerAuthUser();
 
-  if (!session) {
+  if (!user) {
     return (
       <PortalLoginPanel
         role="supplier"
@@ -29,7 +29,7 @@ export default async function SupplierDecisionsPage() {
     );
   }
 
-  const roles = await resolveUserRoles(session.user.id);
+  const roles = await resolveUserRoles(user.id);
   if (!roles?.isSupplier) {
     return (
       <PortalCard
@@ -51,7 +51,7 @@ export default async function SupplierDecisionsPage() {
     );
   }
 
-  const supplierEmail = normalizeEmailInput(session.user.email ?? null);
+  const supplierEmail = normalizeEmailInput(user.email ?? null);
   if (!supplierEmail) {
     return (
       <PortalCard
@@ -93,8 +93,8 @@ export default async function SupplierDecisionsPage() {
   const hasDecisions = decisions.length > 0;
   const companyName =
     sanitizeDisplayName(profile.supplier.company_name) ??
-    sanitizeDisplayName(session.user.user_metadata?.company as string | null) ??
-    sanitizeDisplayName(session.user.user_metadata?.full_name as string | null) ??
+    sanitizeDisplayName(user.user_metadata?.company as string | null) ??
+    sanitizeDisplayName(user.user_metadata?.full_name as string | null) ??
     "your shop";
   const statusMessage = hasDecisions
     ? "Action needed on matched RFQs"

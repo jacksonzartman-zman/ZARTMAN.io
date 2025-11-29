@@ -13,7 +13,7 @@ import {
   getFirstParamValue,
   normalizeEmailInput,
 } from "@/app/(portals)/quotes/pageUtils";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getCustomerById, getCustomerByUserId } from "@/server/customers";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
 import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
@@ -98,20 +98,20 @@ type LoadCustomerPortalDataArgs =
 async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
-  const session = await requireSession({ redirectTo: "/customer" });
-  const roles = await resolveUserRoles(session.user.id);
-  console.log("[portal] user id", session.user.id);
-  console.log("[portal] email", session.user.email);
+  const user = await requireUser({ redirectTo: "/customer" });
+  const roles = await resolveUserRoles(user.id);
+  console.log("[portal] user id", user.id);
+  console.log("[portal] email", user.email);
   console.log("[portal] isSupplier", roles?.isSupplier);
   console.log("[portal] isCustomer", roles?.isCustomer);
   const sessionCompanyName =
-    sanitizeDisplayName(session.user.user_metadata?.company) ??
-    sanitizeDisplayName(session.user.user_metadata?.full_name) ??
-    sanitizeDisplayName(session.user.email) ??
+    sanitizeDisplayName(user.user_metadata?.company) ??
+    sanitizeDisplayName(user.user_metadata?.full_name) ??
+    sanitizeDisplayName(user.email) ??
     "your team";
   const overrideParam = getFirstParamValue(searchParams?.email);
   const overrideEmail = normalizeEmailInput(overrideParam);
-  const customer = await getCustomerByUserId(session.user.id);
+  const customer = await getCustomerByUserId(user.id);
   let decisions: CustomerDecision[] = [];
   let hasDecisions = false;
 
@@ -128,10 +128,10 @@ async function CustomerDashboardPage({
           companyName={sessionCompanyName}
         />
         <CompleteCustomerProfileCard
-          sessionEmail={session.user.email ?? null}
+          sessionEmail={user.email ?? null}
           defaultCompanyName={
-            session.user.user_metadata?.company ??
-            session.user.user_metadata?.full_name ??
+            user.user_metadata?.company ??
+            user.user_metadata?.full_name ??
             null
           }
         />
@@ -139,7 +139,7 @@ async function CustomerDashboardPage({
         <DataFallbackNotice className="mt-2" />
         {DEBUG_PORTALS ? (
           <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
-            {JSON.stringify({ session, roles }, null, 2)}
+            {JSON.stringify({ user, roles }, null, 2)}
           </pre>
         ) : null}
       </div>
@@ -147,7 +147,7 @@ async function CustomerDashboardPage({
   }
 
   const customerEmail = normalizeEmailInput(customer.email);
-  const sessionEmail = normalizeEmailInput(session.user.email ?? null);
+  const sessionEmail = normalizeEmailInput(user.email ?? null);
   const usingOverride =
     Boolean(overrideEmail) && overrideEmail !== customerEmail;
   const viewerEmail = usingOverride ? overrideEmail : customerEmail ?? sessionEmail;
@@ -172,9 +172,9 @@ async function CustomerDashboardPage({
         customerId: customer.id,
       });
   console.log("[customer workspace] quotes loaded", {
-    userId: session.user.id,
+    userId: user.id,
     customerId: usingOverride ? null : customer.id,
-    viewerEmail: viewerEmail ?? session.user.email ?? null,
+    viewerEmail: viewerEmail ?? user.email ?? null,
     quoteCount: portalData.quotes.length,
     domainFallbackUsed: portalData.domainFallbackUsed,
     error: portalData.error ?? null,
@@ -420,7 +420,7 @@ async function CustomerDashboardPage({
       </PortalCard>
       {DEBUG_PORTALS ? (
         <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
-          {JSON.stringify({ session, roles }, null, 2)}
+          {JSON.stringify({ user, roles }, null, 2)}
         </pre>
       ) : null}
     </div>

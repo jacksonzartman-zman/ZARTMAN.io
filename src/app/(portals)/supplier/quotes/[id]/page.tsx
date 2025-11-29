@@ -27,7 +27,7 @@ import { loadSupplierProfile } from "@/server/suppliers";
 import { loadBidForSupplierAndQuote, type BidRow } from "@/server/bids";
 import { SupplierBidPanel } from "./SupplierBidPanel";
 import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
-import { getCurrentSession } from "@/server/auth";
+import { getServerAuthUser } from "@/server/auth";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { canUserBid } from "@/lib/permissions";
@@ -44,8 +44,8 @@ export default async function SupplierQuoteDetailPage({
 }: SupplierQuotePageProps) {
   const { id: quoteId } = await params;
 
-  const session = await getCurrentSession();
-  if (!session) {
+  const { user } = await getServerAuthUser();
+  if (!user) {
     return (
       <PortalLoginPanel
         role="supplier"
@@ -53,7 +53,7 @@ export default async function SupplierQuoteDetailPage({
       />
     );
   }
-  const supplierEmail = normalizeEmailInput(session.user.email ?? null);
+  const supplierEmail = normalizeEmailInput(user.email ?? null);
 
   if (!supplierEmail) {
     return (
@@ -134,7 +134,7 @@ export default async function SupplierQuoteDetailPage({
       supplierEmail={
         profile.supplier.primary_email ??
         supplierEmail ??
-        session.user.email ??
+        user.email ??
         "supplier"
       }
       assignments={assignments}

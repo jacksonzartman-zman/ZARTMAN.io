@@ -1,17 +1,17 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import PortalLayout from "../PortalLayout";
-import { getCurrentSession } from "@/server/auth";
+import { getServerAuthUser } from "@/server/auth";
 
 export default async function CustomerPortalLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const session = await getCurrentSession();
-  console.log("[customer layout] server session email:", session?.user?.email ?? null);
+  const { user } = await getServerAuthUser();
+  console.log("[customer layout] server session email:", user?.email ?? null);
 
-  if (!session) {
+  if (!user) {
     return (
       <PortalLayout>
         <section className="mx-auto max-w-2xl rounded-3xl border border-slate-900 bg-slate-950/70 p-8 text-center shadow-[0_18px_40px_rgba(2,6,23,0.85)]">

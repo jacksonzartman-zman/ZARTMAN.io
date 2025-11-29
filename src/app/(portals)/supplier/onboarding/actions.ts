@@ -9,7 +9,7 @@ import {
   upsertSupplierProfile,
   type SupplierCapabilityInput,
 } from "@/server/suppliers";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 
 export type SupplierOnboardingState = {
   ok: boolean;
@@ -44,13 +44,13 @@ export async function submitSupplierOnboardingAction(
   _prevState: SupplierOnboardingState,
   formData: FormData,
 ): Promise<SupplierOnboardingState> {
-  const session = await requireSession({ redirectTo: "/supplier/onboarding" });
-  const userId = session.user.id;
+  const user = await requireUser({ redirectTo: "/supplier/onboarding" });
+  const userId = user.id;
   const rawCompanyName = getText(formData, "company_name");
   const rawPrimaryEmail = getText(formData, "primary_email");
   const normalizedPrimaryEmail =
     normalizeEmail(rawPrimaryEmail) ??
-    normalizeEmail(session.user.email ?? null);
+    normalizeEmail(user.email ?? null);
   const phone = getText(formData, "phone");
   const website = getText(formData, "website");
   const country = getText(formData, "country");

@@ -2,12 +2,12 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import UploadBox from "@/components/UploadBox";
-import { getCurrentSession } from "@/server/auth";
+import { getServerAuthUser } from "@/server/auth";
 
 export default async function QuotePage() {
-  const session = await getCurrentSession();
+  const { user } = await getServerAuthUser();
 
-  if (!session) {
+  if (!user) {
     redirect("/login?next=/quote");
   }
 
