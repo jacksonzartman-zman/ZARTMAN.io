@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import {
   attachQuotesToCustomer,
   upsertCustomerProfileForUser,
@@ -21,7 +21,7 @@ export async function completeCustomerProfileAction(
   formData: FormData,
 ): Promise<CompleteCustomerProfileActionState> {
   try {
-    const session = await requireSession({ redirectTo: "/customer" });
+    const user = await requireUser({ redirectTo: "/customer" });
     const companyName = getText(formData, "company_name");
     const phone = getText(formData, "phone");
     const website = getText(formData, "website");
@@ -30,10 +30,10 @@ export async function completeCustomerProfileAction(
       return { ok: false, error: "Enter your company name to continue." };
     }
 
-    const normalizedEmail = normalizeEmailInput(session.user.email ?? null);
+    const normalizedEmail = normalizeEmailInput(user.email ?? null);
     if (!normalizedEmail) {
       console.error("completeCustomerProfileAction: session missing email", {
-        userId: session.user.id,
+        userId: user.id,
       });
       return {
         ok: false,
@@ -48,19 +48,19 @@ export async function completeCustomerProfileAction(
     };
 
     console.log("[customer profile] save requested", {
-      userId: session.user.id,
+      userId: user.id,
       email: normalizedEmail,
       payload,
     });
 
     const profileResult = await upsertCustomerProfileForUser({
-      userId: session.user.id,
+      userId: user.id,
       email: normalizedEmail,
       ...payload,
     });
 
     console.log("[customer profile] save result", {
-      userId: session.user.id,
+      userId: user.id,
       email: normalizedEmail,
       ok: profileResult.ok,
       operation: profileResult.ok ? profileResult.operation : undefined,

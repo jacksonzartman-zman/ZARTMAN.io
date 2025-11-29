@@ -1,4 +1,4 @@
-import type { Session } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 
 export type OrgPlan = "basic" | "pro" | "enterprise";
 
@@ -15,7 +15,7 @@ export type OrgSeatSummary = {
   available: number;
 };
 
-type SessionSource = Pick<Session, "user">;
+type SessionSource = User;
 const DEFAULT_PLAN: OrgPlan = "basic";
 const PLAN_CAPACITY: Record<OrgPlan, number> = {
   basic: 3,
@@ -24,14 +24,14 @@ const PLAN_CAPACITY: Record<OrgPlan, number> = {
 };
 
 export function deriveOrgFromSession(
-  session: SessionSource,
+  user: SessionSource,
   fallbackName: string,
 ): Org {
-  const email = session.user.email ?? "";
+  const email = user.email ?? "";
   const domain = extractDomain(email);
   const planCandidates = [
-    session.user.app_metadata?.plan,
-    session.user.user_metadata?.plan,
+    user.app_metadata?.plan,
+    user.user_metadata?.plan,
   ];
   const derivedPlan =
     planCandidates
@@ -39,10 +39,10 @@ export function deriveOrgFromSession(
       .find((value): value is OrgPlan => Boolean(value)) ??
     (domain && domain.endsWith("zartman.com") ? "enterprise" : DEFAULT_PLAN);
   const orgId =
-    (session.user.app_metadata?.org_id as string | undefined) ??
-    `org-${domain ?? session.user.id}`;
+    (user.app_metadata?.org_id as string | undefined) ??
+    `org-${domain ?? user.id}`;
   const orgNameCandidate =
-    (session.user.user_metadata?.org_name as string | undefined) ??
+    (user.user_metadata?.org_name as string | undefined) ??
     fallbackName;
   const orgName =
     typeof orgNameCandidate === "string" && orgNameCandidate.trim().length > 0
@@ -57,15 +57,12 @@ export function deriveOrgFromSession(
   };
 }
 
-export function deriveOrgSeatSummary(
-  org: Org,
-  session: SessionSource,
-): OrgSeatSummary {
+export function deriveOrgSeatSummary(org: Org, user: SessionSource): OrgSeatSummary {
   const seatUsageRaw =
-    session.user.app_metadata?.org_seat_usage ??
-    session.user.user_metadata?.org_seat_usage ??
-    session.user.app_metadata?.seat_count ??
-    session.user.user_metadata?.seat_count;
+    user.app_metadata?.org_seat_usage ??
+    user.user_metadata?.org_seat_usage ??
+    user.app_metadata?.seat_count ??
+    user.user_metadata?.seat_count;
   const usedValue =
     typeof seatUsageRaw === "number"
       ? seatUsageRaw

@@ -1,4 +1,4 @@
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import type { Org } from "@/types/org";
 import {
@@ -9,15 +9,15 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function CustomerSettingsPage() {
-  const session = await requireSession({ redirectTo: "/customer" });
-  const customer = await getCustomerByUserId(session.user.id);
-  const email = customer?.email ?? session.user.email ?? "you@company.com";
+  const user = await requireUser({ redirectTo: "/customer" });
+  const customer = await getCustomerByUserId(user.id);
+  const email = customer?.email ?? user.email ?? "you@company.com";
   const companyName =
     customer?.company_name ??
-    (session.user.user_metadata?.company as string | undefined) ??
+    (user.user_metadata?.company as string | undefined) ??
     "Your company";
-  const org = deriveOrgFromSession(session, companyName);
-  const seatSummary = deriveOrgSeatSummary(org, session);
+  const org = deriveOrgFromSession(user, companyName);
+  const seatSummary = deriveOrgSeatSummary(org, user);
   const planLabel = formatPlanLabel(org.plan);
 
   const notificationPrefs = [

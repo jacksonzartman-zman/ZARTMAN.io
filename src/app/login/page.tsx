@@ -3,7 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
-import { createAuthClient, getCurrentSession } from "@/server/auth";
+import { createAuthClient, getServerAuthUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierByUserId } from "@/server/suppliers";
 import LoginTokenBridge from "./LoginTokenBridge";
@@ -20,7 +20,9 @@ export const dynamic = "force-dynamic";
 // - If authenticated and no supplier profile: show small "no profile found" message
 // - If NEXT_PUBLIC_SHOW_LOGIN_DEBUG === "true": render extended debug panel instead of redirect
 
-type SupabaseSession = NonNullable<Awaited<ReturnType<typeof getCurrentSession>>>;
+type AuthenticatedUser = NonNullable<
+  Awaited<ReturnType<typeof getServerAuthUser>>["user"]
+>;
 type CustomerRecord = Awaited<ReturnType<typeof getCustomerByUserId>>;
 type SupplierRecord = Awaited<ReturnType<typeof loadSupplierByUserId>>;
 
@@ -39,16 +41,16 @@ async function LoginPage({ searchParams }: LoginPageProps) {
     .filter(Boolean);
   console.log("[auth] login cookies on /login:", cookieNames);
 
-  const session = await getCurrentSession();
+  const { user } = await getServerAuthUser();
   const nextPath = resolveNextPath(searchParams);
   const sessionSummary = {
-    userId: session?.user?.id ?? null,
-    email: session?.user?.email ?? null,
-    isAuthenticated: Boolean(session),
+    userId: user?.id ?? null,
+    email: user?.email ?? null,
+    isAuthenticated: Boolean(user),
   };
   console.log("[auth] session summary:", sessionSummary);
 
-  if (!session) {
+  if (!user) {
     return (
       <>
         <LoginTokenBridge />
@@ -58,8 +60,8 @@ async function LoginPage({ searchParams }: LoginPageProps) {
   }
 
   const [customer, supplier] = await Promise.all([
-    getCustomerByUserId(session.user.id),
-    loadSupplierByUserId(session.user.id),
+    getCustomerByUserId(user.id),
+    loadSupplierByUserId(user.id),
   ]);
 
   const roleSummary = {
@@ -76,7 +78,7 @@ async function LoginPage({ searchParams }: LoginPageProps) {
       <>
         <LoginTokenBridge />
         <LoginDebugPanel
-          session={session}
+          user={user}
           customer={customer}
           supplier={supplier}
           roleSummary={roleSummary}
@@ -92,7 +94,7 @@ async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <>
       <LoginTokenBridge />
-      <MissingSupplierMessage email={session.user.email} />
+      <MissingSupplierMessage email={user.email} />
     </>
   );
 }
@@ -161,12 +163,12 @@ function MissingSupplierMessage({ email }: { email?: string | null }) {
 }
 
 function LoginDebugPanel({
-  session,
+  user,
   customer,
   supplier,
   roleSummary,
 }: {
-  session: SupabaseSession;
+  user: AuthenticatedUser;
   customer: CustomerRecord;
   supplier: SupplierRecord;
   roleSummary: { hasCustomer: boolean; hasSupplier: boolean };
@@ -179,7 +181,7 @@ function LoginDebugPanel({
           Server sees an authenticated Supabase session
         </h1>
         <p className="mt-2 text-sm text-slate-400">
-          Email: <span className="font-mono text-emerald-300">{session.user.email ?? "unknown"}</span>
+          Email: <span className="font-mono text-emerald-300">{user.email ?? "unknown"}</span>
         </p>
 
         <div className="mt-4 grid gap-4 md:grid-cols-3">

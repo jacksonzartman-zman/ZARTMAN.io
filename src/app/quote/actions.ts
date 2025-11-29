@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import {
   persistQuoteIntake,
   validateQuoteIntakeFields,
@@ -35,10 +35,10 @@ export async function submitQuoteIntakeAction(
 
   try {
     console.log("[quote intake] submit action invoked");
-    const session = await requireSession({
+    const user = await requireUser({
       message: "Sign in to submit RFQs.",
     });
-    sessionUserId = session.user.id;
+    sessionUserId = user.id;
 
     const parsed = parseQuoteIntakeFormData(formData);
     if ("error" in parsed) {
@@ -59,7 +59,7 @@ export async function submitQuoteIntakeAction(
       );
     }
 
-    const result = await persistQuoteIntake(parsed.payload, session);
+    const result = await persistQuoteIntake(parsed.payload, user);
     if (!result.ok) {
       console.warn("[quote intake] persist failed", {
         userId: sessionUserId,

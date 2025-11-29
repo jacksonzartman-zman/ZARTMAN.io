@@ -1,5 +1,5 @@
 import PortalCard from "../../PortalCard";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
   getSupplierApprovalStatus,
@@ -11,8 +11,8 @@ import { approvalsEnabled } from "@/server/suppliers/flags";
 export const dynamic = "force-dynamic";
 
 export default async function SupplierRfqsPlaceholder() {
-  const session = await requireSession({ redirectTo: "/supplier" });
-  const supplierEmail = normalizeEmailInput(session.user.email ?? null);
+  const user = await requireUser({ redirectTo: "/supplier" });
+  const supplierEmail = normalizeEmailInput(user.email ?? null);
   const approvalsOn = approvalsEnabled();
   let approvalStatus: SupplierApprovalStatus = "unknown";
 

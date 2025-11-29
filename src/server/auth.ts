@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import type { Session } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
+import { serializeSupabaseError } from "@/server/admin/logging";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -46,6 +47,16 @@ function createServerSupabaseClient() {
 }
 
 type SupabaseClientType = ReturnType<typeof createServerSupabaseClient>;
+
+export type ServerAuthUserResult = {
+  user: User | null;
+  error: unknown | null;
+};
+
+type RequireUserOptions = {
+  redirectTo?: string;
+  message?: string;
+};
 
 export function createAuthClient() {
   return createServerSupabaseClient();
@@ -103,7 +114,7 @@ function isDynamicServerUsageError(error: unknown): boolean {
   return hasDigest(error) || (error instanceof Error && hasDigest(error.message));
 }
 
-export async function getCurrentSession(): Promise<Session | null> {
+export async function getServerAuthUser(): Promise<ServerAuthUserResult> {
   try {
     const cookieStore = await cookies();
     const cookieNames =
@@ -113,48 +124,47 @@ export async function getCurrentSession(): Promise<Session | null> {
     console.log("[auth] cookies seen by server:", cookieNames);
 
     const supabase = await createReadOnlyAuthClient();
-    const { data, error } = await supabase.auth.getSession();
+    const { data, error } = await supabase.auth.getUser();
+    const serializedError = error ? serializeSupabaseError(error) : null;
 
-    const sessionPresent = Boolean(data.session);
-    console.log("[auth] getSession result:", {
-      hasSession: sessionPresent,
-      email: data.session?.user?.email ?? null,
-      error: error?.message ?? null,
+    console.info("[auth] getUser result:", {
+      hasUser: Boolean(data?.user),
+      email: data?.user?.email ?? null,
+      error: serializedError,
     });
 
     if (error) {
       if (isDynamicServerUsageError(error)) {
         console.info(
-          "[auth] getSession run skipped during static generation (dynamic route only)",
+          "[auth] getUser run skipped during static generation (dynamic route only)",
         );
-        return null;
+        return { user: null, error: serializedError ?? error };
       }
 
-      console.error("[auth] getSession failed", error);
-      return null;
+      console.error("[auth] getUser failed", error);
+      return { user: null, error: serializedError ?? error };
     }
 
-    if (!sessionPresent) {
-      console.warn("[auth] no active session returned by Supabase");
+    if (!data?.user) {
+      console.warn("[auth] no authenticated user returned by Supabase");
+      return { user: null, error: null };
     }
 
-    return data.session ?? null;
+    return {
+      user: data.user,
+      error: null,
+    };
   } catch (error) {
     if (isDynamicServerUsageError(error)) {
       console.info(
-        "[auth] getCurrentSession skipped during static generation (dynamic route only)",
+        "[auth] getServerAuthUser skipped during static generation (dynamic route only)",
       );
-      return null;
+      return { user: null, error };
     }
 
-    console.error("[auth] getCurrentSession: unexpected failure", error);
-    return null;
+    console.error("[auth] getServerAuthUser: unexpected failure", error);
+    return { user: null, error };
   }
-}
-
-export async function getCurrentUser() {
-  const session = await getCurrentSession();
-  return session?.user ?? null;
 }
 
 export class UnauthorizedError extends Error {
@@ -164,23 +174,20 @@ export class UnauthorizedError extends Error {
   }
 }
 
-export async function requireSession(options?: {
-  redirectTo?: string;
-  message?: string;
-}): Promise<Session> {
-  const session = await getCurrentSession();
-  if (session) {
-    return session;
+export async function requireUser(options?: RequireUserOptions): Promise<User> {
+  const { user, error } = await getServerAuthUser();
+  if (user) {
+    return user;
   }
+
+  console.error("[auth] requireUser failed", {
+    reason: "no-user",
+    error,
+  });
 
   if (options?.redirectTo) {
     redirect(options.redirectTo);
   }
 
-  throw new UnauthorizedError(options?.message);
-}
-
-export async function requireUser(options?: { redirectTo?: string }) {
-  const session = await requireSession(options);
-  return session.user;
+  throw new UnauthorizedError(options?.message ?? "You must be signed in.");
 }
