@@ -41,7 +41,6 @@ type QuoteRecipientRow = {
   id: string;
   email: string | null;
   customer_name: string | null;
-  customer_id: string | null;
 };
 
 export async function postCustomerQuoteMessageAction(
@@ -91,9 +90,9 @@ export async function postCustomerQuoteMessageAction(
       };
     }
 
-      const { data: quote, error: quoteError } = await supabaseServer
-        .from("quotes_with_uploads")
-      .select("id,email,customer_name,customer_id")
+    const { data: quote, error: quoteError } = await supabaseServer
+      .from("quotes_with_uploads")
+      .select("id,email,customer_name")
       .eq("id", quoteId)
       .maybeSingle<QuoteRecipientRow>();
 
@@ -107,18 +106,15 @@ export async function postCustomerQuoteMessageAction(
 
       const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
     const customerEmail = normalizeEmailInput(customer.email);
-    const ownsQuote =
-      (quote.customer_id && quote.customer_id === customer.id) ||
-      (!quote.customer_id &&
-        normalizedQuoteEmail &&
-        customerEmail &&
-        normalizedQuoteEmail === customerEmail);
-    if (!ownsQuote) {
+    const emailMatchesQuote =
+      normalizedQuoteEmail !== null &&
+      customerEmail !== null &&
+      normalizedQuoteEmail === customerEmail;
+    if (!emailMatchesQuote) {
         console.error("Customer post action: access denied", {
           quoteId,
         customerId: customer.id,
           quoteEmail: quote.email,
-        quoteCustomerId: quote.customer_id,
         });
       return {
         success: false,
@@ -227,9 +223,9 @@ export async function submitCustomerSelectWinningBidAction(
 
     const { data: quoteRow, error } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email,customer_id")
+      .select("id,email")
       .eq("id", normalizedQuoteId)
-      .maybeSingle<{ id: string; email: string | null; customer_id: string | null }>();
+      .maybeSingle<{ id: string; email: string | null }>();
 
     if (error) {
       console.error("[customer decisions] select winner failed", {
@@ -254,14 +250,12 @@ export async function submitCustomerSelectWinningBidAction(
 
     const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
     const customerEmail = normalizeEmailInput(customer.email);
-    const ownsQuote =
-      (quoteRow.customer_id && quoteRow.customer_id === customer.id) ||
-      (!quoteRow.customer_id &&
-        normalizedQuoteEmail &&
-        customerEmail &&
-        normalizedQuoteEmail === customerEmail);
+    const emailMatchesQuote =
+      normalizedQuoteEmail !== null &&
+      customerEmail !== null &&
+      normalizedQuoteEmail === customerEmail;
 
-    if (!ownsQuote) {
+    if (!emailMatchesQuote) {
       console.error("[customer decisions] select winner failed", {
         quoteId: normalizedQuoteId,
         bidId: trimmedBidId,
@@ -350,9 +344,9 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
 
     const { data: quote, error } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email,customer_id")
+      .select("id,email")
       .eq("id", quoteId)
-      .maybeSingle<{ id: string; email: string | null; customer_id: string | null }>();
+      .maybeSingle<{ id: string; email: string | null }>();
 
     if (error) {
       console.error("Bid decision action: quote lookup failed", {
@@ -367,18 +361,15 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
 
     const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
     const customerEmail = normalizeEmailInput(customer.email);
-    const ownsQuote =
-      (quote.customer_id && quote.customer_id === customer.id) ||
-      (!quote.customer_id &&
-        normalizedQuoteEmail &&
-        customerEmail &&
-        normalizedQuoteEmail === customerEmail);
-    if (!ownsQuote) {
+    const emailMatchesQuote =
+      normalizedQuoteEmail !== null &&
+      customerEmail !== null &&
+      normalizedQuoteEmail === customerEmail;
+    if (!emailMatchesQuote) {
       console.error("Bid decision action: access denied", {
         quoteId,
         customerId: customer.id,
         quoteEmail: quote.email,
-        quoteCustomerId: quote.customer_id,
         mode,
       });
       return {
