@@ -50,6 +50,24 @@ type SupplierTimelineArgs = {
   supplierId: string;
 };
 
+function timestampsAreEqual(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  if (!a || !b) {
+    return false;
+  }
+
+  const aTime = new Date(a).getTime();
+  const bTime = new Date(b).getTime();
+
+  if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+    return false;
+  }
+
+  return aTime === bTime;
+}
+
 export function buildCustomerQuoteTimeline(
   args: CustomerTimelineArgs,
 ): QuoteTimelineEvent[] {
@@ -67,10 +85,12 @@ export function buildCustomerQuoteTimeline(
       title: "Supplier bid submitted",
       actorLabel: `Supplier ${index + 1}`,
     });
-    pushBidUpdatedEvent(events, bid, {
-      title: "Supplier bid updated",
-      actorLabel: `Supplier ${index + 1}`,
-    });
+    if (!timestampsAreEqual(bid.created_at, bid.updated_at)) {
+      pushBidUpdatedEvent(events, bid, {
+        title: "Supplier bid updated",
+        actorLabel: `Supplier ${index + 1}`,
+      });
+    }
   });
 
   bids
@@ -111,10 +131,12 @@ export function buildSupplierQuoteTimeline(
       title: "You submitted a bid",
       actorLabel: "Your shop",
     });
-    pushBidUpdatedEvent(events, bid, {
-      title: "You updated your bid",
-      actorLabel: "Your shop",
-    });
+    if (!timestampsAreEqual(bid.created_at, bid.updated_at)) {
+      pushBidUpdatedEvent(events, bid, {
+        title: "You updated your bid",
+        actorLabel: "Your shop",
+      });
+    }
   });
 
   supplierBids
