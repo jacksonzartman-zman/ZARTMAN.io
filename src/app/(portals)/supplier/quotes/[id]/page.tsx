@@ -24,7 +24,11 @@ import {
   type SupplierAssignment,
 } from "./supplierAccess";
 import { loadSupplierProfile } from "@/server/suppliers";
-import { loadBidForSupplierAndQuote, type BidRow } from "@/server/bids";
+import {
+  loadBidForSupplierAndQuote,
+  loadBidsForQuote,
+  type BidRow,
+} from "@/server/bids";
 import { SupplierBidPanel } from "./SupplierBidPanel";
 import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
 import { getServerAuthUser } from "@/server/auth";
@@ -32,6 +36,11 @@ import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { canUserBid } from "@/lib/permissions";
 import { approvalsEnabled } from "@/server/suppliers/flags";
+import {
+  buildSupplierQuoteTimeline,
+  type QuoteTimelineEvent,
+} from "@/lib/quote/tracking";
+import { SupplierQuoteTrackingCard } from "./SupplierQuoteTrackingCard";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +127,22 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
+  const bidsResult = await loadBidsForQuote(quoteId);
+  const bidsArray = bidsResult.ok && Array.isArray(bidsResult.data)
+    ? (bidsResult.data ?? [])
+    : [];
+  const supplierTimelineEvents: QuoteTimelineEvent[] =
+    buildSupplierQuoteTimeline({
+      quote: workspaceData.quote,
+      bids: bidsArray,
+      supplierId: profile.supplier.id,
+    });
+  console.log("[supplier quote] tracking events built", {
+    quoteId,
+    supplierId: profile.supplier.id,
+    eventCount: supplierTimelineEvents.length,
+  });
+
   const approvalsOn = approvalsEnabled();
   const approved = approvalsOn ? profile.approved : true;
   const bidResult = await loadBidForSupplierAndQuote(
@@ -145,6 +170,7 @@ export default async function SupplierQuoteDetailPage({
       approvalsOn={approvalsOn}
       approved={approved}
       messagingUnlocked={existingBid?.status === "accepted"}
+      timelineEvents={supplierTimelineEvents}
     />
   );
 }
@@ -160,6 +186,7 @@ function SupplierQuoteWorkspace({
   approvalsOn,
   approved,
   messagingUnlocked,
+  timelineEvents,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
@@ -171,6 +198,7 @@ function SupplierQuoteWorkspace({
   approvalsOn: boolean;
   approved: boolean;
   messagingUnlocked: boolean;
+  timelineEvents: QuoteTimelineEvent[];
 }) {
   const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
@@ -326,18 +354,10 @@ function SupplierQuoteWorkspace({
   );
 
   const trackingContent = (
-    <section className={cardClasses}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Tracking
-      </p>
-      <h2 className="mt-1 text-lg font-semibold text-white">
-        Production milestones
-      </h2>
-      <p className="mt-2 text-sm text-slate-300">
-        We&apos;ll surface PO status, inspections, and logistics checkpoints
-        here as soon as live supplier tracking is wired up.
-      </p>
-    </section>
+    <SupplierQuoteTrackingCard
+      className={cardClasses}
+      events={timelineEvents}
+    />
   );
 
   const bidContent = (
