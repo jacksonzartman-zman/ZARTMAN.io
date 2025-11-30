@@ -19,7 +19,7 @@ export function SupplierQuoteTrackingCard({
     <section className={clsx(className, "space-y-3")}>
       <header>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Tracking
+          TIMELINE
         </p>
         <h2 className="mt-1 text-lg font-semibold text-white">
           Quote activity timeline
@@ -34,20 +34,20 @@ export function SupplierQuoteTrackingCard({
           We’ll surface status changes and your bid history once activity begins.
         </p>
       ) : (
-        <ol className="mt-2 space-y-6 border-l border-slate-800 pl-5">
+        <ol className="mt-2 space-y-4 border-l border-slate-800 pl-5">
           {events.map((event) => (
-            <li key={event.id} className="relative pb-1 last:pb-0">
-              <span className="absolute -left-[9px] mt-1 h-4 w-4 rounded-full border-2 border-blue-400/60 bg-blue-500/20" />
-              <div className="space-y-1">
+            <li key={event.id} className="relative pb-2 last:pb-0">
+              <span className="absolute -left-[6px] mt-1 h-3 w-3 rounded-full border-2 border-blue-400/50 bg-blue-400/10" />
+              <div className="space-y-0.5">
                 <p className="text-sm font-semibold text-white">{event.title}</p>
-                <p className="text-xs text-slate-500">
+                <p className="text-[11px] text-slate-500">
                   {formatDateTime(event.at, { includeTime: true })}
                 </p>
                 {event.description ? (
-                  <p className="text-sm text-slate-200">{event.description}</p>
+                  <p className="text-xs text-slate-200">{event.description}</p>
                 ) : null}
                 {event.actorLabel ? (
-                  <p className="text-xs uppercase tracking-wide text-slate-500">
+                  <p className="text-[10px] uppercase tracking-wide text-slate-500">
                     {event.actorLabel}
                   </p>
                 ) : null}
