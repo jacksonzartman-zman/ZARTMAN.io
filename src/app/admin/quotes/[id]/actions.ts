@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getFormString, serializeActionError } from "@/lib/forms";
-import { getServerAuthUser } from "@/server/auth";
+import { getServerAuthUser, requireUser } from "@/server/auth";
 import {
   QUOTE_UPDATE_ERROR,
   updateAdminQuote,
@@ -20,7 +20,7 @@ import {
   logAdminQuotesWarn,
 } from "@/server/admin/quotes/logging";
 import { markWinningBidForQuote } from "@/server/bids";
-import { createAdminQuoteMessage } from "@/server/quotes/messages";
+import { createQuoteMessage } from "@/server/quotes/messages";
 
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
@@ -29,6 +29,15 @@ export type AdminQuoteUpdateState =
 export type AdminSelectWinningBidState =
   | { ok: true; message: string }
   | { ok: false; error: string };
+
+export type AdminMessageFormState = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  fieldErrors?: {
+    body?: string;
+  };
+};
 
 export async function submitAdminQuoteUpdateAction(
   quoteId: string,
@@ -164,75 +173,105 @@ export async function submitSelectWinningBidAction(
   }
 }
 
-export type PostQuoteMessageActionState = {
-  success: boolean;
-  error: string | null;
-  messageId?: string;
-};
-
-const GENERIC_ERROR_MESSAGE =
+const ADMIN_MESSAGE_GENERIC_ERROR =
   "Unable to send message right now. Please try again.";
+const ADMIN_MESSAGE_EMPTY_ERROR = "Message can’t be empty.";
+const ADMIN_MESSAGE_LENGTH_ERROR =
+  "Message is too long. Try shortening or splitting it.";
 
-export async function postQuoteMessageAction(
-  _prevState: PostQuoteMessageActionState,
+export async function submitAdminQuoteMessageAction(
+  quoteId: string,
+  _prevState: AdminMessageFormState,
   formData: FormData,
-): Promise<PostQuoteMessageActionState> {
-  const rawQuoteId = formData.get("quote_id");
-  const rawBody = formData.get("body");
+): Promise<AdminMessageFormState> {
+  const normalizedQuoteId =
+    typeof quoteId === "string" ? quoteId.trim() : "";
+  const redirectPath = normalizedQuoteId
+    ? `/admin/quotes/${normalizedQuoteId}`
+    : "/admin/quotes";
 
-  if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
+  if (!normalizedQuoteId) {
     return {
-      success: false,
-      error: "Missing quote reference. Refresh and try again.",
+      ok: false,
+      error: ADMIN_QUOTE_UPDATE_ID_ERROR,
     };
   }
 
-  if (typeof rawBody !== "string") {
+  const bodyValue = formData.get("body");
+  if (typeof bodyValue !== "string") {
     return {
-      success: false,
-      error: "Enter a message before sending.",
+      ok: false,
+      error: ADMIN_MESSAGE_EMPTY_ERROR,
+      fieldErrors: { body: ADMIN_MESSAGE_EMPTY_ERROR },
     };
   }
 
-  const quoteId = rawQuoteId.trim();
-  const body = rawBody.trim();
-
-  if (body.length === 0) {
+  const trimmedBody = bodyValue.trim();
+  if (trimmedBody.length === 0) {
     return {
-      success: false,
-      error: "Enter a message before sending.",
+      ok: false,
+      error: ADMIN_MESSAGE_EMPTY_ERROR,
+      fieldErrors: { body: ADMIN_MESSAGE_EMPTY_ERROR },
     };
   }
 
-  if (body.length > 2000) {
+  if (trimmedBody.length > 2000) {
     return {
-      success: false,
-      error: "Message is too long. Keep it under 2,000 characters.",
+      ok: false,
+      error: ADMIN_MESSAGE_LENGTH_ERROR,
+      fieldErrors: { body: ADMIN_MESSAGE_LENGTH_ERROR },
     };
   }
 
   try {
-    // Soft-fail to keep the quote page responsive even if Supabase hiccups.
-    const { data, error } = await createAdminQuoteMessage({
-      quoteId,
-      body,
+    const user = await requireUser({ redirectTo: redirectPath });
+
+    console.log("[admin messages] create start", {
+      quoteId: normalizedQuoteId,
+      userId: user.id,
     });
 
-    if (error || !data) {
-      console.error("postQuoteMessageAction: failed to persist message", {
-        quoteId,
-        error,
+    const result = await createQuoteMessage({
+      quoteId: normalizedQuoteId,
+      body: trimmedBody,
+      authorType: "admin",
+      authorName: "Zartman.io",
+      authorEmail: user.email ?? "admin@zartman.io",
+    });
+
+    if (!result.ok || !result.data) {
+      console.error("[admin messages] create failed", {
+        quoteId: normalizedQuoteId,
+        userId: user.id,
+        error: result.error,
       });
-      return { success: false, error: GENERIC_ERROR_MESSAGE };
+      return {
+        ok: false,
+        error: ADMIN_MESSAGE_GENERIC_ERROR,
+      };
     }
 
-    revalidatePath(`/admin/quotes/${quoteId}`);
-    return { success: true, error: null, messageId: data.id };
-  } catch (error) {
-    console.error("postQuoteMessageAction: unexpected error", {
-      quoteId,
-      error,
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+
+    console.log("[admin messages] create success", {
+      quoteId: normalizedQuoteId,
+      userId: user.id,
+      messageId: result.data.id,
     });
-    return { success: false, error: GENERIC_ERROR_MESSAGE };
+
+    return {
+      ok: true,
+      message: "Reply posted.",
+    };
+  } catch (error) {
+    console.error("[admin messages] create crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeActionError(error),
+    });
+    return {
+      ok: false,
+      error: ADMIN_MESSAGE_GENERIC_ERROR,
+    };
   }
 }

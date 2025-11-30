@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { createCustomerQuoteMessage } from "@/server/quotes/messages";
+import { createQuoteMessage } from "@/server/quotes/messages";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
   acceptSupplierBidForQuote,
@@ -13,10 +13,13 @@ import { getCustomerByUserId } from "@/server/customers";
 import { markWinningBidForQuote } from "@/server/bids";
 import { getFormString, serializeActionError } from "@/lib/forms";
 
-export type PostCustomerQuoteMessageState = {
-  success: boolean;
-  error: string | null;
-  messageId?: string;
+export type CustomerMessageFormState = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  fieldErrors?: {
+    body?: string;
+  };
 };
 
 export type BidDecisionActionState = {
@@ -28,8 +31,10 @@ export type CustomerSelectWinningBidState =
   | { ok: true; message: string }
   | { ok: false; error: string };
 
-const GENERIC_ERROR =
+const CUSTOMER_MESSAGE_GENERIC_ERROR =
   "Unable to send your message right now. Please try again.";
+const CUSTOMER_MESSAGE_EMPTY_ERROR = "Message can’t be empty.";
+const CUSTOMER_MESSAGE_LENGTH_ERROR = "Message is too long. Try shortening or splitting it.";
 const CUSTOMER_SELECT_WINNER_AUTH_ERROR =
   "You need to be signed in as the requesting customer to select a winner.";
 const CUSTOMER_SELECT_WINNER_GENERIC_ERROR =
@@ -43,49 +48,53 @@ type QuoteRecipientRow = {
   customer_name: string | null;
 };
 
-export async function postCustomerQuoteMessageAction(
-  _prevState: PostCustomerQuoteMessageState,
+export async function submitCustomerQuoteMessageAction(
+  quoteId: string,
+  _prevState: CustomerMessageFormState,
   formData: FormData,
-): Promise<PostCustomerQuoteMessageState> {
-  const rawQuoteId = formData.get("quote_id");
-  const rawBody = formData.get("body");
-  const rawAuthorName = formData.get("author_name");
+): Promise<CustomerMessageFormState> {
+  const normalizedQuoteId =
+    typeof quoteId === "string" ? quoteId.trim() : "";
+  const redirectPath = normalizedQuoteId
+    ? `/customer/quotes/${normalizedQuoteId}`
+    : "/customer/quotes";
 
-  if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
-    return { success: false, error: "Missing quote reference." };
+  if (!normalizedQuoteId) {
+    return { ok: false, error: "Missing quote reference." };
   }
 
-  if (typeof rawBody !== "string") {
-    return { success: false, error: "Enter a message before sending." };
-  }
-
-  const quoteId = rawQuoteId.trim();
-  const body = rawBody.trim();
-  const authorName =
-    typeof rawAuthorName === "string"
-      ? rawAuthorName.trim().slice(0, 120)
-      : null;
-
-  if (body.length === 0) {
+  const bodyValue = formData.get("body");
+  if (typeof bodyValue !== "string") {
     return {
-      success: false,
-      error: "Enter a message before sending.",
+      ok: false,
+      error: CUSTOMER_MESSAGE_EMPTY_ERROR,
+      fieldErrors: { body: CUSTOMER_MESSAGE_EMPTY_ERROR },
     };
   }
 
-  if (body.length > 2000) {
+  const trimmedBody = bodyValue.trim();
+  if (trimmedBody.length === 0) {
     return {
-      success: false,
-      error: "Message is too long. Keep it under 2,000 characters.",
+      ok: false,
+      error: CUSTOMER_MESSAGE_EMPTY_ERROR,
+      fieldErrors: { body: CUSTOMER_MESSAGE_EMPTY_ERROR },
     };
   }
 
-    try {
-    const user = await requireUser({ redirectTo: `/customer/quotes/${quoteId}` });
+  if (trimmedBody.length > 2000) {
+    return {
+      ok: false,
+      error: CUSTOMER_MESSAGE_LENGTH_ERROR,
+      fieldErrors: { body: CUSTOMER_MESSAGE_LENGTH_ERROR },
+    };
+  }
+
+  try {
+    const user = await requireUser({ redirectTo: redirectPath });
     const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return {
-        success: false,
+        ok: false,
         error: "Complete your profile before posting messages.",
       };
     }
@@ -93,58 +102,93 @@ export async function postCustomerQuoteMessageAction(
     const { data: quote, error: quoteError } = await supabaseServer
       .from("quotes_with_uploads")
       .select("id,email,customer_name")
-      .eq("id", quoteId)
+      .eq("id", normalizedQuoteId)
       .maybeSingle<QuoteRecipientRow>();
 
     if (quoteError) {
-      console.error("Customer post action: quote lookup failed", quoteError);
+      console.error("[customer messages] quote lookup failed", {
+        quoteId: normalizedQuoteId,
+        error: serializeActionError(quoteError),
+      });
     }
 
     if (!quote) {
-      return { success: false, error: "Quote not found." };
+      return { ok: false, error: "Quote not found." };
     }
 
-      const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
+    const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
     const customerEmail = normalizeEmailInput(customer.email);
     const emailMatchesQuote =
       normalizedQuoteEmail !== null &&
       customerEmail !== null &&
       normalizedQuoteEmail === customerEmail;
+
     if (!emailMatchesQuote) {
-        console.error("Customer post action: access denied", {
-          quoteId,
+      console.error("[customer messages] access denied", {
+        quoteId: normalizedQuoteId,
         customerId: customer.id,
-          quoteEmail: quote.email,
-        });
+        quoteEmail: quote.email,
+      });
       return {
-        success: false,
+        ok: false,
         error: "You do not have access to post on this quote.",
       };
     }
 
-    const authorEmail =
-      customer.email ?? user.email ?? normalizedQuoteEmail ?? "customer@zartman.io";
-
-    const { data, error } = await createCustomerQuoteMessage({
-      quoteId,
-      body,
-      authorName: authorName || quote.customer_name || customer.company_name || "Customer",
-      authorEmail,
+    console.log("[customer messages] create start", {
+      quoteId: normalizedQuoteId,
+      customerId: customer.id,
     });
 
-    if (error || !data) {
-      console.error("Customer post action: failed to create message", {
-        quoteId,
-        error,
+    const result = await createQuoteMessage({
+      quoteId: normalizedQuoteId,
+      body: trimmedBody,
+      authorType: "customer",
+      authorName:
+        quote.customer_name ??
+        customer.company_name ??
+        customer.email ??
+        "Customer",
+      authorEmail:
+        customer.email ??
+        user.email ??
+        normalizedQuoteEmail ??
+        "customer@zartman.io",
+    });
+
+    if (!result.ok || !result.data) {
+      console.error("[customer messages] create failed", {
+        quoteId: normalizedQuoteId,
+        customerId: customer.id,
+        error: result.error,
       });
-      return { success: false, error: GENERIC_ERROR };
+      return {
+        ok: false,
+        error: CUSTOMER_MESSAGE_GENERIC_ERROR,
+      };
     }
 
-    revalidatePath(`/customer/quotes/${quoteId}`);
-    return { success: true, error: null, messageId: data.id };
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+
+    console.log("[customer messages] create success", {
+      quoteId: normalizedQuoteId,
+      customerId: customer.id,
+      messageId: result.data.id,
+    });
+
+    return {
+      ok: true,
+      message: "Message sent.",
+    };
   } catch (error) {
-    console.error("Customer post action: unexpected error", error);
-    return { success: false, error: GENERIC_ERROR };
+    console.error("[customer messages] create crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeActionError(error),
+    });
+    return {
+      ok: false,
+      error: CUSTOMER_MESSAGE_GENERIC_ERROR,
+    };
   }
 }
 
