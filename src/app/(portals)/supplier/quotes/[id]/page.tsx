@@ -414,7 +414,7 @@ function SupplierQuoteWorkspace({
       },
       { id: "bid", label: "Bid", content: bidContent },
       { id: "viewer", label: "Files", content: filesContent },
-      { id: "tracking", label: "Tracking", content: trackingContent },
+      { id: "tracking", label: "Timeline", content: trackingContent },
     ];
 
     return (

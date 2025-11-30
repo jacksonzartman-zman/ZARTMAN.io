@@ -409,7 +409,7 @@ export default async function CustomerQuoteDetailPage({
       content: messagesContent,
     },
     { id: "viewer", label: "Files", content: filesContent },
-    { id: "tracking", label: "Tracking", content: trackingContent },
+    { id: "tracking", label: "Timeline", content: trackingContent },
   ];
 
   return (
