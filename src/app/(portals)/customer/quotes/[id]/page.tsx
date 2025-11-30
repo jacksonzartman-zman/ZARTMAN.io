@@ -2,6 +2,10 @@ import clsx from "clsx";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
+import {
+  buildCustomerQuoteTimeline,
+  type QuoteTimelineEvent,
+} from "@/lib/quote/tracking";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import {
   QuoteWorkspaceTabs,
@@ -33,6 +37,7 @@ import {
   isOpenQuoteStatus,
 } from "@/server/quotes/status";
 import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
+import { CustomerQuoteTrackingCard } from "./CustomerQuoteTrackingCard";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +143,14 @@ export default async function CustomerQuoteDetailPage({
     ? (bidsResult.data ?? [])
     : [];
   const bidCount = bids.length;
+  const timelineEvents: QuoteTimelineEvent[] = buildCustomerQuoteTimeline({
+    quote,
+    bids,
+  });
+  console.log("[customer quote] tracking events built", {
+    quoteId: quote.id,
+    eventCount: timelineEvents.length,
+  });
   const quoteIsOpen = isOpenQuoteStatus(quote.status ?? undefined);
   const quoteIsWon = normalizedQuoteStatus === "won";
   const winningBid =
@@ -376,18 +389,10 @@ export default async function CustomerQuoteDetailPage({
   );
 
   const trackingContent = (
-    <section className={cardClasses}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Tracking
-      </p>
-      <h2 className="mt-1 text-lg font-semibold text-white">
-        Production milestones
-      </h2>
-      <p className="mt-2 text-sm text-slate-300">
-        We&apos;ll surface build partners, PO details, and schedule checkpoints
-        here as we expand the customer portal experience.
-      </p>
-    </section>
+    <CustomerQuoteTrackingCard
+      className={cardClasses}
+      events={timelineEvents}
+    />
   );
 
   const tabs: {
