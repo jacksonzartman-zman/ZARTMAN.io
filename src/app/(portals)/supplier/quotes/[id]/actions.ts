@@ -178,23 +178,23 @@ export async function postSupplierQuoteMessageAction(
       assignments,
     );
 
-    const { data, error } = await createSupplierQuoteMessage({
+    const result = await createSupplierQuoteMessage({
       quoteId,
       body,
       authorName: supplierName,
       authorEmail: identityEmail,
     });
 
-    if (error || !data) {
+    if (!result.ok || !result.data) {
       console.error("Supplier post action: failed to create message", {
         quoteId,
-        error,
+        error: result.error,
       });
       return { success: false, error: GENERIC_ERROR };
     }
 
     revalidatePath(`/supplier/quotes/${quoteId}`);
-    return { success: true, error: null, messageId: data.id };
+    return { success: true, error: null, messageId: result.data.id };
   } catch (error) {
     console.error("Supplier post action: unexpected error", error);
     return { success: false, error: GENERIC_ERROR };
