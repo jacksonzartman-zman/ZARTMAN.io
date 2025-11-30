@@ -1,8 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import type { LoadResult, MutationResult } from "@/server/types/results";
 
 export type QuoteMessageAuthorType = "admin" | "customer" | "supplier";
 
-export type QuoteMessage = {
+export type QuoteMessageRow = {
   id: string;
   quote_id: string;
   author_type: QuoteMessageAuthorType;
@@ -12,10 +13,7 @@ export type QuoteMessage = {
   created_at: string;
 };
 
-type QuoteMessageOperationResult<T> = {
-  data: T;
-  error: string | null;
-};
+export type QuoteMessage = QuoteMessageRow;
 
 export type CreateQuoteMessageParams = {
   quoteId: string;
@@ -25,12 +23,7 @@ export type CreateQuoteMessageParams = {
   authorEmail?: string | null;
 };
 
-type QuoteMessagesLoadResult = {
-  messages: QuoteMessage[];
-  error: string | null;
-};
-
-type CreatePortalQuoteMessageParams = Pick<
+export type CreatePortalQuoteMessageParams = Pick<
   CreateQuoteMessageParams,
   "quoteId" | "body"
 > & {
@@ -43,59 +36,162 @@ const QUOTE_MESSAGE_COLUMNS =
 
 export async function loadQuoteMessages(
   quoteId: string,
-): Promise<QuoteMessagesLoadResult> {
-  const normalizedId = quoteId?.trim();
+): Promise<LoadResult<QuoteMessageRow[]>> {
+  const normalizedQuoteId =
+    typeof quoteId === "string" ? quoteId.trim() : "";
 
-  if (!normalizedId) {
-    return { messages: [], error: "quoteId is required" };
+  if (!normalizedQuoteId) {
+    return {
+      ok: false,
+      data: null,
+      error: "quoteId is required",
+    };
   }
+
+  console.log("[quote messages] load start", { quoteId: normalizedQuoteId });
 
   try {
     const { data, error } = await supabaseServer
       .from("quote_messages")
       .select(QUOTE_MESSAGE_COLUMNS)
-      .eq("quote_id", normalizedId)
+      .eq("quote_id", normalizedQuoteId)
       .order("created_at", { ascending: true });
 
     if (error) {
-      console.error("loadQuoteMessages: query failed", { quoteId, error });
+      console.error("[quote messages] load failed", {
+        quoteId: normalizedQuoteId,
+        error,
+      });
       return {
-        messages: [],
+        ok: false,
+        data: null,
         error: "Unable to load messages right now.",
       };
     }
 
+    const rows = (data ?? []) as QuoteMessageRow[];
+    console.log("[quote messages] load result", {
+      quoteId: normalizedQuoteId,
+      count: rows.length,
+    });
+
     return {
-      messages: (data as QuoteMessage[]) ?? [],
+      ok: true,
+      data: rows,
       error: null,
     };
-  } catch (unexpectedError) {
-    // Soft-fail so the quote page keeps rendering even if Supabase hiccups.
-    console.error("loadQuoteMessages: unexpected error", {
-      quoteId: normalizedId,
-      error: unexpectedError,
+  } catch (error) {
+    console.error("[quote messages] load crashed", {
+      quoteId: normalizedQuoteId,
+      error,
     });
     return {
-      messages: [],
+      ok: false,
+      data: null,
       error: "Unable to load messages right now.",
     };
   }
 }
 
-type CreateAdminQuoteMessageParams = Pick<CreateQuoteMessageParams, "quoteId" | "body">;
+export async function createQuoteMessage({
+  quoteId,
+  body,
+  authorType,
+  authorName,
+  authorEmail,
+}: CreateQuoteMessageParams): Promise<MutationResult<QuoteMessageRow>> {
+  const normalizedQuoteId =
+    typeof quoteId === "string" ? quoteId.trim() : "";
+  const trimmedBody = sanitizeMessageBody(body);
+  const normalizedAuthorType = normalizeAuthorType(authorType);
+  const normalizedAuthorName = sanitizeAuthorName(authorName);
+  const normalizedAuthorEmail = sanitizeAuthorEmail(authorEmail);
+
+  if (!normalizedQuoteId || !trimmedBody || !normalizedAuthorType) {
+    console.error("[quote messages] create failed", {
+      quoteId,
+      authorType,
+      reason: "invalid-input",
+    });
+    return {
+      ok: false,
+      data: null,
+      error: "Missing required message fields.",
+    };
+  }
+
+  console.log("[quote messages] create start", {
+    quoteId: normalizedQuoteId,
+    authorType: normalizedAuthorType,
+  });
+
+  try {
+    const payload = {
+      quote_id: normalizedQuoteId,
+      author_type: normalizedAuthorType,
+      author_name: normalizedAuthorName,
+      author_email: normalizedAuthorEmail,
+      body: trimmedBody,
+    };
+
+    const { data, error } = await supabaseServer
+      .from("quote_messages")
+      .insert(payload)
+      .select(QUOTE_MESSAGE_COLUMNS)
+      .single<QuoteMessageRow>();
+
+    if (error || !data) {
+      console.error("[quote messages] create failed", {
+        quoteId: normalizedQuoteId,
+        authorType: normalizedAuthorType,
+        error,
+      });
+      return {
+        ok: false,
+        data: null,
+        error: "Failed to post message.",
+      };
+    }
+
+    console.log("[quote messages] create success", {
+      quoteId: normalizedQuoteId,
+      authorType: normalizedAuthorType,
+      messageId: data.id,
+    });
+
+    return {
+      ok: true,
+      data,
+      error: null,
+    };
+  } catch (error) {
+    console.error("[quote messages] create crashed", {
+      quoteId: normalizedQuoteId,
+      authorType: normalizedAuthorType,
+      error,
+    });
+    return {
+      ok: false,
+      data: null,
+      error: "Failed to post message.",
+    };
+  }
+}
 
 export async function createAdminQuoteMessage({
   quoteId,
   body,
-}: CreateAdminQuoteMessageParams): Promise<
-  QuoteMessageOperationResult<QuoteMessage | null>
+  authorName,
+  authorEmail,
+}: Omit<CreateQuoteMessageParams, "authorType">): Promise<
+  MutationResult<QuoteMessageRow>
 > {
   return createQuoteMessage({
     quoteId,
     body,
     authorType: "admin",
-    authorName: "Zartman admin",
-    authorEmail: null,
+    authorName: authorName ?? "Zartman admin",
+    authorEmail: authorEmail ?? null,
   });
 }
 
@@ -105,14 +201,14 @@ export async function createCustomerQuoteMessage({
   authorName,
   authorEmail,
 }: CreatePortalQuoteMessageParams): Promise<
-  QuoteMessageOperationResult<QuoteMessage | null>
+  MutationResult<QuoteMessageRow>
 > {
   return createQuoteMessage({
     quoteId,
     body,
     authorType: "customer",
-    authorName: sanitizeAuthorName(authorName),
-    authorEmail: sanitizeAuthorEmail(authorEmail),
+    authorName,
+    authorEmail,
   });
 }
 
@@ -122,87 +218,41 @@ export async function createSupplierQuoteMessage({
   authorName,
   authorEmail,
 }: CreatePortalQuoteMessageParams): Promise<
-  QuoteMessageOperationResult<QuoteMessage | null>
+  MutationResult<QuoteMessageRow>
 > {
   return createQuoteMessage({
     quoteId,
     body,
     authorType: "supplier",
-    authorName: sanitizeAuthorName(authorName),
-    authorEmail: sanitizeAuthorEmail(authorEmail),
+    authorName,
+    authorEmail,
   });
 }
 
-export async function createQuoteMessage({
-  quoteId,
-  body,
-  authorType,
-  authorName,
-  authorEmail,
-}: CreateQuoteMessageParams): Promise<
-  QuoteMessageOperationResult<QuoteMessage | null>
-> {
-  const normalizedId = quoteId?.trim();
-  const trimmedBody = body?.trim();
-  const normalizedAuthorType =
-    authorType === "admin" || authorType === "customer" || authorType === "supplier"
-      ? authorType
-      : null;
-  const trimmedAuthorName =
-    typeof authorName === "string" ? authorName.trim().slice(0, 120) : null;
-  const trimmedAuthorEmail =
-    typeof authorEmail === "string" ? authorEmail.trim().toLowerCase() : null;
-
-  if (!normalizedId || !trimmedBody || !normalizedAuthorType) {
-    return {
-      data: null,
-      error: "Missing message parameters.",
-    };
+function sanitizeMessageBody(value?: string | null): string | null {
+  if (typeof value !== "string") {
+    return null;
   }
-
-  try {
-    const payload = {
-      quote_id: normalizedId,
-      author_type: normalizedAuthorType,
-      author_name: trimmedAuthorName,
-      author_email: trimmedAuthorEmail,
-      body: trimmedBody,
-    };
-
-    const { data, error } = await supabaseServer
-      .from("quote_messages")
-      .insert(payload)
-      .select(QUOTE_MESSAGE_COLUMNS)
-      .single<QuoteMessage>();
-
-    if (error || !data) {
-      console.error("createQuoteMessage: insert failed", {
-        quoteId: normalizedId,
-        authorType: normalizedAuthorType,
-        error,
-      });
-      return {
-        data: null,
-        error: "Failed to post message.",
-      };
-    }
-
-    return {
-      data,
-      error: null,
-    };
-  } catch (unexpectedError) {
-    console.error("createQuoteMessage: unexpected error", unexpectedError);
-    return {
-      data: null,
-      error: "Failed to post message.",
-    };
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
   }
+  if (trimmed.length > 2000) {
+    return trimmed.slice(0, 2000);
+  }
+  return trimmed;
 }
 
-function sanitizeAuthorName(
-  value?: string | null,
-): string | null {
+function normalizeAuthorType(
+  value: string | null | undefined,
+): QuoteMessageAuthorType | null {
+  if (value === "admin" || value === "customer" || value === "supplier") {
+    return value;
+  }
+  return null;
+}
+
+function sanitizeAuthorName(value?: string | null): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -210,9 +260,7 @@ function sanitizeAuthorName(
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function sanitizeAuthorEmail(
-  value?: string | null,
-): string | null {
+function sanitizeAuthorEmail(value?: string | null): string | null {
   if (typeof value !== "string") {
     return null;
   }
