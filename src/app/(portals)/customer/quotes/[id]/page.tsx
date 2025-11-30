@@ -11,8 +11,7 @@ import {
   QuoteWorkspaceTabs,
   type QuoteWorkspaceTab,
 } from "@/app/admin/quotes/[id]/QuoteWorkspaceTabs";
-import { QuoteMessagesThread } from "@/components/quotes/QuoteMessagesThread";
-import { CustomerQuoteMessageComposer } from "./CustomerQuoteMessageComposer";
+import { CustomerQuoteMessagesCard } from "./CustomerQuoteMessagesCard";
 import {
   formatQuoteId,
   getSearchParamValue,
@@ -329,49 +328,15 @@ export default async function CustomerQuoteDetailPage({
     </div>
   );
 
-    const messagesContent = (
-      <section className={cardClasses}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Messages
-        </p>
-        <QuoteMessagesThread
-          heading="Shared chat"
-          description="Collaborate directly with the Zartman admin team on this quote."
-          messages={messages}
-          messageCount={messages.length}
-          error={
-            messagesError
-              ? "Some messages may be missing. Refresh the page to try again."
-              : null
-          }
-          emptyState={
-            <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
-              No updates yet. Start the conversation below to keep things moving.
-            </p>
-          }
-          containerClassName="mt-3"
-        />
-
-        <div className="mt-4 border-t border-slate-900/60 pt-4">
-          <p className="text-sm font-semibold text-slate-100">Post a message</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Shared with admins and suppliers supporting this RFQ.
-          </p>
-            {readOnly ? (
-              <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
-                Read-only preview. Remove the ?email override to reply as the customer.
-              </p>
-            ) : null}
-          <div className="mt-3">
-            <CustomerQuoteMessageComposer
-              quoteId={quote.id}
-              customerName={customerName}
-                disabled={readOnly}
-            />
-          </div>
-        </div>
-      </section>
-    );
+  const messagesUnavailable = Boolean(messagesError);
+  const messagesContent = (
+    <CustomerQuoteMessagesCard
+      quoteId={quote.id}
+      messages={messages}
+      messagesUnavailable={messagesUnavailable}
+      readOnly={readOnly}
+    />
+  );
 
   const filesContent = (
     <div className="space-y-2">

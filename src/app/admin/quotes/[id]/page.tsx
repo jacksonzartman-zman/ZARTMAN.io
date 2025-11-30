@@ -15,14 +15,13 @@ import {
 } from "@/server/quotes/status";
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
-import { QuoteMessageComposer } from "./QuoteMessageComposer";
+import { AdminQuoteMessagesCard } from "./AdminQuoteMessagesCard";
 import { QuoteFilesCard } from "./QuoteFilesCard";
 import {
   QuoteWorkspaceTabs,
   type QuoteWorkspaceTab,
 } from "./QuoteWorkspaceTabs";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
-import { QuoteMessagesThread } from "@/components/quotes/QuoteMessagesThread";
 import { loadAdminQuoteDetail } from "@/server/admin/quotes";
 import { loadBidsForQuote } from "@/server/bids";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
@@ -224,18 +223,18 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       quote.internal_notes.trim().length > 0
         ? quote.internal_notes
         : null;
-    const {
-      messages: quoteMessages,
-      error: quoteMessagesError,
-    } = await loadQuoteMessages(quote.id);
+    const quoteMessagesResult = await loadQuoteMessages(quote.id);
 
-    if (quoteMessagesError) {
+    if (!quoteMessagesResult.ok) {
       console.error("Failed to load quote messages", {
         quoteId: quote.id,
-        error: quoteMessagesError,
+        error: quoteMessagesResult.error,
       });
     }
-    const messages: QuoteMessage[] = quoteMessages ?? [];
+    const messages: QuoteMessage[] = quoteMessagesResult.data ?? [];
+    const quoteMessagesError = quoteMessagesResult.ok
+      ? null
+      : quoteMessagesResult.error;
     const bidsResult = await loadBidsForQuote(quote.id);
     const bids = bidsResult.ok ? bidsResult.data : [];
 
@@ -328,41 +327,14 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       </div>
     );
 
-      const messagesContent = (
-        <section className={cardClasses}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Messages
-          </p>
-          <QuoteMessagesThread
-            heading="Admin chat"
-            description="Chat-style thread visible only to the admin workspace."
-            messages={messages}
-            messageCount={messages.length}
-            error={
-              quoteMessagesError
-                ? "Unable to load every message right now. Refresh to retry."
-                : null
-            }
-            emptyState={
-              <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
-                No messages yet. Use the composer below to start the thread for
-                this quote.
-              </p>
-            }
-            containerClassName="mt-3"
-          />
-
-          <div className="mt-4 border-t border-slate-900/60 pt-4">
-            <p className="text-sm font-semibold text-slate-100">Post a message</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Shared only with admins working on this quote.
-            </p>
-            <div className="mt-3">
-              <QuoteMessageComposer quoteId={quote.id} />
-            </div>
-          </div>
-        </section>
-      );
+    const messagesUnavailable = Boolean(quoteMessagesError);
+    const messagesContent = (
+      <AdminQuoteMessagesCard
+        quoteId={quote.id}
+        messages={messages}
+        messagesUnavailable={messagesUnavailable}
+      />
+    );
 
     const editContent = (
       <section className={cardClasses}>

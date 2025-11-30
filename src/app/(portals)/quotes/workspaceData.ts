@@ -169,7 +169,11 @@ export async function loadQuoteWorkspaceData(
     };
 
     const filePreviews = await getQuoteFilePreviews(quote, filePreviewOptions);
-    const { messages, error: messagesError } = await loadQuoteMessages(quote.id);
+    const messagesResult = await loadQuoteMessages(quote.id);
+    const messages = messagesResult.ok && Array.isArray(messagesResult.data)
+      ? messagesResult.data
+      : [];
+    const messagesError = messagesResult.ok ? null : messagesResult.error ?? "message-load-error";
 
     const filesIssue = filesUnavailable || filesErrorLogged;
 
