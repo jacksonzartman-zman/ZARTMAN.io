@@ -26,8 +26,8 @@ import {
 import { getServerAuthUser } from "@/server/auth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
-import { loadSupplierActivityFeed } from "@/server/activity";
-import type { ActivityItem } from "@/types/activity";
+import { loadRecentSupplierActivity } from "@/server/suppliers/activity";
+import type { QuoteActivityEvent } from "@/types/activity";
 import { resolveUserRoles } from "@/server/users/roles";
 import { DataFallbackNotice } from "../DataFallbackNotice";
 import { DEBUG_PORTALS } from "../debug";
@@ -111,6 +111,7 @@ async function SupplierDashboardPage({
           status: approvalStatus,
         }
       : undefined;
+  const activityHoldCopy = getApprovalHoldCopy(approvalGate?.status);
 
   const [matchesResult, bidsResult] = supplier
     ? await Promise.all([
@@ -133,16 +134,17 @@ async function SupplierDashboardPage({
   const bidsData = bidsResult.data ?? [];
   const matchesUnavailable = supplierExists && !matchesResult.ok;
   const bidsUnavailable = supplierExists && !bidsResult.ok;
-  const recentActivityResult: SupplierActivityResult<ActivityItem[]> = supplier
-    ? await loadSupplierActivityFeed({
-        supplierId: supplier.id,
-        supplierEmail: supplier.primary_email ?? supplierEmail,
-        limit: 10,
-      })
-    : { ok: true, data: [] };
-  const recentActivity = recentActivityResult.data ?? [];
-  const activityApprovalGate = recentActivityResult.approvalGate ?? approvalGate;
-  const activityHoldCopy = getApprovalHoldCopy(activityApprovalGate?.status);
+  const canLoadActivity =
+    supplierExists && !isApprovalGateActive(approvalGate);
+  const recentActivity: QuoteActivityEvent[] =
+    canLoadActivity && supplier
+      ? await loadRecentSupplierActivity(supplier.id)
+      : [];
+  console.log("[supplier dashboard] activity loaded", {
+    supplierId: supplier?.id ?? null,
+    eventCount: recentActivity.length,
+    gateActive: isApprovalGateActive(approvalGate),
+  });
 
   const signedInEmail = supplier?.primary_email ?? supplierEmail;
   const companyLabel =
@@ -238,55 +240,51 @@ async function SupplierDashboardPage({
         title="Recent activity"
         description="Quick pulse on RFQs, bids, and status changes routed to your shop."
       >
-        {isApprovalGateActive(activityApprovalGate) ? (
+        {isApprovalGateActive(approvalGate) ? (
           <EmptyStateNotice
             title={activityHoldCopy.title}
             description={activityHoldCopy.description}
           />
-        ) : recentActivityResult.ok ? (
-          recentActivity.length > 0 ? (
-            <ul className="space-y-3">
-              {recentActivity.map((item) => {
-                const inner = (
-                  <div className="flex flex-col gap-2 rounded-2xl border border-slate-900/70 bg-slate-950/50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <ActivityTypeBadge type={item.type} />
-                      <p className="text-sm font-semibold text-white">{item.title}</p>
-                      <p className="text-xs text-slate-400">{item.description}</p>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      {formatActivityTimestamp(item.timestamp) ?? "Date pending"}
-                    </p>
+        ) : recentActivity.length > 0 ? (
+          <ul className="space-y-3">
+            {recentActivity.map((item) => {
+              const inner = (
+                <div className="flex flex-col gap-2 rounded-2xl border border-slate-900/70 bg-slate-950/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <ActivityTypeBadge type={item.type} />
+                    <p className="text-sm font-semibold text-white">{item.title}</p>
+                    <p className="text-xs text-slate-400">{item.description}</p>
                   </div>
-                );
-                return (
-                  <li key={item.id}>
-                    {item.href ? (
-                      <Link
-                        href={item.href}
-                        className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-300"
-                      >
-                        {inner}
-                      </Link>
-                    ) : (
-                      inner
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <EmptyStateNotice
-              title={supplierExists ? "No activity yet" : "Activity unlocks after onboarding"}
-              description={
-                supplierExists
-                  ? "We’ll stream RFQ assignments and bid updates here as they happen."
-                  : "Finish onboarding to start tracking RFQs and bids in this feed."
-              }
-            />
-          )
+                  <p className="text-xs text-slate-500">
+                    {formatActivityTimestamp(item.timestamp) ?? "Date pending"}
+                  </p>
+                </div>
+              );
+              return (
+                <li key={item.id}>
+                  {item.href ? (
+                    <Link
+                      href={item.href}
+                      className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-300"
+                    >
+                      {inner}
+                    </Link>
+                  ) : (
+                    inner
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         ) : (
-          <DataFallbackNotice className="mt-2" />
+          <EmptyStateNotice
+            title={supplierExists ? "No activity yet" : "Activity unlocks after onboarding"}
+            description={
+              supplierExists
+                ? "We’ll stream RFQ assignments and bid updates here as they happen."
+                : "Finish onboarding to start tracking RFQs and bids in this feed."
+            }
+          />
         )}
       </PortalCard>
 
@@ -662,16 +660,20 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function ActivityTypeBadge({ type }: { type: ActivityItem["type"] }) {
-  const labelMap: Record<ActivityItem["type"], string> = {
-    quote: "Quote",
-    bid: "Bid",
-    status: "Status",
+function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {
+  const labelMap: Record<QuoteActivityEvent["type"], string> = {
+    rfq_submitted: "RFQ",
+    status_changed: "Status",
+    message_posted: "Message",
+    bid_received: "Bid",
+    winner_selected: "Winner",
   };
-  const colorMap: Record<ActivityItem["type"], string> = {
-    quote: "bg-blue-500/10 text-blue-200 border-blue-500/30",
-    bid: "bg-sky-500/10 text-sky-200 border-sky-500/30",
-    status: "bg-slate-500/10 text-slate-200 border-slate-500/30",
+  const colorMap: Record<QuoteActivityEvent["type"], string> = {
+    rfq_submitted: "bg-blue-500/10 text-blue-200 border-blue-500/30",
+    status_changed: "bg-slate-500/10 text-slate-200 border-slate-500/30",
+    message_posted: "bg-indigo-500/10 text-indigo-200 border-indigo-500/30",
+    bid_received: "bg-sky-500/10 text-sky-200 border-sky-500/30",
+    winner_selected: "bg-amber-500/10 text-amber-200 border-amber-500/30",
   };
   return (
     <span
