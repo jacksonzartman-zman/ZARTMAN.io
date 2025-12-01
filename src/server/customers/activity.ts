@@ -47,22 +47,32 @@ export async function loadRecentCustomerActivity(
   let quotes: CustomerQuoteRow[] = [];
 
   if (overrideEmail) {
-    quotes = await fetchQuotesByEmail(overrideEmail);
+    quotes = await fetchQuotesByEmail(overrideEmail, {
+      customerId,
+      scope: "override",
+    });
   } else {
     const customer = await getCustomerById(customerId);
     if (!customer) {
       return [];
     }
-    quotes = await fetchCustomerQuotes(customer);
+    const customerEmail = normalizeEmailInput(customer.email ?? null);
+    if (!customerEmail) {
+      return [];
+    }
+    quotes = await fetchQuotesByEmail(customerEmail, {
+      customerId: customer.id,
+      scope: "customer",
+    });
   }
 
-  if (quotes.length === 0) {
-    return [];
-  }
   console.info("[customer activity] quotes resolved", {
     customerId,
     quoteCount: quotes.length,
   });
+  if (quotes.length === 0) {
+    return [];
+  }
 
   const quoteMap = new Map(quotes.map((quote) => [quote.id, quote]));
   const quoteIds = Array.from(quoteMap.keys());
@@ -113,65 +123,34 @@ export async function loadRecentCustomerActivity(
   return finalized;
 }
 
-async function fetchCustomerQuotes(
-  customer: NonNullable<Awaited<ReturnType<typeof getCustomerById>>>,
+async function fetchQuotesByEmail(
+  email: string,
+  context?: {
+    customerId?: string;
+    scope?: "override" | "customer";
+    limit?: number;
+  },
 ): Promise<CustomerQuoteRow[]> {
-  const baseQuery = supabaseServer
-    .from("quotes_with_uploads")
-    .select(QUOTE_COLUMNS)
-    .order("updated_at", { ascending: false })
-    .limit(EVENT_LIMIT * 3)
-    .eq("customer_id", customer.id);
-
-  const { data, error } = await baseQuery;
-  if (error) {
-    console.error("[customer activity] quote query failed", {
-      customerId: customer.id,
-      error,
-    });
-    return [];
-  }
-  const rows = (data ?? []) as CustomerQuoteRow[];
-  if (rows.length > 0) {
-    return rows;
-  }
-
-  const normalizedEmail = normalizeEmailInput(customer.email ?? null);
+  const normalizedEmail = normalizeEmailInput(email ?? null);
   if (!normalizedEmail) {
     return [];
   }
 
-  const { data: emailRows, error: emailError } = await supabaseServer
-    .from("quotes_with_uploads")
-    .select(QUOTE_COLUMNS)
-    .order("updated_at", { ascending: false })
-    .limit(EVENT_LIMIT * 3)
-    .ilike("email", normalizedEmail);
-
-  if (emailError) {
-    console.error("[customer activity] quote email query failed", {
-      customerId: customer.id,
-      email: normalizedEmail,
-      error: emailError,
-    });
-    return [];
-  }
-
-  return (emailRows ?? []) as CustomerQuoteRow[];
-}
-
-async function fetchQuotesByEmail(
-  email: string,
-): Promise<CustomerQuoteRow[]> {
+  const limit = context?.limit ?? EVENT_LIMIT * 3;
   const { data, error } = await supabaseServer
     .from("quotes_with_uploads")
     .select(QUOTE_COLUMNS)
     .order("updated_at", { ascending: false })
-    .limit(EVENT_LIMIT * 3)
-    .ilike("email", email);
+    .limit(limit)
+    .ilike("email", normalizedEmail);
   if (error) {
-    console.error("[customer activity] override query failed", {
-      email,
+    const message =
+      context?.scope === "override"
+        ? "[customer activity] override query failed"
+        : "[customer activity] quote query failed";
+    console.error(message, {
+      customerId: context?.customerId ?? null,
+      email: normalizedEmail,
       error,
     });
     return [];
