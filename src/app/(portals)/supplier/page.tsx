@@ -103,9 +103,10 @@ async function SupplierDashboardPage({
   const supplierExists = Boolean(supplier);
   const supplierProfileUnavailable = Boolean(supplierEmail) && !profile;
   const approvalsOn = approvalsEnabled();
+  const supplierStatus = supplier?.status ?? "pending";
   const approvalStatus: SupplierApprovalStatus =
     profile?.approvalStatus ??
-    getSupplierApprovalStatus(supplier ?? undefined);
+    getSupplierApprovalStatus({ status: supplierStatus });
   const supplierApproved = approvalsOn ? approvalStatus === "approved" : true;
   const approvalGate: SupplierApprovalGate | undefined =
     approvalsOn && !supplierApproved
