@@ -2,6 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
+import {
+  notifyOnNewQuoteMessage,
+  notifyOnWinningBidSelected,
+  type QuoteContactInfo,
+  type QuoteWinningContext,
+} from "@/server/quotes/notifications";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
@@ -11,6 +17,7 @@ import {
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { markWinningBidForQuote } from "@/server/bids";
+import { loadWinningBidNotificationContext } from "@/server/quotes/notificationContext";
 import { getFormString, serializeActionError } from "@/lib/forms";
 
 export type CustomerMessageFormState = {
@@ -46,6 +53,14 @@ type QuoteRecipientRow = {
   id: string;
   email: string | null;
   customer_name: string | null;
+  company: string | null;
+  file_name: string | null;
+};
+
+type QuoteSelectionRow = QuoteRecipientRow & {
+  status: string | null;
+  price: number | string | null;
+  currency: string | null;
 };
 
 export async function submitCustomerQuoteMessageAction(
@@ -101,7 +116,7 @@ export async function submitCustomerQuoteMessageAction(
 
     const { data: quote, error: quoteError } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email,customer_name")
+      .select("id,email,customer_name,company,file_name")
       .eq("id", normalizedQuoteId)
       .maybeSingle<QuoteRecipientRow>();
 
@@ -169,6 +184,11 @@ export async function submitCustomerQuoteMessageAction(
     }
 
     revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+
+    if (quote) {
+      const contact = toQuoteContactInfo(quote);
+      void notifyOnNewQuoteMessage(result.data, contact);
+    }
 
     console.log("[customer messages] create success", {
       quoteId: normalizedQuoteId,
@@ -264,9 +284,9 @@ export async function submitCustomerSelectWinningBidAction(
 
     const { data: quoteRow, error } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email")
+      .select("id,email,customer_name,company,file_name,status,price,currency")
       .eq("id", normalizedQuoteId)
-      .maybeSingle<{ id: string; email: string | null }>();
+      .maybeSingle<QuoteSelectionRow>();
 
     if (error) {
       console.error("[customer decisions] select winner failed", {
@@ -339,6 +359,10 @@ export async function submitCustomerSelectWinningBidAction(
     revalidatePath("/supplier");
     revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
+    if (quoteRow) {
+      void triggerWinnerNotifications(quoteRow, trimmedBidId);
+    }
+
     console.log("[customer decisions] select winner success", {
       quoteId: normalizedQuoteId,
       bidId: trimmedBidId,
@@ -356,6 +380,51 @@ export async function submitCustomerSelectWinningBidAction(
     });
     return { ok: false, error: CUSTOMER_SELECT_WINNER_GENERIC_ERROR };
   }
+}
+
+async function triggerWinnerNotifications(
+  quoteRow: QuoteSelectionRow,
+  bidId: string,
+) {
+  try {
+    const winnerContext = await loadWinningBidNotificationContext(bidId);
+    if (!winnerContext) {
+      return;
+    }
+
+    const quoteContext = toQuoteWinningContext(quoteRow);
+    await notifyOnWinningBidSelected({
+      quote: quoteContext,
+      winningBid: winnerContext.winningBid,
+      supplier: winnerContext.supplier,
+      customerEmail: quoteContext.email ?? null,
+    });
+  } catch (error) {
+    console.error("[customer decisions] winning bid notification failed", {
+      quoteId: quoteRow.id,
+      bidId,
+      error: serializeActionError(error),
+    });
+  }
+}
+
+function toQuoteContactInfo(row: QuoteRecipientRow): QuoteContactInfo {
+  return {
+    id: row.id,
+    email: row.email,
+    customer_name: row.customer_name,
+    company: row.company,
+    file_name: row.file_name,
+  };
+}
+
+function toQuoteWinningContext(row: QuoteSelectionRow): QuoteWinningContext {
+  return {
+    ...toQuoteContactInfo(row),
+    status: row.status,
+    price: row.price,
+    currency: row.currency,
+  };
 }
 
 async function handleBidDecision(formData: FormData, mode: "accept" | "decline") {

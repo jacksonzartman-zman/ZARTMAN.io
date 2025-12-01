@@ -1,30 +1,6 @@
 {
   "version": 4,
   "routes": {
-    "/": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/",
-      "dataRoute": "/index.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
     "/_not-found": {
       "initialStatus": 404,
       "experimentalBypassFor": [
@@ -50,7 +26,7 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/supplier/signup": {
+    "/": {
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -63,8 +39,8 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/supplier/signup",
-      "dataRoute": "/supplier/signup.rsc",
+      "srcRoute": "/",
+      "dataRoute": "/index.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -97,13 +73,37 @@
         "x-next-revalidated-tags",
         "x-next-revalidate-tag-token"
       ]
+    },
+    "/supplier/signup": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/supplier/signup",
+      "dataRoute": "/supplier/signup.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
     }
   },
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "5eaed03c8dd30fb4fe7fdafa247d5ca7",
-    "previewModeSigningKey": "43986456c57e7138a7280fe75d10e1d370e968af51344f3557ebca1e574a7af7",
-    "previewModeEncryptionKey": "421a28b9d0addceeee540a11194f5159f97df929da2f7769b36f036eb8928f2b"
+    "previewModeId": "5c364930f82e85df4a39a50f2712910c",
+    "previewModeSigningKey": "7fd8e5ed97c6424112b93e7df721b9ff5cf664c37151c002d15d7706175fb9ef",
+    "previewModeEncryptionKey": "6668b2cf1e3aa0b8ff0412e25c9426d9e6af6df42b2e0615fe8d5009317f382e"
   }
 }

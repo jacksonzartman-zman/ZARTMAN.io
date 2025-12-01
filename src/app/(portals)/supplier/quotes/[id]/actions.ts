@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
+import {
+  notifyOnNewQuoteMessage,
+  type QuoteContactInfo,
+} from "@/server/quotes/notifications";
 import { createSupplierQuoteMessage } from "@/server/quotes/messages";
 import {
   getSupplierBidForQuote,
@@ -194,6 +198,8 @@ export async function postSupplierQuoteMessageAction(
     }
 
     revalidatePath(`/supplier/quotes/${quoteId}`);
+    const contact = toSupplierQuoteContact(quote);
+    void notifyOnNewQuoteMessage(result.data, contact);
     return { success: true, error: null, messageId: result.data.id };
   } catch (error) {
     console.error("Supplier post action: unexpected error", error);
@@ -576,6 +582,16 @@ async function loadQuoteAccessRow(quoteId: string) {
     .select(QUOTE_ACCESS_SELECT)
     .eq("id", quoteId)
     .maybeSingle<QuoteAccessRow>();
+}
+
+function toSupplierQuoteContact(quote: QuoteAccessRow): QuoteContactInfo {
+  return {
+    id: quote.id,
+    email: quote.email ?? null,
+    customer_name: quote.customer_name ?? null,
+    company: quote.company ?? null,
+    file_name: quote.file_name ?? null,
+  };
 }
 
 async function loadUploadProcessHint(
