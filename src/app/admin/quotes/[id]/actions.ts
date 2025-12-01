@@ -2,6 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { getFormString, serializeActionError } from "@/lib/forms";
+import {
+  notifyOnNewQuoteMessage,
+  notifyOnWinningBidSelected,
+} from "@/server/quotes/notifications";
+import {
+  loadQuoteContactInfo,
+  loadQuoteWinningContext,
+  loadWinningBidNotificationContext,
+} from "@/server/quotes/notificationContext";
 import { getServerAuthUser, requireUser } from "@/server/auth";
 import {
   QUOTE_UPDATE_ERROR,
@@ -20,7 +29,10 @@ import {
   logAdminQuotesWarn,
 } from "@/server/admin/quotes/logging";
 import { markWinningBidForQuote } from "@/server/bids";
-import { createQuoteMessage } from "@/server/quotes/messages";
+import {
+  createQuoteMessage,
+  type QuoteMessageRow,
+} from "@/server/quotes/messages";
 
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
@@ -153,6 +165,11 @@ export async function submitSelectWinningBidAction(
     revalidatePath("/supplier");
     revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
+    void dispatchAdminWinnerNotification(
+      normalizedQuoteId,
+      trimmedBidId,
+    );
+
     console.log("[admin bids] select winner success", {
       quoteId: normalizedQuoteId,
       bidId: trimmedBidId,
@@ -254,6 +271,13 @@ export async function submitAdminQuoteMessageAction(
     revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
     revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
 
+    if (result.data) {
+      void dispatchAdminMessageNotification(
+        normalizedQuoteId,
+        result.data,
+      );
+    }
+
     console.log("[admin messages] create success", {
       quoteId: normalizedQuoteId,
       userId: user.id,
@@ -273,5 +297,65 @@ export async function submitAdminQuoteMessageAction(
       ok: false,
       error: ADMIN_MESSAGE_GENERIC_ERROR,
     };
+  }
+}
+
+async function dispatchAdminMessageNotification(
+  quoteId: string,
+  message: QuoteMessageRow,
+) {
+  try {
+    const contact = await loadQuoteContactInfo(quoteId);
+    if (!contact) {
+      console.warn("[admin messages] notification skipped", {
+        quoteId,
+        messageId: message.id,
+        reason: "missing-quote-context",
+      });
+      return;
+    }
+    await notifyOnNewQuoteMessage(message, contact);
+  } catch (error) {
+    console.error("[admin messages] notification failed", {
+      quoteId,
+      messageId: message.id,
+      error: serializeActionError(error),
+    });
+  }
+}
+
+async function dispatchAdminWinnerNotification(
+  quoteId: string,
+  bidId: string,
+) {
+  try {
+    const [quoteContext, winnerContext] = await Promise.all([
+      loadQuoteWinningContext(quoteId),
+      loadWinningBidNotificationContext(bidId),
+    ]);
+
+    if (!quoteContext || !winnerContext) {
+      console.warn("[admin bids] winner notification skipped", {
+        quoteId,
+        bidId,
+        reason: !quoteContext
+          ? "missing-quote-context"
+          : "missing-bid-context",
+      });
+      return;
+    }
+
+    await notifyOnWinningBidSelected({
+      quote: quoteContext,
+      winningBid: winnerContext.winningBid,
+      supplier: winnerContext.supplier,
+      customerEmail: quoteContext.email ?? null,
+    });
+  } catch (error) {
+    console.error("[admin bids] winner notification failed", {
+      quoteId,
+      bidId,
+      error: serializeActionError(error),
+    });
   }
 }
