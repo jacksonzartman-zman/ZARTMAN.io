@@ -171,6 +171,10 @@ async function CustomerDashboardPage({
     : await loadCustomerPortalData({
         customerId: customer.id,
       });
+  const customerWebsite =
+    typeof customer.website === "string" && customer.website.trim().length > 0
+      ? customer.website.trim()
+      : "";
   console.log("[customer workspace] quotes loaded", {
     userId: user.id,
     customerId: usingOverride ? null : customer.id,
@@ -214,11 +218,12 @@ async function CustomerDashboardPage({
       ? "All systems operational"
       : "Standing by for your first upload";
 
-  console.info("[customer dashboard] loaded", {
+  console.info("[customer dashboard] loaded (post-website-fix)", {
     userEmail: user.email ?? null,
-    customerId: customer.id ?? null,
-    customerEmail: customer.email ?? null,
-    companyName: customer.company_name ?? null,
+    customerId: customer?.id ?? null,
+    customerEmail: customer?.email ?? null,
+    companyName: customer?.company_name ?? null,
+    customerWebsite: customerWebsite || null,
     hasProfile: Boolean(customer),
     activityEventCount: Array.isArray(recentActivity) ? recentActivity.length : null,
     quoteCount: Array.isArray(portalData.quotes) ? portalData.quotes.length : null,
@@ -295,6 +300,12 @@ async function CustomerDashboardPage({
               <p className="mt-2 text-xs text-slate-500">
                 Uploads from your account automatically sync back into this dashboard.
               </p>
+              {customerWebsite ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  Website:{" "}
+                  <span className="font-mono text-slate-300">{customerWebsite}</span>
+                </p>
+              ) : null}
             </>
           )}
           {portalData.domainFallbackUsed && viewerDomain ? (
