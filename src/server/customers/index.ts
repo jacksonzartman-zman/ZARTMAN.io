@@ -2,14 +2,14 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 const CUSTOMER_SELECT_COLUMNS =
-  "id,user_id,email,company_name,phone,website,created_at,updated_at,notify_quote_messages,notify_quote_winner";
+  "id,user_id,email,company_name,website,created_at,updated_at,notify_quote_messages,notify_quote_winner";
 
 export type CustomerRow = {
   id: string;
   user_id: string | null;
   email: string;
   company_name: string | null;
-  phone: string | null;
+  phone?: string | null;
   website: string | null;
   created_at: string;
   updated_at: string;
