@@ -43,6 +43,8 @@ export type SupplierRow = {
   verified: boolean;
   created_at: string;
   status?: string | null;
+  notify_quote_messages: boolean | null;
+  notify_quote_winner: boolean | null;
 };
 
 export type SupplierCapabilityRow = {

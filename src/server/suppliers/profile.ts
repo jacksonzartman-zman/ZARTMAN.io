@@ -10,6 +10,9 @@ import type {
   SupplierRow,
 } from "./types";
 
+const SUPPLIER_SELECT_COLUMNS =
+  "id,company_name,primary_email,user_id,phone,website,country,verified,created_at,status,notify_quote_messages,notify_quote_winner";
+
 function normalizeEmail(value?: string | null): string | null {
   if (typeof value !== "string") {
     return null;
@@ -71,7 +74,7 @@ export async function getOrCreateSupplierByEmail(
   try {
     const { data: existing, error: lookupError } = await supabaseServer
       .from("suppliers")
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .eq("primary_email", email)
       .maybeSingle<SupplierRow>();
 
@@ -118,7 +121,7 @@ export async function getOrCreateSupplierByEmail(
     const { data: created, error: insertError } = await supabaseServer
       .from("suppliers")
       .insert(payload)
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .single<SupplierRow>();
 
     if (insertError || !created) {
@@ -151,7 +154,7 @@ export async function loadSupplierProfile(
   try {
     const { data: supplier, error } = await supabaseServer
       .from("suppliers")
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .eq("primary_email", email)
       .maybeSingle<SupplierRow>();
 
@@ -197,7 +200,7 @@ export async function loadSupplierByPrimaryEmail(
   try {
     const { data, error } = await supabaseServer
       .from("suppliers")
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .eq("primary_email", email)
       .maybeSingle<SupplierRow>();
 
@@ -229,7 +232,7 @@ export async function loadSupplierById(
   try {
     const { data, error } = await supabaseServer
       .from("suppliers")
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .eq("id", supplierId)
       .maybeSingle<SupplierRow>();
 
@@ -281,7 +284,7 @@ export async function loadSupplierByUserId(
   try {
     const { data, error } = await supabaseServer
       .from("suppliers")
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .eq("user_id", userId)
       .maybeSingle<SupplierRow>();
 
@@ -341,7 +344,7 @@ export async function upsertSupplierProfile(
       .from("suppliers")
       .update(updatePayload)
       .eq("id", supplier.id)
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .maybeSingle<SupplierRow>();
 
     if (updateError) {

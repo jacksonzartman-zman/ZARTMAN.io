@@ -1,10 +1,12 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { getCustomerById } from "@/server/customers";
+import type { CustomerRow } from "@/server/customers";
 import type { SupplierBidRow, SupplierRow } from "@/server/suppliers/types";
 import { loadSupplierById } from "@/server/suppliers/profile";
 import type {
   QuoteContactInfo,
   QuoteWinningContext,
-} from "@/server/quotes/notifications";
+} from "@/server/quotes/notificationTypes";
 
 type QuoteContactRow = QuoteContactInfo & {
   status?: string | null;
@@ -13,7 +15,12 @@ type QuoteContactRow = QuoteContactInfo & {
 };
 
 const QUOTE_NOTIFICATION_COLUMNS =
-  "id,file_name,company,customer_name,email,status,price,currency";
+  "id,file_name,company,customer_name,email,customer_id,status,price,currency";
+
+export type QuoteNotificationContext = {
+  quote: QuoteContactInfo;
+  customer: CustomerRow | null;
+};
 
 export async function loadQuoteContactInfo(
   quoteId: string,
@@ -42,6 +49,26 @@ export async function loadQuoteWinningContext(
     status: row.status ?? null,
     price: row.price ?? null,
     currency: row.currency ?? null,
+  };
+}
+
+export async function loadQuoteNotificationContext(
+  quoteId: string,
+): Promise<QuoteNotificationContext | null> {
+  const row = await selectQuoteRow(quoteId);
+  if (!row) {
+    return null;
+  }
+
+  const { status, price, currency, ...contact } = row;
+  const customer =
+    contact.customer_id && contact.customer_id.length > 0
+      ? await getCustomerById(contact.customer_id)
+      : null;
+
+  return {
+    quote: contact,
+    customer,
   };
 }
 

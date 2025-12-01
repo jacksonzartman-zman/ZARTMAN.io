@@ -1,26 +1,45 @@
 import { formatCurrency } from "@/lib/formatCurrency";
-import type { QuoteMessageRow } from "@/server/quotes/messages";
-import type { QuoteWithUploadsRow } from "@/server/quotes/types";
+import type { CustomerRow } from "@/server/customers";
 import { sendNotificationEmail } from "@/server/notifications/email";
+import {
+  customerAllowsNotification,
+  supplierAllowsNotification,
+} from "@/server/notifications/preferences";
+import { loadQuoteNotificationContext } from "@/server/quotes/notificationContext";
+import type { QuoteMessageRow } from "@/server/quotes/messages";
+import type {
+  QuoteContactInfo,
+  QuoteWinningContext,
+} from "@/server/quotes/notificationTypes";
 import type {
   SupplierBidRow,
   SupplierRow,
 } from "@/server/suppliers/types";
 
-export type QuoteContactInfo = Pick<
-  QuoteWithUploadsRow,
-  "id" | "file_name" | "company" | "customer_name" | "email"
->;
-
-export type QuoteWinningContext = QuoteContactInfo &
-  Pick<QuoteWithUploadsRow, "status" | "price" | "currency">;
-
 type WinningBidParams = {
   quote: QuoteWinningContext;
   winningBid: SupplierBidRow;
   supplier: SupplierRow;
-  customerEmail: string | null;
+  customer: CustomerRow | null;
 };
+
+type MessageRecipient =
+  | {
+      type: "admin";
+      email: string;
+      label: string;
+    }
+  | {
+    type: "customer";
+    email: string;
+    label: string;
+  }
+  | {
+      type: "supplier";
+      email: string;
+      label: string;
+      supplier?: SupplierRow | null;
+    };
 
 const ADMIN_NOTIFICATION_EMAIL =
   process.env.NOTIFICATIONS_ADMIN_EMAIL ?? "admin@zartman.io";
@@ -30,14 +49,47 @@ const SITE_URL =
 
 export async function notifyOnNewQuoteMessage(
   message: QuoteMessageRow,
-  quote: QuoteContactInfo,
 ): Promise<void> {
+  const context = await loadQuoteNotificationContext(message.quote_id);
+  if (!context) {
+    console.warn("[quote notifications] message skipped", {
+      quoteId: message.quote_id,
+      authorType: message.author_type,
+      reason: "missing-quote-context",
+    });
+    return;
+  }
+
+  const { quote, customer } = context;
   const recipient = resolveMessageRecipient(message.author_type, quote);
   if (!recipient) {
     console.log("[quote notifications] message skipped", {
       quoteId: quote.id,
       authorType: message.author_type,
       reason: "recipient-unavailable",
+    });
+    return;
+  }
+
+  if (
+    recipient.type === "customer" &&
+    !customerAllowsNotification(customer, "quote_message_customer")
+  ) {
+    console.log("[quote notifications] message skipped due to preferences", {
+      quoteId: quote.id,
+      recipientType: "customer",
+    });
+    return;
+  }
+
+  if (
+    recipient.type === "supplier" &&
+    !supplierAllowsNotification(recipient.supplier ?? null, "quote_message_supplier")
+  ) {
+    console.log("[quote notifications] message skipped due to preferences", {
+      quoteId: quote.id,
+      recipientType: "supplier",
+      supplierId: recipient.supplier?.id ?? null,
     });
     return;
   }
@@ -68,6 +120,7 @@ export async function notifyOnWinningBidSelected(
   params: WinningBidParams,
 ): Promise<void> {
   const supplierEmail = params.supplier.primary_email ?? null;
+  const customerEmail = params.customer?.email ?? params.quote.email ?? null;
   const quoteTitle = getQuoteTitle(params.quote);
   const supplierLink = buildPortalLink(`/supplier/quotes/${params.quote.id}`);
   const customerLink = buildPortalLink(`/customer/quotes/${params.quote.id}`);
@@ -83,41 +136,77 @@ export async function notifyOnWinningBidSelected(
         }`
       : "Lead time not provided";
 
-  const supplierSend =
-    supplierEmail &&
-    sendNotificationEmail({
-      to: supplierEmail,
-      subject: `Your bid won – RFQ ${quoteTitle}`,
-      previewText: `We selected your proposal for ${quoteTitle}.`,
-      html: `
-        <p>Congrats! Your bid for <strong>${quoteTitle}</strong> was selected as the winner.</p>
-        <p><strong>Price:</strong> ${formattedPrice}<br/>
-        <strong>Lead time:</strong> ${leadTimeLabel}</p>
-        <p><a href="${supplierLink}">Open the supplier workspace</a> to review next steps.</p>
-      `,
-    });
+  const sends: Promise<void>[] = [];
+  let supplierNotified = false;
+  let customerNotified = false;
 
-  const customerSend =
-    params.customerEmail &&
-    sendNotificationEmail({
-      to: params.customerEmail,
-      subject: `Winning supplier selected for your RFQ`,
-      previewText: `We marked a winning supplier for ${quoteTitle}.`,
-      html: `
-        <p>You selected <strong>${params.supplier.company_name ?? "a supplier"}</strong> for <strong>${quoteTitle}</strong>.</p>
-        <p><strong>Winning bid:</strong> ${formattedPrice} (${leadTimeLabel})</p>
-        <p><a href="${customerLink}">View the quote workspace</a> to keep the project moving.</p>
-      `,
+  if (supplierAllowsNotification(params.supplier, "winner_supplier")) {
+    if (supplierEmail) {
+      sends.push(
+        sendNotificationEmail({
+          to: supplierEmail,
+          subject: `Your bid won – RFQ ${quoteTitle}`,
+          previewText: `We selected your proposal for ${quoteTitle}.`,
+          html: `
+            <p>Congrats! Your bid for <strong>${quoteTitle}</strong> was selected as the winner.</p>
+            <p><strong>Price:</strong> ${formattedPrice}<br/>
+            <strong>Lead time:</strong> ${leadTimeLabel}</p>
+            <p><a href="${supplierLink}">Open the supplier workspace</a> to review next steps.</p>
+          `,
+        }),
+      );
+      supplierNotified = true;
+    }
+  } else {
+    console.log("[quote notifications] winner email skipped (supplier prefs)", {
+      quoteId: params.quote.id,
+      bidId: params.winningBid.id,
+      supplierId: params.supplier.id,
     });
+  }
+
+  if (customerAllowsNotification(params.customer, "winner_customer")) {
+    if (customerEmail) {
+      sends.push(
+        sendNotificationEmail({
+          to: customerEmail,
+          subject: `Winning supplier selected for your RFQ`,
+          previewText: `We marked a winning supplier for ${quoteTitle}.`,
+          html: `
+            <p>You selected <strong>${params.supplier.company_name ?? "a supplier"}</strong> for <strong>${quoteTitle}</strong>.</p>
+            <p><strong>Winning bid:</strong> ${formattedPrice} (${leadTimeLabel})</p>
+            <p><a href="${customerLink}">View the quote workspace</a> to keep the project moving.</p>
+          `,
+        }),
+      );
+      customerNotified = true;
+    }
+  } else {
+    console.log("[quote notifications] winner email skipped (customer prefs)", {
+      quoteId: params.quote.id,
+      bidId: params.winningBid.id,
+      customerId: params.customer?.id ?? null,
+    });
+  }
+
+  if (sends.length === 0) {
+    console.log("[quote notifications] winning bid emails skipped", {
+      quoteId: params.quote.id,
+      bidId: params.winningBid.id,
+      supplierId: params.supplier.id,
+      reason: "no-allowed-recipients",
+    });
+    return;
+  }
 
   try {
-    await Promise.all([supplierSend, customerSend].filter(Boolean) as Promise<void>[]);
+    await Promise.all(sends);
     console.log("[quote notifications] winning bid emails dispatched", {
       quoteId: params.quote.id,
       bidId: params.winningBid.id,
       supplierId: params.supplier.id,
-      supplierNotified: Boolean(supplierSend),
-      customerNotified: Boolean(customerSend),
+      supplierNotified,
+      customerNotified,
     });
   } catch (error) {
     console.error("[quote notifications] winning bid email failed", {
@@ -132,7 +221,7 @@ export async function notifyOnWinningBidSelected(
 function resolveMessageRecipient(
   authorType: QuoteMessageRow["author_type"],
   quote: QuoteContactInfo,
-) {
+): MessageRecipient | null {
   if (authorType === "customer") {
     return {
       email: ADMIN_NOTIFICATION_EMAIL,
