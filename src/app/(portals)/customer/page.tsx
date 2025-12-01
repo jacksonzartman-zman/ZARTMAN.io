@@ -20,13 +20,13 @@ import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
-import { loadCustomerActivityFeed } from "@/server/activity";
+import { loadRecentCustomerActivity } from "@/server/customers/activity";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
   type SupplierQuoteRow,
 } from "@/server/suppliers/types";
-import type { ActivityItem } from "@/types/activity";
+import type { QuoteActivityEvent } from "@/types/activity";
 import {
   getCustomerDecisions,
   type CustomerDecision,
@@ -190,19 +190,21 @@ async function CustomerDashboardPage({
       ? `?email=${encodeURIComponent(viewerEmail)}`
       : "";
   const viewerDomain = getEmailDomain(viewerDisplayEmail);
-  const activityFeed = await loadCustomerActivityFeed({
-    customerId: usingOverride ? null : customer.id,
-    email: viewerEmail ?? sessionEmail,
-    domain: viewerDomain,
-    limit: RECENT_ACTIVITY_LIMIT,
+  const rawActivity = await loadRecentCustomerActivity(customer.id, {
+    emailOverride: usingOverride ? viewerEmail ?? null : null,
   });
-  const recentActivity: ActivityItem[] = activityFeed.map((item) => ({
+  const recentActivity: QuoteActivityEvent[] = rawActivity.map((item) => ({
     ...item,
     href:
       item.href && quoteLinkQuery
         ? `${item.href}${quoteLinkQuery}`
         : item.href,
   }));
+  console.log("[customer dashboard] activity loaded", {
+    customerId: customer.id,
+    eventCount: recentActivity.length,
+    override: usingOverride,
+  });
   const customerMetrics = deriveCustomerMetrics(portalData.quotes);
   const lastUpdatedTimestamp = getLatestCustomerActivityTimestamp(portalData.quotes);
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
@@ -716,16 +718,20 @@ function StatusBadge({
   );
 }
 
-function ActivityTypeBadge({ type }: { type: ActivityItem["type"] }) {
-  const labelMap: Record<ActivityItem["type"], string> = {
-    quote: "Quote",
-    bid: "Bid",
-    status: "Status",
+function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {
+  const labelMap: Record<QuoteActivityEvent["type"], string> = {
+    rfq_submitted: "RFQ",
+    status_changed: "Status",
+    message_posted: "Message",
+    bid_received: "Bid",
+    winner_selected: "Winner",
   };
-  const colorMap: Record<ActivityItem["type"], string> = {
-    quote: "bg-emerald-500/10 text-emerald-200 border-emerald-500/30",
-    bid: "bg-sky-500/10 text-sky-200 border-sky-500/30",
-    status: "bg-slate-500/10 text-slate-200 border-slate-500/30",
+  const colorMap: Record<QuoteActivityEvent["type"], string> = {
+    rfq_submitted: "bg-emerald-500/10 text-emerald-200 border-emerald-500/30",
+    status_changed: "bg-slate-500/10 text-slate-200 border-slate-500/30",
+    message_posted: "bg-indigo-500/10 text-indigo-200 border-indigo-500/30",
+    bid_received: "bg-sky-500/10 text-sky-200 border-sky-500/30",
+    winner_selected: "bg-amber-500/10 text-amber-200 border-amber-500/30",
   };
   return (
     <span
