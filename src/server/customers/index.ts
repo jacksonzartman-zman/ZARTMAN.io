@@ -1,6 +1,9 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
 
+const CUSTOMER_SELECT_COLUMNS =
+  "id,user_id,email,company_name,phone,website,created_at,updated_at,notify_quote_messages,notify_quote_winner";
+
 export type CustomerRow = {
   id: string;
   user_id: string | null;
@@ -10,6 +13,8 @@ export type CustomerRow = {
   website: string | null;
   created_at: string;
   updated_at: string;
+  notify_quote_messages: boolean | null;
+  notify_quote_winner: boolean | null;
 };
 
 export type CustomerProfileSaveOperation =
@@ -55,7 +60,7 @@ export async function getCustomerByUserId(
   try {
     const { data, error } = await supabaseServer
       .from("customers")
-      .select("*")
+      .select(CUSTOMER_SELECT_COLUMNS)
       .eq("user_id", userId)
       .maybeSingle<CustomerRow>();
 
@@ -84,7 +89,7 @@ export async function getCustomerById(
   try {
     const { data, error } = await supabaseServer
       .from("customers")
-      .select("*")
+      .select(CUSTOMER_SELECT_COLUMNS)
       .eq("id", customerId)
       .maybeSingle<CustomerRow>();
 
@@ -188,7 +193,7 @@ export async function upsertCustomerProfileForUser(
     const { data, error } = await supabaseServer
       .from("customers")
       .insert(insertPayload)
-      .select("*")
+      .select(CUSTOMER_SELECT_COLUMNS)
       .single<CustomerRow>();
 
     if (error || !data) {
@@ -244,7 +249,7 @@ export async function getCustomerByEmail(email?: string | null) {
   try {
     const { data, error } = await supabaseServer
       .from("customers")
-      .select("*")
+      .select(CUSTOMER_SELECT_COLUMNS)
       .ilike("email", normalized)
       .maybeSingle<CustomerRow>();
 
@@ -312,7 +317,7 @@ async function updateCustomer(
       updated_at: new Date().toISOString(),
     })
     .eq("id", customerId)
-    .select("*")
+      .select(CUSTOMER_SELECT_COLUMNS)
     .maybeSingle<CustomerRow>();
 
   if (error) {
@@ -362,7 +367,7 @@ export async function upsertCustomerByEmail(
     const { data, error } = await supabaseServer
       .from("customers")
       .upsert(payload, { onConflict: "email" })
-      .select("*")
+      .select(CUSTOMER_SELECT_COLUMNS)
       .single<CustomerRow>();
 
     if (error) {

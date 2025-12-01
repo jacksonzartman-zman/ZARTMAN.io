@@ -5,6 +5,7 @@ import {
   deriveOrgFromSession,
   deriveOrgSeatSummary,
 } from "@/types/org";
+import { CustomerNotificationSettingsForm } from "./CustomerNotificationSettingsForm";
 
 export const dynamic = "force-dynamic";
 
@@ -20,23 +21,10 @@ export default async function CustomerSettingsPage() {
   const seatSummary = deriveOrgSeatSummary(org, user);
   const planLabel = formatPlanLabel(org.plan);
 
-  const notificationPrefs = [
-    {
-      id: "customer-quote-status",
-      label: "Quote status changes",
-      description: "Alerts when RFQs move to reviewing, quoted, or approved.",
-    },
-    {
-      id: "customer-bid",
-      label: "Supplier bids",
-      description: "Ping me when a supplier responds so I can review pricing.",
-    },
-    {
-      id: "customer-messages",
-      label: "Shared message threads",
-      description: "Notify me when admins or suppliers add new comments.",
-    },
-  ];
+  const notificationSettings = {
+    notifyQuoteMessages: customer?.notify_quote_messages ?? true,
+    notifyQuoteWinner: customer?.notify_quote_winner ?? true,
+  };
 
   return (
     <div className="space-y-6">
@@ -90,33 +78,22 @@ export default async function CustomerSettingsPage() {
         </p>
       </section>
 
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
-        <h2 className="text-lg font-semibold text-white">Notification preferences</h2>
-        <p className="mt-1 text-sm text-slate-400">
-          Keep these toggled on to receive email updates while we build in-app controls.
-        </p>
-        <ul className="mt-4 space-y-3">
-          {notificationPrefs.map((pref) => (
-            <li
-              key={pref.id}
-              className="flex flex-col gap-2 rounded-2xl border border-slate-800/80 bg-slate-950/40 p-4 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div>
-                <p className="font-semibold text-white">{pref.label}</p>
-                <p className="text-xs text-slate-400">{pref.description}</p>
-              </div>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  defaultChecked
-                  className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-emerald-400 focus:ring-emerald-400"
-                  disabled
-                />
-                <span className="text-xs text-slate-500">Enabled</span>
-              </label>
-            </li>
-          ))}
-        </ul>
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Notification preferences</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Control when we email you about quote activity while we finish the in-app inbox.
+          </p>
+        </div>
+        {!customer ? (
+          <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
+            Complete your customer profile to save these settings.
+          </p>
+        ) : null}
+        <CustomerNotificationSettingsForm
+          initialValues={notificationSettings}
+          disabled={!customer}
+        />
       </section>
 
       <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">

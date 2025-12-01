@@ -5,9 +5,11 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import {
   notifyOnNewQuoteMessage,
   notifyOnWinningBidSelected,
-  type QuoteContactInfo,
-  type QuoteWinningContext,
 } from "@/server/quotes/notifications";
+import type {
+  QuoteContactInfo,
+  QuoteWinningContext,
+} from "@/server/quotes/notificationTypes";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
@@ -15,7 +17,7 @@ import {
   declineSupplierBid,
 } from "@/server/suppliers";
 import { requireUser } from "@/server/auth";
-import { getCustomerByUserId } from "@/server/customers";
+import { getCustomerById, getCustomerByUserId } from "@/server/customers";
 import { markWinningBidForQuote } from "@/server/bids";
 import { loadWinningBidNotificationContext } from "@/server/quotes/notificationContext";
 import { getFormString, serializeActionError } from "@/lib/forms";
@@ -74,6 +76,7 @@ type QuoteRecipientRow = {
   customer_name: string | null;
   company: string | null;
   file_name: string | null;
+  customer_id: string | null;
 };
 
 type QuoteSelectionRow = QuoteRecipientRow & {
@@ -135,7 +138,7 @@ export async function submitCustomerQuoteMessageAction(
 
     const { data: quote, error: quoteError } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email,customer_name,company,file_name")
+      .select("id,email,customer_name,company,file_name,customer_id")
       .eq("id", normalizedQuoteId)
       .maybeSingle<QuoteRecipientRow>();
 
@@ -205,8 +208,7 @@ export async function submitCustomerQuoteMessageAction(
     revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
 
     if (quote) {
-      const contact = toQuoteContactInfo(quote);
-      void notifyOnNewQuoteMessage(result.data, contact);
+      void notifyOnNewQuoteMessage(result.data);
     }
 
     console.log("[customer messages] create success", {
@@ -439,7 +441,9 @@ export async function submitCustomerSelectWinningBidAction(
 
     const { data: quoteRow, error } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email,customer_name,company,file_name,status,price,currency")
+      .select(
+        "id,email,customer_name,company,file_name,status,price,currency,customer_id",
+      )
       .eq("id", normalizedQuoteId)
       .maybeSingle<QuoteSelectionRow>();
 
@@ -548,11 +552,15 @@ async function triggerWinnerNotifications(
     }
 
     const quoteContext = toQuoteWinningContext(quoteRow);
+    const customer =
+      quoteRow.customer_id && quoteRow.customer_id.length > 0
+        ? await getCustomerById(quoteRow.customer_id)
+        : null;
     await notifyOnWinningBidSelected({
       quote: quoteContext,
       winningBid: winnerContext.winningBid,
       supplier: winnerContext.supplier,
-      customerEmail: quoteContext.email ?? null,
+      customer,
     });
   } catch (error) {
     console.error("[customer decisions] winning bid notification failed", {
@@ -570,6 +578,7 @@ function toQuoteContactInfo(row: QuoteRecipientRow): QuoteContactInfo {
     customer_name: row.customer_name,
     company: row.company,
     file_name: row.file_name,
+    customer_id: row.customer_id,
   };
 }
 

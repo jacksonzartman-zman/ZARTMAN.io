@@ -7,10 +7,10 @@ import {
   notifyOnWinningBidSelected,
 } from "@/server/quotes/notifications";
 import {
-  loadQuoteContactInfo,
   loadQuoteWinningContext,
   loadWinningBidNotificationContext,
 } from "@/server/quotes/notificationContext";
+import { getCustomerById } from "@/server/customers";
 import { getServerAuthUser, requireUser } from "@/server/auth";
 import {
   QUOTE_UPDATE_ERROR,
@@ -426,16 +426,7 @@ async function dispatchAdminMessageNotification(
   message: QuoteMessageRow,
 ) {
   try {
-    const contact = await loadQuoteContactInfo(quoteId);
-    if (!contact) {
-      console.warn("[admin messages] notification skipped", {
-        quoteId,
-        messageId: message.id,
-        reason: "missing-quote-context",
-      });
-      return;
-    }
-    await notifyOnNewQuoteMessage(message, contact);
+    await notifyOnNewQuoteMessage(message);
   } catch (error) {
     console.error("[admin messages] notification failed", {
       quoteId,
@@ -466,11 +457,16 @@ async function dispatchAdminWinnerNotification(
       return;
     }
 
+    const customer =
+      quoteContext.customer_id && quoteContext.customer_id.length > 0
+        ? await getCustomerById(quoteContext.customer_id)
+        : null;
+
     await notifyOnWinningBidSelected({
       quote: quoteContext,
       winningBid: winnerContext.winningBid,
       supplier: winnerContext.supplier,
-      customerEmail: quoteContext.email ?? null,
+      customer,
     });
   } catch (error) {
     console.error("[admin bids] winner notification failed", {
