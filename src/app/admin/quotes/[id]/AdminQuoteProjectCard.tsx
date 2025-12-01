@@ -20,6 +20,12 @@ type AdminQuoteProjectCardProps = {
 
 const INITIAL_STATE: AdminProjectFormState = { ok: true };
 
+type NormalizedAdminProjectFormState = AdminProjectFormState & {
+  message: string;
+  error: string;
+  fieldErrors: NonNullable<AdminProjectFormState["fieldErrors"]>;
+};
+
 export function AdminQuoteProjectCard({
   quoteId,
   project,
@@ -191,16 +197,12 @@ function ProjectSubmitButton({ disabled }: { disabled?: boolean }) {
 
 function normalizeState(
   state: AdminProjectFormState | null,
-): AdminProjectFormState & {
-  message: string | null;
-  error: string | null;
-  fieldErrors: NonNullable<AdminProjectFormState["fieldErrors"]>;
-} {
+): NormalizedAdminProjectFormState {
   const base = state ?? INITIAL_STATE;
   return {
     ok: base.ok,
-    message: base.message ?? null,
-    error: base.error ?? null,
+    message: base.message ?? "",
+    error: base.error ?? "",
     fieldErrors: {
       poNumber: base.fieldErrors?.poNumber,
       targetShipDate: base.fieldErrors?.targetShipDate,
