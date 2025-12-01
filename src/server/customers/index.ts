@@ -2,7 +2,7 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
 
 const CUSTOMER_SELECT_COLUMNS =
-  "id,user_id,email,company_name,created_at,updated_at,notify_quote_messages,notify_quote_winner";
+  "id,user_id,email,company_name,created_at,notify_quote_messages,notify_quote_winner";
 
 export type CustomerRow = {
   id: string;
@@ -13,7 +13,8 @@ export type CustomerRow = {
   phone?: string | null;
   website?: string | null;
   created_at: string;
-  updated_at: string;
+  // updated_at is *not* present in prod; keep this optional and tolerate undefined
+  updated_at?: string | null;
   notify_quote_messages: boolean | null;
   notify_quote_winner: boolean | null;
 };
