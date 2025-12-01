@@ -3,13 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
+import { createQuoteMessage } from "@/server/quotes/messages";
 import {
-  notifyOnNewQuoteMessage,
-  type QuoteContactInfo,
-} from "@/server/quotes/notifications";
-import { createSupplierQuoteMessage } from "@/server/quotes/messages";
-import {
-  getSupplierBidForQuote,
   loadSupplierProfile,
   loadSupplierProfileByUserId,
   getSupplierApprovalStatus,
@@ -24,7 +19,7 @@ import { loadBidForSupplierAndQuote } from "@/server/bids";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { canUserBid } from "@/lib/permissions";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
-import { getServerAuthUser } from "@/server/auth";
+import { getServerAuthUser, requireUser } from "@/server/auth";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import {
   getSupplierDisplayName,
@@ -33,14 +28,191 @@ import {
   supplierHasAccess,
 } from "./supplierAccess";
 
-export type PostSupplierQuoteMessageState = {
-  success: boolean;
-  error: string | null;
-  messageId?: string;
+export type SupplierMessageFormState = {
+  ok: boolean;
+  message?: string | null;
+  error?: string | null;
+  fieldErrors?: {
+    body?: string;
+  };
 };
 
-const GENERIC_ERROR =
-  "Unable to send your message right now. Please try again.";
+const SUPPLIER_MESSAGE_PROFILE_ERROR =
+  "We couldn’t find your supplier profile.";
+const SUPPLIER_MESSAGE_GENERIC_ERROR =
+  "We couldn’t send your message. Please try again.";
+const SUPPLIER_MESSAGE_ACCESS_ERROR =
+  "Chat is only available after your bid is selected for this RFQ.";
+const SUPPLIER_MESSAGE_LOCKED_ERROR =
+  "Chat unlocks after your bid is accepted for this RFQ.";
+
+export async function submitSupplierQuoteMessageAction(
+  quoteId: string,
+  _prevState: SupplierMessageFormState,
+  formData: FormData,
+): Promise<SupplierMessageFormState> {
+  const trimmedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  const bodyValue = formData.get("body");
+  const body =
+    typeof bodyValue === "string"
+      ? bodyValue.trim()
+      : String(bodyValue ?? "").trim();
+
+  if (!trimmedQuoteId) {
+    return {
+      ok: false,
+      error: "Missing quote ID.",
+      fieldErrors: {},
+    };
+  }
+
+  if (body.length === 0) {
+    return {
+      ok: false,
+      error: "Message can’t be empty.",
+      fieldErrors: { body: "Please enter a message before sending." },
+    };
+  }
+
+  if (body.length > 2000) {
+    return {
+      ok: false,
+      error: "Message is too long.",
+      fieldErrors: {
+        body: "Keep messages under 2,000 characters.",
+      },
+    };
+  }
+
+  try {
+    const user = await requireUser({
+      redirectTo: `/supplier/quotes/${trimmedQuoteId}`,
+      message: "Sign in to post a message.",
+    });
+
+    let profile = user.id
+      ? await loadSupplierProfileByUserId(user.id)
+      : null;
+
+    if (!profile && user.email) {
+      profile = await loadSupplierProfile(user.email);
+    }
+
+    if (!profile?.supplier?.id) {
+      console.error("[supplier messages] no supplier profile for user", {
+        quoteId: trimmedQuoteId,
+        userId: user.id,
+        email: user.email ?? null,
+      });
+      return {
+        ok: false,
+        error: SUPPLIER_MESSAGE_PROFILE_ERROR,
+        fieldErrors: {},
+      };
+    }
+
+    const supplierId = profile.supplier.id;
+    const bidResult = await loadBidForSupplierAndQuote(
+      supplierId,
+      trimmedQuoteId,
+    );
+
+    if (!bidResult.ok || !bidResult.data) {
+      console.error("[supplier messages] access denied – no bid", {
+        quoteId: trimmedQuoteId,
+        supplierId,
+        error: bidResult.error,
+      });
+      return {
+        ok: false,
+        error: SUPPLIER_MESSAGE_ACCESS_ERROR,
+        fieldErrors: {},
+      };
+    }
+
+    const bid = bidResult.data;
+    const status = (bid?.status ?? "").toLowerCase();
+    const messagingUnlocked =
+      status === "accepted" || status === "won" || status === "winner";
+
+    if (!messagingUnlocked) {
+      console.error("[supplier messages] access denied – bid not accepted", {
+        quoteId: trimmedQuoteId,
+        supplierId,
+        status,
+      });
+      return {
+        ok: false,
+        error: SUPPLIER_MESSAGE_LOCKED_ERROR,
+        fieldErrors: {},
+      };
+    }
+
+    const authorName =
+      profile.supplier.company_name ??
+      user.email ??
+      "Supplier";
+
+    const authorEmail =
+      profile.supplier.primary_email ??
+      user.email ??
+      "supplier@zartman.io";
+
+    console.log("[supplier messages] create start", {
+      quoteId: trimmedQuoteId,
+      supplierId,
+    });
+
+    const result = await createQuoteMessage({
+      quoteId: trimmedQuoteId,
+      body,
+      authorType: "supplier",
+      authorName,
+      authorEmail,
+    });
+
+    if (!result.ok || !result.data) {
+      console.error("[supplier messages] create failed", {
+        quoteId: trimmedQuoteId,
+        supplierId,
+        error: result.error,
+      });
+
+      return {
+        ok: false,
+        error: result.error ?? SUPPLIER_MESSAGE_GENERIC_ERROR,
+        fieldErrors: {},
+      };
+    }
+
+    console.log("[supplier messages] create success", {
+      quoteId: trimmedQuoteId,
+      supplierId,
+      messageId: result.data.id,
+    });
+
+    revalidatePath(`/supplier/quotes/${trimmedQuoteId}`);
+    revalidatePath(`/customer/quotes/${trimmedQuoteId}`);
+    revalidatePath(`/admin/quotes/${trimmedQuoteId}`);
+
+    return {
+      ok: true,
+      message: "Message sent.",
+      error: "",
+      fieldErrors: {},
+    };
+  } catch (error) {
+    console.error("[supplier messages] action crashed", {
+      quoteId: trimmedQuoteId,
+      error,
+    });
+    return {
+      ok: false,
+      error: "Unexpected error while sending your message.",
+      fieldErrors: {},
+    };
+  }
+}
 
 export type SupplierBidActionState =
   | { ok: true; message: string }
@@ -54,158 +226,6 @@ const SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE =
 
 type QuoteAccessRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
 
-export async function postSupplierQuoteMessageAction(
-  _prevState: PostSupplierQuoteMessageState,
-  formData: FormData,
-): Promise<PostSupplierQuoteMessageState> {
-  const rawQuoteId = formData.get("quote_id");
-  const rawBody = formData.get("body");
-  const rawEmail = formData.get("identity_email");
-
-  if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
-    return { success: false, error: "Missing quote reference." };
-  }
-
-  if (typeof rawBody !== "string") {
-    return { success: false, error: "Enter a message before sending." };
-  }
-
-  if (typeof rawEmail !== "string") {
-    return { success: false, error: "Provide your email to continue." };
-  }
-
-  const quoteId = rawQuoteId.trim();
-  const body = rawBody.trim();
-  const identityEmail = normalizeEmailInput(rawEmail);
-
-  if (!identityEmail) {
-    return {
-      success: false,
-      error: "Provide a valid email address to continue.",
-    };
-  }
-
-  if (body.length === 0) {
-    return {
-      success: false,
-      error: "Enter a message before sending.",
-    };
-  }
-
-  if (body.length > 2000) {
-    return {
-      success: false,
-      error: "Message is too long. Keep it under 2,000 characters.",
-    };
-  }
-
-  try {
-    const [quoteResult, assignments, profile] = await Promise.all([
-      loadQuoteAccessRow(quoteId),
-      loadSupplierAssignments(quoteId),
-      loadSupplierProfile(identityEmail),
-    ]);
-
-    const quote = quoteResult.data;
-    const quoteError = quoteResult.error;
-
-    if (quoteError) {
-      console.error("Supplier post action: quote lookup failed", {
-        quoteId,
-        error: serializeSupabaseError(quoteError),
-      });
-      return { success: false, error: GENERIC_ERROR };
-    }
-
-    if (!quote) {
-      return { success: false, error: "Quote not found." };
-    }
-
-    if (!profile?.supplier) {
-      console.error("Supplier post action: no supplier profile", {
-        quoteId,
-        identityEmail,
-      });
-      return {
-        success: false,
-        error: "Complete onboarding before posting messages.",
-      };
-    }
-
-    const uploadProcess = await loadUploadProcessHint(quote.upload_id ?? null);
-    const verifiedProcessMatch = matchesSupplierProcess(
-      profile.capabilities ?? [],
-      uploadProcess,
-    );
-
-    if (
-      !supplierHasAccess(identityEmail, quote, assignments, {
-        supplier: profile.supplier,
-        verifiedProcessMatch,
-      })
-    ) {
-      console.error("Supplier post action: access denied", {
-        quoteId,
-        identityEmail,
-        quoteEmail: quote.email,
-        assignmentCount: assignments.length,
-        reason: "ACCESS_DENIED",
-      });
-      return {
-        success: false,
-        error: "You do not have access to this quote.",
-      };
-    }
-
-    const existingBid = await getSupplierBidForQuote(
-      quoteId,
-      profile.supplier.id,
-    );
-
-    if (existingBid?.status !== "accepted") {
-      console.warn("Supplier post action: chat locked for supplier", {
-        quoteId,
-        identityEmail,
-        supplierId: profile.supplier.id,
-        bidStatus: existingBid?.status ?? "none",
-        reason: "CHAT_LOCKED_UNACCEPTED_BID",
-      });
-      return {
-        success: false,
-        error: "Chat unlocks after your bid is accepted by the customer.",
-      };
-    }
-
-    const supplierName = getSupplierDisplayName(
-      identityEmail,
-      quote,
-      assignments,
-    );
-
-    const result = await createSupplierQuoteMessage({
-      quoteId,
-      body,
-      authorName: supplierName,
-      authorEmail: identityEmail,
-    });
-
-    if (!result.ok || !result.data) {
-      console.error("Supplier post action: failed to create message", {
-        quoteId,
-        error: result.error,
-      });
-      return { success: false, error: GENERIC_ERROR };
-    }
-
-    revalidatePath(`/supplier/quotes/${quoteId}`);
-    const contact = toSupplierQuoteContact(quote);
-    void notifyOnNewQuoteMessage(result.data, contact);
-    return { success: true, error: null, messageId: result.data.id };
-  } catch (error) {
-    console.error("Supplier post action: unexpected error", error);
-    return { success: false, error: GENERIC_ERROR };
-  }
-}
 
 export async function submitSupplierBidAction(
   _prevState: SupplierBidActionState,
@@ -582,16 +602,6 @@ async function loadQuoteAccessRow(quoteId: string) {
     .select(QUOTE_ACCESS_SELECT)
     .eq("id", quoteId)
     .maybeSingle<QuoteAccessRow>();
-}
-
-function toSupplierQuoteContact(quote: QuoteAccessRow): QuoteContactInfo {
-  return {
-    id: quote.id,
-    email: quote.email ?? null,
-    customer_name: quote.customer_name ?? null,
-    company: quote.company ?? null,
-    file_name: quote.file_name ?? null,
-  };
 }
 
 async function loadUploadProcessHint(
