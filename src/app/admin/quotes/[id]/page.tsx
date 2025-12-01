@@ -26,6 +26,8 @@ import { loadAdminQuoteDetail } from "@/server/admin/quotes";
 import { loadBidsForQuote } from "@/server/bids";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import { SupplierBidsCard } from "./SupplierBidsCard";
+import { loadQuoteProject } from "@/server/quotes/projects";
+import { AdminQuoteProjectCard } from "./AdminQuoteProjectCard";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +99,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       </main>
     );
   }
+
+  const projectResult = await loadQuoteProject(quote.id);
+  const project = projectResult.ok ? projectResult.data : null;
+  const projectUnavailable = !projectResult.ok;
+  console.log("[admin quote] project loaded", {
+    quoteId: quote.id,
+    hasProject: Boolean(project),
+    unavailable: projectUnavailable,
+  });
 
   let uploadMeta: UploadMeta | null = null;
   if (quote.upload_id) {
@@ -323,6 +334,12 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         </div>
         <div className="space-y-4 lg:space-y-5">
           {projectNotesCard}
+          <AdminQuoteProjectCard
+            quoteId={quote.id}
+            project={project}
+            projectUnavailable={projectUnavailable}
+            className={cardClasses}
+          />
         </div>
       </div>
     );

@@ -37,6 +37,8 @@ import {
 } from "@/server/quotes/status";
 import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
 import { CustomerQuoteTrackingCard } from "./CustomerQuoteTrackingCard";
+import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
+import { loadQuoteProject } from "@/server/quotes/projects";
 
 export const dynamic = "force-dynamic";
 
@@ -141,10 +143,19 @@ export default async function CustomerQuoteDetailPage({
   const bids = bidsResult.ok && Array.isArray(bidsResult.data)
     ? (bidsResult.data ?? [])
     : [];
+  const projectResult = await loadQuoteProject(quote.id);
+  const project = projectResult.ok ? projectResult.data : null;
+  const projectUnavailable = !projectResult.ok;
+  console.log("[customer quote] project loaded", {
+    quoteId: quote.id,
+    hasProject: Boolean(project),
+    unavailable: projectUnavailable,
+  });
   const bidCount = bids.length;
   const timelineEvents: QuoteTimelineEvent[] = buildCustomerQuoteTimeline({
     quote,
     bids,
+    project,
   });
   console.log("[customer quote] tracking events built", {
     quoteId: quote.id,
@@ -239,7 +250,16 @@ export default async function CustomerQuoteDetailPage({
     (usingOverride && overrideEmail) ||
     quote.email || customer.email || user.email || "customer";
 
-  const summaryContent = (
+  const projectCard = quoteIsWon ? (
+    <CustomerQuoteProjectCard
+      quoteId={quote.id}
+      project={project}
+      readOnly={readOnly}
+      projectUnavailable={projectUnavailable}
+    />
+  ) : null;
+
+  const summaryGrid = (
     <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)] lg:gap-4 lg:space-y-0">
       <section className={clsx(cardClasses, "space-y-4")}>
         <header className="space-y-1">
@@ -325,6 +345,13 @@ export default async function CustomerQuoteDetailPage({
           </div>
         </div>
       </section>
+    </div>
+  );
+
+  const summaryContent = (
+    <div className="space-y-4">
+      {projectCard}
+      {summaryGrid}
     </div>
   );
 

@@ -41,6 +41,8 @@ import {
   type QuoteTimelineEvent,
 } from "@/lib/quote/tracking";
 import { SupplierQuoteTrackingCard } from "./SupplierQuoteTrackingCard";
+import { loadQuoteProject, type QuoteProjectRow } from "@/server/quotes/projects";
+import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
 
 export const dynamic = "force-dynamic";
 
@@ -98,6 +100,15 @@ export default async function SupplierQuoteDetailPage({
   }
   const workspaceData = workspaceResult.data;
 
+  const projectResult = await loadQuoteProject(quoteId);
+  const project = projectResult.ok ? projectResult.data : null;
+  const projectUnavailable = !projectResult.ok;
+  console.log("[supplier quote] project loaded", {
+    quoteId,
+    hasProject: Boolean(project),
+    unavailable: projectUnavailable,
+  });
+
   const assignments = await loadSupplierAssignments(quoteId);
   const capabilities = profile.capabilities ?? [];
   const verifiedProcessMatch = matchesSupplierProcess(
@@ -136,6 +147,7 @@ export default async function SupplierQuoteDetailPage({
       quote: workspaceData.quote,
       bids: bidsArray,
       supplierId: profile.supplier.id,
+      project,
     });
   console.log("[supplier quote] tracking events built", {
     quoteId,
@@ -171,6 +183,8 @@ export default async function SupplierQuoteDetailPage({
       approved={approved}
       messagingUnlocked={existingBid?.status === "accepted"}
       timelineEvents={supplierTimelineEvents}
+      project={project}
+      projectUnavailable={projectUnavailable}
     />
   );
 }
@@ -187,6 +201,8 @@ function SupplierQuoteWorkspace({
   approved,
   messagingUnlocked,
   timelineEvents,
+  project,
+  projectUnavailable,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
@@ -199,6 +215,8 @@ function SupplierQuoteWorkspace({
   approved: boolean;
   messagingUnlocked: boolean;
   timelineEvents: QuoteTimelineEvent[];
+  project: QuoteProjectRow | null;
+  projectUnavailable: boolean;
 }) {
   const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
@@ -225,6 +243,11 @@ function SupplierQuoteWorkspace({
   const assignmentNames = assignments
     .map((assignment) => assignment.supplier_name ?? assignment.supplier_email)
     .filter((value): value is string => Boolean(value && value.trim()));
+
+  const isWinningSupplier =
+    typeof existingBid?.status === "string" &&
+    existingBid.status.trim().toLowerCase() === "accepted";
+  const showSupplierProjectCard = isWinningSupplier;
 
   const summaryContent = (
     <div className="space-y-4">
@@ -302,6 +325,13 @@ function SupplierQuoteWorkspace({
           </div>
         </div>
       </section>
+      {showSupplierProjectCard ? (
+        <SupplierQuoteProjectCard
+          className={cardClasses}
+          project={project}
+          unavailable={projectUnavailable}
+        />
+      ) : null}
     </div>
   );
 

@@ -5,7 +5,8 @@ export type QuoteTimelineEventKind =
   | "status-changed"
   | "bid-submitted"
   | "bid-updated"
-  | "winner-selected";
+  | "winner-selected"
+  | "project_created";
 
 export type QuoteTimelineEvent = {
   id: string;
@@ -42,12 +43,20 @@ export interface BidRowLike {
 type CustomerTimelineArgs = {
   quote: QuoteRowLike;
   bids: BidRowLike[];
+  project?: QuoteProjectLike | null;
 };
 
 type SupplierTimelineArgs = {
   quote: QuoteRowLike;
   bids: BidRowLike[];
   supplierId: string;
+  project?: QuoteProjectLike | null;
+};
+
+type QuoteProjectLike = {
+  id: string;
+  po_number?: string | null;
+  created_at?: string | null;
 };
 
 function timestampsAreEqual(
@@ -79,6 +88,7 @@ export function buildCustomerQuoteTimeline(
 
   pushRfqSubmittedEvent(events, quote);
   pushStatusEvent(events, quote);
+  pushProjectCreatedEvent(events, args.project ?? null, quoteFallbackAt);
 
   bids.forEach((bid, index) => {
     pushBidSubmissionEvent(events, bid, {
@@ -117,6 +127,7 @@ export function buildSupplierQuoteTimeline(
 
   pushRfqSubmittedEvent(events, quote);
   pushStatusEvent(events, quote);
+  pushProjectCreatedEvent(events, args.project ?? null, quoteFallbackAt);
 
   if (!normalizedSupplierId) {
     return sortTimelineEvents(events);
@@ -281,6 +292,30 @@ function buildBidMeta(bid: BidRowLike): Record<string, unknown> {
     supplierId: bid.supplier_id,
     quoteId: bid.quote_id,
   };
+}
+
+function pushProjectCreatedEvent(
+  events: QuoteTimelineEvent[],
+  project: QuoteProjectLike | null,
+  fallbackAt: string | null,
+) {
+  if (!project) {
+    return;
+  }
+  const at = normalizeTimestamp(project.created_at) ?? fallbackAt;
+  if (!at) {
+    return;
+  }
+  events.push({
+    id: `project:${project.id}`,
+    kind: "project_created",
+    at,
+    title: "Project kickoff created",
+    description: project.po_number
+      ? `PO ${project.po_number} recorded.`
+      : "Project details recorded.",
+    actorLabel: "Zartman.io",
+  });
 }
 
 function sortTimelineEvents(events: QuoteTimelineEvent[]): QuoteTimelineEvent[] {
