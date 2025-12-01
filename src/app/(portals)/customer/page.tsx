@@ -214,6 +214,16 @@ async function CustomerDashboardPage({
       ? "All systems operational"
       : "Standing by for your first upload";
 
+  console.info("[customer dashboard] loaded", {
+    userEmail: user.email ?? null,
+    customerId: customer.id ?? null,
+    customerEmail: customer.email ?? null,
+    companyName: customer.company_name ?? null,
+    hasProfile: Boolean(customer),
+    activityEventCount: Array.isArray(recentActivity) ? recentActivity.length : null,
+    quoteCount: Array.isArray(portalData.quotes) ? portalData.quotes.length : null,
+  });
+
   return (
     <div className="space-y-6">
       <WorkspaceWelcomeBanner

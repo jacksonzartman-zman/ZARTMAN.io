@@ -35,6 +35,10 @@ export async function loadRecentCustomerActivity(
   customerId: string,
   options?: CustomerActivityOptions,
 ): Promise<QuoteActivityEvent[]> {
+  console.info("[customer activity] load start", {
+    customerId,
+    emailOverride: options?.emailOverride ?? null,
+  });
   const overrideEmail = normalizeEmailInput(options?.emailOverride ?? null);
   if (!customerId && !overrideEmail) {
     return [];
@@ -55,6 +59,10 @@ export async function loadRecentCustomerActivity(
   if (quotes.length === 0) {
     return [];
   }
+  console.info("[customer activity] quotes resolved", {
+    customerId,
+    quoteCount: quotes.length,
+  });
 
   const quoteMap = new Map(quotes.map((quote) => [quote.id, quote]));
   const quoteIds = Array.from(quoteMap.keys());
@@ -97,7 +105,12 @@ export async function loadRecentCustomerActivity(
     events.push(buildBidEvent(bid, quote));
   }
 
-  return finalizeEvents(events);
+  const finalized = finalizeEvents(events);
+  console.info("[customer activity] events built", {
+    customerId,
+    eventCount: finalized.length,
+  });
+  return finalized;
 }
 
 async function fetchCustomerQuotes(

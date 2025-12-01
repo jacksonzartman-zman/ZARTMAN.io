@@ -228,6 +228,16 @@ async function SupplierDashboardPage({
         ? "All systems operational"
         : "Waiting for your first match";
 
+  console.info("[supplier dashboard] loaded", {
+    userEmail: user.email ?? null,
+    supplierId: supplier?.id ?? null,
+    supplierEmail: supplier?.primary_email ?? supplierEmail ?? null,
+    companyName: supplier?.company_name ?? null,
+    hasProfile: Boolean(supplier),
+    inboxRowCount: Array.isArray(supplierInboxRows) ? supplierInboxRows.length : null,
+    activityEventCount: Array.isArray(recentActivity) ? recentActivity.length : null,
+  });
+
   return (
     <div className="space-y-6">
       <WorkspaceWelcomeBanner
