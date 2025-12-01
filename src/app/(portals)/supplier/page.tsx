@@ -3,6 +3,7 @@ import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import { primaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "../PortalCard";
+import SupplierInboxTable, { type SupplierInboxRow } from "./SupplierInboxTable";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
@@ -13,6 +14,7 @@ import {
 } from "@/app/(portals)/quotes/pageUtils";
 import {
   getSupplierApprovalStatus,
+  loadSupplierInboxBidAggregates,
   listSupplierBidsForSupplier,
   loadSupplierProfile,
   matchQuotesToSupplier,
@@ -32,6 +34,7 @@ import { resolveUserRoles } from "@/server/users/roles";
 import { DataFallbackNotice } from "../DataFallbackNotice";
 import { DEBUG_PORTALS } from "../debug";
 import { approvalsEnabled } from "@/server/suppliers/flags";
+import { normalizeQuoteStatus } from "@/server/quotes/status";
 
 export const dynamic = "force-dynamic";
 
@@ -132,6 +135,63 @@ async function SupplierDashboardPage({
       ];
   const matchesData = matchesResult.data ?? [];
   const bidsData = bidsResult.data ?? [];
+  const matchQuoteIds = matchesData
+    .map((match) => match.quoteId ?? match.quote?.id ?? null)
+    .filter(
+      (id): id is string => typeof id === "string" && id.trim().length > 0,
+    );
+  const bidAggregates =
+    supplier && matchQuoteIds.length > 0
+      ? await loadSupplierInboxBidAggregates(supplier.id, matchQuoteIds)
+      : {};
+  const supplierInboxRows = matchesData.reduce<SupplierInboxRow[]>(
+    (acc, match) => {
+      const quote = match.quote;
+      const quoteId =
+        typeof match.quoteId === "string" && match.quoteId.length > 0
+          ? match.quoteId
+          : quote?.id ?? null;
+      if (!quote || !quoteId) {
+        return acc;
+      }
+      const aggregate = bidAggregates[quoteId];
+      const fileNames =
+        (Array.isArray(quote.file_names) ? quote.file_names : null) ??
+        (Array.isArray(quote.upload_file_names)
+          ? quote.upload_file_names
+          : null) ??
+        [];
+      const companyName =
+        sanitizeDisplayName(quote.company) ??
+        sanitizeDisplayName(quote.customer_name) ??
+        "Customer";
+      const fairnessReason = match.fairness?.reasons?.[0] ?? null;
+
+      acc.push({
+        id: quoteId,
+        quoteId,
+        companyName,
+        processHint: match.processHint,
+        materials: match.materialMatches,
+        quantityHint: match.quantityHint ?? null,
+        fileCount: fileNames.length,
+        priceLabel: formatCurrency(quote.price, quote.currency),
+        createdAt: match.createdAt ?? quote.created_at ?? null,
+        status: normalizeQuoteStatus(quote.status),
+        bidCount: aggregate?.bidCount ?? 0,
+        lastBidAt: aggregate?.lastBidAt ?? null,
+        hasWinningBid: aggregate?.hasWinningBid ?? false,
+        fairnessReason: fairnessReason ?? null,
+      });
+      return acc;
+    },
+    [],
+  );
+  console.info("[supplier inbox] loaded", {
+    supplierId: supplier?.id ?? null,
+    totalQuotes: supplierInboxRows.length,
+    withBids: supplierInboxRows.filter((row) => row.bidCount > 0).length,
+  });
   const matchesUnavailable = supplierExists && !matchesResult.ok;
   const bidsUnavailable = supplierExists && !bidsResult.ok;
   const canLoadActivity =
@@ -291,7 +351,7 @@ async function SupplierDashboardPage({
       <MatchesCard
         supplierEmail={supplier?.primary_email ?? supplierEmail}
         supplierExists={supplierExists}
-        result={matchesResult}
+        rows={supplierInboxRows}
         approvalGate={matchesResult.approvalGate ?? approvalGate}
       />
       {matchesUnavailable ? (
@@ -465,15 +525,15 @@ function ProfileCard({
 function MatchesCard({
   supplierEmail: _supplierEmail,
   supplierExists,
-  result,
+  rows,
   approvalGate,
 }: {
   supplierEmail: string;
   supplierExists: boolean;
-  result: SupplierActivityResult<SupplierQuoteMatch[]>;
+  rows: SupplierInboxRow[];
   approvalGate?: SupplierApprovalGate | null;
 }) {
-  const matches = result.data ?? [];
+  const matches = rows;
   if (isApprovalGateActive(approvalGate)) {
     const copy = getApprovalHoldCopy(approvalGate?.status);
     return (
@@ -495,57 +555,7 @@ function MatchesCard({
       }
     >
       {supplierExists && matches.length > 0 ? (
-        <ul className="space-y-3">
-          {matches.map((match) => {
-            const quote = match.quote;
-            const fileCount = (quote.file_names ?? quote.upload_file_names ?? []).length;
-            const createdLabel = formatDateTime(match.createdAt, {
-              includeTime: false,
-            });
-            const materialsText =
-              match.materialMatches.length > 0
-                ? `Materials: ${match.materialMatches.join(", ")}`
-                : "Materials: —";
-            const priceText =
-              typeof quote.price === "number" || typeof quote.price === "string"
-                ? formatCurrency(Number(quote.price), quote.currency)
-                : "Value pending";
-            const filesLabel =
-              fileCount > 0 ? `${fileCount} file${fileCount === 1 ? "" : "s"}` : "No files";
-            const fairnessReason = match.fairness?.reasons?.[0] ?? null;
-            return (
-              <li key={quote.id}>
-                <Link
-                  href={`/supplier/quotes/${quote.id}`}
-                  className="block rounded-2xl border border-slate-900/80 bg-slate-950/40 px-4 py-3 transition hover:border-blue-400/40 hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {quote.company ?? quote.customer_name ?? "Customer"}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {match.processHint ?? "Process TBD"} • {filesLabel} • {priceText}
-                      </p>
-                    </div>
-                    <span className="text-xs font-semibold text-blue-200">
-                      View quote &rarr;
-                    </span>
-                  </div>
-                  <div className="mt-2 text-xs text-slate-500">
-                    <p>{materialsText}</p>
-                    <p>Created {createdLabel ?? "recently"}</p>
-                    {fairnessReason ? (
-                      <p className="text-[11px] text-blue-200/80">
-                        Fairness boost: {fairnessReason}
-                      </p>
-                    ) : null}
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <SupplierInboxTable rows={matches} />
       ) : supplierExists ? (
         <EmptyStateNotice
           title="No RFQs matched yet"
