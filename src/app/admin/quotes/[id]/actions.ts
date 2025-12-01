@@ -33,6 +33,7 @@ import {
   createQuoteMessage,
   type QuoteMessageRow,
 } from "@/server/quotes/messages";
+import { upsertQuoteProject } from "@/server/quotes/projects";
 
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
@@ -48,6 +49,17 @@ export type AdminMessageFormState = {
   message?: string;
   fieldErrors?: {
     body?: string;
+  };
+};
+
+export type AdminProjectFormState = {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  fieldErrors?: {
+    poNumber?: string;
+    targetShipDate?: string;
+    notes?: string;
   };
 };
 
@@ -195,6 +207,16 @@ const ADMIN_MESSAGE_GENERIC_ERROR =
 const ADMIN_MESSAGE_EMPTY_ERROR = "Message can’t be empty.";
 const ADMIN_MESSAGE_LENGTH_ERROR =
   "Message is too long. Try shortening or splitting it.";
+const ADMIN_PROJECT_GENERIC_ERROR =
+  "Unable to update project details right now.";
+const ADMIN_PROJECT_SUCCESS_MESSAGE = "Project details updated.";
+const ADMIN_PROJECT_PO_LENGTH_ERROR =
+  "PO number must be 100 characters or fewer.";
+const ADMIN_PROJECT_DATE_ERROR =
+  "Enter a valid target ship date (YYYY-MM-DD).";
+const ADMIN_PROJECT_NOTES_LENGTH_ERROR =
+  "Internal notes must be 2000 characters or fewer.";
+const ADMIN_PROJECT_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function submitAdminQuoteMessageAction(
   quoteId: string,
@@ -297,6 +319,105 @@ export async function submitAdminQuoteMessageAction(
       ok: false,
       error: ADMIN_MESSAGE_GENERIC_ERROR,
     };
+  }
+}
+
+export async function submitAdminQuoteProjectAction(
+  quoteId: string,
+  _prev: AdminProjectFormState,
+  formData: FormData,
+): Promise<AdminProjectFormState> {
+  try {
+    const { user } = await getServerAuthUser();
+    if (!user) {
+      return { ok: false, error: ADMIN_QUOTE_UPDATE_AUTH_ERROR };
+    }
+
+    const normalizedQuoteId =
+      typeof quoteId === "string" ? quoteId.trim() : "";
+
+    if (!normalizedQuoteId) {
+      return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+    }
+
+    const poNumberValue = getFormString(formData, "poNumber");
+    const poNumber =
+      typeof poNumberValue === "string" && poNumberValue.trim().length > 0
+        ? poNumberValue.trim()
+        : null;
+
+    if (poNumber && poNumber.length > 100) {
+      return {
+        ok: false,
+        error: ADMIN_PROJECT_PO_LENGTH_ERROR,
+        fieldErrors: { poNumber: ADMIN_PROJECT_PO_LENGTH_ERROR },
+      };
+    }
+
+    const targetShipDateValue = getFormString(formData, "targetShipDate");
+    const targetShipDate =
+      typeof targetShipDateValue === "string" &&
+      targetShipDateValue.trim().length > 0
+        ? targetShipDateValue.trim()
+        : null;
+
+    if (targetShipDate && !ADMIN_PROJECT_DATE_REGEX.test(targetShipDate)) {
+      return {
+        ok: false,
+        error: ADMIN_PROJECT_DATE_ERROR,
+        fieldErrors: { targetShipDate: ADMIN_PROJECT_DATE_ERROR },
+      };
+    }
+
+    const notesValue = getFormString(formData, "notes");
+    const notes =
+      typeof notesValue === "string" && notesValue.trim().length > 0
+        ? notesValue.trim()
+        : null;
+
+    if (notes && notes.length > 2000) {
+      return {
+        ok: false,
+        error: ADMIN_PROJECT_NOTES_LENGTH_ERROR,
+        fieldErrors: { notes: ADMIN_PROJECT_NOTES_LENGTH_ERROR },
+      };
+    }
+
+    console.log("[admin projects] update invoked", {
+      quoteId: normalizedQuoteId,
+      hasPoNumber: Boolean(poNumber),
+      hasTargetDate: Boolean(targetShipDate),
+    });
+
+    const result = await upsertQuoteProject({
+      quoteId: normalizedQuoteId,
+      poNumber,
+      targetShipDate,
+      notes,
+    });
+
+    if (!result.ok) {
+      console.error("[admin projects] update failed", {
+        quoteId: normalizedQuoteId,
+        error: result.error,
+      });
+      return { ok: false, error: ADMIN_PROJECT_GENERIC_ERROR };
+    }
+
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return {
+      ok: true,
+      message: ADMIN_PROJECT_SUCCESS_MESSAGE,
+    };
+  } catch (error) {
+    console.error("[admin projects] update crashed", {
+      quoteId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_PROJECT_GENERIC_ERROR };
   }
 }
 
