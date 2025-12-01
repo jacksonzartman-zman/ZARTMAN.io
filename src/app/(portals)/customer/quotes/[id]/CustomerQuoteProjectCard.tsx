@@ -19,6 +19,12 @@ type CustomerQuoteProjectCardProps = {
 
 const INITIAL_STATE: CustomerProjectFormState = { ok: true };
 
+type NormalizedCustomerProjectFormState = CustomerProjectFormState & {
+  message: string;
+  error: string;
+  fieldErrors: NonNullable<CustomerProjectFormState["fieldErrors"]>;
+};
+
 export function CustomerQuoteProjectCard({
   quoteId,
   project,
@@ -174,16 +180,12 @@ function ProjectSubmitButton({ disabled }: { disabled?: boolean }) {
 
 function normalizeState(
   state: CustomerProjectFormState | null,
-): CustomerProjectFormState & {
-  message: string | null;
-  error: string | null;
-  fieldErrors: NonNullable<CustomerProjectFormState["fieldErrors"]>;
-} {
+): NormalizedCustomerProjectFormState {
   const base = state ?? INITIAL_STATE;
   return {
     ok: base.ok,
-    message: base.message ?? null,
-    error: base.error ?? null,
+    message: base.message ?? "",
+    error: base.error ?? "",
     fieldErrors: {
       poNumber: base.fieldErrors?.poNumber,
       targetShipDate: base.fieldErrors?.targetShipDate,
