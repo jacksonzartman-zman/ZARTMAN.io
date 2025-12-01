@@ -20,15 +20,28 @@ type SupplierQuoteRow = {
   updated_at: string | null;
 };
 
+type SupplierActivityOptions = {
+  emailOverride?: string | null;
+};
+
 export async function loadRecentSupplierActivity(
   supplierId: string,
+  options?: SupplierActivityOptions,
 ): Promise<QuoteActivityEvent[]> {
+  console.info("[supplier activity] load start", {
+    supplierId,
+    supplierEmail: options?.emailOverride ?? null,
+  });
   if (!supplierId) {
     return [];
   }
 
   const bids = await fetchSupplierBids(supplierId);
   if (bids.length === 0) {
+    console.info("[supplier activity] quotes resolved", {
+      supplierId,
+      quoteCount: 0,
+    });
     return [];
   }
 
@@ -38,6 +51,10 @@ export async function loadRecentSupplierActivity(
     fetchExternalMessages(quoteIds),
   ]);
   const quoteMap = new Map(quotes.map((quote) => [quote.id, quote]));
+  console.info("[supplier activity] quotes resolved", {
+    supplierId,
+    quoteCount: quotes.length,
+  });
 
   const events: QuoteActivityEvent[] = [];
 
@@ -70,7 +87,12 @@ export async function loadRecentSupplierActivity(
     events.push(buildSupplierMessageEvent(message, quote));
   }
 
-  return finalizeEvents(events);
+  const finalized = finalizeEvents(events);
+  console.info("[supplier activity] events built", {
+    supplierId,
+    eventCount: finalized.length,
+  });
+  return finalized;
 }
 
 async function fetchSupplierBids(
