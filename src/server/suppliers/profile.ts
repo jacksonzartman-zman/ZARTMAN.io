@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 const SUPPLIER_SELECT_COLUMNS =
-  "id,company_name,primary_email,user_id,phone,website,country,verified,created_at,status,notify_quote_messages,notify_quote_winner";
+  "id,company_name,primary_email,user_id,phone,website,country,verified,created_at,notify_quote_messages,notify_quote_winner";
 
 function normalizeEmail(value?: string | null): string | null {
   if (typeof value !== "string") {
@@ -41,15 +41,18 @@ function sanitizeStringArray(values?: string[] | null): string[] {
 export function getSupplierApprovalStatus(raw?: {
   status?: string | null;
 }): SupplierApprovalStatus {
-  const value = (raw?.status ?? "").toLowerCase().trim();
-  if (!value) {
-    return "unknown";
+  const normalized = (raw?.status ?? "pending").toLowerCase().trim();
+  if (!normalized) {
+    return "pending";
   }
-  if (value === "approved") {
+  if (normalized === "approved") {
     return "approved";
   }
-  if (value === "rejected") {
+  if (normalized === "rejected") {
     return "rejected";
+  }
+  if (normalized === "unknown") {
+    return "unknown";
   }
   return "pending";
 }
