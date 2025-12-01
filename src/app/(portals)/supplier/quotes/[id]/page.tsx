@@ -5,8 +5,6 @@ import {
   QuoteWorkspaceTabs,
   type QuoteWorkspaceTab,
 } from "@/app/admin/quotes/[id]/QuoteWorkspaceTabs";
-import { QuoteMessagesThread } from "@/components/quotes/QuoteMessagesThread";
-import { SupplierQuoteMessageComposer } from "./SupplierQuoteMessageComposer";
 import {
   formatQuoteId,
   normalizeEmailInput,
@@ -43,6 +41,8 @@ import {
 import { SupplierQuoteTrackingCard } from "./SupplierQuoteTrackingCard";
 import { loadQuoteProject, type QuoteProjectRow } from "@/server/quotes/projects";
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
+import { loadQuoteMessages, type QuoteMessageRow } from "@/server/quotes/messages";
+import { SupplierQuoteMessagesCard } from "./SupplierQuoteMessagesCard";
 
 export const dynamic = "force-dynamic";
 
@@ -165,6 +165,21 @@ export default async function SupplierQuoteDetailPage({
   const bidsUnavailableMessage = bidResult.ok ? null : bidResult.error ?? null;
   const existingBid = initialBid;
 
+  const messagesResult = await loadQuoteMessages(quoteId);
+  const messagesUnavailable = !messagesResult.ok;
+  const messages: QuoteMessageRow[] =
+    messagesResult.ok && Array.isArray(messagesResult.data)
+      ? messagesResult.data ?? []
+      : [];
+
+  const bidStatus = (existingBid?.status ?? "").toLowerCase();
+  const messagingUnlocked =
+    bidStatus === "accepted" || bidStatus === "won" || bidStatus === "winner";
+
+  const messagingDisabledReason = messagingUnlocked
+    ? null
+    : "Chat unlocks after your bid is accepted or selected as the winner for this RFQ.";
+
   return (
     <SupplierQuoteWorkspace
       data={workspaceData}
@@ -181,7 +196,10 @@ export default async function SupplierQuoteDetailPage({
       bidsUnavailableMessage={bidsUnavailableMessage}
       approvalsOn={approvalsOn}
       approved={approved}
-      messagingUnlocked={existingBid?.status === "accepted"}
+      messagingUnlocked={messagingUnlocked}
+      messages={messages}
+      messagesUnavailable={messagesUnavailable}
+      messagingDisabledReason={messagingDisabledReason}
       timelineEvents={supplierTimelineEvents}
       project={project}
       projectUnavailable={projectUnavailable}
@@ -200,6 +218,9 @@ function SupplierQuoteWorkspace({
   approvalsOn,
   approved,
   messagingUnlocked,
+  messages,
+  messagesUnavailable,
+  messagingDisabledReason,
   timelineEvents,
   project,
   projectUnavailable,
@@ -214,11 +235,14 @@ function SupplierQuoteWorkspace({
   approvalsOn: boolean;
   approved: boolean;
   messagingUnlocked: boolean;
+  messages: QuoteMessageRow[];
+  messagesUnavailable: boolean;
+  messagingDisabledReason?: string | null;
   timelineEvents: QuoteTimelineEvent[];
   project: QuoteProjectRow | null;
   projectUnavailable: boolean;
 }) {
-  const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
+  const { quote, uploadMeta, filePreviews } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
   const nextWorkflowState = getNextWorkflowState(derived.status);
   const canSubmitBid = canUserBid("supplier", {
@@ -336,47 +360,13 @@ function SupplierQuoteWorkspace({
   );
 
   const messagesContent = (
-    <section className={cardClasses}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Messages
-      </p>
-      <QuoteMessagesThread
-        heading="Shared chat"
-        description="Direct line to the Zartman admin team for build updates and questions."
-        messages={messages}
-        messageCount={messages.length}
-        error={
-          messagesError
-            ? "Some messages may be missing. Refresh the page to try again."
-            : null
-        }
-        emptyState={
-          <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
-            No messages yet. Once chat is active, share build status updates or questions here.
-          </p>
-        }
-        containerClassName="mt-3"
-      />
-
-      <div className="mt-4 border-t border-slate-900/60 pt-4">
-        <p className="text-sm font-semibold text-slate-100">Post a message</p>
-        <p className="mt-1 text-xs text-slate-500">
-          Your message notifies the Zartman admin team instantly.
-        </p>
-        {!messagingUnlocked ? (
-          <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
-            Chat unlocks after your bid is accepted for this RFQ.
-          </p>
-        ) : null}
-        <div className="mt-3">
-          <SupplierQuoteMessageComposer
-            quoteId={quote.id}
-            supplierEmail={supplierEmail}
-            disabled={!messagingUnlocked}
-          />
-        </div>
-      </div>
-    </section>
+    <SupplierQuoteMessagesCard
+      quoteId={quote.id}
+      messages={messages}
+      messagesUnavailable={messagesUnavailable}
+      messagingUnlocked={messagingUnlocked}
+      disableReason={messagingDisabledReason}
+    />
   );
 
   const filesContent = (
