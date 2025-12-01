@@ -19,6 +19,7 @@ import { getCustomerByUserId } from "@/server/customers";
 import { markWinningBidForQuote } from "@/server/bids";
 import { loadWinningBidNotificationContext } from "@/server/quotes/notificationContext";
 import { getFormString, serializeActionError } from "@/lib/forms";
+import { upsertQuoteProject } from "@/server/quotes/projects";
 
 export type CustomerMessageFormState = {
   ok: boolean;
@@ -26,6 +27,16 @@ export type CustomerMessageFormState = {
   message?: string;
   fieldErrors?: {
     body?: string;
+  };
+};
+
+export type CustomerProjectFormState = {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  fieldErrors?: {
+    poNumber?: string;
+    targetShipDate?: string;
   };
 };
 
@@ -48,6 +59,14 @@ const CUSTOMER_SELECT_WINNER_GENERIC_ERROR =
   "We couldn’t select that bid. Please try again.";
 const CUSTOMER_SELECT_WINNER_SUCCESS_MESSAGE =
   "Winning supplier selected. Quote status updated to Won.";
+const CUSTOMER_PROJECT_GENERIC_ERROR =
+  "We couldn’t save your project details. Please retry.";
+const CUSTOMER_PROJECT_SUCCESS_MESSAGE = "Project details saved.";
+const CUSTOMER_PROJECT_PO_LENGTH_ERROR =
+  "PO number must be 100 characters or fewer.";
+const CUSTOMER_PROJECT_DATE_ERROR =
+  "Enter a valid target ship date (YYYY-MM-DD).";
+const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 type QuoteRecipientRow = {
   id: string;
@@ -209,6 +228,142 @@ export async function submitCustomerQuoteMessageAction(
       ok: false,
       error: CUSTOMER_MESSAGE_GENERIC_ERROR,
     };
+  }
+}
+
+export async function submitCustomerQuoteProjectAction(
+  quoteId: string,
+  _prev: CustomerProjectFormState,
+  formData: FormData,
+): Promise<CustomerProjectFormState> {
+  let normalizedQuoteId = "";
+  let customerId: string | null = null;
+
+  try {
+    normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+    const redirectPath = normalizedQuoteId
+      ? `/customer/quotes/${normalizedQuoteId}`
+      : "/customer/quotes";
+
+    if (!normalizedQuoteId) {
+      return { ok: false, error: "Missing quote reference." };
+    }
+
+    const user = await requireUser({ redirectTo: redirectPath });
+    const customer = await getCustomerByUserId(user.id);
+
+    if (!customer) {
+      console.error("[customer projects] access denied (missing profile)", {
+        quoteId: normalizedQuoteId,
+        userId: user.id,
+      });
+      return {
+        ok: false,
+        error: "Complete your profile before updating project details.",
+      };
+    }
+
+    customerId = customer.id;
+
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes_with_uploads")
+      .select("id,email")
+      .eq("id", normalizedQuoteId)
+      .maybeSingle<{ id: string; email: string | null }>();
+
+    if (quoteError) {
+      console.error("[customer projects] quote lookup failed", {
+        quoteId: normalizedQuoteId,
+        customerId,
+        error: serializeActionError(quoteError),
+      });
+      return { ok: false, error: CUSTOMER_PROJECT_GENERIC_ERROR };
+    }
+
+    if (!quoteRow) {
+      return { ok: false, error: "Quote not found." };
+    }
+
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
+    const customerEmail = normalizeEmailInput(customer.email);
+    const emailMatchesQuote =
+      normalizedQuoteEmail !== null &&
+      customerEmail !== null &&
+      normalizedQuoteEmail === customerEmail;
+
+    if (!emailMatchesQuote) {
+      console.error("[customer projects] access denied", {
+        quoteId: normalizedQuoteId,
+        customerId,
+        quoteEmail: quoteRow.email,
+        customerEmail,
+      });
+      return {
+        ok: false,
+        error: "You do not have access to update this project.",
+      };
+    }
+
+    const poNumberValue = getFormString(formData, "poNumber");
+    const poNumber =
+      typeof poNumberValue === "string" && poNumberValue.trim().length > 0
+        ? poNumberValue.trim()
+        : null;
+
+    if (poNumber && poNumber.length > 100) {
+      return {
+        ok: false,
+        error: CUSTOMER_PROJECT_PO_LENGTH_ERROR,
+        fieldErrors: { poNumber: CUSTOMER_PROJECT_PO_LENGTH_ERROR },
+      };
+    }
+
+    const targetShipDateValue = getFormString(formData, "targetShipDate");
+    const targetShipDate =
+      typeof targetShipDateValue === "string" &&
+      targetShipDateValue.trim().length > 0
+        ? targetShipDateValue.trim()
+        : null;
+
+    if (targetShipDate && !DATE_INPUT_REGEX.test(targetShipDate)) {
+      return {
+        ok: false,
+        error: CUSTOMER_PROJECT_DATE_ERROR,
+        fieldErrors: { targetShipDate: CUSTOMER_PROJECT_DATE_ERROR },
+      };
+    }
+
+    const result = await upsertQuoteProject({
+      quoteId: normalizedQuoteId,
+      poNumber,
+      targetShipDate,
+      notes: null,
+    });
+
+    if (!result.ok) {
+      console.error("[customer projects] upsert failed", {
+        quoteId: normalizedQuoteId,
+        customerId,
+        error: result.error,
+      });
+      return { ok: false, error: CUSTOMER_PROJECT_GENERIC_ERROR };
+    }
+
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return {
+      ok: true,
+      message: CUSTOMER_PROJECT_SUCCESS_MESSAGE,
+    };
+  } catch (error) {
+    console.error("[customer projects] upsert crashed", {
+      quoteId: normalizedQuoteId || quoteId,
+      customerId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_PROJECT_GENERIC_ERROR };
   }
 }
 
