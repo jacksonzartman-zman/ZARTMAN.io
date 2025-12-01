@@ -7,6 +7,7 @@ import {
   deriveOrgFromSession,
   deriveOrgSeatSummary,
 } from "@/types/org";
+import { SupplierNotificationSettingsForm } from "./SupplierNotificationSettingsForm";
 
 export const dynamic = "force-dynamic";
 
@@ -28,23 +29,10 @@ export default async function SupplierSettingsPage() {
   const seatSummary = deriveOrgSeatSummary(org, user);
   const planLabel = formatPlanLabel(org.plan);
 
-  const notificationPrefs = [
-    {
-      id: "supplier-rfq-matches",
-      label: "New RFQ matches",
-      description: "Email me when a fresh RFQ lands in my workspace.",
-    },
-    {
-      id: "supplier-bid-status",
-      label: "Bid decisions",
-      description: "Alerts when a customer accepts, declines, or requests updates.",
-    },
-    {
-      id: "supplier-chat",
-      label: "Shared chat unlocks",
-      description: "Get notified when messaging opens up for a quote.",
-    },
-  ];
+  const notificationSettings = {
+    notifyQuoteMessages: supplier?.notify_quote_messages ?? true,
+    notifyQuoteWinner: supplier?.notify_quote_winner ?? true,
+  };
 
   return (
     <div className="space-y-6">
@@ -110,33 +98,22 @@ export default async function SupplierSettingsPage() {
         </p>
       </section>
 
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
-        <h2 className="text-lg font-semibold text-white">Notification preferences</h2>
-        <p className="mt-1 text-sm text-slate-400">
-          We’re still sending these via email only. Toggles stay on until the inbox is live.
-        </p>
-        <ul className="mt-4 space-y-3">
-          {notificationPrefs.map((pref) => (
-            <li
-              key={pref.id}
-              className="flex flex-col gap-2 rounded-2xl border border-slate-800/80 bg-slate-950/40 p-4 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div>
-                <p className="font-semibold text-white">{pref.label}</p>
-                <p className="text-xs text-slate-400">{pref.description}</p>
-              </div>
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  defaultChecked
-                  className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-blue-400 focus:ring-blue-400"
-                  disabled
-                />
-                <span className="text-xs text-slate-500">Enabled</span>
-              </label>
-            </li>
-          ))}
-        </ul>
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Notification preferences</h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Decide which events should hit your inbox until supplier messaging ships.
+          </p>
+        </div>
+        {!supplier ? (
+          <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
+            Finish onboarding so we know which supplier profile to update.
+          </p>
+        ) : null}
+        <SupplierNotificationSettingsForm
+          initialValues={notificationSettings}
+          disabled={!supplier}
+        />
       </section>
 
       <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
