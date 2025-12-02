@@ -129,14 +129,9 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                 </td>
                 <td className={`${adminTableCellClass} text-xs`}>
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-[10px]">
-                      <span className="inline-flex items-center rounded-full bg-slate-500/20 px-2 py-0.5 font-semibold text-slate-100">
-                        {row.bidCount === 1 ? "1 bid" : `${row.bidCount} bids`}
-                      </span>
-                      <span className="text-slate-400">
-                        {row.hasProject ? "Kickoff set" : "No kickoff yet"}
-                      </span>
-                    </div>
+                    <span className="inline-flex items-center rounded-full bg-slate-500/20 px-2 py-0.5 text-[10px] font-semibold text-slate-100">
+                      {row.bidCount === 1 ? "1 bid" : `${row.bidCount} bids`}
+                    </span>
                     {row.needsDecision ? (
                       <span className="inline-flex w-fit items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
                         Needs decision
@@ -146,7 +141,9 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                         Winner selected
                       </span>
                     ) : (
-                      <span className="text-[11px] text-slate-500">Up to date</span>
+                      <span className="text-[11px] text-slate-500">
+                        {row.hasProject ? "Kickoff set" : "Up to date"}
+                      </span>
                     )}
                   </div>
                 </td>

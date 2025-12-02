@@ -203,6 +203,9 @@
       "devtoolSegmentExplorer": true,
       "browserDebugInfoInTerminal": false,
       "optimizeRouterScrolling": false,
+      "serverActions": {
+        "bodySizeLimit": "25mb"
+      },
       "optimizePackageImports": [
         "lucide-react",
         "date-fns",
