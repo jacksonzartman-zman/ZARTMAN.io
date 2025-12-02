@@ -152,11 +152,14 @@ export type SupplierQuoteMatch = {
   fairness?: FairnessScore;
 };
 
+export type SupplierActivityResultReason = "assignments-disabled";
+
 export type SupplierActivityResult<TData> = {
   ok: boolean;
   data: TData;
   error?: string | null;
   approvalGate?: SupplierApprovalGate;
+  reason?: SupplierActivityResultReason;
 };
 
 export type SupplierActivityIdentity = {
