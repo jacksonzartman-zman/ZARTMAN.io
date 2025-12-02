@@ -76,6 +76,17 @@ type UploadState = {
   termsAccepted: boolean;
 };
 
+export type PrefillContact = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  displayName: string;
+};
+
+type UploadBoxProps = {
+  prefillContact?: PrefillContact | null;
+};
+
 const FIELD_ERROR_KEYS = [
   "file",
   "firstName",
@@ -94,7 +105,7 @@ const FIELD_ERROR_KEY_SET = new Set<FieldErrorKey>(FIELD_ERROR_KEYS);
 
 type FieldErrors = Partial<Record<FieldErrorKey, string>>;
 
-const initialState: UploadState = {
+const EMPTY_UPLOAD_STATE: UploadState = {
   file: null,
   fileName: null,
   firstName: "",
@@ -111,6 +122,20 @@ const initialState: UploadState = {
   itarAcknowledged: false,
   termsAccepted: false,
 };
+
+const CONTACT_FIELD_KEYS: Array<keyof Pick<
+  UploadState,
+  "firstName" | "lastName" | "email"
+>> = ["firstName", "lastName", "email"];
+
+function buildInitialUploadState(prefill?: PrefillContact | null): UploadState {
+  return {
+    ...EMPTY_UPLOAD_STATE,
+    firstName: prefill?.firstName ?? "",
+    lastName: prefill?.lastName ?? "",
+    email: prefill?.email ?? "",
+  };
+}
 
 const MAX_UPLOAD_SIZE_LABEL = `${bytesToMegabytes(MAX_UPLOAD_SIZE_BYTES)} MB`;
 const FILE_TYPE_ERROR_MESSAGE = `Unsupported file type. Please upload ${CAD_FILE_TYPE_DESCRIPTION}.`;
@@ -187,8 +212,12 @@ const validateFormFields = (state: UploadState): FieldErrors => {
 const hasErrors = (fieldErrors: FieldErrors) =>
   Object.keys(fieldErrors).length > 0;
 
-export default function UploadBox() {
-  const [state, setState] = useState<UploadState>({ ...initialState });
+export default function UploadBox({ prefillContact }: UploadBoxProps) {
+  const baseState = useMemo(
+    () => buildInitialUploadState(prefillContact),
+    [prefillContact],
+  );
+  const [state, setState] = useState<UploadState>(() => ({ ...baseState }));
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -206,12 +235,29 @@ export default function UploadBox() {
     }
     return normalizeActionState(rawFormState);
   }, [rawFormState]);
+  const contactFieldsLocked = Boolean(prefillContact);
+  const contactFieldLockSet = contactFieldsLocked
+    ? new Set<InputFieldKey>(["firstName", "lastName", "email"])
+    : null;
   const resetUploadState = useCallback(() => {
-    setState(() => ({ ...initialState }));
+    setState(() => ({ ...baseState }));
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-  }, []);
+  }, [baseState]);
+
+  useEffect(() => {
+    if (!prefillContact) {
+      return;
+    }
+    setState((prev) => {
+      const next = { ...prev };
+      CONTACT_FIELD_KEYS.forEach((key) => {
+        next[key] = baseState[key];
+      });
+      return next;
+    });
+  }, [baseState, prefillContact]);
 
   const syncFileInputWithFile = useCallback((file: File | null) => {
     const input = fileInputRef.current;
@@ -381,6 +427,9 @@ export default function UploadBox() {
         | ChangeEvent<HTMLTextAreaElement>
         | ChangeEvent<HTMLSelectElement>,
     ) => {
+      if (contactFieldLockSet?.has(field)) {
+        return;
+      }
       const value = e.target.value;
       setState((prev) => ({ ...prev, [field]: value }));
       if (field in fieldErrors) {
@@ -517,7 +566,16 @@ export default function UploadBox() {
         </div>
 
         <div className="mt-8 space-y-5">
-        <div className="grid gap-4 md:grid-cols-2">
+          {prefillContact && (
+            <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
+              You&apos;re submitting as{" "}
+              <span className="font-semibold text-emerald-50">
+                {prefillContact.displayName}
+              </span>{" "}
+              ({prefillContact.email}). Contact details come from your workspace profile.
+            </div>
+          )}
+          <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1">
             <label
               htmlFor="firstName"
@@ -535,11 +593,14 @@ export default function UploadBox() {
               className={clsx(
                 "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
                 fieldErrors.firstName ? "border-red-500" : "border-border",
+                contactFieldsLocked && "cursor-not-allowed bg-black/30 text-muted",
               )}
               aria-invalid={Boolean(fieldErrors.firstName)}
               aria-describedby={
                 fieldErrors.firstName ? "firstName-error" : undefined
               }
+              readOnly={contactFieldsLocked}
+              aria-readonly={contactFieldsLocked}
             />
             {fieldErrors.firstName && (
               <p id="firstName-error" className="text-xs text-red-400">
@@ -564,11 +625,14 @@ export default function UploadBox() {
               className={clsx(
                 "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
                 fieldErrors.lastName ? "border-red-500" : "border-border",
+                contactFieldsLocked && "cursor-not-allowed bg-black/30 text-muted",
               )}
               aria-invalid={Boolean(fieldErrors.lastName)}
               aria-describedby={
                 fieldErrors.lastName ? "lastName-error" : undefined
               }
+              readOnly={contactFieldsLocked}
+              aria-readonly={contactFieldsLocked}
             />
             {fieldErrors.lastName && (
               <p id="lastName-error" className="text-xs text-red-400">
@@ -596,9 +660,12 @@ export default function UploadBox() {
               className={clsx(
                 "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
                 fieldErrors.email ? "border-red-500" : "border-border",
+                contactFieldsLocked && "cursor-not-allowed bg-black/30 text-muted",
               )}
               aria-invalid={Boolean(fieldErrors.email)}
               aria-describedby={fieldErrors.email ? "email-error" : undefined}
+              readOnly={contactFieldsLocked}
+              aria-readonly={contactFieldsLocked}
             />
             {fieldErrors.email && (
               <p id="email-error" className="text-xs text-red-400">

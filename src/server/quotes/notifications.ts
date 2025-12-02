@@ -803,7 +803,7 @@ async function loadProjectQuoteContext(
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
       .select(
-        "id,file_name,company,customer_name,email,customer_id,assigned_supplier_email,assigned_supplier_name",
+        "id,file_name,company,customer_name,email,assigned_supplier_email,assigned_supplier_name",
       )
       .eq("id", quoteId)
       .maybeSingle<ProjectQuoteRow>();
