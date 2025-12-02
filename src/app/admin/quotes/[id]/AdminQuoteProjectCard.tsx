@@ -52,6 +52,8 @@ export function AdminQuoteProjectCard({
     ? formatDateTime(project.target_ship_date) ?? project.target_ship_date
     : "";
   const formDisabled = projectUnavailable;
+  const notesValue = project?.notes ?? "";
+  const showEmptyState = !project && !projectUnavailable;
 
   const handleSubmit = (formData: FormData) => {
     setHasSubmitted(true);
@@ -80,14 +82,32 @@ export function AdminQuoteProjectCard({
       ) : null}
 
       <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
-        <SummaryItem label="PO number" value={project?.po_number ?? "Pending"} />
+        <SummaryItem
+          label="PO number"
+          value={project?.po_number ?? null}
+          placeholder="Pending"
+        />
         <SummaryItem
           label="Target ship date"
-          value={targetShipDateLabel || "Not set"}
+          value={targetShipDateLabel || null}
+          placeholder="Not set"
+        />
+        <SummaryItem
+          label="Kickoff notes"
+          value={project?.notes ?? null}
+          placeholder="No kickoff notes yet."
+          multiline
+          className="sm:col-span-2"
         />
       </dl>
 
       <form action={handleSubmit} className="space-y-3">
+        {showEmptyState ? (
+          <p className="text-xs text-slate-400">
+            No kickoff details saved yet. Capture the PO number, target ship date, and any
+            notes as soon as the quote is awarded.
+          </p>
+        ) : null}
         {showSuccess && state.message ? (
           <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
             {state.message}
@@ -147,17 +167,21 @@ export function AdminQuoteProjectCard({
             htmlFor="admin-project-notes"
             className="text-xs font-semibold uppercase tracking-wide text-slate-500"
           >
-            Internal notes
+            Kickoff notes
           </label>
           <textarea
             id="admin-project-notes"
             name="notes"
             rows={4}
-            defaultValue={project?.notes ?? ""}
+            defaultValue={notesValue}
+            maxLength={2000}
             disabled={formDisabled}
             className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-            placeholder="Internal context only. Customers and suppliers won’t see this field."
+            placeholder="Share packaging, address, or handoff context customers and suppliers should remember."
           />
+          <p className="text-xs text-slate-500">
+            Customers can edit these details, and the winning supplier sees them in read-only mode.
+          </p>
           {showFieldErrors && state.fieldErrors.notes ? (
             <p className="text-sm text-red-300" role="alert">
               {state.fieldErrors.notes}
@@ -170,13 +194,33 @@ export function AdminQuoteProjectCard({
   );
 }
 
-function SummaryItem({ label, value }: { label: string; value: string }) {
+function SummaryItem({
+  label,
+  value,
+  placeholder = "—",
+  multiline = false,
+  className = "",
+}: {
+  label: string;
+  value?: string | null;
+  placeholder?: string;
+  multiline?: boolean;
+  className?: string;
+}) {
+  const display =
+    typeof value === "string" && value.trim().length > 0 ? value : placeholder;
+  const valueClasses = [
+    multiline ? "whitespace-pre-line text-sm font-normal" : "font-medium",
+    "text-slate-100",
+  ].join(" ");
   return (
-    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+    <div
+      className={`rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2 ${className}`.trim()}
+    >
       <dt className="text-[11px] uppercase tracking-wide text-slate-500">
         {label}
       </dt>
-      <dd className="text-slate-100">{value}</dd>
+      <dd className={valueClasses}>{display}</dd>
     </div>
   );
 }

@@ -144,9 +144,9 @@ export default async function CustomerQuoteDetailPage({
     ? (bidsResult.data ?? [])
     : [];
   const projectResult = await loadQuoteProject(quote.id);
-  const project = projectResult.ok ? projectResult.data : null;
-  const projectUnavailable = !projectResult.ok;
-  console.log("[customer quote] project loaded", {
+  const project = projectResult.data;
+  const projectUnavailable = projectResult.unavailable;
+  console.info("[customer quote] project loaded", {
     quoteId: quote.id,
     hasProject: Boolean(project),
     unavailable: projectUnavailable,
