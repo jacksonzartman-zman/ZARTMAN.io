@@ -12,11 +12,13 @@ import { formatCurrency } from "@/lib/formatCurrency";
 
 const EVENT_LIMIT = 10;
 const QUOTE_COLUMNS =
-  "id,file_name,company,customer_name,email,status,created_at,updated_at,price,currency";
+  "id,file_name,company,customer_name,email,status,created_at,updated_at,price,currency,project_label,upload_name";
 
 type CustomerQuoteRow = {
   id: string;
   file_name: string | null;
+  project_label: string | null;
+  upload_name: string | null;
   company: string | null;
   customer_name: string | null;
   email: string | null;
@@ -123,7 +125,7 @@ export async function loadRecentCustomerActivity(
   return finalized;
 }
 
-async function fetchQuotesByEmail(
+export async function fetchQuotesByEmail(
   email: string,
   context?: {
     customerId?: string;
@@ -156,6 +158,54 @@ async function fetchQuotesByEmail(
     return [];
   }
   return (data ?? []) as CustomerQuoteRow[];
+}
+
+export async function loadCustomerQuotesTable(
+  customerId: string,
+  options?: { emailOverride?: string | null; limit?: number },
+): Promise<CustomerQuoteRow[]> {
+  console.info("[customer quotes] load start", {
+    customerId,
+    hasOverride: Boolean(options?.emailOverride),
+  });
+
+  const overrideEmail = normalizeEmailInput(options?.emailOverride ?? null);
+  const limit = options?.limit ?? 100;
+
+  let emailToUse = overrideEmail;
+
+  if (!emailToUse) {
+    const customer = await getCustomerById(customerId);
+    if (!customer) {
+      console.warn("[customer quotes] no customer found for id", { customerId });
+      return [];
+    }
+
+    const normalized = normalizeEmailInput(customer.email ?? null);
+    if (!normalized) {
+      console.warn("[customer quotes] customer email missing/invalid", {
+        customerId,
+        rawEmail: customer.email ?? null,
+      });
+      return [];
+    }
+
+    emailToUse = normalized;
+  }
+
+  const quotes = await fetchQuotesByEmail(emailToUse, {
+    customerId,
+    scope: overrideEmail ? "override" : "customer",
+    limit,
+  });
+
+  console.info("[customer quotes] load result", {
+    customerId,
+    email: emailToUse,
+    quoteCount: quotes.length,
+  });
+
+  return quotes;
 }
 
 async function fetchQuoteMessages(quoteIds: string[]): Promise<QuoteMessageRow[]> {
