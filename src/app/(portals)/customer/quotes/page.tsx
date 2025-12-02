@@ -88,10 +88,11 @@ export default async function CustomerQuotesPage() {
             </thead>
             <tbody className="divide-y divide-slate-900/70">
               {quotes.map((quote) => {
-                const label =
+                const primaryLabel =
                   quote.project_label ||
                   quote.upload_name ||
-                  `RFQ ${quote.id.slice(0, 8)}…`;
+                  quote.file_name ||
+                  "Untitled RFQ";
 
                 const statusLabel = quote.status
                   ? quote.status.replace(/_/g, " ")
@@ -104,7 +105,9 @@ export default async function CustomerQuotesPage() {
                   <tr key={quote.id} className="hover:bg-slate-900/50">
                     <td className="px-4 py-3 align-middle">
                       <div className="flex flex-col">
-                        <span className="font-medium text-slate-100">{label}</span>
+                        <span className="font-medium text-slate-100">
+                          {primaryLabel}
+                        </span>
                         <span className="text-xs text-slate-500">
                           Submitted {formatRelativeDate(quote.created_at ?? null)}
                         </span>
