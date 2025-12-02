@@ -169,9 +169,10 @@ export default async function CustomerQuoteDetailPage({
     ) ?? null;
   const winningBidId = winningBid?.id ?? null;
   const quoteHasWinner = Boolean(winningBidId);
-  const showCustomerSupplierSection = quoteAllowsCustomerAward && bidCount > 0;
+  const showCustomerSupplierSection = bidCount > 0;
   const showCustomerAwardButtons =
-    showCustomerSupplierSection &&
+    quoteAllowsCustomerAward &&
+    bidCount > 0 &&
     !quoteIsWon &&
     !quoteHasWinner &&
     !readOnly;
@@ -183,6 +184,9 @@ export default async function CustomerQuoteDetailPage({
     } else if (quoteIsWon || quoteHasWinner) {
       customerAwardDisabledReason =
         "A winning supplier has already been selected for this quote.";
+    } else if (!quoteAllowsCustomerAward) {
+      customerAwardDisabledReason =
+        "We’ll unlock supplier selection after your quote is prepared. We’re still collecting bids and preparing the final pricing.";
     }
   }
   const pricedBids = bids.filter(
