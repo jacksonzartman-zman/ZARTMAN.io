@@ -122,7 +122,7 @@ export async function loadSupplierActivityFeed(
     limit?: number;
   },
 ): Promise<SupplierActivityResult<ActivityItem[]>> {
-  const limit = args.limit ?? DEFAULT_ACTIVITY_LIMIT;
+  const limit = Math.max(args.limit ?? DEFAULT_ACTIVITY_LIMIT, 0);
   const supplierId = args.supplierId ?? null;
   const supplierEmail = normalizeEmail(args.supplierEmail);
   const logContext: ActivityQueryContext = {
@@ -178,9 +178,17 @@ export async function loadSupplierActivityFeed(
   }
 
   if (!assignmentsEnabled) {
-    console.log("[supplier activity] assignments disabled: skipping activity feed", {
+    console.log("[supplier activity] skipped; assignments disabled", {
       ...loggingPayload,
     });
+    return {
+      ok: true,
+      data: [],
+      reason: "assignments-disabled",
+    };
+  }
+
+  if (limit === 0) {
     return {
       ok: true,
       data: [],
