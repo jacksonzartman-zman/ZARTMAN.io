@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import {
   notifyOnNewQuoteMessage,
@@ -21,27 +22,21 @@ import {
   ADMIN_QUOTE_UPDATE_AUTH_ERROR,
   ADMIN_QUOTE_UPDATE_ID_ERROR,
   ADMIN_QUOTE_UPDATE_SUCCESS_MESSAGE,
-  ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE,
-  ADMIN_SELECT_WINNING_BID_SUCCESS_MESSAGE,
 } from "@/server/admin/quotes/messages";
 import {
   logAdminQuotesError,
   logAdminQuotesWarn,
 } from "@/server/admin/quotes/logging";
-import { markWinningBidForQuote } from "@/server/bids";
 import {
   createQuoteMessage,
   type QuoteMessageRow,
 } from "@/server/quotes/messages";
 import { upsertQuoteProject } from "@/server/quotes/projects";
+import { awardBidForQuoteAction } from "@/server/quotes/adminAward";
 
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
-
-export type AdminSelectWinningBidState =
-  | { ok: true; message: string }
-  | { ok: false; error: string };
 
 export type AdminMessageFormState = {
   ok: boolean;
@@ -62,6 +57,46 @@ export type AdminProjectFormState = {
     notes?: string;
   };
 };
+
+export async function awardBidFormAction(formData: FormData) {
+  const quoteIdRaw = getFormString(formData, "quoteId");
+  const bidIdRaw = getFormString(formData, "bidId");
+
+  const normalizedQuoteId =
+    typeof quoteIdRaw === "string" ? quoteIdRaw.trim() : "";
+  const normalizedBidId = typeof bidIdRaw === "string" ? bidIdRaw.trim() : "";
+  const redirectTarget = normalizedQuoteId
+    ? `/admin/quotes/${normalizedQuoteId}`
+    : "/admin/quotes";
+
+  const result = await awardBidForQuoteAction(quoteIdRaw ?? "", bidIdRaw ?? "");
+
+  if (!result.ok) {
+    console.error("[admin award] form error", {
+      quoteId: normalizedQuoteId || quoteIdRaw || null,
+      bidId: normalizedBidId || bidIdRaw || null,
+      error: result.error,
+    });
+    return redirect(redirectTarget);
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/quotes");
+  revalidatePath("/customer");
+  revalidatePath("/supplier");
+
+  if (normalizedQuoteId) {
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+  }
+
+  if (normalizedQuoteId && normalizedBidId) {
+    void dispatchAdminWinnerNotification(normalizedQuoteId, normalizedBidId);
+  }
+
+  redirect(redirectTarget);
+}
 
 export async function submitAdminQuoteUpdateAction(
   quoteId: string,
@@ -114,91 +149,6 @@ export async function submitAdminQuoteUpdateAction(
       error: serializeActionError(error),
     });
     return { ok: false, error: QUOTE_UPDATE_ERROR };
-  }
-}
-
-export async function submitSelectWinningBidAction(
-  quoteId: string,
-  _prevState: AdminSelectWinningBidState,
-  formData: FormData,
-): Promise<AdminSelectWinningBidState> {
-  let normalizedQuoteId = "";
-  let selectedBidId: string | null = null;
-
-  try {
-    console.log("[admin bids] select winner invoked", { quoteId });
-
-    const { user } = await getServerAuthUser();
-    if (!user) {
-      logAdminQuotesWarn("select winner auth failed", { quoteId });
-      return { ok: false, error: ADMIN_QUOTE_UPDATE_AUTH_ERROR };
-    }
-
-    normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
-
-    if (!normalizedQuoteId) {
-      logAdminQuotesWarn("select winner missing quote id", { quoteId });
-      return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
-    }
-
-    const bidId = getFormString(formData, "bidId");
-    if (typeof bidId !== "string" || bidId.trim().length === 0) {
-      logAdminQuotesWarn("select winner missing bid id", {
-        quoteId: normalizedQuoteId,
-      });
-      return { ok: false, error: ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE };
-    }
-
-    const trimmedBidId = bidId.trim();
-    selectedBidId = trimmedBidId;
-
-    const result = await markWinningBidForQuote({
-      quoteId: normalizedQuoteId,
-      bidId: trimmedBidId,
-    });
-
-    if (!result.ok) {
-      logAdminQuotesError("select winner failed", {
-        quoteId: normalizedQuoteId,
-        bidId: trimmedBidId,
-        error: result.error ?? null,
-      });
-      return {
-        ok: false,
-        error: result.error ?? ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE,
-      };
-    }
-
-    revalidatePath("/admin");
-    revalidatePath("/admin/quotes");
-    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
-    revalidatePath("/customer");
-    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
-    revalidatePath("/supplier");
-    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
-
-    void dispatchAdminWinnerNotification(
-      normalizedQuoteId,
-      trimmedBidId,
-    );
-
-    console.log("[admin bids] select winner success", {
-      quoteId: normalizedQuoteId,
-      bidId: trimmedBidId,
-    });
-
-    return {
-      ok: true,
-      message: ADMIN_SELECT_WINNING_BID_SUCCESS_MESSAGE,
-    };
-  } catch (error) {
-    const serialized = serializeActionError(error);
-    logAdminQuotesError("select winner action crashed", {
-      quoteId: normalizedQuoteId || quoteId,
-      bidId: selectedBidId,
-      error: serialized,
-    });
-    return { ok: false, error: ADMIN_SELECT_WINNING_BID_ERROR_MESSAGE };
   }
 }
 
