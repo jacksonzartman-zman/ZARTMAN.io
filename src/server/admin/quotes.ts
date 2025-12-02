@@ -1,6 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { loadQuoteNotificationContext } from "@/server/quotes/notificationContext";
-import { normalizeQuoteStatus } from "@/server/quotes/status";
+import {
+  normalizeQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import { notifyCustomerOnQuoteStatusChange } from "@/server/quotes/notifications";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import {
@@ -35,6 +38,21 @@ export type QuoteNotesRow = {
   internal_notes: string | null;
 };
 export type AdminQuoteDetailRow = AdminQuoteListRow & QuoteNotesRow;
+
+export type AdminQuoteMetaInput = {
+  quoteId: string | null | undefined;
+  status?: string | null;
+};
+
+export type AdminQuoteMeta = {
+  quoteId: string;
+  bidCount: number;
+  hasWinner: boolean;
+  hasProject: boolean;
+  needsDecision: boolean;
+};
+
+export type AdminQuoteMetaMap = Record<string, AdminQuoteMeta>;
 
 export type AdminQuoteUpdateInput = {
   quoteId: string;
@@ -228,6 +246,213 @@ async function loadQuoteNotes(quoteId: string): Promise<QuoteNotesRow> {
     });
     return fallback;
   }
+}
+
+const DECISION_STATUSES: ReadonlySet<QuoteStatus> = new Set([
+  "quoted",
+  "approved",
+]);
+
+type NormalizedMetaInput = {
+  quoteId: string;
+  status: QuoteStatus;
+};
+
+type QuoteBidMetaRow = {
+  quote_id: string | null;
+  status: string | null;
+};
+
+type QuoteProjectMetaRow = {
+  quote_id: string | null;
+};
+
+export function deriveAdminQuoteAttentionState({
+  quoteId,
+  status,
+  bidCount,
+  hasWinner,
+  hasProject,
+}: {
+  quoteId: string;
+  status: QuoteStatus;
+  bidCount: number;
+  hasWinner: boolean;
+  hasProject: boolean;
+}): AdminQuoteMeta {
+  const normalizedBidCount =
+    typeof bidCount === "number" && Number.isFinite(bidCount) ? bidCount : 0;
+  const derivedHasWinner = Boolean(hasWinner);
+  const derivedHasProject = Boolean(hasProject);
+  const needsDecision =
+    DECISION_STATUSES.has(status) &&
+    normalizedBidCount > 0 &&
+    !derivedHasWinner;
+
+  return {
+    quoteId,
+    bidCount: normalizedBidCount,
+    hasWinner: derivedHasWinner,
+    hasProject: derivedHasProject,
+    needsDecision,
+  };
+}
+
+export async function loadAdminQuoteMeta(
+  quotes: readonly AdminQuoteMetaInput[],
+): Promise<AdminQuoteMetaMap> {
+  const statusMap = normalizeMetaInputs(quotes);
+  const quoteIds = Array.from(statusMap.keys());
+
+  if (quoteIds.length === 0) {
+    return {};
+  }
+
+  const metaMap: AdminQuoteMetaMap = {};
+  for (const [quoteId] of statusMap) {
+    metaMap[quoteId] = {
+      quoteId,
+      bidCount: 0,
+      hasWinner: false,
+      hasProject: false,
+      needsDecision: false,
+    };
+  }
+
+  let bidRows: QuoteBidMetaRow[] = [];
+  let projectRows: QuoteProjectMetaRow[] = [];
+  let bidQueryFailed = false;
+  let projectQueryFailed = false;
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("supplier_bids")
+      .select("quote_id,status")
+      .in("quote_id", quoteIds)
+      .returns<QuoteBidMetaRow[]>();
+
+    if (error) {
+      bidQueryFailed = true;
+      logMetaQueryError("meta bids query failed", error);
+    } else if (Array.isArray(data)) {
+      bidRows = data;
+    }
+  } catch (error) {
+    bidQueryFailed = true;
+    logMetaQueryError("meta bids query crashed", error);
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_projects")
+      .select("quote_id")
+      .in("quote_id", quoteIds)
+      .returns<QuoteProjectMetaRow[]>();
+
+    if (error) {
+      projectQueryFailed = true;
+      logMetaQueryError("meta projects query failed", error);
+    } else if (Array.isArray(data)) {
+      projectRows = data;
+    }
+  } catch (error) {
+    projectQueryFailed = true;
+    logMetaQueryError("meta projects query crashed", error);
+  }
+
+  for (const row of bidRows) {
+    const quoteId = normalizeQuoteId(row?.quote_id);
+    if (!quoteId || !metaMap[quoteId]) {
+      continue;
+    }
+    metaMap[quoteId].bidCount += 1;
+    if (isWinningBidStatus(row?.status)) {
+      metaMap[quoteId].hasWinner = true;
+    }
+  }
+
+  const projectIds = new Set(
+    projectRows.map((row) => normalizeQuoteId(row?.quote_id)).filter(Boolean),
+  );
+  for (const quoteId of projectIds) {
+    if (quoteId && metaMap[quoteId]) {
+      metaMap[quoteId].hasProject = true;
+    }
+  }
+
+  let withBids = 0;
+  let withProjects = 0;
+  let needsDecisionCount = 0;
+
+  for (const [quoteId, status] of statusMap) {
+    const current = metaMap[quoteId];
+    if (!current) {
+      continue;
+    }
+    const derived = deriveAdminQuoteAttentionState({
+      quoteId,
+      status,
+      bidCount: current.bidCount,
+      hasWinner: current.hasWinner,
+      hasProject: current.hasProject,
+    });
+    metaMap[quoteId] = derived;
+
+    if (derived.bidCount > 0) {
+      withBids += 1;
+    }
+    if (derived.hasProject) {
+      withProjects += 1;
+    }
+    if (derived.needsDecision) {
+      needsDecisionCount += 1;
+    }
+  }
+
+  logAdminQuotesInfo("meta loaded", {
+    quoteCount: quoteIds.length,
+    withBids,
+    withProjects,
+    needsDecisionCount,
+    bidQueryFailed: bidQueryFailed || undefined,
+    projectQueryFailed: projectQueryFailed || undefined,
+  });
+
+  return metaMap;
+}
+
+function normalizeMetaInputs(
+  quotes: readonly AdminQuoteMetaInput[],
+): Map<string, QuoteStatus> {
+  const statusMap = new Map<string, QuoteStatus>();
+  for (const quote of quotes ?? []) {
+    const quoteId = normalizeQuoteId(quote?.quoteId);
+    if (!quoteId) {
+      continue;
+    }
+    statusMap.set(quoteId, normalizeQuoteStatus(quote?.status));
+  }
+  return statusMap;
+}
+
+function logMetaQueryError(message: string, error: unknown) {
+  const serialized = serializeSupabaseError(error);
+  if (isMissingTableOrColumnError(error)) {
+    logAdminQuotesWarn(message, { supabaseError: serialized });
+    return;
+  }
+  logAdminQuotesError(message, { supabaseError: serialized });
+}
+
+function normalizeQuoteId(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function isWinningBidStatus(status: unknown): boolean {
+  if (typeof status !== "string") {
+    return false;
+  }
+  return status.trim().toLowerCase() === "won";
 }
 
 export async function updateAdminQuote(

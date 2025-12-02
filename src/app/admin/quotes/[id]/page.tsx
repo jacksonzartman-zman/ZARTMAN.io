@@ -22,7 +22,11 @@ import {
   type QuoteWorkspaceTab,
 } from "./QuoteWorkspaceTabs";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
-import { loadAdminQuoteDetail } from "@/server/admin/quotes";
+import {
+  deriveAdminQuoteAttentionState,
+  isWinningBidStatus,
+  loadAdminQuoteDetail,
+} from "@/server/admin/quotes";
 import { loadBidsForQuote } from "@/server/bids";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import { SupplierBidsCard } from "./SupplierBidsCard";
@@ -248,6 +252,16 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       : quoteMessagesResult.error;
     const bidsResult = await loadBidsForQuote(quote.id);
     const bids = bidsResult.ok ? bidsResult.data : [];
+    const bidCount = bids.length;
+    const hasWinningBid = bids.some((bid) => isWinningBidStatus(bid?.status));
+    const hasProject = Boolean(project);
+    const attentionState = deriveAdminQuoteAttentionState({
+      quoteId: quote.id,
+      status,
+      bidCount,
+      hasWinner: hasWinningBid,
+      hasProject,
+    });
 
     const headerTitleSource = companyName || customerName || "Unnamed customer";
     const headerTitle = `Quote for ${headerTitleSource}`;
@@ -525,6 +539,35 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               {companyName && (
                 <span className="text-slate-400">{companyName}</span>
               )}
+            </div>
+
+            <div className="rounded-2xl border border-slate-900 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">
+              <div className="flex flex-wrap gap-4">
+                <span className="font-semibold text-slate-50">
+                  Bids: {attentionState.bidCount}
+                  {attentionState.hasWinner ? " · Winner selected" : ""}
+                </span>
+                <span className="text-slate-300">
+                  Kickoff:{" "}
+                  <span
+                    className={
+                      attentionState.hasProject ? "text-emerald-300" : "text-slate-400"
+                    }
+                  >
+                    {attentionState.hasProject ? "Set" : "Not started"}
+                  </span>
+                </span>
+                <span
+                  className={
+                    attentionState.needsDecision
+                      ? "font-semibold text-amber-200"
+                      : "text-slate-500"
+                  }
+                >
+                  Next action:{" "}
+                  {attentionState.needsDecision ? "Needs award decision" : "None"}
+                </span>
+              </div>
             </div>
           </div>
 
