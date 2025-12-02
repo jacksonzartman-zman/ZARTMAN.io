@@ -1,6 +1,31 @@
 {
   "version": 4,
   "routes": {
+    "/_not-found": {
+      "initialStatus": 404,
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/_not-found",
+      "dataRoute": "/_not-found.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    },
     "/": {
       "experimentalBypassFor": [
         {
@@ -16,30 +41,6 @@
       "initialRevalidateSeconds": false,
       "srcRoute": "/",
       "dataRoute": "/index.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
-    "/customer/signup": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/customer/signup",
-      "dataRoute": "/customer/signup.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -73,8 +74,7 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/_not-found": {
-      "initialStatus": 404,
+    "/customer/signup": {
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -87,8 +87,8 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/_not-found",
-      "dataRoute": "/_not-found.rsc",
+      "srcRoute": "/customer/signup",
+      "dataRoute": "/customer/signup.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -102,8 +102,8 @@
   "dynamicRoutes": {},
   "notFoundRoutes": [],
   "preview": {
-    "previewModeId": "72b886f55533562343dae26b5244e6bf",
-    "previewModeSigningKey": "4b6595fa79b5e57639614ffdf21e6ee1a9c873113a6fd76675523cd412e0f340",
-    "previewModeEncryptionKey": "03b37c2a94f69efa42ab34cf4660f1b6a83cf98bb25071baced99d90ef2b7fc1"
+    "previewModeId": "87f3e6bb938a8a4a9c62a4b088077489",
+    "previewModeSigningKey": "e30aae003ae96d0a59ae74649f409dd4454728af19ba2a9f05472dec5d2c0ab5",
+    "previewModeEncryptionKey": "9545c85eb9c17d83b2f36a28b46d2797dcf65a5a056a367679e45df7249e1e50"
   }
 }

@@ -1,6 +1,8 @@
-import Link from "next/link";
 import { requireUser } from "@/server/auth";
-import { loadSupplierProfile } from "@/server/suppliers";
+import {
+  getSupplierApprovalStatus,
+  loadSupplierProfile,
+} from "@/server/suppliers";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import type { Org } from "@/types/org";
 import {
@@ -8,6 +10,8 @@ import {
   deriveOrgSeatSummary,
 } from "@/types/org";
 import { SupplierNotificationSettingsForm } from "./SupplierNotificationSettingsForm";
+import { approvalsEnabled } from "@/server/suppliers/flags";
+import { SupplierProfileCard } from "../components/SupplierProfileCard";
 
 export const dynamic = "force-dynamic";
 
@@ -16,15 +20,17 @@ export default async function SupplierSettingsPage() {
   const supplierEmail = normalizeEmailInput(user.email ?? null);
   const profile = supplierEmail ? await loadSupplierProfile(supplierEmail) : null;
   const supplier = profile?.supplier ?? null;
-  const hasProfile = Boolean(supplier);
+  const capabilities = profile?.capabilities ?? [];
+  const documents = profile?.documents ?? [];
+  const approvalsOn = approvalsEnabled();
+  const supplierStatus = supplier?.status ?? "pending";
+  const approvalStatus =
+    profile?.approvalStatus ??
+    getSupplierApprovalStatus({ status: supplierStatus });
   const companyName =
     supplier?.company_name ??
     (user.user_metadata?.company as string | undefined) ??
     "Your shop";
-  const primaryEmail = supplier?.primary_email ?? supplierEmail ?? "shop@example.com";
-  const phone = supplier?.phone ?? "Not provided";
-  const website = supplier?.website ?? "Not provided";
-  const country = supplier?.country ?? "Not provided";
   const org = deriveOrgFromSession(user, companyName);
   const seatSummary = deriveOrgSeatSummary(org, user);
   const planLabel = formatPlanLabel(org.plan);
@@ -46,35 +52,13 @@ export default async function SupplierSettingsPage() {
         </p>
       </section>
 
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-white">Shop profile</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              This mirrors what you filled out during onboarding. Refresh it to keep matches accurate.
-            </p>
-          </div>
-          <Link
-            href="/supplier/onboarding"
-            className="rounded-full border border-slate-800 px-3 py-1.5 text-sm font-semibold text-slate-100 transition hover:border-slate-700"
-          >
-            {hasProfile ? "Update profile" : "Finish onboarding"}
-          </Link>
-        </div>
-        {hasProfile ? (
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <SettingsField label="Company name" value={companyName} />
-            <SettingsField label="Primary email" value={primaryEmail} />
-            <SettingsField label="Phone" value={phone} />
-            <SettingsField label="Website" value={website} />
-            <SettingsField label="Country" value={country} />
-          </div>
-        ) : (
-          <div className="mt-4 rounded-2xl border border-dashed border-blue-500/30 bg-blue-500/5 px-3 py-3 text-sm text-blue-100">
-            Complete onboarding to publish verified company info and unlock instant RFQ routing.
-          </div>
-        )}
-      </section>
+      <SupplierProfileCard
+        supplier={supplier}
+        capabilities={capabilities}
+        documents={documents}
+        approvalsEnabled={approvalsOn}
+        approvalStatus={approvalStatus}
+      />
 
       <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
         <h2 className="text-lg font-semibold text-white">Organization</h2>
