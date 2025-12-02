@@ -3,15 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getFormString, serializeActionError } from "@/lib/forms";
-import {
-  notifyOnNewQuoteMessage,
-  notifyOnWinningBidSelected,
-} from "@/server/quotes/notifications";
-import {
-  loadQuoteWinningContext,
-  loadWinningBidNotificationContext,
-} from "@/server/quotes/notificationContext";
-import { getCustomerById } from "@/server/customers";
+import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { getServerAuthUser, requireUser } from "@/server/auth";
 import {
   QUOTE_UPDATE_ERROR,
@@ -33,6 +25,7 @@ import {
 } from "@/server/quotes/messages";
 import { upsertQuoteProject } from "@/server/quotes/projects";
 import { awardBidForQuoteAction } from "@/server/quotes/adminAward";
+import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
 
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
@@ -391,32 +384,10 @@ async function dispatchAdminWinnerNotification(
   bidId: string,
 ) {
   try {
-    const [quoteContext, winnerContext] = await Promise.all([
-      loadQuoteWinningContext(quoteId),
-      loadWinningBidNotificationContext(bidId),
-    ]);
-
-    if (!quoteContext || !winnerContext) {
-      console.warn("[admin bids] winner notification skipped", {
-        quoteId,
-        bidId,
-        reason: !quoteContext
-          ? "missing-quote-context"
-          : "missing-bid-context",
-      });
-      return;
-    }
-
-    const customer =
-      quoteContext.customer_id && quoteContext.customer_id.length > 0
-        ? await getCustomerById(quoteContext.customer_id)
-        : null;
-
-    await notifyOnWinningBidSelected({
-      quote: quoteContext,
-      winningBid: winnerContext.winningBid,
-      supplier: winnerContext.supplier,
-      customer,
+    await dispatchWinnerNotification({
+      quoteId,
+      bidId,
+      caller: "admin",
     });
   } catch (error) {
     console.error("[admin bids] winner notification failed", {
