@@ -191,3 +191,10 @@ export async function requireUser(options?: RequireUserOptions): Promise<User> {
 
   throw new UnauthorizedError(options?.message ?? "You must be signed in.");
 }
+
+export async function requireAdminUser(
+  options?: RequireUserOptions,
+): Promise<User> {
+  // TODO: tighten this check once we persist admin roles in auth metadata.
+  return requireUser(options);
+}
