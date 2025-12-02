@@ -17,6 +17,7 @@ import {
   loadSupplierInboxBidAggregates,
   listSupplierBidsForSupplier,
   loadSupplierProfile,
+  loadSupplierMatchHealth,
   matchQuotesToSupplier,
   type SupplierActivityResult,
   type SupplierApprovalGate,
@@ -24,6 +25,7 @@ import {
   type SupplierBidWithContext,
   type SupplierQuoteMatch,
   type SupplierProfile,
+  type SupplierMatchHealth,
 } from "@/server/suppliers";
 import { getServerAuthUser } from "@/server/auth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
@@ -37,6 +39,8 @@ import { approvalsEnabled } from "@/server/suppliers/flags";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 
 export const dynamic = "force-dynamic";
+
+const MATCH_HEALTH_LOOKBACK_DAYS = 30;
 
 type SupplierDashboardPageProps = {
   searchParams?: SearchParamsLike;
@@ -117,8 +121,19 @@ async function SupplierDashboardPage({
       : undefined;
   const activityHoldCopy = getApprovalHoldCopy(approvalGate?.status);
 
-  const [matchesResult, bidsResult] = supplier
-    ? await Promise.all([
+  let matchesResult: SupplierActivityResult<SupplierQuoteMatch[]> = {
+    ok: true,
+    data: [],
+  };
+  let bidsResult: SupplierActivityResult<SupplierBidWithContext[]> = {
+    ok: true,
+    data: [],
+  };
+  let matchHealth: SupplierMatchHealth | null = null;
+
+  if (supplier) {
+    try {
+      const [resolvedMatches, resolvedBids, resolvedHealth] = await Promise.all([
         matchQuotesToSupplier({
           supplierId: supplier.id,
           supplierEmail: supplier.primary_email ?? supplierEmail,
@@ -127,13 +142,26 @@ async function SupplierDashboardPage({
           supplierId: supplier.id,
           supplierEmail: supplier.primary_email ?? supplierEmail,
         }),
-      ])
-    : [
-        { ok: true, data: [] } satisfies SupplierActivityResult<SupplierQuoteMatch[]>,
-        { ok: true, data: [] } satisfies SupplierActivityResult<
-          SupplierBidWithContext[]
-        >,
-      ];
+        loadSupplierMatchHealth(supplier.id, {
+          lookbackDays: MATCH_HEALTH_LOOKBACK_DAYS,
+        }).catch((error) => {
+          console.error("[supplier dashboard] match health failed", {
+            supplierId: supplier.id,
+            error,
+          });
+          return null;
+        }),
+      ]);
+      matchesResult = resolvedMatches;
+      bidsResult = resolvedBids;
+      matchHealth = resolvedHealth;
+    } catch (error) {
+      console.error("[supplier dashboard] supplier loaders failed", {
+        supplierId: supplier.id,
+        error,
+      });
+    }
+  }
   const matchesData = matchesResult.data ?? [];
   const bidsData = bidsResult.data ?? [];
   const matchQuoteIds = matchesData
@@ -254,6 +282,11 @@ async function SupplierDashboardPage({
         role="supplier"
         metrics={supplierMetrics}
         lastUpdatedLabel={lastUpdatedLabel}
+      />
+      <MatchHealthCard
+        supplierExists={supplierExists}
+        lookbackDays={MATCH_HEALTH_LOOKBACK_DAYS}
+        matchHealth={matchHealth}
       />
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
@@ -531,6 +564,113 @@ function ProfileCard({
       )}
     </PortalCard>
   );
+}
+
+function MatchHealthCard({
+  supplierExists,
+  matchHealth,
+  lookbackDays,
+}: {
+  supplierExists: boolean;
+  matchHealth: SupplierMatchHealth | null;
+  lookbackDays: number;
+}) {
+  if (!supplierExists) {
+    return (
+      <PortalCard
+        title="Match health"
+        description="See how RFQs align with your capabilities once onboarding is complete."
+      >
+        <EmptyStateNotice
+          title="Share capabilities to unlock insights"
+          description="Finish onboarding and add processes so we can compare incoming RFQs against your shop."
+          action={
+            <Link
+              href="/supplier/onboarding"
+              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+            >
+              Complete onboarding
+            </Link>
+          }
+        />
+      </PortalCard>
+    );
+  }
+
+  if (!matchHealth) {
+    return (
+      <PortalCard
+        title="Match health"
+        description="How often our matcher can route RFQs based on your capabilities."
+      >
+        <EmptyStateNotice
+          title="No data yet"
+          description="We couldn’t load match health right now. Refresh the page to try again."
+        />
+      </PortalCard>
+    );
+  }
+
+  const evaluatedCount = matchHealth.evaluatedCount ?? 0;
+  const matchedCount = matchHealth.matchedCount ?? 0;
+  const skippedCapabilityCount = matchHealth.skippedCapabilityCount ?? 0;
+  const hasEvaluations = evaluatedCount > 0;
+  const percent = evaluatedCount > 0 ? Math.round((matchedCount / evaluatedCount) * 100) : 0;
+  const recentExamples = matchHealth.recentExamples.slice(0, 3);
+  const showExamples = hasEvaluations && recentExamples.length > 0;
+
+  return (
+    <PortalCard
+      title="Match health"
+      description="How often our matcher can route RFQs based on your capabilities."
+    >
+      {hasEvaluations ? (
+        <div className="space-y-4">
+          <p className="text-lg font-semibold text-white">
+            Matched RFQs: {matchedCount} of {evaluatedCount} ({percent}%)
+          </p>
+          <p className="text-sm text-slate-400">
+            Skipped for capability mismatch: {skippedCapabilityCount} in last {lookbackDays} days.
+          </p>
+          {showExamples ? (
+            <ul className="list-disc space-y-2 pl-5 text-sm text-slate-200">
+              {recentExamples.map((example) => (
+                <li key={`${example.quoteId}-${example.outcome}`}>
+                  {formatMatchHealthExample(example)}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : (
+        <EmptyStateNotice
+          title="We haven’t evaluated any RFQs yet"
+          description="As new RFQs arrive, we’ll show how often we can match you against capability requirements."
+        />
+      )}
+    </PortalCard>
+  );
+}
+
+function formatMatchHealthExample(
+  example: SupplierMatchHealth["recentExamples"][number],
+): string {
+  const processLabel = formatProcessLabel(example.processHint);
+  if (example.outcome === "matched") {
+    return `Matched on ${processLabel} RFQ – eligible for quote.`;
+  }
+  return `Skipped ${processLabel} RFQ – no matching capability set.`;
+}
+
+function formatProcessLabel(processHint: string | null): string {
+  if (typeof processHint !== "string") {
+    return "this";
+  }
+  const trimmed = processHint.trim();
+  if (!trimmed) {
+    return "this";
+  }
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function MatchesCard({
