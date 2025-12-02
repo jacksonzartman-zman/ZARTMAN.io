@@ -28,11 +28,11 @@ import { QUOTE_OPEN_STATUSES, isOpenQuoteStatus } from "@/server/quotes/status";
 
 const MATCH_LIMIT = 20;
 
-type QuoteAssignmentRow = {
+export type QuoteAssignmentRow = {
   quote_id: string | null;
 };
 
-type SupplierBidRef = {
+export type SupplierBidRef = {
   quote_id: string | null;
   status: string | null;
   updated_at: string | null;
@@ -320,7 +320,7 @@ function logMatchDecision(event: MatchDecisionEvent, payload: MatchDecisionPaylo
   console.log(`[matching] ${event}`, payload);
 }
 
-function normalizeCapabilities(capabilities: SupplierCapabilityRow[]) {
+export function normalizeCapabilities(capabilities: SupplierCapabilityRow[]) {
   const processes = new Set<string>();
   const materials = new Set<string>();
 
@@ -341,7 +341,7 @@ function normalizeCapabilities(capabilities: SupplierCapabilityRow[]) {
   return { processes, materials };
 }
 
-function normalizeProcess(value?: string | null): string | null {
+export function normalizeProcess(value?: string | null): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -357,7 +357,7 @@ function normalizeMaterial(value?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function hasMatchingProcess(
+export function hasMatchingProcess(
   quoteProcess: string,
   supplierProcesses: Set<string>,
 ): boolean {
@@ -422,7 +422,7 @@ function computeMatchScore({
   return score;
 }
 
-function normalizeEmail(value?: string | null): string | null {
+export function normalizeEmail(value?: string | null): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -486,7 +486,7 @@ async function selectUploadMeta(quotes: SupplierQuoteRow[]) {
   }
 }
 
-async function selectQuoteAssignmentsByEmail(email: string) {
+export async function selectQuoteAssignmentsByEmail(email: string) {
   if (!email) {
     return [];
   }
@@ -507,7 +507,7 @@ async function selectQuoteAssignmentsByEmail(email: string) {
   }
 }
 
-async function selectBidQuoteRefs(supplierId: string) {
+export async function selectBidQuoteRefs(supplierId: string) {
   if (!supplierId) {
     return [];
   }
