@@ -34,7 +34,7 @@ export async function submitQuoteIntakeAction(
   let attemptedQuoteId: string | null = null;
 
   try {
-    console.log("[quote intake] submit action invoked");
+    console.log("[quote intake] action invoked");
     const user = await requireUser({
       message: "Sign in to submit RFQs.",
     });
