@@ -1,6 +1,8 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import type { QuoteWithUploadsRow } from "@/server/quotes/types";
+import { loadQuoteNotificationContext } from "@/server/quotes/notificationContext";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
+import { notifyCustomerOnQuoteStatusChange } from "@/server/quotes/notifications";
+import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
@@ -230,6 +232,7 @@ async function loadQuoteNotes(quoteId: string): Promise<QuoteNotesRow> {
 
 export async function updateAdminQuote(
   input: AdminQuoteUpdateInput,
+  options?: { skipStatusNotifications?: boolean },
 ): Promise<AdminQuoteUpdateResult> {
   const normalized = normalizeAdminQuoteUpdateInput(input);
   const hasStatusUpdate = Object.prototype.hasOwnProperty.call(
@@ -249,6 +252,11 @@ export async function updateAdminQuote(
     ...normalized.updates,
     updated_at: new Date().toISOString(),
   };
+  const shouldNotifyStatus =
+    hasStatusUpdate && !options?.skipStatusNotifications;
+  const notificationContext = shouldNotifyStatus
+    ? await loadQuoteNotificationContext(normalized.quoteId)
+    : null;
 
   logAdminQuotesInfo("update start", {
     quoteId: normalized.quoteId,
@@ -297,6 +305,18 @@ export async function updateAdminQuote(
         quoteId: normalized.quoteId,
         uploadId: data.upload_id,
         status: data.status ?? null,
+      });
+    }
+
+    if (
+      shouldNotifyStatus &&
+      typeof normalized.updates.status === "string"
+    ) {
+      const nextStatus = normalizeQuoteStatus(normalized.updates.status);
+      void notifyCustomerOnQuoteStatusChange({
+        quoteId: normalized.quoteId,
+        status: nextStatus,
+        context: notificationContext,
       });
     }
 

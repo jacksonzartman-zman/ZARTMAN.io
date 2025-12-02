@@ -9,6 +9,7 @@ import {
 import { DEFAULT_QUOTE_STATUS } from "@/server/quotes/status";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { serializeSupabaseError } from "@/server/admin/logging";
+import { notifyAdminOnQuoteSubmitted } from "@/server/quotes/notifications";
 
 const CAD_BUCKET =
   process.env.SUPABASE_CAD_BUCKET ||
@@ -289,6 +290,14 @@ export async function persistQuoteIntake(
 
     const quoteId = quoteInsert.data.id;
     console.log("[quote intake] quote created", { ...logContext, quoteId });
+
+    void notifyAdminOnQuoteSubmitted({
+      quoteId,
+      contactName,
+      contactEmail,
+      company: sanitizeNullable(payload.company),
+      fileName: payload.file.name,
+    });
 
     const { error: uploadLinkError } = await supabaseServer
       .from("uploads")

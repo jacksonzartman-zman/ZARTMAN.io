@@ -2,6 +2,7 @@ const QUOTE_STATUSES = [
   "submitted",
   "in_review",
   "quoted",
+  "approved",
   "won",
   "lost",
   "cancelled",
@@ -23,6 +24,7 @@ export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
   submitted: "RFQ submitted",
   in_review: "In review",
   quoted: "Quote prepared",
+  approved: "Approved",
   won: "Won",
   lost: "Lost",
   cancelled: "Cancelled",
@@ -34,6 +36,7 @@ export function normalizeQuoteStatus(
   const value = (raw ?? "").toLowerCase().trim();
   if (value === "in_review") return "in_review";
   if (value === "quoted") return "quoted";
+  if (value === "approved") return "approved";
   if (value === "won") return "won";
   if (value === "lost") return "lost";
   if (value === "cancelled" || value === "canceled") return "cancelled";

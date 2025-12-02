@@ -4,6 +4,7 @@ import {
   isMissingTableOrColumnError,
 } from "@/server/admin/logging";
 import type { LoadResult, MutationResult } from "@/server/types/results";
+import { notifyOnProjectKickoffChange } from "@/server/quotes/notifications";
 
 export interface QuoteProjectRow {
   id: string;
@@ -109,6 +110,28 @@ export async function upsertQuoteProject(
     };
   }
 
+  let hadExistingProject = false;
+  try {
+    const { data: existingRow, error: existingError } = await supabaseServer
+      .from(TABLE_NAME)
+      .select("id")
+      .eq("quote_id", quoteId)
+      .maybeSingle<{ id: string }>();
+
+    if (existingError && !isMissingTableOrColumnError(existingError)) {
+      console.warn("[quote projects] existing lookup failed", {
+        quoteId,
+        error: serializeSupabaseError(existingError),
+      });
+    }
+    hadExistingProject = Boolean(existingRow?.id);
+  } catch (existingError) {
+    console.warn("[quote projects] existing lookup crashed", {
+      quoteId,
+      error: serializeSupabaseError(existingError),
+    });
+  }
+
   console.log("[quote projects] upsert start", {
     quoteId,
     hasPoNumber: Boolean(poNumber),
@@ -151,6 +174,13 @@ export async function upsertQuoteProject(
     }
 
     console.log("[quote projects] upsert success", { quoteId });
+
+    void notifyOnProjectKickoffChange({
+      quoteId,
+      project: data,
+      created: !hadExistingProject,
+    });
+
     return {
       ok: true,
       data,

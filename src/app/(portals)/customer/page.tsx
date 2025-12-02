@@ -39,7 +39,7 @@ export const dynamic = "force-dynamic";
 
 const QUOTE_LIMIT = 20;
 const RECENT_ACTIVITY_LIMIT = 10;
-const IN_PROGRESS_STATUSES: QuoteStatus[] = ["in_review", "quoted"];
+const IN_PROGRESS_STATUSES: QuoteStatus[] = ["in_review", "quoted", "approved"];
 const COMPLETED_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
 const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
 

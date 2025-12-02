@@ -44,6 +44,10 @@ const STATUS_BADGE_VARIANTS: Record<
     label: "Quoted",
     className: "bg-sky-950/60 text-sky-200 border-sky-500/50",
   },
+  approved: {
+    label: "Approved",
+    className: "bg-emerald-950/60 text-emerald-200 border-emerald-500/60",
+  },
   won: {
     label: "Won",
     className: "bg-emerald-950/60 text-emerald-200 border-emerald-500/60",
