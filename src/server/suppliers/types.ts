@@ -163,3 +163,16 @@ export type SupplierActivityIdentity = {
   supplierId?: string | null;
   supplierEmail?: string | null;
 };
+
+export type SupplierMatchHealth = {
+  supplierId: string;
+  evaluatedCount: number;
+  matchedCount: number;
+  skippedCapabilityCount: number;
+  recentExamples: {
+    quoteId: string;
+    status: string | null;
+    processHint: string | null;
+    outcome: "matched" | "skipped_capability";
+  }[];
+};
