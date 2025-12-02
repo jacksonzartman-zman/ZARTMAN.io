@@ -34,7 +34,8 @@ import { DataFallbackNotice } from "../DataFallbackNotice";
 import { DEBUG_PORTALS } from "../debug";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
-import { StatPills } from "./components/StatPills";
+import { PortalShell } from "../components/PortalShell";
+import { PortalStatPills } from "../components/PortalStatPills";
 
 export const dynamic = "force-dynamic";
 
@@ -84,17 +85,23 @@ async function SupplierDashboardPage({
 
   if (!supplierEmail) {
     return (
-      <div className="space-y-6">
-        <WorkspaceWelcomeBanner
-          role="supplier"
-          companyName={sessionCompanyName}
-        />
+      <PortalShell
+        workspace="supplier"
+        title="Dashboard"
+        subtitle="RFQs, bids, and compliance docs stay aligned here."
+        headerContent={
+          <WorkspaceWelcomeBanner
+            role="supplier"
+            companyName={sessionCompanyName}
+          />
+        }
+      >
         <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
           <p className="text-sm text-slate-300">
             Sign in with a verified supplier email address to load your workspace.
           </p>
         </section>
-      </div>
+      </PortalShell>
     );
   }
 
@@ -262,8 +269,8 @@ async function SupplierDashboardPage({
     activityEventCount: Array.isArray(recentActivity) ? recentActivity.length : null,
   });
 
-  return (
-    <div className="space-y-6">
+  const headerContent = (
+    <div className="space-y-4">
       <WorkspaceWelcomeBanner
         role="supplier"
         companyName={workspaceCompanyName}
@@ -273,7 +280,31 @@ async function SupplierDashboardPage({
         statusMessage={systemStatusMessage}
         syncedLabel={lastUpdatedLabel}
       />
-      <StatPills metrics={supplierMetrics} lastUpdatedLabel={lastUpdatedLabel} />
+    </div>
+  );
+
+  const headerActions = (
+    <Link
+      href="/supplier/onboarding"
+      className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+    >
+      {supplierExists ? "Update profile" : "Finish onboarding"}
+    </Link>
+  );
+
+  return (
+    <PortalShell
+      workspace="supplier"
+      title="Dashboard"
+      subtitle="RFQs, bids, and compliance docs stay aligned here."
+      actions={headerActions}
+      headerContent={headerContent}
+    >
+      <PortalStatPills
+        role="supplier"
+        metrics={supplierMetrics}
+        lastUpdatedLabel={lastUpdatedLabel}
+      />
       <MatchHealthCard
         supplierExists={supplierExists}
         lookbackDays={MATCH_HEALTH_LOOKBACK_DAYS}
@@ -283,9 +314,9 @@ async function SupplierDashboardPage({
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
           Supplier workspace
         </p>
-        <h1 className="mt-2 text-2xl font-semibold text-white">
+        <h2 className="mt-2 text-2xl font-semibold text-white">
           RFQs, bids, and compliance docs in one place
-        </h1>
+        </h2>
         <p className="mt-2 text-sm text-slate-400">
           Review matched RFQs, submit bids, and keep your onboarding profile current without leaving
           this dashboard.
@@ -395,7 +426,7 @@ async function SupplierDashboardPage({
           {JSON.stringify({ user, roles }, null, 2)}
         </pre>
       ) : null}
-    </div>
+    </PortalShell>
   );
 }
 

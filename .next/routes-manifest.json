@@ -146,6 +146,12 @@
       "namedRegex": "^/supplier/onboarding(?:/)?$"
     },
     {
+      "page": "/supplier/quotes",
+      "regex": "^/supplier/quotes(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/supplier/quotes(?:/)?$"
+    },
+    {
       "page": "/supplier/rfqs",
       "regex": "^/supplier/rfqs(?:/)?$",
       "routeKeys": {},

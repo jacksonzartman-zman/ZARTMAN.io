@@ -1,10 +1,10 @@
+import clsx from "clsx";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
-import {
-  QuoteWorkspaceTabs,
-  type QuoteWorkspaceTab,
-} from "@/app/admin/quotes/[id]/QuoteWorkspaceTabs";
+import PortalCard from "@/app/(portals)/PortalCard";
+import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import {
   formatQuoteId,
   normalizeEmailInput,
@@ -267,147 +267,181 @@ function SupplierQuoteWorkspace({
   const assignmentNames = assignments
     .map((assignment) => assignment.supplier_name ?? assignment.supplier_email)
     .filter((value): value is string => Boolean(value && value.trim()));
-
+  const primaryFileName =
+    filePreviews[0]?.label ??
+    filePreviews[0]?.fileName ??
+    quote.file_name ??
+    formatQuoteId(quote.id);
   const isWinningSupplier =
     typeof existingBid?.status === "string" &&
     existingBid.status.trim().toLowerCase() === "accepted";
   const showSupplierProjectCard = isWinningSupplier;
-
-  const summaryContent = (
+  const headerTitle = `${formatQuoteId(quote.id)} · ${derived.customerName}`;
+  const headerActions = (
+    <Link
+      href="/supplier"
+      className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+    >
+      Back to inbox
+    </Link>
+  );
+  const headerContent = (
     <div className="space-y-4">
-      <section className={cardClasses}>
-        <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            RFQ snapshot
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+            RFQ file
           </p>
-          <h2 className="text-lg font-semibold text-white">
-            Key details for your shop
-          </h2>
-        </header>
-        <dl className="mt-4 grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
-          <DetailItem label="Customer" value={derived.customerName} />
-          <DetailItem
-            label="Company"
-            value={derived.companyName ?? "Not provided"}
-          />
-          <DetailItem
-            label="Target ship date"
-            value={
-              derived.targetDateValue
-                ? formatDateTime(derived.targetDateValue)
-                : "Not scheduled"
-            }
-          />
-          <DetailItem label="Files" value={fileCountText} />
-          <DetailItem
-            label="Assigned suppliers"
-            value={
-              assignmentNames.length > 0
-                ? assignmentNames.join(", ")
-                : "Pending assignment"
-            }
-          />
-          <DetailItem
-            label="Submitted"
-            value={formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
-          />
-        </dl>
-        <WorkflowStatusCallout
-          currentLabel={derived.statusLabel}
-          nextState={nextWorkflowState}
-          variant="blue"
-          className="mt-4"
-        />
-      </section>
-
-      <section className={cardClasses}>
-        <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Notes & guidance
-          </p>
-          <h2 className="text-lg font-semibold text-white">
-            DFM & intake summary
-          </h2>
-        </header>
-        <div className="mt-3 grid gap-4 lg:grid-cols-2">
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              DFM notes
-            </p>
-            <p className="whitespace-pre-line text-sm text-slate-200">
-              {derived.dfmNotes ??
-                "No DFM notes have been shared yet. Expect engineering guidance to appear here."}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Intake notes
-            </p>
-            <p className="whitespace-pre-line text-sm text-slate-200">
-              {derived.intakeNotes ?? "No extra intake notes captured."}
-            </p>
-          </div>
+          <p className="text-sm text-slate-300">{primaryFileName}</p>
         </div>
-      </section>
-      {showSupplierProjectCard ? (
-        <SupplierQuoteProjectCard
-          className={cardClasses}
-          project={project}
-          unavailable={projectUnavailable}
-        />
-      ) : null}
+        <span className="rounded-full border border-blue-400/40 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-100">
+          {derived.statusLabel}
+        </span>
+      </div>
+      <dl className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Customer
+          </dt>
+          <dd className="text-slate-100">{derived.customerName ?? "Customer"}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Company
+          </dt>
+          <dd className="text-slate-100">{derived.companyName ?? "Not provided"}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Target ship date
+          </dt>
+          <dd className="text-slate-100">
+            {derived.targetDateValue
+              ? formatDateTime(derived.targetDateValue)
+              : "Not scheduled"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Submitted
+          </dt>
+          <dd className="text-slate-100">
+            {formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
+          </dd>
+        </div>
+      </dl>
+      <div className="flex flex-wrap gap-3 text-xs text-slate-400">
+        <span>
+          Working as{" "}
+          <span className="font-semibold text-white">
+            {supplierDisplayName}
+          </span>{" "}
+          (<span className="font-mono text-slate-200">{supplierEmail}</span>)
+        </span>
+        {assignmentNames.length > 0 ? (
+          <span>
+            Assigned with:{" "}
+            <span className="text-slate-200">{assignmentNames.join(", ")}</span>
+          </span>
+        ) : null}
+        {existingBid?.status === "accepted" ? (
+          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+            Selected by customer
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 
-  const messagesContent = (
-    <SupplierQuoteMessagesCard
-      quoteId={quote.id}
-      messages={messages}
-      messagesUnavailable={messagesUnavailable}
-      messagingUnlocked={messagingUnlocked}
-      disableReason={messagingDisabledReason}
-    />
-  );
-
-  const filesContent = (
-    <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
-  );
-
-  const trackingContent = (
-    <SupplierQuoteTrackingCard
-      className={cardClasses}
-      events={timelineEvents}
-    />
-  );
-
-  const bidContent = (
-    <section className={cardClasses}>
+  const summaryCard = (
+    <section className={clsx(cardClasses, "space-y-5")}>
       <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Bid
+        <p className="text-xsenaamde font-semibold uppercase tracking-wide text-slate-500">
+          RFQ snapshot
         </p>
         <h2 className="text-lg font-semibold text-white">
-          Submit pricing and lead time
+          Key details for your shop
         </h2>
       </header>
-      <p className="mt-1 text-sm text-slate-300">
-        Only the Zartman team and the requesting customer can see these details.
-      </p>
-      <p className="mt-1 text-xs text-slate-500">
-        Share a unit price, realistic lead time, and highlight any certifications or notes that help
-        the buyer approve your shop.
-      </p>
-      {acceptedLock ? (
-        <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-          This bid is locked because the customer already accepted it.
-        </p>
-      ) : null}
-      {closedWindowLock ? (
-        <p className="mt-3 rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
-          Bidding is disabled because this RFQ is no longer accepting new proposals.
-        </p>
-      ) : null}
-      <div className="mt-4">
+      <dl className="grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
+        <DetailItem label="Customer" value={derived.customerName} />
+        <DetailItem
+          label="Company"
+          value={derived.companyName ?? "Not provided"}
+        />
+        <DetailItem
+          label="Files"
+          value={fileCountText}
+        />
+        <DetailItem
+          label="Process hint"
+          value={
+            uploadMeta?.manufacturing_process
+              ? formatProcessLabel(uploadMeta.manufacturing_process)
+              : "Not provided"
+          }
+        />
+        <DetailItem
+          label="Assigned suppliers"
+          value={
+            assignmentNames.length > 0
+              ? assignmentNames.join(", ")
+              : "Pending assignment"
+          }
+        />
+        <DetailItem
+          label="Submitted"
+          value={formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
+        />
+      </dl>
+      <WorkflowStatusCallout
+        currentLabel={derived.statusLabel}
+        nextState={nextWorkflowState}
+        variant="blue"
+      />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            DFM notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {derived.dfmNotes ??
+              "No DFM notes have been shared yet. Expect engineering guidance to appear here."}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Intake notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {derived.intakeNotes ?? "No extra intake notes captured."}
+          </p>
+        </div>
+      </div>
+      <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Bid
+          </p>
+          <h3 className="text-lg font-semibold text-white">Submit pricing and lead time</h3>
+          <p className="mt-1 text-sm text-slate-300">
+            Only the Zartman team and the requesting customer can see these details.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Share a unit price, realistic lead time, and highlight any certifications or notes that help
+            the buyer approve your shop.
+          </p>
+        </div>
+        {acceptedLock ? (
+          <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            This bid is locked because the customer already accepted it.
+          </p>
+        ) : null}
+        {closedWindowLock ? (
+          <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
+            Bidding is disabled because this RFQ is no longer accepting new proposals.
+          </p>
+        ) : null}
         <SupplierBidPanel
           quoteId={quote.id}
           initialBid={initialBid}
@@ -419,64 +453,63 @@ function SupplierQuoteWorkspace({
     </section>
   );
 
-  const tabs: {
-      id: QuoteWorkspaceTab;
-      label: string;
-      count?: number;
-      content: ReactNode;
-    }[] = [
-      { id: "summary", label: "Summary", content: summaryContent },
-      {
-        id: "messages",
-        label: "Messages",
-        count: messages.length,
-        content: messagesContent,
-      },
-      { id: "bid", label: "Bid", content: bidContent },
-      { id: "viewer", label: "Files", content: filesContent },
-      { id: "tracking", label: "Timeline", content: trackingContent },
-    ];
+  const projectSection = showSupplierProjectCard ? (
+    <SupplierQuoteProjectCard
+      className={cardClasses}
+      project={project}
+      unavailable={projectUnavailable}
+    />
+  ) : (
+    <PortalCard
+      title="Project kickoff"
+      description="Read-only PO details unlock once your bid is selected as the winner."
+    >
+      <p className="text-sm text-slate-300">
+        We’ll surface the customer’s PO number, target ship date, and kickoff notes as soon as they select
+        your bid.
+      </p>
+    </PortalCard>
+  );
 
-    return (
-      <div className="space-y-6">
-        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
-            Supplier workspace
+  return (
+    <PortalShell
+      workspace="supplier"
+      title={headerTitle}
+      subtitle="Everything you need to respond — files, DFM guidance, bids, and chat."
+      headerContent={headerContent}
+      actions={headerActions}
+    >
+      {summaryCard}
+      {projectSection}
+      <SupplierQuoteMessagesCard
+        quoteId={quote.id}
+        messages={messages}
+        messagesUnavailable={messagesUnavailable}
+        messagingUnlocked={messagingUnlocked}
+        disableReason={messagingDisabledReason}
+      />
+      <div className="space-y-2">
+        <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
+        {filePreviews.length === 0 ? (
+          <p className="px-1 text-xs text-slate-500">
+            No files to display yet. We&apos;ll attach uploads here automatically once they&apos;re processed.
           </p>
-          <div className="mt-2 space-y-1">
-            <h1 className="text-2xl font-semibold text-white">
-              {formatQuoteId(quote.id)} · {derived.customerName}
-            </h1>
-            <p className="text-sm text-slate-400">
-              Everything you need to respond — files, DFM guidance, bids, and shared chat once it
-              unlocks.
-            </p>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
-            <span>
-              Working as{" "}
-              <span className="font-semibold text-white">
-                {supplierDisplayName}
-              </span>{" "}
-              (<span className="font-mono text-slate-200">{supplierEmail}</span>)
-            </span>
-            <span>
-              Status:{" "}
-              <span className="font-semibold text-blue-200">
-                {derived.statusLabel}
-              </span>
-            </span>
-            {existingBid?.status === "accepted" ? (
-              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                Selected by customer
-              </span>
-            ) : null}
-          </div>
-        </section>
-
-        <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
+        ) : null}
       </div>
-    );
+      <SupplierQuoteTrackingCard className={cardClasses} events={timelineEvents} />
+    </PortalShell>
+  );
+}
+
+function formatProcessLabel(processHint: string | null): string {
+  if (typeof processHint !== "string") {
+    return "this";
+  }
+  const trimmed = processHint.trim();
+  if (!trimmed) {
+    return "this";
+  }
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {

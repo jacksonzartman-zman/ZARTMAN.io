@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import type { Org } from "@/types/org";
@@ -36,6 +37,36 @@ export default async function CustomerSettingsPage() {
         <p className="mt-2 text-sm text-slate-400">
           Manage the basics for your customer portal. We’ll wire these inputs to live saves soon.
         </p>
+      </section>
+
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
+        <h2 className="text-lg font-semibold text-white">Account</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Quick reference for your login identity. Update details on your dashboard or by contacting
+          the Zartman team.
+        </p>
+        <dl className="mt-4 grid gap-4 text-sm text-slate-200 md:grid-cols-2">
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Email
+            </dt>
+            <dd className="mt-1 font-mono text-slate-100">{email}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Company
+            </dt>
+            <dd className="mt-1 text-slate-100">{companyName}</dd>
+          </div>
+        </dl>
+        <div className="mt-4">
+          <Link
+            href="#notifications"
+            className="text-sm font-semibold text-emerald-300 underline-offset-4 hover:underline"
+          >
+            Manage notification settings
+          </Link>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
@@ -78,7 +109,10 @@ export default async function CustomerSettingsPage() {
         </p>
       </section>
 
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6 space-y-4">
+      <section
+        id="notifications"
+        className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6 space-y-4"
+      >
         <div>
           <h2 className="text-lg font-semibold text-white">Notification preferences</h2>
           <p className="mt-1 text-sm text-slate-400">
