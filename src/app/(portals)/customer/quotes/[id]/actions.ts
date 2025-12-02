@@ -39,6 +39,7 @@ export type CustomerProjectFormState = {
   fieldErrors?: {
     poNumber?: string;
     targetShipDate?: string;
+    notes?: string;
   };
 };
 
@@ -68,6 +69,8 @@ const CUSTOMER_PROJECT_PO_LENGTH_ERROR =
   "PO number must be 100 characters or fewer.";
 const CUSTOMER_PROJECT_DATE_ERROR =
   "Enter a valid target ship date (YYYY-MM-DD).";
+const CUSTOMER_PROJECT_NOTES_LENGTH_ERROR =
+  "Project notes must be 2000 characters or fewer.";
 const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 type QuoteRecipientRow = {
@@ -335,11 +338,25 @@ export async function submitCustomerQuoteProjectAction(
       };
     }
 
+    const notesValue = getFormString(formData, "notes");
+    const notes =
+      typeof notesValue === "string" && notesValue.trim().length > 0
+        ? notesValue.trim()
+        : null;
+
+    if (notes && notes.length > 2000) {
+      return {
+        ok: false,
+        error: CUSTOMER_PROJECT_NOTES_LENGTH_ERROR,
+        fieldErrors: { notes: CUSTOMER_PROJECT_NOTES_LENGTH_ERROR },
+      };
+    }
+
     const result = await upsertQuoteProject({
       quoteId: normalizedQuoteId,
       poNumber,
       targetShipDate,
-      notes: null,
+      notes,
     });
 
     if (!result.ok) {
