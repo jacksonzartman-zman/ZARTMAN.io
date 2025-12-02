@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import type { ReactNode } from "react";
+import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import {
@@ -7,10 +7,8 @@ import {
   type QuoteTimelineEvent,
 } from "@/lib/quote/tracking";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
-import {
-  QuoteWorkspaceTabs,
-  type QuoteWorkspaceTab,
-} from "@/app/admin/quotes/[id]/QuoteWorkspaceTabs";
+import PortalCard from "@/app/(portals)/PortalCard";
+import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { CustomerQuoteMessagesCard } from "./CustomerQuoteMessagesCard";
 import {
   formatQuoteId,
@@ -250,225 +248,150 @@ export default async function CustomerQuoteDetailPage({
     (usingOverride && overrideEmail) ||
     quote.email || customer.email || user.email || "customer";
 
-  const projectCard = quoteIsWon ? (
-    <CustomerQuoteProjectCard
-      quoteId={quote.id}
-      project={project}
-      readOnly={readOnly}
-      projectUnavailable={projectUnavailable}
-    />
-  ) : null;
-
-  const summaryGrid = (
-    <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)] lg:gap-4 lg:space-y-0">
-      <section className={clsx(cardClasses, "space-y-4")}>
-        <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            RFQ snapshot
-          </p>
-          <h2 className="text-lg font-semibold text-white">
-            Project overview
-          </h2>
-        </header>
-        <div className="flex flex-wrap gap-2 text-xs font-semibold">
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
-            Status: {quoteStatusLabel}
-          </span>
-          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
-            Target date: {targetDateChipText}
-          </span>
-          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
-            Estimate: {priceChipText}
-          </span>
-        </div>
-        <WorkflowStatusCallout
-          currentLabel={quoteStatusLabel}
-          nextState={nextWorkflowState}
-          className="mt-3"
-        />
-        <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-              Company
-            </dt>
-            <dd className="text-slate-100">{companyName ?? "Not provided"}</dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-              Files
-            </dt>
-            <dd className="text-slate-100">{fileCountText}</dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-              Submitted
-            </dt>
-            <dd className="text-slate-100">
-              {submittedAtText ?? "—"}
-            </dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-              Last updated
-            </dt>
-            <dd className="text-slate-100">
-              {updatedAtText ?? "—"}
-            </dd>
-          </div>
-        </dl>
-      </section>
-      <section className={clsx(cardClasses, "space-y-3")}>
-        <header>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Notes & guidance
-          </p>
-          <h2 className="text-lg font-semibold text-white">
-            DFM & intake comments
-          </h2>
-        </header>
-        <div className="space-y-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              DFM notes
-            </p>
-            <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
-              {dfmNotes ?? "Engineering feedback will show up here once it’s ready."}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Intake notes
-            </p>
-            <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
-              {intakeNotes ?? "No additional notes captured during upload."}
-            </p>
-          </div>
-        </div>
-      </section>
-    </div>
+  const fileNameCandidates = [
+    filePreviews[0]?.label,
+    filePreviews[0]?.fileName,
+    quote.file_name,
+  ].filter((value): value is string => Boolean(value && value.trim()));
+  const primaryFileName = fileNameCandidates[0] ?? formatQuoteId(quote.id);
+  const leadTimeLabel =
+    fastestLeadTime != null
+      ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
+      : "Pending";
+  const headerTitle = `${customerName ?? "RFQ"} · ${formatQuoteId(quote.id)}`;
+  const headerActions = (
+    <Link
+      href="/customer/quotes"
+      className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+    >
+      Back to quotes
+    </Link>
   );
-
-  const summaryContent = (
+  const headerContent = (
     <div className="space-y-4">
-      {projectCard}
-      {summaryGrid}
-    </div>
-  );
-
-  const messagesUnavailable = Boolean(messagesError);
-  const messagesContent = (
-    <CustomerQuoteMessagesCard
-      quoteId={quote.id}
-      messages={messages}
-      messagesUnavailable={messagesUnavailable}
-      readOnly={readOnly}
-    />
-  );
-
-  const filesContent = (
-    <div className="space-y-2">
-      <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
-      {filesUnavailable ? (
-        <>
-          <p className="px-1 text-xs text-slate-500">
-            File metadata is temporarily unavailable. Download links fall back to the
-            original upload while we resync.
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+            RFQ file
           </p>
-          <DataFallbackNotice className="px-1" />
-        </>
-      ) : null}
-    </div>
-  );
-
-  const trackingContent = (
-    <CustomerQuoteTrackingCard
-      className={cardClasses}
-      events={timelineEvents}
-    />
-  );
-
-  const tabs: {
-    id: QuoteWorkspaceTab;
-    label: string;
-    count?: number;
-    content: ReactNode;
-  }[] = [
-    { id: "summary", label: "Summary", content: summaryContent },
-    {
-      id: "messages",
-      label: "Messages",
-      count: messages.length,
-      content: messagesContent,
-    },
-    { id: "viewer", label: "Files", content: filesContent },
-    { id: "tracking", label: "Timeline", content: trackingContent },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300">
-          Quote workspace
-        </p>
-        <div className="mt-2 space-y-1">
-          <h1 className="text-2xl font-semibold text-white">
-            {customerName} · {formatQuoteId(quote.id)}
-          </h1>
-          <p className="text-sm text-slate-400">
-            Status updates, files, and shared messages for this RFQ.
-          </p>
+          <p className="text-sm text-slate-300">{primaryFileName}</p>
         </div>
-      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
-          <span>
-            Viewing as{" "}
-            <span className="font-mono text-slate-200">{identityEmailDisplay}</span>
-          </span>
-          <span>
-            Quote status:{" "}
-            <span className="font-semibold text-emerald-200">
-              {quoteStatusLabel}
-            </span>
-          </span>
-            {readOnly ? (
-              <span className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-slate-300">
-                Read-only preview
-              </span>
-            ) : null}
+        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+          {quoteStatusLabel}
+        </span>
+      </div>
+      <dl className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Customer
+          </dt>
+          <dd className="text-slate-100">{customerName ?? "Not provided"}</dd>
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Quote status
-          </p>
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-            {quoteStatusLabel}
-          </span>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Company
+          </dt>
+          <dd className="text-slate-100">{companyName ?? "Not provided"}</dd>
         </div>
-        {submittedAtText || lifecycleLastUpdatedText ? (
-          <dl className="mt-3 space-y-2 text-sm text-slate-300">
-            {submittedAtText ? (
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Submitted
-                </dt>
-                <dd className="text-slate-100">{submittedAtText}</dd>
-              </div>
-            ) : null}
-            {lifecycleLastUpdatedText ? (
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Last updated
-                </dt>
-                <dd className="text-slate-100">{lifecycleLastUpdatedText}</dd>
-              </div>
-            ) : null}
-          </dl>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Target ship date
+          </dt>
+          <dd className="text-slate-100">{targetDateChipText}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Fastest lead time
+          </dt>
+          <dd className="text-slate-100">{leadTimeLabel}</dd>
+        </div>
+      </dl>
+      <div className="flex flex-wrap gap-3 text-xs text-slate-400">
+        <span>Submitted {submittedAtText ?? "—"}</span>
+        {lifecycleLastUpdatedText ? (
+          <span>Last update {lifecycleLastUpdatedText}</span>
         ) : null}
-      </section>
+        <span>
+          Viewing as{" "}
+          <span className="font-mono text-slate-200">{identityEmailDisplay}</span>
+        </span>
+        {readOnly ? (
+          <span className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-slate-300">
+            Read-only preview
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
 
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
+  const summaryCard = (
+    <section className={clsx(cardClasses, "space-y-5")}>
+      <header className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          RFQ snapshot
+        </p>
+        <h2 className="text-lg font-semibold text-white">Project overview</h2>
+      </header>
+      <div className="flex flex-wrap gap-2 text-xs font-semibold">
+        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+          Status: {quoteStatusLabel}
+        </span>
+        <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+          Target date: {targetDateChipText}
+        </span>
+        <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+          Estimate: {priceChipText}
+        </span>
+      </div>
+      <WorkflowStatusCallout
+        currentLabel={quoteStatusLabel}
+        nextState={nextWorkflowState}
+      />
+      <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Files attached
+          </dt>
+          <dd className="text-slate-100">{fileCountText}</dd>
+        </div>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Submitted
+          </dt>
+          <dd className="text-slate-100">{submittedAtText ?? "—"}</dd>
+        </div>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Last updated
+          </dt>
+          <dd className="text-slate-100">{updatedAtText ?? "—"}</dd>
+        </div>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Estimate
+          </dt>
+          <dd className="text-slate-100">{priceChipText}</dd>
+        </div>
+      </dl>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            DFM notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {dfmNotes ?? "Engineering feedback will show up here once it’s ready."}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Intake notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {intakeNotes ?? "No additional notes captured during upload."}
+          </p>
+        </div>
+      </div>
+      <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -484,30 +407,24 @@ export default async function CustomerQuoteDetailPage({
             </span>
           ) : null}
         </div>
-        <p className="mt-3 text-xs text-slate-400">
-          Once bids are in, we&apos;ll review options and update your quote status.
-        </p>
         {bidsUnavailable ? (
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="text-xs text-slate-400">
             Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
           </p>
         ) : bidCount === 0 ? (
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="text-xs text-slate-400">
             No supplier bids yet. We&apos;ll notify you when bids arrive.
           </p>
         ) : (
           <>
-            <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
+            <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
               <div>
                 <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Best price
                 </dt>
                 <dd className="mt-1">
                   {bestPriceValue != null
-                    ? formatCurrency(
-                        bestPriceValue,
-                        bestPriceCurrency ?? undefined,
-                      )
+                    ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
                     : "Pending"}
                 </dd>
               </div>
@@ -516,9 +433,7 @@ export default async function CustomerQuoteDetailPage({
                   Fastest lead time
                 </dt>
                 <dd className="mt-1">
-                  {fastestLeadTime != null
-                    ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
-                    : "Pending"}
+                  {fastestLeadTime != null ? leadTimeLabel : "Pending"}
                 </dd>
               </div>
               <div>
@@ -541,10 +456,61 @@ export default async function CustomerQuoteDetailPage({
             />
           </>
         )}
-      </section>
+      </div>
+    </section>
+  );
 
-      <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
-    </div>
+  const projectSection = quoteIsWon ? (
+    <CustomerQuoteProjectCard
+      quoteId={quote.id}
+      project={project}
+      readOnly={readOnly}
+      projectUnavailable={projectUnavailable}
+    />
+  ) : (
+    <PortalCard
+      title="Project kickoff"
+      description="Add PO details and ship dates once you select a winning supplier."
+    >
+      <p className="text-sm text-slate-300">
+        Select a winning supplier to unlock the kickoff form. We&apos;ll collect PO numbers, target ship
+        dates, and any final notes right here.
+      </p>
+    </PortalCard>
+  );
+
+  const messagesUnavailable = Boolean(messagesError);
+
+  return (
+    <PortalShell
+      workspace="customer"
+      title={headerTitle}
+      subtitle="Status updates, files, and shared messages for this RFQ."
+      headerContent={headerContent}
+      actions={headerActions}
+    >
+      {summaryCard}
+      {projectSection}
+      <CustomerQuoteMessagesCard
+        quoteId={quote.id}
+        messages={messages}
+        messagesUnavailable={messagesUnavailable}
+        readOnly={readOnly}
+      />
+      <div className="space-y-2">
+        <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
+        {filesUnavailable ? (
+          <>
+            <p className="px-1 text-xs text-slate-500">
+              File metadata is temporarily unavailable. Download links fall back to the original upload
+              while we resync.
+            </p>
+            <DataFallbackNotice className="px-1" />
+          </>
+        ) : null}
+      </div>
+      <CustomerQuoteTrackingCard className={cardClasses} events={timelineEvents} />
+    </PortalShell>
   );
 }
 

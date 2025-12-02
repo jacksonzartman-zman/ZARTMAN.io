@@ -16,10 +16,12 @@ import {
 import { requireUser } from "@/server/auth";
 import { getCustomerById, getCustomerByUserId } from "@/server/customers";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
-import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
+import type { WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
+import { PortalShell } from "../components/PortalShell";
+import { PortalStatPills } from "../components/PortalStatPills";
 import { loadRecentCustomerActivity } from "@/server/customers/activity";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
@@ -121,12 +123,28 @@ async function CustomerDashboardPage({
   }
 
   if (!customer) {
+    const heroContent = (
+      <WorkspaceWelcomeBanner
+        role="customer"
+        companyName={sessionCompanyName}
+      />
+    );
+
     return (
-      <div className="space-y-6">
-        <WorkspaceWelcomeBanner
-          role="customer"
-          companyName={sessionCompanyName}
-        />
+      <PortalShell
+        workspace="customer"
+        title="Dashboard"
+        subtitle="Upload RFQs, track bids, and keep supplier moves organized."
+        headerContent={heroContent}
+        actions={
+          <Link
+            href="/quote"
+            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+          >
+            Start a new RFQ
+          </Link>
+        }
+      >
         <CompleteCustomerProfileCard
           sessionEmail={user.email ?? null}
           defaultCompanyName={
@@ -142,7 +160,7 @@ async function CustomerDashboardPage({
             {JSON.stringify({ user, roles }, null, 2)}
           </pre>
         ) : null}
-      </div>
+      </PortalShell>
     );
   }
 
@@ -154,12 +172,32 @@ async function CustomerDashboardPage({
 
   if (usingOverride && !viewerEmail) {
     return (
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
-        <h2 className="text-xl font-semibold text-white">Invalid override</h2>
-        <p className="mt-2 text-sm text-slate-400">
-          Add ?email=you@company.com with a valid address to preview another account.
-        </p>
-      </section>
+      <PortalShell
+        workspace="customer"
+        title="Dashboard"
+        subtitle="Upload RFQs, track bids, and keep supplier moves organized."
+        headerContent={
+          <WorkspaceWelcomeBanner
+            role="customer"
+            companyName={sessionCompanyName}
+          />
+        }
+        actions={
+          <Link
+            href="/quote"
+            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+          >
+            Start a new RFQ
+          </Link>
+        }
+      >
+        <section className="rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
+          <h2 className="text-xl font-semibold text-white">Invalid override</h2>
+          <p className="mt-2 text-sm text-slate-400">
+            Add ?email=you@company.com with a valid address to preview another account.
+          </p>
+        </section>
+      </PortalShell>
     );
   }
 
@@ -229,8 +267,8 @@ async function CustomerDashboardPage({
     quoteCount: Array.isArray(portalData.quotes) ? portalData.quotes.length : null,
   });
 
-  return (
-    <div className="space-y-6">
+  const headerContent = (
+    <div className="space-y-4">
       <WorkspaceWelcomeBanner
         role="customer"
         companyName={
@@ -244,91 +282,36 @@ async function CustomerDashboardPage({
         statusMessage={systemStatusMessage}
         syncedLabel={lastUpdatedLabel}
       />
-      <WorkspaceMetrics
+    </div>
+  );
+
+  const headerActions = (
+    <Link
+      href="/quote"
+      className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+    >
+      Start a new RFQ
+    </Link>
+  );
+
+  return (
+    <PortalShell
+      workspace="customer"
+      title="Dashboard"
+      subtitle="Upload RFQs, track bids, and keep supplier moves organized."
+      headerContent={headerContent}
+      actions={headerActions}
+    >
+      <PortalStatPills
         role="customer"
         metrics={customerMetrics}
         lastUpdatedLabel={lastUpdatedLabel}
       />
       <PortalCard
-        title="Decisions Needed"
-        description="Quick calls that keep bids and builds moving."
-      >
-        {hasDecisions ? (
-          <ul className="space-y-3">
-            {decisions.map((decision) => (
-              <li
-                key={decision.id}
-                className="rounded-xl border border-slate-900/70 bg-slate-900/30 p-4"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="font-medium text-white">{decision.title}</p>
-                    <p className="text-xs text-slate-400">{decision.description}</p>
-                  </div>
-                  <UrgencyBadge level={decision.urgencyLevel} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">
-            Nothing needs a decision right now. We’ll surface supplier-ready moves
-            here the moment they exist.
-          </div>
-        )}
-      </PortalCard>
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
-          {usingOverride ? (
-            <>
-              <p>
-                Showing read-only activity for{" "}
-                <span className="font-semibold text-white">{viewerDisplayEmail}</span>.
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Remove ?email from the URL to switch back to your own workspace.
-              </p>
-            </>
-          ) : (
-            <>
-              <p>
-                Signed in as{" "}
-                <span className="font-semibold text-white">
-                  {customer.company_name ?? viewerDisplayEmail}
-                </span>
-                .
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Uploads from your account automatically sync back into this dashboard.
-              </p>
-              {customerWebsite ? (
-                <p className="mt-2 text-xs text-slate-500">
-                  Website:{" "}
-                  <span className="font-mono text-slate-300">{customerWebsite}</span>
-                </p>
-              ) : null}
-            </>
-          )}
-          {portalData.domainFallbackUsed && viewerDomain ? (
-            <p className="mt-2 text-xs text-slate-500">
-              No direct matches found, so we’re showing other contacts at @{viewerDomain}.
-            </p>
-          ) : null}
-      </section>
-
-      {portalData.error ? (
-        <PortalCard
-          title="Live RFQ data"
-          description="We ran into a temporary issue while loading Supabase data."
-        >
-          <p className="text-sm text-red-200">{portalData.error}</p>
-        </PortalCard>
-      ) : null}
-
-      <PortalCard
-        title="Open quotes"
+        title="Open RFQs"
         description={
           hasAnyQuotes
-            ? "Quotes that are actively moving forward for your team."
+            ? "Active RFQs routed through Zartman for your team."
             : "We’ll surface live RFQs here as soon as they exist."
         }
       >
@@ -337,33 +320,33 @@ async function CustomerDashboardPage({
             {openQuotes.map((quote) => (
               <li
                 key={quote.id}
-                  className="rounded-xl border border-slate-900/70 bg-slate-900/30 px-0 py-0"
+                className="rounded-xl border border-slate-900/70 bg-slate-900/30 px-0 py-0"
               >
-                    <Link
-                      href={
-                        quoteLinkQuery
-                          ? `/customer/quotes/${quote.id}${quoteLinkQuery}`
-                          : `/customer/quotes/${quote.id}`
-                      }
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 transition hover:bg-slate-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
-                  >
-                    <div>
-                      <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
-                      <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 text-right">
-                      <StatusBadge status={quote.status} />
-                      <p className="text-xs text-slate-400">
-                        {formatTargetDate(quote.targetDate) ?? "Target TBD"}
-                      </p>
-                    </div>
-                  </Link>
+                <Link
+                  href={
+                    quoteLinkQuery
+                      ? `/customer/quotes/${quote.id}${quoteLinkQuery}`
+                      : `/customer/quotes/${quote.id}`
+                  }
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 transition hover:bg-slate-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+                >
+                  <div>
+                    <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
+                    <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 text-right">
+                    <StatusBadge status={quote.status} />
+                    <p className="text-xs text-slate-400">
+                      {formatTargetDate(quote.targetDate) ?? "Target TBD"}
+                    </p>
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>
         ) : (
           <EmptyStateNotice
-            title="No open quotes yet"
+            title="No open RFQs yet"
             description={`Waiting for the first upload from ${viewerDisplayEmail}. Fresh RFQs drop here as soon as they sync.`}
             action={
               <Link
@@ -375,12 +358,13 @@ async function CustomerDashboardPage({
             }
           />
         )}
-        {portalData.error ? (
-          <DataFallbackNotice className="mt-4" />
-        ) : null}
+        {portalData.error ? <DataFallbackNotice className="mt-4" /> : null}
       </PortalCard>
 
-      <PortalCard title="Recent activity" description="Latest RFQ, bid, and status updates.">
+      <PortalCard
+        title="Recent activity"
+        description="Latest RFQ, bid, and status updates routed through this workspace."
+      >
         {recentActivity.length > 0 ? (
           <ul className="space-y-3">
             {recentActivity.map((item) => {
@@ -423,6 +407,34 @@ async function CustomerDashboardPage({
       </PortalCard>
 
       <PortalCard
+        title="Decisions needed"
+        description="Quick calls that keep bids and builds moving."
+      >
+        {hasDecisions ? (
+          <ul className="space-y-3">
+            {decisions.map((decision) => (
+              <li
+                key={decision.id}
+                className="rounded-xl border border-slate-900/70 bg-slate-900/30 p-4"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-medium text-white">{decision.title}</p>
+                    <p className="text-xs text-slate-400">{decision.description}</p>
+                  </div>
+                  <UrgencyBadge level={decision.urgencyLevel} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">
+            Nothing needs a decision right now. We’ll surface supplier-ready moves here the moment they exist.
+          </div>
+        )}
+      </PortalCard>
+
+      <PortalCard
         title="Next steps"
         description="Keep momentum with a lightweight checklist."
         action={
@@ -441,12 +453,66 @@ async function CustomerDashboardPage({
           <li>Uploads from /quote will sync back into this workspace automatically.</li>
         </ul>
       </PortalCard>
+
+      <PortalCard
+        title="Workspace scope"
+        description={
+          usingOverride
+            ? "You’re previewing another teammate’s workspace in read-only mode."
+            : "Identity and sync details for this account."
+        }
+      >
+        {usingOverride ? (
+          <>
+            <p>
+              Showing read-only activity for{" "}
+              <span className="font-semibold text-white">{viewerDisplayEmail}</span>.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Remove ?email from the URL to switch back to your own workspace.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>
+              Signed in as{" "}
+              <span className="font-semibold text-white">
+                {customer.company_name ?? viewerDisplayEmail}
+              </span>
+              .
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Uploads from your account automatically sync back into this dashboard.
+            </p>
+            {customerWebsite ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Website: <span className="font-mono text-slate-300">{customerWebsite}</span>
+              </p>
+            ) : null}
+          </>
+        )}
+        {portalData.domainFallbackUsed && viewerDomain ? (
+          <p className="mt-2 text-xs text-slate-500">
+            No direct matches found, so we’re showing other contacts at @{viewerDomain}.
+          </p>
+        ) : null}
+      </PortalCard>
+
+      {portalData.error ? (
+        <PortalCard
+          title="Live RFQ data"
+          description="We ran into a temporary issue while loading Supabase data."
+        >
+          <p className="text-sm text-red-200">{portalData.error}</p>
+        </PortalCard>
+      ) : null}
+
       {DEBUG_PORTALS ? (
         <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
           {JSON.stringify({ user, roles }, null, 2)}
         </pre>
       ) : null}
-    </div>
+    </PortalShell>
   );
 }
 

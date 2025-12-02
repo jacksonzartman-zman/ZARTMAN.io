@@ -25,21 +25,21 @@ export function SupplierQuoteProjectCard({
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Project kickoff
         </p>
-        <h2 className="text-lg font-semibold text-white">PO details from Zartman</h2>
+        <h2 className="text-lg font-semibold text-white">PO details & target dates</h2>
         <p className="text-sm text-slate-300">
-          Visibility into the customer’s PO number and target ship date once the quote is
-          awarded.
+          Read-only view of the customer’s PO number, target ship date, and kickoff notes once the
+          RFQ is awarded.
         </p>
       </header>
 
       {unavailable ? (
-        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
+        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-100">
           Project details are temporarily unavailable.
         </p>
       ) : showEmptyState ? (
-        <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-300">
-          The customer hasn't provided kickoff details yet. We'll notify you when the PO
-          number and ship date are ready.
+        <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-sm text-slate-300">
+          The customer hasn't provided kickoff details yet. We'll notify you when the PO number and ship
+          date are ready.
         </p>
       ) : null}
 
