@@ -1,15 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
-import {
-  notifyOnNewQuoteMessage,
-  notifyOnWinningBidSelected,
-} from "@/server/quotes/notifications";
-import type {
-  QuoteContactInfo,
-  QuoteWinningContext,
-} from "@/server/quotes/notificationTypes";
+import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
@@ -17,11 +11,12 @@ import {
   declineSupplierBid,
 } from "@/server/suppliers";
 import { requireUser } from "@/server/auth";
-import { getCustomerById, getCustomerByUserId } from "@/server/customers";
-import { markWinningBidForQuote } from "@/server/bids";
-import { loadWinningBidNotificationContext } from "@/server/quotes/notificationContext";
+import { getCustomerByUserId } from "@/server/customers";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import { upsertQuoteProject } from "@/server/quotes/projects";
+import { performAwardBidForQuote } from "@/server/quotes/award";
+import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
+import { normalizeQuoteStatus } from "@/server/quotes/status";
 
 export type CustomerMessageFormState = {
   ok: boolean;
@@ -48,20 +43,10 @@ export type BidDecisionActionState = {
   error: string | null;
 };
 
-export type CustomerSelectWinningBidState =
-  | { ok: true; message: string }
-  | { ok: false; error: string };
-
 const CUSTOMER_MESSAGE_GENERIC_ERROR =
   "Unable to send your message right now. Please try again.";
 const CUSTOMER_MESSAGE_EMPTY_ERROR = "Message can’t be empty.";
 const CUSTOMER_MESSAGE_LENGTH_ERROR = "Message is too long. Try shortening or splitting it.";
-const CUSTOMER_SELECT_WINNER_AUTH_ERROR =
-  "You need to be signed in as the requesting customer to select a winner.";
-const CUSTOMER_SELECT_WINNER_GENERIC_ERROR =
-  "We couldn’t select that bid. Please try again.";
-const CUSTOMER_SELECT_WINNER_SUCCESS_MESSAGE =
-  "Winning supplier selected. Quote status updated to Won.";
 const CUSTOMER_PROJECT_GENERIC_ERROR =
   "We couldn’t save your project details. Please retry.";
 const CUSTOMER_PROJECT_SUCCESS_MESSAGE = "Project details saved.";
@@ -400,212 +385,236 @@ export async function declineSupplierBidAction(
   return handleBidDecision(formData, "decline");
 }
 
-export async function submitCustomerSelectWinningBidAction(
-  quoteId: string,
-  _prev: CustomerSelectWinningBidState,
+export async function customerAwardBidAction(
   formData: FormData,
-): Promise<CustomerSelectWinningBidState> {
-  let normalizedQuoteId = "";
-  let customerId: string | null = null;
-  let selectedBidId: string | null = null;
+): Promise<void> {
+  const quoteId = normalizeId(getFormString(formData, "quoteId"));
+  const bidId = normalizeId(getFormString(formData, "bidId"));
+  const redirectTarget = quoteId
+    ? `/customer/quotes/${quoteId}`
+    : "/customer/quotes";
 
-  try {
-    normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
-    const redirectPath = normalizedQuoteId
-      ? `/customer/quotes/${normalizedQuoteId}`
-      : "/customer/quotes";
-    const user = await requireUser({ redirectTo: redirectPath });
-    const customer = await getCustomerByUserId(user.id);
+  const user = await requireUser({ redirectTo: "/customer/login" });
+  const customer = await getCustomerByUserId(user.id);
+  const customerId = customer?.id ?? null;
 
-    if (!customer) {
-      console.error("[customer decisions] select winner failed", {
-        quoteId: normalizedQuoteId || quoteId,
-        bidId: null,
-        customerId: null,
-        reason: "missing-customer-profile",
-      });
-      return { ok: false, error: CUSTOMER_SELECT_WINNER_AUTH_ERROR };
-    }
-
-    customerId = customer.id;
-
-    if (!normalizedQuoteId) {
-      console.error("[customer decisions] select winner failed", {
-        quoteId,
-        bidId: null,
-        customerId,
-        reason: "missing-quote-id",
-      });
-      return { ok: false, error: CUSTOMER_SELECT_WINNER_GENERIC_ERROR };
-    }
-
-    const bidId = getFormString(formData, "bidId");
-    if (typeof bidId !== "string" || bidId.trim().length === 0) {
-      console.error("[customer decisions] select winner failed", {
-        quoteId: normalizedQuoteId,
-        bidId,
-        customerId,
-        reason: "missing-bid-id",
-      });
-      return {
-        ok: false,
-        error: "Select a supplier bid before awarding the quote.",
-      };
-    }
-
-    const trimmedBidId = bidId.trim();
-    selectedBidId = trimmedBidId;
-
-    const { data: quoteRow, error } = await supabaseServer
-      .from("quotes_with_uploads")
-      .select(
-        "id,email,customer_name,company,file_name,status,price,currency,customer_id",
-      )
-      .eq("id", normalizedQuoteId)
-      .maybeSingle<QuoteSelectionRow>();
-
-    if (error) {
-      console.error("[customer decisions] select winner failed", {
-        quoteId: normalizedQuoteId,
-        bidId: trimmedBidId,
-        customerId,
-        reason: "quote-lookup-error",
-        error: serializeActionError(error),
-      });
-      return { ok: false, error: CUSTOMER_SELECT_WINNER_GENERIC_ERROR };
-    }
-
-    if (!quoteRow) {
-      console.error("[customer decisions] select winner failed", {
-        quoteId: normalizedQuoteId,
-        bidId: trimmedBidId,
-        customerId,
-        reason: "quote-not-found",
-      });
-      return { ok: false, error: "Quote not found. Refresh and try again." };
-    }
-
-    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
-    const customerEmail = normalizeEmailInput(customer.email);
-    const emailMatchesQuote =
-      normalizedQuoteEmail !== null &&
-      customerEmail !== null &&
-      normalizedQuoteEmail === customerEmail;
-
-    if (!emailMatchesQuote) {
-      console.error("[customer decisions] select winner failed", {
-        quoteId: normalizedQuoteId,
-        bidId: trimmedBidId,
-        customerId,
-        reason: "access-denied",
-      });
-      return { ok: false, error: CUSTOMER_SELECT_WINNER_AUTH_ERROR };
-    }
-
-    console.log("[customer decisions] select winner invoked", {
-      quoteId: normalizedQuoteId,
-      bidId: trimmedBidId,
-      customerId,
-    });
-
-    const result = await markWinningBidForQuote({
-      quoteId: normalizedQuoteId,
-      bidId: trimmedBidId,
-    });
-
-    if (!result.ok) {
-      console.error("[customer decisions] select winner failed", {
-        quoteId: normalizedQuoteId,
-        bidId: trimmedBidId,
-        customerId,
-        reason: "mark-winning-bid",
-        error: result.error,
-      });
-      return {
-        ok: false,
-        error: result.error ?? CUSTOMER_SELECT_WINNER_GENERIC_ERROR,
-      };
-    }
-
-    revalidatePath("/admin");
-    revalidatePath("/admin/quotes");
-    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
-    revalidatePath("/customer");
-    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
-    revalidatePath("/supplier");
-    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
-
-    if (quoteRow) {
-      void triggerWinnerNotifications(quoteRow, trimmedBidId);
-    }
-
-    console.log("[customer decisions] select winner success", {
-      quoteId: normalizedQuoteId,
-      bidId: trimmedBidId,
-      customerId,
-    });
-
-    return { ok: true, message: CUSTOMER_SELECT_WINNER_SUCCESS_MESSAGE };
-  } catch (error) {
-    console.error("[customer decisions] select winner failed", {
-      quoteId: normalizedQuoteId || quoteId,
-      bidId: selectedBidId,
-      customerId,
-      reason: "unexpected-error",
-      error: serializeActionError(error),
-    });
-    return { ok: false, error: CUSTOMER_SELECT_WINNER_GENERIC_ERROR };
-  }
-}
-
-async function triggerWinnerNotifications(
-  quoteRow: QuoteSelectionRow,
-  bidId: string,
-) {
-  try {
-    const winnerContext = await loadWinningBidNotificationContext(bidId);
-    if (!winnerContext) {
-      return;
-    }
-
-    const quoteContext = toQuoteWinningContext(quoteRow);
-    const customer =
-      quoteRow.customer_id && quoteRow.customer_id.length > 0
-        ? await getCustomerById(quoteRow.customer_id)
-        : null;
-    await notifyOnWinningBidSelected({
-      quote: quoteContext,
-      winningBid: winnerContext.winningBid,
-      supplier: winnerContext.supplier,
-      customer,
-    });
-  } catch (error) {
-    console.error("[customer decisions] winning bid notification failed", {
-      quoteId: quoteRow.id,
+  if (!quoteId || !bidId) {
+    logCustomerAwardNotAllowed({
+      quoteId,
       bidId,
-      error: serializeActionError(error),
+      userId: user.id,
+      customerId,
+      reason: "missing-identifiers",
+    });
+    return redirect(redirectTarget);
+  }
+
+  console.info("[customer award] start", {
+    quoteId,
+    bidId,
+    userId: user.id,
+    customerId,
+  });
+
+  const { data: quoteRow, error: quoteError } = await supabaseServer
+    .from("quotes_with_uploads")
+    .select("id,email,status,customer_id")
+    .eq("id", quoteId)
+    .maybeSingle<QuoteSelectionRow>();
+
+  if (quoteError) {
+    console.error("[customer award] quote lookup failed", {
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      error: serializeActionError(quoteError),
     });
   }
+
+  if (!quoteRow) {
+    console.warn("[customer award] quote not found or inaccessible", {
+      quoteId,
+      userId: user.id,
+    });
+    return redirect(redirectTarget);
+  }
+
+  const normalizedStatus = normalizeQuoteStatus(quoteRow.status ?? undefined);
+  const statusEligible =
+    normalizedStatus === "quoted" || normalizedStatus === "approved";
+
+  if (!statusEligible) {
+    logCustomerAwardNotAllowed({
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      reason: "status-not-eligible",
+    });
+    return redirect(redirectTarget);
+  }
+
+  const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
+  const normalizedCustomerEmail = normalizeEmailInput(customer?.email ?? null);
+  const normalizedUserEmail = normalizeEmailInput(user.email);
+
+  const emailMatches =
+    (normalizedQuoteEmail &&
+      normalizedCustomerEmail &&
+      normalizedQuoteEmail === normalizedCustomerEmail) ||
+    (normalizedQuoteEmail &&
+      normalizedUserEmail &&
+      normalizedQuoteEmail === normalizedUserEmail);
+
+  const ownsQuote =
+    Boolean(
+      customerId &&
+        quoteRow.customer_id &&
+        quoteRow.customer_id === customerId,
+    );
+
+  if (!emailMatches && !ownsQuote) {
+    logCustomerAwardNotAllowed({
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      reason: "access-denied",
+    });
+    return redirect(redirectTarget);
+  }
+
+  const { data: existingWinner, error: winnerError } = await supabaseServer
+    .from("supplier_bids")
+    .select("id")
+    .eq("quote_id", quoteId)
+    .eq("status", "won")
+    .limit(1)
+    .maybeSingle<{ id: string }>();
+
+  if (winnerError) {
+    console.error("[customer award] winner lookup failed", {
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      error: serializeActionError(winnerError),
+    });
+    return redirect(redirectTarget);
+  }
+
+  if (existingWinner) {
+    logCustomerAwardNotAllowed({
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      reason: "winner-exists",
+    });
+    return redirect(redirectTarget);
+  }
+
+  const { data: bidRow, error: bidError } = await supabaseServer
+    .from("supplier_bids")
+    .select("id,quote_id,status")
+    .eq("id", bidId)
+    .maybeSingle<{ id: string; quote_id: string; status: string | null }>();
+
+  if (bidError) {
+    console.error("[customer award] bid lookup failed", {
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      error: serializeActionError(bidError),
+    });
+    return redirect(redirectTarget);
+  }
+
+  if (!bidRow || bidRow.quote_id !== quoteId) {
+    logCustomerAwardNotAllowed({
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      reason: "bid-not-found",
+    });
+    return redirect(redirectTarget);
+  }
+
+  const bidStatus = normalizeBidStatus(bidRow.status);
+
+  if (bidStatus === "won" || bidStatus === "lost") {
+    logCustomerAwardNotAllowed({
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      reason: `bid-ineligible-${bidStatus}`,
+    });
+    return redirect(redirectTarget);
+  }
+
+  const awardResult = await performAwardBidForQuote({
+    quoteId,
+    bidId,
+    caller: "customer",
+  });
+
+  if (!awardResult.ok) {
+    console.error("[customer award] failed", {
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      error: awardResult.error,
+    });
+    return redirect(redirectTarget);
+  }
+
+  await Promise.all([
+    revalidatePath("/customer"),
+    revalidatePath("/customer/quotes"),
+    revalidatePath(`/customer/quotes/${quoteId}`),
+    revalidatePath(`/supplier/quotes/${quoteId}`),
+    revalidatePath(`/admin/quotes/${quoteId}`),
+  ]);
+
+  void dispatchWinnerNotification({
+    quoteId,
+    bidId,
+    caller: "customer",
+  });
+
+  console.info("[customer award] success", {
+    quoteId,
+    bidId,
+    userId: user.id,
+    customerId,
+  });
+
+  redirect(redirectTarget);
 }
 
-function toQuoteContactInfo(row: QuoteRecipientRow): QuoteContactInfo {
-  return {
-    id: row.id,
-    email: row.email,
-    customer_name: row.customer_name,
-    company: row.company,
-    file_name: row.file_name,
-    customer_id: row.customer_id,
-  };
+type CustomerAwardLogContext = {
+  quoteId: string | null;
+  bidId?: string | null;
+  userId: string;
+  customerId: string | null;
+  reason: string;
+};
+
+function logCustomerAwardNotAllowed(context: CustomerAwardLogContext) {
+  console.warn("[customer award] not allowed", context);
 }
 
-function toQuoteWinningContext(row: QuoteSelectionRow): QuoteWinningContext {
-  return {
-    ...toQuoteContactInfo(row),
-    status: row.status,
-    price: row.price,
-    currency: row.currency,
-  };
+function normalizeId(value?: string | null): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeBidStatus(status?: string | null): string {
+  return typeof status === "string" ? status.trim().toLowerCase() : "";
 }
 
 async function handleBidDecision(formData: FormData, mode: "accept" | "decline") {

@@ -31,7 +31,6 @@ import { DataFallbackNotice } from "@/app/(portals)/DataFallbackNotice";
 import {
   getQuoteStatusLabel,
   normalizeQuoteStatus,
-  isOpenQuoteStatus,
 } from "@/server/quotes/status";
 import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
 import { CustomerQuoteTrackingCard } from "./CustomerQuoteTrackingCard";
@@ -159,8 +158,9 @@ export default async function CustomerQuoteDetailPage({
     quoteId: quote.id,
     eventCount: timelineEvents.length,
   });
-  const quoteIsOpen = isOpenQuoteStatus(quote.status ?? undefined);
   const quoteIsWon = normalizedQuoteStatus === "won";
+  const quoteAllowsCustomerAward =
+    normalizedQuoteStatus === "quoted" || normalizedQuoteStatus === "approved";
   const winningBid =
     bids.find(
       (bid) =>
@@ -168,21 +168,22 @@ export default async function CustomerQuoteDetailPage({
         bid.status.trim().toLowerCase() === "won",
     ) ?? null;
   const winningBidId = winningBid?.id ?? null;
-  const winningBidSelectedAt = winningBid?.updated_at ?? winningBid?.created_at ?? null;
-  const canSelectWinner = !readOnly && quoteIsOpen && !quoteIsWon && bidCount > 0;
-  let selectWinnerDisabledReason: string | null = null;
-  if (readOnly) {
-    selectWinnerDisabledReason =
-      "Selecting a winner is disabled while you are viewing this workspace in read-only mode.";
-  } else if (!quoteIsOpen) {
-    selectWinnerDisabledReason =
-      "This quote is no longer open for supplier selection.";
-  } else if (quoteIsWon) {
-    selectWinnerDisabledReason =
-      "A winning supplier has already been selected for this quote.";
-  } else if (bidCount === 0) {
-    selectWinnerDisabledReason =
-      "At least one supplier bid is required before awarding the quote.";
+  const quoteHasWinner = Boolean(winningBidId);
+  const showCustomerSupplierSection = quoteAllowsCustomerAward && bidCount > 0;
+  const showCustomerAwardButtons =
+    showCustomerSupplierSection &&
+    !quoteIsWon &&
+    !quoteHasWinner &&
+    !readOnly;
+  let customerAwardDisabledReason: string | null = null;
+  if (showCustomerSupplierSection && !showCustomerAwardButtons) {
+    if (readOnly) {
+      customerAwardDisabledReason =
+        "Selecting a winner is disabled while you are viewing this workspace in read-only mode.";
+    } else if (quoteIsWon || quoteHasWinner) {
+      customerAwardDisabledReason =
+        "A winning supplier has already been selected for this quote.";
+    }
   }
   const pricedBids = bids.filter(
     (bid): bid is BidRow & { amount: number } => {
@@ -445,15 +446,16 @@ export default async function CustomerQuoteDetailPage({
                 </dd>
               </div>
             </dl>
-            <CustomerBidSelectionCard
-              quoteId={quote.id}
-              bids={bids}
-              canSelectWinner={canSelectWinner}
-              disableReason={selectWinnerDisabledReason}
-              winningBidId={winningBidId}
-              winningBidSelectedAt={winningBidSelectedAt}
-              quoteWon={quoteIsWon}
-            />
+            {showCustomerSupplierSection ? (
+              <CustomerBidSelectionCard
+                quoteId={quote.id}
+                bids={bids}
+                showAwardButtons={showCustomerAwardButtons}
+                disableReason={customerAwardDisabledReason}
+                winningBidId={winningBidId}
+                quoteWon={quoteIsWon}
+              />
+            ) : null}
           </>
         )}
       </div>
