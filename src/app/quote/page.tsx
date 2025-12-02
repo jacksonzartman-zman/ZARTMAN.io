@@ -84,77 +84,46 @@ export default async function QuotePage() {
 }
 
 function buildQuotePrefillContact(user: User | null): PrefillContact | null {
-  if (!user) {
+  if (!user) return null;
+
+  const rawEmail =
+    typeof user.email === "string" ? user.email.trim() : "";
+
+  if (!rawEmail) {
     return null;
   }
 
-  const email = sanitizeMetadataString(user.email);
-  if (!email) {
-    return null;
-  }
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
 
-  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
-  const fullName =
-    pickMetadataString(metadata, ["full_name", "fullName", "name"]) ?? null;
-  const fullNameParts = splitFullName(fullName);
-  const firstName =
-    pickMetadataString(metadata, ["first_name", "firstName", "given_name"]) ??
-    fullNameParts.first;
-  const lastName =
-    pickMetadataString(metadata, ["last_name", "lastName", "family_name"]) ??
-    fullNameParts.last;
+  const metaName =
+    typeof meta.name === "string" ? meta.name.trim() : "";
 
-  if (!firstName || !lastName) {
-    return null;
-  }
+  const firstNameFromMeta =
+    typeof meta.first_name === "string"
+      ? meta.first_name
+      : typeof meta.given_name === "string"
+        ? meta.given_name
+        : metaName.split(" ")[0] ?? "";
+
+  const lastNameFromMeta =
+    typeof meta.last_name === "string"
+      ? meta.last_name
+      : typeof meta.family_name === "string"
+        ? meta.family_name
+        : metaName.split(" ").slice(1).join(" ");
+
+  const firstName = firstNameFromMeta.trim();
+  const lastName = lastNameFromMeta.trim();
+
+  const displayName =
+    [firstName, lastName].filter(Boolean).join(" ") ||
+    metaName ||
+    rawEmail;
 
   return {
     firstName,
     lastName,
-    email,
-    displayName: `${firstName} ${lastName}`.trim(),
-  };
-}
-
-function pickMetadataString(
-  metadata: Record<string, unknown>,
-  keys: string[],
-): string | null {
-  for (const key of keys) {
-    const value = sanitizeMetadataString(metadata[key]);
-    if (value) {
-      return value;
-    }
-  }
-  return null;
-}
-
-function sanitizeMetadataString(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function splitFullName(
-  fullName: string | null,
-): { first: string | null; last: string | null } {
-  if (!fullName) {
-    return { first: null, last: null };
-  }
-  const parts = fullName
-    .split(/\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length === 0) {
-    return { first: null, last: null };
-  }
-  if (parts.length === 1) {
-    return { first: parts[0], last: null };
-  }
-  return {
-    first: parts[0],
-    last: parts.slice(1).join(" "),
+    email: rawEmail,
+    displayName,
   };
 }
