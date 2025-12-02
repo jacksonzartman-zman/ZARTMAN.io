@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
 import { createQuoteMessage } from "@/server/quotes/messages";
+import { notifyAdminOnBidSubmitted } from "@/server/quotes/notifications";
 import {
   loadSupplierProfile,
   loadSupplierProfileByUserId,
@@ -534,6 +535,24 @@ export async function submitSupplierBidAction(
         leadTimeDays,
         bidId: data?.id ?? null,
       });
+
+      if (!existingBid) {
+        const quoteTitle =
+          quote.file_name ??
+          quote.company ??
+          `Quote ${quote.id.slice(0, 6)}`;
+        void notifyAdminOnBidSubmitted({
+          quoteId,
+          bidId: data?.id ?? null,
+          supplierId: supplier.id,
+          supplierName: supplier.company_name ?? supplier.primary_email ?? null,
+          supplierEmail: supplier.primary_email ?? supplierEmail,
+          amount: normalizedAmount,
+          currency,
+          leadTimeDays,
+          quoteTitle,
+        });
+      }
 
       revalidatePath(`/supplier/quotes/${quoteId}`);
       revalidatePath("/supplier");

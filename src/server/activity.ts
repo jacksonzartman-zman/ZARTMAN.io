@@ -68,6 +68,7 @@ const QUOTE_ACTIVITY_TITLES: Record<QuoteStatus, string> = {
   submitted: "RFQ submitted",
   in_review: "RFQ under review",
   quoted: "Quote prepared",
+  approved: "Quote approved",
   won: "Quote won",
   lost: "Quote closed as lost",
   cancelled: "RFQ cancelled",

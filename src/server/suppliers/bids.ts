@@ -371,12 +371,15 @@ export async function markWinningBidForQuote(
         ? normalizedBid.currency.trim().toUpperCase()
         : DEFAULT_CURRENCY;
 
-    const quoteResult = await updateAdminQuote({
-      quoteId,
-      status: "won",
-      price,
-      currency,
-    });
+    const quoteResult = await updateAdminQuote(
+      {
+        quoteId,
+        status: "won",
+        price,
+        currency,
+      },
+      { skipStatusNotifications: true },
+    );
 
     if (!quoteResult.ok) {
       logAdminQuotesError("winner update failed", {
