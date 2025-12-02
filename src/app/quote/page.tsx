@@ -1,18 +1,16 @@
 export const dynamic = "force-dynamic";
 
-import { redirect } from "next/navigation";
 import UploadBox, { type PrefillContact } from "@/components/UploadBox";
 import type { User } from "@supabase/supabase-js";
 import { getServerAuthUser } from "@/server/auth";
 
 export default async function QuotePage() {
   const { user } = await getServerAuthUser();
-
-  if (!user) {
-    redirect("/login?next=/quote");
-  }
-
   const prefillContact = buildQuotePrefillContact(user);
+  console.log("[quote intake] prefill contact", {
+    hasUser: Boolean(user),
+    prefillEmail: prefillContact?.email ?? null,
+  });
 
   return (
     <main className="main-shell">

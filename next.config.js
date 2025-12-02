@@ -4,7 +4,11 @@ const nextConfig = {
   output: undefined,
   images: { unoptimized: true },   // OK on Pages
   eslint: { ignoreDuringBuilds: true },
-  experimental: {}                 // leave empty (no 'output: export')
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "25mb",
+    },
+  },                 // keep default output (no 'output: export')
 };
 
 module.exports = nextConfig;
