@@ -67,10 +67,10 @@ type QuoteRecipientRow = {
   customer_id: string | null;
 };
 
-type QuoteSelectionRow = QuoteRecipientRow & {
+type QuoteSelectionRow = {
+  id: string;
+  email: string | null;
   status: string | null;
-  price: number | string | null;
-  currency: string | null;
 };
 
 export async function submitCustomerQuoteMessageAction(
@@ -418,7 +418,7 @@ export async function customerAwardBidAction(
 
   const { data: quoteRow, error: quoteError } = await supabaseServer
     .from("quotes_with_uploads")
-    .select("id,email,status,customer_id")
+    .select("id,email,status")
     .eq("id", quoteId)
     .maybeSingle<QuoteSelectionRow>();
 
@@ -460,21 +460,11 @@ export async function customerAwardBidAction(
   const normalizedUserEmail = normalizeEmailInput(user.email);
 
   const emailMatches =
-    (normalizedQuoteEmail &&
-      normalizedCustomerEmail &&
-      normalizedQuoteEmail === normalizedCustomerEmail) ||
-    (normalizedQuoteEmail &&
-      normalizedUserEmail &&
-      normalizedQuoteEmail === normalizedUserEmail);
+    normalizedQuoteEmail !== null &&
+    (normalizedCustomerEmail === normalizedQuoteEmail ||
+      normalizedUserEmail === normalizedQuoteEmail);
 
-  const ownsQuote =
-    Boolean(
-      customerId &&
-        quoteRow.customer_id &&
-        quoteRow.customer_id === customerId,
-    );
-
-  if (!emailMatches && !ownsQuote) {
+  if (!emailMatches) {
     logCustomerAwardNotAllowed({
       quoteId,
       bidId,
