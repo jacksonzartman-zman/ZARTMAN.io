@@ -1,5 +1,5 @@
 // src/app/admin/quotes/page.tsx
-import { loadAdminQuotesList } from "@/server/admin/quotes";
+import { loadAdminQuoteMeta, loadAdminQuotesList } from "@/server/admin/quotes";
 import { normalizePriceValue } from "@/server/admin/price";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import {
@@ -111,21 +111,39 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     search: normalizedSearch || null,
   });
 
-  const rows: QuoteRow[] =
+  const rows =
     quotesResult.data?.map((row) => ({
-        id: row.id,
-        customerName: row.customer_name ?? "Unknown",
-        customerEmail: row.email ?? "",
-        company: row.company ?? "",
-        fileName: row.file_name ?? "",
-        status: normalizeQuoteStatus(row.status),
-        price: normalizePriceValue(row.price),
-        currency: row.currency,
-        targetDate: row.target_date,
-        createdAt: row.created_at,
-      })) ?? [];
+      id: row.id,
+      customerName: row.customer_name ?? "Unknown",
+      customerEmail: row.email ?? "",
+      company: row.company ?? "",
+      fileName: row.file_name ?? "",
+      status: normalizeQuoteStatus(row.status),
+      price: normalizePriceValue(row.price),
+      currency: row.currency,
+      targetDate: row.target_date,
+      createdAt: row.created_at,
+    })) ?? [];
 
-  const filteredQuotes = rows.filter((row) => {
+  const metaMap = await loadAdminQuoteMeta(
+    rows.map((row) => ({
+      quoteId: row.id,
+      status: row.status,
+    })),
+  );
+
+  const enrichedRows: QuoteRow[] = rows.map((row) => {
+    const meta = metaMap[row.id];
+    return {
+      ...row,
+      bidCount: meta?.bidCount ?? 0,
+      hasWinner: meta?.hasWinner ?? false,
+      hasProject: meta?.hasProject ?? false,
+      needsDecision: meta?.needsDecision ?? false,
+    };
+  });
+
+  const filteredQuotes = enrichedRows.filter((row) => {
     const matchesStatus =
       statusFilter === "all" ? true : row.status === statusFilter;
 
