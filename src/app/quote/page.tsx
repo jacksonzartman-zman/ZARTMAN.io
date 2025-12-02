@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
-import UploadBox from "@/components/UploadBox";
+import UploadBox, { type PrefillContact } from "@/components/UploadBox";
+import type { User } from "@supabase/supabase-js";
 import { getServerAuthUser } from "@/server/auth";
 
 export default async function QuotePage() {
@@ -10,6 +11,8 @@ export default async function QuotePage() {
   if (!user) {
     redirect("/login?next=/quote");
   }
+
+  const prefillContact = buildQuotePrefillContact(user);
 
   return (
     <main className="main-shell">
@@ -35,7 +38,7 @@ export default async function QuotePage() {
         </section>
 
         <section className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4 sm:p-6 shadow-lift-sm">
-          <UploadBox />
+          <UploadBox prefillContact={prefillContact} />
         </section>
 
         <section className="space-y-6">
@@ -80,4 +83,80 @@ export default async function QuotePage() {
       </div>
     </main>
   );
+}
+
+function buildQuotePrefillContact(user: User | null): PrefillContact | null {
+  if (!user) {
+    return null;
+  }
+
+  const email = sanitizeMetadataString(user.email);
+  if (!email) {
+    return null;
+  }
+
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const fullName =
+    pickMetadataString(metadata, ["full_name", "fullName", "name"]) ?? null;
+  const fullNameParts = splitFullName(fullName);
+  const firstName =
+    pickMetadataString(metadata, ["first_name", "firstName", "given_name"]) ??
+    fullNameParts.first;
+  const lastName =
+    pickMetadataString(metadata, ["last_name", "lastName", "family_name"]) ??
+    fullNameParts.last;
+
+  if (!firstName || !lastName) {
+    return null;
+  }
+
+  return {
+    firstName,
+    lastName,
+    email,
+    displayName: `${firstName} ${lastName}`.trim(),
+  };
+}
+
+function pickMetadataString(
+  metadata: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = sanitizeMetadataString(metadata[key]);
+    if (value) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function sanitizeMetadataString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function splitFullName(
+  fullName: string | null,
+): { first: string | null; last: string | null } {
+  if (!fullName) {
+    return { first: null, last: null };
+  }
+  const parts = fullName
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return { first: null, last: null };
+  }
+  if (parts.length === 1) {
+    return { first: parts[0], last: null };
+  }
+  return {
+    first: parts[0],
+    last: parts.slice(1).join(" "),
+  };
 }

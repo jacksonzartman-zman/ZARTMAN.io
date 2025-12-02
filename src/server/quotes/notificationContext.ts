@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import { getCustomerById } from "@/server/customers";
+import { getCustomerByEmail } from "@/server/customers";
 import type { CustomerRow } from "@/server/customers";
 import type { SupplierBidRow, SupplierRow } from "@/server/suppliers/types";
 import { loadSupplierById } from "@/server/suppliers/profile";
@@ -15,7 +15,7 @@ type QuoteContactRow = QuoteContactInfo & {
 };
 
 const QUOTE_NOTIFICATION_COLUMNS =
-  "id,file_name,company,customer_name,email,customer_id,status,price,currency";
+  "id,file_name,company,customer_name,email,status,price,currency";
 
 export type QuoteNotificationContext = {
   quote: QuoteContactInfo;
@@ -61,10 +61,7 @@ export async function loadQuoteNotificationContext(
   }
 
   const { status, price, currency, ...contact } = row;
-  const customer =
-    contact.customer_id && contact.customer_id.length > 0
-      ? await getCustomerById(contact.customer_id)
-      : null;
+  const customer = await loadCustomerForQuoteContact(contact);
 
   return {
     quote: contact,
@@ -155,6 +152,25 @@ async function selectQuoteRow(
   } catch (error) {
     console.error("[quote notifications] quote lookup crashed", {
       quoteId,
+      error,
+    });
+    return null;
+  }
+}
+
+async function loadCustomerForQuoteContact(
+  contact: QuoteContactInfo,
+): Promise<CustomerRow | null> {
+  if (!contact.email) {
+    return null;
+  }
+  try {
+    const customer = await getCustomerByEmail(contact.email);
+    return customer ?? null;
+  } catch (error) {
+    console.warn("[quote notifications] customer enrichment skipped", {
+      quoteId: contact.id,
+      reason: "lookup-failed",
       error,
     });
     return null;
