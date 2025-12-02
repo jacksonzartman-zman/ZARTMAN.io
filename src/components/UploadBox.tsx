@@ -588,12 +588,17 @@ export default function UploadBox({ prefillContact }: UploadBoxProps) {
               name="firstName"
               type="text"
               autoComplete="given-name"
-              value={state.firstName}
-              onChange={handleInputChange("firstName")}
+              {...(contactFieldsLocked
+                ? { defaultValue: prefillContact?.firstName ?? "" }
+                : {
+                    value: state.firstName,
+                    onChange: handleInputChange("firstName"),
+                  })}
               className={clsx(
                 "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
                 fieldErrors.firstName ? "border-red-500" : "border-border",
-                contactFieldsLocked && "cursor-not-allowed bg-black/30 text-muted",
+                contactFieldsLocked &&
+                  "cursor-not-allowed bg-black/30 text-muted-foreground",
               )}
               aria-invalid={Boolean(fieldErrors.firstName)}
               aria-describedby={
@@ -620,12 +625,17 @@ export default function UploadBox({ prefillContact }: UploadBoxProps) {
               name="lastName"
               type="text"
               autoComplete="family-name"
-              value={state.lastName}
-              onChange={handleInputChange("lastName")}
+              {...(contactFieldsLocked
+                ? { defaultValue: prefillContact?.lastName ?? "" }
+                : {
+                    value: state.lastName,
+                    onChange: handleInputChange("lastName"),
+                  })}
               className={clsx(
                 "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
                 fieldErrors.lastName ? "border-red-500" : "border-border",
-                contactFieldsLocked && "cursor-not-allowed bg-black/30 text-muted",
+                contactFieldsLocked &&
+                  "cursor-not-allowed bg-black/30 text-muted-foreground",
               )}
               aria-invalid={Boolean(fieldErrors.lastName)}
               aria-describedby={
@@ -655,12 +665,17 @@ export default function UploadBox({ prefillContact }: UploadBoxProps) {
               name="email"
               type="email"
               autoComplete="email"
-              value={state.email}
-              onChange={handleInputChange("email")}
+              {...(contactFieldsLocked
+                ? { defaultValue: prefillContact?.email ?? "" }
+                : {
+                    value: state.email,
+                    onChange: handleInputChange("email"),
+                  })}
               className={clsx(
                 "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
                 fieldErrors.email ? "border-red-500" : "border-border",
-                contactFieldsLocked && "cursor-not-allowed bg-black/30 text-muted",
+                contactFieldsLocked &&
+                  "cursor-not-allowed bg-black/30 text-muted-foreground",
               )}
               aria-invalid={Boolean(fieldErrors.email)}
               aria-describedby={fieldErrors.email ? "email-error" : undefined}
