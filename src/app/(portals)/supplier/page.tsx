@@ -27,6 +27,7 @@ import {
 import { getServerAuthUser } from "@/server/auth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
+import { loadSupplierActivityFeed } from "@/server/activity";
 import { loadRecentSupplierActivity } from "@/server/suppliers/activity";
 import type { QuoteActivityEvent } from "@/types/activity";
 import { resolveUserRoles } from "@/server/users/roles";
@@ -36,6 +37,7 @@ import { approvalsEnabled } from "@/server/suppliers/flags";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 import { PortalShell } from "../components/PortalShell";
 import { PortalStatPills } from "../components/PortalStatPills";
+import { resolveSupplierActivityEmptyState } from "./activityEmptyState";
 
 export const dynamic = "force-dynamic";
 
@@ -227,14 +229,44 @@ async function SupplierDashboardPage({
   const bidsUnavailable = supplierExists && !bidsResult.ok;
   const canLoadActivity =
     supplierExists && !isApprovalGateActive(approvalGate);
-  const recentActivity: QuoteActivityEvent[] =
-    canLoadActivity && supplier
-      ? await loadRecentSupplierActivity(supplier.id)
-      : [];
+  let recentActivity: QuoteActivityEvent[] = [];
+  let activityFeedMeta: SupplierActivityResult<unknown> | null = null;
+  if (canLoadActivity && supplier) {
+    try {
+      activityFeedMeta = await loadSupplierActivityFeed({
+        supplierId: supplier.id,
+        supplierEmail: supplier.primary_email ?? supplierEmail,
+        limit: 0,
+      });
+    } catch (error) {
+      console.error("[supplier dashboard] activity meta load failed", {
+        supplierId: supplier.id,
+        error,
+      });
+    }
+
+    if (activityFeedMeta?.reason !== "assignments-disabled") {
+      try {
+        recentActivity = await loadRecentSupplierActivity(supplier.id);
+      } catch (error) {
+        console.error("[supplier dashboard] activity feed failed", {
+          supplierId: supplier.id,
+          error,
+        });
+        recentActivity = [];
+      }
+    }
+  }
+  const activityEmptyState = resolveSupplierActivityEmptyState({
+    supplierExists,
+    hasEvents: recentActivity.length > 0,
+    reason: activityFeedMeta?.reason ?? null,
+  });
   console.log("[supplier dashboard] activity loaded", {
     supplierId: supplier?.id ?? null,
     eventCount: recentActivity.length,
     gateActive: isApprovalGateActive(approvalGate),
+    reason: activityFeedMeta?.reason ?? null,
   });
 
   const signedInEmail = supplier?.primary_email ?? supplierEmail;
@@ -393,11 +425,15 @@ async function SupplierDashboardPage({
           </ul>
         ) : (
           <EmptyStateNotice
-            title={supplierExists ? "No activity yet" : "Activity unlocks after onboarding"}
+            title={
+              activityEmptyState?.title ??
+              (supplierExists ? "No activity yet" : "Activity unlocks after onboarding")
+            }
             description={
-              supplierExists
+              activityEmptyState?.description ??
+              (supplierExists
                 ? "We’ll stream RFQ assignments and bid updates here as they happen."
-                : "Finish onboarding to start tracking RFQs and bids in this feed."
+                : "Finish onboarding to start tracking RFQs and bids in this feed.")
             }
           />
         )}
