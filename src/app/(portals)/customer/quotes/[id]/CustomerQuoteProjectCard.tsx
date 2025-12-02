@@ -63,14 +63,14 @@ export function CustomerQuoteProjectCard({
   return (
     <section className="space-y-4 rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
       <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-300">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Project kickoff
         </p>
         <h2 className="text-lg font-semibold text-white">
-          Next steps for this RFQ
+          PO details & target dates
         </h2>
         <p className="text-sm text-slate-300">
-          Share your PO number and target ship date so we can kick off production.
+          Share your PO number, target ship date, and kickoff notes once this RFQ is awarded.
         </p>
       </header>
 
