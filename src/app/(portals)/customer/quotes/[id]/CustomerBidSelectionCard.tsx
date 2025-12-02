@@ -1,84 +1,44 @@
-"use client";
-
 import clsx from "clsx";
-import { useEffect } from "react";
-import { useFormState, useFormStatus } from "react-dom";
-import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatDateTime } from "@/lib/formatDate";
 import type { BidRow } from "@/server/bids";
-import {
-  submitCustomerSelectWinningBidAction,
-  type CustomerSelectWinningBidState,
-} from "./actions";
-import { CUSTOMER_SELECT_WINNER_INITIAL_STATE } from "@/lib/customer/decisionState";
+import { customerAwardBidAction } from "./actions";
 
 type CustomerBidSelectionCardProps = {
   quoteId: string;
   bids: BidRow[];
-  canSelectWinner: boolean;
+  showAwardButtons: boolean;
   disableReason?: string | null;
   winningBidId?: string | null;
-  winningBidSelectedAt?: string | null;
   quoteWon: boolean;
 };
 
 export function CustomerBidSelectionCard({
   quoteId,
   bids,
-  canSelectWinner,
+  showAwardButtons,
   disableReason,
   winningBidId,
-  winningBidSelectedAt,
   quoteWon,
 }: CustomerBidSelectionCardProps) {
-  const router = useRouter();
-  const boundAction = submitCustomerSelectWinningBidAction.bind(null, quoteId);
-  const [state, formAction] = useFormState<
-    CustomerSelectWinningBidState,
-    FormData
-  >(boundAction, CUSTOMER_SELECT_WINNER_INITIAL_STATE);
-
-  const successMessage = isSuccessState(state) ? state.message : "";
-  const errorMessage = isErrorState(state) ? state.error : "";
-
-  useEffect(() => {
-    if (successMessage) {
-      router.refresh();
-    }
-  }, [router, successMessage]);
-
-  const winningTimestampText = winningBidSelectedAt
-    ? formatDateTime(winningBidSelectedAt, { includeTime: true })
-    : null;
-
-  const showSelectControls = canSelectWinner && bids.length > 0;
+  const hasWinner =
+    Boolean(winningBidId) ||
+    bids.some(
+      (bid) =>
+        typeof bid.status === "string" &&
+        bid.status.trim().toLowerCase() === "won",
+    ) ||
+    quoteWon;
 
   return (
     <div className="mt-5 space-y-4">
-      {quoteWon ? (
+      {hasWinner ? (
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          Winning supplier selected{" "}
-          {winningTimestampText ? `on ${winningTimestampText}` : "successfully"}.
+          Winning supplier selected. We notified the supplier to kick off the project.
         </div>
       ) : null}
 
-      {errorMessage ? (
-        <p
-          className="rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-3 text-sm text-red-200"
-          role="alert"
-        >
-          {errorMessage}
-        </p>
-      ) : null}
-
-      {successMessage ? (
-        <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-100">
-          {successMessage}
-        </p>
-      ) : null}
-
-      {!showSelectControls && disableReason ? (
+      {!showAwardButtons && disableReason ? (
         <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs text-slate-400">
           {disableReason}
         </p>
@@ -101,11 +61,15 @@ export function CustomerBidSelectionCard({
           });
           const statusLabel = formatBidStatusLabel(bid.status);
           const statusClasses = getStatusClasses(bid.status);
+          const normalizedBidStatus =
+            typeof bid.status === "string" ? bid.status.trim().toLowerCase() : "";
           const isWinner =
-            bid.id === winningBidId ||
-            (typeof bid.status === "string" &&
-              bid.status.trim().toLowerCase() === "won");
-          const showSelectButton = showSelectControls && !isWinner;
+            bid.id === winningBidId || normalizedBidStatus === "won";
+          const showSelectButton =
+            showAwardButtons &&
+            !hasWinner &&
+            normalizedBidStatus !== "won" &&
+            normalizedBidStatus !== "lost";
 
           return (
             <article
@@ -114,7 +78,7 @@ export function CustomerBidSelectionCard({
                 "rounded-2xl border px-4 py-4 shadow-sm transition",
                 isWinner
                   ? "border-emerald-500/60 bg-emerald-500/5"
-                  : "border-slate-900/60 bg-slate-950/40 hover:border-slate-700",
+                  : "border-slate-900/60 bg-slate-950/40 hover:border-slate-800",
               )}
             >
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -140,12 +104,16 @@ export function CustomerBidSelectionCard({
                     <span className="rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-100">
                       Winner
                     </span>
+                  ) : hasWinner ? (
+                    <span className="rounded-full border border-slate-700 bg-slate-900/40 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-300">
+                      Not selected
+                    </span>
                   ) : null}
                 </div>
               </div>
 
               {showSelectButton ? (
-                <SelectWinnerForm bidId={bid.id} action={formAction} />
+                <SelectWinnerForm quoteId={quoteId} bidId={bid.id} />
               ) : null}
             </article>
           );
@@ -156,33 +124,20 @@ export function CustomerBidSelectionCard({
 }
 
 type SelectWinnerFormProps = {
+  quoteId: string;
   bidId: string;
-  action: (formData: FormData) => void;
 };
 
-function isSuccessState(
-  state: CustomerSelectWinningBidState,
-): state is { ok: true; message: string } {
-  return state.ok;
-}
-
-function isErrorState(
-  state: CustomerSelectWinningBidState,
-): state is { ok: false; error: string } {
-  return !state.ok;
-}
-
-function SelectWinnerForm({ bidId, action }: SelectWinnerFormProps) {
-  const { pending } = useFormStatus();
+function SelectWinnerForm({ quoteId, bidId }: SelectWinnerFormProps) {
   return (
-    <form action={action} className="mt-3">
+    <form action={customerAwardBidAction} className="mt-3">
+      <input type="hidden" name="quoteId" value={quoteId} />
       <input type="hidden" name="bidId" value={bidId} />
       <button
         type="submit"
-        disabled={pending}
-        className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-1.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-1.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
       >
-        {pending ? "Selecting..." : "Select winner"}
+        Select as winner
       </button>
     </form>
   );
