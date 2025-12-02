@@ -128,13 +128,10 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                   ) : null}
                 </td>
                 <td className={`${adminTableCellClass} text-xs`}>
-                  <div className="flex flex-col gap-1 text-slate-300">
-                    <span className="inline-flex w-fit items-center rounded-full border border-slate-800 bg-slate-950/40 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-100">
-                      {row.bidCount === 1 ? "1 bid" : `${row.bidCount} bids`}
-                    </span>
-                    <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                      {row.hasProject ? "Kickoff set" : "No kickoff yet"}
-                    </span>
+                  <div className="space-y-1 text-slate-300">
+                    <p className="text-[11px] font-semibold text-slate-100">
+                      {`${row.bidCount === 1 ? "1 bid" : `${row.bidCount} bids`} • ${row.hasProject ? "Kickoff set" : "No kickoff yet"}`}
+                    </p>
                     {row.needsDecision ? (
                       <span className="inline-flex w-fit items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
                         Needs decision
