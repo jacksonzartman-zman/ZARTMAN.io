@@ -12,13 +12,11 @@ import { formatCurrency } from "@/lib/formatCurrency";
 
 const EVENT_LIMIT = 10;
 const QUOTE_COLUMNS =
-  "id,file_name,company,customer_name,email,status,created_at,updated_at,price,currency,project_label,upload_name";
+  "id,file_name,company,customer_name,email,status,created_at,updated_at,price,currency";
 
 type CustomerQuoteRow = {
   id: string;
   file_name: string | null;
-  project_label: string | null;
-  upload_name: string | null;
   company: string | null;
   customer_name: string | null;
   email: string | null;
@@ -27,6 +25,9 @@ type CustomerQuoteRow = {
   updated_at: string | null;
   price: number | string | null;
   currency: string | null;
+  // Optional fields available in some environments but not prod yet.
+  project_label?: string | null;
+  upload_name?: string | null;
 };
 
 type CustomerActivityOptions = {
