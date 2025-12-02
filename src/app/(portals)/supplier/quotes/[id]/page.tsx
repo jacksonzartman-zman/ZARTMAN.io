@@ -101,9 +101,9 @@ export default async function SupplierQuoteDetailPage({
   const workspaceData = workspaceResult.data;
 
   const projectResult = await loadQuoteProject(quoteId);
-  const project = projectResult.ok ? projectResult.data : null;
-  const projectUnavailable = !projectResult.ok;
-  console.log("[supplier quote] project loaded", {
+  const project = projectResult.data;
+  const projectUnavailable = projectResult.unavailable;
+  console.info("[supplier quote] project loaded", {
     quoteId,
     hasProject: Boolean(project),
     unavailable: projectUnavailable,

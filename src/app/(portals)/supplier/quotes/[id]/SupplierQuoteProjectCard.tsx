@@ -17,6 +17,7 @@ export function SupplierQuoteProjectCard({
   const targetShipDate = project?.target_ship_date
     ? formatDateTime(project.target_ship_date) ?? project.target_ship_date
     : null;
+  const showEmptyState = !project && !unavailable;
 
   return (
     <section className={clsx(className, "space-y-3")}>
@@ -35,22 +36,61 @@ export function SupplierQuoteProjectCard({
         <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
           Project details are temporarily unavailable.
         </p>
+      ) : showEmptyState ? (
+        <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-300">
+          The customer hasn't provided kickoff details yet. We'll notify you when the PO
+          number and ship date are ready.
+        </p>
       ) : null}
 
       <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
-        <SummaryItem label="PO number" value={poNumber ?? "Pending"} />
-        <SummaryItem label="Target ship date" value={targetShipDate ?? "Not set"} />
+        <SummaryItem
+          label="PO number"
+          value={poNumber ?? null}
+          placeholder="Pending"
+        />
+        <SummaryItem
+          label="Target ship date"
+          value={targetShipDate ?? null}
+          placeholder="Not set"
+        />
+        <SummaryItem
+          label="Kickoff notes"
+          value={project?.notes ?? null}
+          placeholder="No kickoff notes yet."
+          multiline
+          className="sm:col-span-2"
+        />
       </dl>
-
     </section>
   );
 }
 
-function SummaryItem({ label, value }: { label: string; value: string }) {
+function SummaryItem({
+  label,
+  value,
+  placeholder = "—",
+  multiline = false,
+  className = "",
+}: {
+  label: string;
+  value?: string | null;
+  placeholder?: string;
+  multiline?: boolean;
+  className?: string;
+}) {
+  const display =
+    typeof value === "string" && value.trim().length > 0 ? value : placeholder;
+  const valueClasses = [
+    multiline ? "whitespace-pre-line text-sm font-normal" : "font-medium",
+    "text-slate-100",
+  ].join(" ");
   return (
-    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+    <div
+      className={`rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2 ${className}`.trim()}
+    >
       <dt className="text-[11px] uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="text-slate-100">{value}</dd>
+      <dd className={valueClasses}>{display}</dd>
     </div>
   );
 }
