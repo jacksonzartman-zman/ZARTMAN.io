@@ -20,6 +20,10 @@ export type QuoteRow = {
   currency: string | null;
   targetDate: string | null;
   createdAt: string | null;
+  bidCount: number;
+  hasWinner: boolean;
+  hasProject: boolean;
+  needsDecision: boolean;
 };
 
 type QuotesTableProps = {
@@ -50,6 +54,7 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
           <th className="px-4 py-3">Company</th>
           <th className="px-4 py-3">File</th>
           <th className="px-4 py-3">Status</th>
+          <th className="px-4 py-3">State</th>
           <th className="px-4 py-3">Price</th>
           <th className="px-4 py-3">Target date</th>
           <th className="px-4 py-3">Created</th>
@@ -60,7 +65,7 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
         showEmptyState ? (
           <tr>
             <td
-              colSpan={8}
+              colSpan={9}
               className="px-6 py-12 text-center text-base text-slate-300"
             >
               <p className="font-medium text-slate-100">
@@ -121,6 +126,27 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                       Aging
                     </span>
                   ) : null}
+                </td>
+                <td className={`${adminTableCellClass} text-xs`}>
+                  <div className="flex flex-col gap-1 text-slate-300">
+                    <span className="inline-flex w-fit items-center rounded-full border border-slate-800 bg-slate-950/40 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-100">
+                      {row.bidCount === 1 ? "1 bid" : `${row.bidCount} bids`}
+                    </span>
+                    <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                      {row.hasProject ? "Kickoff set" : "No kickoff yet"}
+                    </span>
+                    {row.needsDecision ? (
+                      <span className="inline-flex w-fit items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
+                        Needs decision
+                      </span>
+                    ) : row.hasWinner ? (
+                      <span className="text-[11px] font-semibold text-emerald-300">
+                        Winner selected
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-500">Up to date</span>
+                    )}
+                  </div>
                 </td>
                 <td className={`${adminTableCellClass} text-xs text-slate-200`}>
                   {formatMoney(row.price, row.currency)}
