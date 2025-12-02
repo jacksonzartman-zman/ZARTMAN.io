@@ -1,9 +1,10 @@
 import { serializeActionError } from "@/lib/forms";
-import { getCustomerById } from "@/server/customers";
+import { getCustomerByEmail } from "@/server/customers";
 import {
   loadQuoteWinningContext,
   loadWinningBidNotificationContext,
 } from "@/server/quotes/notificationContext";
+import type { QuoteWinningContext } from "@/server/quotes/notificationTypes";
 import { notifyOnWinningBidSelected } from "@/server/quotes/notifications";
 
 export type WinnerNotificationCaller = "admin" | "customer";
@@ -43,10 +44,7 @@ export async function dispatchWinnerNotification({
       return;
     }
 
-    const customer =
-      quoteContext.customer_id && quoteContext.customer_id.length > 0
-        ? await getCustomerById(quoteContext.customer_id)
-        : null;
+    const customer = await loadCustomerForQuoteCustomer(quoteContext);
 
     await notifyOnWinningBidSelected({
       quote: quoteContext,
@@ -61,4 +59,35 @@ export async function dispatchWinnerNotification({
       error: serializeActionError(error),
     });
   }
+}
+
+async function loadCustomerForQuoteCustomer(
+  quote: QuoteWinningContext,
+) {
+  const email = normalizeEmail(quote.email);
+  if (!email) {
+    console.log("[quote notifications] customer enrichment skipped", {
+      quoteId: quote.id,
+      reason: "missing-email",
+    });
+    return null;
+  }
+
+  const customer = await getCustomerByEmail(email);
+  if (!customer) {
+    console.log("[quote notifications] customer enrichment skipped", {
+      quoteId: quote.id,
+      email,
+      reason: "not-found",
+    });
+  }
+  return customer;
+}
+
+function normalizeEmail(value?: string | null): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
 }
