@@ -15,7 +15,10 @@ export interface QuoteProjectRow {
   updated_at: string;
 }
 
-export type ProjectLoadResult = LoadResult<QuoteProjectRow | null>;
+export type ProjectLoadResult = LoadResult<QuoteProjectRow | null> & {
+  unavailable: boolean;
+};
+
 export type ProjectMutationResult = MutationResult<QuoteProjectRow>;
 
 type UpsertProjectParams = {
@@ -43,6 +46,7 @@ export async function loadQuoteProject(
       ok: false,
       data: null,
       error: "quoteId is required",
+      unavailable: true,
     };
   }
 
@@ -60,34 +64,18 @@ export async function loadQuoteProject(
           quoteId: normalizedQuoteId,
           error: serialized,
         });
-        return {
-          ok: false,
-          data: null,
-          error: LOAD_GENERIC_ERROR,
-        };
+        return buildUnavailableResult(normalizedQuoteId, LOAD_GENERIC_ERROR);
       }
       console.error("[quote projects] load failed", {
         quoteId: normalizedQuoteId,
         error: serialized,
       });
-      return {
-        ok: false,
-        data: null,
-        error: LOAD_GENERIC_ERROR,
-      };
+      return buildUnavailableResult(normalizedQuoteId, LOAD_GENERIC_ERROR);
     }
 
     const project = data ?? null;
-    console.log("[quote projects] load success", {
-      quoteId: normalizedQuoteId,
-      hasProject: Boolean(project),
-    });
-
-    return {
-      ok: true,
-      data: project,
-      error: null,
-    };
+    logProjectLoadOutcome(normalizedQuoteId, project, false);
+    return { ok: true, data: project, error: null, unavailable: false };
   } catch (error) {
     const serialized = serializeSupabaseError(error);
     if (isMissingTableOrColumnError(error)) {
@@ -95,21 +83,13 @@ export async function loadQuoteProject(
         quoteId: normalizedQuoteId,
         error: serialized,
       });
-      return {
-        ok: false,
-        data: null,
-        error: LOAD_GENERIC_ERROR,
-      };
+      return buildUnavailableResult(normalizedQuoteId, LOAD_GENERIC_ERROR);
     }
     console.error("[quote projects] load crashed", {
       quoteId: normalizedQuoteId,
       error: serialized ?? error,
     });
-    return {
-      ok: false,
-      data: null,
-      error: LOAD_GENERIC_ERROR,
-    };
+    return buildUnavailableResult(normalizedQuoteId, LOAD_GENERIC_ERROR);
   }
 }
 
@@ -195,6 +175,35 @@ export async function upsertQuoteProject(
       error: MUTATION_GENERIC_ERROR,
     };
   }
+}
+
+function buildUnavailableResult(
+  quoteId: string,
+  errorMessage: string,
+): ProjectLoadResult {
+  const result: ProjectLoadResult = {
+    ok: false,
+    data: null,
+    error: errorMessage,
+    unavailable: true,
+  };
+  logProjectLoadOutcome(quoteId, null, true);
+  return result;
+}
+
+function logProjectLoadOutcome(
+  quoteId: string,
+  project: QuoteProjectRow | null,
+  unavailable: boolean,
+) {
+  if (!quoteId) {
+    return;
+  }
+  console.info("[quote projects] load result", {
+    quoteId,
+    hasProject: Boolean(project),
+    unavailable,
+  });
 }
 
 function normalizeId(value?: string | null): string {

@@ -46,7 +46,9 @@ export function CustomerQuoteProjectCard({
     : "";
   const targetShipDateLabel = project?.target_ship_date
     ? formatDateTime(project.target_ship_date) ?? project.target_ship_date
-    : "";
+    : null;
+  const notesValue = project?.notes ?? "";
+  const showEmptyState = !project && !projectUnavailable;
 
   const showSuccess = hasSubmitted && state.ok && Boolean(state.message);
   const showError = hasSubmitted && !state.ok && Boolean(state.error);
@@ -79,10 +81,22 @@ export function CustomerQuoteProjectCard({
       ) : null}
 
       <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
-        <SummaryItem label="PO number" value={project?.po_number ?? "Pending"} />
+        <SummaryItem
+          label="PO number"
+          value={project?.po_number ?? null}
+          placeholder="Pending"
+        />
         <SummaryItem
           label="Target ship date"
-          value={targetShipDateLabel || "Not set"}
+          value={targetShipDateLabel}
+          placeholder="Not set"
+        />
+        <SummaryItem
+          label="Kickoff notes"
+          value={project?.notes ?? null}
+          placeholder="No kickoff notes yet."
+          multiline
+          className="sm:col-span-2"
         />
       </dl>
 
@@ -92,6 +106,12 @@ export function CustomerQuoteProjectCard({
         </p>
       ) : (
         <form action={handleSubmit} className="space-y-3">
+          {showEmptyState ? (
+            <p className="text-xs text-slate-400">
+              No project kickoff details saved yet. Add your PO number, target ship date,
+              and any handoff notes when you are ready.
+            </p>
+          ) : null}
           {showSuccess && state.message ? (
             <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
               {state.message}
@@ -146,6 +166,32 @@ export function CustomerQuoteProjectCard({
               </p>
             ) : null}
           </div>
+          <div className="space-y-1">
+            <label
+              htmlFor="customer-project-notes"
+              className="text-sm font-medium text-slate-200"
+            >
+              Kickoff notes
+            </label>
+            <textarea
+              id="customer-project-notes"
+              name="notes"
+              rows={4}
+              defaultValue={notesValue}
+              maxLength={2000}
+              disabled={disabled}
+              className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              placeholder="Share packaging, address, or special handling notes."
+            />
+            <p className="text-xs text-slate-500">
+              Shared with your Zartman team and the winning supplier.
+            </p>
+            {showFieldErrors && state.fieldErrors.notes ? (
+              <p className="text-sm text-red-300" role="alert">
+                {state.fieldErrors.notes}
+              </p>
+            ) : null}
+          </div>
           <ProjectSubmitButton disabled={disabled} />
         </form>
       )}
@@ -153,13 +199,33 @@ export function CustomerQuoteProjectCard({
   );
 }
 
-function SummaryItem({ label, value }: { label: string; value: string }) {
+function SummaryItem({
+  label,
+  value,
+  placeholder = "—",
+  multiline = false,
+  className = "",
+}: {
+  label: string;
+  value?: string | null;
+  placeholder?: string;
+  multiline?: boolean;
+  className?: string;
+}) {
+  const display =
+    typeof value === "string" && value.trim().length > 0 ? value : placeholder;
+  const valueClasses = [
+    multiline ? "whitespace-pre-line text-sm font-normal" : "font-medium",
+    "text-slate-100",
+  ].join(" ");
   return (
-    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+    <div
+      className={`rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2 ${className}`.trim()}
+    >
       <dt className="text-[11px] uppercase tracking-wide text-slate-500">
         {label}
       </dt>
-      <dd className="font-medium text-slate-100">{value}</dd>
+      <dd className={valueClasses}>{display}</dd>
     </div>
   );
 }
@@ -189,6 +255,7 @@ function normalizeState(
     fieldErrors: {
       poNumber: base.fieldErrors?.poNumber,
       targetShipDate: base.fieldErrors?.targetShipDate,
+      notes: base.fieldErrors?.notes,
     },
   };
 }
