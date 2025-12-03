@@ -15,11 +15,16 @@
 }
 
 .pill {
-  @apply inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold tracking-normal text-slate-100;
+  @apply inline-flex items-center justify-center gap-1.5
+    rounded-full border border-white/20 bg-white/5
+    px-2.5 py-0.5 text-[10px] font-semibold leading-[1.1]
+    tracking-normal text-slate-100 whitespace-nowrap;
 }
 
 .pill-table {
-  @apply gap-1 px-2 py-0.5 text-[10px] font-medium leading-tight;
+  @apply inline-flex items-center justify-center gap-1
+    px-2 py-0.5 text-[10px] font-medium leading-[1.1]
+    whitespace-nowrap;
 }
 
 .pill-success {
