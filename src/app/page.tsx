@@ -1,6 +1,5 @@
 import Link from "next/link";
-import EarlyAccessForm from "@/components/EarlyAccessForm";
-import { primaryCtaClasses } from "@/lib/ctas";
+import { ghostCtaClasses, primaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { FAQ_ITEMS } from "@/data/faq";
 
@@ -87,10 +86,7 @@ export default function HomePage() {
             <Link href="/quote" className={primaryCtaClasses}>
               Get quote
             </Link>
-            <Link
-              href="#how-it-works"
-              className="inline-flex items-center justify-center rounded-full border border-ink-soft px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink-soft/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-            >
+            <Link href="#how-it-works" className={ghostCtaClasses}>
               How it works
             </Link>
           </div>
@@ -193,15 +189,34 @@ export default function HomePage() {
         {/* REQUEST DEMO */}
         <section
           id="request-demo"
-          className="mx-auto mt-16 max-w-2xl space-y-4 px-4 pb-16"
+          className="mx-auto mt-16 max-w-2xl space-y-5 rounded-3xl border border-slate-900/70 bg-slate-950/60 px-6 py-6 shadow-[0_15px_45px_rgba(2,6,23,0.4)]"
         >
-          <h2 className="text-lg font-semibold text-ink">Request a live demo</h2>
-          <p className="text-sm text-ink-soft">
-            Prefer a walkthrough before sending parts? Share your work email and
-            we'll follow up to schedule a short demo and talk through your
-            quoting workflow.
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-ink-soft">
+              Request a live demo
+            </p>
+            <h2 className="text-2xl font-semibold text-ink heading-tight">
+              Prefer to talk it through?
+            </h2>
+            <p className="text-sm text-ink-muted heading-snug">
+              We&apos;ll show how routing, quoting, and award decisions work end-to-end,
+              then help you decide if you should send an RFQ or bring shops in later.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link href="/contact" className={primaryCtaClasses}>
+              Talk to Jackson
+            </Link>
+            <Link
+              href="/quote"
+              className={`${ghostCtaClasses} justify-center`}
+            >
+              Upload parts now
+            </Link>
+          </div>
+          <p className="text-xs text-ink-soft">
+            We typically reply within one business day with a Loom or a short call slot.
           </p>
-          <EarlyAccessForm />
         </section>
 
         {/* WHY THIS EXISTS */}
