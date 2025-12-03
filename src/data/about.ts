@@ -7,7 +7,7 @@ export type TeamMember = {
 export const TEAM_MEMBERS: TeamMember[] = [
   {
     name: "Jackson Zartman",
-    role: "Founder, Zartman.io",
+    role: "Co-founder, Zartman.io",
     bio:
       "Jackson has spent the past decade running RFQ desks, partnering with machine shops across the U.S., and helping digital factories keep complex builds on track. He knows the back-and-forth between buyers and suppliers because he's lived it from both sides. Zartman.io exists to give that quoting scramble a calmer system without losing the human judgement that wins work.",
   },
