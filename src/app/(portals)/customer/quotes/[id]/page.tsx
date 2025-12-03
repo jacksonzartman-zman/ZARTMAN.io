@@ -30,6 +30,7 @@ import { getNextWorkflowState } from "@/lib/workflow";
 import { DataFallbackNotice } from "@/app/(portals)/DataFallbackNotice";
 import {
   getQuoteStatusLabel,
+  getQuoteStatusHelper,
   normalizeQuoteStatus,
 } from "@/server/quotes/status";
 import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
@@ -134,6 +135,7 @@ export default async function CustomerQuoteDetailPage({
   const { customerName, companyName, intakeNotes } = derived;
   const normalizedQuoteStatus = normalizeQuoteStatus(quote.status ?? undefined);
   const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined);
+  const quoteStatusHelper = getQuoteStatusHelper(quote.status ?? undefined);
   const nextWorkflowState = getNextWorkflowState(normalizedQuoteStatus);
   const bidsResult = await loadBidsForQuote(quote.id);
   const bidsUnavailable = !bidsResult.ok;
@@ -272,18 +274,33 @@ export default async function CustomerQuoteDetailPage({
       Back to quotes
     </Link>
   );
+  const createdAtDate = submittedAtRaw ? new Date(submittedAtRaw) : null;
+  const quoteAgeInDays =
+    createdAtDate && Number.isFinite(createdAtDate.getTime())
+      ? Math.floor(
+          (Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60 * 24),
+        )
+      : null;
+  const shouldShowReceiptBanner =
+    (normalizedQuoteStatus === "submitted" ||
+      normalizedQuoteStatus === "in_review") &&
+    (quoteAgeInDays === null || quoteAgeInDays <= 14);
+
   const headerContent = (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
             RFQ file
           </p>
           <p className="text-sm text-slate-300">{primaryFileName}</p>
         </div>
-        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-          {quoteStatusLabel}
-        </span>
+        <div className="flex max-w-xs flex-col items-start text-left sm:items-end sm:text-right">
+          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+            {quoteStatusLabel}
+          </span>
+          <p className="mt-1 text-xs text-slate-400">{quoteStatusHelper}</p>
+        </div>
       </div>
       <dl className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
         <div>
@@ -466,6 +483,25 @@ export default async function CustomerQuoteDetailPage({
     </section>
   );
 
+  const receiptBanner = shouldShowReceiptBanner ? (
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4">
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Early RFQ update
+        </p>
+        <h2 className="text-lg font-semibold text-white">We&apos;ve got your RFQ.</h2>
+      </div>
+      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
+        <li>We&apos;re routing this RFQ to vetted suppliers who match your process and volumes.</li>
+        <li>You&apos;ll start seeing bids here as suppliers respond.</li>
+        <li>Once we review bids, we&apos;ll prepare pricing and move the status to Quote prepared.</li>
+      </ul>
+      <p className="mt-3 text-xs text-slate-400">
+        You&apos;re never obligated to award—move forward only when price, lead time, and supplier fit feel right.
+      </p>
+    </section>
+  ) : null;
+
   const projectSection = quoteIsWon ? (
     <CustomerQuoteProjectCard
       quoteId={quote.id}
@@ -495,6 +531,7 @@ export default async function CustomerQuoteDetailPage({
       headerContent={headerContent}
       actions={headerActions}
     >
+      {receiptBanner}
       {summaryCard}
       {projectSection}
       <CustomerQuoteMessagesCard
