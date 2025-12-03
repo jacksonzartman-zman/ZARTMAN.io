@@ -205,7 +205,7 @@ export default function HomePage() {
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <Link href="/contact" className={primaryCtaClasses}>
-              Talk to Jackson
+              Talk to the team
             </Link>
             <Link
               href="/quote"
