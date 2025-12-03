@@ -2,6 +2,7 @@ import Link from "next/link";
 import EarlyAccessForm from "@/components/EarlyAccessForm";
 import { primaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "@/app/(portals)/PortalCard";
+import { FAQ_ITEMS } from "@/data/faq";
 
 const TRUST_SIGNALS = [
   "Built by manufacturing sales leaders",
@@ -63,28 +64,7 @@ const WHY_TEAMS_POINTS = [
   },
 ];
 
-const FAQ_ITEMS = [
-  {
-    question: "Who sees my CAD files and RFQs?",
-    answer:
-      "We only share your RFQs and files with suppliers we&apos;ve matched to your project. No public job boards or blast lists.",
-  },
-  {
-    question: "Do I have to award every RFQ?",
-    answer:
-      "No. Compare quotes and move forward only when you&apos;re comfortable with price, lead time, and supplier fit.",
-  },
-  {
-    question: "How do suppliers get paid?",
-    answer:
-      "Once you award a winner, you pay your supplier directly based on the terms you agree to together.",
-  },
-  {
-    question: "What if a supplier ghosts or misses a date?",
-    answer:
-      "We monitor activity in your workspace and can reroute jobs or bring in another supplier if something goes sideways.",
-  },
-];
+const FEATURED_FAQ_ITEMS = FAQ_ITEMS.slice(0, 3);
 
 export default function HomePage() {
   return (
@@ -175,31 +155,39 @@ export default function HomePage() {
         </section>
 
         {/* WHY TEAMS USE */}
-        <section id="why-teams-use" className="scroll-mt-24">
-          <PortalCard
-            title="Why teams use Zartman.io"
-            description="Not another blast RFQ tool. A calmer way to move work from RFQ to award."
-            className="bg-slate-950"
-          >
-            <div className="grid gap-4 sm:grid-cols-3">
-              {WHY_TEAMS_POINTS.map((point) => (
-                <div key={point.title} className="flex gap-3">
+        <section id="why-teams-use" className="space-y-6 scroll-mt-24">
+          <header className="space-y-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-ink heading-tight">
+              Why teams use Zartman.io
+            </h2>
+            <p className="max-w-copy text-sm text-ink-muted heading-snug">
+              Not another blast RFQ tool—just a calmer way to move work from upload to award.
+            </p>
+          </header>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {WHY_TEAMS_POINTS.map((point) => (
+              <div
+                key={point.title}
+                className="rounded-2xl border border-slate-900/60 bg-slate-950/70 p-6 shadow-[0_10px_30px_rgba(2,6,23,0.35)]"
+              >
+                <div className="flex gap-3">
                   <span
                     aria-hidden
                     className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400/80"
                   />
                   <div>
-                    <p className="text-sm font-semibold text-white heading-tight">
+                    <p className="text-base font-semibold text-ink heading-tight">
                       {point.title}
                     </p>
-                    <p className="mt-1 text-sm text-slate-300 heading-snug">
+                    <p className="mt-2 text-sm text-ink-muted heading-snug">
                       {point.description}
                     </p>
                   </div>
                 </div>
-              ))}
-            </div>
-          </PortalCard>
+              </div>
+            ))}
+          </div>
         </section>
 
         {/* REQUEST DEMO */}
@@ -246,7 +234,7 @@ export default function HomePage() {
             </p>
           </header>
           <dl className="space-y-5">
-            {FAQ_ITEMS.map((item) => (
+            {FEATURED_FAQ_ITEMS.map((item) => (
               <div key={item.question} className="space-y-2">
                 <dt className="text-base font-semibold text-ink heading-tight">
                   {item.question}
@@ -255,6 +243,12 @@ export default function HomePage() {
               </div>
             ))}
           </dl>
+          <Link
+            href="/faq"
+            className="inline-flex text-xs font-medium text-ink transition hover:underline"
+          >
+            See all FAQs
+          </Link>
         </section>
 
       </div>
