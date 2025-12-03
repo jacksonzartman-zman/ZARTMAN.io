@@ -58,7 +58,7 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
 
   return (
     <AdminTableShell
-      tableClassName="min-w-[1024px] w-full table-fixed border-separate border-spacing-0 text-sm"
+      tableClassName="min-w-[1024px] w-full border-separate border-spacing-0 text-sm"
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -143,30 +143,47 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
             return (
               <tr
                 key={row.id}
-                className="bg-slate-950/40 transition hover:bg-slate-900/40"
+                className="border-b border-slate-800/60 bg-slate-950/40 transition hover:bg-slate-900/40"
               >
                 <td className={adminTableCellClass}>
                   <div className="flex flex-col">
                     <Link
                       href={`/admin/quotes/${row.id}`}
                       className="text-sm font-medium text-emerald-100 hover:text-emerald-300"
+                      title={row.customerName || undefined}
                     >
-                      {row.customerName}
+                      <span className="max-w-[180px] truncate">
+                        {row.customerName}
+                      </span>
                     </Link>
                     {row.customerEmail && (
                       <a
                         href={`mailto:${row.customerEmail}`}
                         className="text-xs text-slate-400 hover:text-emerald-200"
+                        title={row.customerEmail}
                       >
-                        {row.customerEmail}
+                        <span className="max-w-[220px] truncate">
+                          {row.customerEmail}
+                        </span>
                       </a>
                     )}
                   </div>
                 </td>
-                <td className={`${adminTableCellClass} text-slate-100`}>
-                  {row.company || "—"}
+                <td className={adminTableCellClass}>
+                  <span
+                    className="max-w-[180px] truncate text-slate-100"
+                    title={row.company || undefined}
+                  >
+                    {row.company || "—"}
+                  </span>
                 </td>
-                <td className={`${adminTableCellClass} text-xs text-slate-300`}>
+                <td
+                  className={clsx(
+                    adminTableCellClass,
+                    "max-w-[220px] truncate align-middle text-xs text-slate-300",
+                  )}
+                  title={row.fileName || undefined}
+                >
                   {row.fileName || "—"}
                 </td>
                 <td className={adminTableCellClass}>
@@ -186,7 +203,7 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                     ) : null}
                   </div>
                 </td>
-                <td className={clsx(adminTableCellClass, "text-xs")}>
+                <td className={adminTableCellClass}>
                   <div className="flex flex-col gap-1">
                     <span
                       className={clsx(
