@@ -1,10 +1,14 @@
 import Link from "next/link";
+import clsx from "clsx";
 import { formatDistanceToNowStrict } from "date-fns";
 
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesTable } from "@/server/customers/activity";
-import { getQuoteStatusLabel } from "@/server/quotes/status";
+import {
+  getQuoteStatusLabel,
+  normalizeQuoteStatus,
+} from "@/server/quotes/status";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
 
@@ -131,8 +135,17 @@ export default async function CustomerQuotesPage() {
                     quote.upload_name ||
                     quote.file_name ||
                     "Untitled RFQ";
-
+                  const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
                   const statusLabel = getQuoteStatusLabel(quote.status);
+                  const statusVariant =
+                    normalizedStatus === "won" || normalizedStatus === "approved"
+                      ? "pill-success"
+                      : normalizedStatus === "lost"
+                        ? "pill-warning"
+                        : normalizedStatus === "cancelled"
+                          ? "pill-muted"
+                          : "pill-info";
+                  const showWinnerHelper = normalizedStatus === "won";
 
                   const lastUpdated =
                     quote.updated_at ?? quote.created_at ?? null;
@@ -150,7 +163,16 @@ export default async function CustomerQuotesPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4 align-middle">
-                        <span className="pill pill-table pill-info">{statusLabel}</span>
+                        <div className="flex flex-col">
+                          <span className={clsx("pill pill-table", statusVariant)}>
+                            {statusLabel}
+                          </span>
+                          {showWinnerHelper ? (
+                            <span className="mt-1 text-[11px] text-slate-400">
+                              Winner selected — you can still message the team if plans change.
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-5 py-4 align-middle text-slate-300">
                         {formatRelativeDate(lastUpdated)}

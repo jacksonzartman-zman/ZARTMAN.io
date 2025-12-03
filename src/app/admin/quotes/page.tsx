@@ -140,6 +140,9 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       hasWinner: meta?.hasWinner ?? false,
       hasProject: meta?.hasProject ?? false,
       needsDecision: meta?.needsDecision ?? false,
+      winningBidId: meta?.winningBidId ?? null,
+      winningSupplierId: meta?.winningSupplierId ?? null,
+      winningSupplierName: meta?.winningSupplierName ?? null,
     };
   });
 

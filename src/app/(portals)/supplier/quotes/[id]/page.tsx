@@ -173,8 +173,9 @@ export default async function SupplierQuoteDetailPage({
       : [];
 
   const bidStatus = (existingBid?.status ?? "").toLowerCase();
-  const messagingUnlocked =
+  const bidSelectedAsWinner =
     bidStatus === "accepted" || bidStatus === "won" || bidStatus === "winner";
+  const messagingUnlocked = bidSelectedAsWinner;
 
   const messagingDisabledReason = messagingUnlocked
     ? null
@@ -245,15 +246,20 @@ function SupplierQuoteWorkspace({
   const { quote, uploadMeta, filePreviews } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
   const nextWorkflowState = getNextWorkflowState(derived.status);
+  const bidSelectedAsWinner =
+    typeof existingBid?.status === "string" &&
+    ["accepted", "won", "winner"].includes(
+      existingBid.status.trim().toLowerCase(),
+    );
   const canSubmitBid = canUserBid("supplier", {
     status: quote.status,
     existingBidStatus: existingBid?.status ?? null,
     accessGranted: true,
   });
   const bidLocked = !canSubmitBid;
-  const acceptedLock = existingBid?.status === "accepted";
-  const closedWindowLock = bidLocked && !acceptedLock;
-    const supplierDisplayName =
+  const winnerLock = bidSelectedAsWinner;
+  const closedWindowLock = bidLocked && !winnerLock;
+  const supplierDisplayName =
       supplierNameOverride ??
       getSupplierDisplayName(supplierEmail, quote, assignments);
   const cardClasses =
@@ -272,9 +278,7 @@ function SupplierQuoteWorkspace({
     filePreviews[0]?.fileName ??
     quote.file_name ??
     formatQuoteId(quote.id);
-  const isWinningSupplier =
-    typeof existingBid?.status === "string" &&
-    existingBid.status.trim().toLowerCase() === "accepted";
+  const isWinningSupplier = bidSelectedAsWinner;
   const showSupplierProjectCard = isWinningSupplier;
   const headerTitle = `${formatQuoteId(quote.id)} · ${derived.customerName}`;
   const headerActions = (
@@ -344,7 +348,7 @@ function SupplierQuoteWorkspace({
             <span className="text-slate-200">{assignmentNames.join(", ")}</span>
           </span>
         ) : null}
-        {existingBid?.status === "accepted" ? (
+        {bidSelectedAsWinner ? (
           <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
             Selected by customer
           </span>
@@ -352,6 +356,15 @@ function SupplierQuoteWorkspace({
       </div>
     </div>
   );
+
+  const winnerCallout = bidSelectedAsWinner ? (
+    <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-50">
+      <p className="font-semibold text-emerald-100">Your bid won this RFQ.</p>
+      <p className="mt-1 text-emerald-100/80">
+        We’ll keep kickoff tasks here. Message the customer if timelines change.
+      </p>
+    </section>
+  ) : null;
 
   const summaryCard = (
     <section className={clsx(cardClasses, "space-y-5")}>
@@ -432,9 +445,9 @@ function SupplierQuoteWorkspace({
             the buyer approve your shop.
           </p>
         </div>
-        {acceptedLock ? (
+        {winnerLock ? (
           <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-            This bid is locked because the customer already accepted it.
+            This bid is locked because the customer already selected it as the winner.
           </p>
         ) : null}
         {closedWindowLock ? (
@@ -479,6 +492,7 @@ function SupplierQuoteWorkspace({
       headerContent={headerContent}
       actions={headerActions}
     >
+      {winnerCallout}
       {summaryCard}
       {projectSection}
       <SupplierQuoteMessagesCard
