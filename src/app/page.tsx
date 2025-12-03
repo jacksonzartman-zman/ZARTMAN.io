@@ -147,7 +147,10 @@ export default function HomePage() {
         </section>
 
         {/* WHO IT'S FOR */}
-        <section id="who-its-for" className="space-y-6 scroll-mt-24">
+        <section
+          id="who-its-for"
+          className="mx-auto max-w-5xl space-y-6 scroll-mt-24"
+        >
           <header className="space-y-2">
             <h2 className="text-lg sm:text-xl font-semibold text-ink heading-tight">
               Who it&rsquo;s for
@@ -175,7 +178,10 @@ export default function HomePage() {
         </section>
 
         {/* WHY TEAMS USE */}
-        <section id="why-teams-use" className="scroll-mt-24">
+        <section
+          id="why-teams-use"
+          className="mx-auto max-w-5xl scroll-mt-24"
+        >
           <PortalCard
             title="Why teams use Zartman.io"
             description="Not another blast RFQ tool. A calmer way to move work from RFQ to award."
@@ -236,7 +242,7 @@ export default function HomePage() {
         </section>
 
         {/* FAQ */}
-        <section id="faq" className="space-y-6 scroll-mt-24">
+        <section id="faq" className="mx-auto max-w-4xl space-y-6 scroll-mt-24">
           <header className="space-y-2">
             <h2 className="text-lg sm:text-xl font-semibold text-ink">
               Questions we hear a lot
