@@ -137,6 +137,12 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   handler satisfies AppPageConfig<"/admin/uploads/[id]">
 }
 
+// Validate ../../src/app/capabilities/page.tsx
+{
+  const handler = {} as typeof import("../../src/app/capabilities/page.js")
+  handler satisfies AppPageConfig<"/capabilities">
+}
+
 // Validate ../../src/app/customer/signup/page.tsx
 {
   const handler = {} as typeof import("../../src/app/customer/signup/page.js")
