@@ -115,6 +115,29 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
               !Number.isNaN(createdAtDate.getTime()) &&
               isOpenQuoteStatus(row.status) &&
               (Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60) > 48;
+            const bidSummary =
+              row.bidCount === 0
+                ? "No bids yet"
+                : `${row.bidCount} bid${row.bidCount === 1 ? "" : "s"}`;
+            const stateBadge = row.needsDecision
+              ? { label: "Needs decision", className: "pill-warning" }
+              : row.hasWinner
+                ? { label: "Won", className: "pill-success" }
+                : row.bidCount === 0
+                  ? { label: "Awaiting bids", className: "pill-muted" }
+                  : { label: "Bidding", className: "pill-info" };
+            let secondaryStateText = bidSummary;
+            if (row.needsDecision) {
+              secondaryStateText = `${bidSummary} ready for review`;
+            } else if (row.hasWinner) {
+              secondaryStateText = row.hasProject
+                ? "Kickoff scheduled"
+                : "No kickoff yet";
+            } else if (row.bidCount === 0) {
+              secondaryStateText = "Invite suppliers to quote";
+            } else if (row.hasProject) {
+              secondaryStateText = "Kickoff scheduled";
+            }
 
             return (
               <tr
@@ -146,38 +169,35 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                   {row.fileName || "—"}
                 </td>
                 <td className={adminTableCellClass}>
-                  <span
-                    className={clsx(
-                      "pill px-3 py-1 text-[11px]",
-                      QUOTE_STATUS_VARIANTS[row.status],
-                    )}
-                  >
-                    {QUOTE_STATUS_LABELS[row.status]}
-                  </span>
-                  {isStale ? (
-                    <span className="ml-2 pill pill-warning px-2.5 py-0.5 text-[11px]">
-                      Aging
+                  <div className="flex flex-col gap-1">
+                    <span
+                      className={clsx(
+                        "pill pill-table",
+                        QUOTE_STATUS_VARIANTS[row.status],
+                      )}
+                    >
+                      {QUOTE_STATUS_LABELS[row.status]}
                     </span>
-                  ) : null}
+                    {isStale ? (
+                      <span className="text-[11px] font-medium text-amber-200/80">
+                        Aging — follow up
+                      </span>
+                    ) : null}
+                  </div>
                 </td>
-                <td className={`${adminTableCellClass} text-xs`}>
-                  <div className="space-y-1">
-                    <span className="inline-flex items-center rounded-full bg-slate-500/20 px-2 py-0.5 text-[10px] font-semibold text-slate-100">
-                      {row.bidCount === 1 ? "1 bid" : `${row.bidCount} bids`}
+                <td className={clsx(adminTableCellClass, "text-xs")}>
+                  <div className="flex flex-col gap-1">
+                    <span
+                      className={clsx(
+                        "pill pill-table",
+                        stateBadge.className,
+                      )}
+                    >
+                      {stateBadge.label}
                     </span>
-                    {row.needsDecision ? (
-                      <span className="inline-flex w-fit items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
-                        Needs decision
-                      </span>
-                    ) : row.hasWinner ? (
-                      <span className="text-[11px] font-semibold text-emerald-300">
-                        Winner selected
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-slate-500">
-                        {row.hasProject ? "Kickoff set" : "Up to date"}
-                      </span>
-                    )}
+                    <span className="text-[11px] text-slate-500">
+                      {secondaryStateText}
+                    </span>
                   </div>
                 </td>
                 <td className={`${adminTableCellClass} text-xs text-slate-200`}>

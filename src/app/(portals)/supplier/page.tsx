@@ -728,7 +728,7 @@ function StatusBadge({ status }: { status: string }) {
   const normalizedStatus = status.toLowerCase();
   const variant = BID_STATUS_VARIANTS[normalizedStatus] ?? "pill-muted";
   return (
-    <span className={clsx("pill px-3 py-1 text-[11px]", variant)}>
+    <span className={clsx("pill pill-table", variant)}>
       {normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1)}
     </span>
   );

@@ -15,23 +15,27 @@
 }
 
 .pill {
-  @apply inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.25em];
+  @apply inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/5 px-2.5 py-0.5 text-[10px] font-semibold tracking-normal text-slate-100;
+}
+
+.pill-table {
+  @apply gap-1 px-2 py-0.5 text-[10px] font-medium leading-tight;
 }
 
 .pill-success {
-  @apply border-emerald-500/30 bg-emerald-500/10 text-emerald-100;
+  @apply border-emerald-300/30 bg-emerald-300/10 text-emerald-100;
 }
 
 .pill-warning {
-  @apply border-amber-500/40 bg-amber-500/10 text-amber-100;
+  @apply border-amber-300/40 bg-amber-300/10 text-amber-100;
 }
 
 .pill-muted {
-  @apply border-slate-700 bg-slate-900 text-slate-300;
+  @apply border-slate-700/70 bg-slate-900/40 text-slate-200;
 }
 
 .pill-info {
-  @apply border-blue-500/40 bg-blue-500/10 text-blue-100;
+  @apply border-blue-300/40 bg-blue-400/10 text-blue-100;
 }
 
 .heading-tight {
