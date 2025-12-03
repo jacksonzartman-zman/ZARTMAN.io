@@ -36,7 +36,7 @@ export default async function QuotePage() {
         </section>
 
         <section className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4 sm:p-6 shadow-lift-sm">
-          <UploadBox prefillContact={prefillContact} />
+          <UploadBox prefillContact={prefillContact} showExplainer />
         </section>
 
         <section className="space-y-6">
