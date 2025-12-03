@@ -27,6 +27,65 @@ const HOW_IT_WORKS_STEPS = [
   },
 ];
 
+const WHO_ITS_FOR = [
+  {
+    title: "Manufacturing engineers & project owners",
+    description:
+      "Upload parts once, see quotes and lead times in one workspace instead of chasing email threads.",
+  },
+  {
+    title: "Supply chain & sourcing teams",
+    description:
+      "Route RFQs to vetted suppliers and keep a clean record of bids, decisions, and awards for every project.",
+  },
+  {
+    title: "Machine shops & manufacturers",
+    description:
+      "Receive right-fit RFQs from buyers who match your capabilities, not random jobs outside your wheelhouse.",
+  },
+];
+
+const WHY_TEAMS_POINTS = [
+  {
+    title: "Less chaos, more focus",
+    description:
+      "We keep RFQs, bids, and decisions in one place so you spend less time chasing updates.",
+  },
+  {
+    title: "Better supplier matches",
+    description:
+      "We pair your RFQs with vetted shops instead of blasting every job to everyone.",
+  },
+  {
+    title: "Humans in the loop",
+    description:
+      "You&apos;re never stuck with a black-box algorithm—we&apos;re here if quotes stall or projects get weird.",
+  },
+];
+
+const FAQ_ITEMS = [
+  {
+    question: "Who sees my CAD files and RFQs?",
+    answer:
+      "We only share your RFQs and files with suppliers we&apos;ve matched to your project. No public job boards or blast lists.",
+  },
+  {
+    question: "Do I have to award every RFQ?",
+    answer:
+      "No. Compare quotes and move forward only when you&apos;re comfortable with price, lead time, and supplier fit.",
+  },
+  {
+    question: "How do suppliers get paid?",
+    answer:
+      "Once you award a winner, you pay your supplier directly based on the terms you agree to together.",
+  },
+  {
+    question: "What if a supplier ghosts or misses a date?",
+    answer:
+      "We monitor activity in your workspace and can reroute jobs or bring in another supplier if something goes sideways.",
+  },
+];
+
 export default function HomePage() {
   return (
     <main className="main-shell">
@@ -87,6 +146,62 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* WHO IT'S FOR */}
+        <section id="who-its-for" className="space-y-6 scroll-mt-24">
+          <header className="space-y-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-ink heading-tight">
+              Who it&rsquo;s for
+            </h2>
+            <p className="max-w-copy text-sm text-ink-muted">
+              Built for people who live in RFQs all day—on both sides of the table.
+            </p>
+          </header>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {WHO_ITS_FOR.map((persona) => (
+              <div
+                key={persona.title}
+                className="rounded-2xl border border-slate-900/60 bg-slate-950/70 p-6 shadow-[0_10px_30px_rgba(2,6,23,0.35)]"
+              >
+                <h3 className="text-base font-semibold text-ink heading-tight">
+                  {persona.title}
+                </h3>
+                <p className="mt-2 text-sm text-ink-muted heading-snug">
+                  {persona.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* WHY TEAMS USE */}
+        <section id="why-teams-use" className="scroll-mt-24">
+          <PortalCard
+            title="Why teams use Zartman.io"
+            description="Not another blast RFQ tool. A calmer way to move work from RFQ to award."
+            className="bg-slate-950"
+          >
+            <div className="grid gap-4 sm:grid-cols-3">
+              {WHY_TEAMS_POINTS.map((point) => (
+                <div key={point.title} className="flex gap-3">
+                  <span
+                    aria-hidden
+                    className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400/80"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-white heading-tight">
+                      {point.title}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-300 heading-snug">
+                      {point.description}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </PortalCard>
+        </section>
+
         {/* REQUEST DEMO */}
         <section
           id="request-demo"
@@ -118,6 +233,28 @@ export default function HomePage() {
             &quot;Here&apos;s what I&apos;m trying to do. Help me make it
             real.&quot;
           </p>
+        </section>
+
+        {/* FAQ */}
+        <section id="faq" className="space-y-6 scroll-mt-24">
+          <header className="space-y-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-ink">
+              Questions we hear a lot
+            </h2>
+            <p className="text-sm text-ink-muted">
+              Straight answers about privacy, control, and how work actually moves through Zartman.io.
+            </p>
+          </header>
+          <dl className="space-y-5">
+            {FAQ_ITEMS.map((item) => (
+              <div key={item.question} className="space-y-2">
+                <dt className="text-base font-semibold text-ink heading-tight">
+                  {item.question}
+                </dt>
+                <dd className="text-sm text-ink-muted">{item.answer}</dd>
+              </div>
+            ))}
+          </dl>
         </section>
 
       </div>
