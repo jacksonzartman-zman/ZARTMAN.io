@@ -58,6 +58,7 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
 
   return (
     <AdminTableShell
+      tableClassName="min-w-[1024px] w-full table-fixed border-separate border-spacing-0 text-sm"
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">

@@ -186,7 +186,11 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
             />
           }
         />
-        <QuotesTable quotes={filteredQuotes} totalCount={rows.length} />
+        <div className="mt-6 overflow-x-auto">
+          <div className="inline-block min-w-full align-middle">
+            <QuotesTable quotes={filteredQuotes} totalCount={rows.length} />
+          </div>
+        </div>
       </AdminDashboardShell>
     );
 }
