@@ -146,6 +146,11 @@ const MessageComposerForm = forwardRef<HTMLFormElement, MessageComposerFormProps
   ({ onSubmit, state, disabled = false, textareaRef }, ref) => {
   const bodyError = state.fieldErrors?.body;
   const showSuccess = state.ok && Boolean(state.message);
+  const quoteUnavailable =
+    state.error && state.error.trim() === "Quote not found.";
+  const fallbackErrorTitle = "We couldn't load this RFQ.";
+  const fallbackErrorDescription =
+    "It might have been removed or you may no longer have access. If this looks wrong, reach out to the Zartman.io team.";
 
   return (
     <form ref={ref} action={onSubmit} className="space-y-3">
@@ -155,9 +160,16 @@ const MessageComposerForm = forwardRef<HTMLFormElement, MessageComposerFormProps
         </p>
       ) : null}
       {!state.ok && state.error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-200">
-          {state.error}
-        </p>
+        quoteUnavailable ? (
+          <div className="space-y-1 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-red-100">
+            <p className="font-semibold text-red-100">{fallbackErrorTitle}</p>
+            <p className="text-sm text-red-200">{fallbackErrorDescription}</p>
+          </div>
+        ) : (
+          <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-200">
+            {state.error}
+          </p>
+        )
       ) : null}
       <div className="space-y-1">
         <label
