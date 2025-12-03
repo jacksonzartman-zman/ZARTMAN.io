@@ -92,6 +92,12 @@
       "namedRegex": "^/auth/callback(?:/)?$"
     },
     {
+      "page": "/capabilities",
+      "regex": "^/capabilities(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/capabilities(?:/)?$"
+    },
+    {
       "page": "/customer",
       "regex": "^/customer(?:/)?$",
       "routeKeys": {},
