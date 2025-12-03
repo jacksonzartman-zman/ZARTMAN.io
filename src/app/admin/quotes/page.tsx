@@ -166,7 +166,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
         description="Recent quotes created from uploads."
       >
       {!quotesResult.ok ? (
-        <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-100">
+        <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-6 py-4 text-sm text-red-100">
           We had trouble loading quotes. Check logs and try again.
         </div>
       ) : null}

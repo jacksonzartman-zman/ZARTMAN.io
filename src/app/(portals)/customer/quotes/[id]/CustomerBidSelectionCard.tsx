@@ -33,13 +33,13 @@ export function CustomerBidSelectionCard({
   return (
     <div className="mt-5 space-y-4">
       {hasWinner ? (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-6 py-4 text-sm text-emerald-100">
           Winning supplier selected. We notified the supplier to kick off the project.
         </div>
       ) : null}
 
       {!showAwardButtons && disableReason ? (
-        <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs text-slate-400">
+        <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-6 py-3 text-xs text-slate-400">
           {disableReason}
         </p>
       ) : null}
@@ -75,7 +75,7 @@ export function CustomerBidSelectionCard({
             <article
               key={bid.id}
               className={clsx(
-                "rounded-2xl border px-4 py-4 shadow-sm transition",
+                "rounded-2xl border px-6 py-5 shadow-sm transition",
                 isWinner
                   ? "border-emerald-500/60 bg-emerald-500/5"
                   : "border-slate-900/60 bg-slate-950/40 hover:border-slate-800",
@@ -92,20 +92,15 @@ export function CustomerBidSelectionCard({
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={clsx(
-                      "rounded-full border px-3 py-1 text-xs font-semibold",
-                      statusClasses,
-                    )}
-                  >
+                  <span className={clsx("pill px-3 py-1 text-[11px]", statusClasses)}>
                     Status: {statusLabel}
                   </span>
                   {isWinner ? (
-                    <span className="rounded-full border border-emerald-400/50 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-100">
+                    <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
                       Winner
                     </span>
                   ) : hasWinner ? (
-                    <span className="rounded-full border border-slate-700 bg-slate-900/40 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-300">
+                    <span className="pill pill-muted px-3 py-1 text-[11px] uppercase tracking-wide">
                       Not selected
                     </span>
                   ) : null}
@@ -166,14 +161,14 @@ function formatBidStatusLabel(status?: string | null): string {
 
 function getStatusClasses(status?: string | null) {
   const value = typeof status === "string" ? status.trim().toLowerCase() : "";
-  if (value === "won") {
-    return "border-emerald-400/50 bg-emerald-500/10 text-emerald-100";
+  if (value === "won" || value === "accepted") {
+    return "pill-success";
   }
   if (value === "lost" || value === "declined") {
-    return "border-slate-700 bg-transparent text-slate-300";
+    return "pill-muted";
   }
   if (value === "withdrawn") {
-    return "border-amber-400/50 bg-amber-500/10 text-amber-100";
+    return "pill-warning";
   }
-  return "border-slate-800 bg-slate-900/40 text-slate-200";
+  return "pill-info";
 }

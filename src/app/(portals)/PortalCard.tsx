@@ -19,15 +19,15 @@ export default function PortalCard({
   return (
     <section
       className={clsx(
-        "rounded-2xl border border-slate-900 bg-slate-950/70 p-6 shadow-sm shadow-slate-950/40",
+        "rounded-2xl border border-slate-900/70 bg-slate-950/70 px-6 py-5 shadow-[0_10px_30px_rgba(2,6,23,0.45)]",
         className,
       )}
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
+          <h2 className="text-xl font-semibold text-white heading-tight">{title}</h2>
           {description ? (
-            <p className="mt-1 text-sm text-slate-400">{description}</p>
+            <p className="mt-1 text-sm text-slate-400 heading-snug">{description}</p>
           ) : null}
         </div>
         {action ? <div className="flex shrink-0 items-center">{action}</div> : null}

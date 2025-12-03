@@ -34,35 +34,35 @@ const STATUS_BADGE_VARIANTS: Record<
 > = {
   submitted: {
     label: "Needs quote",
-    className: "bg-slate-900 text-slate-100 border-slate-700",
+    className: "pill-info",
   },
   in_review: {
     label: "In review",
-    className: "bg-slate-900 text-slate-100 border-slate-700",
+    className: "pill-info",
   },
   quoted: {
     label: "Quoted",
-    className: "bg-sky-950/60 text-sky-200 border-sky-500/50",
+    className: "pill-info",
   },
   approved: {
     label: "Approved",
-    className: "bg-emerald-950/60 text-emerald-200 border-emerald-500/60",
+    className: "pill-success",
   },
   won: {
     label: "Won",
-    className: "bg-emerald-950/60 text-emerald-200 border-emerald-500/60",
+    className: "pill-success",
   },
   lost: {
     label: "Lost",
-    className: "bg-rose-950/60 text-rose-200 border-rose-500/60",
+    className: "pill-warning",
   },
   cancelled: {
     label: "Closed",
-    className: "bg-slate-900/60 text-slate-300 border-slate-600",
+    className: "pill-muted",
   },
   default: {
     label: "Needs quote",
-    className: "bg-slate-900 text-slate-100 border-slate-700",
+    className: "pill-info",
   },
 };
 
@@ -75,12 +75,24 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
     <AdminTableShell
       head={
         <tr>
-          <th className="px-4 py-3">RFQ</th>
-          <th className="px-4 py-3">Process</th>
-          <th className="px-4 py-3">Files &amp; value</th>
-          <th className="px-4 py-3">Bids</th>
-          <th className="px-4 py-3">Status</th>
-          <th className="px-4 py-3 text-right">Workspace</th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            RFQ
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Process
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Files &amp; value
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Bids
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Status
+          </th>
+          <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Workspace
+          </th>
         </tr>
       }
       body={rows.map((row) => {
@@ -151,12 +163,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               </div>
             </td>
             <td className={adminTableCellClass}>
-              <span
-                className={clsx(
-                  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
-                  statusVariant.className,
-                )}
-              >
+              <span className={clsx("pill px-3 py-1 text-[11px]", statusVariant.className)}>
                 {statusVariant.label}
               </span>
             </td>

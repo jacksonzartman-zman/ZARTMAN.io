@@ -16,8 +16,8 @@ export default async function QuotePage() {
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-14">
         <section className="max-w-3xl space-y-5">
-          <div className="badge-soft">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+          <div className="pill pill-success px-4 py-2 text-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
             <span>Upload to get a fast quote</span>
           </div>
           <div className="space-y-4">
