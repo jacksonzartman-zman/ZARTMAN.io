@@ -48,6 +48,12 @@ const RFQ_REASON_OPTIONS = [
   "Just exploring capabilities",
 ] as const;
 
+const UPLOAD_EXPLAINER_POINTS = [
+  "We privately route your part to vetted suppliers on your behalf.",
+  "You’ll get one or more quotes in your customer workspace.",
+  "You stay in control—no obligation to award a job.",
+];
+
 /**
  * Minimal, easily testable iOS/iPadOS detector. Modern iPadOS (13+) reports
  * itself as "Macintosh" but still includes the "Mobile" token in the UA.
@@ -85,6 +91,7 @@ export type PrefillContact = {
 
 type UploadBoxProps = {
   prefillContact?: PrefillContact | null;
+  showExplainer?: boolean;
 };
 
 const FIELD_ERROR_KEYS = [
@@ -212,7 +219,10 @@ const validateFormFields = (state: UploadState): FieldErrors => {
 const hasErrors = (fieldErrors: FieldErrors) =>
   Object.keys(fieldErrors).length > 0;
 
-export default function UploadBox({ prefillContact }: UploadBoxProps) {
+export default function UploadBox({
+  prefillContact,
+  showExplainer = false,
+}: UploadBoxProps) {
   const baseState = useMemo(
     () => buildInitialUploadState(prefillContact),
     [prefillContact],
@@ -511,6 +521,24 @@ export default function UploadBox({ prefillContact }: UploadBoxProps) {
             {error}
           </div>
         )}
+        {showExplainer ? (
+          <div className="mb-6 rounded-2xl border border-white/5 bg-white/5 p-4 text-left shadow-[0_10px_30px_rgba(2,6,23,0.45)]">
+            <p className="text-sm font-semibold text-foreground heading-tight">
+              What happens when you submit an RFQ?
+            </p>
+            <ul className="mt-3 space-y-2 text-sm text-muted">
+              {UPLOAD_EXPLAINER_POINTS.map((point) => (
+                <li key={point} className="flex gap-2">
+                  <span
+                    className="mt-2 h-1.5 w-1.5 rounded-full bg-accent"
+                    aria-hidden="true"
+                  />
+                  <span>{point}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {/* Drag & drop / file box */}
         <div
           className={clsx(
@@ -547,6 +575,9 @@ export default function UploadBox({ prefillContact }: UploadBoxProps) {
               ) : (
                 "No file selected yet"
               )}
+            </p>
+            <p className="mt-3 text-[11px] text-muted">
+              Your CAD files and drawings stay private. We only share them with matched suppliers for quoting.
             </p>
           </div>
           <input
