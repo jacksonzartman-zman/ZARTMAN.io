@@ -24,13 +24,11 @@ export default function AdminTableShell({
         className,
       )}
     >
-      <table
-        className={clsx("text-left text-sm", tableClassName ?? "min-w-full")}
-      >
-        <thead className="border-b border-slate-800 bg-slate-900/60 text-xs font-semibold uppercase tracking-wide text-slate-400">
+      <table className={clsx("min-w-full text-left text-sm", tableClassName)}>
+        <thead className="bg-slate-950/70">
           {head}
         </thead>
-        <tbody className="divide-y divide-slate-900/70">{body}</tbody>
+        <tbody>{body}</tbody>
       </table>
     </div>
   );
