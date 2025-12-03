@@ -1,4 +1,5 @@
 import Link from "next/link";
+import clsx from "clsx";
 import PortalCard from "../PortalCard";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { supabaseServer } from "@/lib/supabaseServer";
@@ -328,7 +329,7 @@ async function CustomerDashboardPage({
                       ? `/customer/quotes/${quote.id}${quoteLinkQuery}`
                       : `/customer/quotes/${quote.id}`
                   }
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 transition hover:bg-slate-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-6 py-4 transition hover:bg-slate-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
                 >
                   <div>
                     <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
@@ -785,6 +786,16 @@ function getLatestCustomerActivityTimestamp(quotes: PortalQuote[]): number | nul
   }, null);
 }
 
+const STATUS_PILL_VARIANTS: Record<QuoteStatus, string> = {
+  submitted: "pill-info",
+  in_review: "pill-info",
+  quoted: "pill-info",
+  approved: "pill-success",
+  won: "pill-success",
+  lost: "pill-warning",
+  cancelled: "pill-muted",
+};
+
 function StatusBadge({
   status,
   size = "md",
@@ -792,14 +803,17 @@ function StatusBadge({
   status: QuoteStatus;
   size?: "md" | "sm";
 }) {
-  const sizeClasses =
-    size === "sm"
-      ? "px-2 py-0.5 text-[11px]"
-      : "px-3 py-1 text-xs";
   const label = getQuoteStatusLabel(status);
+  const variant = STATUS_PILL_VARIANTS[status] ?? "pill-muted";
 
   return (
-    <span className={`inline-flex items-center rounded-full bg-emerald-500/10 font-semibold text-emerald-200 ${sizeClasses}`}>
+    <span
+      className={clsx(
+        "pill text-[11px]",
+        variant,
+        size === "sm" ? "px-2 py-0.5" : "px-3 py-1",
+      )}
+    >
       {label}
     </span>
   );
@@ -814,16 +828,14 @@ function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {
     winner_selected: "Winner",
   };
   const colorMap: Record<QuoteActivityEvent["type"], string> = {
-    rfq_submitted: "bg-emerald-500/10 text-emerald-200 border-emerald-500/30",
-    status_changed: "bg-slate-500/10 text-slate-200 border-slate-500/30",
-    message_posted: "bg-indigo-500/10 text-indigo-200 border-indigo-500/30",
-    bid_received: "bg-sky-500/10 text-sky-200 border-sky-500/30",
-    winner_selected: "bg-amber-500/10 text-amber-200 border-amber-500/30",
+    rfq_submitted: "pill-success",
+    status_changed: "pill-muted",
+    message_posted: "pill-info",
+    bid_received: "pill-info",
+    winner_selected: "pill-warning",
   };
   return (
-    <span
-      className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${colorMap[type]}`}
-    >
+    <span className={clsx("pill mb-1 px-2 py-0.5 text-[10px]", colorMap[type])}>
       {labelMap[type]}
     </span>
   );
@@ -835,9 +847,9 @@ function UrgencyBadge({
   level: CustomerDecision["urgencyLevel"];
 }) {
   const palette: Record<CustomerDecision["urgencyLevel"], string> = {
-    high: "border-red-500/40 bg-red-500/10 text-red-200",
-    medium: "border-amber-500/40 bg-amber-500/10 text-amber-200",
-    low: "border-slate-500/40 bg-slate-500/10 text-slate-200",
+    high: "pill-warning",
+    medium: "pill-info",
+    low: "pill-muted",
   };
   const labelMap: Record<CustomerDecision["urgencyLevel"], string> = {
     high: "High urgency",
@@ -845,9 +857,7 @@ function UrgencyBadge({
     low: "Low pressure",
   };
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${palette[level]}`}
-    >
+    <span className={clsx("pill px-3 py-1 text-[11px]", palette[level])}>
       {labelMap[level]}
     </span>
   );

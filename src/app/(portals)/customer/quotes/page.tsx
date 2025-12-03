@@ -92,20 +92,20 @@ export default async function CustomerQuotesPage() {
             </div>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-black/40">
-            <table className="min-w-full divide-y divide-slate-800 text-sm">
+          <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
+            <table className="min-w-full divide-y divide-slate-900/70 text-sm">
               <thead className="bg-slate-900/60">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     RFQ
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Last update
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Actions
                   </th>
                 </tr>
@@ -127,7 +127,7 @@ export default async function CustomerQuotesPage() {
 
                   return (
                     <tr key={quote.id} className="hover:bg-slate-900/50">
-                      <td className="px-4 py-3 align-middle">
+                      <td className="px-5 py-4 align-middle">
                         <div className="flex flex-col">
                           <span className="font-medium text-slate-100">
                             {primaryLabel}
@@ -137,15 +137,15 @@ export default async function CustomerQuotesPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 align-middle">
-                        <span className="inline-flex rounded-full bg-slate-800 px-2 py-0.5 text-xs text-slate-100">
+                      <td className="px-5 py-4 align-middle">
+                        <span className="pill pill-info px-3 py-1 text-[11px] text-slate-100">
                           {statusLabel}
                         </span>
                       </td>
-                      <td className="px-4 py-3 align-middle text-slate-300">
+                      <td className="px-5 py-4 align-middle text-slate-300">
                         {formatRelativeDate(lastUpdated)}
                       </td>
-                      <td className="px-4 py-3 align-middle text-right">
+                      <td className="px-5 py-4 align-middle text-right">
                         <Link
                           href={`/customer/quotes/${quote.id}`}
                           className="inline-flex items-center rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-100 hover:border-emerald-400 hover:text-emerald-300"

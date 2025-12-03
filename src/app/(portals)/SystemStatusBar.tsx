@@ -21,7 +21,7 @@ export function SystemStatusBar({
 
   return (
     <section
-      className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-slate-300"
+      className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-6 py-4 text-sm text-slate-300"
       aria-live="polite"
     >
       <span className="inline-flex items-center gap-2 font-semibold text-white">
@@ -31,7 +31,7 @@ export function SystemStatusBar({
         />
         {statusMessage}
       </span>
-      <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
+      <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-500">
         Last synced {normalizedSyncedLabel}
       </span>
     </section>

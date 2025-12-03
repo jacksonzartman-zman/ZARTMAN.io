@@ -1,4 +1,5 @@
 import Link from "next/link";
+import clsx from "clsx";
 import { formatDateTime } from "@/lib/formatDate";
 import PortalCard from "../PortalCard";
 import SupplierInboxTable, { type SupplierInboxRow } from "./SupplierInboxTable";
@@ -370,7 +371,7 @@ async function SupplierDashboardPage({
               Status: Approved
             </span>
           ) : (
-            <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100">
+          <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-6 py-4 text-xs text-amber-100">
               Your supplier profile is pending review. You can keep editing your profile; RFQs will
               start flowing in once you’re approved.
             </p>
@@ -683,7 +684,7 @@ function BidsCard({
           {bids.slice(0, 8).map((bid) => (
             <li
               key={bid.id}
-              className="rounded-2xl border border-slate-900/70 bg-black/20 px-4 py-3"
+              className="rounded-2xl border border-slate-900/70 bg-black/20 px-6 py-4"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -716,18 +717,19 @@ function BidsCard({
   );
 }
 
+const BID_STATUS_VARIANTS: Record<string, string> = {
+  accepted: "pill-success",
+  declined: "pill-warning",
+  withdrawn: "pill-muted",
+  pending: "pill-info",
+};
+
 function StatusBadge({ status }: { status: string }) {
-  const colorMap: Record<string, string> = {
-    accepted: "bg-emerald-500/20 text-emerald-200 border-emerald-500/30",
-    declined: "bg-red-500/10 text-red-200 border-red-500/30",
-    withdrawn: "bg-slate-500/10 text-slate-200 border-slate-500/30",
-    pending: "bg-blue-500/10 text-blue-200 border-blue-500/30",
-  };
-  const classes =
-    colorMap[status] ?? "bg-slate-500/10 text-slate-200 border-slate-500/30";
+  const normalizedStatus = status.toLowerCase();
+  const variant = BID_STATUS_VARIANTS[normalizedStatus] ?? "pill-muted";
   return (
-    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${classes}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+    <span className={clsx("pill px-3 py-1 text-[11px]", variant)}>
+      {normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1)}
     </span>
   );
 }
@@ -741,16 +743,14 @@ function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {
     winner_selected: "Winner",
   };
   const colorMap: Record<QuoteActivityEvent["type"], string> = {
-    rfq_submitted: "bg-blue-500/10 text-blue-200 border-blue-500/30",
-    status_changed: "bg-slate-500/10 text-slate-200 border-slate-500/30",
-    message_posted: "bg-indigo-500/10 text-indigo-200 border-indigo-500/30",
-    bid_received: "bg-sky-500/10 text-sky-200 border-sky-500/30",
-    winner_selected: "bg-amber-500/10 text-amber-200 border-amber-500/30",
+    rfq_submitted: "pill-info",
+    status_changed: "pill-muted",
+    message_posted: "pill-info",
+    bid_received: "pill-success",
+    winner_selected: "pill-warning",
   };
   return (
-    <span
-      className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${colorMap[type]}`}
-    >
+    <span className={clsx("pill mb-1 px-2 py-0.5 text-[10px]", colorMap[type])}>
       {labelMap[type]}
     </span>
   );

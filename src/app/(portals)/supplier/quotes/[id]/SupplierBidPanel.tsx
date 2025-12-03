@@ -7,6 +7,7 @@ import {
   useState,
   type ComponentProps,
 } from "react";
+import clsx from "clsx";
 import { useFormState, useFormStatus } from "react-dom";
 import type { BidRow } from "@/server/bids";
 import {
@@ -164,7 +165,14 @@ export function SupplierBidPanel({
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton label={buttonLabel} disabled={formDisabled} />
           {initialBid?.status ? (
-            <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-300">
+            <span
+              className={clsx(
+                "pill px-3 py-1 text-[11px]",
+                BID_STATUS_CLASSES[
+                  (initialBid.status ?? "submitted").toString().toLowerCase()
+                ] ?? "pill-info",
+              )}
+            >
               Status: {(initialBid.status ?? "submitted").toString()}
             </span>
           ) : null}
@@ -172,7 +180,7 @@ export function SupplierBidPanel({
       </form>
 
       {initialBid ? (
-        <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3 text-sm text-slate-200">
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-6 py-4 text-sm text-slate-200">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Last submitted
           </p>
@@ -271,6 +279,16 @@ function Field({
     </div>
   );
 }
+
+const BID_STATUS_CLASSES: Record<string, string> = {
+  accepted: "pill-success",
+  won: "pill-success",
+  declined: "pill-warning",
+  lost: "pill-warning",
+  withdrawn: "pill-muted",
+  submitted: "pill-info",
+  pending: "pill-info",
+};
 
 type NormalizedSupplierBidState =
   | { ok: true; message: string }

@@ -55,13 +55,15 @@ export function AdminQuoteMessagesCard({
   const disabled = messagesUnavailable;
 
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-900 bg-slate-950/60 p-4">
+    <section className="space-y-4 rounded-2xl border border-slate-900 bg-slate-950/60 px-6 py-5">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Customer messages
         </p>
         <div>
-          <h2 className="text-lg font-semibold text-white">Customer messages</h2>
+          <h2 className="text-xl font-semibold text-white heading-tight">
+            Customer messages
+          </h2>
           <p className="text-sm text-slate-400">
             Use this thread to keep RFQ context in one place.
           </p>
@@ -69,7 +71,7 @@ export function AdminQuoteMessagesCard({
       </header>
 
       {messagesUnavailable ? (
-        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-sm text-yellow-100">
+        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
           Messages are temporarily unavailable. Refresh to try again.
         </p>
       ) : null}
@@ -103,7 +105,7 @@ type AdminMessageListProps = {
 function AdminMessageList({ messages, hasMessages }: AdminMessageListProps) {
   if (!hasMessages) {
     return (
-      <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
+      <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-6 py-5 text-sm text-slate-400">
         No messages yet. Reply here to keep the customer looped in.
       </p>
     );
@@ -114,7 +116,7 @@ function AdminMessageList({ messages, hasMessages }: AdminMessageListProps) {
       {messages.map((message) => (
         <li
           key={message.id}
-          className="rounded-2xl border border-slate-900/70 bg-slate-950/40 px-4 py-3"
+          className="rounded-2xl border border-slate-900/70 bg-slate-950/40 px-5 py-4"
         >
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
             <span className="font-semibold text-slate-100">
@@ -150,12 +152,12 @@ const AdminMessageComposerForm = forwardRef<
   return (
     <form ref={ref} action={onSubmit} className="space-y-3">
       {showSuccess ? (
-        <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+        <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-100">
           {state.message}
         </p>
       ) : null}
       {!state.ok && state.error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-200">
           {state.error}
         </p>
       ) : null}
