@@ -58,16 +58,13 @@ const CUSTOMER_PROJECT_NOTES_LENGTH_ERROR =
   "Project notes must be 2000 characters or fewer.";
 const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-type QuoteRecipientRow = {
+type QuoteSelectionRow = {
   id: string;
   email: string | null;
-  customer_name: string | null;
-  company: string | null;
-  file_name: string | null;
-  customer_id: string | null;
+  status: string | null;
 };
 
-type QuoteSelectionRow = {
+type CustomerMessageQuoteRow = {
   id: string;
   email: string | null;
   status: string | null;
@@ -124,39 +121,48 @@ export async function submitCustomerQuoteMessageAction(
       };
     }
 
-    const { data: quote, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email,customer_name,company,file_name,customer_id")
+      .select("id,email,status")
       .eq("id", normalizedQuoteId)
-      .maybeSingle<QuoteRecipientRow>();
+      .maybeSingle<CustomerMessageQuoteRow>();
 
     if (quoteError) {
       console.error("[customer messages] quote lookup failed", {
         quoteId: normalizedQuoteId,
         error: serializeActionError(quoteError),
       });
+      return {
+        ok: false,
+        error: "Quote not found.",
+      };
     }
 
-    if (!quote) {
+    if (!quoteRow) {
+      console.warn("[customer messages] quote missing", {
+        quoteId: normalizedQuoteId,
+      });
       return { ok: false, error: "Quote not found." };
     }
 
-    const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
-    const customerEmail = normalizeEmailInput(customer.email);
-    const emailMatchesQuote =
-      normalizedQuoteEmail !== null &&
-      customerEmail !== null &&
-      normalizedQuoteEmail === customerEmail;
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
+    const normalizedCustomerEmail = normalizeEmailInput(customer.email);
+    const normalizedUserEmail = normalizeEmailInput(user.email);
 
-    if (!emailMatchesQuote) {
-      console.error("[customer messages] access denied", {
+    const emailMatches =
+      normalizedQuoteEmail !== null &&
+      (normalizedCustomerEmail === normalizedQuoteEmail ||
+        normalizedUserEmail === normalizedQuoteEmail);
+
+    if (!emailMatches) {
+      console.warn("[customer messages] access denied", {
         quoteId: normalizedQuoteId,
         customerId: customer.id,
-        quoteEmail: quote.email,
+        userId: user.id,
       });
       return {
         ok: false,
-        error: "You do not have access to post on this quote.",
+        error: "You don't have access to this quote.",
       };
     }
 
@@ -169,11 +175,7 @@ export async function submitCustomerQuoteMessageAction(
       quoteId: normalizedQuoteId,
       body: trimmedBody,
       authorType: "customer",
-      authorName:
-        quote.customer_name ??
-        customer.company_name ??
-        customer.email ??
-        "Customer",
+      authorName: customer.company_name ?? customer.email ?? "Customer",
       authorEmail:
         customer.email ??
         user.email ??
@@ -195,9 +197,7 @@ export async function submitCustomerQuoteMessageAction(
 
     revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
 
-    if (quote) {
-      void notifyOnNewQuoteMessage(result.data);
-    }
+    void notifyOnNewQuoteMessage(result.data);
 
     console.log("[customer messages] create success", {
       quoteId: normalizedQuoteId,
