@@ -4,6 +4,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesTable } from "@/server/customers/activity";
+import { getQuoteStatusLabel } from "@/server/quotes/status";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
 
@@ -56,6 +57,7 @@ export default async function CustomerQuotesPage() {
   }
 
   const quotes = await loadCustomerQuotesTable(customer.id);
+  const shouldShowFirstTimeCard = quotes.length <= 1;
 
   return (
     <PortalShell
@@ -75,6 +77,18 @@ export default async function CustomerQuotesPage() {
         title="RFQ list"
         description="Every RFQ you’ve uploaded, sorted by the most recent update."
       >
+        {shouldShowFirstTimeCard ? (
+          <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              New to Zartman.io?
+            </p>
+            <p className="mt-2 text-sm text-slate-300">
+              Status shows where your RFQ is in the process, Bids tells you how many suppliers
+              have responded, and Target date is when you&apos;d like parts in hand. Click a row or
+              &apos;Open quote&apos; to review supplier bids and award a winner.
+            </p>
+          </div>
+        ) : null}
         {quotes.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-800 bg-black/40 px-4 py-6 text-sm text-slate-300">
             <p className="font-medium text-slate-100">No quotes yet.</p>
@@ -118,9 +132,7 @@ export default async function CustomerQuotesPage() {
                     quote.file_name ||
                     "Untitled RFQ";
 
-                  const statusLabel = quote.status
-                    ? quote.status.replace(/_/g, " ")
-                    : "Unknown";
+                  const statusLabel = getQuoteStatusLabel(quote.status);
 
                   const lastUpdated =
                     quote.updated_at ?? quote.created_at ?? null;
@@ -148,7 +160,7 @@ export default async function CustomerQuotesPage() {
                           href={`/customer/quotes/${quote.id}`}
                           className="inline-flex items-center rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-100 hover:border-emerald-400 hover:text-emerald-300"
                         >
-                          View quote
+                          Open quote
                         </Link>
                       </td>
                     </tr>

@@ -22,12 +22,24 @@ export const QUOTE_OPEN_STATUSES: readonly QuoteStatus[] = [
 
 export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
   submitted: "RFQ submitted",
-  in_review: "In review",
+  in_review: "Reviewing bids",
   quoted: "Quote prepared",
-  approved: "Approved",
-  won: "Won",
+  approved: "Approved to award",
+  won: "Won / Awarded",
   lost: "Lost",
   cancelled: "Cancelled",
+};
+
+export const QUOTE_STATUS_HELPERS: Record<QuoteStatus, string> = {
+  submitted: "We're routing this RFQ to vetted suppliers and collecting bids.",
+  in_review: "We're reviewing supplier responses and lining up the best fit.",
+  quoted:
+    "We've reviewed supplier bids and prepared pricing. Compare options and ask questions.",
+  approved:
+    "You've selected a winning supplier. Next step is kickoff based on the plan you aligned on.",
+  won: "You've selected a winning supplier. Next step is kickoff based on the plan you aligned on.",
+  lost: "This RFQ was marked lost. Reach out if you'd like to reopen or adjust scope.",
+  cancelled: "This RFQ was canceled. Upload a new RFQ whenever you're ready.",
 };
 
 export function normalizeQuoteStatus(
@@ -35,6 +47,7 @@ export function normalizeQuoteStatus(
 ): QuoteStatus {
   const value = (raw ?? "").toLowerCase().trim();
   if (value === "in_review") return "in_review";
+  if (value === "quote_prepared") return "quoted";
   if (value === "quoted") return "quoted";
   if (value === "approved") return "approved";
   if (value === "won") return "won";
@@ -52,4 +65,12 @@ export function isOpenQuoteStatus(
 export function getQuoteStatusLabel(raw: string | null | undefined): string {
   const normalized = normalizeQuoteStatus(raw);
   return QUOTE_STATUS_LABELS[normalized] ?? "Status update";
+}
+
+export function getQuoteStatusHelper(raw: string | null | undefined): string {
+  const normalized = normalizeQuoteStatus(raw);
+  return (
+    QUOTE_STATUS_HELPERS[normalized] ??
+    "Status updates keep your team in sync on this RFQ."
+  );
 }
