@@ -5,14 +5,17 @@ type AdminTableShellProps = {
   head: ReactNode;
   body: ReactNode;
   className?: string;
+  tableClassName?: string;
 };
 
-export const adminTableCellClass = "px-5 py-4 align-top text-sm";
+export const adminTableCellClass =
+  "px-3 py-2 text-left align-middle text-sm text-slate-200";
 
 export default function AdminTableShell({
   head,
   body,
   className,
+  tableClassName,
 }: AdminTableShellProps) {
   return (
     <div
@@ -21,7 +24,9 @@ export default function AdminTableShell({
         className,
       )}
     >
-      <table className="min-w-full text-left text-sm">
+      <table
+        className={clsx("text-left text-sm", tableClassName ?? "min-w-full")}
+      >
         <thead className="border-b border-slate-800 bg-slate-900/60 text-xs font-semibold uppercase tracking-wide text-slate-400">
           {head}
         </thead>
