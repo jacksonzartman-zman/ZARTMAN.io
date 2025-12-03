@@ -163,10 +163,11 @@ export function buildSupplierQuoteTimeline(
 }
 
 const QUOTE_STATUS_LABELS: Record<string, string> = {
-  submitted: "Submitted",
-  in_review: "In review",
-  quoted: "Quoted",
-  won: "Won",
+  submitted: "RFQ submitted",
+  in_review: "Reviewing bids",
+  quoted: "Quote prepared",
+  approved: "Approved to award",
+  won: "Won / Awarded",
   lost: "Lost",
   cancelled: "Cancelled",
 };
@@ -364,7 +365,9 @@ function normalizeQuoteStatus(raw?: string | null): string | null {
   }
 
   if (value === "in_review") return "in_review";
+  if (value === "quote_prepared") return "quoted";
   if (value === "quoted") return "quoted";
+  if (value === "approved") return "approved";
   if (value === "won") return "won";
   if (value === "lost") return "lost";
   if (value === "cancelled" || value === "canceled") return "cancelled";
