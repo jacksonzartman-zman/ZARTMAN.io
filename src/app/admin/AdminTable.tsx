@@ -32,7 +32,7 @@ export default function AdminTable({
   hasActiveFilters,
 }: AdminTableProps) {
   const isEmpty = rows.length === 0;
-  const statusPillClass = "pill px-3 py-1 text-[11px]";
+  const statusPillClass = "pill pill-table";
 
   const emptyHeadline = hasActiveFilters
     ? "No RFQs match your filters yet."

@@ -138,9 +138,7 @@ export default async function CustomerQuotesPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4 align-middle">
-                        <span className="pill pill-info px-3 py-1 text-[11px] text-slate-100">
-                          {statusLabel}
-                        </span>
+                        <span className="pill pill-table pill-info">{statusLabel}</span>
                       </td>
                       <td className="px-5 py-4 align-middle text-slate-300">
                         {formatRelativeDate(lastUpdated)}
