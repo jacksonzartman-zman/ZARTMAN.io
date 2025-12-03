@@ -55,12 +55,14 @@ export function SupplierQuoteMessagesCard({
   const disabled = !messagingUnlocked || messagesUnavailable;
 
   return (
-    <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4">
+    <section className="space-y-3 rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
       <header>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Messages
         </p>
-        <h2 className="mt-1 text-lg font-semibold text-white">Shared chat</h2>
+        <h2 className="mt-1 text-xl font-semibold text-white heading-tight">
+          Shared chat
+        </h2>
         <p className="mt-1 text-sm text-slate-300">
           Direct line to the Zartman admin team for build updates and questions.
         </p>
@@ -79,17 +81,17 @@ export function SupplierQuoteMessagesCard({
           {messages.map((message) => (
             <li
               key={message.id}
-              className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3"
+              className="rounded-2xl border border-slate-800 bg-slate-950/40 px-5 py-4"
             >
               <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wide text-slate-500">
                 <span
                   className={clsx(
-                    "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                    "pill px-2.5 py-0.5 text-[10px]",
                     message.author_type === "customer"
-                      ? "bg-emerald-500/10 text-emerald-300"
+                      ? "pill-success"
                       : message.author_type === "admin"
-                        ? "bg-sky-500/10 text-sky-300"
-                        : "bg-slate-500/10 text-slate-300",
+                        ? "pill-info"
+                        : "pill-muted",
                   )}
                 >
                   {message.author_type === "customer"
@@ -117,12 +119,12 @@ export function SupplierQuoteMessagesCard({
         </p>
 
         {showError && (
-          <p className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          <p className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-xs text-red-200">
             {state.error}
           </p>
         )}
         {showSuccess && (
-          <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+          <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs text-emerald-200">
             {state.message}
           </p>
         )}

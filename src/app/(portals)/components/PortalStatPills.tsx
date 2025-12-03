@@ -27,8 +27,8 @@ export function PortalStatPills({
   }
 
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
           Live workspace stats
         </p>
@@ -38,11 +38,11 @@ export function PortalStatPills({
           </p>
         ) : null}
       </div>
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {metrics.map((metric) => (
           <article
             key={metric.label}
-            className="flex flex-1 flex-col gap-3 rounded-2xl border border-slate-900/70 bg-slate-950/60 px-4 py-4 shadow-[0_8px_30px_rgba(2,6,23,0.45)]"
+            className="flex flex-1 flex-col gap-3 rounded-2xl border border-slate-900/70 bg-slate-950/60 px-6 py-5 shadow-[0_8px_30px_rgba(2,6,23,0.45)]"
           >
             <div className="flex items-center gap-2">
               <span
@@ -60,7 +60,7 @@ export function PortalStatPills({
                 {metric.label}
               </span>
             </div>
-            <span className="text-3xl font-semibold text-white">
+            <span className="text-3xl font-semibold text-white heading-tight">
               {metric.value.toLocaleString("en-US")}
             </span>
             {metric.helper ? (

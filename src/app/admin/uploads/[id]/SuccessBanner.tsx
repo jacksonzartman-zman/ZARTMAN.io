@@ -40,7 +40,7 @@ export function SuccessBanner({ message }: SuccessBannerProps) {
   if (!visible) return null;
 
   return (
-    <div className="mb-6 rounded-md border border-emerald-500 bg-emerald-900/70 px-4 py-3 text-sm text-emerald-50">
+    <div className="mb-6 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-6 py-4 text-sm text-emerald-100">
       {message}
     </div>
   );

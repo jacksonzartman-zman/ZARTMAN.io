@@ -67,7 +67,7 @@ function StatusMessage({
 
   if (!state.ok && state.error) {
     return (
-      <p className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+      <p className="rounded-xl border border-red-500/40 bg-red-500/10 px-5 py-3 text-sm text-red-100">
         {state.error}
       </p>
     );
@@ -75,7 +75,7 @@ function StatusMessage({
 
   if (state.ok && state.message) {
     return (
-      <p className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm text-blue-100">
+      <p className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-5 py-3 text-sm text-blue-100">
         {state.message}
       </p>
     );
@@ -102,7 +102,7 @@ function NotificationToggle({
   return (
     <label
       htmlFor={id}
-      className="flex items-start gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-3"
+      className="flex items-start gap-4 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-4"
     >
       <input
         id={id}
@@ -127,7 +127,7 @@ function SaveButton({ disabled }: { disabled?: boolean }) {
       disabled={disabled || pending}
       className={clsx(
         primaryCtaClasses,
-        "px-4 py-2 text-sm",
+        "px-5 py-2.5 text-sm",
         (disabled || pending) && "opacity-50",
       )}
     >

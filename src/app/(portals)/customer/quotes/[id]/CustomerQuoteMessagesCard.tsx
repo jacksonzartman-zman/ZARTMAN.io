@@ -51,13 +51,13 @@ export function CustomerQuoteMessagesCard({
   const hasMessages = messages.length > 0;
 
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
+    <section className="space-y-4 rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Messages
         </p>
         <div>
-          <h2 className="text-lg font-semibold text-white">Messages</h2>
+          <h2 className="text-xl font-semibold text-white heading-tight">Messages</h2>
           <p className="text-sm text-slate-400">
             Share clarifications and notes about this RFQ. Zartman.io will respond here.
           </p>
@@ -65,7 +65,7 @@ export function CustomerQuoteMessagesCard({
       </header>
 
       {messagesUnavailable ? (
-        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-sm text-yellow-100">
+        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
           Messages are temporarily unavailable. Refresh the page or try again later.
         </p>
       ) : null}
@@ -80,7 +80,7 @@ export function CustomerQuoteMessagesCard({
           </p>
         </div>
         {readOnly ? (
-          <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
+          <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-3 text-xs text-slate-400">
             Read-only preview. Remove the email override to reply as the customer.
           </p>
         ) : null}
@@ -104,7 +104,7 @@ type MessageListProps = {
 function MessageList({ messages, hasMessages }: MessageListProps) {
   if (!hasMessages) {
     return (
-      <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
+      <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-6 py-5 text-sm text-slate-400">
         No messages yet. Use this space to share clarifications or notes about this RFQ.
       </p>
     );
@@ -117,7 +117,7 @@ function MessageList({ messages, hasMessages }: MessageListProps) {
         return (
           <li
             key={message.id}
-            className="rounded-2xl border border-slate-900/70 bg-slate-950/50 px-4 py-3"
+            className="rounded-2xl border border-slate-900/70 bg-slate-950/50 px-5 py-4"
           >
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
               <span className="font-semibold text-slate-100">{label}</span>
@@ -150,12 +150,12 @@ const MessageComposerForm = forwardRef<HTMLFormElement, MessageComposerFormProps
   return (
     <form ref={ref} action={onSubmit} className="space-y-3">
       {showSuccess ? (
-        <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+        <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-100">
           {state.message}
         </p>
       ) : null}
       {!state.ok && state.error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-200">
           {state.error}
         </p>
       ) : null}

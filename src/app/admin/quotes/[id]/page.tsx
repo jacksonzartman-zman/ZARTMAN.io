@@ -46,7 +46,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
   if (!quoteResult.ok) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
+      <main className="mx-auto max-w-3xl px-6 py-10">
         <section className="rounded-2xl border border-red-500/30 bg-red-950/40 p-6 text-center">
           <h1 className="text-xl font-semibold text-red-50">
             We had trouble loading this quote.
@@ -75,7 +75,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
   if (!quote) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
+      <main className="mx-auto max-w-3xl px-6 py-10">
         <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-center">
           <h1 className="text-xl font-semibold text-slate-50">
             Quote not found
@@ -541,7 +541,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               )}
             </div>
 
-            <div className="rounded-2xl border border-slate-900 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">
+            <div className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
               <div className="flex flex-wrap gap-4">
                 <span className="font-semibold text-slate-50">
                   Bids: {attentionState.bidCount}
