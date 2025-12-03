@@ -809,9 +809,9 @@ function StatusBadge({
   return (
     <span
       className={clsx(
-        "pill text-[11px]",
+        "pill",
         variant,
-        size === "sm" ? "px-2 py-0.5" : "px-3 py-1",
+        size === "sm" ? "pill-table" : undefined,
       )}
     >
       {label}

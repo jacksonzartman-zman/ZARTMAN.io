@@ -163,7 +163,9 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               </div>
             </td>
             <td className={adminTableCellClass}>
-              <span className={clsx("pill px-3 py-1 text-[11px]", statusVariant.className)}>
+              <span
+                className={clsx("pill pill-table", statusVariant.className)}
+              >
                 {statusVariant.label}
               </span>
             </td>
