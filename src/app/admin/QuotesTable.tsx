@@ -120,24 +120,27 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
               row.bidCount === 0
                 ? "No bids yet"
                 : `${row.bidCount} bid${row.bidCount === 1 ? "" : "s"}`;
-            const stateBadge = row.needsDecision
-              ? { label: "Needs decision", className: "pill-warning" }
-              : row.hasWinner
-                ? { label: "Won", className: "pill-success" }
-                : row.bidCount === 0
-                  ? { label: "Awaiting bids", className: "pill-muted" }
-                  : { label: "Bidding", className: "pill-info" };
-            let secondaryStateText = bidSummary;
+            const baseStatusLabel = QUOTE_STATUS_LABELS[row.status];
+            const statusLabel = isStale
+              ? `${baseStatusLabel} · Aging`
+              : baseStatusLabel;
+            let stateLabel: string;
+            let stateClassName: string;
+
             if (row.needsDecision) {
-              secondaryStateText = `${bidSummary} ready for review`;
+              stateLabel = "Needs decision";
+              stateClassName = "pill-warning";
             } else if (row.hasWinner) {
-              secondaryStateText = row.hasProject
-                ? "Kickoff scheduled"
-                : "No kickoff yet";
+              stateLabel = row.hasProject
+                ? "Won · Kickoff scheduled"
+                : "Won · No kickoff yet";
+              stateClassName = "pill-success";
             } else if (row.bidCount === 0) {
-              secondaryStateText = "Invite suppliers to quote";
-            } else if (row.hasProject) {
-              secondaryStateText = "Kickoff scheduled";
+              stateLabel = "Awaiting bids";
+              stateClassName = "pill-muted";
+            } else {
+              stateLabel = "Bidding";
+              stateClassName = "pill-info";
             }
 
             return (
@@ -187,36 +190,19 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                   {row.fileName || "—"}
                 </td>
                 <td className={adminTableCellClass}>
-                  <div className="flex flex-col gap-1">
-                    <span
-                      className={clsx(
-                        "pill pill-table",
-                        QUOTE_STATUS_VARIANTS[row.status],
-                      )}
-                    >
-                      {QUOTE_STATUS_LABELS[row.status]}
-                    </span>
-                    {isStale ? (
-                      <span className="text-[11px] font-medium text-amber-200/80">
-                        Aging — follow up
-                      </span>
-                    ) : null}
-                  </div>
+                  <span
+                    className={clsx(
+                      "pill pill-table",
+                      QUOTE_STATUS_VARIANTS[row.status],
+                    )}
+                  >
+                    {statusLabel}
+                  </span>
                 </td>
                 <td className={adminTableCellClass}>
-                  <div className="flex flex-col gap-1">
-                    <span
-                      className={clsx(
-                        "pill pill-table",
-                        stateBadge.className,
-                      )}
-                    >
-                      {stateBadge.label}
-                    </span>
-                    <span className="text-[11px] text-slate-500">
-                      {secondaryStateText}
-                    </span>
-                  </div>
+                  <span className={clsx("pill pill-table", stateClassName)}>
+                    {stateLabel}
+                  </span>
                 </td>
                 <td className={`${adminTableCellClass} text-xs text-slate-200`}>
                   {formatMoney(row.price, row.currency)}
