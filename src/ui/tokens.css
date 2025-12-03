@@ -1,57 +1,51 @@
-@layer base {
-  :root {
-    --space-xs: 0.35rem;
-    --space-sm: 0.65rem;
-    --space-md: 1rem;
-    --space-lg: 1.5rem;
-    --space-xl: 2.25rem;
+:root {
+  --space-xs: 0.35rem;
+  --space-sm: 0.65rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2.25rem;
 
-    --radius-sm: 0.5rem;
-    --radius-md: 1rem;
-    --radius-lg: 1.5rem;
-    --radius-pill: 999px;
+  --radius-sm: 0.5rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-pill: 999px;
 
-    --leading-tight: 1.15;
-    --leading-snug: 1.25;
-  }
+  --leading-tight: 1.15;
+  --leading-snug: 1.25;
 }
 
-@layer components {
-  .pill {
-    @apply inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.25em];
-  }
-
-  .pill-success {
-    @apply border-emerald-500/30 bg-emerald-500/10 text-emerald-100;
-  }
-
-  .pill-warning {
-    @apply border-amber-500/40 bg-amber-500/10 text-amber-100;
-  }
-
-  .pill-muted {
-    @apply border-slate-700 bg-slate-900 text-slate-300;
-  }
-
-  .pill-info {
-    @apply border-blue-500/40 bg-blue-500/10 text-blue-100;
-  }
+.pill {
+  @apply inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.25em];
 }
 
-@layer utilities {
-  .heading-tight {
-    line-height: var(--leading-tight);
-    letter-spacing: -0.01em;
-  }
+.pill-success {
+  @apply border-emerald-500/30 bg-emerald-500/10 text-emerald-100;
+}
 
-  .heading-snug {
-    line-height: var(--leading-snug);
-    letter-spacing: -0.005em;
-  }
+.pill-warning {
+  @apply border-amber-500/40 bg-amber-500/10 text-amber-100;
+}
 
-  .section-stack {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-lg);
-  }
+.pill-muted {
+  @apply border-slate-700 bg-slate-900 text-slate-300;
+}
+
+.pill-info {
+  @apply border-blue-500/40 bg-blue-500/10 text-blue-100;
+}
+
+.heading-tight {
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+}
+
+.heading-snug {
+  line-height: var(--leading-snug);
+  letter-spacing: -0.005em;
+}
+
+.section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
 }
