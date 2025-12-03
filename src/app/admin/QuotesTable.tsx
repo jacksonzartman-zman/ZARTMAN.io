@@ -31,6 +31,16 @@ type QuotesTableProps = {
   totalCount: number;
 };
 
+const QUOTE_STATUS_VARIANTS: Record<QuoteStatus, string> = {
+  submitted: "pill-info",
+  in_review: "pill-info",
+  quoted: "pill-info",
+  approved: "pill-success",
+  won: "pill-success",
+  lost: "pill-warning",
+  cancelled: "pill-muted",
+};
+
 function formatMoney(amount: number | null, currency: string | null) {
   if (amount == null) return "—";
   const value = Number(amount);
@@ -50,15 +60,33 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
     <AdminTableShell
       head={
         <tr>
-          <th className="px-4 py-3">Customer</th>
-          <th className="px-4 py-3">Company</th>
-          <th className="px-4 py-3">File</th>
-          <th className="px-4 py-3">Status</th>
-          <th className="px-4 py-3">State</th>
-          <th className="px-4 py-3">Price</th>
-          <th className="px-4 py-3">Target date</th>
-          <th className="px-4 py-3">Created</th>
-          <th className="px-4 py-3 text-right">Open</th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Customer
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Company
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            File
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Status
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            State
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Price
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Target date
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Created
+          </th>
+          <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Open
+          </th>
         </tr>
       }
       body={
@@ -118,11 +146,16 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                   {row.fileName || "—"}
                 </td>
                 <td className={adminTableCellClass}>
-                  <span className="inline-flex items-center rounded-full border border-transparent bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+                  <span
+                    className={clsx(
+                      "pill px-3 py-1 text-[11px]",
+                      QUOTE_STATUS_VARIANTS[row.status],
+                    )}
+                  >
                     {QUOTE_STATUS_LABELS[row.status]}
                   </span>
                   {isStale ? (
-                    <span className="ml-2 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-300">
+                    <span className="ml-2 pill pill-warning px-2.5 py-0.5 text-[11px]">
                       Aging
                     </span>
                   ) : null}

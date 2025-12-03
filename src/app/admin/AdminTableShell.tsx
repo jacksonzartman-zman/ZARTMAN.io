@@ -7,7 +7,7 @@ type AdminTableShellProps = {
   className?: string;
 };
 
-export const adminTableCellClass = "px-4 py-3 align-top text-sm";
+export const adminTableCellClass = "px-5 py-4 align-top text-sm";
 
 export default function AdminTableShell({
   head,

@@ -32,8 +32,7 @@ export default function AdminTable({
   hasActiveFilters,
 }: AdminTableProps) {
   const isEmpty = rows.length === 0;
-  const statusPillClass =
-    "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold";
+  const statusPillClass = "pill px-3 py-1 text-[11px]";
 
   const emptyHeadline = hasActiveFilters
     ? "No RFQs match your filters yet."
@@ -42,14 +41,14 @@ export default function AdminTable({
     <AdminTableShell
       head={
         <tr>
-          <th className="px-4 py-3">Created</th>
-          <th className="px-4 py-3">Company</th>
-          <th className="px-4 py-3">Contact</th>
-          <th className="px-4 py-3">Process</th>
-          <th className="px-4 py-3">Quantity / volumes</th>
-          <th className="px-4 py-3">Bids</th>
-          <th className="px-4 py-3">Status</th>
-          <th className="px-4 py-3 text-right">Details</th>
+          <th className="px-5 py-4">Created</th>
+          <th className="px-5 py-4">Company</th>
+          <th className="px-5 py-4">Contact</th>
+          <th className="px-5 py-4">Process</th>
+          <th className="px-5 py-4">Quantity / volumes</th>
+          <th className="px-5 py-4">Bids</th>
+          <th className="px-5 py-4">Status</th>
+          <th className="px-5 py-4 text-right">Details</th>
         </tr>
       }
       body={
@@ -180,22 +179,22 @@ type StatusBadgeVariant = {
 const STATUS_BADGE_VARIANTS: Record<UploadStatus, StatusBadgeVariant> = {
   submitted: {
     label: UPLOAD_STATUS_LABELS.submitted,
-    className: "border-sky-400/40 bg-sky-500/10 text-sky-100",
+    className: "pill-info",
   },
   in_review: {
     label: UPLOAD_STATUS_LABELS.in_review,
-    className: "border-sky-400/40 bg-sky-500/10 text-sky-100",
+    className: "pill-info",
   },
   quoted: {
     label: UPLOAD_STATUS_LABELS.quoted,
-    className: "border-amber-400/40 bg-amber-500/10 text-amber-100",
+    className: "pill-warning",
   },
   approved: {
     label: "Won",
-    className: "border-emerald-400/40 bg-emerald-500/10 text-emerald-100",
+    className: "pill-success",
   },
   rejected: {
     label: "Lost",
-    className: "border-rose-400/40 bg-rose-500/10 text-rose-100",
+    className: "pill-muted",
   },
 };

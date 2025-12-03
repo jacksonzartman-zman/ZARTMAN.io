@@ -8,8 +8,8 @@ export default function HomePage() {
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
         {/* HERO */}
         <section className="mx-auto max-w-3xl space-y-6">
-          <div className="badge-soft">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+          <div className="pill pill-success px-4 py-2 text-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
             <span>Built for quoting &amp; AM teams</span>
           </div>
 
