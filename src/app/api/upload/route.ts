@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { DEFAULT_UPLOAD_STATUS } from "@/app/admin/constants";
+import { requireUser, UnauthorizedError } from "@/server/auth";
 import {
   CAD_EXTENSIONS,
   CAD_FILE_TYPE_DESCRIPTION,
@@ -80,10 +82,28 @@ function buildError(
   );
 }
 
+// Flow: customer submits /quote -> verify session -> upload CAD to storage ->
+// upsert customer -> insert uploads row -> create quote + link upload ->
+// record file metadata & return IDs for portals.
 export async function POST(req: NextRequest) {
   const logContext: UploadLogContext = {};
 
   try {
+    const user = await requireUser();
+    const normalizedSessionEmail = normalizeEmailInput(user.email ?? null);
+    if (!normalizedSessionEmail) {
+      console.error("[quote] session missing email", {
+        userId: user.id,
+      });
+      return buildError(
+        "Your session is missing a verified email. Refresh or sign in again.",
+        400,
+        { step: "auth" },
+      );
+    }
+    logContext.userId = user.id;
+    logContext.sessionEmail = normalizedSessionEmail;
+
     const formData = await req.formData();
 
     const fileEntry = formData.get("file");
@@ -101,7 +121,6 @@ export async function POST(req: NextRequest) {
       logContext.providedType = file.type || "";
 
       const rawName = getFormValue(formData.get("name"));
-      const email = getFormValue(formData.get("email"));
       const company = getFormValue(formData.get("company"));
       const requestNotes = getFormValue(formData.get("notes"));
       const firstName = getFormValue(formData.get("first_name"));
@@ -126,6 +145,7 @@ export async function POST(req: NextRequest) {
       );
       const contactName =
         rawName || [firstName, lastName].filter(Boolean).join(" ").trim();
+    const contactEmail = normalizedSessionEmail;
     const extension = getFileExtension(file.name);
     const isStlUpload = extension === "stl";
     logContext.extension = extension;
@@ -136,20 +156,20 @@ export async function POST(req: NextRequest) {
       bucket: CAD_BUCKET,
     });
 
-      if (!contactName || !email) {
+      if (!contactName) {
       logUploadDebug("Rejecting upload: missing contact info", {
         ...logContext,
           namePresent: Boolean(contactName),
-        emailPresent: Boolean(email),
+        sessionEmailPresent: Boolean(normalizedSessionEmail),
       });
       return buildError(
-        "Name and email are required to submit a quote request.",
+        "Name is required to submit a quote request.",
         400,
         {
           step: "validate-contact",
           missingFields: {
               name: !contactName,
-            email: !email,
+            email: false,
           },
         },
       );
@@ -247,26 +267,32 @@ export async function POST(req: NextRequest) {
     }
 
     let customerId: string | null = null;
+    const customerPayload = {
+      name: contactName,
+      email: normalizedSessionEmail,
+      company: company || null,
+      user_id: user.id,
+    };
     const { data: customer, error: customerError } = await supabase
       .from("customers")
-      .upsert(
-        {
-            name: contactName,
-          email,
-          company: company || null,
-        },
-        {
-          onConflict: "email",
-        },
-      )
+      .upsert(customerPayload, {
+        onConflict: "email",
+      })
       .select("id")
       .single();
 
     if (customerError) {
-      logUploadError("Customer upsert failed", {
-        ...logContext,
-        error: serializeSupabaseError(customerError),
-      });
+      const serializedError = serializeSupabaseError(customerError);
+      const missingTable = isMissingTableError(customerError);
+      const logFn = missingTable ? logUploadDebug : logUploadError;
+      logFn(
+        missingTable ? "Customer upsert skipped (table missing)" : "Customer upsert failed",
+        {
+          ...logContext,
+          error: serializedError,
+          missingTable,
+        },
+      );
     } else if (customer?.id) {
       customerId = customer.id as string;
     }
@@ -283,10 +309,11 @@ export async function POST(req: NextRequest) {
         file_path: storagePath,
         mime_type: mimeType,
           name: contactName,
-        email,
+        email: contactEmail,
         company: company || null,
         notes: requestNotes || null,
         customer_id: customerId,
+        status: DEFAULT_UPLOAD_STATUS,
           first_name: firstName || null,
           last_name: lastName || null,
           phone: phone || null,
@@ -317,10 +344,91 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const quoteId =
+    let quoteId =
       "quote_id" in uploadRow
         ? ((uploadRow as { quote_id?: string | null }).quote_id ?? null)
         : null;
+
+    if (!quoteId) {
+      const quoteCustomerName =
+        contactName ||
+        buildSessionDisplayName(user) ||
+        normalizedSessionEmail;
+      const quoteInsertPayload = {
+        upload_id: uploadRow.id,
+        // Production quotes omit customer_id; link remains via email for now.
+        customer_name: quoteCustomerName,
+        customer_email: contactEmail,
+        company: company || null,
+        file_name: file.name,
+        status: DEFAULT_UPLOAD_STATUS,
+      };
+      const payloadSummary = {
+        fileCount: 1,
+        targetDate: null,
+        process: manufacturingProcess || null,
+        material: null,
+      };
+      console.log("[quote] create requested", {
+        userId: user.id,
+        email: contactEmail,
+        payloadSummary,
+      });
+
+      const { data: createdQuote, error: quoteInsertError } = await supabase
+        .from("quotes")
+        .insert(quoteInsertPayload)
+        .select("id")
+        .single<{ id: string }>();
+
+      const quoteErrorMessage = serializeSupabaseError(quoteInsertError);
+      console.log("[quote] create result", {
+        userId: user.id,
+        email: contactEmail,
+        quoteId: createdQuote?.id ?? null,
+        uploadId: uploadRow.id,
+        error: quoteErrorMessage,
+      });
+
+      const quoteTableMissing = isMissingTableError(quoteInsertError);
+      if (quoteInsertError || !createdQuote) {
+        if (quoteTableMissing) {
+          logUploadDebug("Quote insert skipped (table missing)", {
+            ...logContext,
+            uploadId: uploadRow.id,
+            error: quoteErrorMessage,
+          });
+        } else {
+          return buildError(
+            "We couldn’t create your quote record. Please retry.",
+            500,
+            {
+              step: "db-insert-quote",
+            },
+          );
+        }
+      } else {
+        quoteId = createdQuote.id;
+        logContext.quoteId = quoteId;
+
+        const { error: uploadLinkError } = await supabase
+          .from("uploads")
+          .update({
+            quote_id: quoteId,
+            status: DEFAULT_UPLOAD_STATUS,
+          })
+          .eq("id", uploadRow.id);
+
+        if (uploadLinkError) {
+          logUploadError("Upload quote link failed", {
+            ...logContext,
+            error: serializeSupabaseError(uploadLinkError),
+          });
+        }
+      }
+    } else {
+      logContext.quoteId = quoteId;
+    }
 
     const normalizedFile: UploadFileMetadata = {
       bucket: CAD_BUCKET,
@@ -345,24 +453,41 @@ export async function POST(req: NextRequest) {
       });
 
       if (fileMetadataError) {
-        logUploadError("File metadata insert failed", {
-          ...logContext,
-          error: serializeSupabaseError(fileMetadataError),
-        });
+        const missingTable = isMissingTableError(fileMetadataError);
+        const logFn = missingTable ? logUploadDebug : logUploadError;
+        logFn(
+          missingTable
+            ? "File metadata insert skipped (table missing)"
+            : "File metadata insert failed",
+          {
+            ...logContext,
+            error: serializeSupabaseError(fileMetadataError),
+            missingTable,
+          },
+        );
       } else {
         metadataRecorded = true;
       }
     } catch (metadataError) {
-      logUploadError("Unexpected metadata insert error", {
-        ...logContext,
-        error: serializeSupabaseError(metadataError),
-      });
+      const missingTable = isMissingTableError(metadataError);
+      const logFn = missingTable ? logUploadDebug : logUploadError;
+      logFn(
+        missingTable
+          ? "File metadata insert skipped (table missing)"
+          : "Unexpected metadata insert error",
+        {
+          ...logContext,
+          error: serializeSupabaseError(metadataError),
+          missingTable,
+        },
+      );
     }
 
     logUploadDebug("Upload finished successfully", {
       ...logContext,
       uploadId: uploadRow.id,
       customerId: uploadRow.customer_id,
+      quoteId,
       metadataRecorded,
     });
 
@@ -373,6 +498,15 @@ export async function POST(req: NextRequest) {
       metadataRecorded,
     });
   } catch (err: unknown) {
+    if (err instanceof UnauthorizedError) {
+      return buildError(
+        "Sign in to upload CAD files and sync them with your workspace.",
+        401,
+        {
+          step: "auth",
+        },
+      );
+    }
     const message =
       err instanceof Error ? err.message : typeof err === "string" ? err : null;
     const stack = err instanceof Error ? err.stack : undefined;
@@ -471,6 +605,46 @@ function getFileExtension(fileName: string): string {
   return parts.length > 1 ? (parts.pop() ?? "") : "";
 }
 
+function normalizeEmailInput(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function buildSessionDisplayName(user: {
+  email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
+}): string | null {
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const company = getMetadataString(metadata, "company");
+  if (company) {
+    return company;
+  }
+  const fullName = getMetadataString(metadata, "full_name");
+  if (fullName) {
+    return fullName;
+  }
+  const email = typeof user.email === "string" ? user.email.trim() : "";
+  return email.length > 0 ? email : null;
+}
+
+function getMetadataString(
+  metadata: Record<string, unknown> | null | undefined,
+  key: string,
+): string | null {
+  if (!metadata) {
+    return null;
+  }
+  const value = metadata[key];
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 type UploadLogContext = {
   fileName?: string | null;
   fileSize?: number;
@@ -484,14 +658,18 @@ type UploadLogContext = {
   storagePath?: string;
   customerId?: string | null;
   uploadId?: string;
+  quoteId?: string | null;
   namePresent?: boolean;
-  emailPresent?: boolean;
+  sessionEmailPresent?: boolean;
   allowedExtensions?: string;
   maxBytes?: number;
   metadataRecorded?: boolean;
+  missingTable?: boolean;
   error?: unknown;
   errorMessage?: string;
   stack?: string;
+  userId?: string;
+  sessionEmail?: string | null;
 };
 
 function logUploadDebug(message: string, context?: UploadLogContext) {
@@ -517,6 +695,17 @@ function sanitizeContext(context: UploadLogContext) {
     sanitized[key] = value;
   });
   return sanitized;
+}
+
+function isMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const code =
+    "code" in error && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code?: string }).code
+      : null;
+  return code === "PGRST205";
 }
 
 function serializeSupabaseError(error: unknown) {

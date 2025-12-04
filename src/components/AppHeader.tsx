@@ -1,5 +1,5 @@
 import AppHeaderClient from "./AppHeaderClient";
-import { createAuthClient, getCurrentSession } from "@/server/auth";
+import { createAuthClient, getServerAuthUser } from "@/server/auth";
 import { redirect } from "next/navigation";
 import { loadNotificationsForUser } from "@/server/notifications";
 
@@ -9,21 +9,21 @@ export type HeaderUser = {
 };
 
 export default async function AppHeader() {
-  const { session } = await getCurrentSession();
-  const notifications = session
+  const { user } = await getServerAuthUser();
+  const notifications = user
     ? await loadNotificationsForUser({
-        userId: session.user.id,
-        email: session.user.email ?? null,
+        userId: user.id,
+        email: user.email ?? null,
       })
     : [];
 
-  const headerUser: HeaderUser | null = session
+  const headerUser: HeaderUser | null = user
     ? {
-        email: session.user.email ?? null,
+        email: user.email ?? null,
         displayName:
-          (session.user.user_metadata?.company as string | undefined) ??
-          (session.user.user_metadata?.full_name as string | undefined) ??
-          session.user.email ??
+          (user.user_metadata?.company as string | undefined) ??
+          (user.user_metadata?.full_name as string | undefined) ??
+          user.email ??
           null,
       }
     : null;
@@ -31,7 +31,7 @@ export default async function AppHeader() {
   return (
     <AppHeaderClient
       user={headerUser}
-      signOutAction={session ? handleSignOut : undefined}
+      signOutAction={user ? handleSignOut : undefined}
       notifications={notifications}
     />
   );

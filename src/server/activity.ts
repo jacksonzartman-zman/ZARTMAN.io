@@ -1,22 +1,38 @@
+import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
-  normalizeUploadStatus,
-  UPLOAD_STATUS_LABELS,
-} from "@/app/admin/constants";
+  logSupplierActivityQueryFailure,
+  resolveSupplierActivityQuery,
+  toSupplierActivityQueryError,
+} from "@/server/suppliers/activityLogging";
+import {
+  approvalsEnabled,
+  isMissingSupplierAssignmentsColumnError,
+  isSupplierAssignmentsEnabled,
+} from "@/server/suppliers/flags";
+import {
+  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
+  type SupplierActivityIdentity,
+  type SupplierActivityResult,
+  type SupplierQuoteRow,
+} from "@/server/suppliers/types";
+import {
+  getSupplierApprovalStatus,
+  isSupplierApproved,
+  loadSupplierById,
+  loadSupplierByPrimaryEmail,
+} from "@/server/suppliers/profile";
+import {
+  getQuoteStatusLabel,
+  normalizeQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import type { ActivityItem } from "@/types/activity";
+import { getCustomerById } from "@/server/customers";
 
 type ActivityContext = "customer" | "supplier";
 
-type QuoteSummaryRow = {
-  id: string;
-  status: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-  file_name: string | null;
-  company: string | null;
-  customer_name: string | null;
-  email: string | null;
-};
+type QuoteSummaryRow = SupplierQuoteRow;
 
 type BidSummaryRow = {
   id: string;
@@ -41,16 +57,22 @@ type BidWithSupplier = BidSummaryRow & {
 };
 
 const DEFAULT_ACTIVITY_LIMIT = 10;
-const QUOTE_FIELDS = [
-  "id",
-  "status",
-  "created_at",
-  "updated_at",
-  "file_name",
-  "company",
-  "customer_name",
-  "email",
-];
+const SUPPLIER_ACTIVITY_LABEL = "supplier activity";
+
+type ActivityQueryContext = SupplierActivityIdentity & {
+  label: string;
+  loader?: string;
+};
+const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
+const QUOTE_ACTIVITY_TITLES: Record<QuoteStatus, string> = {
+  submitted: "RFQ submitted",
+  in_review: "RFQ under review",
+  quoted: "Quote prepared",
+  approved: "Quote approved",
+  won: "Quote won",
+  lost: "Quote closed as lost",
+  cancelled: "RFQ cancelled",
+};
 
 export async function loadCustomerActivityFeed(args: {
   customerId?: string | null;
@@ -85,43 +107,150 @@ export async function loadCustomerActivityFeed(args: {
     ...bids.map((bid) => buildBidActivityItem(bid, "customer")),
   ];
 
-  return finalizeActivity(items, limit);
+  const finalized = finalizeActivity(items, limit);
+  console.log("[customer activity] feed result", {
+    customerId: args.customerId ?? null,
+    email: args.email ?? null,
+    domain: args.domain ?? null,
+    count: finalized.length,
+  });
+  return finalized;
 }
 
-export async function loadSupplierActivityFeed(args: {
-  supplierId?: string | null;
-  supplierEmail?: string | null;
-  limit?: number;
-}): Promise<ActivityItem[]> {
-  const limit = args.limit ?? DEFAULT_ACTIVITY_LIMIT;
-  if (!args.supplierId && !args.supplierEmail) {
-    return [];
+export async function loadSupplierActivityFeed(
+  args: SupplierActivityIdentity & {
+    limit?: number;
+  },
+): Promise<SupplierActivityResult<ActivityItem[]>> {
+  const limit = Math.max(args.limit ?? DEFAULT_ACTIVITY_LIMIT, 0);
+  const supplierId = args.supplierId ?? null;
+  const supplierEmail = normalizeEmail(args.supplierEmail);
+  const logContext: ActivityQueryContext = {
+    label: SUPPLIER_ACTIVITY_LABEL,
+    supplierId,
+    supplierEmail,
+    loader: "activity",
+  };
+  const loggingPayload = {
+    supplierId,
+    supplierEmail,
+    loader: "activity",
+  };
+  const assignmentsEnabled = isSupplierAssignmentsEnabled();
+
+  if (!supplierId && !supplierEmail) {
+    console.warn("[supplier activity] loading skipped", {
+      ...loggingPayload,
+      error: "Missing supplier identity",
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Missing supplier identity",
+    };
   }
 
-  const normalizedEmail = normalizeEmail(args.supplierEmail);
-  const assignmentQuoteIds = await selectSupplierQuoteIds(normalizedEmail);
-  const bids = await fetchBids(
-    { supplierId: args.supplierId ?? null },
-    limit * 3,
-    false,
-  );
-  const bidQuoteIds = bids.map((bid) => bid.quote_id);
+  console.log("[supplier activity] loading", loggingPayload);
 
-  const quotes = await fetchSupplierQuotes({
-    quoteIds: Array.from(new Set([...assignmentQuoteIds, ...bidQuoteIds])),
-    supplierEmail: normalizedEmail,
-    limit: Math.max(limit * 2, 20),
-  });
+  const approvalsOn = approvalsEnabled();
+  if (approvalsOn) {
+    const supplierRecord = supplierId
+      ? await loadSupplierById(supplierId)
+      : supplierEmail
+        ? await loadSupplierByPrimaryEmail(supplierEmail)
+        : null;
+    const approvalStatus = getSupplierApprovalStatus(supplierRecord ?? undefined);
+    const approved = isSupplierApproved(supplierRecord ?? undefined);
+    if (!approved) {
+      console.log("[supplier activity] approvals gate active", {
+        ...loggingPayload,
+        approvalStatus,
+      });
+      return {
+        ok: true,
+        data: [],
+        approvalGate: {
+          enabled: true,
+          status: approvalStatus,
+        },
+      };
+    }
+  }
 
-  const items = [
-    ...quotes.map((quote) => buildQuoteActivityItem(quote, "supplier")),
-    ...quotes
-      .map((quote) => buildStatusActivityItem(quote, "supplier"))
-      .filter((item): item is ActivityItem => Boolean(item)),
-    ...bids.map((bid) => buildBidActivityItem(bid, "supplier")),
-  ];
+  if (!assignmentsEnabled) {
+    console.log("[supplier activity] skipped; assignments disabled", {
+      ...loggingPayload,
+    });
+    return {
+      ok: true,
+      data: [],
+      reason: "assignments-disabled",
+    };
+  }
 
-  return finalizeActivity(items, limit);
+  if (limit === 0) {
+    return {
+      ok: true,
+      data: [],
+    };
+  }
+
+  try {
+    const assignmentQuoteIds = supplierEmail
+      ? await selectSupplierQuoteIds(supplierEmail, logContext)
+      : [];
+    const bids = await fetchBids(
+      { supplierId },
+      limit * 3,
+      false,
+      logContext,
+    );
+    const bidQuoteIds = bids.map((bid) => bid.quote_id);
+
+    const quotes = await fetchSupplierQuotes(
+      {
+        quoteIds: Array.from(new Set([...assignmentQuoteIds, ...bidQuoteIds])),
+        supplierEmail,
+        limit: Math.max(limit * 2, 20),
+      },
+      logContext,
+      assignmentsEnabled,
+    );
+
+    const items = [
+      ...quotes.map((quote) => buildQuoteActivityItem(quote, "supplier")),
+      ...quotes
+        .map((quote) => buildStatusActivityItem(quote, "supplier"))
+        .filter((item): item is ActivityItem => Boolean(item)),
+      ...bids.map((bid) => buildBidActivityItem(bid, "supplier")),
+    ];
+
+    const finalized = finalizeActivity(items, limit);
+
+    console.log("[supplier activity] quote query result", {
+      ...loggingPayload,
+      count: finalized.length,
+    });
+
+    return {
+      ok: true,
+      data: finalized,
+    };
+  } catch (error) {
+    logSupplierActivityQueryFailure({
+      loader: logContext.loader,
+      supplierId: logContext.supplierId,
+      supplierEmail: logContext.supplierEmail,
+      query: resolveSupplierActivityQuery(error, "supplier_activity_feed"),
+      error,
+      stage: "loader",
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Unable to load activity right now",
+    };
+  }
 }
 
 async function fetchCustomerQuotes(args: {
@@ -134,11 +263,7 @@ async function fetchCustomerQuotes(args: {
   const filters: Array<() => Promise<QuoteSummaryRow[]>> = [];
 
   if (customerId) {
-    filters.push(() =>
-      selectQuotesByFilter((query) =>
-        query.eq("customer_id", customerId!).limit(limit),
-      ),
-    );
+    filters.push(() => selectQuotesByCustomerId(customerId, limit));
   }
 
   const normalizedEmail = normalizeEmail(email);
@@ -169,16 +294,22 @@ async function fetchCustomerQuotes(args: {
   return [];
 }
 
-async function fetchSupplierQuotes(args: {
-  quoteIds: string[];
-  supplierEmail: string | null;
-  limit: number;
-}): Promise<QuoteSummaryRow[]> {
+async function fetchSupplierQuotes(
+  args: {
+    quoteIds: string[];
+    supplierEmail: string | null;
+    limit: number;
+  },
+  context?: ActivityQueryContext,
+  assignmentsEnabled?: boolean,
+): Promise<QuoteSummaryRow[]> {
   const { quoteIds, supplierEmail, limit } = args;
+  const assignmentsFeatureEnabled = assignmentsEnabled ?? true;
 
   if (quoteIds.length > 0) {
-    return selectQuotesByFilter((query) =>
-      query.in("id", quoteIds).limit(limit),
+    return selectQuotesByFilter(
+      (query) => query.in("id", quoteIds).limit(limit),
+      context,
     );
   }
 
@@ -186,21 +317,27 @@ async function fetchSupplierQuotes(args: {
     return [];
   }
 
-  return selectQuotesByFilter((query) =>
-    query
-      .or(
-        [
-          `assigned_supplier_email.ilike.${supplierEmail}`,
-          `email.ilike.${supplierEmail}`,
-        ].join(","),
-      )
-      .limit(limit),
+  return selectQuotesByFilter(
+    (query) =>
+      query
+        .or(
+          [
+            `email.ilike.${supplierEmail}`,
+            ...(assignmentsFeatureEnabled
+              ? [`assigned_supplier_email.ilike.${supplierEmail}`]
+              : []),
+          ].join(","),
+        )
+        .limit(limit),
+    context,
   );
 }
 
 async function selectQuotesByFilter(
   build: (query: any) => any,
+  context?: ActivityQueryContext,
 ): Promise<QuoteSummaryRow[]> {
+  const shouldThrow = context?.label === SUPPLIER_ACTIVITY_LABEL;
   try {
     const baseQuery = supabaseServer
       .from("quotes_with_uploads")
@@ -209,20 +346,138 @@ async function selectQuotesByFilter(
     const query = build(baseQuery);
     const { data, error } = await query;
     if (error) {
-      console.error("activity: quote query failed", { error });
+      if (shouldSkipAssignmentsColumnError(error, context)) {
+        logAssignmentsColumnWarning(context, error);
+        return [];
+      }
+      logQuoteError(error, context);
+      if (shouldThrow) {
+        throw toSupplierActivityQueryError("quotes_with_uploads", error);
+      }
       return [];
     }
     return (data as QuoteSummaryRow[]) ?? [];
   } catch (error) {
-    console.error("activity: quote query error", { error });
+    if (shouldSkipAssignmentsColumnError(error, context)) {
+      logAssignmentsColumnWarning(context, error);
+      return [];
+    }
+    logQuoteError(error, context);
+    if (shouldThrow) {
+      throw toSupplierActivityQueryError("quotes_with_uploads", error);
+    }
     return [];
   }
+}
+
+function logQuoteError(
+  rawError: unknown,
+  context?: ActivityQueryContext,
+) {
+  const label = context?.label ?? "activity";
+  if (label === SUPPLIER_ACTIVITY_LABEL) {
+    logSupplierActivityQueryFailure({
+      loader: context?.loader ?? null,
+      supplierId: context?.supplierId ?? null,
+      supplierEmail: context?.supplierEmail ?? null,
+      query: "quotes_with_uploads",
+      error: rawError,
+      stage: context?.loader ?? null,
+    });
+    return;
+  }
+  console.error(`[${label}] quote query failed`, {
+    loader: context?.loader ?? null,
+    supplierId: context?.supplierId ?? null,
+    supplierEmail: context?.supplierEmail ?? null,
+    error:
+      rawError instanceof Error
+        ? rawError.message
+        : typeof rawError === "object"
+          ? JSON.stringify(rawError)
+          : String(rawError),
+  });
+}
+
+function logSupplierActivityError(
+  message: string,
+  rawError: unknown,
+  context?: ActivityQueryContext,
+  extra?: Record<string, unknown>,
+) {
+  const label = context?.label ?? "activity";
+  console.error(`[${label}] ${message}`, {
+    loader: context?.loader ?? null,
+    supplierId: context?.supplierId ?? null,
+    supplierEmail: context?.supplierEmail ?? null,
+    error:
+      rawError instanceof Error
+        ? rawError.message
+        : typeof rawError === "object"
+          ? JSON.stringify(rawError)
+          : String(rawError),
+    ...extra,
+  });
+}
+
+function shouldSkipAssignmentsColumnError(
+  error: unknown,
+  context?: ActivityQueryContext,
+): boolean {
+  if (context?.label !== SUPPLIER_ACTIVITY_LABEL) {
+    return false;
+  }
+  return isMissingSupplierAssignmentsColumnError(extractSupabaseSource(error));
+}
+
+function logAssignmentsColumnWarning(
+  context: ActivityQueryContext | undefined,
+  rawError: unknown,
+) {
+  console.warn("[supplier activity] assignments disabled: missing column", {
+    loader: context?.loader ?? null,
+    supplierId: context?.supplierId ?? null,
+    supplierEmail: context?.supplierEmail ?? null,
+    stage: context?.loader ?? null,
+    supabaseError: formatSupabaseError(extractSupabaseSource(rawError)),
+  });
+}
+
+function extractSupabaseSource(error: unknown): unknown {
+  if (
+    error &&
+    typeof error === "object" &&
+    "supabaseError" in error &&
+    (error as { supabaseError?: unknown }).supabaseError
+  ) {
+    return (error as { supabaseError?: unknown }).supabaseError;
+  }
+  return error;
+}
+
+function formatSupabaseError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return error ?? null;
+  }
+  const maybeError = error as {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+    hint?: unknown;
+  };
+  return {
+    code: typeof maybeError.code === "string" ? maybeError.code : null,
+    message: typeof maybeError.message === "string" ? maybeError.message : null,
+    details: typeof maybeError.details === "string" ? maybeError.details : null,
+    hint: typeof maybeError.hint === "string" ? maybeError.hint : null,
+  };
 }
 
 async function fetchBids(
   filter: { quoteIds?: string[]; supplierId?: string | null },
   limit: number,
   includeSupplierContext: boolean,
+  context?: ActivityQueryContext,
 ): Promise<BidWithSupplier[]> {
   if (
     (!filter.quoteIds || filter.quoteIds.length === 0) &&
@@ -250,7 +505,7 @@ async function fetchBids(
 
     const { data, error } = await query;
     if (error) {
-      console.error("activity: bid query failed", { error, filter });
+      logSupplierActivityError("bid query failed", error, context, filter);
       return [];
     }
 
@@ -278,7 +533,7 @@ async function fetchBids(
       supplier: supplierMap.get(bid.supplier_id ?? "") ?? null,
     }));
   } catch (error) {
-    console.error("activity: bid query error", { error, filter });
+    logSupplierActivityError("bid query failed", error, context, filter);
     return [];
   }
 }
@@ -310,6 +565,7 @@ async function fetchSuppliersByIds(
 
 async function selectSupplierQuoteIds(
   supplierEmail: string | null,
+  context?: ActivityQueryContext,
 ): Promise<string[]> {
   if (!supplierEmail) {
     return [];
@@ -322,10 +578,12 @@ async function selectSupplierQuoteIds(
       .ilike("supplier_email", supplierEmail);
 
     if (error) {
-      console.error("activity: assignment query failed", {
+      logSupplierActivityError(
+        "assignment query failed",
         error,
-        supplierEmail,
-      });
+        context,
+        { supplierEmail },
+      );
       return [];
     }
 
@@ -333,10 +591,12 @@ async function selectSupplierQuoteIds(
       .map((row) => row.quote_id)
       .filter((id): id is string => Boolean(id));
   } catch (error) {
-    console.error("activity: assignment query error", {
+    logSupplierActivityError(
+      "assignment query failed",
       error,
-      supplierEmail,
-    });
+      context,
+      { supplierEmail },
+    );
     return [];
   }
 }
@@ -345,13 +605,17 @@ function buildQuoteActivityItem(
   quote: QuoteSummaryRow,
   context: ActivityContext,
 ): ActivityItem {
+  const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
+  const statusLabel =
+    QUOTE_ACTIVITY_TITLES[normalizedStatus] ??
+    getQuoteStatusLabel(quote.status ?? undefined);
   const hrefBase =
     context === "customer" ? "/customer/quotes" : "/supplier/quotes";
 
   return {
     id: `${context}:quote:${quote.id}`,
     type: "quote",
-    title: `${getQuoteTitle(quote)} submitted`,
+    title: `${getQuoteTitle(quote)}: ${statusLabel}`,
     description: buildQuoteDescription(quote, context),
     timestamp: safeTimestamp(quote.created_at ?? quote.updated_at),
     href: `${hrefBase}/${quote.id}`,
@@ -366,17 +630,17 @@ function buildStatusActivityItem(
     return null;
   }
 
-  const normalizedStatus = normalizeUploadStatus(
-    quote.status ?? undefined,
-  );
-  const statusLabel = UPLOAD_STATUS_LABELS[normalizedStatus] ?? "Status update";
+  const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
+  const statusLabel =
+    QUOTE_ACTIVITY_TITLES[normalizedStatus] ??
+    getQuoteStatusLabel(quote.status ?? undefined);
   const hrefBase =
     context === "customer" ? "/customer/quotes" : "/supplier/quotes";
 
   return {
     id: `${context}:status:${quote.id}:${quote.updated_at}`,
     type: "status",
-    title: `${getQuoteTitle(quote)} moved to ${statusLabel}`,
+    title: `${getQuoteTitle(quote)}: ${statusLabel}`,
     description:
       context === "customer"
         ? "We updated this RFQ status in your workspace."
@@ -470,11 +734,7 @@ function buildQuoteDescription(
 }
 
 function normalizeEmail(value?: string | null): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
+  return normalizeEmailInput(value);
 }
 
 function normalizeDomain(value?: string | null): string | null {
@@ -518,5 +778,63 @@ function formatCurrencyValue(
     }).format(numeric);
   } catch {
     return `${resolvedCurrency} ${numeric.toFixed(0)}`;
+  }
+}
+
+async function selectQuotesByCustomerId(
+  customerId?: string | null,
+  limit?: number,
+): Promise<QuoteSummaryRow[]> {
+  if (!customerId) {
+    return [];
+  }
+
+  const customer = await getCustomerById(customerId);
+  if (!customer) {
+    console.warn("selectQuotesByCustomerId: customer not found", {
+      customerId,
+    });
+    return [];
+  }
+
+  const normalizedEmail = normalizeEmailInput(customer.email ?? null);
+  if (!normalizedEmail) {
+    console.warn("selectQuotesByCustomerId: customer missing email", {
+      customerId,
+    });
+    return [];
+  }
+
+  console.log("selectQuotesByCustomerId: resolving via email", {
+    customerId,
+    email: normalizedEmail,
+  });
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes_with_uploads")
+      .select(QUOTE_FIELDS.join(","))
+      .ilike("email", normalizedEmail)
+      .order("created_at", { ascending: false })
+      .limit(limit ?? DEFAULT_ACTIVITY_LIMIT * 2);
+
+    if (error) {
+      console.error("selectQuotesByCustomerId: query failed", {
+        customerId,
+        email: normalizedEmail,
+        error,
+      });
+      return [];
+    }
+
+    const rows = (data ?? []) as unknown as QuoteSummaryRow[];
+    return rows;
+  } catch (error) {
+    console.error("selectQuotesByCustomerId: query failed", {
+      customerId,
+      email: normalizedEmail,
+      error,
+    });
+    return [];
   }
 }

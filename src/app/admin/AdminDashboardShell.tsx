@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import clsx from "clsx";
+import { PageHeader } from "@/components/PageHeader";
 
 type AdminDashboardShellProps = {
   title: string;
@@ -19,25 +20,14 @@ export default function AdminDashboardShell({
   className,
 }: AdminDashboardShellProps) {
   return (
-    <main className={clsx("mx-auto max-w-6xl px-4 py-10 space-y-6", className)}>
-      <header className="space-y-3">
-        {eyebrow ? (
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-400">
-            {eyebrow}
-          </p>
-        ) : null}
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold text-white">{title}</h1>
-            {description ? (
-              <p className="text-sm text-slate-400">{description}</p>
-            ) : null}
-          </div>
-          {actions ? (
-            <div className="flex shrink-0 items-center gap-3">{actions}</div>
-          ) : null}
-        </div>
-      </header>
+    <main className={clsx("mx-auto max-w-6xl space-y-8 px-4 py-10", className)}>
+      <PageHeader
+        eyebrow={eyebrow}
+        eyebrowClassName="text-emerald-400"
+        title={title}
+        description={description}
+        actions={actions}
+      />
       {children}
     </main>
   );

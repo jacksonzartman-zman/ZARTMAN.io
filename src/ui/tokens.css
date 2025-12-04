@@ -1,0 +1,60 @@
+:root {
+  --space-xs: 0.35rem;
+  --space-sm: 0.65rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2.25rem;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
+  --radius-pill: 999px;
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.25;
+}
+
+.pill {
+  @apply inline-flex items-center justify-center gap-1.5
+    rounded-full border border-white/20 bg-white/5
+    px-2.5 py-0.5 text-[10px] font-semibold leading-[1.1]
+    tracking-normal text-slate-100 whitespace-nowrap;
+}
+
+.pill-table {
+  @apply inline-flex items-center justify-center gap-1
+    px-2 py-0.5 text-[10px] font-medium leading-[1.1]
+    whitespace-nowrap;
+}
+
+.pill-success {
+  @apply border-emerald-300/30 bg-emerald-300/10 text-emerald-100;
+}
+
+.pill-warning {
+  @apply border-amber-300/40 bg-amber-300/10 text-amber-100;
+}
+
+.pill-muted {
+  @apply border-slate-700/70 bg-slate-900/40 text-slate-200;
+}
+
+.pill-info {
+  @apply border-blue-300/40 bg-blue-400/10 text-blue-100;
+}
+
+.heading-tight {
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
+}
+
+.heading-snug {
+  line-height: var(--leading-snug);
+  letter-spacing: -0.005em;
+}
+
+.section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}

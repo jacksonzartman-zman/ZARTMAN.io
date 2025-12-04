@@ -1,14 +1,11 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import type { Session } from "@supabase/supabase-js";
-import type { PortalRole } from "@/types/portal";
+import type { User } from "@supabase/supabase-js";
+import { serializeSupabaseError } from "@/server/admin/logging";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-export const PORTAL_INTENT_COOKIE = "z_portal_intent";
-export const PORTAL_INTENT_TTL_SECONDS = 60 * 5;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error(
@@ -51,17 +48,15 @@ function createServerSupabaseClient() {
 
 type SupabaseClientType = ReturnType<typeof createServerSupabaseClient>;
 
-type SessionWithPortalIntent = {
-  session: Session | null;
-  portalIntent: PortalRole | null;
+export type ServerAuthUserResult = {
+  user: User | null;
+  error: unknown | null;
 };
 
-function parsePortalIntent(value: string | null | undefined): PortalRole | null {
-  if (value === "customer" || value === "supplier") {
-    return value;
-  }
-  return null;
-}
+type RequireUserOptions = {
+  redirectTo?: string;
+  message?: string;
+};
 
 export function createAuthClient() {
   return createServerSupabaseClient();
@@ -76,37 +71,100 @@ export async function createReadOnlyAuthClient(): Promise<SupabaseClientType> {
         return cookieStore.get(name)?.value;
       },
       set() {
-        // no-op for server components
+        // no-op: read-only in server components
       },
       remove() {
-        // no-op for server components
+        // no-op: read-only in server components
       },
     },
   });
 }
 
-export async function getCurrentSession(): Promise<SessionWithPortalIntent> {
-  const cookieStore = await cookies();
-  const cookieNames =
-    typeof cookieStore.getAll === "function"
-      ? cookieStore.getAll().map((entry) => entry.name)
-      : [];
-  console.log("[auth] cookies seen by server:", cookieNames);
+const DYNAMIC_SERVER_USAGE_DIGEST = "DYNAMIC_SERVER_USAGE";
 
-  const supabase = await createReadOnlyAuthClient();
-  const { data, error } = await supabase.auth.getSession();
-
-  if (error) {
-    console.error("[auth] getSession failed", error);
-    return { session: null, portalIntent: null };
+function isDynamicServerUsageError(error: unknown): boolean {
+  if (!error) {
+    return false;
   }
 
-  return { session: data.session ?? null, portalIntent: null };
+  const hasDigest = (candidate: unknown): boolean => {
+    if (!candidate) {
+      return false;
+    }
+
+    if (typeof candidate === "string") {
+      return candidate.startsWith(DYNAMIC_SERVER_USAGE_DIGEST);
+    }
+
+    if (typeof candidate === "object") {
+      const digest = (candidate as { digest?: unknown }).digest;
+      if (typeof digest === "string" && digest.startsWith(DYNAMIC_SERVER_USAGE_DIGEST)) {
+        return true;
+      }
+
+      const cause = (candidate as { cause?: unknown }).cause;
+      if (cause && hasDigest(cause)) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  return hasDigest(error) || (error instanceof Error && hasDigest(error.message));
 }
 
-export async function getCurrentUser() {
-  const { session } = await getCurrentSession();
-  return session?.user ?? null;
+export async function getServerAuthUser(): Promise<ServerAuthUserResult> {
+  try {
+    const cookieStore = await cookies();
+    const cookieNames =
+      typeof cookieStore.getAll === "function"
+        ? cookieStore.getAll().map((entry) => entry.name)
+        : [];
+    console.log("[auth] cookies seen by server:", cookieNames);
+
+    const supabase = await createReadOnlyAuthClient();
+    const { data, error } = await supabase.auth.getUser();
+    const serializedError = error ? serializeSupabaseError(error) : null;
+
+    console.info("[auth] getUser result:", {
+      hasUser: Boolean(data?.user),
+      email: data?.user?.email ?? null,
+      error: serializedError,
+    });
+
+    if (error) {
+      if (isDynamicServerUsageError(error)) {
+        console.info(
+          "[auth] getUser run skipped during static generation (dynamic route only)",
+        );
+        return { user: null, error: serializedError ?? error };
+      }
+
+      console.error("[auth] getUser failed", error);
+      return { user: null, error: serializedError ?? error };
+    }
+
+    if (!data?.user) {
+      console.warn("[auth] no authenticated user returned by Supabase");
+      return { user: null, error: null };
+    }
+
+    return {
+      user: data.user,
+      error: null,
+    };
+  } catch (error) {
+    if (isDynamicServerUsageError(error)) {
+      console.info(
+        "[auth] getServerAuthUser skipped during static generation (dynamic route only)",
+      );
+      return { user: null, error };
+    }
+
+    console.error("[auth] getServerAuthUser: unexpected failure", error);
+    return { user: null, error };
+  }
 }
 
 export class UnauthorizedError extends Error {
@@ -116,23 +174,27 @@ export class UnauthorizedError extends Error {
   }
 }
 
-export async function requireSession(options?: {
-  redirectTo?: string;
-  message?: string;
-}): Promise<Session> {
-  const { session } = await getCurrentSession();
-  if (session) {
-    return session;
+export async function requireUser(options?: RequireUserOptions): Promise<User> {
+  const { user, error } = await getServerAuthUser();
+  if (user) {
+    return user;
   }
+
+  console.error("[auth] requireUser failed", {
+    reason: "no-user",
+    error,
+  });
 
   if (options?.redirectTo) {
     redirect(options.redirectTo);
   }
 
-  throw new UnauthorizedError(options?.message);
+  throw new UnauthorizedError(options?.message ?? "You must be signed in.");
 }
 
-export async function requireUser(options?: { redirectTo?: string }) {
-  const session = await requireSession(options);
-  return session.user;
+export async function requireAdminUser(
+  options?: RequireUserOptions,
+): Promise<User> {
+  // TODO: tighten this check once we persist admin roles in auth metadata.
+  return requireUser(options);
 }

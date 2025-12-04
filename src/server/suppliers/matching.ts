@@ -1,22 +1,38 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
-import { listSupplierCapabilities, loadSupplierById } from "./profile";
-import type {
-  SupplierCapabilityRow,
-  SupplierQuoteMatch,
-  SupplierRow,
+import type { UploadMeta } from "@/server/quotes/types";
+import {
+  getSupplierApprovalStatus,
+  isSupplierApproved,
+  listSupplierCapabilities,
+  loadSupplierById,
+} from "./profile";
+import {
+  logSupplierActivityQueryFailure,
+  resolveSupplierActivityQuery,
+  toSupplierActivityQueryError,
+} from "./activityLogging";
+import {
+  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
+  type SupplierActivityIdentity,
+  type SupplierActivityResult,
+  type SupplierApprovalStatus,
+  type SupplierCapabilityRow,
+  type SupplierQuoteMatch,
+  type SupplierQuoteRow,
+  type SupplierRow,
 } from "./types";
 import { canUserBid } from "@/lib/permissions";
 import { computeFairnessBoost } from "@/lib/fairness";
+import { approvalsEnabled } from "./flags";
+import { QUOTE_OPEN_STATUSES, isOpenQuoteStatus } from "@/server/quotes/status";
 
-const OPEN_QUOTE_STATUSES = ["submitted", "in_review", "quoted"];
 const MATCH_LIMIT = 20;
 
-type QuoteAssignmentRow = {
+export type QuoteAssignmentRow = {
   quote_id: string | null;
 };
 
-type SupplierBidRef = {
+export type SupplierBidRef = {
   quote_id: string | null;
   status: string | null;
   updated_at: string | null;
@@ -30,118 +46,281 @@ type UploadMatchingRow = Pick<
 };
 
 export async function matchQuotesToSupplier(
-  supplierId: string,
-): Promise<SupplierQuoteMatch[]> {
-  const supplier = await loadSupplierById(supplierId);
-  if (!supplier) {
-    return [];
+  args: SupplierActivityIdentity,
+): Promise<SupplierActivityResult<SupplierQuoteMatch[]>> {
+  const supplierId = args.supplierId ?? null;
+  const supplierEmail = normalizeEmail(args.supplierEmail);
+  const logContext = {
+    supplierId,
+    supplierEmail,
+    loader: "matches" as const,
+  };
+
+  if (!supplierId) {
+    console.warn("[supplier activity] loading skipped", {
+      ...logContext,
+      error: "Missing supplier identity",
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Missing supplier identity",
+    };
   }
 
-  const [capabilities, assignmentRows, bidRows] = await Promise.all([
-    listSupplierCapabilities(supplier.id),
-    selectQuoteAssignmentsByEmail(supplier.primary_email),
-    selectBidQuoteRefs(supplier.id),
-  ]);
+  console.log("[supplier activity] loading", logContext);
 
-  const normalizedCapabilities = normalizeCapabilities(capabilities);
-  if (normalizedCapabilities.processes.size === 0) {
-    return [];
-  }
-
-  const authorizedQuoteIds = new Set<string>();
-  assignmentRows.forEach((row) => {
-    if (row?.quote_id) {
-      authorizedQuoteIds.add(row.quote_id);
-    }
-  });
-  bidRows.forEach((row) => {
-    if (row?.quote_id) {
-      authorizedQuoteIds.add(row.quote_id);
-    }
-  });
-
-  const canViewGlobalMatches = supplier.verified;
-
-  const quotes = await selectOpenQuotes();
-  if (quotes.length === 0) {
-    return [];
-  }
-
-  const uploadMetaMap = await selectUploadMeta(quotes);
-
-  const fairness = computeFairnessBoost({
-    assignmentCount: assignmentRows.length,
-    recentBidOutcomes: bidRows,
-    supplierCreatedAt: supplier.created_at,
-  });
-
-  const matches: SupplierQuoteMatch[] = [];
-
-  for (const quote of quotes) {
-    const uploadMeta = quote.upload_id
-      ? uploadMetaMap.get(quote.upload_id)
-      : null;
-
-    const processHint = uploadMeta?.manufacturing_process ?? null;
-    const normalizedProcess = normalizeProcess(processHint);
-    const hasProcessMatch = normalizedProcess
-      ? hasMatchingProcess(normalizedProcess, normalizedCapabilities.processes)
-      : false;
-
-    if (!hasProcessMatch) {
-      continue;
+  try {
+    const supplier = await loadSupplierById(supplierId);
+    if (!supplier) {
+      console.warn("[supplier activity] loading skipped", {
+        ...logContext,
+        error: "Supplier profile missing",
+      });
+      return {
+        ok: false,
+        data: [],
+        error: "Supplier profile missing",
+      };
     }
 
-    const quoteId = quote.id;
-    const canAccess =
-      canViewGlobalMatches || (quoteId ? authorizedQuoteIds.has(quoteId) : false);
+    const decisionContext = {
+      supplierId: supplier.id,
+      supplierEmail: supplier.primary_email ?? supplierEmail,
+    };
+    const approvalStatus = getSupplierApprovalStatus(supplier);
+    const approvalsOn = approvalsEnabled();
+    const approved = approvalsOn ? isSupplierApproved(supplier) : true;
 
-    if (!canAccess) {
-      continue;
+    if (approvalsOn && !approved) {
+      logMatchDecision("supplier skipped - not approved", {
+        ...decisionContext,
+        approvalStatus,
+        approvalsEnabled: approvalsOn,
+        supplierApproved: approved,
+      });
+      console.log("[supplier activity] approvals gate active", {
+        ...logContext,
+        approvalStatus,
+      });
+      return {
+        ok: true,
+        data: [],
+        approvalGate: {
+          enabled: true,
+          status: approvalStatus,
+        },
+      };
     }
 
-    const supplierBidMeta = bidRows.find((bid) => bid.quote_id === quoteId);
-    const canBid = canUserBid("supplier", {
-      status: quote.status,
-      existingBidStatus: supplierBidMeta?.status ?? null,
-      accessGranted: canAccess,
+    const [capabilities, assignmentRows, bidRows] = await Promise.all([
+      listSupplierCapabilities(supplier.id),
+      selectQuoteAssignmentsByEmail(supplier.primary_email),
+      selectBidQuoteRefs(supplier.id),
+    ]);
+
+    const normalizedCapabilities = normalizeCapabilities(capabilities);
+    if (normalizedCapabilities.processes.size === 0) {
+      logMatchDecision("supplier skipped - capability mismatch", {
+        ...decisionContext,
+        reason: "No manufacturing processes recorded",
+      });
+      console.log("[supplier activity] quote query result", {
+        ...logContext,
+        count: 0,
+      });
+      return {
+        ok: true,
+        data: [],
+      };
+    }
+
+    const authorizedQuoteIds = new Set<string>();
+    assignmentRows.forEach((row) => {
+      if (row?.quote_id) {
+        authorizedQuoteIds.add(row.quote_id);
+      }
+    });
+    bidRows.forEach((row) => {
+      if (row?.quote_id) {
+        authorizedQuoteIds.add(row.quote_id);
+      }
     });
 
-    if (!canBid) {
-      continue;
+    const canViewGlobalMatches = supplier.verified || (approvalsOn && approved);
+
+    const quotes = await selectOpenQuotes();
+    if (quotes.length === 0) {
+      console.log("[supplier activity] quote query result", {
+        ...logContext,
+        count: 0,
+      });
+      return {
+        ok: true,
+        data: [],
+      };
     }
 
-    const materialMatches = findMaterialMatches(
-      uploadMeta,
-      normalizedCapabilities.materials,
-    );
+    const uploadMetaMap = await selectUploadMeta(quotes);
 
-    const baseScore = computeMatchScore({
-      createdAt: quote.created_at,
-      materialMatches,
-    });
-    const score = baseScore + fairness.modifier;
-
-    matches.push({
-      quoteId,
-      quote,
-      processHint,
-      materialMatches,
-      score,
-      createdAt: quote.created_at ?? null,
-      quantityHint: uploadMeta?.quantity ?? null,
-      fairness: fairness.reasons.length > 0 ? fairness : undefined,
+    const fairness = computeFairnessBoost({
+      assignmentCount: assignmentRows.length,
+      recentBidOutcomes: bidRows,
+      supplierCreatedAt: supplier.created_at,
     });
 
-    if (matches.length >= MATCH_LIMIT) {
-      break;
+    const matches: SupplierQuoteMatch[] = [];
+
+    for (const quote of quotes) {
+      const quoteId = quote.id;
+      const quoteStatus = quote.status ?? null;
+      const decisionPayload = {
+        ...decisionContext,
+        quoteId,
+        quoteStatus,
+      };
+
+      if (!isOpenQuoteStatus(quoteStatus)) {
+        logMatchDecision("supplier skipped - RFQ not open", decisionPayload);
+        continue;
+      }
+
+      const uploadMeta = quote.upload_id
+        ? uploadMetaMap.get(quote.upload_id)
+        : null;
+
+      const processHint = uploadMeta?.manufacturing_process ?? null;
+      const normalizedProcess = normalizeProcess(processHint);
+      const hasProcessMatch = normalizedProcess
+        ? hasMatchingProcess(normalizedProcess, normalizedCapabilities.processes)
+        : false;
+
+      if (!hasProcessMatch) {
+        logMatchDecision("supplier skipped - capability mismatch", {
+          ...decisionPayload,
+          processHint,
+        });
+        continue;
+      }
+
+      const canAccess =
+        canViewGlobalMatches || (quoteId ? authorizedQuoteIds.has(quoteId) : false);
+
+      if (!canAccess) {
+        logMatchDecision("supplier skipped - supplier inactive", {
+          ...decisionPayload,
+          approvalsEnabled: approvalsOn,
+          supplierApproved: approved,
+          supplierVerified: supplier.verified,
+          reason: supplier.verified
+            ? "supplier not assigned to RFQ"
+            : "supplier not verified for global feed",
+        });
+        continue;
+      }
+
+      const supplierBidMeta = bidRows.find((bid) => bid.quote_id === quoteId);
+      const canBid = canUserBid("supplier", {
+        status: quote.status,
+        existingBidStatus: supplierBidMeta?.status ?? null,
+        accessGranted: canAccess,
+      });
+
+      if (!canBid) {
+        logMatchDecision("supplier skipped - bidding blocked", {
+          ...decisionPayload,
+          existingBidStatus: supplierBidMeta?.status ?? null,
+          reason: "permission matrix denied bidding",
+        });
+        continue;
+      }
+
+      const materialMatches = findMaterialMatches(
+        uploadMeta,
+        normalizedCapabilities.materials,
+      );
+
+      const baseScore = computeMatchScore({
+        createdAt: quote.created_at,
+        materialMatches,
+      });
+      const score = baseScore + fairness.modifier;
+
+      matches.push({
+        quoteId,
+        quote,
+        processHint,
+        materialMatches,
+        score,
+        createdAt: quote.created_at ?? null,
+        quantityHint: uploadMeta?.quantity ?? null,
+        fairness: fairness.reasons.length > 0 ? fairness : undefined,
+      });
+
+      logMatchDecision("supplier matched", {
+        ...decisionPayload,
+        processHint,
+        score,
+      });
+
+      if (matches.length >= MATCH_LIMIT) {
+        break;
+      }
     }
+
+    const sortedMatches = matches.sort((a, b) => b.score - a.score);
+
+    console.log("[supplier activity] quote query result", {
+      ...logContext,
+      count: sortedMatches.length,
+    });
+
+    return {
+      ok: true,
+      data: sortedMatches,
+    };
+  } catch (error) {
+    logSupplierActivityQueryFailure({
+      ...logContext,
+      query: resolveSupplierActivityQuery(error, "matchQuotesToSupplier"),
+      error,
+    });
+    return {
+      ok: false,
+      data: [],
+      error: "Unable to load matches right now",
+    };
   }
-
-  return matches.sort((a, b) => b.score - a.score);
 }
 
-function normalizeCapabilities(capabilities: SupplierCapabilityRow[]) {
+type MatchDecisionEvent =
+  | "supplier skipped - not approved"
+  | "supplier skipped - capability mismatch"
+  | "supplier skipped - RFQ not open"
+  | "supplier skipped - supplier inactive"
+  | "supplier skipped - bidding blocked"
+  | "supplier matched";
+
+type MatchDecisionPayload = {
+  supplierId: string | null;
+  supplierEmail: string | null;
+  quoteId?: string | null;
+  quoteStatus?: string | null;
+  processHint?: string | null;
+  reason?: string;
+  approvalsEnabled?: boolean;
+  supplierApproved?: boolean;
+  supplierVerified?: boolean;
+  approvalStatus?: SupplierApprovalStatus;
+  score?: number;
+  existingBidStatus?: string | null;
+};
+
+function logMatchDecision(event: MatchDecisionEvent, payload: MatchDecisionPayload) {
+  console.log(`[matching] ${event}`, payload);
+}
+
+export function normalizeCapabilities(capabilities: SupplierCapabilityRow[]) {
   const processes = new Set<string>();
   const materials = new Set<string>();
 
@@ -162,7 +341,7 @@ function normalizeCapabilities(capabilities: SupplierCapabilityRow[]) {
   return { processes, materials };
 }
 
-function normalizeProcess(value?: string | null): string | null {
+export function normalizeProcess(value?: string | null): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -178,7 +357,7 @@ function normalizeMaterial(value?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function hasMatchingProcess(
+export function hasMatchingProcess(
   quoteProcess: string,
   supplierProcesses: Set<string>,
 ): boolean {
@@ -243,47 +422,34 @@ function computeMatchScore({
   return score;
 }
 
-async function selectOpenQuotes(): Promise<QuoteWithUploadsRow[]> {
+export function normalizeEmail(value?: string | null): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+async function selectOpenQuotes(): Promise<SupplierQuoteRow[]> {
   try {
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
-      .select(
-        [
-          "id",
-          "upload_id",
-          "customer_name",
-          "email",
-          "company",
-          "status",
-          "price",
-          "currency",
-          "created_at",
-          "updated_at",
-          "target_date",
-          "file_name",
-          "assigned_supplier_email",
-          "assigned_supplier_name",
-          "internal_notes",
-          "dfm_notes",
-        ].join(","),
-      )
-      .in("status", OPEN_QUOTE_STATUSES)
+      .select(SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(","))
+      .in("status", Array.from(QUOTE_OPEN_STATUSES))
       .order("created_at", { ascending: false })
       .limit(50);
 
     if (error) {
-      console.error("matchQuotesToSupplier: quote query failed", { error });
-      return [];
+      throw toSupplierActivityQueryError("quotes_with_uploads", error);
     }
 
-    return ((data ?? []) as unknown) as QuoteWithUploadsRow[];
+    return ((data ?? []) as unknown) as SupplierQuoteRow[];
   } catch (error) {
-    console.error("matchQuotesToSupplier: unexpected quote error", { error });
-    return [];
+    throw toSupplierActivityQueryError("quotes_with_uploads", error);
   }
 }
 
-async function selectUploadMeta(quotes: QuoteWithUploadsRow[]) {
+async function selectUploadMeta(quotes: SupplierQuoteRow[]) {
   const uploadIds = Array.from(
     new Set(
       quotes
@@ -305,8 +471,7 @@ async function selectUploadMeta(quotes: QuoteWithUploadsRow[]) {
       .in("id", uploadIds);
 
     if (error) {
-      console.error("matchQuotesToSupplier: upload query failed", { error });
-      return new Map();
+      throw toSupplierActivityQueryError("uploads", error);
     }
 
     const map = new Map<string, UploadMatchingRow>();
@@ -317,12 +482,11 @@ async function selectUploadMeta(quotes: QuoteWithUploadsRow[]) {
     });
     return map;
   } catch (error) {
-    console.error("matchQuotesToSupplier: unexpected upload error", { error });
-    return new Map();
+    throw toSupplierActivityQueryError("uploads", error);
   }
 }
 
-async function selectQuoteAssignmentsByEmail(email: string) {
+export async function selectQuoteAssignmentsByEmail(email: string) {
   if (!email) {
     return [];
   }
@@ -334,24 +498,16 @@ async function selectQuoteAssignmentsByEmail(email: string) {
       .eq("supplier_email", email);
 
     if (error) {
-      console.error("matchQuotesToSupplier: assignment query failed", {
-        email,
-        error,
-      });
-      return [];
+      throw toSupplierActivityQueryError("quote_suppliers", error);
     }
 
     return (data as QuoteAssignmentRow[]) ?? [];
   } catch (error) {
-    console.error("matchQuotesToSupplier: assignment unexpected error", {
-      email,
-      error,
-    });
-    return [];
+    throw toSupplierActivityQueryError("quote_suppliers", error);
   }
 }
 
-async function selectBidQuoteRefs(supplierId: string) {
+export async function selectBidQuoteRefs(supplierId: string) {
   if (!supplierId) {
     return [];
   }
@@ -363,19 +519,11 @@ async function selectBidQuoteRefs(supplierId: string) {
       .eq("supplier_id", supplierId);
 
     if (error) {
-      console.error("matchQuotesToSupplier: bid query failed", {
-        supplierId,
-        error,
-      });
-      return [];
+      throw toSupplierActivityQueryError("supplier_bids", error);
     }
 
     return (data as SupplierBidRef[]) ?? [];
   } catch (error) {
-    console.error("matchQuotesToSupplier: bid unexpected error", {
-      supplierId,
-      error,
-    });
-    return [];
+    throw toSupplierActivityQueryError("supplier_bids", error);
   }
 }

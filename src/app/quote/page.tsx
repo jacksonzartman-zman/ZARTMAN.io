@@ -1,12 +1,23 @@
-import UploadBox from "@/components/UploadBox";
+export const dynamic = "force-dynamic";
 
-export default function QuotePage() {
+import UploadBox, { type PrefillContact } from "@/components/UploadBox";
+import type { User } from "@supabase/supabase-js";
+import { getServerAuthUser } from "@/server/auth";
+
+export default async function QuotePage() {
+  const { user } = await getServerAuthUser();
+  const prefillContact = buildQuotePrefillContact(user);
+  console.log("[quote intake] prefill contact", {
+    hasUser: Boolean(user),
+    prefillEmail: prefillContact?.email ?? null,
+  });
+
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-14">
         <section className="max-w-3xl space-y-5">
-          <div className="badge-soft">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+          <div className="pill pill-success px-4 py-2 text-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
             <span>Upload to get a fast quote</span>
           </div>
           <div className="space-y-4">
@@ -25,7 +36,7 @@ export default function QuotePage() {
         </section>
 
         <section className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4 sm:p-6 shadow-lift-sm">
-          <UploadBox />
+          <UploadBox prefillContact={prefillContact} showExplainer />
         </section>
 
         <section className="space-y-6">
@@ -70,4 +81,49 @@ export default function QuotePage() {
       </div>
     </main>
   );
+}
+
+function buildQuotePrefillContact(user: User | null): PrefillContact | null {
+  if (!user) return null;
+
+  const rawEmail =
+    typeof user.email === "string" ? user.email.trim() : "";
+
+  if (!rawEmail) {
+    return null;
+  }
+
+  const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+
+  const metaName =
+    typeof meta.name === "string" ? meta.name.trim() : "";
+
+  const firstNameFromMeta =
+    typeof meta.first_name === "string"
+      ? meta.first_name
+      : typeof meta.given_name === "string"
+        ? meta.given_name
+        : metaName.split(" ")[0] ?? "";
+
+  const lastNameFromMeta =
+    typeof meta.last_name === "string"
+      ? meta.last_name
+      : typeof meta.family_name === "string"
+        ? meta.family_name
+        : metaName.split(" ").slice(1).join(" ");
+
+  const firstName = firstNameFromMeta.trim();
+  const lastName = lastNameFromMeta.trim();
+
+  const displayName =
+    [firstName, lastName].filter(Boolean).join(" ") ||
+    metaName ||
+    rawEmail;
+
+  return {
+    firstName,
+    lastName,
+    email: rawEmail,
+    displayName,
+  };
 }

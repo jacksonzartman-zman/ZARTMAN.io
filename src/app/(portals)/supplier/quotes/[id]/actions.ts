@@ -2,12 +2,26 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { createSupplierQuoteMessage } from "@/server/quotes/messages";
-import { createOrUpdateBid, getSupplierBidForQuote } from "@/server/suppliers";
-import { loadSupplierProfile } from "@/server/suppliers";
+import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
+import { createQuoteMessage } from "@/server/quotes/messages";
+import { notifyAdminOnBidSubmitted } from "@/server/quotes/notifications";
+import {
+  loadSupplierProfile,
+  loadSupplierProfileByUserId,
+  getSupplierApprovalStatus,
+  isSupplierApproved,
+} from "@/server/suppliers";
+import type { SupplierBidRow } from "@/server/suppliers";
+import {
+  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
+  type SafeQuoteWithUploadsField,
+} from "@/server/suppliers/types";
+import { loadBidForSupplierAndQuote } from "@/server/bids";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { canUserBid } from "@/lib/permissions";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
+import { getServerAuthUser, requireUser } from "@/server/auth";
+import { approvalsEnabled } from "@/server/suppliers/flags";
 import {
   getSupplierDisplayName,
   loadSupplierAssignments,
@@ -15,294 +29,425 @@ import {
   supplierHasAccess,
 } from "./supplierAccess";
 
-export type PostSupplierQuoteMessageState = {
-  success: boolean;
-  error: string | null;
-  messageId?: string;
+export type SupplierMessageFormState = {
+  ok: boolean;
+  message?: string | null;
+  error?: string | null;
+  fieldErrors?: {
+    body?: string;
+  };
 };
 
-const GENERIC_ERROR =
-  "Unable to send your message right now. Please try again.";
+const SUPPLIER_MESSAGE_PROFILE_ERROR =
+  "We couldn’t find your supplier profile.";
+const SUPPLIER_MESSAGE_GENERIC_ERROR =
+  "We couldn’t send your message. Please try again.";
+const SUPPLIER_MESSAGE_ACCESS_ERROR =
+  "Chat is only available after your bid is selected for this RFQ.";
+const SUPPLIER_MESSAGE_LOCKED_ERROR =
+  "Chat unlocks after your bid is accepted for this RFQ.";
 
-export type SupplierBidActionState = {
-  success: boolean;
-  error: string | null;
-  status: string | null;
-};
-
-const BID_ERROR_MESSAGE =
-  "Unable to save your bid right now. Please try again.";
-
-type QuoteAssignmentRow = Pick<
-  QuoteWithUploadsRow,
-  "id" | "email" | "assigned_supplier_email" | "assigned_supplier_name"
->;
-
-type QuoteAccessRow = QuoteAssignmentRow & {
-  upload_id: string | null;
-  status: string | null;
-};
-
-export async function postSupplierQuoteMessageAction(
-  _prevState: PostSupplierQuoteMessageState,
+export async function submitSupplierQuoteMessageAction(
+  quoteId: string,
+  _prevState: SupplierMessageFormState,
   formData: FormData,
-): Promise<PostSupplierQuoteMessageState> {
-  const rawQuoteId = formData.get("quote_id");
-  const rawBody = formData.get("body");
-  const rawEmail = formData.get("identity_email");
+): Promise<SupplierMessageFormState> {
+  const trimmedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  const bodyValue = formData.get("body");
+  const body =
+    typeof bodyValue === "string"
+      ? bodyValue.trim()
+      : String(bodyValue ?? "").trim();
 
-  if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
-    return { success: false, error: "Missing quote reference." };
-  }
-
-  if (typeof rawBody !== "string") {
-    return { success: false, error: "Enter a message before sending." };
-  }
-
-  if (typeof rawEmail !== "string") {
-    return { success: false, error: "Provide your email to continue." };
-  }
-
-  const quoteId = rawQuoteId.trim();
-  const body = rawBody.trim();
-  const identityEmail = normalizeEmailInput(rawEmail);
-
-  if (!identityEmail) {
+  if (!trimmedQuoteId) {
     return {
-      success: false,
-      error: "Provide a valid email address to continue.",
+      ok: false,
+      error: "Missing quote ID.",
+      fieldErrors: {},
     };
   }
 
   if (body.length === 0) {
     return {
-      success: false,
-      error: "Enter a message before sending.",
+      ok: false,
+      error: "Message can’t be empty.",
+      fieldErrors: { body: "Please enter a message before sending." },
     };
   }
 
   if (body.length > 2000) {
     return {
-      success: false,
-      error: "Message is too long. Keep it under 2,000 characters.",
+      ok: false,
+      error: "Message is too long.",
+      fieldErrors: {
+        body: "Keep messages under 2,000 characters.",
+      },
     };
   }
 
   try {
-    const [quote, assignments, profile] = await Promise.all([
-      loadQuoteAccessRow(quoteId),
-      loadSupplierAssignments(quoteId),
-      loadSupplierProfile(identityEmail),
-    ]);
-
-    if (!quote) {
-      return { success: false, error: "Quote not found." };
-    }
-
-    if (!profile?.supplier) {
-      console.error("Supplier post action: no supplier profile", {
-        quoteId,
-        identityEmail,
-      });
-      return {
-        success: false,
-        error: "Complete onboarding before posting messages.",
-      };
-    }
-
-    const uploadProcess = await loadUploadProcessHint(quote.upload_id ?? null);
-    const verifiedProcessMatch = matchesSupplierProcess(
-      profile.capabilities ?? [],
-      uploadProcess,
-    );
-
-    if (
-      !supplierHasAccess(identityEmail, quote, assignments, {
-        supplier: profile.supplier,
-        verifiedProcessMatch,
-      })
-    ) {
-      console.error("Supplier post action: access denied", {
-        quoteId,
-        identityEmail,
-        quoteEmail: quote.email,
-        assignmentCount: assignments.length,
-        reason: "ACCESS_DENIED",
-      });
-      return {
-        success: false,
-        error: "You do not have access to this quote.",
-      };
-    }
-
-    const existingBid = await getSupplierBidForQuote(
-      quoteId,
-      profile.supplier.id,
-    );
-
-    if (existingBid?.status !== "accepted") {
-      console.warn("Supplier post action: chat locked for supplier", {
-        quoteId,
-        identityEmail,
-        supplierId: profile.supplier.id,
-        bidStatus: existingBid?.status ?? "none",
-        reason: "CHAT_LOCKED_UNACCEPTED_BID",
-      });
-      return {
-        success: false,
-        error: "Chat unlocks after your bid is accepted by the customer.",
-      };
-    }
-
-    const supplierName = getSupplierDisplayName(
-      identityEmail,
-      quote,
-      assignments,
-    );
-
-    const { data, error } = await createSupplierQuoteMessage({
-      quoteId,
-      body,
-      authorName: supplierName,
-      authorEmail: identityEmail,
+    const user = await requireUser({
+      redirectTo: `/supplier/quotes/${trimmedQuoteId}`,
+      message: "Sign in to post a message.",
     });
 
-    if (error || !data) {
-      console.error("Supplier post action: failed to create message", {
-        quoteId,
-        error,
-      });
-      return { success: false, error: GENERIC_ERROR };
+    let profile = user.id
+      ? await loadSupplierProfileByUserId(user.id)
+      : null;
+
+    if (!profile && user.email) {
+      profile = await loadSupplierProfile(user.email);
     }
 
-    revalidatePath(`/supplier/quotes/${quoteId}`);
-    return { success: true, error: null, messageId: data.id };
+    if (!profile?.supplier?.id) {
+      console.error("[supplier messages] no supplier profile for user", {
+        quoteId: trimmedQuoteId,
+        userId: user.id,
+        email: user.email ?? null,
+      });
+      return {
+        ok: false,
+        error: SUPPLIER_MESSAGE_PROFILE_ERROR,
+        fieldErrors: {},
+      };
+    }
+
+    const supplierId = profile.supplier.id;
+    const bidResult = await loadBidForSupplierAndQuote(
+      supplierId,
+      trimmedQuoteId,
+    );
+
+    if (!bidResult.ok || !bidResult.data) {
+      console.error("[supplier messages] access denied – no bid", {
+        quoteId: trimmedQuoteId,
+        supplierId,
+        error: bidResult.error,
+      });
+      return {
+        ok: false,
+        error: SUPPLIER_MESSAGE_ACCESS_ERROR,
+        fieldErrors: {},
+      };
+    }
+
+    const bid = bidResult.data;
+    const status = (bid?.status ?? "").toLowerCase();
+    const messagingUnlocked =
+      status === "accepted" || status === "won" || status === "winner";
+
+    if (!messagingUnlocked) {
+      console.error("[supplier messages] access denied – bid not accepted", {
+        quoteId: trimmedQuoteId,
+        supplierId,
+        status,
+      });
+      return {
+        ok: false,
+        error: SUPPLIER_MESSAGE_LOCKED_ERROR,
+        fieldErrors: {},
+      };
+    }
+
+    const authorName =
+      profile.supplier.company_name ??
+      user.email ??
+      "Supplier";
+
+    const authorEmail =
+      profile.supplier.primary_email ??
+      user.email ??
+      "supplier@zartman.io";
+
+    console.log("[supplier messages] create start", {
+      quoteId: trimmedQuoteId,
+      supplierId,
+    });
+
+    const result = await createQuoteMessage({
+      quoteId: trimmedQuoteId,
+      body,
+      authorType: "supplier",
+      authorName,
+      authorEmail,
+    });
+
+    if (!result.ok || !result.data) {
+      console.error("[supplier messages] create failed", {
+        quoteId: trimmedQuoteId,
+        supplierId,
+        error: result.error,
+      });
+
+      return {
+        ok: false,
+        error: result.error ?? SUPPLIER_MESSAGE_GENERIC_ERROR,
+        fieldErrors: {},
+      };
+    }
+
+    console.log("[supplier messages] create success", {
+      quoteId: trimmedQuoteId,
+      supplierId,
+      messageId: result.data.id,
+    });
+
+    revalidatePath(`/supplier/quotes/${trimmedQuoteId}`);
+    revalidatePath(`/customer/quotes/${trimmedQuoteId}`);
+    revalidatePath(`/admin/quotes/${trimmedQuoteId}`);
+
+    return {
+      ok: true,
+      message: "Message sent.",
+      error: "",
+      fieldErrors: {},
+    };
   } catch (error) {
-    console.error("Supplier post action: unexpected error", error);
-    return { success: false, error: GENERIC_ERROR };
+    console.error("[supplier messages] action crashed", {
+      quoteId: trimmedQuoteId,
+      error,
+    });
+    return {
+      ok: false,
+      error: "Unexpected error while sending your message.",
+      fieldErrors: {},
+    };
   }
 }
+
+export type SupplierBidActionState =
+  | { ok: true; message: string }
+  | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+const BID_SUBMIT_ERROR = "We couldn't submit your bid. Please try again.";
+const BID_ENV_DISABLED_ERROR = "Bids are not enabled in this environment yet.";
+const BID_AMOUNT_INVALID_ERROR = "Enter a valid bid amount greater than 0.";
+const SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE =
+  "Bids are not available in this environment.";
+
+type QuoteAccessRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
+
 
 export async function submitSupplierBidAction(
   _prevState: SupplierBidActionState,
   formData: FormData,
 ): Promise<SupplierBidActionState> {
-  const rawQuoteId = formData.get("quote_id");
-  const rawEmail = formData.get("supplier_email");
-  const rawUnitPrice = formData.get("unit_price");
-  const rawCurrency = formData.get("currency");
-  const rawLeadTime = formData.get("lead_time_days");
-  const rawNotes = formData.get("notes");
+  let quoteId: string | null = null;
+  let supplierId: string | null = null;
 
-  if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
-    return { success: false, error: "Missing quote reference.", status: null };
-  }
-
-  if (typeof rawEmail !== "string") {
-    return {
-      success: false,
-      error: "Provide your email to continue.",
-      status: null,
-    };
-  }
-
-  if (typeof rawUnitPrice !== "string" || rawUnitPrice.trim().length === 0) {
-    return {
-      success: false,
-      error: "Enter a unit price.",
-      status: null,
-    };
-  }
-
-  const quoteId = rawQuoteId.trim();
-  const supplierEmail = normalizeEmailInput(rawEmail);
-  if (!supplierEmail) {
-    return {
-      success: false,
-      error: "Provide a valid email address.",
-      status: null,
-    };
-  }
-
-  const unitPrice = Number(rawUnitPrice);
-  if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-    return {
-      success: false,
-      error: "Enter a valid unit price greater than zero.",
-      status: null,
-    };
-  }
-
-  const leadTimeDays =
-    typeof rawLeadTime === "string" && rawLeadTime.trim().length > 0
-      ? Number(rawLeadTime)
-      : null;
-
-  if (leadTimeDays !== null && (!Number.isFinite(leadTimeDays) || leadTimeDays < 0)) {
-    return {
-      success: false,
-      error: "Lead time must be a positive number of days.",
-      status: null,
-    };
-  }
-
-  const currency =
-    typeof rawCurrency === "string" && rawCurrency.trim().length > 0
-      ? rawCurrency.trim().toUpperCase()
-      : "USD";
-  const notes =
-    typeof rawNotes === "string" && rawNotes.trim().length > 0
-      ? rawNotes.trim()
-      : null;
+  console.log("[bids] submit action invoked");
 
   try {
-    const [quote, assignments, profile] = await Promise.all([
-      loadQuoteAccessRow(quoteId),
-      loadSupplierAssignments(quoteId),
-      loadSupplierProfile(supplierEmail),
-    ]);
-
-    if (!quote) {
-      return { success: false, error: "Quote not found.", status: null };
-    }
-
-    if (!profile?.supplier) {
+    const { user } = await getServerAuthUser();
+    if (!user) {
       return {
-        success: false,
-        error: "Complete onboarding before submitting bids.",
-        status: null,
+        ok: false,
+        error: "You need to be logged in to submit a bid.",
       };
     }
 
-    const uploadProcess = await loadUploadProcessHint(quote.upload_id ?? null);
+    quoteId = String(formData.get("quoteId") ?? "").trim();
+    const amountInput = formData.get("amount");
+    const currencyInput = String(formData.get("currency") ?? "USD").trim();
+    const leadTimeInput = formData.get("leadTimeDays");
+    const notesInput = formData.get("notes");
+
+    const fieldErrors: Record<string, string> = {};
+
+    if (!quoteId) {
+      fieldErrors.quoteId = "Missing quote reference.";
+    }
+
+    const amount = parseSupplierBidAmount(amountInput);
+
+    if (amount === null || amount <= 0) {
+      fieldErrors.amount = BID_AMOUNT_INVALID_ERROR;
+    }
+
+    let leadTimeDays: number | null = null;
+    const leadTimeParse = parseLeadTimeDays(leadTimeInput);
+    if (!leadTimeParse.ok) {
+      fieldErrors.leadTimeDays = leadTimeParse.error;
+    } else {
+      leadTimeDays = leadTimeParse.value;
+    }
+
+    console.log("[bids] submit parsed fields", {
+      quoteId,
+      supplierId,
+      amountInput,
+      normalizedAmount: amount,
+      currency: currencyInput,
+      leadTimeDays,
+    });
+
+    if (Object.keys(fieldErrors).length > 0) {
+      logBidSubmitFailure({
+        quoteId,
+        supplierId,
+        reason: "validation-error",
+        phase: "input-validation",
+        details: fieldErrors,
+      });
+      const amountError = fieldErrors.amount
+        ? BID_AMOUNT_INVALID_ERROR
+        : "Fix the errors highlighted below.";
+      return {
+        ok: false,
+        error: amountError,
+        fieldErrors,
+      };
+    }
+
+    let supplierProfile = user.id ? await loadSupplierProfileByUserId(user.id) : null;
+
+    if (!supplierProfile && user.email) {
+      supplierProfile = await loadSupplierProfile(user.email);
+    }
+
+    if (!supplierProfile?.supplier) {
+      return {
+        ok: false,
+        error: "Complete onboarding before submitting bids.",
+      };
+    }
+
+    const supplier = supplierProfile.supplier;
+    supplierId = supplier.id;
+    const supplierEmail =
+      normalizeEmailInput(
+        supplier.primary_email ?? user.email ?? null,
+      ) ?? null;
+
+    if (!supplierEmail) {
+      return {
+        ok: false,
+        error: "We couldn’t determine which supplier profile to use.",
+      };
+    }
+
+    const approvalsOn = approvalsEnabled();
+    const approvalStatus = getSupplierApprovalStatus(supplier);
+    const approved = approvalsOn ? isSupplierApproved(supplier) : true;
+
+    if (approvalsOn && !approved) {
+      console.log("[bids] submit blocked: approvals pending", {
+        supplierId: supplier.id,
+        approvalStatus,
+      });
+      return {
+        ok: false,
+        error:
+          "Your profile is pending review. You’ll be able to bid once you’re approved.",
+      };
+    }
+
+    const quoteResult = await loadQuoteAccessRow(quoteId);
+    const quote = quoteResult.data;
+    const quoteError = quoteResult.error;
+
+    if (quoteError) {
+      const serialized = serializeSupabaseError(quoteError);
+      if (isMissingTableOrColumnError(quoteError)) {
+        console.warn("[bids] quote lookup missing schema", {
+          quoteId,
+          supplierId: supplier.id,
+          error: serialized,
+        });
+        logBidSubmitFailure({
+          quoteId,
+          supplierId: supplier.id,
+          reason: "env-disabled",
+          phase: "quote-lookup",
+          supabaseError: serialized,
+        });
+        return {
+          ok: false,
+          error: BID_ENV_DISABLED_ERROR,
+        };
+      }
+
+      logBidSubmitFailure({
+        quoteId,
+        supplierId: supplier.id,
+        reason: "supabase-error",
+        phase: "quote-lookup",
+        supabaseError: serialized,
+      });
+      return {
+        ok: false,
+        error: BID_SUBMIT_ERROR,
+      };
+    }
+
+    if (!quote) {
+      console.warn("[bids] quote not found", {
+        quoteId,
+        supplierId: supplier.id,
+      });
+      return {
+        ok: false,
+        error: "Quote not found.",
+      };
+    }
+
+    const [assignments, uploadProcess] = await Promise.all([
+      loadSupplierAssignments(quoteId),
+      loadUploadProcessHint(quote.upload_id ?? null),
+    ]);
+
     const verifiedProcessMatch = matchesSupplierProcess(
-      profile.capabilities ?? [],
+      supplierProfile.capabilities ?? [],
       uploadProcess,
     );
 
     if (
       !supplierHasAccess(supplierEmail, quote, assignments, {
-        supplier: profile.supplier,
+        supplier,
         verifiedProcessMatch,
       })
     ) {
       console.error("Supplier bid action: access denied", {
         quoteId,
         supplierEmail,
+        supplierId: supplier.id,
         reason: "ACCESS_DENIED",
       });
       return {
-        success: false,
+        ok: false,
         error: "You do not have access to this quote.",
-        status: null,
       };
     }
 
-    const existingBid = await getSupplierBidForQuote(
-      quoteId,
-      profile.supplier.id,
-    );
+    const bidResult = await loadBidForSupplierAndQuote(supplier.id, quoteId);
+    if (!bidResult.ok) {
+      if (isBidsEnvErrorMessage(bidResult.error)) {
+        logBidSubmitFailure({
+          quoteId,
+          supplierId: supplier.id,
+          reason: "env-disabled",
+          phase: "bid-lookup",
+          supabaseError: bidResult.error,
+        });
+        return {
+          ok: false,
+          error: BID_ENV_DISABLED_ERROR,
+        };
+      }
+      logBidSubmitFailure({
+        quoteId,
+        supplierId: supplier.id,
+        reason: "bid-loader-error",
+        phase: "bid-lookup",
+        supabaseError: bidResult.error,
+      });
+      return {
+        ok: false,
+        error: bidResult.error ?? BID_SUBMIT_ERROR,
+      };
+    }
 
+    const existingBid = bidResult.data;
     const canBid = canUserBid("supplier", {
       status: quote.status,
       existingBidStatus: existingBid?.status ?? null,
@@ -311,61 +456,171 @@ export async function submitSupplierBidAction(
 
     if (!canBid) {
       return {
-        success: false,
+        ok: false,
         error:
           existingBid?.status === "accepted"
             ? "This bid is locked because it was already accepted."
             : "Bidding is closed for this quote.",
-        status: existingBid?.status ?? null,
       };
     }
 
-    const bid = await createOrUpdateBid({
-      quoteId,
-      supplierId: profile.supplier.id,
-      unitPrice,
-      currency,
-      leadTimeDays,
-      notes,
-    });
+    const currency =
+      currencyInput.length > 0 ? currencyInput.toUpperCase() : "USD";
+    const notes =
+      typeof notesInput === "string" && notesInput.trim().length > 0
+        ? notesInput.trim()
+        : null;
 
-    if (!bid) {
+    const normalizedAmount = amount as number;
+
+    try {
+      const { data, error } = await supabaseServer
+        .from("supplier_bids")
+        .upsert(
+          [
+            {
+              quote_id: quoteId,
+              supplier_id: supplier.id,
+              unit_price: normalizedAmount,
+              currency,
+              lead_time_days: leadTimeDays,
+              notes,
+              status: "submitted",
+            },
+          ],
+          { onConflict: "quote_id,supplier_id" },
+        )
+        .select("id,status,updated_at")
+        .maybeSingle<SupplierBidRow>();
+
+      if (error) {
+        const serialized = serializeSupabaseError(error);
+        if (isMissingTableOrColumnError(error)) {
+          console.warn("[bids] submit missing schema", {
+            quoteId,
+            supplierId: supplier.id,
+            error: serialized,
+          });
+          logBidSubmitFailure({
+            quoteId,
+            supplierId: supplier.id,
+            reason: "env-disabled",
+            phase: "bid-upsert",
+            supabaseError: serialized,
+          });
+          return {
+            ok: false,
+            error: BID_ENV_DISABLED_ERROR,
+          };
+        }
+
+        logBidSubmitFailure({
+          quoteId,
+          supplierId: supplier.id,
+          reason: "supabase-error",
+          phase: "bid-upsert",
+          supabaseError: serialized,
+        });
+        return {
+          ok: false,
+          error: BID_SUBMIT_ERROR,
+        };
+      }
+
+      console.log("[bids] submit success", {
+        quoteId,
+        supplierId: supplier.id,
+        amount: normalizedAmount,
+        currency,
+        leadTimeDays,
+        bidId: data?.id ?? null,
+      });
+
+      if (!existingBid) {
+        const quoteTitle =
+          quote.file_name ??
+          quote.company ??
+          `Quote ${quote.id.slice(0, 6)}`;
+        void notifyAdminOnBidSubmitted({
+          quoteId,
+          bidId: data?.id ?? null,
+          supplierId: supplier.id,
+          supplierName: supplier.company_name ?? supplier.primary_email ?? null,
+          supplierEmail: supplier.primary_email ?? supplierEmail,
+          amount: normalizedAmount,
+          currency,
+          leadTimeDays,
+          quoteTitle,
+        });
+      }
+
+      revalidatePath(`/supplier/quotes/${quoteId}`);
+      revalidatePath("/supplier");
+      revalidatePath("/admin");
+      revalidatePath("/admin/quotes");
+      revalidatePath(`/admin/quotes/${quoteId}`);
+      revalidatePath(`/customer/quotes/${quoteId}`);
+
       return {
-        success: false,
-        error: BID_ERROR_MESSAGE,
-        status: null,
+        ok: true,
+        message: "Your bid has been submitted.",
+      };
+    } catch (error) {
+      const serialized = serializeSupabaseError(error);
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[bids] submit missing schema", {
+          quoteId,
+          supplierId: supplier.id,
+          error: serialized,
+        });
+        logBidSubmitFailure({
+          quoteId,
+          supplierId: supplier.id,
+          reason: "env-disabled",
+          phase: "bid-upsert",
+          supabaseError: serialized,
+        });
+        return {
+          ok: false,
+          error: BID_ENV_DISABLED_ERROR,
+        };
+      }
+      logBidSubmitFailure({
+        quoteId,
+        supplierId: supplier.id,
+        reason: "unexpected-error",
+        phase: "bid-upsert",
+        supabaseError: serialized ?? error,
+      });
+      return {
+        ok: false,
+        error: BID_SUBMIT_ERROR,
       };
     }
-
-    revalidatePath(`/supplier/quotes/${quoteId}`);
-      revalidatePath(`/supplier`);
-    revalidatePath(`/customer/quotes/${quoteId}`);
-    return {
-      success: true,
-      error: null,
-      status: bid.status,
-    };
   } catch (error) {
-    console.error("Supplier bid action: unexpected error", error);
-    return { success: false, error: BID_ERROR_MESSAGE, status: null };
+    const serialized = serializeSupabaseError(error);
+    logBidSubmitFailure({
+      quoteId,
+      supplierId,
+      reason: "unexpected-error",
+      phase: "action-crash",
+      supabaseError: serialized ?? error,
+    });
+    return {
+      ok: false,
+      error: BID_SUBMIT_ERROR,
+    };
   }
 }
 
-async function loadQuoteAccessRow(quoteId: string): Promise<QuoteAccessRow | null> {
-  const { data, error } = await supabaseServer
+const QUOTE_ACCESS_SELECT = SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(",");
+
+async function loadQuoteAccessRow(quoteId: string) {
+  return supabaseServer
     .from("quotes_with_uploads")
-    .select(
-      "id,email,assigned_supplier_email,assigned_supplier_name,upload_id,status",
-    )
+    .select(QUOTE_ACCESS_SELECT)
     .eq("id", quoteId)
     .maybeSingle<QuoteAccessRow>();
-
-  if (error) {
-    console.error("Supplier bid action: quote lookup failed", error);
-    return null;
-  }
-
-  return data ?? null;
 }
 
 async function loadUploadProcessHint(
@@ -386,4 +641,67 @@ async function loadUploadProcessHint(
   }
 
   return data?.manufacturing_process ?? null;
+}
+
+function parseSupplierBidAmount(
+  value: FormDataEntryValue | null,
+): number | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().replace(/[,\s]/g, "");
+  if (normalized.length === 0) {
+    return null;
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function logBidSubmitFailure(args: {
+  quoteId: string | null;
+  supplierId: string | null;
+  reason: string;
+  phase?: string;
+  supabaseError?: unknown;
+  details?: unknown;
+}) {
+  const { quoteId, supplierId, reason, phase, supabaseError, details } = args;
+  console.error("[bids] submit failed", {
+    quoteId,
+    supplierId,
+    reason,
+    phase,
+    supabaseError,
+    details,
+  });
+}
+
+function parseLeadTimeDays(
+  value: FormDataEntryValue | null,
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (typeof value !== "string") {
+    return { ok: true, value: null };
+  }
+
+  const normalized = value.trim().replace(/[,]/g, "");
+  if (normalized.length === 0) {
+    return { ok: true, value: null };
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { ok: false, error: "Lead time must be zero or more days." };
+  }
+
+  return { ok: true, value: parsed };
+}
+
+function isBidsEnvErrorMessage(message?: string | null): boolean {
+  if (!message) {
+    return false;
+  }
+  return message.includes(SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE);
 }

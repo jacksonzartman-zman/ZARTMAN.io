@@ -1,12 +1,10 @@
+import clsx from "clsx";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
-import {
-  QuoteWorkspaceTabs,
-  type QuoteWorkspaceTab,
-} from "@/app/admin/quotes/[id]/QuoteWorkspaceTabs";
-import { QuoteMessagesThread } from "@/components/quotes/QuoteMessagesThread";
-import { SupplierQuoteMessageComposer } from "./SupplierQuoteMessageComposer";
+import PortalCard from "@/app/(portals)/PortalCard";
+import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import {
   formatQuoteId,
   normalizeEmailInput,
@@ -23,17 +21,28 @@ import {
   supplierHasAccess,
   type SupplierAssignment,
 } from "./supplierAccess";
+import { loadSupplierProfile } from "@/server/suppliers";
 import {
-  getSupplierBidForQuote,
-  loadSupplierProfile,
-  type SupplierBidRow,
-} from "@/server/suppliers";
-import { SupplierBidForm } from "./SupplierBidForm";
+  loadBidForSupplierAndQuote,
+  loadBidsForQuote,
+  type BidRow,
+} from "@/server/bids";
+import { SupplierBidPanel } from "./SupplierBidPanel";
 import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
-import { getCurrentSession } from "@/server/auth";
+import { getServerAuthUser } from "@/server/auth";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { canUserBid } from "@/lib/permissions";
+import { approvalsEnabled } from "@/server/suppliers/flags";
+import {
+  buildSupplierQuoteTimeline,
+  type QuoteTimelineEvent,
+} from "@/lib/quote/tracking";
+import { SupplierQuoteTrackingCard } from "./SupplierQuoteTrackingCard";
+import { loadQuoteProject, type QuoteProjectRow } from "@/server/quotes/projects";
+import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
+import { loadQuoteMessages, type QuoteMessageRow } from "@/server/quotes/messages";
+import { SupplierQuoteMessagesCard } from "./SupplierQuoteMessagesCard";
 
 export const dynamic = "force-dynamic";
 
@@ -46,8 +55,8 @@ export default async function SupplierQuoteDetailPage({
 }: SupplierQuotePageProps) {
   const { id: quoteId } = await params;
 
-  const { session } = await getCurrentSession();
-  if (!session) {
+  const { user } = await getServerAuthUser();
+  if (!user) {
     return (
       <PortalLoginPanel
         role="supplier"
@@ -55,7 +64,7 @@ export default async function SupplierQuoteDetailPage({
       />
     );
   }
-  const supplierEmail = normalizeEmailInput(session.user.email ?? null);
+  const supplierEmail = normalizeEmailInput(user.email ?? null);
 
   if (!supplierEmail) {
     return (
@@ -76,8 +85,12 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-  const workspaceData = await loadQuoteWorkspaceData(quoteId);
-  if (!workspaceData) {
+  const workspaceResult = await loadQuoteWorkspaceData(quoteId);
+  if (!workspaceResult.ok || !workspaceResult.data) {
+    console.error("[supplier quote] load failed", {
+      quoteId,
+      error: workspaceResult.error ?? "Quote not found",
+    });
     return (
       <PortalNoticeCard
         title="Quote not found"
@@ -85,6 +98,16 @@ export default async function SupplierQuoteDetailPage({
       />
     );
   }
+  const workspaceData = workspaceResult.data;
+
+  const projectResult = await loadQuoteProject(quoteId);
+  const project = projectResult.data;
+  const projectUnavailable = projectResult.unavailable;
+  console.info("[supplier quote] project loaded", {
+    quoteId,
+    hasProject: Boolean(project),
+    unavailable: projectUnavailable,
+  });
 
   const assignments = await loadSupplierAssignments(quoteId);
   const capabilities = profile.capabilities ?? [];
@@ -115,10 +138,48 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-  const existingBid = await getSupplierBidForQuote(
+  const bidsResult = await loadBidsForQuote(quoteId);
+  const bidsArray = bidsResult.ok && Array.isArray(bidsResult.data)
+    ? (bidsResult.data ?? [])
+    : [];
+  const supplierTimelineEvents: QuoteTimelineEvent[] =
+    buildSupplierQuoteTimeline({
+      quote: workspaceData.quote,
+      bids: bidsArray,
+      supplierId: profile.supplier.id,
+      project,
+    });
+  console.log("[supplier quote] tracking events built", {
     quoteId,
+    supplierId: profile.supplier.id,
+    eventCount: supplierTimelineEvents.length,
+  });
+
+  const approvalsOn = approvalsEnabled();
+  const approved = approvalsOn ? profile.approved : true;
+  const bidResult = await loadBidForSupplierAndQuote(
     profile.supplier.id,
+    quoteId,
   );
+  const initialBid = bidResult.ok ? bidResult.data : null;
+  const bidsUnavailableMessage = bidResult.ok ? null : bidResult.error ?? null;
+  const existingBid = initialBid;
+
+  const messagesResult = await loadQuoteMessages(quoteId);
+  const messagesUnavailable = !messagesResult.ok;
+  const messages: QuoteMessageRow[] =
+    messagesResult.ok && Array.isArray(messagesResult.data)
+      ? messagesResult.data ?? []
+      : [];
+
+  const bidStatus = (existingBid?.status ?? "").toLowerCase();
+  const bidSelectedAsWinner =
+    bidStatus === "accepted" || bidStatus === "won" || bidStatus === "winner";
+  const messagingUnlocked = bidSelectedAsWinner;
+
+  const messagingDisabledReason = messagingUnlocked
+    ? null
+    : "Chat unlocks after your bid is accepted or selected as the winner for this RFQ.";
 
   return (
     <SupplierQuoteWorkspace
@@ -126,13 +187,23 @@ export default async function SupplierQuoteDetailPage({
       supplierEmail={
         profile.supplier.primary_email ??
         supplierEmail ??
-        session.user.email ??
+        user.email ??
         "supplier"
       }
       assignments={assignments}
       supplierNameOverride={profile.supplier.company_name}
       existingBid={existingBid}
-      messagingUnlocked={existingBid?.status === "accepted"}
+      initialBid={initialBid}
+      bidsUnavailableMessage={bidsUnavailableMessage}
+      approvalsOn={approvalsOn}
+      approved={approved}
+      messagingUnlocked={messagingUnlocked}
+      messages={messages}
+      messagesUnavailable={messagesUnavailable}
+      messagingDisabledReason={messagingDisabledReason}
+      timelineEvents={supplierTimelineEvents}
+      project={project}
+      projectUnavailable={projectUnavailable}
     />
   );
 }
@@ -143,27 +214,52 @@ function SupplierQuoteWorkspace({
   assignments,
   supplierNameOverride,
   existingBid,
+  initialBid,
+  bidsUnavailableMessage,
+  approvalsOn,
+  approved,
   messagingUnlocked,
+  messages,
+  messagesUnavailable,
+  messagingDisabledReason,
+  timelineEvents,
+  project,
+  projectUnavailable,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
   assignments: SupplierAssignment[];
   supplierNameOverride?: string | null;
-  existingBid: SupplierBidRow | null;
+  existingBid: BidRow | null;
+  initialBid: BidRow | null;
+  bidsUnavailableMessage: string | null;
+  approvalsOn: boolean;
+  approved: boolean;
   messagingUnlocked: boolean;
+  messages: QuoteMessageRow[];
+  messagesUnavailable: boolean;
+  messagingDisabledReason?: string | null;
+  timelineEvents: QuoteTimelineEvent[];
+  project: QuoteProjectRow | null;
+  projectUnavailable: boolean;
 }) {
-  const { quote, uploadMeta, filePreviews, messages, messagesError } = data;
+  const { quote, uploadMeta, filePreviews } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
   const nextWorkflowState = getNextWorkflowState(derived.status);
+  const bidSelectedAsWinner =
+    typeof existingBid?.status === "string" &&
+    ["accepted", "won", "winner"].includes(
+      existingBid.status.trim().toLowerCase(),
+    );
   const canSubmitBid = canUserBid("supplier", {
     status: quote.status,
     existingBidStatus: existingBid?.status ?? null,
     accessGranted: true,
   });
   const bidLocked = !canSubmitBid;
-  const acceptedLock = existingBid?.status === "accepted";
-  const closedWindowLock = bidLocked && !acceptedLock;
-    const supplierDisplayName =
+  const winnerLock = bidSelectedAsWinner;
+  const closedWindowLock = bidLocked && !winnerLock;
+  const supplierDisplayName =
       supplierNameOverride ??
       getSupplierDisplayName(supplierEmail, quote, assignments);
   const cardClasses =
@@ -177,245 +273,291 @@ function SupplierQuoteWorkspace({
   const assignmentNames = assignments
     .map((assignment) => assignment.supplier_name ?? assignment.supplier_email)
     .filter((value): value is string => Boolean(value && value.trim()));
-
-  const summaryContent = (
+  const primaryFileName =
+    filePreviews[0]?.label ??
+    filePreviews[0]?.fileName ??
+    quote.file_name ??
+    formatQuoteId(quote.id);
+  const isWinningSupplier = bidSelectedAsWinner;
+  const showSupplierProjectCard = isWinningSupplier;
+  const normalizedQuoteStatus = (quote.status ?? "").trim().toLowerCase();
+  const quoteReadyForKickoff = ["approved", "won", "winner_selected", "winner-selected", "winner"].includes(
+    normalizedQuoteStatus,
+  );
+  const hasProject = Boolean(project);
+  const showKickoffChecklist = bidSelectedAsWinner && (quoteReadyForKickoff || hasProject);
+  const headerTitle = `${formatQuoteId(quote.id)} · ${derived.customerName}`;
+  const headerActions = (
+    <Link
+      href="/supplier"
+      className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+    >
+      Back to inbox
+    </Link>
+  );
+  const headerContent = (
     <div className="space-y-4">
-      <section className={cardClasses}>
-        <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            RFQ snapshot
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+            RFQ file
           </p>
-          <h2 className="text-lg font-semibold text-white">
-            Key details for your shop
-          </h2>
-        </header>
-        <dl className="mt-4 grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
-          <DetailItem label="Customer" value={derived.customerName} />
-          <DetailItem
-            label="Company"
-            value={derived.companyName ?? "Not provided"}
-          />
-          <DetailItem
-            label="Target ship date"
-            value={
-              derived.targetDateValue
-                ? formatDateTime(derived.targetDateValue)
-                : "Not scheduled"
-            }
-          />
-          <DetailItem label="Files" value={fileCountText} />
-          <DetailItem
-            label="Assigned suppliers"
-            value={
-              assignmentNames.length > 0
-                ? assignmentNames.join(", ")
-                : "Pending assignment"
-            }
-          />
-          <DetailItem
-            label="Submitted"
-            value={formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
-          />
-        </dl>
-        <WorkflowStatusCallout
-          currentLabel={derived.statusLabel}
-          nextState={nextWorkflowState}
-          variant="blue"
-          className="mt-4"
-        />
-      </section>
-
-      <section className={cardClasses}>
-        <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Notes & guidance
-          </p>
-          <h2 className="text-lg font-semibold text-white">
-            DFM & intake summary
-          </h2>
-        </header>
-        <div className="mt-3 grid gap-4 lg:grid-cols-2">
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              DFM notes
-            </p>
-            <p className="whitespace-pre-line text-sm text-slate-200">
-              {derived.dfmNotes ??
-                "No DFM notes have been shared yet. Expect engineering guidance to appear here."}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Intake notes
-            </p>
-            <p className="whitespace-pre-line text-sm text-slate-200">
-              {derived.intakeNotes ?? "No extra intake notes captured."}
-            </p>
-          </div>
+          <p className="text-sm text-slate-300">{primaryFileName}</p>
         </div>
-      </section>
+        <span className="rounded-full border border-blue-400/40 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-100">
+          {derived.statusLabel}
+        </span>
+      </div>
+      <dl className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Customer
+          </dt>
+          <dd className="text-slate-100">{derived.customerName ?? "Customer"}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Company
+          </dt>
+          <dd className="text-slate-100">{derived.companyName ?? "Not provided"}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Target ship date
+          </dt>
+          <dd className="text-slate-100">
+            {derived.targetDateValue
+              ? formatDateTime(derived.targetDateValue)
+              : "Not scheduled"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Submitted
+          </dt>
+          <dd className="text-slate-100">
+            {formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
+          </dd>
+        </div>
+      </dl>
+      <div className="flex flex-wrap gap-3 text-xs text-slate-400">
+        <span>
+          Working as{" "}
+          <span className="font-semibold text-white">
+            {supplierDisplayName}
+          </span>{" "}
+          (<span className="font-mono text-slate-200">{supplierEmail}</span>)
+        </span>
+        {assignmentNames.length > 0 ? (
+          <span>
+            Assigned with:{" "}
+            <span className="text-slate-200">{assignmentNames.join(", ")}</span>
+          </span>
+        ) : null}
+        {bidSelectedAsWinner ? (
+          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+            Selected by customer
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 
-  const messagesContent = (
-    <section className={cardClasses}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Messages
-      </p>
-      <QuoteMessagesThread
-        heading="Shared chat"
-        description="Direct line to the Zartman admin team for build updates and questions."
-        messages={messages}
-        messageCount={messages.length}
-        error={
-          messagesError
-            ? "Some messages may be missing. Refresh the page to try again."
-            : null
-        }
-        emptyState={
-          <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
-            No messages yet. Once chat is active, share build status updates or questions here.
-          </p>
-        }
-        containerClassName="mt-3"
-      />
-
-      <div className="mt-4 border-t border-slate-900/60 pt-4">
-        <p className="text-sm font-semibold text-slate-100">Post a message</p>
-        <p className="mt-1 text-xs text-slate-500">
-          Your message notifies the Zartman admin team instantly.
-        </p>
-        {!messagingUnlocked ? (
-          <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
-            Chat unlocks after your bid is accepted for this RFQ.
-          </p>
-        ) : null}
-        <div className="mt-3">
-          <SupplierQuoteMessageComposer
-            quoteId={quote.id}
-            supplierEmail={supplierEmail}
-            disabled={!messagingUnlocked}
-          />
-        </div>
-      </div>
-    </section>
-  );
-
-  const filesContent = (
-    <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
-  );
-
-  const trackingContent = (
-    <section className={cardClasses}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Tracking
-      </p>
-      <h2 className="mt-1 text-lg font-semibold text-white">
-        Production milestones
-      </h2>
-      <p className="mt-2 text-sm text-slate-300">
-        We&apos;ll surface PO status, inspections, and logistics checkpoints
-        here as soon as live supplier tracking is wired up.
+  const winnerCallout = bidSelectedAsWinner ? (
+    <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-50">
+      <p className="font-semibold text-emerald-100">Your bid won this RFQ.</p>
+      <p className="mt-1 text-emerald-100/80">
+        We’ll keep kickoff tasks here. Message the customer if timelines change.
       </p>
     </section>
-  );
+  ) : null;
 
-  const bidContent = (
-    <section className={cardClasses}>
+  const summaryCard = (
+    <section className={clsx(cardClasses, "space-y-5")}>
       <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Bid
+        <p className="text-xsenaamde font-semibold uppercase tracking-wide text-slate-500">
+          RFQ snapshot
         </p>
         <h2 className="text-lg font-semibold text-white">
-          Submit pricing and lead time
+          Key details for your shop
         </h2>
       </header>
-      <p className="mt-1 text-sm text-slate-300">
-        Only the Zartman team and the requesting customer can see these details.
-      </p>
-      <p className="mt-1 text-xs text-slate-500">
-        Share a unit price, realistic lead time, and highlight any certifications or notes that help
-        the buyer approve your shop.
-      </p>
-      {acceptedLock ? (
-        <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-          This bid is locked because the customer already accepted it.
-        </p>
-      ) : null}
-      {closedWindowLock ? (
-        <p className="mt-3 rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
-          Bidding is disabled because this RFQ is no longer accepting new proposals.
-        </p>
-      ) : null}
-      <div className="mt-4">
-        <SupplierBidForm
+      <dl className="grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
+        <DetailItem label="Customer" value={derived.customerName} />
+        <DetailItem
+          label="Company"
+          value={derived.companyName ?? "Not provided"}
+        />
+        <DetailItem
+          label="Files"
+          value={fileCountText}
+        />
+        <DetailItem
+          label="Process hint"
+          value={
+            uploadMeta?.manufacturing_process
+              ? formatProcessLabel(uploadMeta.manufacturing_process)
+              : "Not provided"
+          }
+        />
+        <DetailItem
+          label="Assigned suppliers"
+          value={
+            assignmentNames.length > 0
+              ? assignmentNames.join(", ")
+              : "Pending assignment"
+          }
+        />
+        <DetailItem
+          label="Submitted"
+          value={formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
+        />
+      </dl>
+      <WorkflowStatusCallout
+        currentLabel={derived.statusLabel}
+        nextState={nextWorkflowState}
+        variant="blue"
+      />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            DFM notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {derived.dfmNotes ??
+              "No DFM notes have been shared yet. Expect engineering guidance to appear here."}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Intake notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {derived.intakeNotes ?? "No extra intake notes captured."}
+          </p>
+        </div>
+      </div>
+      <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Bid
+          </p>
+          <h3 className="text-lg font-semibold text-white">Submit pricing and lead time</h3>
+          <p className="mt-1 text-sm text-slate-300">
+            Only the Zartman team and the requesting customer can see these details.
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Share a unit price, realistic lead time, and highlight any certifications or notes that help
+            the buyer approve your shop.
+          </p>
+        </div>
+        {winnerLock ? (
+          <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            This bid is locked because the customer already selected it as the winner.
+          </p>
+        ) : null}
+        {closedWindowLock ? (
+          <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
+            Bidding is disabled because this RFQ is no longer accepting new proposals.
+          </p>
+        ) : null}
+        <SupplierBidPanel
           quoteId={quote.id}
-          supplierEmail={supplierEmail}
-          existingBid={existingBid}
-          isLocked={bidLocked}
+          initialBid={initialBid}
+          approvalsOn={approvalsOn}
+          approved={approved}
+          bidsUnavailableMessage={bidsUnavailableMessage}
         />
       </div>
     </section>
   );
 
-  const tabs: {
-      id: QuoteWorkspaceTab;
-      label: string;
-      count?: number;
-      content: ReactNode;
-    }[] = [
-      { id: "summary", label: "Summary", content: summaryContent },
-      {
-        id: "messages",
-        label: "Messages",
-        count: messages.length,
-        content: messagesContent,
-      },
-      { id: "bid", label: "Bid", content: bidContent },
-      { id: "viewer", label: "Files", content: filesContent },
-      { id: "tracking", label: "Tracking", content: trackingContent },
-    ];
+  const projectSection = showSupplierProjectCard ? (
+    <SupplierQuoteProjectCard
+      className={cardClasses}
+      project={project}
+      unavailable={projectUnavailable}
+    />
+  ) : (
+    <PortalCard
+      title="Project kickoff"
+      description="Read-only PO details unlock once your bid is selected as the winner."
+    >
+      <p className="text-sm text-slate-300">
+        We’ll surface the customer’s PO number, target ship date, and kickoff notes as soon as they select
+        your bid.
+      </p>
+    </PortalCard>
+  );
 
-    return (
-      <div className="space-y-6">
-        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
-            Supplier workspace
+  return (
+    <PortalShell
+      workspace="supplier"
+      title={headerTitle}
+      subtitle="Everything you need to respond — files, DFM guidance, bids, and chat."
+      headerContent={headerContent}
+      actions={headerActions}
+    >
+      {winnerCallout}
+      {summaryCard}
+      {projectSection}
+      {showKickoffChecklist ? <KickoffChecklist /> : null}
+      <SupplierQuoteMessagesCard
+        quoteId={quote.id}
+        messages={messages}
+        messagesUnavailable={messagesUnavailable}
+        messagingUnlocked={messagingUnlocked}
+        disableReason={messagingDisabledReason}
+      />
+      <div className="space-y-2">
+        <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
+        {filePreviews.length === 0 ? (
+          <p className="px-1 text-xs text-slate-500">
+            No files to display yet. We&apos;ll attach uploads here automatically once they&apos;re processed.
           </p>
-          <div className="mt-2 space-y-1">
-            <h1 className="text-2xl font-semibold text-white">
-              {formatQuoteId(quote.id)} · {derived.customerName}
-            </h1>
-            <p className="text-sm text-slate-400">
-              Everything you need to respond — files, DFM guidance, bids, and shared chat once it
-              unlocks.
-            </p>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
-            <span>
-              Working as{" "}
-              <span className="font-semibold text-white">
-                {supplierDisplayName}
-              </span>{" "}
-              (<span className="font-mono text-slate-200">{supplierEmail}</span>)
-            </span>
-            <span>
-              Status:{" "}
-              <span className="font-semibold text-blue-200">
-                {derived.statusLabel}
-              </span>
-            </span>
-            {existingBid?.status === "accepted" ? (
-              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                Selected by customer
-              </span>
-            ) : null}
-          </div>
-        </section>
-
-        <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
+        ) : null}
       </div>
-    );
+      <SupplierQuoteTrackingCard className={cardClasses} events={timelineEvents} />
+    </PortalShell>
+  );
+}
+
+function KickoffChecklist() {
+  const checklistItems = [
+    "Review RFQ package",
+    "Confirm material availability",
+    "Confirm start date",
+    "Acknowledge the expected delivery window",
+    "Share any DFM clarifications",
+  ];
+
+  return (
+    <section className="rounded-2xl border border-slate-900/60 bg-slate-950/60 px-6 py-5 shadow-lift-sm">
+      <h2 className="text-lg font-semibold text-white heading-tight">Kickoff checklist</h2>
+      <p className="mt-1 text-sm text-slate-300">
+        We&apos;ll keep early tasks organized here so the project starts smoothly.
+      </p>
+      <ul className="mt-4 space-y-3 text-sm text-slate-200">
+        {checklistItems.map((item) => (
+          <li key={item} className="flex items-start gap-3">
+            <span aria-hidden className="mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400/80" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function formatProcessLabel(processHint: string | null): string {
+  if (typeof processHint !== "string") {
+    return "this";
+  }
+  const trimmed = processHint.trim();
+  if (!trimmed) {
+    return "this";
+  }
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {

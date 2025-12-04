@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   UPLOAD_STATUS_LABELS,
   UPLOAD_STATUS_OPTIONS,
-  type UploadStatus,
 } from "./constants";
 import clsx from "clsx";
 
@@ -13,27 +12,30 @@ type Props = {
   currentStatus?: string;
   basePath: string; // e.g. "/admin/uploads" or "/admin/quotes"
   className?: string;
+  options?: { value: string; label: string }[];
 };
 
-const STATUS_OPTIONS: { value: UploadStatus | "all"; label: string }[] = [
-  { value: "all", label: "All" },
-  ...UPLOAD_STATUS_OPTIONS.map((status) => ({
-    value: status,
-    label: UPLOAD_STATUS_LABELS[status],
-  })),
-];
+const DEFAULT_STATUS_OPTIONS = UPLOAD_STATUS_OPTIONS.map((status) => ({
+  value: status,
+  label: UPLOAD_STATUS_LABELS[status],
+}));
 
 export default function StatusFilterChips({
   currentStatus = "",
   basePath,
   className,
+  options,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const resolvedStatus = currentStatus.trim().toLowerCase();
+  const resolvedOptions = [
+    { value: "all", label: "All" },
+    ...((options && options.length > 0 ? options : DEFAULT_STATUS_OPTIONS) ?? []),
+  ];
 
-  const handleClick = (value: UploadStatus | "all") => {
+  const handleClick = (value: string) => {
     const params = new URLSearchParams(searchParams.toString());
     const isActive =
       (value === "all" && !resolvedStatus) || resolvedStatus === value;
@@ -55,7 +57,7 @@ export default function StatusFilterChips({
 
   return (
     <div className={containerClasses}>
-      {STATUS_OPTIONS.map((opt) => {
+      {resolvedOptions.map((opt) => {
         const isActive =
           (opt.value === "all" && !resolvedStatus) ||
           (opt.value !== "all" && resolvedStatus === opt.value);

@@ -1,4 +1,8 @@
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import {
+  QUOTE_OPEN_STATUSES,
+  normalizeQuoteStatus,
+} from "@/server/quotes/status";
 
 type QuoteLike = {
   id?: string;
@@ -25,13 +29,9 @@ type QuoteLike = {
   existingBidStatus?: string | null;
 };
 
-export const OPEN_BID_STATUSES = [
-  "submitted",
-  "in_review",
-  "quoted",
-] as const;
+export const OPEN_BID_STATUSES = QUOTE_OPEN_STATUSES;
 
-const BID_OPEN_STATUS_SET: Set<string> = new Set(OPEN_BID_STATUSES);
+const BID_OPEN_STATUS_SET: Set<string> = new Set(QUOTE_OPEN_STATUSES);
 
 export function canUserViewQuote(
   userRole: "customer" | "supplier",
@@ -74,8 +74,8 @@ export function canUserBid(
     return false;
   }
 
-  const normalizedStatus = normalizeStatus(quote.status);
-  if (normalizedStatus && !BID_OPEN_STATUS_SET.has(normalizedStatus)) {
+  const normalizedStatus = normalizeQuoteStatus(quote.status);
+  if (!BID_OPEN_STATUS_SET.has(normalizedStatus)) {
     return false;
   }
 

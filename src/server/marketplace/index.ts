@@ -9,3 +9,4 @@ export * from "./moat";
 export * from "./customer-intel";
 export * from "./decision-framing";
 export * from "./trust";
+export * from "./flags";

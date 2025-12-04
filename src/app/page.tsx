@@ -1,143 +1,101 @@
 import Link from "next/link";
-import clsx from "clsx";
-import EarlyAccessForm from "@/components/EarlyAccessForm";
-import { primaryCtaClasses } from "@/lib/ctas";
+import { ghostCtaClasses, primaryCtaClasses } from "@/lib/ctas";
+import PortalCard from "@/app/(portals)/PortalCard";
+import { FAQ_ITEMS } from "@/data/faq";
 
-const HERO_PREVIEW_ROWS = [
+const TRUST_SIGNALS = [
+  "Built by manufacturing sales leaders",
+  "Files stay private and secure",
+  "No blast emails or marketplace spam",
+];
+
+const HOW_IT_WORKS_STEPS = [
   {
-    id: "QT-1082",
-    customer: "Atlas Motion",
-    file: "stanchion-plate.step",
-    status: "In review",
-    detail: "Ops • Supabase",
+    title: "1. Upload your RFQ",
+    description:
+      "Drop a CAD file or drawing, add a few details, and choose your process and quantities.",
   },
   {
-    id: "QT-1081",
-    customer: "Nomad Hydraulics",
-    file: "valve-body.stp",
-    status: "Quoted",
-    detail: "Sales • Supabase",
+    title: "2. We route to vetted suppliers",
+    description:
+      "We match your RFQ with a small bench of trusted shops—no auctions, no race-to-the-bottom blast lists.",
   },
   {
-    id: "QT-1079",
-    customer: "Bright Robotics",
-    file: "armature-v6.sldprt",
-    status: "Submitted",
-    detail: "Uploads • Supabase",
+    title: "3. You review quotes and award a winner",
+    description:
+      "Compare pricing and lead times side-by-side in your workspace, then select a winner to kick off the project.",
   },
 ];
+
+const WHO_ITS_FOR = [
+  {
+    title: "Manufacturing engineers & project owners",
+    description:
+      "Upload parts once, see quotes and lead times in one workspace instead of chasing email threads.",
+  },
+  {
+    title: "Supply chain & sourcing teams",
+    description:
+      "Route RFQs to vetted suppliers and keep a clean record of bids, decisions, and awards for every project.",
+  },
+  {
+    title: "Machine shops & manufacturers",
+    description:
+      "Receive right-fit RFQs from buyers who match your capabilities, not random jobs outside your wheelhouse.",
+  },
+];
+
+const WHY_TEAMS_POINTS = [
+  {
+    title: "Less chaos, more focus",
+    description:
+      "We keep RFQs, bids, and decisions in one place so you spend less time chasing updates.",
+  },
+  {
+    title: "Better supplier matches",
+    description:
+      "We pair your RFQs with vetted shops instead of blasting every job to everyone.",
+  },
+  {
+    title: "Humans in the loop",
+    description:
+      "You&apos;re never stuck with a black-box algorithm—we&apos;re here if quotes stall or projects get weird.",
+  },
+];
+
+const FEATURED_FAQ_ITEMS = FAQ_ITEMS.slice(0, 3);
 
 export default function HomePage() {
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
         {/* HERO */}
-        <section className="grid gap-10 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
-          <div className="space-y-6">
-            <div className="badge-soft">
-              <span className="h-1.5 w-1.5 rounded-full bg-brand" />
-              <span>Built for quoting &amp; AM teams</span>
-            </div>
-
-            <div className="space-y-4">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight text-ink">
-                Zartman.io — an admin cockpit for your quoting workflow
-              </h1>
-              <p className="max-w-copy text-sm sm:text-base text-ink-muted">
-                One dark-mode hub that shows uploads, quote status, pricing, and
-                target dates — all synced from Supabase. Keep sales, AM, and ops
-                aligned without duct-taped spreadsheets.
-              </p>
-            </div>
-
-            <ul className="grid gap-3 text-sm text-ink-muted sm:grid-cols-2">
-              <li className="surface-card p-3 shadow-lift-sm">
-                Live dashboards for uploads + quotes, with filters and status
-                pills that mirror your admin view.
-              </li>
-              <li className="surface-card p-3 shadow-lift-sm">
-                Server actions + Supabase service role keep edits in sync,
-                including price, currency, target date, and notes.
-              </li>
-            </ul>
-
-            <div id="early-access">
-              <EarlyAccessForm />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <Link href="/quote" className={primaryCtaClasses}>
-                Get a quote
-              </Link>
-              <Link
-                href="#how-it-works"
-                className="inline-flex items-center justify-center rounded-pill border border-line-subtle px-6 py-2 text-sm font-semibold text-ink transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-              >
-                See how it works
-              </Link>
-            </div>
+        <section className="mx-auto max-w-4xl space-y-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
+            RFQs without the chaos
+          </p>
+          <div className="space-y-5">
+            <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
+              Upload a part. We&apos;ll handle the shop scramble.
+            </h1>
+            <p className="text-base text-ink-muted heading-snug">
+              Zartman.io quietly routes your RFQs to vetted suppliers, collects bids, and helps you award work—without spam, blast emails, or spreadsheet gymnastics.
+            </p>
           </div>
-
-          {/* Right side: admin preview + intake */}
-          <div className="space-y-4 lg:pl-4">
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-lift-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-ink">
-                    Quotes dashboard preview
-                  </p>
-                  <p className="text-xs text-ink-muted">
-                    Supabase view · status filters live
-                  </p>
-                </div>
-                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                  /admin/quotes
-                </span>
-              </div>
-              <div className="mt-4 space-y-3">
-                {HERO_PREVIEW_ROWS.map((row) => (
-                  <div
-                    key={row.id}
-                    className="rounded-2xl border border-slate-900/70 bg-slate-900/40 p-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-ink">
-                          {row.customer}
-                        </p>
-                        <p className="text-xs text-ink-muted">{row.file}</p>
-                      </div>
-                      <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-emerald-300">
-                        {row.status}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-[11px] uppercase tracking-wide text-ink-soft">
-                      {row.detail}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-3xl border border-slate-800 bg-slate-950/40 p-5 shadow-lift-sm space-y-4">
-              <p className="text-sm font-semibold text-ink">
-                CAD intake lives on /quote
-              </p>
-              <p className="text-sm text-ink-muted">
-                STEP, IGES, STL, SolidWorks &amp; zipped assemblies. Uploads land in
-                Supabase storage and show up instantly in the admin dashboard.
-              </p>
-              <ul className="space-y-2 text-sm text-ink-soft">
-                <li>• Secure storage with automatic filename sanitizing.</li>
-                <li>• Status tracking that mirrors the admin cockpit.</li>
-                <li>• DFM notes + pricing threads kept in one place.</li>
-              </ul>
-              <Link
-                href="/quote"
-                className={clsx(primaryCtaClasses, "w-full")}
-              >
-                Upload RFQ
-              </Link>
-            </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href="/quote" className={primaryCtaClasses}>
+              Get quote
+            </Link>
+            <Link href="#how-it-works" className={ghostCtaClasses}>
+              How it works
+            </Link>
+          </div>
+          <div className="flex flex-col gap-2 text-xs text-ink-soft sm:flex-row sm:items-center sm:gap-3">
+            {TRUST_SIGNALS.map((signal) => (
+              <span key={signal} className="pill pill-muted">
+                {signal}
+              </span>
+            ))}
           </div>
         </section>
 
@@ -148,40 +106,117 @@ export default function HomePage() {
               How it works
             </h2>
             <p className="max-w-copy text-sm text-ink-muted">
-              You send one file with a bit of context. We translate that into a
-              realistic path to parts-in-hand — with options, not fluff.
+              Three fast steps that keep buyers and suppliers aligned from upload to award.
             </p>
           </header>
 
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="surface-card p-4">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                1. Upload
-              </div>
-              <p className="text-sm text-ink-soft">
-                Drop in your CAD and a short note about volumes, timelines, and
-                what &quot;good&quot; looks like for you.
-              </p>
-            </div>
-            <div className="surface-card p-4">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                2. Review
-              </div>
-              <p className="text-sm text-ink-soft">
-                We review manufacturability, flag risk areas, and line up
-                realistic options — not fantasy lead times.
-              </p>
-            </div>
-            <div className="surface-card p-4">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                3. Decide
-              </div>
-              <p className="text-sm text-ink-soft">
-                You get an honest, actionable plan: pricing signals, lead times,
-                and clear next steps so you can move.
-              </p>
-            </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {HOW_IT_WORKS_STEPS.map((step) => (
+              <PortalCard
+                key={step.title}
+                title={step.title}
+                description={step.description}
+                className="h-full border-slate-900/60 bg-slate-950/70"
+              />
+            ))}
           </div>
+        </section>
+
+        {/* WHO IT'S FOR */}
+        <section id="who-its-for" className="space-y-6 scroll-mt-24">
+          <header className="space-y-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-ink heading-tight">
+              Who it&rsquo;s for
+            </h2>
+            <p className="max-w-copy text-sm text-ink-muted">
+              Built for people who live in RFQs all day—on both sides of the table.
+            </p>
+          </header>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {WHO_ITS_FOR.map((persona) => (
+              <div
+                key={persona.title}
+                className="rounded-2xl border border-slate-900/60 bg-slate-950/70 p-6 shadow-[0_10px_30px_rgba(2,6,23,0.35)]"
+              >
+                <h3 className="text-base font-semibold text-ink heading-tight">
+                  {persona.title}
+                </h3>
+                <p className="mt-2 text-sm text-ink-muted heading-snug">
+                  {persona.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* WHY TEAMS USE */}
+        <section id="why-teams-use" className="space-y-6 scroll-mt-24">
+          <header className="space-y-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-ink heading-tight">
+              Why teams use Zartman.io
+            </h2>
+            <p className="max-w-copy text-sm text-ink-muted heading-snug">
+              Not another blast RFQ tool—just a calmer way to move work from upload to award.
+            </p>
+          </header>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {WHY_TEAMS_POINTS.map((point) => (
+              <div
+                key={point.title}
+                className="rounded-2xl border border-slate-900/60 bg-slate-950/70 p-6 shadow-[0_10px_30px_rgba(2,6,23,0.35)]"
+              >
+                <div className="flex gap-3">
+                  <span
+                    aria-hidden
+                    className="mt-1 inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400/80"
+                  />
+                  <div>
+                    <p className="text-base font-semibold text-ink heading-tight">
+                      {point.title}
+                    </p>
+                    <p className="mt-2 text-sm text-ink-muted heading-snug">
+                      {point.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* REQUEST DEMO */}
+        <section
+          id="request-demo"
+          className="mx-auto mt-16 max-w-2xl space-y-5 rounded-3xl border border-slate-900/70 bg-slate-950/60 px-6 py-6 shadow-[0_15px_45px_rgba(2,6,23,0.4)]"
+        >
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-ink-soft">
+              Request a live demo
+            </p>
+            <h2 className="text-2xl font-semibold text-ink heading-tight">
+              Prefer to talk it through?
+            </h2>
+            <p className="text-sm text-ink-muted heading-snug">
+              We&apos;ll show how routing, quoting, and award decisions work end-to-end,
+              then help you decide if you should send an RFQ or bring shops in later.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link href="/contact" className={primaryCtaClasses}>
+              Talk to the team
+            </Link>
+            <Link
+              href="/quote"
+              className={`${ghostCtaClasses} justify-center`}
+            >
+              Upload parts now
+            </Link>
+          </div>
+          <p className="text-xs text-ink-soft">
+            We typically reply within one business day with a Loom or a short call slot.
+          </p>
         </section>
 
         {/* WHY THIS EXISTS */}
@@ -201,6 +236,34 @@ export default function HomePage() {
             &quot;Here&apos;s what I&apos;m trying to do. Help me make it
             real.&quot;
           </p>
+        </section>
+
+        {/* FAQ */}
+        <section id="faq" className="space-y-6 scroll-mt-24">
+          <header className="space-y-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-ink">
+              Questions we hear a lot
+            </h2>
+            <p className="text-sm text-ink-muted">
+              Straight answers about privacy, control, and how work actually moves through Zartman.io.
+            </p>
+          </header>
+          <dl className="space-y-5">
+            {FEATURED_FAQ_ITEMS.map((item) => (
+              <div key={item.question} className="space-y-2">
+                <dt className="text-base font-semibold text-ink heading-tight">
+                  {item.question}
+                </dt>
+                <dd className="text-sm text-ink-muted">{item.answer}</dd>
+              </div>
+            ))}
+          </dl>
+          <Link
+            href="/faq"
+            className="inline-flex text-xs font-medium text-ink transition hover:underline"
+          >
+            See all FAQs
+          </Link>
         </section>
 
       </div>

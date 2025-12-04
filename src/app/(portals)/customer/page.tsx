@@ -1,42 +1,50 @@
 import Link from "next/link";
+import clsx from "clsx";
 import PortalCard from "../PortalCard";
-import { PortalLoginPanel } from "../PortalLoginPanel";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
-  normalizeUploadStatus,
-  UPLOAD_STATUS_LABELS,
-  type UploadStatus,
-} from "@/app/admin/constants";
+  getQuoteStatusLabel,
+  type QuoteStatus,
+  normalizeQuoteStatus,
+  isOpenQuoteStatus,
+} from "@/server/quotes/status";
 import { primaryCtaClasses } from "@/lib/ctas";
 import {
   getFirstParamValue,
   normalizeEmailInput,
 } from "@/app/(portals)/quotes/pageUtils";
-import { getCurrentSession } from "@/server/auth";
-import { getCustomerByUserId } from "@/server/customers";
-import { ensureCustomerWorkspaceForUser } from "@/server/customers/ensureCustomerWorkspace";
-import { resolveUserRoles } from "@/server/users/roles";
-import type { UserRoleSummary } from "@/server/users/roles";
+import { requireUser } from "@/server/auth";
+import { getCustomerById, getCustomerByUserId } from "@/server/customers";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
-import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
+import type { WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
-import { loadCustomerActivityFeed } from "@/server/activity";
-import type { ActivityItem } from "@/types/activity";
+import { PortalShell } from "../components/PortalShell";
+import { PortalStatPills } from "../components/PortalStatPills";
+import { loadRecentCustomerActivity } from "@/server/customers/activity";
+import {
+  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
+  type SafeQuoteWithUploadsField,
+  type SupplierQuoteRow,
+} from "@/server/suppliers/types";
+import type { QuoteActivityEvent } from "@/types/activity";
 import {
   getCustomerDecisions,
   type CustomerDecision,
 } from "@/server/marketplace/decisions";
+import { resolveUserRoles } from "@/server/users/roles";
+import { DataFallbackNotice } from "../DataFallbackNotice";
+import { DEBUG_PORTALS } from "../debug";
 
 export const dynamic = "force-dynamic";
 
 const QUOTE_LIMIT = 20;
 const RECENT_ACTIVITY_LIMIT = 10;
-const OPEN_STATUSES: UploadStatus[] = ["submitted", "in_review", "quoted"];
-const IN_PROGRESS_STATUSES: UploadStatus[] = ["in_review", "quoted"];
-const COMPLETED_STATUSES: UploadStatus[] = ["approved"];
+const IN_PROGRESS_STATUSES: QuoteStatus[] = ["in_review", "quoted", "approved"];
+const COMPLETED_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
+const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
 
 const TARGET_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -58,30 +66,21 @@ type CustomerPageProps = {
   searchParams?: CustomerPageSearchParams;
 };
 
-type RawQuoteRecord = {
-  id: string;
-  status: string | null;
-  created_at: string | null;
-  target_date: string | null;
-  price: number | string | null;
-  currency: string | null;
-  file_name: string | null;
-  email: string | null;
-  company: string | null;
-  customer_id: string | null;
-};
+type RawQuoteRecord = Pick<SupplierQuoteRow, SafeQuoteWithUploadsField>;
 
 type PortalQuote = {
   id: string;
-  status: UploadStatus;
+  status: QuoteStatus;
   createdAt: string | null;
+  updatedAt: string | null;
   targetDate: string | null;
   price: number | string | null;
   currency: string | null;
   fileName: string | null;
   customerEmail: string | null;
+  customerName: string | null;
   company: string | null;
-  customerId: string | null;
+  uploadId: string | null;
 };
 
 type CustomerPortalData = {
@@ -102,63 +101,20 @@ type LoadCustomerPortalDataArgs =
 async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
-  const { session, portalIntent } = await getCurrentSession();
-  let roles: UserRoleSummary | null = null;
-
-  const logPortalDecision = (
-    decision: string,
-    overrides?: { roles?: UserRoleSummary | null },
-  ) => {
-    console.log("[customer portal] decision", {
-      portalIntent: portalIntent ?? "none",
-      roles: overrides?.roles ?? roles,
-      decision,
-    });
-  };
-
-  if (!session) {
-    logPortalDecision("render_login_panel", { roles: null });
-    return (
-      <PortalLoginPanel
-        role="customer"
-        fallbackRedirect="/customer"
-      />
-    );
-  }
-
-  roles = await resolveUserRoles(session.user.id);
-
-  if (!roles.isCustomer && session?.user?.id) {
-    const created = await ensureCustomerWorkspaceForUser({
-      userId: session.user.id,
-      email: session.user.email ?? null,
-      name: session.user.user_metadata?.full_name ?? null,
-      company: session.user.user_metadata?.company ?? null,
-    });
-
-    if (created) {
-      roles = await resolveUserRoles(session.user.id);
-    }
-  }
-
-  if (!roles.isCustomer) {
-    logPortalDecision("workspace_missing");
-    return (
-      <CustomerWorkspaceMissingNotice
-        sessionEmail={session.user.email}
-      />
-    );
-  }
-  logPortalDecision("render_customer_workspace");
-
+  const user = await requireUser({ redirectTo: "/customer" });
+  const roles = await resolveUserRoles(user.id);
+  console.log("[portal] user id", user.id);
+  console.log("[portal] email", user.email);
+  console.log("[portal] isSupplier", roles?.isSupplier);
+  console.log("[portal] isCustomer", roles?.isCustomer);
   const sessionCompanyName =
-    sanitizeDisplayName(session.user.user_metadata?.company) ??
-    sanitizeDisplayName(session.user.user_metadata?.full_name) ??
-    sanitizeDisplayName(session.user.email) ??
+    sanitizeDisplayName(user.user_metadata?.company) ??
+    sanitizeDisplayName(user.user_metadata?.full_name) ??
+    sanitizeDisplayName(user.email) ??
     "your team";
   const overrideParam = getFirstParamValue(searchParams?.email);
   const overrideEmail = normalizeEmailInput(overrideParam);
-  const customer = await getCustomerByUserId(session.user.id);
+  const customer = await getCustomerByUserId(user.id);
   let decisions: CustomerDecision[] = [];
   let hasDecisions = false;
 
@@ -168,39 +124,81 @@ async function CustomerDashboardPage({
   }
 
   if (!customer) {
+    const heroContent = (
+      <WorkspaceWelcomeBanner
+        role="customer"
+        companyName={sessionCompanyName}
+      />
+    );
+
     return (
-      <div className="space-y-6">
-        <WorkspaceWelcomeBanner
-          role="customer"
-          companyName={sessionCompanyName}
-        />
+      <PortalShell
+        workspace="customer"
+        title="Dashboard"
+        subtitle="Upload RFQs, track bids, and keep supplier moves organized."
+        headerContent={heroContent}
+        actions={
+          <Link
+            href="/quote"
+            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+          >
+            Start a new RFQ
+          </Link>
+        }
+      >
         <CompleteCustomerProfileCard
-          sessionEmail={session.user.email ?? null}
+          sessionEmail={user.email ?? null}
           defaultCompanyName={
-            session.user.user_metadata?.company ??
-            session.user.user_metadata?.full_name ??
+            user.user_metadata?.company ??
+            user.user_metadata?.full_name ??
             null
           }
         />
         <CustomerPortalDemoCard />
-      </div>
+        <DataFallbackNotice className="mt-2" />
+        {DEBUG_PORTALS ? (
+          <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
+            {JSON.stringify({ user, roles }, null, 2)}
+          </pre>
+        ) : null}
+      </PortalShell>
     );
   }
 
   const customerEmail = normalizeEmailInput(customer.email);
-  const sessionEmail = normalizeEmailInput(session.user.email ?? null);
+  const sessionEmail = normalizeEmailInput(user.email ?? null);
   const usingOverride =
     Boolean(overrideEmail) && overrideEmail !== customerEmail;
   const viewerEmail = usingOverride ? overrideEmail : customerEmail ?? sessionEmail;
 
   if (usingOverride && !viewerEmail) {
     return (
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
-        <h2 className="text-xl font-semibold text-white">Invalid override</h2>
-        <p className="mt-2 text-sm text-slate-400">
-          Add ?email=you@company.com with a valid address to preview another account.
-        </p>
-      </section>
+      <PortalShell
+        workspace="customer"
+        title="Dashboard"
+        subtitle="Upload RFQs, track bids, and keep supplier moves organized."
+        headerContent={
+          <WorkspaceWelcomeBanner
+            role="customer"
+            companyName={sessionCompanyName}
+          />
+        }
+        actions={
+          <Link
+            href="/quote"
+            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+          >
+            Start a new RFQ
+          </Link>
+        }
+      >
+        <section className="rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
+          <h2 className="text-xl font-semibold text-white">Invalid override</h2>
+          <p className="mt-2 text-sm text-slate-400">
+            Add ?email=you@company.com with a valid address to preview another account.
+          </p>
+        </section>
+      </PortalShell>
     );
   }
 
@@ -212,9 +210,21 @@ async function CustomerDashboardPage({
     : await loadCustomerPortalData({
         customerId: customer.id,
       });
+  const customerWebsite =
+    typeof customer.website === "string" && customer.website.trim().length > 0
+      ? customer.website.trim()
+      : "";
+  console.log("[customer workspace] quotes loaded", {
+    userId: user.id,
+    customerId: usingOverride ? null : customer.id,
+    viewerEmail: viewerEmail ?? user.email ?? null,
+    quoteCount: portalData.quotes.length,
+    domainFallbackUsed: portalData.domainFallbackUsed,
+    error: portalData.error ?? null,
+  });
 
   const openQuotes = portalData.quotes.filter((quote) =>
-    OPEN_STATUSES.includes(quote.status),
+    isOpenQuoteStatus(quote.status),
   );
   const hasAnyQuotes = portalData.quotes.length > 0;
   const viewerDisplayEmail = viewerEmail ?? "customer";
@@ -223,19 +233,21 @@ async function CustomerDashboardPage({
       ? `?email=${encodeURIComponent(viewerEmail)}`
       : "";
   const viewerDomain = getEmailDomain(viewerDisplayEmail);
-  const activityFeed = await loadCustomerActivityFeed({
-    customerId: usingOverride ? null : customer.id,
-    email: viewerEmail ?? sessionEmail,
-    domain: viewerDomain,
-    limit: RECENT_ACTIVITY_LIMIT,
+  const rawActivity = await loadRecentCustomerActivity(customer.id, {
+    emailOverride: usingOverride ? viewerEmail ?? null : null,
   });
-  const recentActivity: ActivityItem[] = activityFeed.map((item) => ({
+  const recentActivity: QuoteActivityEvent[] = rawActivity.map((item) => ({
     ...item,
     href:
       item.href && quoteLinkQuery
         ? `${item.href}${quoteLinkQuery}`
         : item.href,
   }));
+  console.log("[customer dashboard] activity loaded", {
+    customerId: customer.id,
+    eventCount: recentActivity.length,
+    override: usingOverride,
+  });
   const customerMetrics = deriveCustomerMetrics(portalData.quotes);
   const lastUpdatedTimestamp = getLatestCustomerActivityTimestamp(portalData.quotes);
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
@@ -245,8 +257,19 @@ async function CustomerDashboardPage({
       ? "All systems operational"
       : "Standing by for your first upload";
 
-  return (
-    <div className="space-y-6">
+  console.info("[customer dashboard] loaded (post-website-fix)", {
+    userEmail: user.email ?? null,
+    customerId: customer?.id ?? null,
+    customerEmail: customer?.email ?? null,
+    companyName: customer?.company_name ?? null,
+    customerWebsite: customerWebsite || null,
+    hasProfile: Boolean(customer),
+    activityEventCount: Array.isArray(recentActivity) ? recentActivity.length : null,
+    quoteCount: Array.isArray(portalData.quotes) ? portalData.quotes.length : null,
+  });
+
+  const headerContent = (
+    <div className="space-y-4">
       <WorkspaceWelcomeBanner
         role="customer"
         companyName={
@@ -260,85 +283,36 @@ async function CustomerDashboardPage({
         statusMessage={systemStatusMessage}
         syncedLabel={lastUpdatedLabel}
       />
-      <WorkspaceMetrics
+    </div>
+  );
+
+  const headerActions = (
+    <Link
+      href="/quote"
+      className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+    >
+      Start a new RFQ
+    </Link>
+  );
+
+  return (
+    <PortalShell
+      workspace="customer"
+      title="Dashboard"
+      subtitle="Upload RFQs, track bids, and keep supplier moves organized."
+      headerContent={headerContent}
+      actions={headerActions}
+    >
+      <PortalStatPills
         role="customer"
         metrics={customerMetrics}
         lastUpdatedLabel={lastUpdatedLabel}
       />
       <PortalCard
-        title="Decisions Needed"
-        description="Quick calls that keep bids and builds moving."
-      >
-        {hasDecisions ? (
-          <ul className="space-y-3">
-            {decisions.map((decision) => (
-              <li
-                key={decision.id}
-                className="rounded-xl border border-slate-900/70 bg-slate-900/30 p-4"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="font-medium text-white">{decision.title}</p>
-                    <p className="text-xs text-slate-400">{decision.description}</p>
-                  </div>
-                  <UrgencyBadge level={decision.urgencyLevel} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">
-            Nothing needs a decision right now. We’ll surface supplier-ready moves
-            here the moment they exist.
-          </div>
-        )}
-      </PortalCard>
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-300">
-          {usingOverride ? (
-            <>
-              <p>
-                Showing read-only activity for{" "}
-                <span className="font-semibold text-white">{viewerDisplayEmail}</span>.
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Remove ?email from the URL to switch back to your own workspace.
-              </p>
-            </>
-          ) : (
-            <>
-              <p>
-                Signed in as{" "}
-                <span className="font-semibold text-white">
-                  {customer.company_name ?? viewerDisplayEmail}
-                </span>
-                .
-              </p>
-              <p className="mt-2 text-xs text-slate-500">
-                Uploads from your account automatically sync back into this dashboard.
-              </p>
-            </>
-          )}
-          {portalData.domainFallbackUsed && viewerDomain ? (
-            <p className="mt-2 text-xs text-slate-500">
-              No direct matches found, so we’re showing other contacts at @{viewerDomain}.
-            </p>
-          ) : null}
-      </section>
-
-      {portalData.error ? (
-        <PortalCard
-          title="Live RFQ data"
-          description="We ran into a temporary issue while loading Supabase data."
-        >
-          <p className="text-sm text-red-200">{portalData.error}</p>
-        </PortalCard>
-      ) : null}
-
-      <PortalCard
-        title="Open quotes"
+        title="Open RFQs"
         description={
           hasAnyQuotes
-            ? "Quotes that are actively moving forward for your team."
+            ? "Active RFQs routed through Zartman for your team."
             : "We’ll surface live RFQs here as soon as they exist."
         }
       >
@@ -347,33 +321,33 @@ async function CustomerDashboardPage({
             {openQuotes.map((quote) => (
               <li
                 key={quote.id}
-                  className="rounded-xl border border-slate-900/70 bg-slate-900/30 px-0 py-0"
+                className="rounded-xl border border-slate-900/70 bg-slate-900/30 px-0 py-0"
               >
-                    <Link
-                      href={
-                        quoteLinkQuery
-                          ? `/customer/quotes/${quote.id}${quoteLinkQuery}`
-                          : `/customer/quotes/${quote.id}`
-                      }
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 transition hover:bg-slate-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
-                  >
-                    <div>
-                      <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
-                      <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2 text-right">
-                      <StatusBadge status={quote.status} />
-                      <p className="text-xs text-slate-400">
-                        {formatTargetDate(quote.targetDate) ?? "Target TBD"}
-                      </p>
-                    </div>
-                  </Link>
+                <Link
+                  href={
+                    quoteLinkQuery
+                      ? `/customer/quotes/${quote.id}${quoteLinkQuery}`
+                      : `/customer/quotes/${quote.id}`
+                  }
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-6 py-4 transition hover:bg-slate-900/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+                >
+                  <div>
+                    <p className="font-medium text-white">{getQuoteTitle(quote)}</p>
+                    <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2 text-right">
+                    <StatusBadge status={quote.status} />
+                    <p className="text-xs text-slate-400">
+                      {formatTargetDate(quote.targetDate) ?? "Target TBD"}
+                    </p>
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>
         ) : (
           <EmptyStateNotice
-            title="No open quotes yet"
+            title="No open RFQs yet"
             description={`Waiting for the first upload from ${viewerDisplayEmail}. Fresh RFQs drop here as soon as they sync.`}
             action={
               <Link
@@ -385,9 +359,13 @@ async function CustomerDashboardPage({
             }
           />
         )}
+        {portalData.error ? <DataFallbackNotice className="mt-4" /> : null}
       </PortalCard>
 
-      <PortalCard title="Recent activity" description="Latest RFQ, bid, and status updates.">
+      <PortalCard
+        title="Recent activity"
+        description="Latest RFQ, bid, and status updates routed through this workspace."
+      >
         {recentActivity.length > 0 ? (
           <ul className="space-y-3">
             {recentActivity.map((item) => {
@@ -430,6 +408,34 @@ async function CustomerDashboardPage({
       </PortalCard>
 
       <PortalCard
+        title="Decisions needed"
+        description="Quick calls that keep bids and builds moving."
+      >
+        {hasDecisions ? (
+          <ul className="space-y-3">
+            {decisions.map((decision) => (
+              <li
+                key={decision.id}
+                className="rounded-xl border border-slate-900/70 bg-slate-900/30 p-4"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-medium text-white">{decision.title}</p>
+                    <p className="text-xs text-slate-400">{decision.description}</p>
+                  </div>
+                  <UrgencyBadge level={decision.urgencyLevel} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">
+            Nothing needs a decision right now. We’ll surface supplier-ready moves here the moment they exist.
+          </div>
+        )}
+      </PortalCard>
+
+      <PortalCard
         title="Next steps"
         description="Keep momentum with a lightweight checklist."
         action={
@@ -448,7 +454,66 @@ async function CustomerDashboardPage({
           <li>Uploads from /quote will sync back into this workspace automatically.</li>
         </ul>
       </PortalCard>
-    </div>
+
+      <PortalCard
+        title="Workspace scope"
+        description={
+          usingOverride
+            ? "You’re previewing another teammate’s workspace in read-only mode."
+            : "Identity and sync details for this account."
+        }
+      >
+        {usingOverride ? (
+          <>
+            <p>
+              Showing read-only activity for{" "}
+              <span className="font-semibold text-white">{viewerDisplayEmail}</span>.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Remove ?email from the URL to switch back to your own workspace.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>
+              Signed in as{" "}
+              <span className="font-semibold text-white">
+                {customer.company_name ?? viewerDisplayEmail}
+              </span>
+              .
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              Uploads from your account automatically sync back into this dashboard.
+            </p>
+            {customerWebsite ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Website: <span className="font-mono text-slate-300">{customerWebsite}</span>
+              </p>
+            ) : null}
+          </>
+        )}
+        {portalData.domainFallbackUsed && viewerDomain ? (
+          <p className="mt-2 text-xs text-slate-500">
+            No direct matches found, so we’re showing other contacts at @{viewerDomain}.
+          </p>
+        ) : null}
+      </PortalCard>
+
+      {portalData.error ? (
+        <PortalCard
+          title="Live RFQ data"
+          description="We ran into a temporary issue while loading Supabase data."
+        >
+          <p className="text-sm text-red-200">{portalData.error}</p>
+        </PortalCard>
+      ) : null}
+
+      {DEBUG_PORTALS ? (
+        <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
+          {JSON.stringify({ user, roles }, null, 2)}
+        </pre>
+      ) : null}
+    </PortalShell>
   );
 }
 
@@ -486,24 +551,31 @@ async function loadCustomerPortalDataByEmail(
 
   const emailResponse = await selectQuotesByPattern(email);
   if (emailResponse.error) {
-    console.error("Failed to load customer quotes by email", emailResponse.error);
+    logCustomerPortalQueryFailure("quotes-by-email", emailResponse.error, {
+      pattern: email,
+    });
     errors.push("email");
   }
 
-  let quotes = mapQuoteRecords(emailResponse.data ?? []);
+  const emailRecords = isRawQuoteRecordArray(emailResponse.data)
+    ? emailResponse.data
+    : [];
+  let quotes = mapQuoteRecords(emailRecords);
   let domainFallbackUsed = false;
 
   if (quotes.length === 0 && domain) {
     const domainResponse = await selectQuotesByPattern(`%@${domain}`);
     if (domainResponse.error) {
-      console.error(
-        "Failed to load customer quotes by domain",
-        domainResponse.error,
-      );
+      logCustomerPortalQueryFailure("quotes-by-domain", domainResponse.error, {
+        pattern: `%@${domain}`,
+      });
       errors.push("domain");
     }
 
-    const domainQuotes = mapQuoteRecords(domainResponse.data ?? []);
+    const domainRecords = isRawQuoteRecordArray(domainResponse.data)
+      ? domainResponse.data
+      : [];
+    const domainQuotes = mapQuoteRecords(domainRecords);
     if (domainQuotes.length > 0) {
       quotes = domainQuotes;
       domainFallbackUsed = true;
@@ -520,77 +592,97 @@ async function loadCustomerPortalDataByEmail(
   };
 }
 
+function logCustomerPortalQueryFailure(
+  scope: string,
+  error: unknown,
+  context: Record<string, unknown>,
+) {
+  console.error("[customer portal] query failed", {
+    scope,
+    ...context,
+    error:
+      error instanceof Error
+        ? {
+            message: error.message,
+            stack: error.stack,
+          }
+        : error,
+  });
+}
+
 async function selectQuotesByCustomerId(
   customerId: string,
 ): Promise<CustomerPortalData> {
-  const { data, error } = await supabaseServer
-    .from("quotes_with_uploads")
-    .select(
-      `
-        id,
-        status,
-        created_at,
-        target_date,
-        price,
-        currency,
-        file_name,
-        email,
-        company,
-        customer_id
-      `,
-    )
-    .eq("customer_id", customerId)
-    .order("created_at", { ascending: false })
-    .limit(QUOTE_LIMIT);
+  if (!customerId) {
+    return { quotes: [], domainFallbackUsed: false };
+  }
 
-  if (error) {
-    console.error("selectQuotesByCustomerId: query failed", {
+  const customer = await getCustomerById(customerId);
+  if (!customer) {
+    console.warn("selectQuotesByCustomerId: customer not found", { customerId });
+    return { quotes: [], domainFallbackUsed: false, error: "Unable to load quotes." };
+  }
+
+  const normalizedEmail = normalizeEmailInput(customer.email);
+  if (!normalizedEmail) {
+    console.warn("selectQuotesByCustomerId: customer missing email", {
       customerId,
-      error,
     });
     return { quotes: [], domainFallbackUsed: false, error: "Unable to load quotes." };
   }
 
-  return {
-    quotes: mapQuoteRecords((data as RawQuoteRecord[]) ?? []),
-    domainFallbackUsed: false,
-  };
+  console.log("selectQuotesByCustomerId: resolving via email", {
+    customerId,
+    email: normalizedEmail,
+  });
+
+  try {
+    return await loadCustomerPortalDataByEmail(
+      normalizedEmail,
+      getEmailDomain(normalizedEmail),
+    );
+  } catch (error) {
+    console.error("selectQuotesByCustomerId: query failed", {
+      customerId,
+      email: normalizedEmail,
+      error,
+    });
+    return { quotes: [], domainFallbackUsed: false, error: "Unable to load quotes." };
+  }
 }
 
 function selectQuotesByPattern(pattern: string) {
   return supabaseServer
     .from("quotes_with_uploads")
-    .select(
-      `
-        id,
-        status,
-        created_at,
-        target_date,
-        price,
-        currency,
-        file_name,
-        email,
-        company,
-        customer_id
-      `,
-    )
+    .select(QUOTE_FIELDS.join(","))
     .ilike("email", pattern)
     .order("created_at", { ascending: false })
     .limit(QUOTE_LIMIT);
 }
 
+function isRawQuoteRecordArray(value: unknown): value is RawQuoteRecord[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    return false;
+  }
+
+  const [first] = value;
+  return typeof first === "object" && first !== null && "status" in first;
+}
+
 function mapQuoteRecords(records: RawQuoteRecord[]): PortalQuote[] {
   return records.map((record) => ({
     id: record.id,
-    status: normalizeUploadStatus(record.status),
+    status: normalizeQuoteStatus(record.status),
     createdAt: record.created_at ?? null,
+    updatedAt: record.updated_at ?? null,
     targetDate: record.target_date ?? null,
     price: record.price ?? null,
     currency: record.currency ?? null,
     fileName: record.file_name ?? null,
     customerEmail: record.email ?? null,
+    customerName: record.customer_name ?? null,
     company: record.company ?? null,
-    customerId: record.customer_id ?? null,
+    uploadId: record.upload_id ?? null,
   }));
 }
 
@@ -694,40 +786,56 @@ function getLatestCustomerActivityTimestamp(quotes: PortalQuote[]): number | nul
   }, null);
 }
 
+const STATUS_PILL_VARIANTS: Record<QuoteStatus, string> = {
+  submitted: "pill-info",
+  in_review: "pill-info",
+  quoted: "pill-info",
+  approved: "pill-success",
+  won: "pill-success",
+  lost: "pill-warning",
+  cancelled: "pill-muted",
+};
+
 function StatusBadge({
   status,
   size = "md",
 }: {
-  status: UploadStatus;
+  status: QuoteStatus;
   size?: "md" | "sm";
 }) {
-  const sizeClasses =
-    size === "sm"
-      ? "px-2 py-0.5 text-[11px]"
-      : "px-3 py-1 text-xs";
+  const label = getQuoteStatusLabel(status);
+  const variant = STATUS_PILL_VARIANTS[status] ?? "pill-muted";
 
   return (
-    <span className={`inline-flex items-center rounded-full bg-emerald-500/10 font-semibold text-emerald-200 ${sizeClasses}`}>
-      {UPLOAD_STATUS_LABELS[status]}
+    <span
+      className={clsx(
+        "pill",
+        variant,
+        size === "sm" ? "pill-table" : undefined,
+      )}
+    >
+      {label}
     </span>
   );
 }
 
-function ActivityTypeBadge({ type }: { type: ActivityItem["type"] }) {
-  const labelMap: Record<ActivityItem["type"], string> = {
-    quote: "Quote",
-    bid: "Bid",
-    status: "Status",
+function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {
+  const labelMap: Record<QuoteActivityEvent["type"], string> = {
+    rfq_submitted: "RFQ",
+    status_changed: "Status",
+    message_posted: "Message",
+    bid_received: "Bid",
+    winner_selected: "Winner",
   };
-  const colorMap: Record<ActivityItem["type"], string> = {
-    quote: "bg-emerald-500/10 text-emerald-200 border-emerald-500/30",
-    bid: "bg-sky-500/10 text-sky-200 border-sky-500/30",
-    status: "bg-slate-500/10 text-slate-200 border-slate-500/30",
+  const colorMap: Record<QuoteActivityEvent["type"], string> = {
+    rfq_submitted: "pill-success",
+    status_changed: "pill-muted",
+    message_posted: "pill-info",
+    bid_received: "pill-info",
+    winner_selected: "pill-warning",
   };
   return (
-    <span
-      className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${colorMap[type]}`}
-    >
+    <span className={clsx("pill mb-1 px-2 py-0.5 text-[10px]", colorMap[type])}>
       {labelMap[type]}
     </span>
   );
@@ -739,9 +847,9 @@ function UrgencyBadge({
   level: CustomerDecision["urgencyLevel"];
 }) {
   const palette: Record<CustomerDecision["urgencyLevel"], string> = {
-    high: "border-red-500/40 bg-red-500/10 text-red-200",
-    medium: "border-amber-500/40 bg-amber-500/10 text-amber-200",
-    low: "border-slate-500/40 bg-slate-500/10 text-slate-200",
+    high: "pill-warning",
+    medium: "pill-info",
+    low: "pill-muted",
   };
   const labelMap: Record<CustomerDecision["urgencyLevel"], string> = {
     high: "High urgency",
@@ -749,9 +857,7 @@ function UrgencyBadge({
     low: "Low pressure",
   };
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${palette[level]}`}
-    >
+    <span className={clsx("pill px-3 py-1 text-[11px]", palette[level])}>
       {labelMap[level]}
     </span>
   );
@@ -777,41 +883,6 @@ function CustomerPortalDemoCard() {
           {" — "}remove the query string to go back to your own workspace.
       </p>
     </PortalCard>
-  );
-}
-
-function CustomerWorkspaceMissingNotice({
-  sessionEmail,
-}: {
-  sessionEmail?: string | null;
-}) {
-  return (
-    <main className="mx-auto max-w-3xl space-y-6 px-4 py-12">
-      <PortalCard
-        title="Customer workspace not set up yet"
-        description="This account is authenticated but doesn’t have a customer workspace linked yet."
-        action={
-          <Link href="/supplier" className={primaryCtaClasses}>
-            Go to supplier portal
-          </Link>
-        }
-      >
-        <p className="text-sm text-slate-300">
-          Signed in as{" "}
-          <span className="font-mono text-white">
-            {sessionEmail ?? "workspace user"}
-          </span>
-          . If you were expecting customer dashboards here, email{" "}
-          <a
-            href="mailto:support@zartman.app"
-            className="text-emerald-200 underline-offset-2 hover:underline"
-          >
-            support@zartman.app
-          </a>{" "}
-          so we can connect your account.
-        </p>
-      </PortalCard>
-    </main>
   );
 }
 

@@ -2,19 +2,39 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { createCustomerQuoteMessage } from "@/server/quotes/messages";
+import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
+import { createQuoteMessage } from "@/server/quotes/messages";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
   acceptSupplierBidForQuote,
   declineSupplierBid,
 } from "@/server/suppliers";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
+import { getFormString, serializeActionError } from "@/lib/forms";
+import { upsertQuoteProject } from "@/server/quotes/projects";
+import { performAwardBidForQuote } from "@/server/quotes/award";
+import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
+import { normalizeQuoteStatus } from "@/server/quotes/status";
 
-export type PostCustomerQuoteMessageState = {
-  success: boolean;
-  error: string | null;
-  messageId?: string;
+export type CustomerMessageFormState = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+  fieldErrors?: {
+    body?: string;
+  };
+};
+
+export type CustomerProjectFormState = {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  fieldErrors?: {
+    poNumber?: string;
+    targetShipDate?: string;
+    notes?: string;
+  };
 };
 
 export type BidDecisionActionState = {
@@ -22,124 +42,356 @@ export type BidDecisionActionState = {
   error: string | null;
 };
 
-const GENERIC_ERROR =
-  "Unable to send your message right now. Please try again.";
-
-type QuoteRecipientRow = {
-  id: string;
-  email: string | null;
-  customer_name: string | null;
-  customer_id: string | null;
+export type AwardActionState = {
+  ok: boolean;
+  error?: string | null;
+  message?: string | null;
+  selectedBidId?: string | null;
 };
 
-export async function postCustomerQuoteMessageAction(
-  _prevState: PostCustomerQuoteMessageState,
+const CUSTOMER_MESSAGE_GENERIC_ERROR =
+  "Unable to send your message right now. Please try again.";
+const CUSTOMER_MESSAGE_EMPTY_ERROR = "Message can’t be empty.";
+const CUSTOMER_MESSAGE_LENGTH_ERROR = "Message is too long. Try shortening or splitting it.";
+const CUSTOMER_PROJECT_GENERIC_ERROR =
+  "We couldn’t save your project details. Please retry.";
+const CUSTOMER_PROJECT_SUCCESS_MESSAGE = "Project details saved.";
+const CUSTOMER_PROJECT_PO_LENGTH_ERROR =
+  "PO number must be 100 characters or fewer.";
+const CUSTOMER_PROJECT_DATE_ERROR =
+  "Enter a valid target ship date (YYYY-MM-DD).";
+const CUSTOMER_PROJECT_NOTES_LENGTH_ERROR =
+  "Project notes must be 2000 characters or fewer.";
+const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const CUSTOMER_AWARD_ACCESS_ERROR =
+  "We couldn’t verify your access to this RFQ. Try refreshing, or contact the team if this seems wrong.";
+const CUSTOMER_AWARD_STATUS_ERROR =
+  "We’ll unlock supplier selection after your quote is prepared. We’re still collecting bids and preparing the final pricing.";
+const CUSTOMER_AWARD_GENERIC_ERROR =
+  "Something went wrong saving your decision. Please try again or contact the team.";
+const CUSTOMER_AWARD_BID_ERROR =
+  "We couldn’t verify this bid. Refresh the page and try again.";
+const CUSTOMER_AWARD_WINNER_EXISTS_ERROR =
+  "A winning supplier has already been selected for this quote.";
+const CUSTOMER_AWARD_SUCCESS_MESSAGE =
+  "We’ve recorded your choice. Someone from the team will follow up to confirm next steps and connect you with the supplier.";
+const DECIDABLE_CUSTOMER_AWARD_STATUSES = new Set([
+  "submitted",
+  "in_review",
+  "quoted",
+  "approved",
+]);
+
+type QuoteSelectionRow = {
+  id: string;
+  email: string | null;
+  status: string | null;
+};
+
+type CustomerMessageQuoteRow = {
+  id: string;
+  email: string | null;
+  status: string | null;
+};
+
+export async function submitCustomerQuoteMessageAction(
+  quoteId: string,
+  _prevState: CustomerMessageFormState,
   formData: FormData,
-): Promise<PostCustomerQuoteMessageState> {
-  const rawQuoteId = formData.get("quote_id");
-  const rawBody = formData.get("body");
-  const rawAuthorName = formData.get("author_name");
+): Promise<CustomerMessageFormState> {
+  const normalizedQuoteId =
+    typeof quoteId === "string" ? quoteId.trim() : "";
+  const redirectPath = normalizedQuoteId
+    ? `/customer/quotes/${normalizedQuoteId}`
+    : "/customer/quotes";
 
-  if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
-    return { success: false, error: "Missing quote reference." };
+  if (!normalizedQuoteId) {
+    return { ok: false, error: "Missing quote reference." };
   }
 
-  if (typeof rawBody !== "string") {
-    return { success: false, error: "Enter a message before sending." };
-  }
-
-  const quoteId = rawQuoteId.trim();
-  const body = rawBody.trim();
-  const authorName =
-    typeof rawAuthorName === "string"
-      ? rawAuthorName.trim().slice(0, 120)
-      : null;
-
-  if (body.length === 0) {
+  const bodyValue = formData.get("body");
+  if (typeof bodyValue !== "string") {
     return {
-      success: false,
-      error: "Enter a message before sending.",
+      ok: false,
+      error: CUSTOMER_MESSAGE_EMPTY_ERROR,
+      fieldErrors: { body: CUSTOMER_MESSAGE_EMPTY_ERROR },
     };
   }
 
-  if (body.length > 2000) {
+  const trimmedBody = bodyValue.trim();
+  if (trimmedBody.length === 0) {
     return {
-      success: false,
-      error: "Message is too long. Keep it under 2,000 characters.",
+      ok: false,
+      error: CUSTOMER_MESSAGE_EMPTY_ERROR,
+      fieldErrors: { body: CUSTOMER_MESSAGE_EMPTY_ERROR },
     };
   }
 
-    try {
-    const session = await requireSession({ redirectTo: `/customer/quotes/${quoteId}` });
-    const customer = await getCustomerByUserId(session.user.id);
+  if (trimmedBody.length > 2000) {
+    return {
+      ok: false,
+      error: CUSTOMER_MESSAGE_LENGTH_ERROR,
+      fieldErrors: { body: CUSTOMER_MESSAGE_LENGTH_ERROR },
+    };
+  }
+
+  try {
+    const user = await requireUser({ redirectTo: redirectPath });
+    const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return {
-        success: false,
+        ok: false,
         error: "Complete your profile before posting messages.",
       };
     }
 
-      const { data: quote, error: quoteError } = await supabaseServer
-        .from("quotes_with_uploads")
-      .select("id,email,customer_name,customer_id")
-      .eq("id", quoteId)
-      .maybeSingle<QuoteRecipientRow>();
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes_with_uploads")
+      .select("id,email,status")
+      .eq("id", normalizedQuoteId)
+      .maybeSingle<CustomerMessageQuoteRow>();
 
     if (quoteError) {
-      console.error("Customer post action: quote lookup failed", quoteError);
-    }
-
-    if (!quote) {
-      return { success: false, error: "Quote not found." };
-    }
-
-      const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
-    const customerEmail = normalizeEmailInput(customer.email);
-    const ownsQuote =
-      (quote.customer_id && quote.customer_id === customer.id) ||
-      (!quote.customer_id &&
-        normalizedQuoteEmail &&
-        customerEmail &&
-        normalizedQuoteEmail === customerEmail);
-    if (!ownsQuote) {
-        console.error("Customer post action: access denied", {
-          quoteId,
-        customerId: customer.id,
-          quoteEmail: quote.email,
-        quoteCustomerId: quote.customer_id,
-        });
+      console.error("[customer messages] quote lookup failed", {
+        quoteId: normalizedQuoteId,
+        error: serializeActionError(quoteError),
+      });
       return {
-        success: false,
-        error: "You do not have access to post on this quote.",
+        ok: false,
+        error: "Quote not found.",
       };
     }
 
-    const authorEmail =
-      customer.email ??
-      session.user.email ??
-      normalizedQuoteEmail ??
-      "customer@zartman.io";
-
-    const { data, error } = await createCustomerQuoteMessage({
-      quoteId,
-      body,
-      authorName: authorName || quote.customer_name || customer.company_name || "Customer",
-      authorEmail,
-    });
-
-    if (error || !data) {
-      console.error("Customer post action: failed to create message", {
-        quoteId,
-        error,
+    if (!quoteRow) {
+      console.warn("[customer messages] quote missing", {
+        quoteId: normalizedQuoteId,
       });
-      return { success: false, error: GENERIC_ERROR };
+      return { ok: false, error: "Quote not found." };
     }
 
-    revalidatePath(`/customer/quotes/${quoteId}`);
-    return { success: true, error: null, messageId: data.id };
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
+    const normalizedCustomerEmail = normalizeEmailInput(customer.email);
+    const normalizedUserEmail = normalizeEmailInput(user.email);
+
+    const emailMatches =
+      normalizedQuoteEmail !== null &&
+      (normalizedCustomerEmail === normalizedQuoteEmail ||
+        normalizedUserEmail === normalizedQuoteEmail);
+
+    if (!emailMatches) {
+      console.warn("[customer messages] access denied", {
+        quoteId: normalizedQuoteId,
+        customerId: customer.id,
+        userId: user.id,
+      });
+      return {
+        ok: false,
+        error: "You don't have access to this quote.",
+      };
+    }
+
+    console.log("[customer messages] create start", {
+      quoteId: normalizedQuoteId,
+      customerId: customer.id,
+    });
+
+    const result = await createQuoteMessage({
+      quoteId: normalizedQuoteId,
+      body: trimmedBody,
+      authorType: "customer",
+      authorName: customer.company_name ?? customer.email ?? "Customer",
+      authorEmail:
+        customer.email ??
+        user.email ??
+        normalizedQuoteEmail ??
+        "customer@zartman.io",
+    });
+
+    if (!result.ok || !result.data) {
+      console.error("[customer messages] create failed", {
+        quoteId: normalizedQuoteId,
+        customerId: customer.id,
+        error: result.error,
+      });
+      return {
+        ok: false,
+        error: CUSTOMER_MESSAGE_GENERIC_ERROR,
+      };
+    }
+
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+
+    void notifyOnNewQuoteMessage(result.data);
+
+    console.log("[customer messages] create success", {
+      quoteId: normalizedQuoteId,
+      customerId: customer.id,
+      messageId: result.data.id,
+    });
+
+    return {
+      ok: true,
+      message: "Message sent.",
+    };
   } catch (error) {
-    console.error("Customer post action: unexpected error", error);
-    return { success: false, error: GENERIC_ERROR };
+    console.error("[customer messages] create crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeActionError(error),
+    });
+    return {
+      ok: false,
+      error: CUSTOMER_MESSAGE_GENERIC_ERROR,
+    };
+  }
+}
+
+export async function submitCustomerQuoteProjectAction(
+  quoteId: string,
+  _prev: CustomerProjectFormState,
+  formData: FormData,
+): Promise<CustomerProjectFormState> {
+  let normalizedQuoteId = "";
+  let customerId: string | null = null;
+
+  try {
+    normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+    const redirectPath = normalizedQuoteId
+      ? `/customer/quotes/${normalizedQuoteId}`
+      : "/customer/quotes";
+
+    if (!normalizedQuoteId) {
+      return { ok: false, error: "Missing quote reference." };
+    }
+
+    const user = await requireUser({ redirectTo: redirectPath });
+    const customer = await getCustomerByUserId(user.id);
+
+    if (!customer) {
+      console.error("[customer projects] access denied (missing profile)", {
+        quoteId: normalizedQuoteId,
+        userId: user.id,
+      });
+      return {
+        ok: false,
+        error: "Complete your profile before updating project details.",
+      };
+    }
+
+    customerId = customer.id;
+
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes_with_uploads")
+      .select("id,email")
+      .eq("id", normalizedQuoteId)
+      .maybeSingle<{ id: string; email: string | null }>();
+
+    if (quoteError) {
+      console.error("[customer projects] quote lookup failed", {
+        quoteId: normalizedQuoteId,
+        customerId,
+        error: serializeActionError(quoteError),
+      });
+      return { ok: false, error: CUSTOMER_PROJECT_GENERIC_ERROR };
+    }
+
+    if (!quoteRow) {
+      return { ok: false, error: "Quote not found." };
+    }
+
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
+    const customerEmail = normalizeEmailInput(customer.email);
+    const emailMatchesQuote =
+      normalizedQuoteEmail !== null &&
+      customerEmail !== null &&
+      normalizedQuoteEmail === customerEmail;
+
+    if (!emailMatchesQuote) {
+      console.error("[customer projects] access denied", {
+        quoteId: normalizedQuoteId,
+        customerId,
+        quoteEmail: quoteRow.email,
+        customerEmail,
+      });
+      return {
+        ok: false,
+        error: "You do not have access to update this project.",
+      };
+    }
+
+    const poNumberValue = getFormString(formData, "poNumber");
+    const poNumber =
+      typeof poNumberValue === "string" && poNumberValue.trim().length > 0
+        ? poNumberValue.trim()
+        : null;
+
+    if (poNumber && poNumber.length > 100) {
+      return {
+        ok: false,
+        error: CUSTOMER_PROJECT_PO_LENGTH_ERROR,
+        fieldErrors: { poNumber: CUSTOMER_PROJECT_PO_LENGTH_ERROR },
+      };
+    }
+
+    const targetShipDateValue = getFormString(formData, "targetShipDate");
+    const targetShipDate =
+      typeof targetShipDateValue === "string" &&
+      targetShipDateValue.trim().length > 0
+        ? targetShipDateValue.trim()
+        : null;
+
+    if (targetShipDate && !DATE_INPUT_REGEX.test(targetShipDate)) {
+      return {
+        ok: false,
+        error: CUSTOMER_PROJECT_DATE_ERROR,
+        fieldErrors: { targetShipDate: CUSTOMER_PROJECT_DATE_ERROR },
+      };
+    }
+
+    const notesValue = getFormString(formData, "notes");
+    const notes =
+      typeof notesValue === "string" && notesValue.trim().length > 0
+        ? notesValue.trim()
+        : null;
+
+    if (notes && notes.length > 2000) {
+      return {
+        ok: false,
+        error: CUSTOMER_PROJECT_NOTES_LENGTH_ERROR,
+        fieldErrors: { notes: CUSTOMER_PROJECT_NOTES_LENGTH_ERROR },
+      };
+    }
+
+    const result = await upsertQuoteProject({
+      quoteId: normalizedQuoteId,
+      poNumber,
+      targetShipDate,
+      notes,
+    });
+
+    if (!result.ok) {
+      console.error("[customer projects] upsert failed", {
+        quoteId: normalizedQuoteId,
+        customerId,
+        error: result.error,
+      });
+      return { ok: false, error: CUSTOMER_PROJECT_GENERIC_ERROR };
+    }
+
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return {
+      ok: true,
+      message: CUSTOMER_PROJECT_SUCCESS_MESSAGE,
+    };
+  } catch (error) {
+    console.error("[customer projects] upsert crashed", {
+      quoteId: normalizedQuoteId || quoteId,
+      customerId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_PROJECT_GENERIC_ERROR };
   }
 }
 
@@ -155,6 +407,259 @@ export async function declineSupplierBidAction(
   formData: FormData,
 ): Promise<BidDecisionActionState> {
   return handleBidDecision(formData, "decline");
+}
+
+export async function awardQuoteToBidAction(
+  _prev: AwardActionState,
+  formData: FormData,
+): Promise<AwardActionState> {
+  const quoteId = normalizeId(getFormString(formData, "quoteId"));
+  const bidId = normalizeId(getFormString(formData, "bidId"));
+
+  if (!quoteId || !bidId) {
+    return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
+  }
+
+  let customerId: string | null = null;
+
+  try {
+    const user = await requireUser({ redirectTo: `/customer/quotes/${quoteId}` });
+    const customer = await getCustomerByUserId(user.id);
+    customerId = customer?.id ?? null;
+
+    if (!customer) {
+      logCustomerAwardNotAllowed({
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        reason: "missing-profile",
+      });
+      return {
+        ok: false,
+        error: CUSTOMER_AWARD_ACCESS_ERROR,
+      };
+    }
+
+    console.info("[customer award] start", {
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+    });
+
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes_with_uploads")
+      .select("id,email,status")
+      .eq("id", quoteId)
+      .maybeSingle<QuoteSelectionRow>();
+
+    if (quoteError || !quoteRow) {
+      console.error("[customer award] quote lookup failed", {
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        error: serializeActionError(quoteError),
+      });
+      return {
+        ok: false,
+        error: CUSTOMER_AWARD_BID_ERROR,
+      };
+    }
+
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
+    const normalizedCustomerEmail = normalizeEmailInput(customer.email);
+    const normalizedUserEmail = normalizeEmailInput(user.email);
+    const emailMatches =
+      normalizedQuoteEmail !== null &&
+      (normalizedCustomerEmail === normalizedQuoteEmail ||
+        normalizedUserEmail === normalizedQuoteEmail);
+
+    if (!emailMatches) {
+      logCustomerAwardNotAllowed({
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        reason: "access-denied",
+      });
+      return {
+        ok: false,
+        error: CUSTOMER_AWARD_ACCESS_ERROR,
+      };
+    }
+
+    const normalizedStatus = normalizeQuoteStatus(quoteRow.status ?? undefined);
+    const statusEligible = normalizedStatus
+      ? DECIDABLE_CUSTOMER_AWARD_STATUSES.has(normalizedStatus)
+      : false;
+
+    if (!statusEligible) {
+      logCustomerAwardNotAllowed({
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        reason: "status-not-eligible",
+      });
+      return {
+        ok: false,
+        error: CUSTOMER_AWARD_STATUS_ERROR,
+      };
+    }
+
+    const { data: existingWinner, error: winnerError } = await supabaseServer
+      .from("supplier_bids")
+      .select("id")
+      .eq("quote_id", quoteId)
+      .eq("status", "won")
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    if (winnerError) {
+      console.error("[customer award] winner lookup failed", {
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        error: serializeActionError(winnerError),
+      });
+      return { ok: false, error: CUSTOMER_AWARD_GENERIC_ERROR };
+    }
+
+    if (existingWinner) {
+      logCustomerAwardNotAllowed({
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        reason: "winner-exists",
+      });
+      return { ok: false, error: CUSTOMER_AWARD_WINNER_EXISTS_ERROR };
+    }
+
+    const { data: bidRow, error: bidError } = await supabaseServer
+      .from("supplier_bids")
+      .select("id,quote_id,status")
+      .eq("id", bidId)
+      .maybeSingle<{ id: string; quote_id: string; status: string | null }>();
+
+    if (bidError) {
+      console.error("[customer award] bid lookup failed", {
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        error: serializeActionError(bidError),
+      });
+      return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
+    }
+
+    if (!bidRow || bidRow.quote_id !== quoteId) {
+      logCustomerAwardNotAllowed({
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        reason: "bid-not-found",
+      });
+      return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
+    }
+
+    const bidStatus = normalizeBidStatus(bidRow.status);
+    if (bidStatus === "won" || bidStatus === "lost") {
+      logCustomerAwardNotAllowed({
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        reason: `bid-ineligible-${bidStatus}`,
+      });
+      return {
+        ok: false,
+        error: "This bid is no longer eligible for awarding.",
+      };
+    }
+
+    const awardResult = await performAwardBidForQuote({
+      quoteId,
+      bidId,
+      caller: "customer",
+    });
+
+    if (!awardResult.ok) {
+      console.error("[customer award] failed", {
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId,
+        error: awardResult.error,
+      });
+      return {
+        ok: false,
+        error: awardResult.error ?? CUSTOMER_AWARD_GENERIC_ERROR,
+      };
+    }
+
+    await Promise.all([
+      revalidatePath("/customer"),
+      revalidatePath("/customer/quotes"),
+      revalidatePath(`/customer/quotes/${quoteId}`),
+      revalidatePath(`/supplier/quotes/${quoteId}`),
+      revalidatePath(`/admin/quotes/${quoteId}`),
+    ]);
+
+    void dispatchWinnerNotification({
+      quoteId,
+      bidId,
+      caller: "customer",
+    });
+
+    console.info("[customer award] success", {
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+    });
+
+    return {
+      ok: true,
+      message: CUSTOMER_AWARD_SUCCESS_MESSAGE,
+      selectedBidId: bidId,
+    };
+  } catch (error) {
+    console.error("[customer award] crashed", {
+      quoteId,
+      bidId,
+      customerId,
+      error: serializeActionError(error),
+    });
+    return {
+      ok: false,
+      error: CUSTOMER_AWARD_GENERIC_ERROR,
+    };
+  }
+}
+
+type CustomerAwardLogContext = {
+  quoteId: string | null;
+  bidId?: string | null;
+  userId: string;
+  customerId: string | null;
+  reason: string;
+};
+
+function logCustomerAwardNotAllowed(context: CustomerAwardLogContext) {
+  console.warn("[customer award] not allowed", context);
+}
+
+function normalizeId(value?: string | null): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeBidStatus(status?: string | null): string {
+  return typeof status === "string" ? status.trim().toLowerCase() : "";
 }
 
 async function handleBidDecision(formData: FormData, mode: "accept" | "decline") {
@@ -173,8 +678,8 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
   const quoteId = rawQuoteId.trim();
 
   try {
-    const session = await requireSession({ redirectTo: `/customer/quotes/${quoteId}` });
-    const customer = await getCustomerByUserId(session.user.id);
+    const user = await requireUser({ redirectTo: `/customer/quotes/${quoteId}` });
+    const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return {
         success: false,
@@ -184,9 +689,9 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
 
     const { data: quote, error } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email,customer_id")
+      .select("id,email")
       .eq("id", quoteId)
-      .maybeSingle<{ id: string; email: string | null; customer_id: string | null }>();
+      .maybeSingle<{ id: string; email: string | null }>();
 
     if (error) {
       console.error("Bid decision action: quote lookup failed", {
@@ -201,18 +706,15 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
 
     const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
     const customerEmail = normalizeEmailInput(customer.email);
-    const ownsQuote =
-      (quote.customer_id && quote.customer_id === customer.id) ||
-      (!quote.customer_id &&
-        normalizedQuoteEmail &&
-        customerEmail &&
-        normalizedQuoteEmail === customerEmail);
-    if (!ownsQuote) {
+    const emailMatchesQuote =
+      normalizedQuoteEmail !== null &&
+      customerEmail !== null &&
+      normalizedQuoteEmail === customerEmail;
+    if (!emailMatchesQuote) {
       console.error("Bid decision action: access denied", {
         quoteId,
         customerId: customer.id,
         quoteEmail: quote.email,
-        quoteCustomerId: quote.customer_id,
         mode,
       });
       return {

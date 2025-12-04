@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
 import type { MarketplaceRfq, RfqBidRecord } from "./types";
 import { marketplacePowerProfile, type MarketPowerProfile } from "./strategy";
 import { logMarketplaceEvent } from "./events";
@@ -278,13 +279,14 @@ function computeBidStats(bids: RfqBidRecord[]): BidStats {
 
 async function loadHistoricalWinBands(processes: string[]): Promise<HistoricalWinStats> {
   const normalized = [...new Set(processes.map((value) => value.toLowerCase()))];
-  if (normalized.length === 0) {
-    return {
-      sampleSize: 0,
-      p25: null,
-      p50: null,
-      p75: null,
-    };
+  const emptyResult: HistoricalWinStats = {
+    sampleSize: 0,
+    p25: null,
+    p50: null,
+    p75: null,
+  };
+  if (normalized.length === 0 || !isRfqsFeatureEnabled()) {
+    return emptyResult;
   }
 
   try {
@@ -296,24 +298,17 @@ async function loadHistoricalWinBands(processes: string[]): Promise<HistoricalWi
       .limit(200);
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return emptyResult;
+      }
       console.error("pricing: historical bids query failed", { error });
-      return {
-        sampleSize: 0,
-        p25: null,
-        p50: null,
-        p75: null,
-      };
+      return emptyResult;
     }
 
     const rows =
       (data as Array<{ rfq_id: string; price_total: number | string | null }>) ?? [];
     if (rows.length === 0) {
-      return {
-        sampleSize: 0,
-        p25: null,
-        p50: null,
-        p75: null,
-      };
+      return emptyResult;
     }
 
     const rfqIds = [...new Set(rows.map((row) => row.rfq_id).filter(Boolean))];
@@ -334,12 +329,7 @@ async function loadHistoricalWinBands(processes: string[]): Promise<HistoricalWi
       .filter((value): value is number => Number.isFinite(value));
 
     if (prices.length === 0) {
-      return {
-        sampleSize: 0,
-        p25: null,
-        p50: null,
-        p75: null,
-      };
+      return emptyResult;
     }
 
     const sorted = prices.sort((a, b) => a - b);
@@ -351,18 +341,16 @@ async function loadHistoricalWinBands(processes: string[]): Promise<HistoricalWi
       p75: computePercentile(sorted, 0.75),
     };
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return emptyResult;
+    }
     console.error("pricing: historical query unexpected error", { error });
-    return {
-      sampleSize: 0,
-      p25: null,
-      p50: null,
-      p75: null,
-    };
+    return emptyResult;
   }
 }
 
 async function loadProcessMap(rfqIds: string[]) {
-  if (rfqIds.length === 0) {
+  if (rfqIds.length === 0 || !isRfqsFeatureEnabled()) {
     return {};
   }
 
@@ -373,6 +361,9 @@ async function loadProcessMap(rfqIds: string[]) {
       .in("id", rfqIds);
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return {};
+      }
       console.error("pricing: process map query failed", { error });
       return {};
     }
@@ -391,6 +382,9 @@ async function loadProcessMap(rfqIds: string[]) {
       return map;
     }, {});
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return {};
+    }
     console.error("pricing: process map unexpected error", { error });
     return {};
   }
@@ -465,7 +459,7 @@ function computeConfidence(context: PricingContext, amount: number) {
 }
 
 async function loadBidsForRfq(rfqId: string): Promise<RfqBidRecord[]> {
-  if (!rfqId) {
+  if (!rfqId || !isRfqsFeatureEnabled()) {
     return [];
   }
 
@@ -479,12 +473,18 @@ async function loadBidsForRfq(rfqId: string): Promise<RfqBidRecord[]> {
       .order("created_at", { ascending: true });
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return [];
+      }
       console.error("pricing: bids query failed", { rfqId, error });
       return [];
     }
 
     return (data as RfqBidRecord[]) ?? [];
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return [];
+    }
     console.error("pricing: bids query unexpected error", { rfqId, error });
     return [];
   }

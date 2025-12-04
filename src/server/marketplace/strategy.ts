@@ -2,6 +2,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { logMarketplaceEvent } from "./events";
 import { OPEN_RFQ_STATUSES } from "./rfqs";
 import type { MarketplaceRfq, RfqBidRecord } from "./types";
+import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
 
 const DAY_MS = 86_400_000;
 const GENERAL_PROCESS = "general";
@@ -313,7 +314,7 @@ export async function customerPriorityProfile(
 }
 
 async function fetchBidsForRfq(rfqId: string): Promise<RfqBidRecord[]> {
-  if (!rfqId) {
+  if (!rfqId || !isRfqsFeatureEnabled()) {
     return [];
   }
 
@@ -327,12 +328,18 @@ async function fetchBidsForRfq(rfqId: string): Promise<RfqBidRecord[]> {
       .order("created_at", { ascending: true });
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return [];
+      }
       console.error("strategy: failed to load bids", { rfqId, error });
       return [];
     }
 
     return (data as RfqBidRecord[]) ?? [];
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return [];
+    }
     console.error("strategy: unexpected bid fetch error", { rfqId, error });
     return [];
   }
@@ -395,6 +402,10 @@ async function fetchProcessDemand(processes: string[]) {
     demand[process] = 0;
   });
 
+  if (!isRfqsFeatureEnabled()) {
+    return demand;
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from("rfqs")
@@ -404,6 +415,9 @@ async function fetchProcessDemand(processes: string[]) {
       .limit(500);
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return demand;
+      }
       console.error("strategy: demand query failed", { error });
       return demand;
     }
@@ -421,6 +435,9 @@ async function fetchProcessDemand(processes: string[]) {
 
     return demand;
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return demand;
+    }
     console.error("strategy: demand query unexpected error", { error });
     return demand;
   }
@@ -452,7 +469,7 @@ type SupplierSignals = {
 };
 
 async function loadSupplierLeverageSignals(supplierId: string): Promise<SupplierSignals> {
-  if (!supplierId) {
+  if (!supplierId || !isRfqsFeatureEnabled()) {
     return { totalBids: 0, awards: 0, winRate: 0, lastActivityAt: null };
   }
 
@@ -465,6 +482,9 @@ async function loadSupplierLeverageSignals(supplierId: string): Promise<Supplier
       .limit(200);
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return { totalBids: 0, awards: 0, winRate: 0, lastActivityAt: null };
+      }
       console.error("strategy: supplier leverage query failed", { supplierId, error });
       return { totalBids: 0, awards: 0, winRate: 0, lastActivityAt: null };
     }
@@ -500,6 +520,9 @@ async function loadSupplierLeverageSignals(supplierId: string): Promise<Supplier
       lastActivityAt,
     };
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return { totalBids: 0, awards: 0, winRate: 0, lastActivityAt: null };
+    }
     console.error("strategy: supplier leverage unexpected error", { supplierId, error });
     return { totalBids: 0, awards: 0, winRate: 0, lastActivityAt: null };
   }
@@ -512,7 +535,7 @@ type CustomerHistory = {
 };
 
 async function loadCustomerHistory(customerId: string | null): Promise<CustomerHistory> {
-  if (!customerId) {
+  if (!customerId || !isRfqsFeatureEnabled()) {
     return { totalRfqs: 0, awards: 0, totalSpend: 0 };
   }
 
@@ -525,6 +548,9 @@ async function loadCustomerHistory(customerId: string | null): Promise<CustomerH
       .limit(200);
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return { totalRfqs: 0, awards: 0, totalSpend: 0 };
+      }
       console.error("strategy: customer history query failed", { customerId, error });
       return { totalRfqs: 0, awards: 0, totalSpend: 0 };
     }
@@ -546,7 +572,9 @@ async function loadCustomerHistory(customerId: string | null): Promise<CustomerH
         .eq("status", "accepted");
 
       if (spendError) {
-        console.error("strategy: spend lookup failed", { customerId, error: spendError });
+        if (!isMissingRfqTableError(spendError)) {
+          console.error("strategy: spend lookup failed", { customerId, error: spendError });
+        }
       } else {
         (awardedBids as Array<{ price_total: number | string | null }> | null)?.forEach(
           (row) => {
@@ -564,6 +592,9 @@ async function loadCustomerHistory(customerId: string | null): Promise<CustomerH
 
     return { totalRfqs, awards, totalSpend };
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return { totalRfqs: 0, awards: 0, totalSpend: 0 };
+    }
     console.error("strategy: customer history unexpected error", { customerId, error });
     return { totalRfqs: 0, awards: 0, totalSpend: 0 };
   }

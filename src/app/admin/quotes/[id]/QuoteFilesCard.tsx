@@ -41,7 +41,7 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
       <section
         id={id}
         className={clsx(
-          "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4",
+          "rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5",
           className,
         )}
       >
@@ -61,7 +61,7 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
 
         <div className="mt-4 space-y-2">
           {files.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-900/70 bg-black/20 px-4 py-5 text-sm text-slate-500">
+            <p className="rounded-xl border border-dashed border-slate-900/70 bg-black/20 px-6 py-5 text-sm text-slate-500">
               No files listed.
             </p>
           ) : (
@@ -70,7 +70,7 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
                   key={file.id}
                   type="button"
                   onClick={() => setActiveFileId(file.id)}
-                  className="group flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/20 px-4 py-3 text-left transition hover:border-slate-800 hover:bg-slate-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70"
+                  className="group flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/20 px-6 py-4 text-left transition hover:border-slate-800 hover:bg-slate-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70"
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-100">

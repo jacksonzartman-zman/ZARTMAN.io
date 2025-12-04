@@ -28,7 +28,9 @@ type DocumentDraft = {
 };
 
 const INITIAL_STATE: SupplierOnboardingState = {
-  success: false,
+  ok: false,
+  profileSaved: false,
+  partial: false,
   error: null,
   fieldErrors: {},
 };
@@ -60,6 +62,9 @@ export function SupplierOnboardingForm({
     SupplierOnboardingState,
     FormData
   >(submitSupplierOnboardingAction, INITIAL_STATE);
+  const isInitialState = state === INITIAL_STATE;
+  const hasHardError = !isInitialState && state?.ok === false;
+  const isPartialSuccess = state?.partial === true;
 
   const capabilitiesPayload = useMemo(
     () =>
@@ -324,9 +329,14 @@ export function SupplierOnboardingForm({
         )}
       </Section>
 
-      {state.error ? (
-        <p className="text-sm text-red-300" role="alert">
-          {state.error}
+      {hasHardError && !isPartialSuccess ? (
+        <p className="mt-4 text-sm text-red-400" role="alert">
+          {state?.error ?? "We couldn’t save your profile. Please try again."}
+        </p>
+      ) : null}
+      {isPartialSuccess ? (
+        <p className="mt-4 text-sm text-amber-300" role="status">
+          Profile saved. Some advanced details couldn’t be stored yet.
         </p>
       ) : null}
 

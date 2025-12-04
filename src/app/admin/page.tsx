@@ -1,5 +1,6 @@
 // src/app/admin/page.tsx
 import type { ReadonlyURLSearchParams } from "next/navigation";
+import type { ReactNode } from "react";
 import AdminTable, { type InboxRow } from "./AdminTable";
 import StatusFilterChips from "./StatusFilterChips";
 import AdminSearchInput from "./AdminSearchInput";
@@ -8,22 +9,19 @@ import {
   isUploadStatus,
   type UploadStatus,
 } from "./constants";
-import { supabaseServer } from "@/lib/supabaseServer";
 import AdminDashboardShell from "./AdminDashboardShell";
 import AdminFiltersBar from "./AdminFiltersBar";
+import {
+  loadAdminUploadsInbox,
+  loadAdminInboxBidAggregates,
+  type AdminInboxBidAggregate,
+} from "@/server/admin/uploads";
+import {
+  loadAdminDashboardMetrics,
+  type AdminDashboardMetrics,
+} from "@/server/admin/dashboard";
 
 export const dynamic = "force-dynamic";
-
-const PAGE_SIZE = 25;
-const MAX_FILE_MATCH_IDS = 50;
-const SEARCHABLE_UPLOAD_FIELDS = [
-  "company",
-  "name",
-  "first_name",
-  "last_name",
-  "email",
-  "file_name",
-] as const satisfies readonly string[];
 
 type AdminPageProps = {
   searchParams?: Promise<ReadonlyURLSearchParams>;
@@ -88,11 +86,17 @@ const resolveSearchParams = async (
   };
 };
 
-const escapeForOrFilter = (value: string) =>
-  value.replace(/\\/g, "\\\\").replace(/,/g, "\\,").replace(/\*/g, "\\*");
+const DEFAULT_METRICS: AdminDashboardMetrics = {
+  totalOpen: 0,
+  totalWon: 0,
+  totalLost: 0,
+  openQuotedValue: 0,
+  wonQuotedValue: 0,
+  newToday: 0,
+  stale48h: 0,
+};
 
 export default async function AdminPage({ searchParams }: AdminPageProps) {
-  const supabase = supabaseServer;
   const resolvedSearchParams = await resolveSearchParams(searchParams);
 
   const rawStatus = resolvedSearchParams.status?.trim().toLowerCase();
@@ -106,83 +110,34 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       : "";
   const normalizedSearch = searchInputValue.trim().toLowerCase();
 
-  let fileQuoteIds: string[] = [];
-  if (normalizedSearch) {
-    const { data: fileMatches, error: filesError } = await supabase
-      .from("files")
-      .select("quote_id")
-      .ilike("filename", `%${normalizedSearch}%`)
-      .limit(200);
+  const [metricsResult, inboxResult] = await Promise.all([
+    loadAdminDashboardMetrics(),
+    loadAdminUploadsInbox({
+      status: statusFilter ?? null,
+      search: normalizedSearch || null,
+    }),
+  ]);
 
-    if (filesError) {
-      console.error("Failed to search files for admin inbox", filesError);
-    } else {
-      fileQuoteIds =
-        fileMatches
-          ?.map((row) => row.quote_id)
-          .filter(
-            (id): id is string => typeof id === "string" && id.trim().length > 0,
-          ) ?? [];
+  const metrics = metricsResult.data ?? DEFAULT_METRICS;
+  let bidAggregates: Record<string, AdminInboxBidAggregate> = {};
+
+  if (inboxResult.ok) {
+    const quoteIds =
+      inboxResult.data
+        ?.map((row) => row.quote_id)
+        .filter(
+          (value): value is string =>
+            typeof value === "string" && value.trim().length > 0,
+        ) ?? [];
+
+    if (quoteIds.length > 0) {
+      bidAggregates = await loadAdminInboxBidAggregates(quoteIds);
     }
-  }
-
-  let query = supabase
-    .from("uploads")
-    .select(
-      `
-      id,
-      quote_id,
-      name,
-      first_name,
-      last_name,
-      email,
-      company,
-      file_name,
-      status,
-      created_at,
-      manufacturing_process,
-      quantity
-    `,
-    )
-    .order("created_at", { ascending: false })
-    .limit(PAGE_SIZE);
-
-  if (statusFilter) {
-    query = query.eq("status", statusFilter);
-  }
-
-  if (normalizedSearch) {
-    const pattern = `*${escapeForOrFilter(normalizedSearch)}*`;
-    const orFilters = SEARCHABLE_UPLOAD_FIELDS.map(
-      (column) => `${column}.ilike.${pattern}`,
-    );
-
-    const uniqueQuoteIds = Array.from(new Set(fileQuoteIds)).slice(
-      0,
-      MAX_FILE_MATCH_IDS,
-    );
-    if (uniqueQuoteIds.length > 0) {
-      orFilters.push(`quote_id.in.(${uniqueQuoteIds.join(",")})`);
-    }
-
-    query = query.or(orFilters.join(","));
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error("Error loading uploads for admin inbox", error);
-    return (
-      <main className="mx-auto max-w-5xl px-4 py-10">
-        <p className="text-sm text-red-400">
-          Failed to load RFQ inbox: {error.message}
-        </p>
-      </main>
-    );
   }
 
   const rows: InboxRow[] =
-    data?.map((row) => {
+    inboxResult.data?.map((row) => {
+      const aggregate = row.quote_id ? bidAggregates[row.quote_id] : undefined;
       const contactPieces = [row.first_name, row.last_name]
         .map((value) => (typeof value === "string" ? value.trim() : ""))
         .filter((value) => value.length > 0);
@@ -210,32 +165,120 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
         manufacturingProcess: row.manufacturing_process ?? null,
         quantity: row.quantity ?? null,
         status: normalizeUploadStatus(row.status),
+        bidCount: aggregate?.bidCount ?? 0,
+        lastBidAt: aggregate?.lastBidAt ?? null,
+        hasWinningBid: aggregate?.hasWinningBid ?? false,
       };
     }) ?? [];
 
-    const hasActiveFilters = Boolean(statusFilter || normalizedSearch);
+  if (inboxResult.ok) {
+    const totalQuotes = rows.length;
+    const withBids = rows.filter((row) => row.bidCount > 0).length;
+    const withoutBids = totalQuotes - withBids;
+    const wonCount = rows.filter((row) => row.status === "approved").length;
+    const lostCount = rows.filter((row) => row.status === "rejected").length;
 
-    return (
-      <AdminDashboardShell
-        title="RFQ inbox"
-        description="Filter, search, and jump into the latest submissions from customers."
-      >
-        <AdminFiltersBar
-          filters={
-            <StatusFilterChips
-              currentStatus={statusFilter ?? ""}
-              basePath="/admin"
-            />
-          }
-          search={
-            <AdminSearchInput
-              initialValue={searchInputValue}
-              basePath="/admin"
-              placeholder="Search company, contact, email, or file name..."
-            />
-          }
+    console.info("[admin inbox] loaded", {
+      totalQuotes,
+      withBids,
+      withoutBids,
+      wonCount,
+      lostCount,
+    });
+  }
+
+  const hasActiveFilters = Boolean(statusFilter || normalizedSearch);
+
+  return (
+    <AdminDashboardShell
+      title="RFQ inbox"
+      description="Filter, search, and jump into the latest submissions from customers."
+    >
+      {!metricsResult.ok ? (
+        <p className="mb-2 text-sm text-slate-400">
+          Some metrics are temporarily unavailable.
+        </p>
+      ) : null}
+      <section className="mb-6 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+        <MetricCard
+          label="Open RFQs"
+          value={metrics.totalOpen}
+          hint="Submitted, in review, or quoted"
         />
-        <AdminTable rows={rows} hasActiveFilters={hasActiveFilters} />
-      </AdminDashboardShell>
-    );
+        <MetricCard label="Won quotes" value={metrics.totalWon} hint="Closed as won" />
+        <MetricCard label="Lost quotes" value={metrics.totalLost} hint="Closed as lost" />
+        <MetricCard
+          label="Open quoted value"
+          value={formatCurrency(metrics.openQuotedValue)}
+          hint="Sum of quoted open RFQs"
+        />
+        <MetricCard
+          label="Won quoted value"
+          value={formatCurrency(metrics.wonQuotedValue)}
+          hint="Sum of closed-won quotes"
+        />
+        <MetricCard
+          label="New today"
+          value={metrics.newToday}
+          hint="Created in last 24h"
+        />
+        <MetricCard
+          label="Stale RFQs"
+          value={metrics.stale48h}
+          hint="Open > 48h"
+        />
+      </section>
+      {!inboxResult.ok ? (
+        <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-6 py-4 text-sm text-red-100">
+          We had trouble loading the inbox. Check logs and try again.
+        </div>
+      ) : null}
+      <AdminFiltersBar
+        filters={
+          <StatusFilterChips
+            currentStatus={statusFilter ?? ""}
+            basePath="/admin"
+          />
+        }
+        search={
+          <AdminSearchInput
+            initialValue={searchInputValue}
+            basePath="/admin"
+            placeholder="Search company, contact, email, or file name..."
+          />
+        }
+      />
+      <AdminTable rows={rows} hasActiveFilters={hasActiveFilters} />
+    </AdminDashboardShell>
+  );
+}
+
+type MetricCardProps = {
+  label: string;
+  value: ReactNode;
+  hint?: string;
+};
+
+function MetricCard({ label, value, hint }: MetricCardProps) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+        {label}
+      </p>
+      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-slate-500">{hint}</p> : null}
+    </div>
+  );
+}
+
+function formatCurrency(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
 }

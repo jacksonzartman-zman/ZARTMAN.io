@@ -2,105 +2,81 @@
 
 import clsx from "clsx";
 import Link from "next/link";
-import type { ReadonlyURLSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { supabaseServer } from "@/lib/supabaseServer";
 import { formatDateTime } from "@/lib/formatDate";
 import { loadQuoteMessages, type QuoteMessage } from "@/server/quotes/messages";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
-import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
+import type { UploadMeta } from "@/server/quotes/types";
 import {
-  DEFAULT_UPLOAD_STATUS,
-  normalizeUploadStatus,
-  type UploadStatus,
-  UPLOAD_STATUS_LABELS,
-} from "../../constants";
+  DEFAULT_QUOTE_STATUS,
+  QUOTE_STATUS_LABELS,
+  normalizeQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
-import { SuccessBanner } from "../../uploads/[id]/SuccessBanner";
-import { QuoteMessageComposer } from "./QuoteMessageComposer";
-import { QuoteFilesCard, type QuoteFileItem } from "./QuoteFilesCard";
+import { AdminQuoteMessagesCard } from "./AdminQuoteMessagesCard";
+import { QuoteFilesCard } from "./QuoteFilesCard";
 import {
   QuoteWorkspaceTabs,
   type QuoteWorkspaceTab,
 } from "./QuoteWorkspaceTabs";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
-import { QuoteMessagesThread } from "@/components/quotes/QuoteMessagesThread";
+import {
+  deriveAdminQuoteAttentionState,
+  isWinningBidStatus,
+  loadAdminQuoteDetail,
+} from "@/server/admin/quotes";
+import { loadBidsForQuote } from "@/server/bids";
+import { loadAdminUploadDetail } from "@/server/admin/uploads";
+import { SupplierBidsCard } from "./SupplierBidsCard";
+import { loadQuoteProject } from "@/server/quotes/projects";
+import { AdminQuoteProjectCard } from "./AdminQuoteProjectCard";
+import { loadSupplierById } from "@/server/suppliers/profile";
 
 export const dynamic = "force-dynamic";
 
-type SearchParamsLike =
-  | ReadonlyURLSearchParams
-  | URLSearchParams
-  | Record<string, string | string[] | undefined>;
-
 type QuoteDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<SearchParamsLike>;
 };
 
-function hasGetMethod(
-  params: SearchParamsLike,
-): params is URLSearchParams | ReadonlyURLSearchParams {
-  return typeof (params as URLSearchParams).get === "function";
-}
-
-async function resolveMaybePromise<T>(
-  value?: Promise<T> | T,
-): Promise<T | undefined> {
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-
-  return await value;
-}
-
-function getSearchParamValue(
-  params: SearchParamsLike | undefined,
-  key: string,
-): string | undefined {
-  if (!params) {
-    return undefined;
-  }
-
-  if (hasGetMethod(params)) {
-    return params.get(key) ?? undefined;
-  }
-
-  const recordValue = (params as Record<string, string | string[] | undefined>)[
-    key
-  ];
-
-  if (Array.isArray(recordValue)) {
-    return recordValue[0];
-  }
-
-  return recordValue;
-}
-
-
-export default async function QuoteDetailPage({
-  params,
-  searchParams,
-}: QuoteDetailPageProps) {
+export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) {
   const resolvedParams = await params;
-  const resolvedSearchParams = await resolveMaybePromise(searchParams);
-  const wasUpdated =
-    getSearchParamValue(resolvedSearchParams, "updated") === "1";
 
-  const { data: quote, error } = await supabaseServer
-    .from("quotes_with_uploads")
-    .select("*")
-    .eq("id", resolvedParams.id)
-    .maybeSingle<QuoteWithUploadsRow>();
+  const quoteResult = await loadAdminQuoteDetail(resolvedParams.id);
 
-  if (error) {
-    console.error("Quote load error", error);
+  if (!quoteResult.ok) {
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-10">
+        <section className="rounded-2xl border border-red-500/30 bg-red-950/40 p-6 text-center">
+          <h1 className="text-xl font-semibold text-red-50">
+            We had trouble loading this quote.
+          </h1>
+          <p className="mt-2 text-sm text-red-100">
+            Check logs and try again. The quote data stayed untouched.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/admin/quotes"
+              className={clsx(
+                secondaryCtaClasses,
+                ctaSizeClasses.sm,
+                "inline-flex",
+              )}
+            >
+              Back to quotes
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
   }
+
+  const quote = quoteResult.data;
 
   if (!quote) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
+      <main className="mx-auto max-w-3xl px-6 py-10">
         <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-center">
           <h1 className="text-xl font-semibold text-slate-50">
             Quote not found
@@ -129,28 +105,45 @@ export default async function QuoteDetailPage({
     );
   }
 
+  const projectResult = await loadQuoteProject(quote.id);
+  const project = projectResult.data;
+  const projectUnavailable = projectResult.unavailable;
+  console.info("[admin quote] project loaded", {
+    quoteId: quote.id,
+    hasProject: Boolean(project),
+    unavailable: projectUnavailable,
+  });
+
   let uploadMeta: UploadMeta | null = null;
   if (quote.upload_id) {
-    const { data: meta, error: metaError } = await supabaseServer
-      .from("uploads")
-      .select(
-        "first_name,last_name,phone,company,manufacturing_process,quantity,shipping_postal_code,export_restriction,rfq_reason,notes,itar_acknowledged,terms_accepted",
-      )
-      .eq("id", quote.upload_id)
-      .maybeSingle<UploadMeta>();
-
-    if (metaError) {
-      console.error(
-        "Failed to load upload metadata for quote",
-        quote.upload_id,
-        metaError,
-      );
-    } else {
-      uploadMeta = meta;
+    const uploadResult = await loadAdminUploadDetail(quote.upload_id);
+    if (!uploadResult.ok) {
+      console.warn("Failed to load upload metadata for quote", {
+        uploadId: quote.upload_id,
+        error: uploadResult.error,
+      });
+    } else if (uploadResult.data) {
+      const data = uploadResult.data;
+      uploadMeta = {
+        first_name: data.first_name,
+        last_name: data.last_name,
+        phone: data.phone,
+        company: data.company,
+        manufacturing_process: data.manufacturing_process,
+        quantity: data.quantity,
+        shipping_postal_code: data.shipping_postal_code,
+        export_restriction: data.export_restriction,
+        rfq_reason: data.rfq_reason,
+        notes: data.notes,
+        itar_acknowledged: data.itar_acknowledged,
+        terms_accepted: data.terms_accepted,
+      };
     }
   }
 
-    const status = normalizeUploadStatus(quote.status, DEFAULT_UPLOAD_STATUS);
+    const status: QuoteStatus = normalizeQuoteStatus(
+      quote.status ?? DEFAULT_QUOTE_STATUS,
+    );
     const customerName =
       [uploadMeta?.first_name, uploadMeta?.last_name]
         .filter((value) => typeof value === "string" && value.trim().length > 0)
@@ -235,7 +228,7 @@ export default async function QuoteDetailPage({
       typeof quote.target_date === "string" && quote.target_date.trim().length > 0
         ? quote.target_date
         : null;
-    const statusLabel = UPLOAD_STATUS_LABELS[status] ?? "Unknown";
+    const statusLabel = QUOTE_STATUS_LABELS[status] ?? "Unknown";
     const filePreviews = await getQuoteFilePreviews(quote);
     const dfmNotes =
       typeof quote.dfm_notes === "string" && quote.dfm_notes.trim().length > 0
@@ -246,18 +239,48 @@ export default async function QuoteDetailPage({
       quote.internal_notes.trim().length > 0
         ? quote.internal_notes
         : null;
-    const {
-      messages: quoteMessages,
-      error: quoteMessagesError,
-    } = await loadQuoteMessages(quote.id);
+    const quoteMessagesResult = await loadQuoteMessages(quote.id);
 
-    if (quoteMessagesError) {
+    if (!quoteMessagesResult.ok) {
       console.error("Failed to load quote messages", {
         quoteId: quote.id,
-        error: quoteMessagesError,
+        error: quoteMessagesResult.error,
       });
     }
-    const messages: QuoteMessage[] = quoteMessages ?? [];
+    const messages: QuoteMessage[] = quoteMessagesResult.data ?? [];
+    const quoteMessagesError = quoteMessagesResult.ok
+      ? null
+      : quoteMessagesResult.error;
+    const bidsResult = await loadBidsForQuote(quote.id);
+    const bids = bidsResult.ok ? bidsResult.data : [];
+    const bidCount = bids.length;
+    const winningBid = bids.find((bid) => isWinningBidStatus(bid?.status));
+    let winningSupplierName: string | null = null;
+    if (winningBid?.supplier_id) {
+      const supplier = await loadSupplierById(winningBid.supplier_id);
+      if (supplier) {
+        const companyName =
+          typeof supplier.company_name === "string"
+            ? supplier.company_name.trim()
+            : "";
+        const primaryEmail =
+          typeof supplier.primary_email === "string"
+            ? supplier.primary_email.trim()
+            : "";
+        winningSupplierName = companyName || primaryEmail || null;
+      }
+    }
+    const hasProject = Boolean(project);
+    const attentionState = deriveAdminQuoteAttentionState({
+      quoteId: quote.id,
+      status,
+      bidCount,
+      hasWinner: Boolean(winningBid),
+      hasProject,
+      winningBidId: winningBid?.id ?? null,
+      winningSupplierId: winningBid?.supplier_id ?? null,
+      winningSupplierName,
+    });
 
     const headerTitleSource = companyName || customerName || "Unnamed customer";
     const headerTitle = `Quote for ${headerTitleSource}`;
@@ -283,6 +306,40 @@ export default async function QuoteDetailPage({
           ? "1 attached"
           : `${filePreviews.length} attached`;
     const fileCardAnchorId = "quote-files-card";
+    const winnerDisplayName = attentionState.winningSupplierName ?? "a supplier";
+    const awardStateLabel = attentionState.hasWinner
+      ? "Won / Awarded"
+      : attentionState.needsDecision
+        ? "Needs decision"
+        : "Awaiting bids";
+    const awardStateClassName = attentionState.hasWinner
+      ? "pill-success"
+      : attentionState.needsDecision
+        ? "pill-warning"
+        : "pill-muted";
+    const awardHelperText = attentionState.hasWinner
+      ? `Customer selected ${winnerDisplayName} as the winner for this RFQ.`
+      : bidCount > 0
+        ? "Waiting on the customer to select a winning supplier."
+        : "No bids submitted yet. Encourage suppliers to respond so the customer can make a decision.";
+    const awardStatusCard = (
+      <section className={cardClasses}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Award status
+            </p>
+            <h2 className="text-base font-semibold text-slate-100">
+              {attentionState.hasWinner ? "Winner selected" : "Decision pending"}
+            </h2>
+          </div>
+          <span className={clsx("pill pill-table", awardStateClassName)}>
+            {awardStateLabel}
+          </span>
+        </div>
+        <p className="mt-3 text-sm text-slate-300">{awardHelperText}</p>
+      </section>
+    );
 
     const rfqSummaryCard = (
       <section className={cardClasses}>
@@ -344,45 +401,24 @@ export default async function QuoteDetailPage({
         </div>
         <div className="space-y-4 lg:space-y-5">
           {projectNotesCard}
+          <AdminQuoteProjectCard
+            quoteId={quote.id}
+            project={project}
+            projectUnavailable={projectUnavailable}
+            className={cardClasses}
+          />
         </div>
       </div>
     );
 
-      const messagesContent = (
-        <section className={cardClasses}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Messages
-          </p>
-          <QuoteMessagesThread
-            heading="Admin chat"
-            description="Chat-style thread visible only to the admin workspace."
-            messages={messages}
-            messageCount={messages.length}
-            error={
-              quoteMessagesError
-                ? "Unable to load every message right now. Refresh to retry."
-                : null
-            }
-            emptyState={
-              <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
-                No messages yet. Use the composer below to start the thread for
-                this quote.
-              </p>
-            }
-            containerClassName="mt-3"
-          />
-
-          <div className="mt-4 border-t border-slate-900/60 pt-4">
-            <p className="text-sm font-semibold text-slate-100">Post a message</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Shared only with admins working on this quote.
-            </p>
-            <div className="mt-3">
-              <QuoteMessageComposer quoteId={quote.id} />
-            </div>
-          </div>
-        </section>
-      );
+    const messagesUnavailable = Boolean(quoteMessagesError);
+    const messagesContent = (
+      <AdminQuoteMessagesCard
+        quoteId={quote.id}
+        messages={messages}
+        messagesUnavailable={messagesUnavailable}
+      />
+    );
 
     const editContent = (
       <section className={cardClasses}>
@@ -481,8 +517,6 @@ export default async function QuoteDetailPage({
           ) : null
         }
       >
-        {wasUpdated && <SuccessBanner message="Quote updated." />}
-
         <div className="space-y-6">
           <div className="space-y-3">
             <div className="overflow-x-auto pb-1">
@@ -559,9 +593,48 @@ export default async function QuoteDetailPage({
                 <span className="text-slate-400">{companyName}</span>
               )}
             </div>
+
+            <div className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+              <div className="flex flex-wrap gap-4">
+                <span className="font-semibold text-slate-50">
+                  Bids: {attentionState.bidCount}
+                  {attentionState.hasWinner ? " · Winner selected" : ""}
+                </span>
+                <span className="text-slate-300">
+                  Kickoff:{" "}
+                  <span
+                    className={
+                      attentionState.hasProject ? "text-emerald-300" : "text-slate-400"
+                    }
+                  >
+                    {attentionState.hasProject ? "Set" : "Not started"}
+                  </span>
+                </span>
+                <span
+                  className={
+                    attentionState.needsDecision
+                      ? "font-semibold text-amber-200"
+                      : "text-slate-500"
+                  }
+                >
+                  Next action:{" "}
+                  {attentionState.needsDecision ? "Needs award decision" : "None"}
+                </span>
+              </div>
+            </div>
           </div>
 
+        {awardStatusCard}
+
           <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
+
+          <SupplierBidsCard
+            quoteId={quote.id}
+            quoteStatus={status}
+            bids={bids}
+            bidsLoaded={bidsResult.ok}
+            errorMessage={bidsResult.ok ? bidsResult.error : null}
+          />
         </div>
       </AdminDashboardShell>
     );

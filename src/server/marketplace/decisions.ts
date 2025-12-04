@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { OPEN_RFQ_STATUSES } from "./rfqs";
+import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
 import type {
   RfqBidRecord,
   RfqBidStatus,
@@ -125,6 +126,10 @@ export async function getCustomerDecisions(
 async function fetchOpenCustomerRfqs(
   customerId: string,
 ): Promise<CustomerRfqRecord[]> {
+  if (!isRfqsFeatureEnabled()) {
+    return [];
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from("rfqs")
@@ -134,6 +139,10 @@ async function fetchOpenCustomerRfqs(
       .order("created_at", { ascending: false });
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return [];
+      }
+
       console.error("decisions: fetchOpenCustomerRfqs failed", {
         customerId,
         error,
@@ -147,6 +156,10 @@ async function fetchOpenCustomerRfqs(
 
     return rows;
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return [];
+    }
+
     console.error("decisions: fetchOpenCustomerRfqs unexpected error", {
       customerId,
       error,
@@ -156,7 +169,7 @@ async function fetchOpenCustomerRfqs(
 }
 
 async function fetchBidsForRfqs(rfqIds: string[]): Promise<BidWithSupplier[]> {
-  if (rfqIds.length === 0) {
+  if (rfqIds.length === 0 || !isRfqsFeatureEnabled()) {
     return [];
   }
 
@@ -169,6 +182,9 @@ async function fetchBidsForRfqs(rfqIds: string[]): Promise<BidWithSupplier[]> {
       .order("created_at", { ascending: false });
 
     if (error) {
+      if (isMissingRfqTableError(error)) {
+        return [];
+      }
       console.error("decisions: fetchBidsForRfqs failed", {
         rfqIds,
         error,
@@ -181,6 +197,9 @@ async function fetchBidsForRfqs(rfqIds: string[]): Promise<BidWithSupplier[]> {
       : [];
     return rows.map(normalizeBidRow);
   } catch (error) {
+    if (isMissingRfqTableError(error)) {
+      return [];
+    }
     console.error("decisions: fetchBidsForRfqs unexpected error", {
       rfqIds,
       error,
@@ -270,3 +289,4 @@ function buildSupplierReadyDescription(
   const rfqFragment = rfqTitle ? ` for ${rfqTitle}` : "";
   return `${supplierLabel} shared a fresh bid${rfqFragment}. We can review the details together and decide on next steps whenever it feels right.`;
 }
+

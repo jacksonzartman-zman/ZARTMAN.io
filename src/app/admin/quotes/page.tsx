@@ -1,12 +1,13 @@
 // src/app/admin/quotes/page.tsx
-
-import { supabaseServer } from "@/lib/supabaseServer";
+import { loadAdminQuoteMeta, loadAdminQuotesList } from "@/server/admin/quotes";
+import { normalizePriceValue } from "@/server/admin/price";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import {
-  UPLOAD_STATUS_OPTIONS,
-  normalizeUploadStatus,
-  type UploadStatus,
-} from "../constants";
+  QUOTE_STATUS_LABELS,
+  QUOTE_STATUS_OPTIONS,
+  normalizeQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
 import StatusFilterChips from "../StatusFilterChips";
 import AdminDashboardShell from "../AdminDashboardShell";
@@ -29,7 +30,11 @@ type QuotesPageProps = {
   searchParams?: Promise<ReadonlyURLSearchParams>;
 };
 
-const VALID_STATUS_VALUES: UploadStatus[] = [...UPLOAD_STATUS_OPTIONS];
+const VALID_STATUS_VALUES: QuoteStatus[] = [...QUOTE_STATUS_OPTIONS];
+const QUOTE_STATUS_FILTER_OPTIONS = QUOTE_STATUS_OPTIONS.map((status) => ({
+  value: status,
+  label: QUOTE_STATUS_LABELS[status],
+}));
 
 const getFirstParamValue = (
   value?: string | string[] | null,
@@ -89,10 +94,10 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     typeof resolvedSearchParams.status === "string"
       ? resolvedSearchParams.status.trim().toLowerCase()
       : "";
-  const statusFilter: UploadStatus | "all" = VALID_STATUS_VALUES.includes(
-    normalizedStatus as UploadStatus,
+  const statusFilter: QuoteStatus | "all" = VALID_STATUS_VALUES.includes(
+    normalizedStatus as QuoteStatus,
   )
-    ? (normalizedStatus as UploadStatus)
+    ? (normalizedStatus as QuoteStatus)
     : "all";
 
   const searchTerm =
@@ -101,41 +106,49 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       : "";
   const normalizedSearch = searchTerm.trim().toLowerCase().replace(/\s+/g, " ");
 
-  const { data, error } = await supabaseServer
-    .from("quotes_with_uploads")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const quotesResult = await loadAdminQuotesList({
+    status: statusFilter === "all" ? null : statusFilter,
+    search: normalizedSearch || null,
+  });
 
-  if (error) {
-    console.error("Error loading quotes for admin:", error);
-    return (
-      <main className="mx-auto max-w-5xl px-4 py-10">
-        <p className="text-sm text-red-400">
-          Failed to load quotes dashboard: {error.message}
-        </p>
-      </main>
-    );
-  }
+  const rows =
+    quotesResult.data?.map((row) => ({
+      id: row.id,
+      customerName: row.customer_name ?? "Unknown",
+      customerEmail: row.email ?? "",
+      company: row.company ?? "",
+      fileName: row.file_name ?? "",
+      status: normalizeQuoteStatus(row.status),
+      price: normalizePriceValue(row.price),
+      currency: row.currency,
+      targetDate: row.target_date,
+      createdAt: row.created_at,
+    })) ?? [];
 
-    const rows: QuoteRow[] =
-      data?.map((row: any) => ({
-        id: row.id,
-        customerName: row.customer_name ?? "Unknown",
-        customerEmail: row.email ?? "",
-        company: row.company ?? "",
-        fileName: row.file_name ?? "",
-        status: normalizeUploadStatus(row.status as UploadStatus | null),
-        price: row.price,
-        currency: row.currency,
-        targetDate: row.target_date,
-        createdAt: row.created_at,
-      })) ?? [];
+  const metaMap = await loadAdminQuoteMeta(
+    rows.map((row) => ({
+      quoteId: row.id,
+      status: row.status,
+    })),
+  );
 
-  const filteredQuotes = rows.filter((row) => {
-    const normalizedRowStatus = normalizeUploadStatus(row.status);
+  const enrichedRows: QuoteRow[] = rows.map((row) => {
+    const meta = metaMap[row.id];
+    return {
+      ...row,
+      bidCount: meta?.bidCount ?? 0,
+      hasWinner: meta?.hasWinner ?? false,
+      hasProject: meta?.hasProject ?? false,
+      needsDecision: meta?.needsDecision ?? false,
+      winningBidId: meta?.winningBidId ?? null,
+      winningSupplierId: meta?.winningSupplierId ?? null,
+      winningSupplierName: meta?.winningSupplierName ?? null,
+    };
+  });
+
+  const filteredQuotes = enrichedRows.filter((row) => {
     const matchesStatus =
-      statusFilter === "all" ? true : normalizedRowStatus === statusFilter;
+      statusFilter === "all" ? true : row.status === statusFilter;
 
     if (!normalizedSearch) {
       return matchesStatus;
@@ -155,11 +168,17 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
         title="Quotes"
         description="Recent quotes created from uploads."
       >
+      {!quotesResult.ok ? (
+        <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-6 py-4 text-sm text-red-100">
+          We had trouble loading quotes. Check logs and try again.
+        </div>
+      ) : null}
         <AdminFiltersBar
           filters={
             <StatusFilterChips
               currentStatus={statusFilter === "all" ? "" : statusFilter}
               basePath="/admin/quotes"
+              options={QUOTE_STATUS_FILTER_OPTIONS}
             />
           }
           search={
@@ -170,7 +189,11 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
             />
           }
         />
-        <QuotesTable quotes={filteredQuotes} totalCount={rows.length} />
+        <div className="mt-6 overflow-x-auto">
+          <div className="inline-block min-w-full align-middle">
+            <QuotesTable quotes={filteredQuotes} totalCount={rows.length} />
+          </div>
+        </div>
       </AdminDashboardShell>
     );
 }

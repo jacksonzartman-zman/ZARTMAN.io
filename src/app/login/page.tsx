@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createAuthClient, getCurrentSession } from "@/server/auth";
+import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
+import { createAuthClient, getServerAuthUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierByUserId } from "@/server/suppliers";
-import { resolveUserRoles } from "@/server/users/roles";
 import LoginTokenBridge from "./LoginTokenBridge";
 
 export const metadata: Metadata = {
@@ -16,19 +16,23 @@ export const dynamic = "force-dynamic";
 
 // Behavior:
 // - If not authenticated: show message linking to /supplier to request magic link
-// - If authenticated: honor portal intent ("customer" or "supplier") when present
-// - Otherwise fall back to supplier/customer roles to pick a destination
-// - If neither role exists: show small "no profile found" message
+// - If authenticated and supplier profile exists: redirect("/supplier")
+// - If authenticated and no supplier profile: show small "no profile found" message
 // - If NEXT_PUBLIC_SHOW_LOGIN_DEBUG === "true": render extended debug panel instead of redirect
 
-type SessionResult = Awaited<ReturnType<typeof getCurrentSession>>;
-type SupabaseSession = NonNullable<SessionResult["session"]>;
+type AuthenticatedUser = NonNullable<
+  Awaited<ReturnType<typeof getServerAuthUser>>["user"]
+>;
 type CustomerRecord = Awaited<ReturnType<typeof getCustomerByUserId>>;
 type SupplierRecord = Awaited<ReturnType<typeof loadSupplierByUserId>>;
 
 const SHOW_LOGIN_DEBUG = process.env.NEXT_PUBLIC_SHOW_LOGIN_DEBUG === "true";
 
-export default async function LoginPage() {
+type LoginPageProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
+async function LoginPage({ searchParams }: LoginPageProps) {
   const headerList = await headers();
   const cookieHeader = headerList.get("cookie") ?? "";
   const cookieNames = cookieHeader
@@ -37,35 +41,32 @@ export default async function LoginPage() {
     .filter(Boolean);
   console.log("[auth] login cookies on /login:", cookieNames);
 
-  const { session, portalIntent } = await getCurrentSession();
+  const { user } = await getServerAuthUser();
+  const nextPath = resolveNextPath(searchParams);
   const sessionSummary = {
-    userId: session?.user?.id ?? null,
-    email: session?.user?.email ?? null,
-    isAuthenticated: Boolean(session),
-    portalIntent,
+    userId: user?.id ?? null,
+    email: user?.email ?? null,
+    isAuthenticated: Boolean(user),
   };
   console.log("[auth] session summary:", sessionSummary);
 
-  if (!session) {
+  if (!user) {
     return (
       <>
         <LoginTokenBridge />
-        <NotLoggedInMessage />
+        <NotLoggedInMessage nextPath={nextPath} />
       </>
     );
   }
 
   const [customer, supplier] = await Promise.all([
-    getCustomerByUserId(session.user.id),
-    loadSupplierByUserId(session.user.id),
+    getCustomerByUserId(user.id),
+    loadSupplierByUserId(user.id),
   ]);
-  const resolvedRoles = await resolveUserRoles(session.user.id, {
-    customer,
-    supplier,
-  });
+
   const roleSummary = {
-    hasCustomer: resolvedRoles.isCustomer,
-    hasSupplier: resolvedRoles.isSupplier,
+    hasCustomer: Boolean(customer),
+    hasSupplier: Boolean(supplier),
   };
   console.log("[auth] supplier lookup:", {
     found: roleSummary.hasSupplier,
@@ -77,7 +78,7 @@ export default async function LoginPage() {
       <>
         <LoginTokenBridge />
         <LoginDebugPanel
-          session={session}
+          user={user}
           customer={customer}
           supplier={supplier}
           roleSummary={roleSummary}
@@ -86,46 +87,56 @@ export default async function LoginPage() {
     );
   }
 
-  const redirectDecision = deriveRedirectDecision({
-    portalIntent,
-    roleSummary,
-  });
-  console.log("[login] redirect decision", {
-    portalIntent: portalIntent ?? "none",
-    roleSummary,
-    redirect: redirectDecision,
-  });
-
   if (roleSummary.hasSupplier) {
     redirect("/supplier");
-  }
-
-  if (roleSummary.hasCustomer) {
-    redirect("/customer");
   }
 
   return (
     <>
       <LoginTokenBridge />
-      <MissingSupplierMessage email={session.user.email} />
+      <MissingSupplierMessage email={user.email} />
     </>
   );
 }
 
-function NotLoggedInMessage() {
+function NotLoggedInMessage({ nextPath }: { nextPath?: string | null }) {
+  const quoteFlow = isQuoteFlow(nextPath);
+
+  if (quoteFlow) {
+    return (
+      <main className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center gap-4 px-4 py-12">
+        <PortalLoginPanel role="customer" fallbackRedirect="/quote" nextPath={nextPath ?? "/quote"} />
+        <p className="text-xs text-slate-500">
+          Supplier?{" "}
+          <Link
+            href="/login"
+            className="font-semibold text-blue-300 underline-offset-4 hover:underline"
+          >
+            Sign in as a supplier instead
+          </Link>
+        </p>
+      </main>
+    );
+  }
+
   return (
-    <main className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center gap-4 px-4 py-12 text-center">
-      <p className="text-lg font-semibold text-white">You&apos;re not logged in.</p>
-      <p className="text-sm text-slate-300">
-        To request a magic link, head to the supplier portal. Use the same email you used
-        during onboarding and we&apos;ll send the link right away.
-      </p>
-      <Link
-        href="/supplier"
-        className="inline-flex items-center justify-center rounded-full bg-blue-500 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-400"
-      >
-        Go to supplier portal
-      </Link>
+    <main className="mx-auto flex min-h-[70vh] w-full max-w-6xl flex-col gap-8 px-4 py-12">
+      <div className="mx-auto max-w-2xl text-center">
+        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-500">
+          Choose your workspace
+        </p>
+        <h1 className="mt-3 text-3xl font-semibold text-white sm:text-4xl">
+          Log in with a magic link
+        </h1>
+        <p className="mt-3 text-sm text-slate-300">
+          Pick the portal that matches your role. We&apos;ll email a secure link that drops you back
+          into your workspace.
+        </p>
+      </div>
+      <div className="grid w-full gap-6 md:grid-cols-2">
+        <PortalLoginPanel role="customer" fallbackRedirect="/customer" />
+        <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />
+      </div>
     </main>
   );
 }
@@ -152,12 +163,12 @@ function MissingSupplierMessage({ email }: { email?: string | null }) {
 }
 
 function LoginDebugPanel({
-  session,
+  user,
   customer,
   supplier,
   roleSummary,
 }: {
-  session: SupabaseSession;
+  user: AuthenticatedUser;
   customer: CustomerRecord;
   supplier: SupplierRecord;
   roleSummary: { hasCustomer: boolean; hasSupplier: boolean };
@@ -170,7 +181,7 @@ function LoginDebugPanel({
           Server sees an authenticated Supabase session
         </h1>
         <p className="mt-2 text-sm text-slate-400">
-          Email: <span className="font-mono text-emerald-300">{session.user.email ?? "unknown"}</span>
+          Email: <span className="font-mono text-emerald-300">{user.email ?? "unknown"}</span>
         </p>
 
         <div className="mt-4 grid gap-4 md:grid-cols-3">
@@ -239,30 +250,6 @@ function LoginDebugPanel({
   );
 }
 
-function deriveRedirectDecision({
-  portalIntent,
-  roleSummary,
-}: {
-  portalIntent: SessionResult["portalIntent"];
-  roleSummary: { hasCustomer: boolean; hasSupplier: boolean };
-}): "customer" | "supplier" | "none" {
-  if (portalIntent === "customer") {
-    return "customer";
-  }
-  if (portalIntent === "supplier") {
-    return "supplier";
-  }
-  if (roleSummary.hasCustomer && roleSummary.hasSupplier) {
-    return "customer";
-  }
-  if (roleSummary.hasCustomer) {
-    return "customer";
-  }
-  if (roleSummary.hasSupplier) {
-    return "supplier";
-  }
-  return "none";
-}
 async function signOutAction() {
   "use server";
 
@@ -272,7 +259,31 @@ async function signOutAction() {
   } catch (error) {
     console.error("[login page] sign out failed", error);
   }
-  // NOTE: This redirect("/") is the last hop we see in the /login -> /portal -> /
-  // sequence from the logs whenever a post-login sign-out fires immediately.
   redirect("/");
 }
+
+function resolveNextPath(searchParams?: Record<string, string | string[] | undefined>): string | null {
+  if (!searchParams) {
+    return null;
+  }
+  const rawNext = searchParams.next;
+  const value = Array.isArray(rawNext) ? rawNext[0] : rawNext;
+  if (typeof value !== "string") {
+    return null;
+  }
+  return value.startsWith("/") ? value : null;
+}
+
+function isQuoteFlow(nextPath?: string | null) {
+  if (!nextPath) {
+    return false;
+  }
+  return nextPath === "/quote" || nextPath.startsWith("/quote");
+}
+
+type NextLoginPage = (props: {
+  params?: Promise<Record<string, unknown>>;
+  searchParams?: Promise<any>;
+}) => ReturnType<typeof LoginPage>;
+
+export default LoginPage as unknown as NextLoginPage;

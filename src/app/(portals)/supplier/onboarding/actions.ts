@@ -5,16 +5,22 @@ import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
   addSupplierDocument,
+  upsertSupplierCapabilities,
   upsertSupplierProfile,
   type SupplierCapabilityInput,
 } from "@/server/suppliers";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 
 export type SupplierOnboardingState = {
-  success: boolean;
+  ok: boolean;
+  profileSaved: boolean;
+  partial?: boolean;
   error: string | null;
   fieldErrors?: Record<string, string>;
 };
+
+const GENERIC_ONBOARDING_ERROR =
+  "We couldn’t save your profile. Please try again.";
 
 const SUPPLIER_DOCS_BUCKET =
   process.env.SUPPLIER_DOCS_BUCKET ||
@@ -23,17 +29,28 @@ const SUPPLIER_DOCS_BUCKET =
 
 const MAX_DOCUMENTS = 5;
 
+function isNextRedirectError(error: unknown): error is { digest?: string } {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const digest =
+    "digest" in error && typeof (error as { digest?: unknown }).digest === "string"
+      ? (error as { digest: string }).digest
+      : null;
+  return typeof digest === "string" && digest.startsWith("NEXT_REDIRECT");
+}
+
 export async function submitSupplierOnboardingAction(
   _prevState: SupplierOnboardingState,
   formData: FormData,
 ): Promise<SupplierOnboardingState> {
-  const session = await requireSession({ redirectTo: "/supplier/onboarding" });
-  const userId = session.user.id;
+  const user = await requireUser({ redirectTo: "/supplier/onboarding" });
+  const userId = user.id;
   const rawCompanyName = getText(formData, "company_name");
   const rawPrimaryEmail = getText(formData, "primary_email");
   const normalizedPrimaryEmail =
     normalizeEmail(rawPrimaryEmail) ??
-    normalizeEmail(session.user.email ?? null);
+    normalizeEmail(user.email ?? null);
   const phone = getText(formData, "phone");
   const website = getText(formData, "website");
   const country = getText(formData, "country");
@@ -56,42 +73,120 @@ export async function submitSupplierOnboardingAction(
   }
 
   if (Object.keys(fieldErrors).length > 0) {
-    return { success: false, error: "Check the highlighted fields.", fieldErrors };
+    return {
+      ok: false,
+      profileSaved: false,
+      error: "Check the highlighted fields.",
+      fieldErrors,
+    };
   }
 
-    const primaryEmail: string = normalizedPrimaryEmail!;
+  const primaryEmail: string = normalizedPrimaryEmail!;
   const safeCompanyName: string = rawCompanyName!.trim();
 
   const capabilities = parseCapabilities(capabilitiesPayload);
+  const logContext = {
+    userId,
+    email: primaryEmail,
+    supplierId: supplierId ?? null,
+  };
+
+  console.log("[supplier onboarding] start", logContext);
 
   try {
     const profile = await upsertSupplierProfile({
-        supplierId: supplierId ?? undefined,
+      supplierId: supplierId ?? undefined,
       primaryEmail,
       companyName: safeCompanyName,
       phone,
       website,
       country,
       capabilities,
-        userId,
-    });
+      userId,
+    }, { skipCapabilities: true });
 
     if (!profile?.supplier) {
+      console.error("[supplier onboarding] supplier upsert returned empty", logContext);
       return {
-        success: false,
-        error: "Unable to save your profile. Please try again.",
+        ok: false,
+        profileSaved: false,
+        error: GENERIC_ONBOARDING_ERROR,
+        fieldErrors: {},
       };
     }
 
-    await handleDocumentUploads(profile.supplier.id, formData, documentCount);
+    const supplierRecordId = profile.supplier.id;
+    const supplierLogContext = { ...logContext, supplierId: supplierRecordId };
+    console.log("[supplier onboarding] supplier upsert result", supplierLogContext);
+
+    let partial = false;
+
+    try {
+      await upsertSupplierCapabilities(supplierRecordId, capabilities);
+      console.log("[supplier onboarding] capabilities upsert result", {
+        ...supplierLogContext,
+        capabilityCount: capabilities.length,
+      });
+    } catch (capabilitiesError) {
+      if (isMissingTableOrColumnError(capabilitiesError)) {
+        partial = true;
+        logOptionalStepSkipped("capabilities", capabilitiesError, supplierLogContext);
+      } else {
+        throw capabilitiesError;
+      }
+    }
+
+    try {
+      const uploadedDocs = await handleDocumentUploads(
+        supplierRecordId,
+        formData,
+        documentCount,
+      );
+      console.log("[supplier onboarding] documents upsert result", {
+        ...supplierLogContext,
+        uploadedDocs,
+      });
+    } catch (documentsError) {
+      if (isMissingTableOrColumnError(documentsError)) {
+        partial = true;
+        logOptionalStepSkipped("documents", documentsError, supplierLogContext);
+      } else {
+        throw documentsError;
+      }
+    }
 
     revalidatePath("/supplier");
+    console.log("[supplier onboarding] complete", {
+      ...supplierLogContext,
+      partial,
+    });
+
+    if (!partial) {
       redirect(`/supplier?onboard=1`);
-  } catch (error) {
-      console.error("submitSupplierOnboardingAction: unexpected failure", error);
+    }
+
     return {
-      success: false,
-      error: "We couldn’t save your profile. Please try again.",
+      ok: true,
+      profileSaved: true,
+      partial: true,
+      error: null,
+      fieldErrors: {},
+    };
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+
+    console.error("[supplier onboarding] unexpected failure", {
+      ...logContext,
+      error: serializeSupabaseError(error),
+    });
+    return {
+      ok: false,
+      profileSaved: false,
+      partial: false,
+      error: GENERIC_ONBOARDING_ERROR,
+      fieldErrors: {},
     };
   }
 }
@@ -205,7 +300,7 @@ async function handleDocumentUploads(
   supplierId: string,
   formData: FormData,
   documentCount: number,
-) {
+): Promise<number> {
   const tasks: Promise<unknown>[] = [];
 
   for (let index = 0; index < Math.min(documentCount, MAX_DOCUMENTS); index += 1) {
@@ -217,7 +312,12 @@ async function handleDocumentUploads(
     tasks.push(uploadDocumentAndPersist(supplierId, file, docType));
   }
 
+  if (tasks.length === 0) {
+    return 0;
+  }
+
   await Promise.all(tasks);
+  return tasks.length;
 }
 
 async function uploadDocumentAndPersist(
@@ -265,4 +365,65 @@ async function uploadDocumentAndPersist(
 
 function sanitizeFileName(name: string) {
   return name.replace(/[^\w.\-]+/g, "_").toLowerCase();
+}
+
+type SupplierOnboardingLogContext = {
+  userId: string;
+  email?: string | null;
+  supplierId?: string | null;
+};
+
+function logOptionalStepSkipped(
+  stage: string,
+  error: unknown,
+  context: SupplierOnboardingLogContext,
+) {
+  console.warn("[supplier onboarding] optional step skipped due to missing schema", {
+    ...context,
+    stage,
+    supabaseError: serializeSupabaseError(error),
+  });
+}
+
+function isMissingTableOrColumnError(error: unknown): boolean {
+  const source = extractSupabaseSource(error);
+  if (!source || typeof source !== "object") {
+    return false;
+  }
+  const code =
+    "code" in source && typeof (source as { code?: unknown }).code === "string"
+      ? ((source as { code?: string }).code as string)
+      : null;
+  return code === "PGRST205" || code === "42703";
+}
+
+function extractSupabaseSource(error: unknown): unknown {
+  if (
+    error &&
+    typeof error === "object" &&
+    "supabaseError" in error &&
+    (error as { supabaseError?: unknown }).supabaseError
+  ) {
+    return (error as { supabaseError?: unknown }).supabaseError;
+  }
+  return error;
+}
+
+function serializeSupabaseError(error: unknown) {
+  const source = extractSupabaseSource(error);
+  if (!source || typeof source !== "object") {
+    return source ?? null;
+  }
+  const maybe = source as {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+    hint?: unknown;
+  };
+  return {
+    code: typeof maybe.code === "string" ? maybe.code : null,
+    message: typeof maybe.message === "string" ? maybe.message : null,
+    details: typeof maybe.details === "string" ? maybe.details : null,
+    hint: typeof maybe.hint === "string" ? maybe.hint : null,
+  };
 }

@@ -9,6 +9,7 @@ import { primaryCtaClasses } from "@/lib/ctas";
 import type { HeaderUser } from "./AppHeader";
 import type { NotificationPayload } from "@/types/notifications";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { BrandMark } from "@/components/BrandMark";
 
 type NavLink = {
   label: string;
@@ -60,21 +61,12 @@ export default function AppHeaderClient({
       <div className="mx-auto flex w-full max-w-page flex-col gap-3 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/"
-              className="flex items-center gap-3 text-base font-semibold text-ink transition-colors hover:text-ink-soft"
-              aria-label="Zartman workspace home"
-            >
-              <span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-emerald-400/50 bg-emerald-400/10 text-sm font-bold uppercase tracking-wide text-emerald-200">
-                Z
-              </span>
-              <div className="flex flex-col leading-tight">
-                <span>Zartman</span>
-                <span className="text-xs font-normal uppercase tracking-[0.35em] text-ink-muted">
-                  workspace
-                </span>
-              </div>
-            </Link>
+            <BrandMark
+              withWordmark
+              subLabel="Workspace"
+              size={32}
+              className="text-base font-semibold text-ink transition-colors hover:text-ink-soft"
+            />
             {user && role ? (
               <span
                 className={clsx(

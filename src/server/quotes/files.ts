@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
+import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
 import type { QuoteFileSource } from "./types";
 
 type FileStorageRow = {
@@ -9,9 +10,10 @@ type FileStorageRow = {
   mime: string | null;
 };
 
-type UploadFileReference = {
+export type UploadFileReference = {
   file_path: string | null;
   file_name: string | null;
+  mime_type?: string | null;
 };
 
 type CadFileCandidate = {
@@ -35,25 +37,73 @@ const DEFAULT_CAD_BUCKET =
 
 const CAD_SIGNED_URL_TTL_SECONDS = 60 * 60;
 
+export type QuoteFilePreviewOptions = {
+  includeFilesTable?: boolean;
+  uploadFileOverride?: UploadFileReference | null;
+  onFilesError?: (error: unknown) => void;
+};
+
 export async function getQuoteFilePreviews(
   quote: QuoteFileSource,
+  options?: QuoteFilePreviewOptions,
 ): Promise<QuoteFileItem[]> {
   try {
-    const { data: files, error: filesError } = await supabaseServer
-      .from("files")
-      .select("storage_path,bucket_id,filename,mime")
-      .eq("quote_id", quote.id)
-      .order("created_at", { ascending: true });
+    const includeFilesTable = options?.includeFilesTable !== false;
+    let files: FileStorageRow[] = [];
+    if (includeFilesTable) {
+      try {
+        const { data, error: filesError } = await supabaseServer
+          .from("files")
+          .select("storage_path,bucket_id,filename,mime")
+          .eq("quote_id", quote.id)
+          .order("created_at", { ascending: true });
 
-    if (filesError) {
-      console.error("Failed to load files for quote", quote.id, filesError);
+        if (filesError) {
+          const serializedError = serializeSupabaseError(filesError);
+          // Some environments omit public.files; downgrade PGRST205/42703 to a warning and surface zero files instead of failing.
+          if (isMissingTableOrColumnError(filesError)) {
+            console.warn(
+              "[admin uploads] files schema missing; treating as zero files",
+              {
+                quoteId: quote.id,
+                error: serializedError,
+              },
+            );
+          } else {
+            console.error("Failed to load files for quote", {
+              quoteId: quote.id,
+              error: serializedError,
+            });
+          }
+
+          if (options?.onFilesError) {
+            options.onFilesError(filesError);
+          }
+        } else {
+          files = data ?? [];
+        }
+      } catch (error) {
+        const serializedError = serializeSupabaseError(error);
+        console.error("Failed to load files for quote", {
+          quoteId: quote.id,
+          error: serializedError,
+        });
+        if (options?.onFilesError) {
+          options.onFilesError(error);
+        }
+      }
     }
 
     let uploadFile: UploadFileReference | null = null;
-    if (quote.upload_id) {
+    const uploadOverrideProvided = options
+      ? Object.prototype.hasOwnProperty.call(options, "uploadFileOverride")
+      : false;
+    if (uploadOverrideProvided) {
+      uploadFile = options?.uploadFileOverride ?? null;
+    } else if (quote.upload_id) {
       const { data: uploadData, error: uploadError } = await supabaseServer
         .from("uploads")
-        .select("file_path,file_name")
+        .select("file_path,file_name,mime_type")
         .eq("id", quote.upload_id)
         .maybeSingle<UploadFileReference>();
 

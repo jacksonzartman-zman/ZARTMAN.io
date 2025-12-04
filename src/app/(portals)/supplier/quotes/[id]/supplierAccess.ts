@@ -33,10 +33,7 @@ export async function loadSupplierAssignments(
   }
 }
 
-type QuoteAssignmentSource = Pick<
-  QuoteWithUploadsRow,
-  "id" | "email" | "assigned_supplier_email" | "assigned_supplier_name"
->;
+type QuoteAssignmentSource = Pick<QuoteWithUploadsRow, "id" | "email">;
 
 type SupplierAccessOptions = {
   supplier?: SupplierRow | null;
@@ -58,7 +55,6 @@ export function supplierHasAccess(
     return false;
   }
 
-  const normalizedAssigned = normalizeEmailInput(quote.assigned_supplier_email);
   const hasExplicitAssignment = assignments.some(
     (assignment) =>
       normalizeEmailInput(assignment.supplier_email) === normalizedEmail,
@@ -87,14 +83,13 @@ export function supplierHasAccess(
   };
 
   if (canUserViewQuote("supplier", normalizedEmail, permissionPayload)) {
-    if (!hasExplicitAssignment && !normalizedAssigned && verifiedAccess) {
+    if (!hasExplicitAssignment && verifiedAccess) {
       console.warn("Supplier access: allowing via verified capability match", {
         quoteId: quote.id,
         supplierEmail: normalizedEmail,
       });
     } else if (
       !hasExplicitAssignment &&
-      !normalizedAssigned &&
       normalizedQuoteEmail === normalizedEmail
     ) {
       console.warn("Supplier access: using dev fallback via quote.email match", {
@@ -117,7 +112,7 @@ export function supplierHasAccess(
 
 export function getSupplierDisplayName(
   supplierEmail: string,
-  quote: QuoteAssignmentSource,
+  _quote: QuoteAssignmentSource,
   assignments: SupplierAssignment[],
 ): string {
   const normalizedEmail = normalizeEmailInput(supplierEmail);
@@ -130,11 +125,7 @@ export function getSupplierDisplayName(
     return assignmentMatch.supplier_name;
   }
 
-  if (quote.assigned_supplier_name) {
-    return quote.assigned_supplier_name;
-  }
-
-  return normalizedEmail ?? "Supplier";
+  return normalizedEmail ?? supplierEmail ?? "Supplier";
 }
 
 export function matchesSupplierProcess(

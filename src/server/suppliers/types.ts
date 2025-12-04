@@ -1,6 +1,37 @@
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import type { FairnessScore } from "@/lib/fairness";
 
+export const SAFE_QUOTE_WITH_UPLOADS_FIELDS = [
+  "id",
+  "upload_id",
+  "customer_name",
+  "email",
+  "company",
+  "status",
+  "price",
+  "currency",
+  "created_at",
+  "updated_at",
+  "target_date",
+  "file_name",
+] as const;
+
+export type SafeQuoteWithUploadsField =
+  (typeof SAFE_QUOTE_WITH_UPLOADS_FIELDS)[number];
+
+export type SupplierQuoteRow = Pick<
+  QuoteWithUploadsRow,
+  SafeQuoteWithUploadsField
+> &
+  Partial<Pick<QuoteWithUploadsRow, "file_names" | "upload_file_names">>;
+
+export type SupplierApprovalStatus = "approved" | "pending" | "rejected" | "unknown";
+
+export type SupplierApprovalGate = {
+  enabled: boolean;
+  status: SupplierApprovalStatus;
+};
+
 export type SupplierRow = {
   id: string;
   company_name: string;
@@ -11,6 +42,9 @@ export type SupplierRow = {
   country: string | null;
   verified: boolean;
   created_at: string;
+  status?: string | null;
+  notify_quote_messages: boolean | null;
+  notify_quote_winner: boolean | null;
 };
 
 export type SupplierCapabilityRow = {
@@ -33,9 +67,13 @@ export type SupplierDocumentRow = {
 
 export type SupplierBidStatus =
   | "pending"
+  | "submitted"
+  | "revised"
   | "accepted"
   | "declined"
-  | "withdrawn";
+  | "withdrawn"
+  | "won"
+  | "lost";
 
 export type SupplierBidRow = {
   id: string;
@@ -54,6 +92,8 @@ export type SupplierProfile = {
   supplier: SupplierRow;
   capabilities: SupplierCapabilityRow[];
   documents: SupplierDocumentRow[];
+  approvalStatus: SupplierApprovalStatus;
+  approved: boolean;
 };
 
 export type SupplierCapabilityInput = {
@@ -99,17 +139,43 @@ export type SupplierBidWithContext = SupplierBidRow & {
   certifications?: string[];
 };
 
-export type QuoteMatchCandidate = QuoteWithUploadsRow & {
-  upload_id: string | null;
-};
+export type QuoteMatchCandidate = SupplierQuoteRow;
 
 export type SupplierQuoteMatch = {
   quoteId: string;
-  quote: QuoteWithUploadsRow;
+  quote: SupplierQuoteRow;
   processHint: string | null;
   materialMatches: string[];
   score: number;
   createdAt: string | null;
   quantityHint?: string | null;
   fairness?: FairnessScore;
+};
+
+export type SupplierActivityResultReason = "assignments-disabled";
+
+export type SupplierActivityResult<TData> = {
+  ok: boolean;
+  data: TData;
+  error?: string | null;
+  approvalGate?: SupplierApprovalGate;
+  reason?: SupplierActivityResultReason;
+};
+
+export type SupplierActivityIdentity = {
+  supplierId?: string | null;
+  supplierEmail?: string | null;
+};
+
+export type SupplierMatchHealth = {
+  supplierId: string;
+  evaluatedCount: number;
+  matchedCount: number;
+  skippedCapabilityCount: number;
+  recentExamples: {
+    quoteId: string;
+    status: string | null;
+    processHint: string | null;
+    outcome: "matched" | "skipped_capability";
+  }[];
 };

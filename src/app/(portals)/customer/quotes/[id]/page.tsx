@@ -1,13 +1,16 @@
 import clsx from "clsx";
-import type { ReactNode } from "react";
+import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
-import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
+import { formatCurrency } from "@/lib/formatCurrency";
 import {
-  QuoteWorkspaceTabs,
-  type QuoteWorkspaceTab,
-} from "@/app/admin/quotes/[id]/QuoteWorkspaceTabs";
-import { QuoteMessagesThread } from "@/components/quotes/QuoteMessagesThread";
-import { CustomerQuoteMessageComposer } from "./CustomerQuoteMessageComposer";
+  buildCustomerQuoteTimeline,
+  type BidRowLike,
+  type QuoteTimelineEvent,
+} from "@/lib/quote/tracking";
+import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
+import PortalCard from "@/app/(portals)/PortalCard";
+import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import { CustomerQuoteMessagesCard } from "./CustomerQuoteMessagesCard";
 import {
   formatQuoteId,
   getSearchParamValue,
@@ -20,14 +23,33 @@ import {
   type QuoteWorkspaceData,
 } from "@/app/(portals)/quotes/workspaceData";
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
-import { listSupplierBidsForQuote, type SupplierBidWithContext } from "@/server/suppliers";
-import { BidDecisionButtons } from "./BidDecisionButtons";
-import { requireSession } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
+import { DataFallbackNotice } from "@/app/(portals)/DataFallbackNotice";
+import {
+  getQuoteStatusLabel,
+  getQuoteStatusHelper,
+  normalizeQuoteStatus,
+} from "@/server/quotes/status";
+import {
+  loadCustomerQuoteBidSummaries,
+  type CustomerQuoteBidSummary,
+} from "@/server/customers/bids";
+import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
+import { CustomerQuoteTrackingCard } from "./CustomerQuoteTrackingCard";
+import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
+import { loadQuoteProject } from "@/server/quotes/projects";
 
 export const dynamic = "force-dynamic";
+
+const CUSTOMER_DECIDABLE_STATUSES = new Set([
+  "submitted",
+  "in_review",
+  "quoted",
+  "approved",
+]);
 
 type CustomerQuotePageProps = {
   params: Promise<{ id: string }>;
@@ -43,12 +65,12 @@ export default async function CustomerQuoteDetailPage({
     resolveMaybePromise(searchParams),
   ]);
 
-  const session = await requireSession({
+  const user = await requireUser({
     redirectTo: `/customer/quotes/${quoteId}`,
   });
   const emailParam = getSearchParamValue(resolvedSearchParams, "email");
   const overrideEmail = normalizeEmailInput(emailParam);
-  const customer = await getCustomerByUserId(session.user.id);
+  const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {
     return (
@@ -59,8 +81,14 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
-  const workspaceData = await loadQuoteWorkspaceData(quoteId);
-  if (!workspaceData) {
+  const workspaceResult = await loadQuoteWorkspaceData(quoteId, {
+    safeOnly: true,
+  });
+  if (!workspaceResult.ok || !workspaceResult.data) {
+    console.error("[customer quote] load failed", {
+      quoteId,
+      error: workspaceResult.error ?? "Quote not found",
+    });
     return (
       <PortalNoticeCard
         title="Quote not found"
@@ -69,16 +97,20 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
-  const { quote, uploadMeta, filePreviews, messages, messagesError } =
-    workspaceData;
+  const {
+    quote,
+    uploadMeta,
+    filePreviews,
+    messages,
+    messagesError,
+    filesUnavailable,
+  } = workspaceResult.data;
   const normalizedQuoteEmail = normalizeEmailInput(quote.email);
   const customerEmail = normalizeEmailInput(customer.email);
   const quoteCustomerMatches =
-    (quote.customer_id && quote.customer_id === customer.id) ||
-    (!quote.customer_id &&
-      normalizedQuoteEmail &&
-      customerEmail &&
-      normalizedQuoteEmail === customerEmail);
+    normalizedQuoteEmail !== null &&
+    customerEmail !== null &&
+    normalizedQuoteEmail === customerEmail;
   const usingOverride =
     Boolean(overrideEmail) && overrideEmail !== customerEmail;
   const overrideMatchesQuote =
@@ -93,7 +125,6 @@ export default async function CustomerQuoteDetailPage({
       identityEmail: customerEmail,
       overrideEmail,
       quoteEmail: quote.email,
-      quoteCustomerId: quote.customer_id,
       customerId: customer.id,
     });
     return (
@@ -105,12 +136,132 @@ export default async function CustomerQuoteDetailPage({
   }
 
   const readOnly = usingOverride;
+  console.log("[customer quote] loaded", {
+    quoteId: quote.id,
+    uploadId: quote.upload_id,
+    customerEmail: quote.email,
+  });
 
-    const derived = deriveQuotePresentation(quote, uploadMeta);
-    const { status, statusLabel, customerName, companyName, intakeNotes } =
-      derived;
-    const nextWorkflowState = getNextWorkflowState(status);
-    const supplierBids = await listSupplierBidsForQuote(quoteId);
+  const derived = deriveQuotePresentation(quote, uploadMeta);
+  const { customerName, companyName, intakeNotes } = derived;
+  const normalizedQuoteStatus = normalizeQuoteStatus(quote.status ?? undefined);
+  const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined);
+  const quoteStatusHelper = getQuoteStatusHelper(quote.status ?? undefined);
+  const nextWorkflowState = getNextWorkflowState(normalizedQuoteStatus);
+  const bidsResult = await loadCustomerQuoteBidSummaries({
+    quoteId: quote.id,
+    customerEmail: customer.email,
+    userEmail: user.email,
+    overrideEmail,
+  });
+  const bidsUnavailable = !bidsResult.ok;
+  const bids: CustomerQuoteBidSummary[] = bidsResult.ok ? bidsResult.bids : [];
+  const projectResult = await loadQuoteProject(quote.id);
+  const project = projectResult.data;
+  const projectUnavailable = projectResult.unavailable;
+  console.info("[customer quote] project loaded", {
+    quoteId: quote.id,
+    hasProject: Boolean(project),
+    unavailable: projectUnavailable,
+  });
+  const bidCount = bids.length;
+  const timelineBids: BidRowLike[] = bids.map((bid) => ({
+    id: bid.id,
+    quote_id: bid.quoteId,
+    supplier_id: bid.supplierId,
+    status: bid.status,
+    amount: bid.priceValue,
+    unit_price: bid.priceValue,
+    currency: bid.currencyCode ?? null,
+    lead_time_days: bid.leadTimeDays ?? null,
+    created_at: bid.createdAt,
+    updated_at: bid.updatedAt,
+  }));
+  const timelineEvents: QuoteTimelineEvent[] = buildCustomerQuoteTimeline({
+    quote,
+    bids: timelineBids,
+    project,
+  });
+  console.log("[customer quote] tracking events built", {
+    quoteId: quote.id,
+    eventCount: timelineEvents.length,
+  });
+  const quoteIsWon = normalizedQuoteStatus === "won";
+  const quoteAllowsCustomerAward =
+    typeof normalizedQuoteStatus === "string" &&
+    CUSTOMER_DECIDABLE_STATUSES.has(normalizedQuoteStatus);
+  const winningBid =
+    bids.find(
+      (bid) =>
+        typeof bid.status === "string" &&
+        bid.status.trim().toLowerCase() === "won",
+    ) ?? null;
+  const winningBidId = winningBid?.id ?? null;
+  const quoteHasWinner = Boolean(winningBidId);
+  const customerOwnsQuote = quoteCustomerMatches;
+  const showCustomerAwardPanel =
+    !bidsUnavailable &&
+    customerOwnsQuote &&
+    bidCount > 0 &&
+    (quoteAllowsCustomerAward || quoteIsWon);
+  const customerCanSubmitAward =
+    showCustomerAwardPanel &&
+    quoteAllowsCustomerAward &&
+    !quoteIsWon &&
+    !quoteHasWinner &&
+    !readOnly;
+  let customerAwardDisabledReason: string | null = null;
+  if (showCustomerAwardPanel && !customerCanSubmitAward) {
+    if (readOnly) {
+      customerAwardDisabledReason =
+        "Selecting a winner is disabled while you are viewing this workspace in read-only mode.";
+    } else if (quoteIsWon || quoteHasWinner) {
+      customerAwardDisabledReason =
+        "A winning supplier has already been selected for this quote.";
+    } else if (!quoteAllowsCustomerAward) {
+      customerAwardDisabledReason =
+        "We’ll unlock supplier selection after your quote is prepared. We’re still collecting bids and preparing the final pricing.";
+    }
+  }
+  const pricedBids = bids.filter(
+    (bid): bid is CustomerQuoteBidSummary & { priceValue: number } =>
+      typeof bid.priceValue === "number" && Number.isFinite(bid.priceValue),
+  );
+  const bestPriceBid = pricedBids.reduce<
+    (CustomerQuoteBidSummary & { priceValue: number }) | null
+  >((currentBest, bid) => {
+    if (!currentBest || bid.priceValue < currentBest.priceValue) {
+      return bid;
+    }
+    return currentBest;
+  }, null);
+  const bestPriceValue = bestPriceBid?.priceValue ?? null;
+  const bestPriceCurrency = bestPriceBid?.currencyCode ?? null;
+  const leadTimeBids = bids.filter(
+    (bid): bid is CustomerQuoteBidSummary & { leadTimeDays: number } =>
+      typeof bid.leadTimeDays === "number" && Number.isFinite(bid.leadTimeDays),
+  );
+  const fastestLeadTime = leadTimeBids.reduce<number | null>(
+    (currentBest, bid) => {
+      if (currentBest === null || bid.leadTimeDays < currentBest) {
+        return bid.leadTimeDays;
+      }
+      return currentBest;
+    },
+    null,
+  );
+  const submittedAtRaw = quote.created_at ?? null;
+  const updatedAtRaw = quote.updated_at ?? null;
+  const submittedAtText = submittedAtRaw
+    ? formatDateTime(submittedAtRaw, { includeTime: true })
+    : null;
+  const updatedAtText = updatedAtRaw
+    ? formatDateTime(updatedAtRaw, { includeTime: true })
+    : null;
+  const lifecycleLastUpdatedText =
+    updatedAtRaw && (!submittedAtRaw || updatedAtRaw !== submittedAtRaw)
+      ? updatedAtText
+      : null;
   const fileCountText =
     filePreviews.length === 0
       ? "No files attached"
@@ -129,287 +280,311 @@ export default async function CustomerQuoteDetailPage({
     "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
   const identityEmailDisplay =
     (usingOverride && overrideEmail) ||
-    quote.email ||
-    customer.email ||
-    session.user.email ||
-    "customer";
+    quote.email || customer.email || user.email || "customer";
 
-  const summaryContent = (
-    <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)] lg:gap-4 lg:space-y-0">
-      <section className={clsx(cardClasses, "space-y-4")}>
-        <header className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            RFQ snapshot
+  const fileNameCandidates = [
+    filePreviews[0]?.label,
+    filePreviews[0]?.fileName,
+    quote.file_name,
+  ].filter((value): value is string => Boolean(value && value.trim()));
+  const primaryFileName = fileNameCandidates[0] ?? formatQuoteId(quote.id);
+  const leadTimeLabel =
+    fastestLeadTime != null
+      ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
+      : "Pending";
+  const headerTitle = `${customerName ?? "RFQ"} · ${formatQuoteId(quote.id)}`;
+  const headerActions = (
+    <Link
+      href="/customer/quotes"
+      className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+    >
+      Back to quotes
+    </Link>
+  );
+  const createdAtDate = submittedAtRaw ? new Date(submittedAtRaw) : null;
+  const quoteAgeInDays =
+    createdAtDate && Number.isFinite(createdAtDate.getTime())
+      ? Math.floor(
+          (Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60 * 24),
+        )
+      : null;
+  const shouldShowReceiptBanner =
+    (normalizedQuoteStatus === "submitted" ||
+      normalizedQuoteStatus === "in_review") &&
+    (quoteAgeInDays === null || quoteAgeInDays <= 14);
+
+  const headerContent = (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+            RFQ file
           </p>
-          <h2 className="text-lg font-semibold text-white">
-            Project overview
-          </h2>
-        </header>
-        <div className="flex flex-wrap gap-2 text-xs font-semibold">
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
-            Status: {statusLabel}
-          </span>
-          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
-            Target date: {targetDateChipText}
-          </span>
-          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
-            Estimate: {priceChipText}
-          </span>
+          <p className="text-sm text-slate-300">{primaryFileName}</p>
         </div>
-        <WorkflowStatusCallout
-          currentLabel={statusLabel}
-          nextState={nextWorkflowState}
-          className="mt-3"
-        />
-        <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-              Company
-            </dt>
-            <dd className="text-slate-100">{companyName ?? "Not provided"}</dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-              Files
-            </dt>
-            <dd className="text-slate-100">{fileCountText}</dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-              Submitted
-            </dt>
-            <dd className="text-slate-100">
-              {formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
-            </dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-              Last updated
-            </dt>
-            <dd className="text-slate-100">
-              {formatDateTime(quote.updated_at, { includeTime: true }) ?? "—"}
-            </dd>
-          </div>
-        </dl>
-      </section>
-      <section className={clsx(cardClasses, "space-y-3")}>
-        <header>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Notes & guidance
-          </p>
-          <h2 className="text-lg font-semibold text-white">
-            DFM & intake comments
-          </h2>
-        </header>
-        <div className="space-y-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              DFM notes
-            </p>
-            <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
-              {dfmNotes ?? "Engineering feedback will show up here once it’s ready."}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Intake notes
-            </p>
-            <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
-              {intakeNotes ?? "No additional notes captured during upload."}
-            </p>
-          </div>
+        <div className="flex max-w-xs flex-col items-start text-left sm:items-end sm:text-right">
+          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+            {quoteStatusLabel}
+          </span>
+          <p className="mt-1 text-xs text-slate-400">{quoteStatusHelper}</p>
         </div>
-      </section>
+      </div>
+      <dl className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Customer
+          </dt>
+          <dd className="text-slate-100">{customerName ?? "Not provided"}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Company
+          </dt>
+          <dd className="text-slate-100">{companyName ?? "Not provided"}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Target ship date
+          </dt>
+          <dd className="text-slate-100">{targetDateChipText}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Fastest lead time
+          </dt>
+          <dd className="text-slate-100">{leadTimeLabel}</dd>
+        </div>
+      </dl>
+      <div className="flex flex-wrap gap-3 text-xs text-slate-400">
+        <span>Submitted {submittedAtText ?? "—"}</span>
+        {lifecycleLastUpdatedText ? (
+          <span>Last update {lifecycleLastUpdatedText}</span>
+        ) : null}
+        <span>
+          Viewing as{" "}
+          <span className="font-mono text-slate-200">{identityEmailDisplay}</span>
+        </span>
+        {readOnly ? (
+          <span className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-slate-300">
+            Read-only preview
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 
-    const messagesContent = (
-      <section className={cardClasses}>
+  const summaryCard = (
+    <section className={clsx(cardClasses, "space-y-5")}>
+      <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Messages
+          RFQ snapshot
         </p>
-        <QuoteMessagesThread
-          heading="Shared chat"
-          description="Collaborate directly with the Zartman admin team on this quote."
-          messages={messages}
-          messageCount={messages.length}
-          error={
-            messagesError
-              ? "Some messages may be missing. Refresh the page to try again."
-              : null
-          }
-          emptyState={
-            <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-4 text-sm text-slate-400">
-              No updates yet. Start the conversation below to keep things moving.
-            </p>
-          }
-          containerClassName="mt-3"
-        />
-
-        <div className="mt-4 border-t border-slate-900/60 pt-4">
-          <p className="text-sm font-semibold text-slate-100">Post a message</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Shared with admins and suppliers supporting this RFQ.
-          </p>
-            {readOnly ? (
-              <p className="mt-2 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-xs text-slate-400">
-                Read-only preview. Remove the ?email override to reply as the customer.
-              </p>
-            ) : null}
-          <div className="mt-3">
-            <CustomerQuoteMessageComposer
-              quoteId={quote.id}
-              customerName={customerName}
-                disabled={readOnly}
-            />
-          </div>
+        <h2 className="text-lg font-semibold text-white">Project overview</h2>
+      </header>
+      <div className="flex flex-wrap gap-2 text-xs font-semibold">
+        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+          Status: {quoteStatusLabel}
+        </span>
+        <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+          Target date: {targetDateChipText}
+        </span>
+        <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+          Estimate: {priceChipText}
+        </span>
+      </div>
+      <WorkflowStatusCallout
+        currentLabel={quoteStatusLabel}
+        nextState={nextWorkflowState}
+      />
+      <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Files attached
+          </dt>
+          <dd className="text-slate-100">{fileCountText}</dd>
         </div>
-      </section>
-    );
-
-  const filesContent = (
-    <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
-  );
-
-  const trackingContent = (
-    <section className={cardClasses}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-        Tracking
-      </p>
-      <h2 className="mt-1 text-lg font-semibold text-white">
-        Production milestones
-      </h2>
-      <p className="mt-2 text-sm text-slate-300">
-        We&apos;ll surface build partners, PO details, and schedule checkpoints
-        here as we expand the customer portal experience.
-      </p>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Submitted
+          </dt>
+          <dd className="text-slate-100">{submittedAtText ?? "—"}</dd>
+        </div>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Last updated
+          </dt>
+          <dd className="text-slate-100">{updatedAtText ?? "—"}</dd>
+        </div>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Estimate
+          </dt>
+          <dd className="text-slate-100">{priceChipText}</dd>
+        </div>
+      </dl>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            DFM notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {dfmNotes ?? "Engineering feedback will show up here once it’s ready."}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Intake notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {intakeNotes ?? "No additional notes captured during upload."}
+          </p>
+        </div>
+      </div>
+      <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Supplier bids
+            </p>
+            <p className="text-sm text-slate-300">
+              We collect bids from vetted suppliers, then review options before finalizing your quote.
+            </p>
+          </div>
+          {bidCount > 0 ? (
+            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+              {bidCount} bid{bidCount === 1 ? "" : "s"} received
+            </span>
+          ) : null}
+        </div>
+        {bidsUnavailable ? (
+          <p className="text-xs text-slate-400">
+            Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
+          </p>
+        ) : bidCount === 0 ? (
+          <p className="text-xs text-slate-400">
+            No supplier bids yet. We&apos;ll notify you when bids arrive.
+          </p>
+        ) : (
+          <>
+            <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Best price
+                </dt>
+                <dd className="mt-1">
+                  {bestPriceValue != null
+                    ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
+                    : "Pending"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Fastest lead time
+                </dt>
+                <dd className="mt-1">
+                  {fastestLeadTime != null ? leadTimeLabel : "Pending"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Total bids
+                </dt>
+                <dd className="mt-1">
+                  {bidCount} bid{bidCount === 1 ? "" : "s"}
+                </dd>
+              </div>
+            </dl>
+            <p className="text-xs text-slate-400">
+              Detailed bids are listed below so you can review context before awarding a supplier.
+            </p>
+          </>
+        )}
+      </div>
     </section>
   );
 
-    const suppliersContent = (
-      <section className={cardClasses}>
+  const receiptBanner = shouldShowReceiptBanner ? (
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4">
+      <div className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Supplier bids
+          Early RFQ update
         </p>
-        {supplierBids.length > 0 ? (
-          <div className="mt-3 space-y-3">
-            {supplierBids.map((bid) => (
-              <article
-                key={bid.id}
-                className="rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      {bid.supplier?.company_name ?? "Supplier"}
-                      <span className="ml-2 text-xs font-normal text-slate-400">
-                        {bid.supplier?.primary_email ?? "Email pending"}
-                      </span>
-                    </p>
-                  </div>
-                  <BidStatusBadge status={bid.status} />
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
-                  <DetailChip label="Unit price (per part)" value={formatBidPrice(bid)} />
-                  <DetailChip
-                    label="Lead time (days)"
-                    value={
-                      bid.lead_time_days
-                        ? `${bid.lead_time_days} day${bid.lead_time_days === 1 ? "" : "s"}`
-                        : "Pending"
-                    }
-                  />
-                  <DetailChip
-                    label="Certifications shared"
-                    value={
-                      bid.certifications && bid.certifications.length > 0
-                        ? bid.certifications.join(", ")
-                        : "Not shared"
-                    }
-                  />
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Decision
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Accepting one bid will auto-decline the rest.
-                    </p>
-                    <BidDecisionButtons
-                      bidId={bid.id}
-                      quoteId={quote.id}
-                      status={bid.status}
-                      disabled={readOnly}
-                    />
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-slate-400">
-            We’ll surface bids here as suppliers respond.
-          </p>
-        )}
-      </section>
-    );
+        <h2 className="text-lg font-semibold text-white">We&apos;ve got your RFQ.</h2>
+      </div>
+      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
+        <li>We&apos;re routing this RFQ to vetted suppliers who match your process and volumes.</li>
+        <li>You&apos;ll start seeing bids here as suppliers respond.</li>
+        <li>Once we review bids, we&apos;ll prepare pricing and move the status to Quote prepared.</li>
+      </ul>
+      <p className="mt-3 text-xs text-slate-400">
+        You&apos;re never obligated to award—move forward only when price, lead time, and supplier fit feel right.
+      </p>
+    </section>
+  ) : null;
 
-    const tabs: {
-      id: QuoteWorkspaceTab;
-      label: string;
-      count?: number;
-      content: ReactNode;
-    }[] = [
-      { id: "summary", label: "Summary", content: summaryContent },
-      {
-        id: "messages",
-        label: "Messages",
-        count: messages.length,
-        content: messagesContent,
-      },
-      {
-        id: "suppliers",
-        label: `Suppliers (${supplierBids.length})`,
-        content: suppliersContent,
-      },
-      { id: "viewer", label: "Files", content: filesContent },
-      { id: "tracking", label: "Tracking", content: trackingContent },
-    ];
+  const awardPanel = showCustomerAwardPanel ? (
+    <CustomerQuoteAwardPanel
+      quoteId={quote.id}
+      bids={bids}
+      canSubmit={customerCanSubmitAward}
+      disableReason={customerAwardDisabledReason}
+      winningBidId={winningBidId}
+    />
+  ) : null;
+
+  const projectSection = quoteIsWon ? (
+    <CustomerQuoteProjectCard
+      quoteId={quote.id}
+      project={project}
+      readOnly={readOnly}
+      projectUnavailable={projectUnavailable}
+    />
+  ) : (
+    <PortalCard
+      title="Project kickoff"
+      description="Add PO details and ship dates once you select a winning supplier."
+    >
+      <p className="text-sm text-slate-300">
+        Select a winning supplier to unlock the kickoff form. We&apos;ll collect PO numbers, target ship
+        dates, and any final notes right here.
+      </p>
+    </PortalCard>
+  );
+
+  const messagesUnavailable = Boolean(messagesError);
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300">
-          Quote workspace
-        </p>
-        <div className="mt-2 space-y-1">
-          <h1 className="text-2xl font-semibold text-white">
-            {customerName} · {formatQuoteId(quote.id)}
-          </h1>
-          <p className="text-sm text-slate-400">
-            Status updates, files, and shared messages for this RFQ.
-          </p>
-        </div>
-      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
-          <span>
-            Viewing as{" "}
-            <span className="font-mono text-slate-200">{identityEmailDisplay}</span>
-          </span>
-          <span>
-            Quote status:{" "}
-            <span className="font-semibold text-emerald-200">
-            {statusLabel}
-            </span>
-          </span>
-            {readOnly ? (
-              <span className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-slate-300">
-                Read-only preview
-              </span>
-            ) : null}
-        </div>
-      </section>
-
-      <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
-    </div>
+    <PortalShell
+      workspace="customer"
+      title={headerTitle}
+      subtitle="Status updates, files, and shared messages for this RFQ."
+      headerContent={headerContent}
+      actions={headerActions}
+    >
+      {receiptBanner}
+      {summaryCard}
+      {awardPanel}
+      {projectSection}
+      <CustomerQuoteMessagesCard
+        quoteId={quote.id}
+        messages={messages}
+        messagesUnavailable={messagesUnavailable}
+        readOnly={readOnly}
+      />
+      <div className="space-y-2">
+        <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
+        {filesUnavailable ? (
+          <>
+            <p className="px-1 text-xs text-slate-500">
+              File metadata is temporarily unavailable. Download links fall back to the original upload
+              while we resync.
+            </p>
+            <DataFallbackNotice className="px-1" />
+          </>
+        ) : null}
+      </div>
+      <CustomerQuoteTrackingCard className={cardClasses} events={timelineEvents} />
+    </PortalShell>
   );
 }
 
@@ -426,50 +601,4 @@ function PortalNoticeCard({
       <p className="mt-2 text-sm text-slate-400">{description}</p>
     </section>
   );
-}
-
-function BidStatusBadge({ status }: { status: string }) {
-  const colorMap: Record<string, string> = {
-    accepted: "bg-emerald-500/20 text-emerald-200 border-emerald-500/30",
-    declined: "bg-red-500/10 text-red-200 border-red-500/30",
-    pending: "bg-blue-500/10 text-blue-200 border-blue-500/30",
-    withdrawn: "bg-slate-500/10 text-slate-200 border-slate-500/30",
-  };
-  const classes =
-    colorMap[status] ?? "bg-slate-500/10 text-slate-200 border-slate-500/30";
-  return (
-    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${classes}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
-    </span>
-  );
-}
-
-function DetailChip({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </p>
-      <p className="text-sm text-slate-100">{value}</p>
-    </div>
-  );
-}
-
-function formatBidPrice(bid: SupplierBidWithContext): string {
-  const numeric =
-    typeof bid.unit_price === "string" ? Number(bid.unit_price) : bid.unit_price;
-  if (typeof numeric !== "number" || !Number.isFinite(numeric)) {
-    return "Pending";
-  }
-
-  const currency = (bid.currency ?? "USD").toUpperCase();
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 0,
-    }).format(numeric);
-  } catch {
-    return `${currency} ${numeric.toFixed(0)}`;
-  }
 }

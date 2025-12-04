@@ -1,22 +1,25 @@
 "use client";
 
-import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
+import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
-import { handleQuoteFormSubmit, type QuoteFormState } from "@/app/admin/actions";
 import { formatDateInputValue } from "@/lib/formatDate";
 import {
-  DEFAULT_UPLOAD_STATUS,
-  type UploadStatus,
-  UPLOAD_STATUS_LABELS,
-  UPLOAD_STATUS_OPTIONS,
-} from "../constants";
+  DEFAULT_QUOTE_STATUS,
+  QUOTE_STATUS_LABELS,
+  QUOTE_STATUS_OPTIONS,
+  normalizeQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
+import {
+  submitAdminQuoteUpdateAction,
+  type AdminQuoteUpdateState,
+} from "./[id]/actions";
 
 type QuoteUpdateFormProps = {
   quote: {
     id: string;
-    status: UploadStatus;
+    status: QuoteStatus;
     price: number | null;
     currency: string | null;
     targetDate: string | null;
@@ -27,18 +30,26 @@ type QuoteUpdateFormProps = {
 
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP"];
 
-const INITIAL_STATE: QuoteFormState = {};
+const STATUS_OPTIONS: { value: QuoteStatus; label: string }[] =
+  QUOTE_STATUS_OPTIONS.map((status) => ({
+    value: status,
+    label: QUOTE_STATUS_LABELS[status],
+  }));
+
+const INITIAL_ADMIN_QUOTE_UPDATE_STATE: AdminQuoteUpdateState = {
+  ok: true,
+  message: "",
+};
 
 export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
-  const [state, formAction] = useActionState(
-    handleQuoteFormSubmit,
-    INITIAL_STATE,
+  const boundAction = submitAdminQuoteUpdateAction.bind(null, quote.id);
+  const [state, formAction] = useFormState<AdminQuoteUpdateState, FormData>(
+    boundAction,
+    INITIAL_ADMIN_QUOTE_UPDATE_STATE,
   );
 
-    return (
-      <form className="mt-4 space-y-4" action={formAction}>
-      <input type="hidden" name="id" value={quote.id} />
-
+  return (
+    <form className="mt-4 space-y-4" action={formAction}>
       <div className="space-y-1.5">
         <label
           htmlFor="status"
@@ -49,12 +60,12 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
         <select
           id="status"
           name="status"
-          defaultValue={quote.status ?? DEFAULT_UPLOAD_STATUS}
+          defaultValue={normalizeQuoteStatus(quote.status ?? DEFAULT_QUOTE_STATUS)}
           className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
         >
-          {UPLOAD_STATUS_OPTIONS.map((status) => (
-            <option key={status} value={status}>
-              {UPLOAD_STATUS_LABELS[status]}
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
             </option>
           ))}
         </select>
@@ -102,61 +113,66 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
 
       <div className="space-y-1.5">
         <label
-          htmlFor="target_date"
+          htmlFor="targetDate"
           className="block text-sm font-medium text-slate-200"
         >
           Target date
         </label>
         <input
-          id="target_date"
-          name="target_date"
+          id="targetDate"
+          name="targetDate"
           type="date"
           defaultValue={formatDateInputValue(quote.targetDate)}
           className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
         />
       </div>
 
-        <div className="space-y-1.5">
-          <label
-            htmlFor="dfm_notes"
-            className="block text-sm font-medium text-slate-200"
-          >
-            DFM notes (visible to customer)
-          </label>
-          <textarea
-            id="dfm_notes"
-            name="dfm_notes"
-            defaultValue={quote.dfmNotes ?? ""}
-            rows={4}
-            className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
-            placeholder="Call out manufacturability feedback you want to share"
-          />
-          <p className="text-xs text-slate-500">
-            Customers will eventually see these notes on their quote.
-          </p>
-        </div>
+      <div className="space-y-1.5">
+        <label
+          htmlFor="dfmNotes"
+          className="block text-sm font-medium text-slate-200"
+        >
+          DFM notes (visible to customer)
+        </label>
+        <textarea
+          id="dfmNotes"
+          name="dfmNotes"
+          defaultValue={quote.dfmNotes ?? ""}
+          rows={4}
+          className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
+          placeholder="Call out manufacturability feedback you want to share"
+        />
+        <p className="text-xs text-slate-500">
+          Customers will eventually see these notes on their quote.
+        </p>
+      </div>
 
       <div className="space-y-1.5">
         <label
-          htmlFor="internal_notes"
+          htmlFor="internalNotes"
           className="block text-sm font-medium text-slate-200"
         >
           Internal notes
         </label>
         <textarea
-          id="internal_notes"
-          name="internal_notes"
+          id="internalNotes"
+          name="internalNotes"
           defaultValue={quote.internalNotes ?? ""}
           rows={4}
           className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
         />
       </div>
 
-        {state?.error && <p className="text-sm text-red-400">{state.error}</p>}
+      {!state.ok && state.error && (
+        <p className="text-sm text-red-400">{state.error}</p>
+      )}
+      {state.ok && state.message && (
+        <p className="text-sm text-emerald-300">{state.message}</p>
+      )}
 
-        <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:justify-end">
-          <SubmitButton />
-        </div>
+      <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:justify-end">
+        <SubmitButton />
+      </div>
     </form>
   );
 }

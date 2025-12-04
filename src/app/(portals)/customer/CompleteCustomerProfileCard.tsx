@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
 import {
   completeCustomerProfileAction,
@@ -13,6 +14,7 @@ type CompleteCustomerProfileCardProps = {
 };
 
 const INITIAL_STATE: CompleteCustomerProfileActionState = {
+  ok: false,
   error: null,
 };
 
@@ -20,6 +22,7 @@ export function CompleteCustomerProfileCard({
   sessionEmail,
   defaultCompanyName,
 }: CompleteCustomerProfileCardProps) {
+  const router = useRouter();
   const [state, formAction] = useFormState<
     CompleteCustomerProfileActionState,
     FormData
@@ -33,6 +36,12 @@ export function CompleteCustomerProfileCard({
     }
     return "";
   }, [defaultCompanyName, sessionEmail]);
+
+  useEffect(() => {
+    if (state.ok) {
+      router.refresh();
+    }
+  }, [state.ok, router]);
 
   return (
     <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
@@ -70,7 +79,9 @@ export function CompleteCustomerProfileCard({
             <span className="font-mono text-slate-300">?email=you@company.com</span> to the URL.
           </p>
         ) : null}
-        {state.error ? <p className="text-sm text-red-300">{state.error}</p> : null}
+        {!state.ok && state.error ? (
+          <p className="text-sm text-red-300">{state.error}</p>
+        ) : null}
         <SubmitButton />
       </form>
     </section>

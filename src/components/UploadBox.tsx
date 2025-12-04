@@ -6,7 +6,11 @@ import {
   ChangeEvent,
   FormEvent,
   useEffect,
+  useRef,
+  useMemo,
+  useCallback,
 } from "react";
+import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
 import {
   CAD_ACCEPT_STRING,
@@ -16,6 +20,10 @@ import {
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
 import { primaryCtaClasses } from "@/lib/ctas";
+import { submitQuoteIntakeAction } from "@/app/quote/actions";
+import type { QuoteIntakeActionState } from "@/app/quote/actions";
+import { initialQuoteIntakeState } from "@/lib/quote/intakeState";
+import { QUOTE_INTAKE_FALLBACK_ERROR } from "@/lib/quote/messages";
 
 const MANUFACTURING_PROCESS_OPTIONS = [
   "CNC machining",
@@ -39,6 +47,12 @@ const RFQ_REASON_OPTIONS = [
   "Existing production, looking for backup",
   "Just exploring capabilities",
 ] as const;
+
+const UPLOAD_EXPLAINER_POINTS = [
+  "We privately route your part to vetted suppliers on your behalf.",
+  "You’ll get one or more quotes in your customer workspace.",
+  "You stay in control—no obligation to award a job.",
+];
 
 /**
  * Minimal, easily testable iOS/iPadOS detector. Modern iPadOS (13+) reports
@@ -68,21 +82,37 @@ type UploadState = {
   termsAccepted: boolean;
 };
 
-type FieldErrorKey =
-  | "file"
-  | "firstName"
-  | "lastName"
-  | "email"
-  | "manufacturingProcess"
-  | "quantity"
-  | "shippingPostalCode"
-  | "exportRestriction"
-  | "itarAcknowledged"
-  | "termsAccepted";
+export type PrefillContact = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  displayName: string;
+};
+
+type UploadBoxProps = {
+  prefillContact?: PrefillContact | null;
+  showExplainer?: boolean;
+};
+
+const FIELD_ERROR_KEYS = [
+  "file",
+  "firstName",
+  "lastName",
+  "email",
+  "manufacturingProcess",
+  "quantity",
+  "shippingPostalCode",
+  "exportRestriction",
+  "itarAcknowledged",
+  "termsAccepted",
+] as const;
+
+type FieldErrorKey = (typeof FIELD_ERROR_KEYS)[number];
+const FIELD_ERROR_KEY_SET = new Set<FieldErrorKey>(FIELD_ERROR_KEYS);
 
 type FieldErrors = Partial<Record<FieldErrorKey, string>>;
 
-const initialState: UploadState = {
+const EMPTY_UPLOAD_STATE: UploadState = {
   file: null,
   fileName: null,
   firstName: "",
@@ -100,84 +130,23 @@ const initialState: UploadState = {
   termsAccepted: false,
 };
 
+const CONTACT_FIELD_KEYS: Array<keyof Pick<
+  UploadState,
+  "firstName" | "lastName" | "email"
+>> = ["firstName", "lastName", "email"];
+
+function buildInitialUploadState(prefill?: PrefillContact | null): UploadState {
+  return {
+    ...EMPTY_UPLOAD_STATE,
+    firstName: prefill?.firstName ?? "",
+    lastName: prefill?.lastName ?? "",
+    email: prefill?.email ?? "",
+  };
+}
+
 const MAX_UPLOAD_SIZE_LABEL = `${bytesToMegabytes(MAX_UPLOAD_SIZE_BYTES)} MB`;
 const FILE_TYPE_ERROR_MESSAGE = `Unsupported file type. Please upload ${CAD_FILE_TYPE_DESCRIPTION}.`;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-
-type UploadFileDescriptor = {
-  bucket: string;
-  storageKey: string;
-  storagePath: string;
-  sizeBytes: number;
-  mimeType: string;
-  originalFileName: string;
-  sanitizedFileName: string;
-  extension?: string | null;
-};
-
-type UploadSuccessResponse = {
-  success: true;
-  message?: string;
-  uploadId?: string;
-  quoteId?: string | null;
-  file?: UploadFileDescriptor;
-  metadataRecorded?: boolean;
-  step?: string;
-};
-
-type UploadErrorResponse = {
-  success: false;
-  message?: string;
-  step?: string;
-};
-
-type UploadApiResponse = UploadSuccessResponse | UploadErrorResponse;
-
-const extractPayloadMessage = (payload: unknown): string | null => {
-  if (!payload || typeof payload !== "object") return null;
-  const recordPayload = payload as Record<string, unknown>;
-
-  if (typeof recordPayload.message === "string") {
-    const message = recordPayload.message.trim();
-    if (message) {
-      return message;
-    }
-  }
-
-  if (typeof recordPayload.error === "string") {
-    const errorMsg = recordPayload.error.trim();
-    if (errorMsg) {
-      return errorMsg;
-    }
-  }
-
-  if (
-    recordPayload.details &&
-    typeof recordPayload.details === "object" &&
-    "message" in (recordPayload.details as Record<string, unknown>) &&
-    typeof (recordPayload.details as { message?: unknown }).message === "string"
-  ) {
-    const detailsMessage = (
-      recordPayload.details as { message: string }
-    ).message.trim();
-    if (detailsMessage) {
-      return detailsMessage;
-    }
-  }
-
-  return null;
-};
-
-const isUploadApiResponse = (
-  payload: unknown,
-): payload is UploadApiResponse => {
-  return Boolean(
-    payload &&
-      typeof payload === "object" &&
-      "success" in payload &&
-      typeof (payload as { success?: unknown }).success === "boolean",
-  );
-};
 
 const formatReadableBytes = (bytes: number): string => {
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -250,21 +219,103 @@ const validateFormFields = (state: UploadState): FieldErrors => {
 const hasErrors = (fieldErrors: FieldErrors) =>
   Object.keys(fieldErrors).length > 0;
 
-export default function UploadBox() {
-  const [state, setState] = useState<UploadState>(initialState);
+export default function UploadBox({
+  prefillContact,
+  showExplainer = false,
+}: UploadBoxProps) {
+  const baseState = useMemo(
+    () => buildInitialUploadState(prefillContact),
+    [prefillContact],
+  );
+  const [state, setState] = useState<UploadState>(() => ({ ...baseState }));
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [isDragging, setIsDragging] = useState(false);
-  const [isSubmitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [rawFormState, formAction] = useFormState<
+    QuoteIntakeActionState,
+    FormData
+  >(submitQuoteIntakeAction, initialQuoteIntakeState);
+  const formState = useMemo<NormalizedActionState | null>(() => {
+    if (rawFormState === initialQuoteIntakeState) {
+      return null;
+    }
+    return normalizeActionState(rawFormState);
+  }, [rawFormState]);
+  const contactFieldsLocked = Boolean(prefillContact);
+  const contactFieldLockSet = contactFieldsLocked
+    ? new Set<InputFieldKey>(["firstName", "lastName", "email"])
+    : null;
+  const resetUploadState = useCallback(() => {
+    setState(() => ({ ...baseState }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }, [baseState]);
+
+  useEffect(() => {
+    if (!prefillContact) {
+      return;
+    }
+    setState((prev) => {
+      const next = { ...prev };
+      CONTACT_FIELD_KEYS.forEach((key) => {
+        next[key] = baseState[key];
+      });
+      return next;
+    });
+  }, [baseState, prefillContact]);
+
+  const syncFileInputWithFile = useCallback((file: File | null) => {
+    const input = fileInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    if (!file) {
+      input.value = "";
+      return;
+    }
+
+    if (typeof DataTransfer === "undefined") {
+      return;
+    }
+
+    try {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      input.files = dataTransfer.files;
+    } catch (syncError) {
+      console.warn("[quote intake] unable to sync file input", syncError);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof navigator === "undefined") return;
     setIsIOSDevice(isIOSUserAgent(navigator.userAgent));
   }, []);
+
+  useEffect(() => {
+    if (!hasSubmitted || !formState) {
+      return;
+    }
+
+    if (formState.ok) {
+      setError(null);
+      setSuccessMessage(formState.message || "RFQ received.");
+      setFieldErrors({});
+      resetUploadState();
+    } else {
+      setError(formState.error);
+      setSuccessMessage(null);
+      setFieldErrors(formState.fieldErrors);
+    }
+
+    setHasSubmitted(false);
+  }, [formState, hasSubmitted, resetUploadState]);
 
   const canSubmit = Boolean(
     state.file &&
@@ -310,50 +361,59 @@ export default function UploadBox() {
     e.stopPropagation();
     setIsDragging(false);
 
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
+    try {
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) {
+        return;
+      }
 
-    const validationError = validateCadFile(file);
-    if (validationError) {
-      setError(validationError);
-      setFieldErrors((prev) => ({ ...prev, file: validationError }));
-      setStatusMessage(null);
-      setSuccess(false);
+      const validationError = validateCadFile(file);
+      if (validationError) {
+        setError(validationError);
+        setFieldErrors((prev) => ({ ...prev, file: validationError }));
+        setSuccessMessage(null);
+        setState((prev) => ({ ...prev, file: null, fileName: null }));
+        syncFileInputWithFile(null);
+        return;
+      }
+
+      clearFieldError("file");
+      setError(null);
       setSuccessMessage(null);
-      setState((prev) => ({ ...prev, file: null, fileName: null }));
-      return;
+      setState((prev) => ({ ...prev, file, fileName: file.name }));
+      syncFileInputWithFile(file);
+    } catch (dropError) {
+      console.error("[quote intake] client drop failed", dropError);
+      setError(QUOTE_INTAKE_FALLBACK_ERROR);
+      setSuccessMessage(null);
     }
-
-    clearFieldError("file");
-    setError(null);
-    setSuccess(false);
-    setSuccessMessage(null);
-    setStatusMessage(null);
-    setState((prev) => ({ ...prev, file, fileName: file.name }));
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    if (!file) return;
+    try {
+      const file = e.target.files?.[0] ?? null;
+      if (!file) return;
 
-    const validationError = validateCadFile(file);
-    if (validationError) {
-      setError(validationError);
-      setFieldErrors((prev) => ({ ...prev, file: validationError }));
-      setStatusMessage(null);
-      setSuccess(false);
+      const validationError = validateCadFile(file);
+      if (validationError) {
+        setError(validationError);
+        setFieldErrors((prev) => ({ ...prev, file: validationError }));
+        setSuccessMessage(null);
+        setState((prev) => ({ ...prev, file: null, fileName: null }));
+        e.target.value = "";
+        return;
+      }
+
+      clearFieldError("file");
+      setError(null);
       setSuccessMessage(null);
-      setState((prev) => ({ ...prev, file: null, fileName: null }));
+      setState((prev) => ({ ...prev, file, fileName: file.name }));
+    } catch (changeError) {
+      console.error("[quote intake] file picker failed", changeError);
+      setError(QUOTE_INTAKE_FALLBACK_ERROR);
+      setSuccessMessage(null);
       e.target.value = "";
-      return;
     }
-
-    clearFieldError("file");
-    setError(null);
-    setSuccess(false);
-    setSuccessMessage(null);
-    setStatusMessage(null);
-    setState((prev) => ({ ...prev, file, fileName: file.name }));
   };
 
   type InputFieldKey =
@@ -377,11 +437,15 @@ export default function UploadBox() {
         | ChangeEvent<HTMLTextAreaElement>
         | ChangeEvent<HTMLSelectElement>,
     ) => {
+      if (contactFieldLockSet?.has(field)) {
+        return;
+      }
       const value = e.target.value;
       setState((prev) => ({ ...prev, [field]: value }));
       if (field in fieldErrors) {
         clearFieldError(field as FieldErrorKey);
       }
+      setSuccessMessage(null);
     };
 
   const handleCheckboxChange =
@@ -390,167 +454,48 @@ export default function UploadBox() {
       const checked = e.target.checked;
       setState((prev) => ({ ...prev, [field]: checked }));
       clearFieldError(field);
+      setSuccessMessage(null);
     };
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(false);
-    setSuccessMessage(null);
-    setStatusMessage("Validating file…");
-
-    const validationErrors = validateFormFields(state);
-    if (hasErrors(validationErrors)) {
-      setStatusMessage(null);
-      setFieldErrors(validationErrors);
-      setError("Please fix the highlighted fields before submitting.");
-      return;
-    }
-
-    if (!state.file) {
-      setStatusMessage(null);
-      setFieldErrors((prev) => ({
-        ...prev,
-        file: "Attach your CAD file before submitting.",
-      }));
-      setError("Attach your CAD file before submitting.");
-      return;
-    }
-
-    const fileValidationError = validateCadFile(state.file);
-    if (fileValidationError) {
-      setStatusMessage(null);
-      setFieldErrors((prev) => ({ ...prev, file: fileValidationError }));
-      setError(fileValidationError);
-      return;
-    }
-
-    setFieldErrors({});
-    setSubmitting(true);
-    setStatusMessage("Uploading file to Supabase…");
-
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     try {
-      const trimmedFirstName = state.firstName.trim();
-      const trimmedLastName = state.lastName.trim();
-      const fullName = [trimmedFirstName, trimmedLastName]
-        .filter(Boolean)
-        .join(" ");
-      const trimmedEmail = state.email.trim();
-      const trimmedCompany = state.company.trim();
-      const trimmedPhone = state.phone.trim();
-      const trimmedQuantity = state.quantity.trim();
-      const trimmedZip = state.shippingPostalCode.trim();
-      const trimmedNotes = state.notes.trim();
-      const trimmedReason = state.rfqReason.trim();
-
-      const formData = new FormData();
-      formData.append("file", state.file);
-      formData.append("name", fullName);
-      formData.append("email", trimmedEmail);
-      formData.append("company", trimmedCompany);
-      formData.append("phone", trimmedPhone);
-      formData.append("first_name", trimmedFirstName);
-      formData.append("last_name", trimmedLastName);
-      formData.append("manufacturing_process", state.manufacturingProcess);
-      formData.append("quantity", trimmedQuantity);
-      formData.append("shipping_postal_code", trimmedZip);
-      formData.append("export_restriction", state.exportRestriction);
-      formData.append("rfq_reason", trimmedReason);
-      formData.append("notes", trimmedNotes);
-      formData.append(
-        "itar_acknowledged",
-        state.itarAcknowledged ? "true" : "false",
-      );
-      formData.append(
-        "terms_accepted",
-        state.termsAccepted ? "true" : "false",
-      );
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      setStatusMessage("Finalizing upload…");
-
-      const responseText = await res.text();
-      let payload: UploadApiResponse | Record<string, unknown> | null = null;
-
-      if (responseText) {
-        try {
-          payload = JSON.parse(responseText) as
-            | UploadApiResponse
-            | Record<string, unknown>;
-        } catch {
-          payload = null;
-        }
-      }
-
-      const payloadMessage = extractPayloadMessage(payload);
-      const structuredPayload = isUploadApiResponse(payload) ? payload : null;
-
-      if (!res.ok || !structuredPayload) {
-        const fallbackStatus = res.status || 500;
-        const failureMessage =
-          payloadMessage ?? `Upload failed (${fallbackStatus})`;
-        const failureStep =
-          structuredPayload && "step" in structuredPayload
-            ? structuredPayload.step
-            : undefined;
-        const combinedMessage = [
-          failureMessage,
-          failureStep ? `Step: ${failureStep}` : null,
-        ]
-          .filter(Boolean)
-          .join(" ");
-        throw new Error(combinedMessage);
-      }
-
-      if (structuredPayload.success === false) {
-        const fallbackStatus = res.status || 500;
-        const failureMessage =
-          payloadMessage ?? `Upload failed (${fallbackStatus})`;
-        const failureStep = structuredPayload.step
-          ? `Step: ${structuredPayload.step}`
-          : null;
-        throw new Error(
-          [failureMessage, failureStep].filter(Boolean).join(" "),
-        );
-      }
-
-      const metadataLine =
-        structuredPayload.file?.storagePath &&
-        structuredPayload.metadataRecorded
-          ? `Stored as ${structuredPayload.file.storagePath}.`
-          : structuredPayload.metadataRecorded === false
-            ? "Upload succeeded but metadata logging failed. Please check admin logs."
-            : null;
-
-      const responseMessage = [
-        payloadMessage ?? "Upload complete. We'll review your CAD shortly.",
-        metadataLine,
-      ]
-        .filter(Boolean)
-        .join(" ");
-
-      setStatusMessage(null);
-      setState(initialState);
-      setFieldErrors({});
-      setSuccess(true);
-      setSuccessMessage(responseMessage);
       setError(null);
-    } catch (err: unknown) {
-      console.error(err);
-      setStatusMessage(null);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Upload failed. Please try again.",
-      );
-      setSuccess(false);
       setSuccessMessage(null);
-    } finally {
-      setSubmitting(false);
+
+      const validationErrors = validateFormFields(state);
+      if (hasErrors(validationErrors)) {
+        e.preventDefault();
+        setFieldErrors(validationErrors);
+        setError("Please fix the highlighted fields before submitting.");
+        return;
+      }
+
+      if (!state.file) {
+        e.preventDefault();
+        setFieldErrors((prev) => ({
+          ...prev,
+          file: "Attach your CAD file before submitting.",
+        }));
+        setError("Attach your CAD file before submitting.");
+        return;
+      }
+
+      const fileValidationError = validateCadFile(state.file);
+      if (fileValidationError) {
+        e.preventDefault();
+        setFieldErrors((prev) => ({ ...prev, file: fileValidationError }));
+        setError(fileValidationError);
+        return;
+      }
+
+      setFieldErrors({});
+      setHasSubmitted(true);
+    } catch (submitError) {
+      console.error("[quote intake] submit handler failed", submitError);
+      e.preventDefault();
+      setError(QUOTE_INTAKE_FALLBACK_ERROR);
+      setSuccessMessage(null);
+      setHasSubmitted(false);
     }
   };
 
@@ -559,62 +504,109 @@ export default function UploadBox() {
       aria-label="Upload CAD file"
       className="relative flex flex-col rounded-3xl border border-border bg-surface p-6 sm:p-8"
     >
-      {/* Drag & drop / file box */}
-      <div
-        className={clsx(
-          "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm sm:px-8 sm:py-12",
-          isDragging ? "border-accent/80 bg-accent/5" : "border-border/60",
-        )}
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+      <form
+        onSubmit={handleSubmit}
+        action={formAction}
+        className="flex flex-col"
+        encType="multipart/form-data"
+        noValidate
       >
-        <p className="text-xs text-muted">
-          {CAD_FILE_TYPE_DESCRIPTION}. Max {MAX_UPLOAD_SIZE_LABEL}.
-        </p>
-        <div className="mt-4 flex flex-col items-center gap-2">
-          <label
-            htmlFor="file"
-            className="inline-flex cursor-pointer items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-foreground transition hover:border-accent hover:text-accent"
-          >
-            Browse from device
-          </label>
-          <p className="text-[11px] text-muted">
-            …or drag &amp; drop into this box
-          </p>
-          <p className="mt-1 text-[11px] text-muted">
-            Selected:{" "}
-            {state.fileName ? (
-              <span className="text-foreground">
-                {state.fileName}
-                {state.file?.size
-                  ? ` · ${formatReadableBytes(state.file.size)}`
-                  : null}
-              </span>
-            ) : (
-              "No file selected yet"
-            )}
-          </p>
-        </div>
-        <input
-          id="file"
-          name="file"
-          type="file"
-          className="hidden"
-          onChange={handleFileChange}
-          accept={fileInputAccept}
-        />
-        {fieldErrors.file && (
-          <p className="mt-3 text-xs text-red-400" role="alert">
-            {fieldErrors.file}
-          </p>
+        {successMessage && (
+          <div className="mb-4 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+            {successMessage}
+          </div>
         )}
-      </div>
+        {error && (
+          <div className="mb-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            {error}
+          </div>
+        )}
+        {showExplainer ? (
+          <div className="mb-6 rounded-2xl border border-white/5 bg-white/5 p-4 text-left shadow-[0_10px_30px_rgba(2,6,23,0.45)]">
+            <p className="text-sm font-semibold text-foreground heading-tight">
+              What happens when you submit an RFQ?
+            </p>
+            <ul className="mt-3 space-y-2 text-sm text-muted">
+              {UPLOAD_EXPLAINER_POINTS.map((point) => (
+                <li key={point} className="flex gap-2">
+                  <span
+                    className="mt-2 h-1.5 w-1.5 rounded-full bg-accent"
+                    aria-hidden="true"
+                  />
+                  <span>{point}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {/* Drag & drop / file box */}
+        <div
+          className={clsx(
+            "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm sm:px-8 sm:py-12",
+            isDragging ? "border-accent/80 bg-accent/5" : "border-border/60",
+          )}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          <p className="text-xs text-muted">
+            {CAD_FILE_TYPE_DESCRIPTION}. Max {MAX_UPLOAD_SIZE_LABEL}.
+          </p>
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <label
+              htmlFor="file"
+              className="inline-flex cursor-pointer items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-foreground transition hover:border-accent hover:text-accent"
+            >
+              Browse from device
+            </label>
+            <p className="text-[11px] text-muted">
+              …or drag &amp; drop into this box
+            </p>
+            <p className="mt-1 text-[11px] text-muted">
+              Selected:{" "}
+              {state.fileName ? (
+                <span className="text-foreground">
+                  {state.fileName}
+                  {state.file?.size
+                    ? ` · ${formatReadableBytes(state.file.size)}`
+                    : null}
+                </span>
+              ) : (
+                "No file selected yet"
+              )}
+            </p>
+            <p className="mt-3 text-[11px] text-muted">
+              Your CAD files and drawings stay private. We only share them with matched suppliers for quoting.
+            </p>
+          </div>
+          <input
+            id="file"
+            name="file"
+            type="file"
+            className="hidden"
+            onChange={handleFileChange}
+            accept={fileInputAccept}
+            ref={fileInputRef}
+          />
+          {fieldErrors.file && (
+            <p className="mt-3 text-xs text-red-400" role="alert">
+              {fieldErrors.file}
+            </p>
+          )}
+        </div>
 
-      {/* Form fields */}
-      <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="mt-8 space-y-5">
+          {prefillContact && (
+            <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
+              You&apos;re submitting as{" "}
+              <span className="font-semibold text-emerald-50">
+                {prefillContact.displayName}
+              </span>{" "}
+              ({prefillContact.email}). Contact details come from your workspace profile.
+            </div>
+          )}
+          <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1">
             <label
               htmlFor="firstName"
@@ -624,18 +616,27 @@ export default function UploadBox() {
             </label>
             <input
               id="firstName"
+              name="firstName"
               type="text"
               autoComplete="given-name"
-              value={state.firstName}
-              onChange={handleInputChange("firstName")}
+              {...(contactFieldsLocked
+                ? { defaultValue: prefillContact?.firstName ?? "" }
+                : {
+                    value: state.firstName,
+                    onChange: handleInputChange("firstName"),
+                  })}
               className={clsx(
                 "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
                 fieldErrors.firstName ? "border-red-500" : "border-border",
+                contactFieldsLocked &&
+                  "cursor-not-allowed bg-black/30 text-muted-foreground",
               )}
               aria-invalid={Boolean(fieldErrors.firstName)}
               aria-describedby={
                 fieldErrors.firstName ? "firstName-error" : undefined
               }
+              readOnly={contactFieldsLocked}
+              aria-readonly={contactFieldsLocked}
             />
             {fieldErrors.firstName && (
               <p id="firstName-error" className="text-xs text-red-400">
@@ -652,18 +653,27 @@ export default function UploadBox() {
             </label>
             <input
               id="lastName"
+              name="lastName"
               type="text"
               autoComplete="family-name"
-              value={state.lastName}
-              onChange={handleInputChange("lastName")}
+              {...(contactFieldsLocked
+                ? { defaultValue: prefillContact?.lastName ?? "" }
+                : {
+                    value: state.lastName,
+                    onChange: handleInputChange("lastName"),
+                  })}
               className={clsx(
                 "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
                 fieldErrors.lastName ? "border-red-500" : "border-border",
+                contactFieldsLocked &&
+                  "cursor-not-allowed bg-black/30 text-muted-foreground",
               )}
               aria-invalid={Boolean(fieldErrors.lastName)}
               aria-describedby={
                 fieldErrors.lastName ? "lastName-error" : undefined
               }
+              readOnly={contactFieldsLocked}
+              aria-readonly={contactFieldsLocked}
             />
             {fieldErrors.lastName && (
               <p id="lastName-error" className="text-xs text-red-400">
@@ -683,16 +693,25 @@ export default function UploadBox() {
             </label>
             <input
               id="email"
+              name="email"
               type="email"
               autoComplete="email"
-              value={state.email}
-              onChange={handleInputChange("email")}
+              {...(contactFieldsLocked
+                ? { defaultValue: prefillContact?.email ?? "" }
+                : {
+                    value: state.email,
+                    onChange: handleInputChange("email"),
+                  })}
               className={clsx(
                 "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
                 fieldErrors.email ? "border-red-500" : "border-border",
+                contactFieldsLocked &&
+                  "cursor-not-allowed bg-black/30 text-muted-foreground",
               )}
               aria-invalid={Boolean(fieldErrors.email)}
               aria-describedby={fieldErrors.email ? "email-error" : undefined}
+              readOnly={contactFieldsLocked}
+              aria-readonly={contactFieldsLocked}
             />
             {fieldErrors.email && (
               <p id="email-error" className="text-xs text-red-400">
@@ -709,6 +728,7 @@ export default function UploadBox() {
             </label>
             <input
               id="phone"
+              name="phone"
               type="tel"
               autoComplete="tel"
               value={state.phone}
@@ -728,6 +748,7 @@ export default function UploadBox() {
             </label>
             <input
               id="company"
+              name="company"
               type="text"
               autoComplete="organization"
               value={state.company}
@@ -744,6 +765,7 @@ export default function UploadBox() {
             </label>
             <select
               id="manufacturingProcess"
+              name="manufacturingProcess"
               value={state.manufacturingProcess}
               onChange={handleInputChange("manufacturingProcess")}
               className={clsx(
@@ -787,6 +809,7 @@ export default function UploadBox() {
             </label>
             <select
               id="exportRestriction"
+              name="exportRestriction"
               value={state.exportRestriction}
               onChange={handleInputChange("exportRestriction")}
               className={clsx(
@@ -825,6 +848,7 @@ export default function UploadBox() {
             </label>
             <input
               id="quantity"
+              name="quantity"
               type="text"
               value={state.quantity}
               onChange={handleInputChange("quantity")}
@@ -856,6 +880,7 @@ export default function UploadBox() {
             </label>
             <input
               id="shippingPostalCode"
+              name="shippingPostalCode"
               type="text"
               autoComplete="postal-code"
               value={state.shippingPostalCode}
@@ -889,6 +914,7 @@ export default function UploadBox() {
             </label>
             <select
               id="rfqReason"
+              name="rfqReason"
               value={state.rfqReason}
               onChange={handleInputChange("rfqReason")}
               className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
@@ -912,6 +938,7 @@ export default function UploadBox() {
           </label>
           <textarea
             id="notes"
+            name="notes"
             rows={4}
             value={state.notes}
             onChange={handleInputChange("notes")}
@@ -924,7 +951,9 @@ export default function UploadBox() {
           <label className="flex items-start gap-3 text-sm text-foreground">
             <input
               id="itarAcknowledged"
+              name="itarAcknowledged"
               type="checkbox"
+              value="true"
               checked={state.itarAcknowledged}
               onChange={handleCheckboxChange("itarAcknowledged")}
               className={clsx(
@@ -947,7 +976,9 @@ export default function UploadBox() {
           <label className="flex items-start gap-3 text-sm text-foreground">
             <input
               id="termsAccepted"
+              name="termsAccepted"
               type="checkbox"
+              value="true"
               checked={state.termsAccepted}
               onChange={handleCheckboxChange("termsAccepted")}
               className={clsx(
@@ -982,41 +1013,90 @@ export default function UploadBox() {
           )}
         </div>
 
-        {/* Upload CTA */}
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={isSubmitting || !canSubmit}
-              className={clsx(
-                primaryCtaClasses,
-                "mt-2 w-full px-6 py-3",
-                isSubmitting && "cursor-wait",
-              )}
-              aria-busy={isSubmitting}
-            >
-              {isSubmitting ? "Submitting…" : "Submit RFQ"}
-            </button>
-          </div>
-
-        {/* Messages */}
-        <div className="min-h-[1.25rem] pt-1">
-          {error && (
-            <p className="text-xs text-red-400" role="alert">
-              {error}
-            </p>
-          )}
-          {!error && statusMessage && (
-            <p className="text-xs text-slate-400" role="status">
-              {statusMessage}
-            </p>
-          )}
-          {!error && !statusMessage && success && successMessage && (
-            <p className="text-xs text-emerald-400" role="status">
-              {successMessage}
-            </p>
-          )}
+        <div className="pt-2">
+          <SubmitButton disabled={!canSubmit} />
         </div>
-      </form>
+      </div>
+    </form>
     </section>
   );
+}
+
+function SubmitButton({ disabled }: { disabled: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={disabled || pending}
+      className={clsx(
+        primaryCtaClasses,
+        "mt-2 w-full px-6 py-3",
+        pending && "cursor-wait",
+      )}
+      aria-busy={pending}
+    >
+      {pending ? "Submitting…" : "Submit RFQ"}
+    </button>
+  );
+}
+
+type NormalizedActionState =
+  | {
+      ok: true;
+      quoteId: string | null;
+      uploadId: string;
+      message: string;
+    }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors: FieldErrors;
+    };
+
+function normalizeActionState(
+  state: QuoteIntakeActionState | null | undefined,
+): NormalizedActionState {
+  if (!state || typeof state !== "object" || typeof state.ok !== "boolean") {
+    return {
+      ok: false,
+      error: QUOTE_INTAKE_FALLBACK_ERROR,
+      fieldErrors: {},
+    };
+  }
+
+  if (state.ok) {
+    return {
+      ok: true,
+      quoteId: state.quoteId ?? null,
+      uploadId: state.uploadId ?? "",
+      message: state.message ?? "RFQ received.",
+    };
+  }
+
+  return {
+    ok: false,
+    error: state.error || QUOTE_INTAKE_FALLBACK_ERROR,
+    fieldErrors: normalizeActionFieldErrors(
+      state.fieldErrors as Record<string, unknown> | undefined,
+    ),
+  };
+}
+
+function normalizeActionFieldErrors(
+  rawErrors?: Record<string, unknown>,
+): FieldErrors {
+  if (!rawErrors) {
+    return {};
+  }
+
+  return Object.entries(rawErrors).reduce<FieldErrors>((acc, [key, value]) => {
+    if (
+      FIELD_ERROR_KEY_SET.has(key as FieldErrorKey) &&
+      typeof value === "string" &&
+      value.length > 0
+    ) {
+      acc[key as FieldErrorKey] = value;
+    }
+    return acc;
+  }, {});
 }

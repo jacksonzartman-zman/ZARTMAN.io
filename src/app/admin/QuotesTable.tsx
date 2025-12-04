@@ -2,10 +2,10 @@ import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import {
-  UPLOAD_STATUS_LABELS,
-  normalizeUploadStatus,
-  type UploadStatus,
-} from "./constants";
+  QUOTE_STATUS_LABELS,
+  isOpenQuoteStatus,
+  type QuoteStatus,
+} from "@/server/quotes/status";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 
@@ -15,16 +15,33 @@ export type QuoteRow = {
   customerEmail: string;
   company: string;
   fileName: string;
-  status: UploadStatus;
+  status: QuoteStatus;
   price: number | null;
   currency: string | null;
   targetDate: string | null;
-  createdAt: string;
+  createdAt: string | null;
+  bidCount: number;
+  hasWinner: boolean;
+  hasProject: boolean;
+  needsDecision: boolean;
+  winningBidId?: string | null;
+  winningSupplierId?: string | null;
+  winningSupplierName?: string | null;
 };
 
 type QuotesTableProps = {
   quotes: QuoteRow[];
   totalCount: number;
+};
+
+const QUOTE_STATUS_VARIANTS: Record<QuoteStatus, string> = {
+  submitted: "pill-info",
+  in_review: "pill-info",
+  quoted: "pill-info",
+  approved: "pill-success",
+  won: "pill-success",
+  lost: "pill-warning",
+  cancelled: "pill-muted",
 };
 
 function formatMoney(amount: number | null, currency: string | null) {
@@ -44,23 +61,43 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
 
   return (
     <AdminTableShell
+      tableClassName="min-w-[1024px] w-full border-separate border-spacing-0 text-sm"
       head={
         <tr>
-          <th className="px-4 py-3">Customer</th>
-          <th className="px-4 py-3">Company</th>
-          <th className="px-4 py-3">File</th>
-          <th className="px-4 py-3">Status</th>
-          <th className="px-4 py-3">Price</th>
-          <th className="px-4 py-3">Target date</th>
-          <th className="px-4 py-3">Created</th>
-          <th className="px-4 py-3 text-right">Open</th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Customer
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Company
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            File
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Status
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            State
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Price
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Target date
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Created
+          </th>
+          <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Open
+          </th>
         </tr>
       }
       body={
         showEmptyState ? (
           <tr>
             <td
-              colSpan={8}
+              colSpan={9}
               className="px-6 py-12 text-center text-base text-slate-300"
             >
               <p className="font-medium text-slate-100">
@@ -74,49 +111,128 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
             </td>
           </tr>
         ) : (
-          quotes.map((row) => (
-            <tr
-              key={row.id}
-              className="bg-slate-950/40 transition hover:bg-slate-900/40"
-            >
-              <td className={adminTableCellClass}>
-                <div className="flex flex-col">
-                  <Link
-                    href={`/admin/quotes/${row.id}`}
-                    className="text-sm font-medium text-emerald-100 hover:text-emerald-300"
-                  >
-                    {row.customerName}
-                  </Link>
-                  {row.customerEmail && (
-                    <a
-                      href={`mailto:${row.customerEmail}`}
-                      className="text-xs text-slate-400 hover:text-emerald-200"
+          quotes.map((row) => {
+            const createdAtDate =
+              typeof row.createdAt === "string" ? new Date(row.createdAt) : null;
+            const isStale =
+              createdAtDate &&
+              !Number.isNaN(createdAtDate.getTime()) &&
+              isOpenQuoteStatus(row.status) &&
+              (Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60) > 48;
+            const bidSummary =
+              row.bidCount === 0
+                ? "No bids yet"
+                : `${row.bidCount} bid${row.bidCount === 1 ? "" : "s"}`;
+            const baseStatusLabel = QUOTE_STATUS_LABELS[row.status];
+            const statusLabel = isStale
+              ? `${baseStatusLabel} · Aging`
+              : baseStatusLabel;
+            let stateLabel: string;
+            let stateClassName: string;
+            const normalizedWinnerName =
+              typeof row.winningSupplierName === "string"
+                ? row.winningSupplierName.trim()
+                : "";
+
+            if (row.hasWinner) {
+              stateLabel = row.hasProject
+                ? "Winner selected · Kickoff scheduled"
+                : "Winner selected";
+              stateClassName = "pill-success";
+            } else if (row.needsDecision) {
+              stateLabel = "Needs decision";
+              stateClassName = "pill-warning";
+            } else if (row.bidCount === 0) {
+              stateLabel = "Awaiting bids";
+              stateClassName = "pill-muted";
+            } else {
+              stateLabel = "Bidding";
+              stateClassName = "pill-info";
+            }
+            const winnerHelperText =
+              row.hasWinner && normalizedWinnerName
+                ? `Winner: ${normalizedWinnerName}`
+                : row.hasWinner
+                  ? "Winner selected"
+                  : null;
+
+            return (
+              <tr
+                key={row.id}
+                className="border-b border-slate-800/60 bg-slate-950/40 transition hover:bg-slate-900/40"
+              >
+                <td className={adminTableCellClass}>
+                  <div className="flex flex-col">
+                    <Link
+                      href={`/admin/quotes/${row.id}`}
+                      className="text-sm font-medium text-emerald-100 hover:text-emerald-300"
+                      title={row.customerName || undefined}
                     >
-                      {row.customerEmail}
-                    </a>
+                      <span className="max-w-[180px] truncate">
+                        {row.customerName}
+                      </span>
+                    </Link>
+                    {row.customerEmail && (
+                      <a
+                        href={`mailto:${row.customerEmail}`}
+                        className="text-xs text-slate-400 hover:text-emerald-200"
+                        title={row.customerEmail}
+                      >
+                        <span className="max-w-[220px] truncate">
+                          {row.customerEmail}
+                        </span>
+                      </a>
+                    )}
+                  </div>
+                </td>
+                <td className={adminTableCellClass}>
+                  <span
+                    className="max-w-[180px] truncate text-slate-100"
+                    title={row.company || undefined}
+                  >
+                    {row.company || "—"}
+                  </span>
+                </td>
+                <td
+                  className={clsx(
+                    adminTableCellClass,
+                    "max-w-[220px] truncate align-middle text-xs text-slate-300",
                   )}
-                </div>
-              </td>
-              <td className={`${adminTableCellClass} text-slate-100`}>
-                {row.company || "—"}
-              </td>
-              <td className={`${adminTableCellClass} text-xs text-slate-300`}>
-                {row.fileName || "—"}
-              </td>
-              <td className={adminTableCellClass}>
-                <span className="inline-flex items-center rounded-full border border-transparent bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                  {UPLOAD_STATUS_LABELS[normalizeUploadStatus(row.status)]}
-                </span>
-              </td>
-              <td className={`${adminTableCellClass} text-xs text-slate-200`}>
-                {formatMoney(row.price, row.currency)}
-              </td>
-              <td className={`${adminTableCellClass} text-xs text-slate-400`}>
-                {formatDateTime(row.targetDate)}
-              </td>
-              <td className={`${adminTableCellClass} text-xs text-slate-400`}>
-                {formatDateTime(row.createdAt, { includeTime: true })}
-              </td>
+                  title={row.fileName || undefined}
+                >
+                  {row.fileName || "—"}
+                </td>
+                <td className={adminTableCellClass}>
+                  <span
+                    className={clsx(
+                      "pill pill-table",
+                      QUOTE_STATUS_VARIANTS[row.status],
+                    )}
+                  >
+                    {statusLabel}
+                  </span>
+                </td>
+                <td className={adminTableCellClass}>
+                  <div className="flex flex-col">
+                    <span className={clsx("pill pill-table", stateClassName)}>
+                      {stateLabel}
+                    </span>
+                    {winnerHelperText ? (
+                      <span className="mt-1 text-[11px] text-slate-500">
+                        {winnerHelperText}
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+                <td className={`${adminTableCellClass} text-xs text-slate-200`}>
+                  {formatMoney(row.price, row.currency)}
+                </td>
+                <td className={`${adminTableCellClass} text-xs text-slate-400`}>
+                  {formatDateTime(row.targetDate)}
+                </td>
+                <td className={`${adminTableCellClass} text-xs text-slate-400`}>
+                  {formatDateTime(row.createdAt, { includeTime: true })}
+                </td>
                 <td className={`${adminTableCellClass} text-right`}>
                   <Link
                     href={`/admin/quotes/${row.id}`}
@@ -129,8 +245,9 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                     Open quote
                   </Link>
                 </td>
-            </tr>
-          ))
+              </tr>
+            );
+          })
         )
       }
     />

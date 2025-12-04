@@ -1,11 +1,10 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
+import clsx from "clsx";
 import { formatDateTime } from "@/lib/formatDate";
-import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "../PortalCard";
-import { PortalLoginPanel } from "../PortalLoginPanel";
+import SupplierInboxTable, { type SupplierInboxRow } from "./SupplierInboxTable";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
-import { WorkspaceMetrics, type WorkspaceMetric } from "../WorkspaceMetrics";
+import type { WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
 import {
   getSearchParamValue,
@@ -13,22 +12,37 @@ import {
   type SearchParamsLike,
 } from "@/app/(portals)/quotes/pageUtils";
 import {
+  getSupplierApprovalStatus,
+  loadSupplierInboxBidAggregates,
   listSupplierBidsForSupplier,
   loadSupplierProfile,
+  loadSupplierMatchHealth,
   matchQuotesToSupplier,
+  type SupplierActivityResult,
+  type SupplierApprovalGate,
+  type SupplierApprovalStatus,
   type SupplierBidWithContext,
   type SupplierQuoteMatch,
-  type SupplierProfile,
+  type SupplierMatchHealth,
 } from "@/server/suppliers";
-import { getCurrentSession } from "@/server/auth";
-import { resolveUserRoles } from "@/server/users/roles";
-import type { UserRoleSummary } from "@/server/users/roles";
+import { getServerAuthUser } from "@/server/auth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
 import { loadSupplierActivityFeed } from "@/server/activity";
-import type { ActivityItem } from "@/types/activity";
+import { loadRecentSupplierActivity } from "@/server/suppliers/activity";
+import type { QuoteActivityEvent } from "@/types/activity";
+import { resolveUserRoles } from "@/server/users/roles";
+import { DataFallbackNotice } from "../DataFallbackNotice";
+import { DEBUG_PORTALS } from "../debug";
+import { approvalsEnabled } from "@/server/suppliers/flags";
+import { normalizeQuoteStatus } from "@/server/quotes/status";
+import { PortalShell } from "../components/PortalShell";
+import { PortalStatPills } from "../components/PortalStatPills";
+import { resolveSupplierActivityEmptyState } from "./activityEmptyState";
 
 export const dynamic = "force-dynamic";
+
+const MATCH_HEALTH_LOOKBACK_DAYS = 30;
 
 type SupplierDashboardPageProps = {
   searchParams?: SearchParamsLike;
@@ -37,114 +51,231 @@ type SupplierDashboardPageProps = {
 async function SupplierDashboardPage({
   searchParams,
 }: SupplierDashboardPageProps) {
-  const { session, portalIntent } = await getCurrentSession();
-  let roles: UserRoleSummary | null = null;
-
-  const logPortalDecision = (
-    decision: string,
-    overrides?: { roles?: UserRoleSummary | null },
-  ) => {
-    console.log("[supplier portal] decision", {
-      portalIntent: portalIntent ?? "none",
-      roles: overrides?.roles ?? roles,
-      decision,
-    });
-  };
-
-  if (!session) {
-    logPortalDecision("render_login_panel", { roles: null });
-    return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
+  const { user } = await getServerAuthUser();
+  const roles = user ? await resolveUserRoles(user.id) : null;
+  if (!user) {
+    return (
+      <section className="mx-auto max-w-3xl rounded-3xl border border-slate-900 bg-slate-950/70 p-8 text-center shadow-[0_18px_40px_rgba(2,6,23,0.85)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
+          Supplier workspace
+        </p>
+        <h1 className="mt-4 text-3xl font-semibold text-white">You&apos;re not logged in</h1>
+        <p className="mt-3 text-sm text-slate-300">
+          Use the email you onboarded with to request a magic link. We&apos;ll redirect you back to
+          your supplier dashboard once you&apos;re in.
+        </p>
+        <Link
+          href="/login?next=/supplier"
+          className="mt-6 inline-flex items-center justify-center rounded-full bg-white/90 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white"
+        >
+          Go to login
+        </Link>
+      </section>
+    );
   }
-
-  roles = await resolveUserRoles(session.user.id);
-
+  console.log("[portal] user id", user.id);
+  console.log("[portal] email", user.email);
+  console.log("[portal] isSupplier", roles?.isSupplier);
+  console.log("[portal] isCustomer", roles?.isCustomer);
   const sessionCompanyName =
-    sanitizeDisplayName(session.user.user_metadata?.company) ??
-    sanitizeDisplayName(session.user.user_metadata?.full_name) ??
-    sanitizeDisplayName(session.user.email) ??
+    sanitizeDisplayName(user.user_metadata?.company) ??
+    sanitizeDisplayName(user.user_metadata?.full_name) ??
+    sanitizeDisplayName(user.email) ??
     "your team";
-  const supplierEmail = normalizeEmailInput(session.user.email ?? null);
+  const supplierEmail = normalizeEmailInput(user.email ?? null);
   const onboardingJustCompleted =
     getSearchParamValue(searchParams, "onboard") === "1";
 
-  if (!roles?.isSupplier) {
-    if (roles?.isCustomer) {
-      logPortalDecision("workspace_missing_supplier");
-      return (
-        <main className="mx-auto max-w-3xl px-4 py-12 space-y-6">
+  if (!supplierEmail) {
+    return (
+      <PortalShell
+        workspace="supplier"
+        title="Dashboard"
+        subtitle="RFQs, bids, and compliance docs stay aligned here."
+        headerContent={
           <WorkspaceWelcomeBanner
             role="supplier"
             companyName={sessionCompanyName}
           />
-          <PortalCard
-            title="Supplier workspace not set up yet"
-            description="This account is linked to a customer workspace, but doesn't have a supplier profile yet."
-          >
-            <p className="text-sm text-slate-400">
-              Head over to the customer portal to keep work moving, or email{" "}
-              <a
-                href="mailto:support@zartman.app"
-                className="font-medium text-slate-100 underline"
-              >
-                support@zartman.app
-              </a>{" "}
-              and we'll help connect a supplier profile.
-            </p>
-            <div className="mt-4 flex gap-3">
-              <a
-                href="/customer"
-                className="inline-flex items-center rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-100 hover:border-slate-500"
-              >
-                Go to customer portal
-              </a>
-            </div>
-          </PortalCard>
-        </main>
-      );
-    }
-
-    logPortalDecision("render_login_panel_no_roles");
-    return <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />;
-  }
-  logPortalDecision("render_supplier_workspace");
-
-  if (!supplierEmail) {
-    return (
-      <div className="space-y-6">
-        <WorkspaceWelcomeBanner
-          role="supplier"
-          companyName={sessionCompanyName}
-        />
+        }
+      >
         <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
           <p className="text-sm text-slate-300">
             Sign in with a verified supplier email address to load your workspace.
           </p>
         </section>
-      </div>
+      </PortalShell>
     );
   }
 
   const profile = await loadSupplierProfile(supplierEmail);
   const supplier = profile?.supplier ?? null;
-  const capabilities = profile?.capabilities ?? [];
-  const documents = profile?.documents ?? [];
   const supplierExists = Boolean(supplier);
+  const approvalsOn = approvalsEnabled();
+  const supplierStatus = supplier?.status ?? "pending";
+  const approvalStatus: SupplierApprovalStatus =
+    profile?.approvalStatus ??
+    getSupplierApprovalStatus({ status: supplierStatus });
+  const supplierApproved = approvalsOn ? approvalStatus === "approved" : true;
+  const approvalGate: SupplierApprovalGate | undefined =
+    approvalsOn && !supplierApproved
+      ? {
+          enabled: true,
+          status: approvalStatus,
+        }
+      : undefined;
+  const activityHoldCopy = getApprovalHoldCopy(approvalGate?.status);
 
-  let matches: SupplierQuoteMatch[] = [];
-  let bids: SupplierBidWithContext[] = [];
+  let matchesResult: SupplierActivityResult<SupplierQuoteMatch[]> = {
+    ok: true,
+    data: [],
+  };
+  let bidsResult: SupplierActivityResult<SupplierBidWithContext[]> = {
+    ok: true,
+    data: [],
+  };
+  let matchHealth: SupplierMatchHealth | null = null;
+
   if (supplier) {
-    [matches, bids] = await Promise.all([
-      matchQuotesToSupplier(supplier.id),
-      listSupplierBidsForSupplier(supplier.id),
-    ]);
+    try {
+      const [resolvedMatches, resolvedBids, resolvedHealth] = await Promise.all([
+        matchQuotesToSupplier({
+          supplierId: supplier.id,
+          supplierEmail: supplier.primary_email ?? supplierEmail,
+        }),
+        listSupplierBidsForSupplier({
+          supplierId: supplier.id,
+          supplierEmail: supplier.primary_email ?? supplierEmail,
+        }),
+        loadSupplierMatchHealth(supplier.id, {
+          lookbackDays: MATCH_HEALTH_LOOKBACK_DAYS,
+        }).catch((error) => {
+          console.error("[supplier dashboard] match health failed", {
+            supplierId: supplier.id,
+            error,
+          });
+          return null;
+        }),
+      ]);
+      matchesResult = resolvedMatches;
+      bidsResult = resolvedBids;
+      matchHealth = resolvedHealth;
+    } catch (error) {
+      console.error("[supplier dashboard] supplier loaders failed", {
+        supplierId: supplier.id,
+        error,
+      });
+    }
   }
-  const recentActivity: ActivityItem[] = supplier
-    ? await loadSupplierActivityFeed({
+  const matchesData = matchesResult.data ?? [];
+  const bidsData = bidsResult.data ?? [];
+  const matchQuoteIds = matchesData
+    .map((match) => match.quoteId ?? match.quote?.id ?? null)
+    .filter(
+      (id): id is string => typeof id === "string" && id.trim().length > 0,
+    );
+  const bidAggregates =
+    supplier && matchQuoteIds.length > 0
+      ? await loadSupplierInboxBidAggregates(supplier.id, matchQuoteIds)
+      : {};
+  const supplierInboxRows = matchesData.reduce<SupplierInboxRow[]>(
+    (acc, match) => {
+      const quote = match.quote;
+      const quoteId =
+        typeof match.quoteId === "string" && match.quoteId.length > 0
+          ? match.quoteId
+          : quote?.id ?? null;
+      if (!quote || !quoteId) {
+        return acc;
+      }
+      const aggregate = bidAggregates[quoteId];
+      const fileNames =
+        (Array.isArray(quote.file_names) ? quote.file_names : null) ??
+        (Array.isArray(quote.upload_file_names)
+          ? quote.upload_file_names
+          : null) ??
+        [];
+      const companyName =
+        sanitizeDisplayName(quote.company) ??
+        sanitizeDisplayName(quote.customer_name) ??
+        "Customer";
+      const fairnessReason = match.fairness?.reasons?.[0] ?? null;
+
+      acc.push({
+        id: quoteId,
+        quoteId,
+        companyName,
+        processHint: match.processHint,
+        materials: match.materialMatches,
+        quantityHint: match.quantityHint ?? null,
+        fileCount: fileNames.length,
+        priceLabel: formatCurrency(quote.price, quote.currency),
+        createdAt: match.createdAt ?? quote.created_at ?? null,
+        status: normalizeQuoteStatus(quote.status),
+        bidCount: aggregate?.bidCount ?? 0,
+        lastBidAt: aggregate?.lastBidAt ?? null,
+        hasWinningBid: aggregate?.hasWinningBid ?? false,
+        fairnessReason: fairnessReason ?? null,
+      });
+      return acc;
+    },
+    [],
+  );
+  const inboxQuotesWithBids = supplierInboxRows.filter(
+    (row) => row.bidCount > 0,
+  ).length;
+  const inboxQuotesWithWins = supplierInboxRows.filter(
+    (row) => row.hasWinningBid,
+  ).length;
+  console.info("[supplier inbox] loaded", {
+    supplierId: supplier?.id ?? null,
+    totalQuotes: supplierInboxRows.length,
+    withBids: inboxQuotesWithBids,
+    withWins: inboxQuotesWithWins,
+  });
+  const matchesUnavailable = supplierExists && !matchesResult.ok;
+  const bidsUnavailable = supplierExists && !bidsResult.ok;
+  const canLoadActivity =
+    supplierExists && !isApprovalGateActive(approvalGate);
+  let recentActivity: QuoteActivityEvent[] = [];
+  let activityFeedMeta: SupplierActivityResult<unknown> | null = null;
+  if (canLoadActivity && supplier) {
+    try {
+      activityFeedMeta = await loadSupplierActivityFeed({
         supplierId: supplier.id,
         supplierEmail: supplier.primary_email ?? supplierEmail,
-        limit: 10,
-      })
-    : [];
+        limit: 0,
+      });
+    } catch (error) {
+      console.error("[supplier dashboard] activity meta load failed", {
+        supplierId: supplier.id,
+        error,
+      });
+    }
+
+    if (activityFeedMeta?.reason !== "assignments-disabled") {
+      try {
+        recentActivity = await loadRecentSupplierActivity(supplier.id);
+      } catch (error) {
+        console.error("[supplier dashboard] activity feed failed", {
+          supplierId: supplier.id,
+          error,
+        });
+        recentActivity = [];
+      }
+    }
+  }
+  const activityEmptyState = resolveSupplierActivityEmptyState({
+    supplierExists,
+    hasEvents: recentActivity.length > 0,
+    reason: activityFeedMeta?.reason ?? null,
+  });
+  console.log("[supplier dashboard] activity loaded", {
+    supplierId: supplier?.id ?? null,
+    eventCount: recentActivity.length,
+    gateActive: isApprovalGateActive(approvalGate),
+    reason: activityFeedMeta?.reason ?? null,
+  });
 
   const signedInEmail = supplier?.primary_email ?? supplierEmail;
   const companyLabel =
@@ -153,18 +284,33 @@ async function SupplierDashboardPage({
     sanitizeDisplayName(supplier?.company_name) ??
     sanitizeDisplayName(companyLabel) ??
     sessionCompanyName;
-  const supplierMetrics = deriveSupplierMetrics(matches, bids);
-  const lastUpdatedTimestamp = getLatestSupplierActivityTimestamp(matches, bids);
+  const supplierMetrics = deriveSupplierMetrics(matchesData, bidsData);
+  const lastUpdatedTimestamp = getLatestSupplierActivityTimestamp(
+    matchesData,
+    bidsData,
+  );
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
-  const hasActivity = matches.length > 0 || bids.length > 0;
-  const systemStatusMessage = supplier
-    ? hasActivity
-      ? "All systems operational"
-      : "Waiting for your first match"
-    : "Finish onboarding to unlock matches";
+  const hasActivity = matchesData.length > 0 || bidsData.length > 0;
+  const systemStatusMessage = !supplier
+    ? "Finish onboarding to unlock matches"
+    : approvalsOn && !supplierApproved
+      ? "Pending supplier review"
+      : hasActivity
+        ? "All systems operational"
+        : "Waiting for your first match";
 
-  return (
-    <div className="space-y-6">
+  console.info("[supplier dashboard] loaded", {
+    userEmail: user.email ?? null,
+    supplierId: supplier?.id ?? null,
+    supplierEmail: supplier?.primary_email ?? supplierEmail ?? null,
+    companyName: supplier?.company_name ?? null,
+    hasProfile: Boolean(supplier),
+    inboxRowCount: Array.isArray(supplierInboxRows) ? supplierInboxRows.length : null,
+    activityEventCount: Array.isArray(recentActivity) ? recentActivity.length : null,
+  });
+
+  const headerContent = (
+    <div className="space-y-4">
       <WorkspaceWelcomeBanner
         role="supplier"
         companyName={workspaceCompanyName}
@@ -174,18 +320,43 @@ async function SupplierDashboardPage({
         statusMessage={systemStatusMessage}
         syncedLabel={lastUpdatedLabel}
       />
-      <WorkspaceMetrics
+    </div>
+  );
+
+  const headerActions = (
+    <Link
+      href="/supplier/onboarding"
+      className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+    >
+      {supplierExists ? "Update profile" : "Finish onboarding"}
+    </Link>
+  );
+
+  return (
+    <PortalShell
+      workspace="supplier"
+      title="Dashboard"
+      subtitle="RFQs, bids, and compliance docs stay aligned here."
+      actions={headerActions}
+      headerContent={headerContent}
+    >
+      <PortalStatPills
         role="supplier"
         metrics={supplierMetrics}
         lastUpdatedLabel={lastUpdatedLabel}
+      />
+      <MatchHealthCard
+        supplierExists={supplierExists}
+        lookbackDays={MATCH_HEALTH_LOOKBACK_DAYS}
+        matchHealth={matchHealth}
       />
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
           Supplier workspace
         </p>
-        <h1 className="mt-2 text-2xl font-semibold text-white">
+        <h2 className="mt-2 text-2xl font-semibold text-white">
           RFQs, bids, and compliance docs in one place
-        </h1>
+        </h2>
         <p className="mt-2 text-sm text-slate-400">
           Review matched RFQs, submit bids, and keep your onboarding profile current without leaving
           this dashboard.
@@ -201,6 +372,18 @@ async function SupplierDashboardPage({
             automatically.
           </span>
         </div>
+        {approvalsOn && supplierExists ? (
+          supplierApproved ? (
+            <span className="mt-4 inline-flex w-fit rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-100">
+              Status: Approved
+            </span>
+          ) : (
+          <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-6 py-4 text-xs text-amber-100">
+              Your supplier profile is pending review. You can keep editing your profile; RFQs will
+              start flowing in once you’re approved.
+            </p>
+          )
+        ) : null}
         {onboardingJustCompleted ? (
           <p className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
             Profile updated! We’ll start routing matched RFQs to you automatically.
@@ -208,20 +391,16 @@ async function SupplierDashboardPage({
         ) : null}
       </section>
 
-      <OnboardingPromptCard supplierExists={supplierExists} />
-
-      <ProfileCard
-        supplierEmail={supplier?.primary_email ?? supplierEmail}
-        supplier={supplier}
-        capabilities={capabilities}
-        documents={documents}
-      />
-
       <PortalCard
         title="Recent activity"
         description="Quick pulse on RFQs, bids, and status changes routed to your shop."
       >
-        {recentActivity.length > 0 ? (
+        {isApprovalGateActive(approvalGate) ? (
+          <EmptyStateNotice
+            title={activityHoldCopy.title}
+            description={activityHoldCopy.description}
+          />
+        ) : recentActivity.length > 0 ? (
           <ul className="space-y-3">
             {recentActivity.map((item) => {
               const inner = (
@@ -254,11 +433,15 @@ async function SupplierDashboardPage({
           </ul>
         ) : (
           <EmptyStateNotice
-            title={supplierExists ? "No activity yet" : "Activity unlocks after onboarding"}
+            title={
+              activityEmptyState?.title ??
+              (supplierExists ? "No activity yet" : "Activity unlocks after onboarding")
+            }
             description={
-              supplierExists
+              activityEmptyState?.description ??
+              (supplierExists
                 ? "We’ll stream RFQ assignments and bid updates here as they happen."
-                : "Finish onboarding to start tracking RFQs and bids in this feed."
+                : "Finish onboarding to start tracking RFQs and bids in this feed.")
             }
           />
         )}
@@ -267,177 +450,182 @@ async function SupplierDashboardPage({
       <MatchesCard
         supplierEmail={supplier?.primary_email ?? supplierEmail}
         supplierExists={supplierExists}
-        matches={matches}
+        rows={supplierInboxRows}
+        approvalGate={matchesResult.approvalGate ?? approvalGate}
       />
+      {matchesUnavailable ? (
+        <DataFallbackNotice className="mt-2" />
+      ) : null}
 
       <BidsCard
         supplierEmail={supplier?.primary_email ?? supplierEmail}
-        bids={bids}
+        result={bidsResult}
+        approvalGate={bidsResult.approvalGate ?? approvalGate}
       />
-    </div>
+      {bidsUnavailable ? (
+        <DataFallbackNotice className="mt-2" />
+      ) : null}
+      {DEBUG_PORTALS ? (
+        <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
+          {JSON.stringify({ user, roles }, null, 2)}
+        </pre>
+      ) : null}
+    </PortalShell>
   );
 }
 
-function OnboardingPromptCard({
+function isApprovalGateActive(gate?: SupplierApprovalGate | null): boolean {
+  return Boolean(gate?.enabled && gate.status !== "approved");
+}
+
+function getApprovalHoldCopy(status?: SupplierApprovalStatus) {
+  if (status === "rejected") {
+    return {
+      title: "Account needs review",
+      description: "Reach out to our team so we can revisit your approval status.",
+    };
+  }
+  return {
+    title: "RFQs unlock after approval",
+    description: "RFQs and bids will appear here once your account is approved.",
+  };
+}
+
+function MatchHealthCard({
   supplierExists,
+  matchHealth,
+  lookbackDays,
 }: {
   supplierExists: boolean;
+  matchHealth: SupplierMatchHealth | null;
+  lookbackDays: number;
 }) {
+  if (!supplierExists) {
+    return (
+      <PortalCard
+        title="Match health"
+        description="See how RFQs align with your capabilities once onboarding is complete."
+      >
+        <EmptyStateNotice
+          title="Share capabilities to unlock insights"
+          description="Finish onboarding and add processes so we can compare incoming RFQs against your shop."
+          action={
+            <Link
+              href="/supplier/onboarding"
+              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+            >
+              Complete onboarding
+            </Link>
+          }
+        />
+      </PortalCard>
+    );
+  }
+
+  if (!matchHealth) {
+    return (
+      <PortalCard
+        title="Match health"
+        description="How often our matcher can route RFQs based on your capabilities."
+      >
+        <EmptyStateNotice
+          title="No data yet"
+          description="We couldn’t load match health right now. Refresh the page to try again."
+        />
+      </PortalCard>
+    );
+  }
+
+  const evaluatedCount = matchHealth.evaluatedCount ?? 0;
+  const matchedCount = matchHealth.matchedCount ?? 0;
+  const skippedCapabilityCount = matchHealth.skippedCapabilityCount ?? 0;
+  const hasEvaluations = evaluatedCount > 0;
+  const percent = evaluatedCount > 0 ? Math.round((matchedCount / evaluatedCount) * 100) : 0;
+  const recentExamples = matchHealth.recentExamples.slice(0, 3);
+  const showExamples = hasEvaluations && recentExamples.length > 0;
+
   return (
     <PortalCard
-      title="Finish supplier onboarding"
-      description="Share your shop profile once so we know which RFQs, bids, and compliance docs belong to you."
-      action={
-        <Link href="/supplier/onboarding" className={primaryCtaClasses}>
-          {supplierExists ? "Update profile" : "Finish onboarding"}
-        </Link>
-      }
+      title="Match health"
+      description="How often our matcher can route RFQs based on your capabilities."
     >
-      <div className="space-y-3 text-sm text-slate-300">
-        <p>
-          We’ll keep using the same email-only magic link to confirm it’s you. Once the form is
-          complete, matched RFQs and compliance requests unlock automatically.
-        </p>
-        {supplierExists ? (
-          <p className="text-xs text-slate-500">
-            Need to tweak capabilities or certs? Re-open the onboarding form any time and your
-            workspace stays in sync.
-          </p>
-        ) : (
-          <p className="text-xs text-slate-500">
-            Add capabilities, certifications, and documents so we can auto-route RFQs to your inbox.
-          </p>
-        )}
-      </div>
-    </PortalCard>
-  );
-}
-
-function ProfileCard({
-  supplier,
-  capabilities,
-  documents,
-  supplierEmail,
-}: {
-  supplier: SupplierProfile["supplier"] | null;
-  capabilities: SupplierProfile["capabilities"];
-  documents: SupplierProfile["documents"];
-  supplierEmail: string;
-}) {
-  const hasProfile = Boolean(supplier);
-  return (
-    <PortalCard
-      title="Supplier profile"
-      description={
-        hasProfile
-          ? "Keep company details, capabilities, and compliance docs current so RFQ matches stay accurate."
-          : "Complete onboarding so customers see verified company info."
-      }
-      action={
-        <Link
-          href="/supplier/onboarding"
-          className={secondaryCtaClasses}
-        >
-          {hasProfile ? "Edit profile" : "Start onboarding"}
-        </Link>
-      }
-    >
-      {hasProfile ? (
-        <div className="space-y-4 text-sm text-slate-200">
-          <div className="grid gap-3 md:grid-cols-2">
-            <Detail label="Company" value={supplier?.company_name ?? "—"} />
-            <Detail label="Primary email" value={supplier?.primary_email ?? "—"} />
-            <Detail label="Phone" value={supplier?.phone ?? "—"} />
-            <Detail label="Website" value={supplier?.website ?? "—"} />
-            <Detail label="Country" value={supplier?.country ?? "—"} />
-            <Detail
-              label="Status"
-              value={
-                supplier?.verified ? (
-                  <span className="text-emerald-200">Verified marketplace supplier</span>
-                ) : (
-                  "Pending review"
-                )
-              }
-            />
-          </div>
-
+      {hasEvaluations ? (
+        <div className="space-y-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Capabilities
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+              Matched RFQs
             </p>
-            {capabilities.length > 0 ? (
-              <ul className="mt-2 space-y-2">
-                {capabilities.map((capability) => (
-                  <li
-                    key={capability.id}
-                    className="rounded-xl border border-slate-900/70 bg-black/20 px-3 py-2"
-                  >
-                    <p className="text-sm font-semibold text-white">
-                      {capability.process}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Materials:{" "}
-                      {(capability.materials ?? []).join(", ") || "Not provided"}
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      Certs:{" "}
-                      {(capability.certifications ?? []).join(", ") || "Not provided"}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-xs text-slate-400">
-                Add at least one capability so we know which processes to match.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Documents
+            <p className="mt-1 text-2xl font-semibold text-white">
+              {matchedCount} of {evaluatedCount} ({percent}%)
             </p>
-            {documents.length > 0 ? (
-              <ul className="mt-2 space-y-2">
-                {documents.slice(0, 4).map((doc) => (
-                  <li key={doc.id}>
-                    <a
-                      href={doc.file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm text-blue-300 underline-offset-4 hover:underline"
-                    >
-                      {doc.doc_type ?? "Document"}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-xs text-slate-400">
-                No compliance documents uploaded yet.
-              </p>
-            )}
           </div>
+          <p className="text-xs text-slate-500">
+            Skipped for capability mismatch: {skippedCapabilityCount} in last {lookbackDays} days.
+          </p>
+          {showExamples ? (
+            <ul className="list-disc space-y-2 pl-4 text-xs text-slate-400">
+              {recentExamples.map((example) => (
+                <li key={`${example.quoteId}-${example.outcome}`}>
+                  {formatMatchHealthExample(example)}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : (
-        <p className="text-sm text-slate-400">
-          Complete the onboarding form so we can capture company info, capabilities, and compliance docs.
-        </p>
+        <EmptyStateNotice
+          title="We haven’t evaluated any RFQs yet"
+          description="As new RFQs arrive, we’ll show how often we can match you against capability requirements."
+        />
       )}
     </PortalCard>
   );
 }
 
+function formatMatchHealthExample(
+  example: SupplierMatchHealth["recentExamples"][number],
+): string {
+  const processLabel = formatProcessLabel(example.processHint);
+  if (example.outcome === "matched") {
+    return `Matched on ${processLabel} RFQ – eligible for quote.`;
+  }
+  return `Skipped ${processLabel} RFQ – no matching capability set.`;
+}
+
+function formatProcessLabel(processHint: string | null): string {
+  if (typeof processHint !== "string") {
+    return "this";
+  }
+  const trimmed = processHint.trim();
+  if (!trimmed) {
+    return "this";
+  }
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
 function MatchesCard({
-  supplierEmail,
+  supplierEmail: _supplierEmail,
   supplierExists,
-  matches,
+  rows,
+  approvalGate,
 }: {
   supplierEmail: string;
   supplierExists: boolean;
-  matches: SupplierQuoteMatch[];
+  rows: SupplierInboxRow[];
+  approvalGate?: SupplierApprovalGate | null;
 }) {
+  const matches = rows;
+  if (isApprovalGateActive(approvalGate)) {
+    const copy = getApprovalHoldCopy(approvalGate?.status);
+    return (
+      <PortalCard
+        title="Inbound RFQs"
+        description="RFQs that match your verified processes, certifications, and compliance documents."
+      >
+        <EmptyStateNotice title={copy.title} description={copy.description} />
+      </PortalCard>
+    );
+  }
   return (
     <PortalCard
       title="Inbound RFQs"
@@ -448,57 +636,7 @@ function MatchesCard({
       }
     >
       {supplierExists && matches.length > 0 ? (
-        <ul className="space-y-3">
-          {matches.map((match) => {
-            const quote = match.quote;
-            const fileCount = (quote.file_names ?? quote.upload_file_names ?? []).length;
-            const createdLabel = formatDateTime(match.createdAt, {
-              includeTime: false,
-            });
-            const materialsText =
-              match.materialMatches.length > 0
-                ? `Materials: ${match.materialMatches.join(", ")}`
-                : "Materials: —";
-            const priceText =
-              typeof quote.price === "number" || typeof quote.price === "string"
-                ? formatCurrency(Number(quote.price), quote.currency)
-                : "Value pending";
-            const filesLabel =
-              fileCount > 0 ? `${fileCount} file${fileCount === 1 ? "" : "s"}` : "No files";
-            const fairnessReason = match.fairness?.reasons?.[0] ?? null;
-            return (
-              <li key={quote.id}>
-                <Link
-                  href={`/supplier/quotes/${quote.id}`}
-                  className="block rounded-2xl border border-slate-900/80 bg-slate-950/40 px-4 py-3 transition hover:border-blue-400/40 hover:bg-slate-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-400"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-white">
-                        {quote.company ?? quote.customer_name ?? "Customer"}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {match.processHint ?? "Process TBD"} • {filesLabel} • {priceText}
-                      </p>
-                    </div>
-                    <span className="text-xs font-semibold text-blue-200">
-                      View quote &rarr;
-                    </span>
-                  </div>
-                  <div className="mt-2 text-xs text-slate-500">
-                    <p>{materialsText}</p>
-                    <p>Created {createdLabel ?? "recently"}</p>
-                    {fairnessReason ? (
-                      <p className="text-[11px] text-blue-200/80">
-                        Fairness boost: {fairnessReason}
-                      </p>
-                    ) : null}
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        <SupplierInboxTable rows={matches} />
       ) : supplierExists ? (
         <EmptyStateNotice
           title="No RFQs matched yet"
@@ -523,12 +661,26 @@ function MatchesCard({
 }
 
 function BidsCard({
-  supplierEmail,
-  bids,
+  supplierEmail: _supplierEmail,
+  result,
+  approvalGate,
 }: {
   supplierEmail: string;
-  bids: SupplierBidWithContext[];
+  result: SupplierActivityResult<SupplierBidWithContext[]>;
+  approvalGate?: SupplierApprovalGate | null;
 }) {
+  const bids = result.data ?? [];
+  if (isApprovalGateActive(approvalGate)) {
+    const copy = getApprovalHoldCopy(approvalGate?.status);
+    return (
+      <PortalCard
+        title="Submitted bids"
+        description="Track the quotes you’ve priced and see where each bid stands."
+      >
+        <EmptyStateNotice title={copy.title} description={copy.description} />
+      </PortalCard>
+    );
+  }
   return (
     <PortalCard
       title="Submitted bids"
@@ -539,7 +691,7 @@ function BidsCard({
           {bids.slice(0, 8).map((bid) => (
             <li
               key={bid.id}
-              className="rounded-2xl border border-slate-900/70 bg-black/20 px-4 py-3"
+              className="rounded-2xl border border-slate-900/70 bg-black/20 px-6 py-4"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -572,48 +724,40 @@ function BidsCard({
   );
 }
 
-function Detail({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-slate-900/70 bg-slate-950/40 px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </p>
-      <p className="text-sm text-slate-100">{value}</p>
-    </div>
-  );
-}
+const BID_STATUS_VARIANTS: Record<string, string> = {
+  accepted: "pill-success",
+  declined: "pill-warning",
+  withdrawn: "pill-muted",
+  pending: "pill-info",
+};
 
 function StatusBadge({ status }: { status: string }) {
-  const colorMap: Record<string, string> = {
-    accepted: "bg-emerald-500/20 text-emerald-200 border-emerald-500/30",
-    declined: "bg-red-500/10 text-red-200 border-red-500/30",
-    withdrawn: "bg-slate-500/10 text-slate-200 border-slate-500/30",
-    pending: "bg-blue-500/10 text-blue-200 border-blue-500/30",
-  };
-  const classes =
-    colorMap[status] ?? "bg-slate-500/10 text-slate-200 border-slate-500/30";
+  const normalizedStatus = status.toLowerCase();
+  const variant = BID_STATUS_VARIANTS[normalizedStatus] ?? "pill-muted";
   return (
-    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${classes}`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+    <span className={clsx("pill pill-table", variant)}>
+      {normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1)}
     </span>
   );
 }
 
-function ActivityTypeBadge({ type }: { type: ActivityItem["type"] }) {
-  const labelMap: Record<ActivityItem["type"], string> = {
-    quote: "Quote",
-    bid: "Bid",
-    status: "Status",
+function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {
+  const labelMap: Record<QuoteActivityEvent["type"], string> = {
+    rfq_submitted: "RFQ",
+    status_changed: "Status",
+    message_posted: "Message",
+    bid_received: "Bid",
+    winner_selected: "Winner",
   };
-  const colorMap: Record<ActivityItem["type"], string> = {
-    quote: "bg-blue-500/10 text-blue-200 border-blue-500/30",
-    bid: "bg-sky-500/10 text-sky-200 border-sky-500/30",
-    status: "bg-slate-500/10 text-slate-200 border-slate-500/30",
+  const colorMap: Record<QuoteActivityEvent["type"], string> = {
+    rfq_submitted: "pill-info",
+    status_changed: "pill-muted",
+    message_posted: "pill-info",
+    bid_received: "pill-success",
+    winner_selected: "pill-warning",
   };
   return (
-    <span
-      className={`mb-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${colorMap[type]}`}
-    >
+    <span className={clsx("pill mb-1 px-2 py-0.5 text-[10px]", colorMap[type])}>
       {labelMap[type]}
     </span>
   );

@@ -1,6 +1,8 @@
 import { loadCustomerActivityFeed, loadSupplierActivityFeed } from "@/server/activity";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierProfile } from "@/server/suppliers";
+import type { SupplierActivityResult } from "@/server/suppliers/types";
+import type { ActivityItem } from "@/types/activity";
 import type { NotificationPayload } from "@/types/notifications";
 
 type LoadNotificationsArgs = {
@@ -33,20 +35,28 @@ export async function loadNotificationsForUser(
       })
     : Promise.resolve([]);
 
-  const supplierActivityPromise =
-    supplierProfile?.supplier
-      ? loadSupplierActivityFeed({
-          supplierId: supplierProfile.supplier.id,
-          supplierEmail:
-            supplierProfile.supplier.primary_email ?? args.email ?? null,
-          limit,
-        })
-      : Promise.resolve([]);
+  const supplierActivityPromise: Promise<
+    SupplierActivityResult<ActivityItem[]>
+  > = supplierProfile?.supplier
+    ? loadSupplierActivityFeed({
+        supplierId: supplierProfile.supplier.id,
+        supplierEmail:
+          supplierProfile.supplier.primary_email ?? args.email ?? null,
+        limit,
+      })
+    : Promise.resolve({
+        ok: true,
+        data: [],
+      });
 
-  const [customerActivity, supplierActivity] = await Promise.all([
+  const [customerActivity, supplierActivityResult] = await Promise.all([
     customerActivityPromise,
     supplierActivityPromise,
   ]);
+
+  const supplierActivity = supplierActivityResult.ok
+    ? supplierActivityResult.data
+    : [];
 
   const combined: NotificationPayload[] = [
     ...customerActivity.map((item) => ({

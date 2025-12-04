@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type {
+  SupplierApprovalStatus,
   SupplierCapabilityInput,
   SupplierCapabilityRow,
   SupplierDocumentInput,
@@ -8,6 +9,9 @@ import type {
   SupplierProfileUpsertInput,
   SupplierRow,
 } from "./types";
+
+const SUPPLIER_SELECT_COLUMNS =
+  "id,company_name,primary_email,user_id,phone,website,country,verified,created_at,notify_quote_messages,notify_quote_winner";
 
 function normalizeEmail(value?: string | null): string | null {
   if (typeof value !== "string") {
@@ -34,6 +38,31 @@ function sanitizeStringArray(values?: string[] | null): string[] {
     .filter((value) => value.length > 0);
 }
 
+export function getSupplierApprovalStatus(raw?: {
+  status?: string | null;
+}): SupplierApprovalStatus {
+  const normalized = (raw?.status ?? "pending").toLowerCase().trim();
+  if (!normalized) {
+    return "pending";
+  }
+  if (normalized === "approved") {
+    return "approved";
+  }
+  if (normalized === "rejected") {
+    return "rejected";
+  }
+  if (normalized === "unknown") {
+    return "unknown";
+  }
+  return "pending";
+}
+
+export function isSupplierApproved(raw?: {
+  status?: string | null;
+}): boolean {
+  return getSupplierApprovalStatus(raw) === "approved";
+}
+
 export async function getOrCreateSupplierByEmail(
   primaryEmail: string,
   companyName?: string,
@@ -48,7 +77,7 @@ export async function getOrCreateSupplierByEmail(
   try {
     const { data: existing, error: lookupError } = await supabaseServer
       .from("suppliers")
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .eq("primary_email", email)
       .maybeSingle<SupplierRow>();
 
@@ -95,7 +124,7 @@ export async function getOrCreateSupplierByEmail(
     const { data: created, error: insertError } = await supabaseServer
       .from("suppliers")
       .insert(payload)
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .single<SupplierRow>();
 
     if (insertError || !created) {
@@ -128,7 +157,7 @@ export async function loadSupplierProfile(
   try {
     const { data: supplier, error } = await supabaseServer
       .from("suppliers")
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .eq("primary_email", email)
       .maybeSingle<SupplierRow>();
 
@@ -149,13 +178,49 @@ export async function loadSupplierProfile(
       listSupplierDocuments(supplier.id),
     ]);
 
+    const approvalStatus = getSupplierApprovalStatus(supplier);
     return {
       supplier,
       capabilities,
       documents,
+      approvalStatus,
+      approved: approvalStatus === "approved",
     };
   } catch (error) {
     console.error("loadSupplierProfile: unexpected error", { email, error });
+    return null;
+  }
+}
+
+export async function loadSupplierByPrimaryEmail(
+  primaryEmail: string,
+): Promise<SupplierRow | null> {
+  const email = normalizeEmail(primaryEmail);
+  if (!email) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("suppliers")
+      .select(SUPPLIER_SELECT_COLUMNS)
+      .eq("primary_email", email)
+      .maybeSingle<SupplierRow>();
+
+    if (error) {
+      console.error("loadSupplierByPrimaryEmail: lookup failed", {
+        email,
+        error,
+      });
+      return null;
+    }
+
+    return data ?? null;
+  } catch (error) {
+    console.error("loadSupplierByPrimaryEmail: unexpected error", {
+      email,
+      error,
+    });
     return null;
   }
 }
@@ -170,7 +235,7 @@ export async function loadSupplierById(
   try {
     const { data, error } = await supabaseServer
       .from("suppliers")
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .eq("id", supplierId)
       .maybeSingle<SupplierRow>();
 
@@ -202,10 +267,13 @@ export async function loadSupplierProfileByUserId(
     listSupplierDocuments(supplier.id),
   ]);
 
+  const approvalStatus = getSupplierApprovalStatus(supplier);
   return {
     supplier,
     capabilities,
     documents,
+    approvalStatus,
+    approved: approvalStatus === "approved",
   };
 }
 
@@ -219,7 +287,7 @@ export async function loadSupplierByUserId(
   try {
     const { data, error } = await supabaseServer
       .from("suppliers")
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .eq("user_id", userId)
       .maybeSingle<SupplierRow>();
 
@@ -240,6 +308,7 @@ export async function loadSupplierByUserId(
 
 export async function upsertSupplierProfile(
   input: SupplierProfileUpsertInput,
+  options?: { skipCapabilities?: boolean },
 ): Promise<SupplierProfile | null> {
   const email = normalizeEmail(input.primaryEmail);
   if (!email) {
@@ -278,7 +347,7 @@ export async function upsertSupplierProfile(
       .from("suppliers")
       .update(updatePayload)
       .eq("id", supplier.id)
-      .select("*")
+      .select(SUPPLIER_SELECT_COLUMNS)
       .maybeSingle<SupplierRow>();
 
     if (updateError) {
@@ -293,17 +362,23 @@ export async function upsertSupplierProfile(
       (cap) => typeof cap?.process === "string" && cap.process.trim().length > 0,
     );
 
-    await replaceSupplierCapabilities(supplier.id, sanitizedCapabilities);
+    if (!options?.skipCapabilities) {
+      await upsertSupplierCapabilities(supplier.id, sanitizedCapabilities);
+    }
 
     const [capabilities, documents] = await Promise.all([
       listSupplierCapabilities(supplier.id),
       listSupplierDocuments(supplier.id),
     ]);
 
+    const resolvedSupplier = updatedSupplier ?? supplier;
+    const approvalStatus = getSupplierApprovalStatus(resolvedSupplier);
     return {
-      supplier: updatedSupplier ?? supplier,
+      supplier: resolvedSupplier,
       capabilities,
       documents,
+      approvalStatus,
+      approved: approvalStatus === "approved",
     };
   } catch (error) {
     console.error("upsertSupplierProfile: unexpected error", {
@@ -344,7 +419,7 @@ export async function addSupplierDocument(
         supplierId,
         error,
       });
-      return null;
+      throw error;
     }
 
     return data ?? null;
@@ -421,7 +496,7 @@ export async function listSupplierDocuments(
   }
 }
 
-async function replaceSupplierCapabilities(
+export async function upsertSupplierCapabilities(
   supplierId: string,
   capabilities: SupplierCapabilityInput[],
 ) {
@@ -432,38 +507,44 @@ async function replaceSupplierCapabilities(
       .eq("supplier_id", supplierId);
 
     if (deleteError) {
-      console.error("replaceSupplierCapabilities: delete failed", {
-        supplierId,
-        error: deleteError,
-      });
+      throw deleteError;
     }
 
     if (capabilities.length === 0) {
       return;
     }
 
-    const payload = capabilities.map((capability) => ({
-      supplier_id: supplierId,
-      process: capability.process.trim(),
-      materials: sanitizeStringArray(capability.materials),
-      certifications: sanitizeStringArray(capability.certifications),
-      max_part_size: capability.maxPartSize ?? null,
-    }));
+    const payload = capabilities
+      .filter(
+        (capability) =>
+          typeof capability.process === "string" &&
+          capability.process.trim().length > 0,
+      )
+      .map((capability) => ({
+        supplier_id: supplierId,
+        process:
+          typeof capability.process === "string" ? capability.process.trim() : "",
+        materials: sanitizeStringArray(capability.materials),
+        certifications: sanitizeStringArray(capability.certifications),
+        max_part_size: capability.maxPartSize ?? null,
+      }));
+
+    if (payload.length === 0) {
+      return;
+    }
 
     const { error: insertError } = await supabaseServer
       .from("supplier_capabilities")
       .insert(payload);
 
     if (insertError) {
-      console.error("replaceSupplierCapabilities: insert failed", {
-        supplierId,
-        error: insertError,
-      });
+      throw insertError;
     }
   } catch (error) {
-    console.error("replaceSupplierCapabilities: unexpected error", {
+    console.error("upsertSupplierCapabilities: unexpected error", {
       supplierId,
       error,
     });
+    throw error;
   }
 }
