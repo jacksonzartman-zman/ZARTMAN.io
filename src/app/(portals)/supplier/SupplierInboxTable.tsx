@@ -113,12 +113,11 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
           : null;
         const createdLabel =
           formatDateTime(row.createdAt, { includeTime: false }) ?? "—";
-        const bidIsWinner = row.hasWinningBid;
         const bidSummary =
           row.bidCount === 0
             ? "No bids"
             : `${row.bidCount} bid${row.bidCount === 1 ? "" : "s"}${
-                bidIsWinner ? " • You won" : ""
+                row.hasWinningBid ? " • winner selected" : ""
               }`;
         const formattedLastBid = row.lastBidAt
           ? formatDateTime(row.lastBidAt, { includeTime: true })
@@ -127,12 +126,8 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
           row.bidCount > 0 && formattedLastBid
             ? `Last bid: ${formattedLastBid}`
             : "Last bid: —";
-        const statusVariant = bidIsWinner
-          ? { label: "Won / Awarded", className: "pill-success" }
-          : STATUS_BADGE_VARIANTS[row.status] ?? STATUS_BADGE_VARIANTS.default;
-        const winnerHelperText = bidIsWinner
-          ? "Customer selected this bid as the winner."
-          : null;
+        const statusVariant =
+          STATUS_BADGE_VARIANTS[row.status] ?? STATUS_BADGE_VARIANTS.default;
 
         return (
           <tr
@@ -168,18 +163,11 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               </div>
             </td>
             <td className={adminTableCellClass}>
-              <div className="flex flex-col">
-                <span
-                  className={clsx("pill pill-table", statusVariant.className)}
-                >
-                  {statusVariant.label}
-                </span>
-                {winnerHelperText ? (
-                  <span className="mt-1 text-[11px] text-slate-400">
-                    {winnerHelperText}
-                  </span>
-                ) : null}
-              </div>
+              <span
+                className={clsx("pill pill-table", statusVariant.className)}
+              >
+                {statusVariant.label}
+              </span>
             </td>
             <td className={`${adminTableCellClass} text-right`}>
               <Link

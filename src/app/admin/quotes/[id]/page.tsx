@@ -32,7 +32,6 @@ import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import { SupplierBidsCard } from "./SupplierBidsCard";
 import { loadQuoteProject } from "@/server/quotes/projects";
 import { AdminQuoteProjectCard } from "./AdminQuoteProjectCard";
-import { loadSupplierById } from "@/server/suppliers/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -254,32 +253,14 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const bidsResult = await loadBidsForQuote(quote.id);
     const bids = bidsResult.ok ? bidsResult.data : [];
     const bidCount = bids.length;
-    const winningBid = bids.find((bid) => isWinningBidStatus(bid?.status));
-    let winningSupplierName: string | null = null;
-    if (winningBid?.supplier_id) {
-      const supplier = await loadSupplierById(winningBid.supplier_id);
-      if (supplier) {
-        const companyName =
-          typeof supplier.company_name === "string"
-            ? supplier.company_name.trim()
-            : "";
-        const primaryEmail =
-          typeof supplier.primary_email === "string"
-            ? supplier.primary_email.trim()
-            : "";
-        winningSupplierName = companyName || primaryEmail || null;
-      }
-    }
+    const hasWinningBid = bids.some((bid) => isWinningBidStatus(bid?.status));
     const hasProject = Boolean(project);
     const attentionState = deriveAdminQuoteAttentionState({
       quoteId: quote.id,
       status,
       bidCount,
-      hasWinner: Boolean(winningBid),
+      hasWinner: hasWinningBid,
       hasProject,
-      winningBidId: winningBid?.id ?? null,
-      winningSupplierId: winningBid?.supplier_id ?? null,
-      winningSupplierName,
     });
 
     const headerTitleSource = companyName || customerName || "Unnamed customer";
@@ -306,40 +287,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           ? "1 attached"
           : `${filePreviews.length} attached`;
     const fileCardAnchorId = "quote-files-card";
-    const winnerDisplayName = attentionState.winningSupplierName ?? "a supplier";
-    const awardStateLabel = attentionState.hasWinner
-      ? "Won / Awarded"
-      : attentionState.needsDecision
-        ? "Needs decision"
-        : "Awaiting bids";
-    const awardStateClassName = attentionState.hasWinner
-      ? "pill-success"
-      : attentionState.needsDecision
-        ? "pill-warning"
-        : "pill-muted";
-    const awardHelperText = attentionState.hasWinner
-      ? `Customer selected ${winnerDisplayName} as the winner for this RFQ.`
-      : bidCount > 0
-        ? "Waiting on the customer to select a winning supplier."
-        : "No bids submitted yet. Encourage suppliers to respond so the customer can make a decision.";
-    const awardStatusCard = (
-      <section className={cardClasses}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Award status
-            </p>
-            <h2 className="text-base font-semibold text-slate-100">
-              {attentionState.hasWinner ? "Winner selected" : "Decision pending"}
-            </h2>
-          </div>
-          <span className={clsx("pill pill-table", awardStateClassName)}>
-            {awardStateLabel}
-          </span>
-        </div>
-        <p className="mt-3 text-sm text-slate-300">{awardHelperText}</p>
-      </section>
-    );
 
     const rfqSummaryCard = (
       <section className={cardClasses}>
@@ -623,8 +570,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               </div>
             </div>
           </div>
-
-        {awardStatusCard}
 
           <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
 

@@ -221,17 +221,10 @@ async function SupplierDashboardPage({
     },
     [],
   );
-  const inboxQuotesWithBids = supplierInboxRows.filter(
-    (row) => row.bidCount > 0,
-  ).length;
-  const inboxQuotesWithWins = supplierInboxRows.filter(
-    (row) => row.hasWinningBid,
-  ).length;
   console.info("[supplier inbox] loaded", {
     supplierId: supplier?.id ?? null,
     totalQuotes: supplierInboxRows.length,
-    withBids: inboxQuotesWithBids,
-    withWins: inboxQuotesWithWins,
+    withBids: supplierInboxRows.filter((row) => row.bidCount > 0).length,
   });
   const matchesUnavailable = supplierExists && !matchesResult.ok;
   const bidsUnavailable = supplierExists && !bidsResult.ok;

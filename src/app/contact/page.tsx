@@ -38,7 +38,7 @@ export default function ContactPage() {
                 Real humans, fast follow-up
               </h2>
               <p className="text-sm text-ink-muted heading-snug">
-                We personally read every note. If we need more detail, someone from the team will reply with a short Loom, call, or request for sample parts.
+                Jackson personally reads every note. If we need more detail we&apos;ll reply with a short Loom, call, or request for sample parts.
               </p>
             </div>
             <ul className="space-y-3 text-sm text-ink-muted heading-snug">

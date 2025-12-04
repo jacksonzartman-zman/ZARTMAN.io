@@ -78,7 +78,7 @@ export async function submitContactRequest(
 
   return {
     success: true,
-    message: "We've got your note. Someone from the team will reach out within a business day.",
+    message: "We've got your note. Jackson will reach out within a business day.",
     fieldErrors: {},
   };
 }

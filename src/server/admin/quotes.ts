@@ -50,9 +50,6 @@ export type AdminQuoteMeta = {
   hasWinner: boolean;
   hasProject: boolean;
   needsDecision: boolean;
-  winningBidId: string | null;
-  winningSupplierId: string | null;
-  winningSupplierName: string | null;
 };
 
 export type AdminQuoteMetaMap = Record<string, AdminQuoteMeta>;
@@ -262,20 +259,12 @@ type NormalizedMetaInput = {
 };
 
 type QuoteBidMetaRow = {
-  id: string | null;
   quote_id: string | null;
-  supplier_id: string | null;
   status: string | null;
 };
 
 type QuoteProjectMetaRow = {
   quote_id: string | null;
-};
-
-type SupplierNameRow = {
-  id: string | null;
-  company_name: string | null;
-  primary_email: string | null;
 };
 
 export function deriveAdminQuoteAttentionState({
@@ -284,18 +273,12 @@ export function deriveAdminQuoteAttentionState({
   bidCount,
   hasWinner,
   hasProject,
-  winningBidId,
-  winningSupplierId,
-  winningSupplierName,
 }: {
   quoteId: string;
   status: QuoteStatus;
   bidCount: number;
   hasWinner: boolean;
   hasProject: boolean;
-  winningBidId?: string | null;
-  winningSupplierId?: string | null;
-  winningSupplierName?: string | null;
 }): AdminQuoteMeta {
   const normalizedBidCount =
     typeof bidCount === "number" && Number.isFinite(bidCount) ? bidCount : 0;
@@ -312,18 +295,6 @@ export function deriveAdminQuoteAttentionState({
     hasWinner: derivedHasWinner,
     hasProject: derivedHasProject,
     needsDecision,
-    winningBidId:
-      derivedHasWinner && typeof winningBidId === "string"
-        ? winningBidId.trim() || null
-        : null,
-    winningSupplierId:
-      derivedHasWinner && typeof winningSupplierId === "string"
-        ? winningSupplierId.trim() || null
-        : null,
-    winningSupplierName:
-      derivedHasWinner && typeof winningSupplierName === "string"
-        ? winningSupplierName.trim() || null
-        : null,
   };
 }
 
@@ -345,9 +316,6 @@ export async function loadAdminQuoteMeta(
       hasWinner: false,
       hasProject: false,
       needsDecision: false,
-      winningBidId: null,
-      winningSupplierId: null,
-      winningSupplierName: null,
     };
   }
 
@@ -355,12 +323,11 @@ export async function loadAdminQuoteMeta(
   let projectRows: QuoteProjectMetaRow[] = [];
   let bidQueryFailed = false;
   let projectQueryFailed = false;
-  const winnerSupplierIds = new Set<string>();
 
   try {
     const { data, error } = await supabaseServer
       .from("supplier_bids")
-      .select("id,quote_id,status,supplier_id")
+      .select("quote_id,status")
       .in("quote_id", quoteIds)
       .returns<QuoteBidMetaRow[]>();
 
@@ -401,15 +368,6 @@ export async function loadAdminQuoteMeta(
     metaMap[quoteId].bidCount += 1;
     if (isWinningBidStatus(row?.status)) {
       metaMap[quoteId].hasWinner = true;
-      const winningBidId = normalizeNullableId(row?.id);
-      if (winningBidId) {
-        metaMap[quoteId].winningBidId = winningBidId;
-      }
-      const winningSupplierId = normalizeNullableId(row?.supplier_id);
-      if (winningSupplierId) {
-        metaMap[quoteId].winningSupplierId = winningSupplierId;
-        winnerSupplierIds.add(winningSupplierId);
-      }
     }
   }
 
@@ -422,42 +380,8 @@ export async function loadAdminQuoteMeta(
     }
   }
 
-  let supplierNameMap: Record<string, string> = {};
-  if (winnerSupplierIds.size > 0) {
-    try {
-      const { data, error } = await supabaseServer
-        .from("suppliers")
-        .select("id,company_name,primary_email")
-        .in("id", Array.from(winnerSupplierIds))
-        .returns<SupplierNameRow[]>();
-
-      if (error) {
-        logAdminQuotesWarn("meta supplier lookup failed", {
-          supabaseError: serializeSupabaseError(error),
-        });
-      } else if (Array.isArray(data)) {
-        supplierNameMap = data.reduce<Record<string, string>>((acc, row) => {
-          const supplierId = normalizeNullableId(row?.id);
-          if (!supplierId) {
-            return acc;
-          }
-          const displayName = resolveSupplierDisplayName(row);
-          if (displayName) {
-            acc[supplierId] = displayName;
-          }
-          return acc;
-        }, {});
-      }
-    } catch (error) {
-      logAdminQuotesWarn("meta supplier lookup crashed", {
-        supabaseError: serializeSupabaseError(error),
-      });
-    }
-  }
-
   let withBids = 0;
   let withProjects = 0;
-  let withWinners = 0;
   let needsDecisionCount = 0;
 
   for (const [quoteId, status] of statusMap) {
@@ -471,11 +395,6 @@ export async function loadAdminQuoteMeta(
       bidCount: current.bidCount,
       hasWinner: current.hasWinner,
       hasProject: current.hasProject,
-      winningBidId: current.winningBidId,
-      winningSupplierId: current.winningSupplierId,
-      winningSupplierName: current.winningSupplierId
-        ? supplierNameMap[current.winningSupplierId] ?? current.winningSupplierName
-        : current.winningSupplierName,
     });
     metaMap[quoteId] = derived;
 
@@ -484,9 +403,6 @@ export async function loadAdminQuoteMeta(
     }
     if (derived.hasProject) {
       withProjects += 1;
-    }
-    if (derived.hasWinner) {
-      withWinners += 1;
     }
     if (derived.needsDecision) {
       needsDecisionCount += 1;
@@ -497,7 +413,6 @@ export async function loadAdminQuoteMeta(
     quoteCount: quoteIds.length,
     withBids,
     withProjects,
-    withWinners,
     needsDecisionCount,
     bidQueryFailed: bidQueryFailed || undefined,
     projectQueryFailed: projectQueryFailed || undefined,
@@ -531,30 +446,6 @@ function logMetaQueryError(message: string, error: unknown) {
 
 function normalizeQuoteId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeNullableId(value: unknown): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function resolveSupplierDisplayName(row?: SupplierNameRow | null): string | null {
-  if (!row) {
-    return null;
-  }
-  if (typeof row.company_name === "string" && row.company_name.trim().length > 0) {
-    return row.company_name.trim();
-  }
-  if (
-    typeof row.primary_email === "string" &&
-    row.primary_email.trim().length > 0
-  ) {
-    return row.primary_email.trim();
-  }
-  return null;
 }
 
 export function isWinningBidStatus(status: unknown): boolean {

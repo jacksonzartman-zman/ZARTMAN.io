@@ -141,10 +141,5 @@ function isWinningStatus(value: string | null): boolean {
     return false;
   }
   const normalized = value.trim().toLowerCase();
-  return (
-    normalized === "won" ||
-    normalized === "winner" ||
-    normalized === "approved" ||
-    normalized === "accepted"
-  );
+  return normalized === "won" || normalized === "winner" || normalized === "approved";
 }

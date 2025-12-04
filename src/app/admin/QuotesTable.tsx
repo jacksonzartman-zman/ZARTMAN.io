@@ -24,9 +24,6 @@ export type QuoteRow = {
   hasWinner: boolean;
   hasProject: boolean;
   needsDecision: boolean;
-  winningBidId?: string | null;
-  winningSupplierId?: string | null;
-  winningSupplierName?: string | null;
 };
 
 type QuotesTableProps = {
@@ -129,19 +126,15 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
               : baseStatusLabel;
             let stateLabel: string;
             let stateClassName: string;
-            const normalizedWinnerName =
-              typeof row.winningSupplierName === "string"
-                ? row.winningSupplierName.trim()
-                : "";
 
-            if (row.hasWinner) {
-              stateLabel = row.hasProject
-                ? "Winner selected · Kickoff scheduled"
-                : "Winner selected";
-              stateClassName = "pill-success";
-            } else if (row.needsDecision) {
+            if (row.needsDecision) {
               stateLabel = "Needs decision";
               stateClassName = "pill-warning";
+            } else if (row.hasWinner) {
+              stateLabel = row.hasProject
+                ? "Won · Kickoff scheduled"
+                : "Won · No kickoff yet";
+              stateClassName = "pill-success";
             } else if (row.bidCount === 0) {
               stateLabel = "Awaiting bids";
               stateClassName = "pill-muted";
@@ -149,12 +142,6 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
               stateLabel = "Bidding";
               stateClassName = "pill-info";
             }
-            const winnerHelperText =
-              row.hasWinner && normalizedWinnerName
-                ? `Winner: ${normalizedWinnerName}`
-                : row.hasWinner
-                  ? "Winner selected"
-                  : null;
 
             return (
               <tr
@@ -213,16 +200,9 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                   </span>
                 </td>
                 <td className={adminTableCellClass}>
-                  <div className="flex flex-col">
-                    <span className={clsx("pill pill-table", stateClassName)}>
-                      {stateLabel}
-                    </span>
-                    {winnerHelperText ? (
-                      <span className="mt-1 text-[11px] text-slate-500">
-                        {winnerHelperText}
-                      </span>
-                    ) : null}
-                  </div>
+                  <span className={clsx("pill pill-table", stateClassName)}>
+                    {stateLabel}
+                  </span>
                 </td>
                 <td className={`${adminTableCellClass} text-xs text-slate-200`}>
                   {formatMoney(row.price, row.currency)}

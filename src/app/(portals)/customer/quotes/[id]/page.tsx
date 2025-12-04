@@ -4,7 +4,6 @@ import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import {
   buildCustomerQuoteTimeline,
-  type BidRowLike,
   type QuoteTimelineEvent,
 } from "@/lib/quote/tracking";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
@@ -23,6 +22,7 @@ import {
   type QuoteWorkspaceData,
 } from "@/app/(portals)/quotes/workspaceData";
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
+import { loadBidsForQuote, type BidRow } from "@/server/bids";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
@@ -33,23 +33,12 @@ import {
   getQuoteStatusHelper,
   normalizeQuoteStatus,
 } from "@/server/quotes/status";
-import {
-  loadCustomerQuoteBidSummaries,
-  type CustomerQuoteBidSummary,
-} from "@/server/customers/bids";
-import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
+import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
 import { CustomerQuoteTrackingCard } from "./CustomerQuoteTrackingCard";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
 import { loadQuoteProject } from "@/server/quotes/projects";
 
 export const dynamic = "force-dynamic";
-
-const CUSTOMER_DECIDABLE_STATUSES = new Set([
-  "submitted",
-  "in_review",
-  "quoted",
-  "approved",
-]);
 
 type CustomerQuotePageProps = {
   params: Promise<{ id: string }>;
@@ -148,14 +137,11 @@ export default async function CustomerQuoteDetailPage({
   const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined);
   const quoteStatusHelper = getQuoteStatusHelper(quote.status ?? undefined);
   const nextWorkflowState = getNextWorkflowState(normalizedQuoteStatus);
-  const bidsResult = await loadCustomerQuoteBidSummaries({
-    quoteId: quote.id,
-    customerEmail: customer.email,
-    userEmail: user.email,
-    overrideEmail,
-  });
+  const bidsResult = await loadBidsForQuote(quote.id);
   const bidsUnavailable = !bidsResult.ok;
-  const bids: CustomerQuoteBidSummary[] = bidsResult.ok ? bidsResult.bids : [];
+  const bids = bidsResult.ok && Array.isArray(bidsResult.data)
+    ? (bidsResult.data ?? [])
+    : [];
   const projectResult = await loadQuoteProject(quote.id);
   const project = projectResult.data;
   const projectUnavailable = projectResult.unavailable;
@@ -165,21 +151,9 @@ export default async function CustomerQuoteDetailPage({
     unavailable: projectUnavailable,
   });
   const bidCount = bids.length;
-  const timelineBids: BidRowLike[] = bids.map((bid) => ({
-    id: bid.id,
-    quote_id: bid.quoteId,
-    supplier_id: bid.supplierId,
-    status: bid.status,
-    amount: bid.priceValue,
-    unit_price: bid.priceValue,
-    currency: bid.currencyCode ?? null,
-    lead_time_days: bid.leadTimeDays ?? null,
-    created_at: bid.createdAt,
-    updated_at: bid.updatedAt,
-  }));
   const timelineEvents: QuoteTimelineEvent[] = buildCustomerQuoteTimeline({
     quote,
-    bids: timelineBids,
+    bids,
     project,
   });
   console.log("[customer quote] tracking events built", {
@@ -188,8 +162,7 @@ export default async function CustomerQuoteDetailPage({
   });
   const quoteIsWon = normalizedQuoteStatus === "won";
   const quoteAllowsCustomerAward =
-    typeof normalizedQuoteStatus === "string" &&
-    CUSTOMER_DECIDABLE_STATUSES.has(normalizedQuoteStatus);
+    normalizedQuoteStatus === "quoted" || normalizedQuoteStatus === "approved";
   const winningBid =
     bids.find(
       (bid) =>
@@ -198,20 +171,15 @@ export default async function CustomerQuoteDetailPage({
     ) ?? null;
   const winningBidId = winningBid?.id ?? null;
   const quoteHasWinner = Boolean(winningBidId);
-  const customerOwnsQuote = quoteCustomerMatches;
-  const showCustomerAwardPanel =
-    !bidsUnavailable &&
-    customerOwnsQuote &&
-    bidCount > 0 &&
-    (quoteAllowsCustomerAward || quoteIsWon);
-  const customerCanSubmitAward =
-    showCustomerAwardPanel &&
+  const showCustomerSupplierSection = bidCount > 0;
+  const showCustomerAwardButtons =
     quoteAllowsCustomerAward &&
+    bidCount > 0 &&
     !quoteIsWon &&
     !quoteHasWinner &&
     !readOnly;
   let customerAwardDisabledReason: string | null = null;
-  if (showCustomerAwardPanel && !customerCanSubmitAward) {
+  if (showCustomerSupplierSection && !showCustomerAwardButtons) {
     if (readOnly) {
       customerAwardDisabledReason =
         "Selecting a winner is disabled while you are viewing this workspace in read-only mode.";
@@ -224,27 +192,32 @@ export default async function CustomerQuoteDetailPage({
     }
   }
   const pricedBids = bids.filter(
-    (bid): bid is CustomerQuoteBidSummary & { priceValue: number } =>
-      typeof bid.priceValue === "number" && Number.isFinite(bid.priceValue),
+    (bid): bid is BidRow & { amount: number } => {
+      const value = bid.amount;
+      return typeof value === "number" && Number.isFinite(value);
+    },
   );
-  const bestPriceBid = pricedBids.reduce<
-    (CustomerQuoteBidSummary & { priceValue: number }) | null
-  >((currentBest, bid) => {
-    if (!currentBest || bid.priceValue < currentBest.priceValue) {
-      return bid;
-    }
-    return currentBest;
-  }, null);
-  const bestPriceValue = bestPriceBid?.priceValue ?? null;
-  const bestPriceCurrency = bestPriceBid?.currencyCode ?? null;
+  const bestPriceBid = pricedBids.reduce<BidRow & { amount: number } | null>(
+    (currentBest, bid) => {
+      if (!currentBest || bid.amount < currentBest.amount) {
+        return bid;
+      }
+      return currentBest;
+    },
+    null,
+  );
+  const bestPriceValue = bestPriceBid?.amount ?? null;
+  const bestPriceCurrency = bestPriceBid?.currency ?? null;
   const leadTimeBids = bids.filter(
-    (bid): bid is CustomerQuoteBidSummary & { leadTimeDays: number } =>
-      typeof bid.leadTimeDays === "number" && Number.isFinite(bid.leadTimeDays),
+    (bid): bid is BidRow & { lead_time_days: number } => {
+      const value = bid.lead_time_days;
+      return typeof value === "number" && Number.isFinite(value);
+    },
   );
   const fastestLeadTime = leadTimeBids.reduce<number | null>(
     (currentBest, bid) => {
-      if (currentBest === null || bid.leadTimeDays < currentBest) {
-        return bid.leadTimeDays;
+      if (currentBest === null || bid.lead_time_days < currentBest) {
+        return bid.lead_time_days;
       }
       return currentBest;
     },
@@ -494,9 +467,16 @@ export default async function CustomerQuoteDetailPage({
                 </dd>
               </div>
             </dl>
-            <p className="text-xs text-slate-400">
-              Detailed bids are listed below so you can review context before awarding a supplier.
-            </p>
+            {showCustomerSupplierSection ? (
+              <CustomerBidSelectionCard
+                quoteId={quote.id}
+                bids={bids}
+                showAwardButtons={showCustomerAwardButtons}
+                disableReason={customerAwardDisabledReason}
+                winningBidId={winningBidId}
+                quoteWon={quoteIsWon}
+              />
+            ) : null}
           </>
         )}
       </div>
@@ -520,16 +500,6 @@ export default async function CustomerQuoteDetailPage({
         You&apos;re never obligated to award—move forward only when price, lead time, and supplier fit feel right.
       </p>
     </section>
-  ) : null;
-
-  const awardPanel = showCustomerAwardPanel ? (
-    <CustomerQuoteAwardPanel
-      quoteId={quote.id}
-      bids={bids}
-      canSubmit={customerCanSubmitAward}
-      disableReason={customerAwardDisabledReason}
-      winningBidId={winningBidId}
-    />
   ) : null;
 
   const projectSection = quoteIsWon ? (
@@ -563,7 +533,6 @@ export default async function CustomerQuoteDetailPage({
     >
       {receiptBanner}
       {summaryCard}
-      {awardPanel}
       {projectSection}
       <CustomerQuoteMessagesCard
         quoteId={quote.id}
