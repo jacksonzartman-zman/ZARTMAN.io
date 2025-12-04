@@ -43,6 +43,30 @@ export type BidDecisionActionState = {
   error: string | null;
 };
 
+export type AwardActionState = {
+  ok: boolean;
+  error?: string | null;
+  message?: string | null;
+  selectedBidId?: string | null;
+};
+
+const CUSTOMER_AWARD_BID_ERROR =
+  "We couldn’t verify that bid. Refresh and try again.";
+const CUSTOMER_AWARD_ACCESS_ERROR =
+  "We couldn’t confirm your access to this quote.";
+const CUSTOMER_AWARD_STATUS_ERROR =
+  "This quote isn’t ready to select a winner yet.";
+const CUSTOMER_AWARD_ALREADY_WON_ERROR =
+  "A winning supplier has already been selected for this quote.";
+const CUSTOMER_AWARD_GENERIC_ERROR =
+  "We couldn’t update the winner. Please try again.";
+const CUSTOMER_AWARD_ALLOWED_STATUSES = new Set([
+  "submitted",
+  "in_review",
+  "quoted",
+  "approved",
+]);
+
 const CUSTOMER_MESSAGE_GENERIC_ERROR =
   "Unable to send your message right now. Please try again.";
 const CUSTOMER_MESSAGE_EMPTY_ERROR = "Message can’t be empty.";
@@ -385,6 +409,50 @@ export async function declineSupplierBidAction(
   return handleBidDecision(formData, "decline");
 }
 
+export async function awardQuoteToBidAction(
+  _prev: AwardActionState,
+  formData: FormData,
+): Promise<AwardActionState> {
+  const quoteId = normalizeId(getFormString(formData, "quoteId"));
+  const bidId = normalizeId(getFormString(formData, "bidId"));
+
+  if (!quoteId || !bidId) {
+    logCustomerAwardNotAllowed({
+      quoteId,
+      bidId,
+      userId: "anonymous",
+      customerId: null,
+      reason: "missing-identifiers",
+    });
+    return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
+  }
+
+  try {
+    const user = await requireUser({
+      redirectTo: `/customer/quotes/${quoteId}`,
+    });
+    const customer = await getCustomerByUserId(user.id);
+    const overrideEmail = normalizeEmailInput(
+      getFormString(formData, "overrideEmail") ?? null,
+    );
+
+    return await performCustomerAwardFlow({
+      quoteId,
+      bidId,
+      user,
+      customer,
+      overrideEmail,
+    });
+  } catch (error) {
+    console.error("[customer award] form state crashed", {
+      quoteId,
+      bidId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_AWARD_GENERIC_ERROR };
+  }
+}
+
 export async function customerAwardBidAction(
   formData: FormData,
 ): Promise<void> {
@@ -394,27 +462,79 @@ export async function customerAwardBidAction(
     ? `/customer/quotes/${quoteId}`
     : "/customer/quotes";
 
-  const user = await requireUser({ redirectTo: "/customer/login" });
-  const customer = await getCustomerByUserId(user.id);
-  const customerId = customer?.id ?? null;
-
   if (!quoteId || !bidId) {
     logCustomerAwardNotAllowed({
       quoteId,
       bidId,
-      userId: user.id,
-      customerId,
+      userId: "anonymous",
+      customerId: null,
       reason: "missing-identifiers",
     });
     return redirect(redirectTarget);
   }
 
-  console.info("[customer award] start", {
+  const user = await requireUser({ redirectTo: "/customer/login" });
+  const customer = await getCustomerByUserId(user.id);
+  const customerId = customer?.id ?? null;
+
+  const result = await performCustomerAwardFlow({
     quoteId,
     bidId,
-    userId: user.id,
-    customerId,
+    user,
+    customer,
   });
+
+  if (!result.ok) {
+    logCustomerAwardNotAllowed({
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      reason: "legacy-form-error",
+    });
+  }
+
+  redirect(redirectTarget);
+}
+
+type CustomerAwardLogContext = {
+  quoteId: string | null;
+  bidId?: string | null;
+  userId: string;
+  customerId: string | null;
+  reason: string;
+};
+
+type CustomerAwardUser = Awaited<ReturnType<typeof requireUser>>;
+type CustomerRecord = Awaited<ReturnType<typeof getCustomerByUserId>>;
+
+type CustomerAwardFlowParams = {
+  quoteId: string;
+  bidId: string;
+  user: CustomerAwardUser;
+  customer: CustomerRecord;
+  overrideEmail?: string | null;
+};
+
+async function performCustomerAwardFlow(
+  params: CustomerAwardFlowParams,
+): Promise<AwardActionState> {
+  const { quoteId, bidId, user, customer, overrideEmail } = params;
+  const customerId = customer?.id ?? null;
+
+  if (!customer) {
+    logCustomerAwardNotAllowed({
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      reason: "missing-profile",
+    });
+    return {
+      ok: false,
+      error: CUSTOMER_AWARD_ACCESS_ERROR,
+    };
+  }
 
   const { data: quoteRow, error: quoteError } = await supabaseServer
     .from("quotes_with_uploads")
@@ -430,39 +550,45 @@ export async function customerAwardBidAction(
       customerId,
       error: serializeActionError(quoteError),
     });
+    return { ok: false, error: CUSTOMER_AWARD_GENERIC_ERROR };
   }
 
   if (!quoteRow) {
-    console.warn("[customer award] quote not found or inaccessible", {
-      quoteId,
-      userId: user.id,
-    });
-    return redirect(redirectTarget);
-  }
-
-  const normalizedStatus = normalizeQuoteStatus(quoteRow.status ?? undefined);
-  const statusEligible =
-    normalizedStatus === "quoted" || normalizedStatus === "approved";
-
-  if (!statusEligible) {
     logCustomerAwardNotAllowed({
       quoteId,
       bidId,
       userId: user.id,
       customerId,
-      reason: "status-not-eligible",
+      reason: "quote-not-found",
     });
-    return redirect(redirectTarget);
+    return { ok: false, error: CUSTOMER_AWARD_ACCESS_ERROR };
+  }
+
+  const normalizedStatus = normalizeQuoteStatus(quoteRow.status ?? undefined);
+  if (!isCustomerAwardStatusAllowed(normalizedStatus)) {
+    logCustomerAwardNotAllowed({
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId,
+      reason: `status-not-eligible-${normalizedStatus ?? "unknown"}`,
+    });
+    return { ok: false, error: CUSTOMER_AWARD_STATUS_ERROR };
   }
 
   const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
-  const normalizedCustomerEmail = normalizeEmailInput(customer?.email ?? null);
+  const normalizedCustomerEmail = normalizeEmailInput(customer.email ?? null);
   const normalizedUserEmail = normalizeEmailInput(user.email);
+  const normalizedOverrideEmail = normalizeEmailInput(overrideEmail ?? null);
+  const allowedEmails = [
+    normalizedCustomerEmail,
+    normalizedUserEmail,
+    normalizedOverrideEmail,
+  ].filter((value): value is string => Boolean(value));
 
   const emailMatches =
     normalizedQuoteEmail !== null &&
-    (normalizedCustomerEmail === normalizedQuoteEmail ||
-      normalizedUserEmail === normalizedQuoteEmail);
+    allowedEmails.some((value) => value === normalizedQuoteEmail);
 
   if (!emailMatches) {
     logCustomerAwardNotAllowed({
@@ -472,7 +598,7 @@ export async function customerAwardBidAction(
       customerId,
       reason: "access-denied",
     });
-    return redirect(redirectTarget);
+    return { ok: false, error: CUSTOMER_AWARD_ACCESS_ERROR };
   }
 
   const { data: existingWinner, error: winnerError } = await supabaseServer
@@ -491,7 +617,7 @@ export async function customerAwardBidAction(
       customerId,
       error: serializeActionError(winnerError),
     });
-    return redirect(redirectTarget);
+    return { ok: false, error: CUSTOMER_AWARD_GENERIC_ERROR };
   }
 
   if (existingWinner) {
@@ -502,7 +628,7 @@ export async function customerAwardBidAction(
       customerId,
       reason: "winner-exists",
     });
-    return redirect(redirectTarget);
+    return { ok: false, error: CUSTOMER_AWARD_ALREADY_WON_ERROR };
   }
 
   const { data: bidRow, error: bidError } = await supabaseServer
@@ -519,7 +645,7 @@ export async function customerAwardBidAction(
       customerId,
       error: serializeActionError(bidError),
     });
-    return redirect(redirectTarget);
+    return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
   }
 
   if (!bidRow || bidRow.quote_id !== quoteId) {
@@ -530,12 +656,11 @@ export async function customerAwardBidAction(
       customerId,
       reason: "bid-not-found",
     });
-    return redirect(redirectTarget);
+    return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
   }
 
   const bidStatus = normalizeBidStatus(bidRow.status);
-
-  if (bidStatus === "won" || bidStatus === "lost") {
+  if (!isBidEligibleForAward(bidStatus)) {
     logCustomerAwardNotAllowed({
       quoteId,
       bidId,
@@ -543,7 +668,7 @@ export async function customerAwardBidAction(
       customerId,
       reason: `bid-ineligible-${bidStatus}`,
     });
-    return redirect(redirectTarget);
+    return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
   }
 
   const awardResult = await performAwardBidForQuote({
@@ -560,16 +685,13 @@ export async function customerAwardBidAction(
       customerId,
       error: awardResult.error,
     });
-    return redirect(redirectTarget);
+    return {
+      ok: false,
+      error: awardResult.error ?? CUSTOMER_AWARD_GENERIC_ERROR,
+    };
   }
 
-  await Promise.all([
-    revalidatePath("/customer"),
-    revalidatePath("/customer/quotes"),
-    revalidatePath(`/customer/quotes/${quoteId}`),
-    revalidatePath(`/supplier/quotes/${quoteId}`),
-    revalidatePath(`/admin/quotes/${quoteId}`),
-  ]);
+  revalidateCustomerAwardPaths(quoteId);
 
   void dispatchWinnerNotification({
     quoteId,
@@ -584,16 +706,11 @@ export async function customerAwardBidAction(
     customerId,
   });
 
-  redirect(redirectTarget);
+  return {
+    ok: true,
+    selectedBidId: bidId,
+  };
 }
-
-type CustomerAwardLogContext = {
-  quoteId: string | null;
-  bidId?: string | null;
-  userId: string;
-  customerId: string | null;
-  reason: string;
-};
 
 function logCustomerAwardNotAllowed(context: CustomerAwardLogContext) {
   console.warn("[customer award] not allowed", context);
@@ -605,6 +722,37 @@ function normalizeId(value?: string | null): string {
 
 function normalizeBidStatus(status?: string | null): string {
   return typeof status === "string" ? status.trim().toLowerCase() : "";
+}
+
+function isCustomerAwardStatusAllowed(status?: string | null): boolean {
+  if (!status) {
+    return false;
+  }
+  return CUSTOMER_AWARD_ALLOWED_STATUSES.has(status);
+}
+
+function isBidEligibleForAward(status: string): boolean {
+  if (!status) {
+    return true;
+  }
+  return status !== "won" && status !== "lost";
+}
+
+function revalidateCustomerAwardPaths(quoteId: string) {
+  const targets = [
+    "/customer",
+    "/customer/quotes",
+    `/customer/quotes/${quoteId}`,
+    "/admin",
+    "/admin/quotes",
+    `/admin/quotes/${quoteId}`,
+    "/supplier",
+    "/supplier/quotes",
+    `/supplier/quotes/${quoteId}`,
+  ];
+  targets.forEach((path) => {
+    revalidatePath(path);
+  });
 }
 
 async function handleBidDecision(formData: FormData, mode: "accept" | "decline") {
