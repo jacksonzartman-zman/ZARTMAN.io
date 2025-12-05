@@ -37,6 +37,12 @@ import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
 import { CustomerQuoteTrackingCard } from "./CustomerQuoteTrackingCard";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
 import { loadQuoteProject } from "@/server/quotes/projects";
+import {
+  loadQuoteKickoffTasksForSupplier,
+  summarizeKickoffTasks,
+  formatKickoffSummaryLabel,
+  type SupplierKickoffTasksResult,
+} from "@/server/quotes/kickoffTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -167,10 +173,40 @@ export default async function CustomerQuoteDetailPage({
     bids.find(
       (bid) =>
         typeof bid.status === "string" &&
-        bid.status.trim().toLowerCase() === "won",
+        ["won", "accepted", "winner"].includes(
+          bid.status.trim().toLowerCase(),
+        ),
     ) ?? null;
   const winningBidId = winningBid?.id ?? null;
   const quoteHasWinner = Boolean(winningBidId);
+  const winningSupplierId =
+    typeof winningBid?.supplier_id === "string"
+      ? winningBid.supplier_id
+      : null;
+  let supplierKickoffTasksResult: SupplierKickoffTasksResult | null = null;
+  if (winningSupplierId) {
+    supplierKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
+      quote.id,
+      winningSupplierId,
+    );
+  }
+  const kickoffSummary =
+    supplierKickoffTasksResult?.ok
+      ? summarizeKickoffTasks(supplierKickoffTasksResult.tasks)
+      : null;
+  const kickoffSummaryLabel = quoteHasWinner
+    ? kickoffSummary
+      ? formatKickoffSummaryLabel(kickoffSummary)
+      : supplierKickoffTasksResult?.reason === "schema-missing"
+        ? "Kickoff checklist unavailable in this environment"
+        : "Kickoff checklist unavailable"
+    : "Select a winning supplier to start kickoff";
+  const kickoffSummaryTone =
+    kickoffSummary?.status === "complete"
+      ? "text-emerald-300"
+      : kickoffSummary?.status === "in-progress"
+        ? "text-blue-200"
+        : "text-slate-200";
   const showCustomerSupplierSection = bidCount > 0;
   const showCustomerAwardButtons =
     quoteAllowsCustomerAward &&
@@ -381,6 +417,14 @@ export default async function CustomerQuoteDetailPage({
             Submitted
           </dt>
           <dd className="text-slate-100">{submittedAtText ?? "—"}</dd>
+        </div>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Kickoff checklist
+          </dt>
+          <dd className={clsx("font-medium", kickoffSummaryTone)}>
+            {kickoffSummaryLabel}
+          </dd>
         </div>
         <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
           <dt className="text-[11px] uppercase tracking-wide text-slate-500">

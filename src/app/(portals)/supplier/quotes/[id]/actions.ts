@@ -705,3 +705,173 @@ function isBidsEnvErrorMessage(message?: string | null): boolean {
   }
   return message.includes(SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE);
 }
+
+const SUPPLIER_KICKOFF_TASKS_TABLE = "quote_kickoff_tasks";
+const KICKOFF_TASKS_GENERIC_ERROR =
+  "We couldn’t update the kickoff checklist. Please try again.";
+const KICKOFF_TASKS_SCHEMA_ERROR =
+  "Kickoff checklist isn’t available in this environment yet.";
+
+type ToggleSupplierKickoffTaskInput = {
+  quoteId: string;
+  supplierId: string;
+  taskKey: string;
+  completed: boolean;
+  title?: string | null;
+  description?: string | null;
+  sortOrder?: number | null;
+};
+
+export type SupplierKickoffTaskActionState =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+export async function toggleSupplierKickoffTaskAction(
+  input: ToggleSupplierKickoffTaskInput,
+): Promise<SupplierKickoffTaskActionState> {
+  const quoteId = normalizeIdentifier(input?.quoteId);
+  const supplierId = normalizeIdentifier(input?.supplierId);
+  const taskKey = normalizeTaskKey(input?.taskKey);
+
+  if (!quoteId || !supplierId || !taskKey) {
+    return {
+      ok: false,
+      error: KICKOFF_TASKS_GENERIC_ERROR,
+    };
+  }
+
+  const completed = Boolean(input?.completed);
+  const title = normalizeTaskTitle(input?.title, taskKey);
+  const description = normalizeTaskDescription(input?.description);
+  const sortOrder = normalizeSortOrder(input?.sortOrder);
+  const now = new Date().toISOString();
+
+  try {
+    const { error } = await supabaseServer
+      .from(SUPPLIER_KICKOFF_TASKS_TABLE)
+      .upsert(
+        {
+          quote_id: quoteId,
+          supplier_id: supplierId,
+          task_key: taskKey,
+          title,
+          description,
+          completed,
+          sort_order: sortOrder,
+          updated_at: now,
+        },
+        { onConflict: "quote_id,supplier_id,task_key" },
+      );
+
+    if (error) {
+      const serialized = serializeSupabaseError(error);
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[supplier kickoff tasks] upsert missing schema", {
+          quoteId,
+          supplierId,
+          taskKey,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          error: KICKOFF_TASKS_SCHEMA_ERROR,
+        };
+      }
+      console.error("[supplier kickoff tasks] upsert failed", {
+        quoteId,
+        supplierId,
+        taskKey,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: KICKOFF_TASKS_GENERIC_ERROR,
+      };
+    }
+
+    console.log("[supplier kickoff tasks] upsert success", {
+      quoteId,
+      supplierId,
+      taskKey,
+      completed,
+    });
+
+    revalidatePath(`/supplier/quotes/${quoteId}`);
+    revalidatePath("/supplier");
+    revalidatePath(`/customer/quotes/${quoteId}`);
+    revalidatePath("/customer");
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    revalidatePath("/admin/quotes");
+    revalidatePath("/admin");
+
+    return {
+      ok: true,
+      message: completed
+        ? "Marked task complete."
+        : "Marked task incomplete.",
+    };
+  } catch (error) {
+    const serialized = serializeSupabaseError(error);
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[supplier kickoff tasks] upsert crashed (missing schema)", {
+        quoteId,
+        supplierId,
+        taskKey,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: KICKOFF_TASKS_SCHEMA_ERROR,
+      };
+    }
+    console.error("[supplier kickoff tasks] upsert crashed", {
+      quoteId,
+      supplierId,
+      taskKey,
+      error: serialized ?? error,
+    });
+    return {
+      ok: false,
+      error: KICKOFF_TASKS_GENERIC_ERROR,
+    };
+  }
+}
+
+function normalizeIdentifier(value?: string | null): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeTaskKey(value?: string | null): string {
+  const key = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return key.replace(/[^a-z0-9_-]/gi, "");
+}
+
+function normalizeTaskTitle(
+  value: string | null | undefined,
+  fallback: string,
+): string {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim().slice(0, 120);
+  }
+  return fallback;
+}
+
+function normalizeTaskDescription(
+  value: string | null | undefined,
+): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.slice(0, 500);
+}
+
+function normalizeSortOrder(value?: number | null): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  return null;
+}

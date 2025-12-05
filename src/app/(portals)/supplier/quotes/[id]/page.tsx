@@ -43,6 +43,12 @@ import { loadQuoteProject, type QuoteProjectRow } from "@/server/quotes/projects
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
 import { loadQuoteMessages, type QuoteMessageRow } from "@/server/quotes/messages";
 import { SupplierQuoteMessagesCard } from "./SupplierQuoteMessagesCard";
+import {
+  loadQuoteKickoffTasksForSupplier,
+  type SupplierKickoffTasksResult,
+} from "@/server/quotes/kickoffTasks";
+import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
+import { KickoffChecklist } from "./KickoffChecklist";
 
 export const dynamic = "force-dynamic";
 
@@ -165,6 +171,11 @@ export default async function SupplierQuoteDetailPage({
   const bidsUnavailableMessage = bidResult.ok ? null : bidResult.error ?? null;
   const existingBid = initialBid;
 
+  const kickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
+    quoteId,
+    profile.supplier.id,
+  );
+
   const messagesResult = await loadQuoteMessages(quoteId);
   const messagesUnavailable = !messagesResult.ok;
   const messages: QuoteMessageRow[] =
@@ -189,6 +200,7 @@ export default async function SupplierQuoteDetailPage({
         user.email ??
         "supplier"
       }
+      supplierId={profile.supplier.id}
       assignments={assignments}
       supplierNameOverride={profile.supplier.company_name}
       existingBid={existingBid}
@@ -203,6 +215,7 @@ export default async function SupplierQuoteDetailPage({
       timelineEvents={supplierTimelineEvents}
       project={project}
       projectUnavailable={projectUnavailable}
+      kickoffTasksResult={kickoffTasksResult}
     />
   );
 }
@@ -210,6 +223,7 @@ export default async function SupplierQuoteDetailPage({
 function SupplierQuoteWorkspace({
   data,
   supplierEmail,
+  supplierId,
   assignments,
   supplierNameOverride,
   existingBid,
@@ -224,9 +238,11 @@ function SupplierQuoteWorkspace({
   timelineEvents,
   project,
   projectUnavailable,
+  kickoffTasksResult,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
+  supplierId: string;
   assignments: SupplierAssignment[];
   supplierNameOverride?: string | null;
   existingBid: BidRow | null;
@@ -241,6 +257,7 @@ function SupplierQuoteWorkspace({
   timelineEvents: QuoteTimelineEvent[];
   project: QuoteProjectRow | null;
   projectUnavailable: boolean;
+  kickoffTasksResult: SupplierKickoffTasksResult | null;
 }) {
   const { quote, uploadMeta, filePreviews } = data;
   const derived = deriveQuotePresentation(quote, uploadMeta);
@@ -251,11 +268,39 @@ function SupplierQuoteWorkspace({
     accessGranted: true,
   });
   const bidLocked = !canSubmitBid;
-  const acceptedLock = existingBid?.status === "accepted";
+  const normalizedQuoteStatus = (quote.status ?? "").trim().toLowerCase();
+  const normalizedBidStatus =
+    typeof existingBid?.status === "string"
+      ? existingBid.status.trim().toLowerCase()
+      : "";
+  const bidSelectedAsWinner = ["accepted", "won", "winner"].includes(
+    normalizedBidStatus,
+  );
+  const quoteReadyForKickoff = [
+    "approved",
+    "won",
+    "winner_selected",
+    "winner-selected",
+    "winner",
+  ].includes(normalizedQuoteStatus);
+  const hasProject = Boolean(project);
+  const showKickoffChecklist =
+    bidSelectedAsWinner && (quoteReadyForKickoff || hasProject);
+  const acceptedLock = normalizedBidStatus === "accepted";
   const closedWindowLock = bidLocked && !acceptedLock;
-    const supplierDisplayName =
-      supplierNameOverride ??
-      getSupplierDisplayName(supplierEmail, quote, assignments);
+  console.log("[supplier kickoff] visibility debug", {
+    quoteId: quote.id,
+    bidSelectedAsWinner,
+    normalizedQuoteStatus,
+    quoteReadyForKickoff,
+    hasProject,
+    showKickoffChecklist,
+    tasksOk: kickoffTasksResult?.ok ?? null,
+    taskCount: kickoffTasksResult?.tasks?.length ?? null,
+  });
+  const supplierDisplayName =
+    supplierNameOverride ??
+    getSupplierDisplayName(supplierEmail, quote, assignments);
   const cardClasses =
     "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
   const fileCountText =
@@ -272,9 +317,7 @@ function SupplierQuoteWorkspace({
     filePreviews[0]?.fileName ??
     quote.file_name ??
     formatQuoteId(quote.id);
-  const isWinningSupplier =
-    typeof existingBid?.status === "string" &&
-    existingBid.status.trim().toLowerCase() === "accepted";
+  const isWinningSupplier = bidSelectedAsWinner;
   const showSupplierProjectCard = isWinningSupplier;
   const headerTitle = `${formatQuoteId(quote.id)} · ${derived.customerName}`;
   const headerActions = (
@@ -344,7 +387,7 @@ function SupplierQuoteWorkspace({
             <span className="text-slate-200">{assignmentNames.join(", ")}</span>
           </span>
         ) : null}
-        {existingBid?.status === "accepted" ? (
+        {bidSelectedAsWinner ? (
           <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
             Selected by customer
           </span>
@@ -352,6 +395,33 @@ function SupplierQuoteWorkspace({
       </div>
     </div>
   );
+
+  const winnerCallout = bidSelectedAsWinner ? (
+    <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-50">
+      <p className="text-base font-semibold text-emerald-100">
+        Your bid won this RFQ
+      </p>
+      <p className="mt-1 text-emerald-50/80">
+        We&apos;re coordinating kickoff now. Use the checklist below to lock in
+        materials, timing, and any handoff notes.
+      </p>
+    </section>
+  ) : null;
+
+  let kickoffChecklistSection: ReactNode = null;
+  if (showKickoffChecklist) {
+    if (kickoffTasksResult && kickoffTasksResult.ok) {
+      kickoffChecklistSection = (
+        <SupplierKickoffChecklistCard
+          quoteId={quote.id}
+          supplierId={supplierId}
+          tasks={kickoffTasksResult.tasks}
+        />
+      );
+    } else {
+      kickoffChecklistSection = <KickoffChecklist />;
+    }
+  }
 
   const summaryCard = (
     <section className={clsx(cardClasses, "space-y-5")}>
@@ -479,6 +549,8 @@ function SupplierQuoteWorkspace({
       headerContent={headerContent}
       actions={headerActions}
     >
+      {winnerCallout}
+      {kickoffChecklistSection}
       {summaryCard}
       {projectSection}
       <SupplierQuoteMessagesCard
