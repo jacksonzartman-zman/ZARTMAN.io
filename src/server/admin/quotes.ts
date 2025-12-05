@@ -452,7 +452,8 @@ export function isWinningBidStatus(status: unknown): boolean {
   if (typeof status !== "string") {
     return false;
   }
-  return status.trim().toLowerCase() === "won";
+  const normalized = status.trim().toLowerCase();
+  return normalized === "won" || normalized === "accepted" || normalized === "winner";
 }
 
 export async function updateAdminQuote(

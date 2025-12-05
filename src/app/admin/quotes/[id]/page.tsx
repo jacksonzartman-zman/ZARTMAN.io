@@ -32,6 +32,12 @@ import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import { SupplierBidsCard } from "./SupplierBidsCard";
 import { loadQuoteProject } from "@/server/quotes/projects";
 import { AdminQuoteProjectCard } from "./AdminQuoteProjectCard";
+import {
+  loadQuoteKickoffTasksForSupplier,
+  summarizeKickoffTasks,
+  formatKickoffSummaryLabel,
+  type SupplierKickoffTasksResult,
+} from "@/server/quotes/kickoffTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -254,6 +260,32 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const bids = bidsResult.ok ? bidsResult.data : [];
     const bidCount = bids.length;
     const hasWinningBid = bids.some((bid) => isWinningBidStatus(bid?.status));
+    const winningBidRow =
+      bids.find((bid) => isWinningBidStatus(bid?.status)) ?? null;
+    let supplierKickoffTasksResult: SupplierKickoffTasksResult | null = null;
+    if (winningBidRow?.supplier_id) {
+      supplierKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
+        quote.id,
+        winningBidRow.supplier_id,
+      );
+    }
+    const kickoffSummary =
+      supplierKickoffTasksResult?.ok
+        ? summarizeKickoffTasks(supplierKickoffTasksResult.tasks)
+        : null;
+    const kickoffSummaryLabel = hasWinningBid
+      ? kickoffSummary
+        ? formatKickoffSummaryLabel(kickoffSummary)
+        : supplierKickoffTasksResult?.reason === "schema-missing"
+          ? "Checklist unavailable in this environment"
+          : "Checklist unavailable"
+      : "Waiting for winner";
+    const kickoffSummaryTone =
+      kickoffSummary?.status === "complete"
+        ? "text-emerald-300"
+        : kickoffSummary?.status === "in-progress"
+          ? "text-blue-200"
+          : "text-slate-200";
     const hasProject = Boolean(project);
     const attentionState = deriveAdminQuoteAttentionState({
       quoteId: quote.id,
@@ -549,13 +581,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 </span>
                 <span className="text-slate-300">
                   Kickoff:{" "}
-                  <span
-                    className={
-                      attentionState.hasProject ? "text-emerald-300" : "text-slate-400"
-                    }
-                  >
-                    {attentionState.hasProject ? "Set" : "Not started"}
-                  </span>
+                  <span className={kickoffSummaryTone}>{kickoffSummaryLabel}</span>
                 </span>
                 <span
                   className={
