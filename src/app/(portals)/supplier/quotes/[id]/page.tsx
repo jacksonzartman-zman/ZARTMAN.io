@@ -260,6 +260,9 @@ function SupplierQuoteWorkspace({
   kickoffTasksResult: SupplierKickoffTasksResult | null;
 }) {
   const { quote, uploadMeta, filePreviews } = data;
+  const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
+  const fileCount =
+    typeof quote.fileCount === "number" ? quote.fileCount : quoteFiles.length;
   const derived = deriveQuotePresentation(quote, uploadMeta);
   const nextWorkflowState = getNextWorkflowState(derived.status);
   const canSubmitBid = canUserBid("supplier", {
@@ -304,18 +307,19 @@ function SupplierQuoteWorkspace({
   const cardClasses =
     "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
   const fileCountText =
-    filePreviews.length === 0
+    fileCount === 0
       ? "No files attached"
-      : filePreviews.length === 1
+      : fileCount === 1
         ? "1 file attached"
-        : `${filePreviews.length} files attached`;
+        : `${fileCount} files attached`;
   const assignmentNames = assignments
     .map((assignment) => assignment.supplier_name ?? assignment.supplier_email)
     .filter((value): value is string => Boolean(value && value.trim()));
   const primaryFileName =
-    filePreviews[0]?.label ??
     filePreviews[0]?.fileName ??
+    filePreviews[0]?.label ??
     quote.file_name ??
+    quoteFiles[0]?.filename ??
     formatQuoteId(quote.id);
   const isWinningSupplier = bidSelectedAsWinner;
   const showSupplierProjectCard = isWinningSupplier;

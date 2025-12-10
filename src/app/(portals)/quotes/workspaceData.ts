@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
+  buildQuoteFilesFromRow,
   getQuoteFilePreviews,
   type QuoteFilePreviewOptions,
   type UploadFileReference,
@@ -225,28 +226,4 @@ export async function loadQuoteWorkspaceData(
       error: "Unexpected error loading quote workspace",
     };
   }
-}
-
-function buildQuoteFilesFromRow(row: QuoteWithUploadsRow): QuoteFileMeta[] {
-  const rawArray =
-    (Array.isArray(row.file_names) ? row.file_names : null) ??
-    (Array.isArray(row.upload_file_names) ? row.upload_file_names : null) ??
-    null;
-
-  let names: string[] =
-    Array.isArray(rawArray) && rawArray.length > 0
-      ? rawArray
-          .map((value) => (typeof value === "string" ? value.trim() : ""))
-          .filter((value) => value.length > 0)
-      : [];
-
-  if (
-    names.length === 0 &&
-    typeof row.file_name === "string" &&
-    row.file_name.trim().length > 0
-  ) {
-    names = [row.file_name.trim()];
-  }
-
-  return names.map((filename) => ({ filename }));
 }

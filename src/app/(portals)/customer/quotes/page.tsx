@@ -4,6 +4,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesTable } from "@/server/customers/activity";
+import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
 import { QuoteStatusBadge } from "../../components/QuoteStatusBadge";
@@ -126,9 +127,11 @@ export default async function CustomerQuotesPage() {
               </thead>
               <tbody className="divide-y divide-slate-900/70">
                 {quotes.map((quote) => {
+                  const files = buildQuoteFilesFromRow(quote);
                   const primaryLabel =
                     quote.project_label ||
                     quote.upload_name ||
+                    files[0]?.filename ||
                     quote.file_name ||
                     "Untitled RFQ";
 

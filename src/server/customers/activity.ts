@@ -12,7 +12,7 @@ import { formatCurrency } from "@/lib/formatCurrency";
 
 const EVENT_LIMIT = 10;
 const QUOTE_COLUMNS =
-  "id,file_name,company,customer_name,email,status,created_at,updated_at,price,currency";
+  "id,file_name,company,customer_name,email,status,created_at,updated_at,price,currency,file_names,upload_file_names,file_count,upload_file_count";
 
 type CustomerQuoteRow = {
   id: string;
@@ -25,6 +25,10 @@ type CustomerQuoteRow = {
   updated_at: string | null;
   price: number | string | null;
   currency: string | null;
+  file_names?: string[] | null;
+  upload_file_names?: string[] | null;
+  file_count?: number | null;
+  upload_file_count?: number | null;
   // Optional fields available in some environments but not prod yet.
   project_label?: string | null;
   upload_name?: string | null;

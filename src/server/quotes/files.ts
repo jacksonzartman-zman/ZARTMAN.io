@@ -1,7 +1,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
-import type { QuoteFileSource } from "./types";
+import type { QuoteFileMeta, QuoteFileSource } from "./types";
 
 type FileStorageRow = {
   storage_path: string | null;
@@ -190,7 +190,9 @@ export async function getQuoteFilePreviews(
   }
 }
 
-function extractFileNames(row: QuoteFileSource): string[] {
+function extractFileNames(
+  row: Pick<QuoteFileSource, "file_name" | "file_names" | "upload_file_names">,
+): string[] {
   const names: string[] = [];
 
   const forward = (value: unknown) => {
@@ -211,6 +213,13 @@ function extractFileNames(row: QuoteFileSource): string[] {
   }
 
   return names;
+}
+
+export function buildQuoteFilesFromRow(
+  row: Pick<QuoteFileSource, "file_name" | "file_names" | "upload_file_names">,
+): QuoteFileMeta[] {
+  const names = extractFileNames(row);
+  return names.map((filename) => ({ filename }));
 }
 
 async function getPreviewForCandidate(
