@@ -36,6 +36,7 @@ const NAV_LINKS: Record<PortalRole, NavLink[]> = {
   ],
   supplier: [
     { label: "Dashboard", href: "/supplier" },
+    { label: "Decisions", href: "/supplier/decisions" },
     { label: "RFQs", href: "/supplier/rfqs" },
     { label: "Settings", href: "/supplier/settings" },
   ],
@@ -45,12 +46,14 @@ export type AppHeaderClientProps = {
   user: HeaderUser | null;
   notifications?: NotificationPayload[];
   signOutAction?: () => Promise<void> | void;
+  supplierDecisionCount?: number;
 };
 
 export default function AppHeaderClient({
   user,
   notifications = [],
   signOutAction,
+  supplierDecisionCount,
 }: AppHeaderClientProps) {
   const pathname = usePathname() ?? "/";
   const role = useMemo(() => deriveRoleFromPath(pathname), [pathname]);
@@ -109,6 +112,11 @@ export default function AppHeaderClient({
           <nav className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-400">
             {navLinks.map((link) => {
               const active = isPathActive(pathname, link.href);
+              const showBadge =
+                role === "supplier" &&
+                link.href === "/supplier/decisions" &&
+                typeof supplierDecisionCount === "number" &&
+                supplierDecisionCount > 0;
               return (
                 <Link
                   key={link.href}
@@ -120,7 +128,12 @@ export default function AppHeaderClient({
                       : "text-slate-400 hover:text-white",
                   )}
                 >
-                  {link.label}
+                  <span>{link.label}</span>
+                  {showBadge ? (
+                    <span className="ml-2 inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100">
+                      {formatBadgeCount(supplierDecisionCount)}
+                    </span>
+                  ) : null}
                 </Link>
               );
             })}
@@ -295,6 +308,16 @@ function deriveRoleFromPath(pathname: string): PortalRole | null {
 
 function isPathActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function formatBadgeCount(value?: number): string {
+  if (typeof value !== "number") {
+    return "0";
+  }
+  if (value > 99) {
+    return "99+";
+  }
+  return String(value);
 }
 
 function truncateLabel(value: string, max = 28): string {

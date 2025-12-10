@@ -5,6 +5,8 @@ import AdminTableShell, {
   adminTableCellClass,
 } from "@/app/admin/AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { QuoteStatusBadge } from "../components/QuoteStatusBadge";
+import { formatRelativeTimeFromTimestamp } from "@/lib/relativeTime";
 import type { QuoteStatus } from "@/server/quotes/status";
 
 export type SupplierInboxRow = {
@@ -22,48 +24,14 @@ export type SupplierInboxRow = {
   lastBidAt: string | null;
   hasWinningBid: boolean;
   fairnessReason?: string | null;
+  targetDate: string | null;
+  dueSoon: boolean;
+  lastActivityAt: string | null;
+  lastActivityTimestamp: number | null;
 };
 
 type SupplierInboxTableProps = {
   rows: SupplierInboxRow[];
-};
-
-const STATUS_BADGE_VARIANTS: Record<
-  QuoteStatus | "default",
-  { label: string; className: string }
-> = {
-  submitted: {
-    label: "Needs quote",
-    className: "pill-info",
-  },
-  in_review: {
-    label: "In review",
-    className: "pill-info",
-  },
-  quoted: {
-    label: "Quoted",
-    className: "pill-info",
-  },
-  approved: {
-    label: "Approved",
-    className: "pill-success",
-  },
-  won: {
-    label: "Won",
-    className: "pill-success",
-  },
-  lost: {
-    label: "Lost",
-    className: "pill-warning",
-  },
-  cancelled: {
-    label: "Closed",
-    className: "pill-muted",
-  },
-  default: {
-    label: "Needs quote",
-    className: "pill-info",
-  },
 };
 
 export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
@@ -113,6 +81,9 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
           : null;
         const createdLabel =
           formatDateTime(row.createdAt, { includeTime: false }) ?? "—";
+        const targetDateLabel = row.targetDate
+          ? formatDateTime(row.targetDate, { includeTime: false })
+          : null;
         const bidSummary =
           row.bidCount === 0
             ? "No bids"
@@ -126,8 +97,12 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
           row.bidCount > 0 && formattedLastBid
             ? `Last bid: ${formattedLastBid}`
             : "Last bid: —";
-        const statusVariant =
-          STATUS_BADGE_VARIANTS[row.status] ?? STATUS_BADGE_VARIANTS.default;
+        const lastActivityLabel =
+          typeof row.lastActivityTimestamp === "number"
+            ? formatRelativeTimeFromTimestamp(row.lastActivityTimestamp)
+            : row.lastActivityAt
+              ? formatDateTime(row.lastActivityAt, { includeTime: true })
+              : null;
 
         return (
           <tr
@@ -138,7 +113,17 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               <p className="text-sm font-semibold text-white">
                 {row.companyName}
               </p>
-              <p className="text-xs text-slate-400">{createdLabel}</p>
+              <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                <span className="text-slate-400">Submitted {createdLabel}</span>
+                {lastActivityLabel ? (
+                  <span>Updated {lastActivityLabel}</span>
+                ) : null}
+              </div>
+              {row.dueSoon && targetDateLabel ? (
+                <span className="mt-2 inline-flex w-fit items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-100">
+                  Due soon · {targetDateLabel}
+                </span>
+              ) : null}
             </td>
             <td className={`${adminTableCellClass} text-slate-200`}>
               <p>{row.processHint ?? "Process TBD"}</p>
@@ -163,11 +148,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               </div>
             </td>
             <td className={adminTableCellClass}>
-              <span
-                className={clsx("pill pill-table", statusVariant.className)}
-              >
-                {statusVariant.label}
-              </span>
+              <QuoteStatusBadge status={row.status} size="sm" />
             </td>
             <td className={`${adminTableCellClass} text-right`}>
               <Link
