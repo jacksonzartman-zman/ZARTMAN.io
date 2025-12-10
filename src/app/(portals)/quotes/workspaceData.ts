@@ -4,7 +4,11 @@ import {
   type QuoteFilePreviewOptions,
   type UploadFileReference,
 } from "@/server/quotes/files";
-import type { QuoteWithUploadsRow, UploadMeta } from "@/server/quotes/types";
+import type {
+  QuoteFileMeta,
+  QuoteWithUploadsRow,
+  UploadMeta,
+} from "@/server/quotes/types";
 import { loadQuoteMessages, type QuoteMessage } from "@/server/quotes/messages";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
@@ -15,8 +19,13 @@ import {
   isMissingTableOrColumnError,
 } from "@/server/admin/logging";
 
+export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
+  files: QuoteFileMeta[];
+  fileCount: number;
+};
+
 export type QuoteWorkspaceData = {
-  quote: QuoteWithUploadsRow;
+  quote: QuoteWorkspaceQuote;
   uploadMeta: UploadMeta | null;
   filePreviews: Awaited<ReturnType<typeof getQuoteFilePreviews>>;
   messages: QuoteMessage[];
@@ -115,6 +124,14 @@ export async function loadQuoteWorkspaceData(
       quote = fullQuote;
     }
 
+    if (!quote) {
+      return {
+        ok: false,
+        data: null,
+        error: "Quote not found",
+      };
+    }
+
     let uploadMeta: UploadMeta | null = null;
     let uploadFileReference: UploadFileReference | undefined;
     if (quote.upload_id) {
@@ -169,7 +186,15 @@ export async function loadQuoteWorkspaceData(
     };
 
     const filePreviews = await getQuoteFilePreviews(quote, filePreviewOptions);
-    const messagesResult = await loadQuoteMessages(quote.id);
+    const files = buildQuoteFilesFromRow(quote);
+    const fileCount = files.length;
+    const enrichedQuote: QuoteWorkspaceQuote = {
+      ...quote,
+      files,
+      fileCount,
+    };
+
+    const messagesResult = await loadQuoteMessages(enrichedQuote.id);
     const messages = messagesResult.ok && Array.isArray(messagesResult.data)
       ? messagesResult.data
       : [];
@@ -180,7 +205,7 @@ export async function loadQuoteWorkspaceData(
     return {
       ok: true,
       data: {
-        quote,
+        quote: enrichedQuote,
         uploadMeta,
         filePreviews,
         messages: messages ?? [],
@@ -200,4 +225,28 @@ export async function loadQuoteWorkspaceData(
       error: "Unexpected error loading quote workspace",
     };
   }
+}
+
+function buildQuoteFilesFromRow(row: QuoteWithUploadsRow): QuoteFileMeta[] {
+  const rawArray =
+    (Array.isArray(row.file_names) ? row.file_names : null) ??
+    (Array.isArray(row.upload_file_names) ? row.upload_file_names : null) ??
+    null;
+
+  let names: string[] =
+    Array.isArray(rawArray) && rawArray.length > 0
+      ? rawArray
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter((value) => value.length > 0)
+      : [];
+
+  if (
+    names.length === 0 &&
+    typeof row.file_name === "string" &&
+    row.file_name.trim().length > 0
+  ) {
+    names = [row.file_name.trim()];
+  }
+
+  return names.map((filename) => ({ filename }));
 }
