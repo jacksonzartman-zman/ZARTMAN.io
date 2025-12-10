@@ -47,8 +47,12 @@ export async function submitQuoteIntakeAction(
 
     const fieldErrors = validateQuoteIntakeFields(parsed.payload);
     const fieldErrorKeys = Object.keys(fieldErrors);
+    const files = parsed.payload.files ?? [];
+    const fileCount = Array.isArray(files) ? files.length : 0;
+    const hasFiles = fileCount > 0;
     console.log("[quote intake] parsed payload", {
-      hasFile: Boolean(parsed.payload.file),
+      hasFiles,
+      fileCount,
       email: parsed.payload.email || null,
       fieldErrorCount: fieldErrorKeys.length,
     });
