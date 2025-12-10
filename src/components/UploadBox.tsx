@@ -539,7 +539,10 @@ export default function UploadBox({
         return;
       }
       ingestFiles(files);
-      e.target.value = "";
+      const target = e.target;
+      if (target instanceof HTMLInputElement) {
+        target.value = "";
+      }
     } catch (dropError) {
       console.error("[quote intake] client drop failed", dropError);
       setError(QUOTE_INTAKE_FALLBACK_ERROR);
