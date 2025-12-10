@@ -295,6 +295,28 @@ export default function UploadBox({
     QuoteIntakeActionState,
     FormData
   >(submitQuoteIntakeAction, initialQuoteIntakeState);
+  const enhancedFormAction = useCallback(
+    (formData: FormData) => {
+      formData.delete("files");
+
+      for (const entry of state.files) {
+        if (entry.file) {
+          formData.append("files", entry.file);
+        }
+      }
+
+      const outgoingFiles = formData.getAll("files");
+      console.log("[quote intake] client submitting files", {
+        count: outgoingFiles.length,
+        names: outgoingFiles.map((f) =>
+          f instanceof File ? f.name : String(f),
+        ),
+      });
+
+      return formAction(formData);
+    },
+    [formAction, state.files],
+  );
   const formState = useMemo<NormalizedActionState | null>(() => {
     if (rawFormState === initialQuoteIntakeState) {
       return null;
@@ -705,7 +727,7 @@ export default function UploadBox({
     >
       <form
         onSubmit={handleSubmit}
-        action={formAction}
+        action={enhancedFormAction}
         className="flex flex-col"
         encType="multipart/form-data"
         noValidate
