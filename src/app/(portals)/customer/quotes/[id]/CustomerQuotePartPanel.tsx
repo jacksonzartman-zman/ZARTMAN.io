@@ -10,9 +10,9 @@ import type { GeometryStats } from "@/lib/dfm/basicPartChecks";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
-    import("@/app/(portals)/components/CadViewerPanel").then((module) => ({
-      default: module.CadViewerPanel,
-    })),
+    import("@/app/(portals)/components/CadViewerPanel").then(
+      (mod) => mod.CadViewerPanel,
+    ),
   { ssr: false },
 );
 
