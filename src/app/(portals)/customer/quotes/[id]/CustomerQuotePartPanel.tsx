@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import clsx from "clsx";
 import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
@@ -16,8 +16,13 @@ const CadViewerPanel = dynamic<CadViewerPanelProps>(
   { ssr: false },
 );
 
+type CustomerQuoteFileMeta = {
+  filename: string;
+};
+
 type CustomerQuotePartPanelProps = {
-  files: QuoteFileItem[];
+  files: CustomerQuoteFileMeta[];
+  previews: QuoteFileItem[];
   processHint?: string | null;
   quantityHint?: string | number | null;
   targetDate?: string | null;
@@ -26,45 +31,46 @@ type CustomerQuotePartPanelProps = {
 
 export function CustomerQuotePartPanel({
   files,
+  previews,
   processHint,
   quantityHint,
   targetDate,
   className,
 }: CustomerQuotePartPanelProps) {
-  const [selectedFileId, setSelectedFileId] = useState<string | null>(
-    files[0]?.id ?? null,
-  );
+  const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [geometryStatsMap, setGeometryStatsMap] = useState<
-    Record<string, GeometryStats | null>
+    Record<number, GeometryStats | null>
   >({});
 
-  const selectedFile = useMemo(() => {
-    if (!files || files.length === 0) {
-      return null;
+  useEffect(() => {
+    if (files.length === 0) {
+      if (selectedIndex !== 0) {
+        setSelectedIndex(0);
+      }
+      return;
     }
-    if (!selectedFileId) {
-      return files[0];
+    if (selectedIndex >= files.length) {
+      setSelectedIndex(0);
     }
-    return files.find((file) => file.id === selectedFileId) ?? files[0];
-  }, [files, selectedFileId]);
+  }, [files, selectedIndex]);
 
-  const selectedGeometry = selectedFile
-    ? geometryStatsMap[selectedFile.id] ?? null
-    : null;
+  const selectedPreview = previews[selectedIndex] ?? null;
+  const selectedFileMeta = files[selectedIndex] ?? null;
+  const selectedGeometry = geometryStatsMap[selectedIndex] ?? null;
 
   const handleGeometryStats = useCallback(
     (stats: GeometryStats | null) => {
-      if (!selectedFile) {
+      if (files.length === 0) {
         return;
       }
       setGeometryStatsMap((prev) => {
-        if (prev[selectedFile.id] === stats) {
+        if (prev[selectedIndex] === stats) {
           return prev;
         }
-        return { ...prev, [selectedFile.id]: stats };
+        return { ...prev, [selectedIndex]: stats };
       });
     },
-    [selectedFile],
+    [files.length, selectedIndex],
   );
 
   return (
@@ -98,12 +104,21 @@ export function CustomerQuotePartPanel({
             </p>
           ) : (
             files.map((file, index) => {
-              const isSelected = selectedFile?.id === file.id;
+              const preview = previews[index] ?? null;
+              const isSelected = selectedIndex === index;
+              const displayName =
+                preview?.fileName ??
+                preview?.label ??
+                file.filename;
+              const previewStatus = preview?.signedUrl
+                ? "STL preview ready"
+                : preview?.fallbackMessage ??
+                  "Only STL files are supported for preview today.";
               return (
                 <button
-                  key={file.id}
+                  key={preview?.id ?? `${file.filename}-${index}`}
                   type="button"
-                  onClick={() => setSelectedFileId(file.id)}
+                  onClick={() => setSelectedIndex(index)}
                   className={clsx(
                     "w-full rounded-xl border px-4 py-3 text-left transition",
                     isSelected
@@ -113,12 +128,10 @@ export function CustomerQuotePartPanel({
                 >
                   <p className="text-[11px] uppercase tracking-wide text-slate-500">{`Part ${index + 1}`}</p>
                   <p className="truncate text-sm font-semibold text-slate-100">
-                    {file.fileName ?? file.label}
+                    {displayName}
                   </p>
                   <p className="text-xs text-slate-400">
-                    {file.signedUrl
-                      ? "STL preview ready"
-                      : file.fallbackMessage ?? "Preview unavailable"}
+                    {previewStatus}
                   </p>
                 </button>
               );
@@ -127,8 +140,13 @@ export function CustomerQuotePartPanel({
         </div>
         <div className="space-y-4 lg:col-span-3">
           <CadViewerPanel
-            fileUrl={selectedFile?.signedUrl ?? null}
-            fileName={selectedFile?.fileName ?? selectedFile?.label}
+            fileUrl={selectedPreview?.signedUrl ?? null}
+            fileName={
+              selectedPreview?.fileName ??
+              selectedPreview?.label ??
+              selectedFileMeta?.filename ??
+              null
+            }
             fallbackMessage="Select a CAD file or ask the admin team to attach an STL."
             onGeometryStats={handleGeometryStats}
           />

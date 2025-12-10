@@ -100,6 +100,8 @@ export default async function CustomerQuoteDetailPage({
     filePreviews,
     filesUnavailable,
   } = workspaceResult.data;
+  const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
+  const fileCount = quote.fileCount ?? quoteFiles.length;
   const normalizedQuoteEmail = normalizeEmailInput(quote.email);
   const customerEmail = normalizeEmailInput(customer.email);
   const quoteCustomerMatches =
@@ -275,11 +277,11 @@ export default async function CustomerQuoteDetailPage({
       ? updatedAtText
       : null;
   const fileCountText =
-    filePreviews.length === 0
+    fileCount === 0
       ? "No files attached"
-      : filePreviews.length === 1
+      : fileCount === 1
         ? "1 file attached"
-        : `${filePreviews.length} files attached`;
+        : `${fileCount} files attached`;
   const dfmNotes = derived.dfmNotes;
   const priceChipText =
     derived.priceValue !== null
@@ -298,6 +300,7 @@ export default async function CustomerQuoteDetailPage({
     filePreviews[0]?.label,
     filePreviews[0]?.fileName,
     quote.file_name,
+    quoteFiles[0]?.filename,
   ].filter((value): value is string => Boolean(value && value.trim()));
   const primaryFileName = fileNameCandidates[0] ?? formatQuoteId(quote.id);
   const leadTimeLabel =
@@ -579,7 +582,8 @@ export default async function CustomerQuoteDetailPage({
       {receiptBanner}
       {summaryCard}
       <CustomerQuotePartPanel
-        files={filePreviews}
+        files={quoteFiles}
+        previews={filePreviews}
         processHint={uploadMeta?.manufacturing_process}
         quantityHint={uploadMeta?.quantity}
         targetDate={quote.target_date ?? null}

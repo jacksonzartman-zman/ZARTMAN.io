@@ -1,9 +1,17 @@
+export type QuoteFileMeta = {
+  filename: string;
+};
+
 export type QuoteFileSource = {
   id: string;
   upload_id: string | null;
   file_name: string | null;
   file_names?: string[] | null;
   upload_file_names?: string[] | null;
+  file_count?: number | null;
+  upload_file_count?: number | null;
+  files?: QuoteFileMeta[];
+  fileCount?: number;
 };
 
 export type QuoteWithUploadsRow = QuoteFileSource & {

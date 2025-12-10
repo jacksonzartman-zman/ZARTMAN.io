@@ -14,6 +14,10 @@ export const SAFE_QUOTE_WITH_UPLOADS_FIELDS = [
   "updated_at",
   "target_date",
   "file_name",
+  "file_names",
+  "upload_file_names",
+  "file_count",
+  "upload_file_count",
 ] as const;
 
 export type SafeQuoteWithUploadsField =
