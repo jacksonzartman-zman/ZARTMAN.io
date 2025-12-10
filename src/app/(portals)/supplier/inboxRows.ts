@@ -36,12 +36,28 @@ export function buildSupplierInboxRows({
     }
 
     const aggregate = bidAggregates[quoteId];
-    const fileNames =
+    const rawFileNames =
       (Array.isArray(quote.file_names) ? quote.file_names : null) ??
       (Array.isArray(quote.upload_file_names)
         ? quote.upload_file_names
         : null) ??
-      [];
+      null;
+    let fileNames: string[] =
+      Array.isArray(rawFileNames) && rawFileNames.length > 0
+        ? rawFileNames
+            .map((value) => (typeof value === "string" ? value.trim() : ""))
+            .filter((value) => value.length > 0)
+        : [];
+    if (
+      fileNames.length === 0 &&
+      typeof quote.file_name === "string" &&
+      quote.file_name.trim().length > 0
+    ) {
+      // Legacy inbox rows only show the “primary” file name; when the files array
+      // is unavailable we still fall back to index 0 so the UI reflects at least
+      // one attached part instead of zero.
+      fileNames = [quote.file_name.trim()];
+    }
     const companyName =
       sanitizeDisplayName(quote.company) ??
       sanitizeDisplayName(quote.customer_name) ??
