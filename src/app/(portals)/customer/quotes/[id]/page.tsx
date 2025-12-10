@@ -9,7 +9,7 @@ import {
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
-import { CustomerQuoteMessagesCard } from "./CustomerQuoteMessagesCard";
+import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
 import {
   formatQuoteId,
   getSearchParamValue,
@@ -37,6 +37,7 @@ import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
 import { CustomerQuoteTrackingCard } from "./CustomerQuoteTrackingCard";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
 import { loadQuoteProject } from "@/server/quotes/projects";
+import { loadQuoteThreadForQuote } from "@/server/messages/quoteThreads";
 import {
   loadQuoteKickoffTasksForSupplier,
   summarizeKickoffTasks,
@@ -96,8 +97,6 @@ export default async function CustomerQuoteDetailPage({
     quote,
     uploadMeta,
     filePreviews,
-    messages,
-    messagesError,
     filesUnavailable,
   } = workspaceResult.data;
   const normalizedQuoteEmail = normalizeEmailInput(quote.email);
@@ -207,6 +206,9 @@ export default async function CustomerQuoteDetailPage({
       : kickoffSummary?.status === "in-progress"
         ? "text-blue-200"
         : "text-slate-200";
+  const threadResult = await loadQuoteThreadForQuote(quote.id);
+  const threadUnavailable = !threadResult.ok;
+  const thread = threadResult.data ?? { quoteId: quote.id, messages: [] };
   const showCustomerSupplierSection = bidCount > 0;
   const showCustomerAwardButtons =
     quoteAllowsCustomerAward &&
@@ -565,8 +567,6 @@ export default async function CustomerQuoteDetailPage({
     </PortalCard>
   );
 
-  const messagesUnavailable = Boolean(messagesError);
-
   return (
     <PortalShell
       workspace="customer"
@@ -578,11 +578,26 @@ export default async function CustomerQuoteDetailPage({
       {receiptBanner}
       {summaryCard}
       {projectSection}
-      <CustomerQuoteMessagesCard
-        quoteId={quote.id}
-        messages={messages}
-        messagesUnavailable={messagesUnavailable}
-        readOnly={readOnly}
+      <QuoteMessagesPanel
+        thread={thread}
+        viewerRole="customer"
+        heading="Messages"
+        description="Shared with the Zartman team coordinating this RFQ."
+        helperText={
+          readOnly
+            ? "Messages are read-only while you are impersonating another customer."
+            : "Your updates go directly to the Zartman admin team."
+        }
+        messagesUnavailable={threadUnavailable}
+        composer={{
+          quoteId: quote.id,
+          mode: "customer",
+          readOnly,
+          placeholder:
+            "Share files, timing updates, or questions for the Zartman team...",
+          sendLabel: "Send message",
+          pendingLabel: "Sending...",
+        }}
       />
       <div className="space-y-2">
         <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
