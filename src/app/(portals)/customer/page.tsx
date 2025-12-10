@@ -4,7 +4,6 @@ import PortalCard from "../PortalCard";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
-  getQuoteStatusLabel,
   type QuoteStatus,
   normalizeQuoteStatus,
   isOpenQuoteStatus,
@@ -23,6 +22,7 @@ import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime
 import { SystemStatusBar } from "../SystemStatusBar";
 import { PortalShell } from "../components/PortalShell";
 import { PortalStatPills } from "../components/PortalStatPills";
+import { QuoteStatusBadge } from "../components/QuoteStatusBadge";
 import { loadRecentCustomerActivity } from "@/server/customers/activity";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
@@ -336,7 +336,7 @@ async function CustomerDashboardPage({
                     <p className="text-xs text-slate-400">{getQuoteSummary(quote)}</p>
                   </div>
                   <div className="flex flex-col items-end gap-2 text-right">
-                    <StatusBadge status={quote.status} />
+                    <QuoteStatusBadge status={quote.status} />
                     <p className="text-xs text-slate-400">
                       {formatTargetDate(quote.targetDate) ?? "Target TBD"}
                     </p>
@@ -784,39 +784,6 @@ function getLatestCustomerActivityTimestamp(quotes: PortalQuote[]): number | nul
     }
     return latest;
   }, null);
-}
-
-const STATUS_PILL_VARIANTS: Record<QuoteStatus, string> = {
-  submitted: "pill-info",
-  in_review: "pill-info",
-  quoted: "pill-info",
-  approved: "pill-success",
-  won: "pill-success",
-  lost: "pill-warning",
-  cancelled: "pill-muted",
-};
-
-function StatusBadge({
-  status,
-  size = "md",
-}: {
-  status: QuoteStatus;
-  size?: "md" | "sm";
-}) {
-  const label = getQuoteStatusLabel(status);
-  const variant = STATUS_PILL_VARIANTS[status] ?? "pill-muted";
-
-  return (
-    <span
-      className={clsx(
-        "pill",
-        variant,
-        size === "sm" ? "pill-table" : undefined,
-      )}
-    >
-      {label}
-    </span>
-  );
 }
 
 function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {

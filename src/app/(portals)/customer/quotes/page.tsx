@@ -4,9 +4,9 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesTable } from "@/server/customers/activity";
-import { getQuoteStatusLabel } from "@/server/quotes/status";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
+import { QuoteStatusBadge } from "../../components/QuoteStatusBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -132,8 +132,6 @@ export default async function CustomerQuotesPage() {
                     quote.file_name ||
                     "Untitled RFQ";
 
-                  const statusLabel = getQuoteStatusLabel(quote.status);
-
                   const lastUpdated =
                     quote.updated_at ?? quote.created_at ?? null;
 
@@ -150,7 +148,7 @@ export default async function CustomerQuotesPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4 align-middle">
-                        <span className="pill pill-table pill-info">{statusLabel}</span>
+                        <QuoteStatusBadge status={quote.status} size="sm" />
                       </td>
                       <td className="px-5 py-4 align-middle text-slate-300">
                         {formatRelativeDate(lastUpdated)}
