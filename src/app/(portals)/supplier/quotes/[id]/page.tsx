@@ -41,7 +41,10 @@ import {
 import { SupplierQuoteTrackingCard } from "./SupplierQuoteTrackingCard";
 import { loadQuoteProject, type QuoteProjectRow } from "@/server/quotes/projects";
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
-import { loadQuoteThreadForQuote } from "@/server/messages/quoteThreads";
+import {
+  loadQuoteThreadForQuote,
+  type QuoteThread,
+} from "@/server/messages/quoteThreads";
 import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
 import {
   loadQuoteKickoffTasksForSupplier,
@@ -206,9 +209,9 @@ export default async function SupplierQuoteDetailPage({
       approvalsOn={approvalsOn}
       approved={approved}
       messagingUnlocked={messagingUnlocked}
-      messages={messages}
-      messagesUnavailable={messagesUnavailable}
       messagingDisabledReason={messagingDisabledReason}
+      thread={thread}
+      threadUnavailable={threadUnavailable}
       timelineEvents={supplierTimelineEvents}
       project={project}
       projectUnavailable={projectUnavailable}
@@ -229,9 +232,9 @@ function SupplierQuoteWorkspace({
   approvalsOn,
   approved,
   messagingUnlocked,
-  messages,
-  messagesUnavailable,
   messagingDisabledReason,
+  thread,
+  threadUnavailable,
   timelineEvents,
   project,
   projectUnavailable,
@@ -248,9 +251,9 @@ function SupplierQuoteWorkspace({
   approvalsOn: boolean;
   approved: boolean;
   messagingUnlocked: boolean;
-  messages: QuoteMessageRow[];
-  messagesUnavailable: boolean;
   messagingDisabledReason?: string | null;
+  thread: QuoteThread;
+  threadUnavailable: boolean;
   timelineEvents: QuoteTimelineEvent[];
   project: QuoteProjectRow | null;
   projectUnavailable: boolean;
