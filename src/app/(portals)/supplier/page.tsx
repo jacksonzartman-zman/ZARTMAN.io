@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { formatDateTime } from "@/lib/formatDate";
 import PortalCard from "../PortalCard";
 import SupplierInboxTable, { type SupplierInboxRow } from "./SupplierInboxTable";
+import { buildSupplierInboxRows } from "./inboxRows";
 import { WorkspaceWelcomeBanner } from "../WorkspaceWelcomeBanner";
 import type { WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
@@ -35,7 +36,6 @@ import { resolveUserRoles } from "@/server/users/roles";
 import { DataFallbackNotice } from "../DataFallbackNotice";
 import { DEBUG_PORTALS } from "../debug";
 import { approvalsEnabled } from "@/server/suppliers/flags";
-import { normalizeQuoteStatus } from "@/server/quotes/status";
 import { PortalShell } from "../components/PortalShell";
 import { PortalStatPills } from "../components/PortalStatPills";
 import { resolveSupplierActivityEmptyState } from "./activityEmptyState";
@@ -178,49 +178,10 @@ async function SupplierDashboardPage({
     supplier && matchQuoteIds.length > 0
       ? await loadSupplierInboxBidAggregates(supplier.id, matchQuoteIds)
       : {};
-  const supplierInboxRows = matchesData.reduce<SupplierInboxRow[]>(
-    (acc, match) => {
-      const quote = match.quote;
-      const quoteId =
-        typeof match.quoteId === "string" && match.quoteId.length > 0
-          ? match.quoteId
-          : quote?.id ?? null;
-      if (!quote || !quoteId) {
-        return acc;
-      }
-      const aggregate = bidAggregates[quoteId];
-      const fileNames =
-        (Array.isArray(quote.file_names) ? quote.file_names : null) ??
-        (Array.isArray(quote.upload_file_names)
-          ? quote.upload_file_names
-          : null) ??
-        [];
-      const companyName =
-        sanitizeDisplayName(quote.company) ??
-        sanitizeDisplayName(quote.customer_name) ??
-        "Customer";
-      const fairnessReason = match.fairness?.reasons?.[0] ?? null;
-
-      acc.push({
-        id: quoteId,
-        quoteId,
-        companyName,
-        processHint: match.processHint,
-        materials: match.materialMatches,
-        quantityHint: match.quantityHint ?? null,
-        fileCount: fileNames.length,
-        priceLabel: formatCurrency(quote.price, quote.currency),
-        createdAt: match.createdAt ?? quote.created_at ?? null,
-        status: normalizeQuoteStatus(quote.status),
-        bidCount: aggregate?.bidCount ?? 0,
-        lastBidAt: aggregate?.lastBidAt ?? null,
-        hasWinningBid: aggregate?.hasWinningBid ?? false,
-        fairnessReason: fairnessReason ?? null,
-      });
-      return acc;
-    },
-    [],
-  );
+  const supplierInboxRows = buildSupplierInboxRows({
+    matches: matchesData,
+    bidAggregates,
+  });
   console.info("[supplier inbox] loaded", {
     supplierId: supplier?.id ?? null,
     totalQuotes: supplierInboxRows.length,
