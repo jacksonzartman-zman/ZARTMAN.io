@@ -11,7 +11,7 @@ import {
   type GeometryStats,
 } from "@/lib/dfm/basicPartChecks";
 
-type CadViewerPanelProps = {
+export type CadViewerPanelProps = {
   file?: File | null;
   fileUrl?: string | null;
   fileName?: string | null;
@@ -97,22 +97,10 @@ export function CadViewerPanel({
         style={{ height }}
       >
         {viewerState === "ready" && resolvedUrl ? (
-          <Canvas
-            camera={{ position: [0, 0, 4], fov: 45 }}
-            dpr={[1, 2]}
-            shadows={false}
-          >
-            <color attach="background" args={["#020617"]} />
-            <ambientLight intensity={0.6} />
-            <directionalLight
-              position={[3, 4, 5]}
-              intensity={0.9}
-              color="#FFFFFF"
-            />
-            <directionalLight position={[-4, -2, -3]} intensity={0.3} />
-            <StlMesh url={resolvedUrl} onGeometryStats={onGeometryStats} />
-            <OrbitControls enablePan enableDamping enableZoom />
-          </Canvas>
+          <CadViewerCanvas
+            url={resolvedUrl}
+            onGeometryStats={onGeometryStats}
+          />
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
             {overlayMessage}
@@ -125,6 +113,28 @@ export function CadViewerPanel({
         </p>
       )}
     </section>
+  );
+}
+
+type CadViewerCanvasProps = {
+  url: string;
+  onGeometryStats?: (stats: GeometryStats | null) => void;
+};
+
+function CadViewerCanvas({ url, onGeometryStats }: CadViewerCanvasProps) {
+  return (
+    <Canvas
+      camera={{ position: [0, 0, 4], fov: 45 }}
+      dpr={[1, 2]}
+      shadows={false}
+    >
+      <color attach="background" args={["#020617"]} />
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[3, 4, 5]} intensity={0.9} color="#FFFFFF" />
+      <directionalLight position={[-4, -2, -3]} intensity={0.3} />
+      <StlMesh url={url} onGeometryStats={onGeometryStats} />
+      <OrbitControls enablePan enableDamping enableZoom />
+    </Canvas>
   );
 }
 

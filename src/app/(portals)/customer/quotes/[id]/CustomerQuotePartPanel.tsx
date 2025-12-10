@@ -1,11 +1,20 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import clsx from "clsx";
 import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
-import { CadViewerPanel } from "@/app/(portals)/components/CadViewerPanel";
+import type { CadViewerPanelProps } from "@/app/(portals)/components/CadViewerPanel";
 import { PartDfMPanel } from "@/app/(portals)/components/PartDfMPanel";
 import type { GeometryStats } from "@/lib/dfm/basicPartChecks";
+
+const CadViewerPanel = dynamic<CadViewerPanelProps>(
+  () =>
+    import("@/app/(portals)/components/CadViewerPanel").then((module) => ({
+      default: module.CadViewerPanel,
+    })),
+  { ssr: false },
+);
 
 type CustomerQuotePartPanelProps = {
   files: QuoteFileItem[];
