@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
+import { buildCustomerQuoteTimeline } from "@/lib/quote/tracking";
 import { loadQuoteMessages, type QuoteMessage } from "@/server/quotes/messages";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
@@ -29,9 +30,11 @@ import {
 } from "@/server/admin/quotes";
 import { loadBidsForQuote } from "@/server/bids";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
-import { SupplierBidsCard } from "./SupplierBidsCard";
+import { listSupplierBidsForQuote } from "@/server/suppliers/bids";
+import { SupplierBidsCard, type AdminSupplierBidRow } from "./SupplierBidsCard";
 import { loadQuoteProject } from "@/server/quotes/projects";
 import { AdminQuoteProjectCard } from "./AdminQuoteProjectCard";
+import { AdminQuoteTrackingCard } from "./AdminQuoteTrackingCard";
 import {
   loadQuoteKickoffTasksForSupplier,
   summarizeKickoffTasks,
@@ -257,7 +260,32 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       ? null
       : quoteMessagesResult.error;
     const bidsResult = await loadBidsForQuote(quote.id);
-    const bids = bidsResult.ok ? bidsResult.data : [];
+    const baseBids = bidsResult.ok ? bidsResult.data : [];
+    let bids: AdminSupplierBidRow[] = baseBids.map((bid) => ({
+      ...bid,
+      supplier: null,
+    }));
+
+    if (baseBids.length > 0) {
+      try {
+        const enrichedBids = await listSupplierBidsForQuote(quote.id);
+        if (enrichedBids.length > 0) {
+          const supplierByBidId = new Map(
+            enrichedBids.map((bid) => [bid.id, bid.supplier ?? null]),
+          );
+          bids = baseBids.map((bid) => ({
+            ...bid,
+            supplier: supplierByBidId.get(bid.id) ?? null,
+          }));
+        }
+      } catch (error) {
+        console.error("[admin quote] enriched bids failed", {
+          quoteId: quote.id,
+          error,
+        });
+      }
+    }
+
     const bidCount = bids.length;
     const hasWinningBid = bids.some((bid) => isWinningBidStatus(bid?.status));
     const winningBidRow =
@@ -293,6 +321,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       bidCount,
       hasWinner: hasWinningBid,
       hasProject,
+    });
+    const timelineEvents = buildCustomerQuoteTimeline({
+      quote,
+      bids,
+      project,
     });
 
     const headerTitleSource = companyName || customerName || "Unnamed customer";
@@ -443,19 +476,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     );
 
     const trackingContent = (
-      <section className={cardClasses}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Tracking
-        </p>
-        <h2 className="mt-1 text-lg font-semibold text-slate-50">
-          Production milestones
-        </h2>
-        <p className="mt-2 text-sm text-slate-300">
-          This is where order status, supplier assignments, and production checks
-          will live. For now, treat this as a placeholder so we can wire in real
-          tracking data without reworking the layout later.
-        </p>
-      </section>
+      <AdminQuoteTrackingCard
+        events={timelineEvents}
+        className={cardClasses}
+      />
     );
 
     const tabs: {
