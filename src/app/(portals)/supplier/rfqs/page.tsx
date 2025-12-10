@@ -19,6 +19,7 @@ import { getServerAuthUser } from "@/server/auth";
 import {
   normalizeEmailInput,
   getSearchParamValue,
+  resolveMaybePromise,
   type SearchParamsLike,
 } from "@/app/(portals)/quotes/pageUtils";
 import { resolveUserRoles } from "@/server/users/roles";
@@ -30,7 +31,7 @@ import { formatRelativeTimeFromTimestamp } from "@/lib/relativeTime";
 export const dynamic = "force-dynamic";
 
 type SupplierRfqsPageProps = {
-  searchParams?: SearchParamsLike;
+  searchParams?: Promise<SearchParamsLike>;
 };
 
 type FilterValue = "all" | "open" | "closed";
@@ -135,7 +136,8 @@ export default async function SupplierRfqsPage({
     bidAggregates,
   });
 
-  const filterValue = resolveFilterValue(searchParams);
+  const resolvedSearchParams = await resolveMaybePromise(searchParams);
+  const filterValue = resolveFilterValue(resolvedSearchParams);
   const filteredRows = filterRows(supplierInboxRows, filterValue);
   const filterOptions = deriveFilterOptions(supplierInboxRows);
   const latestActivityTimestamp =
