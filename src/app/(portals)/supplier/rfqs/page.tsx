@@ -134,6 +134,7 @@ export default async function SupplierRfqsPage({
   const supplierInboxRows = buildSupplierInboxRows({
     matches: matchesData,
     bidAggregates,
+    capabilities: profile?.capabilities ?? [],
   });
 
   const resolvedSearchParams = await resolveMaybePromise(searchParams);

@@ -8,6 +8,7 @@ import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { QuoteStatusBadge } from "../components/QuoteStatusBadge";
 import { formatRelativeTimeFromTimestamp } from "@/lib/relativeTime";
 import type { QuoteStatus } from "@/server/quotes/status";
+import type { MatchHealth } from "@/lib/supplier/matchHealth";
 
 export type SupplierInboxRow = {
   id: string;
@@ -28,10 +29,22 @@ export type SupplierInboxRow = {
   dueSoon: boolean;
   lastActivityAt: string | null;
   lastActivityTimestamp: number | null;
+  matchHealth: MatchHealth | null;
+  matchHealthHint?: string | null;
 };
 
 type SupplierInboxTableProps = {
   rows: SupplierInboxRow[];
+};
+
+const MATCH_HEALTH_PILL_META: Record<
+  MatchHealth,
+  { label: string; pillClass: string }
+> = {
+  excellent: { label: "Excellent fit", pillClass: "pill-success" },
+  good: { label: "Good fit", pillClass: "pill-info" },
+  limited: { label: "Limited fit", pillClass: "pill-warning" },
+  poor: { label: "Poor fit", pillClass: "pill-muted" },
 };
 
 export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
@@ -119,10 +132,20 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
                   <span>Updated {lastActivityLabel}</span>
                 ) : null}
               </div>
-              {row.dueSoon && targetDateLabel ? (
-                <span className="mt-2 inline-flex w-fit items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-100">
-                  Due soon · {targetDateLabel}
-                </span>
+              {(row.dueSoon && targetDateLabel) || row.matchHealth ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {row.dueSoon && targetDateLabel ? (
+                    <span className="inline-flex w-fit items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-100">
+                      Due soon · {targetDateLabel}
+                    </span>
+                  ) : null}
+                  {row.matchHealth ? (
+                    <MatchHealthPill
+                      health={row.matchHealth}
+                      hint={row.matchHealthHint}
+                    />
+                  ) : null}
+                </div>
               ) : null}
             </td>
             <td className={`${adminTableCellClass} text-slate-200`}>
@@ -166,5 +189,23 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
         );
       })}
     />
+  );
+}
+
+function MatchHealthPill({
+  health,
+  hint,
+}: {
+  health: MatchHealth;
+  hint?: string | null;
+}) {
+  const meta = MATCH_HEALTH_PILL_META[health];
+  return (
+    <span
+      className={clsx("pill pill-table", meta.pillClass)}
+      title={hint ?? undefined}
+    >
+      {meta.label}
+    </span>
   );
 }
