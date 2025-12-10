@@ -25,17 +25,36 @@ export function PartDfMPanel({
   targetDate,
   className,
 }: PartDfMPanelProps) {
-  const evaluation = useMemo(
-    () =>
-      evaluatePartForDfM({
-        geometry: geometryStats ?? null,
-        process,
-        material,
-        quantityHint,
-        targetDate,
-      }),
-    [geometryStats, material, process, quantityHint, targetDate],
-  );
+  const evaluation = useMemo(() => {
+    if (!geometryStats) {
+      return null;
+    }
+    return evaluatePartForDfM({
+      geometry: geometryStats,
+      process,
+      material,
+      quantityHint,
+      targetDate,
+    });
+  }, [geometryStats, material, process, quantityHint, targetDate]);
+
+  if (!geometryStats || !evaluation) {
+    return (
+      <section
+        className={clsx(
+          "rounded-2xl border border-slate-900/60 bg-slate-950/60 p-4",
+          className,
+        )}
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+          Part DFM
+        </p>
+        <p className="mt-3 text-sm text-slate-400">
+          Upload and select a part to see DFM checks.
+        </p>
+      </section>
+    );
+  }
 
   const severityClass = getSummaryPillClass(evaluation);
   const hasChecks = evaluation.checks.length > 0;
