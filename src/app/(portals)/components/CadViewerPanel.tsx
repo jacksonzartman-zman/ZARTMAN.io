@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { Canvas, useLoader } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Canvas } from "@react-three/fiber";
 import { Bounds, Html, OrbitControls } from "@react-three/drei";
 import clsx from "clsx";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
 import * as THREE from "three";
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
 import {
   buildGeometryStatsFromObject3D,
   type GeometryStats,
@@ -68,6 +68,7 @@ export function CadViewerPanel({
     "rounded-2xl border border-slate-900/60 bg-slate-950/60 p-4 shadow-inner",
     className,
   );
+  const hasInitialSource = Boolean(file || fileUrl);
 
   const overlayMessage =
     viewerState === "empty"
@@ -76,13 +77,26 @@ export function CadViewerPanel({
         ? "Only STL files are supported for interactive previews today."
         : null;
 
+  if (!hasInitialSource) {
+    return (
+      <section className={containerClasses}>
+        <div
+          className="flex items-center justify-center rounded-xl border border-slate-900/60 bg-slate-950/60 px-6 py-10 text-center text-xs text-slate-400"
+          style={{ height }}
+        >
+          {fallbackMessage ?? "Select a CAD file to preview it in 3D."}
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className={containerClasses}>
       <div
         className="relative overflow-hidden rounded-xl border border-slate-900/50 bg-slate-950"
         style={{ height }}
       >
-        {viewerState === "ready" ? (
+        {viewerState === "ready" && resolvedUrl ? (
           <Canvas
             camera={{ position: [0, 0, 4], fov: 45 }}
             dpr={[1, 2]}
@@ -96,11 +110,7 @@ export function CadViewerPanel({
               color="#FFFFFF"
             />
             <directionalLight position={[-4, -2, -3]} intensity={0.3} />
-            <Suspense fallback={<CanvasFallback />}>
-              <Bounds fit clip observe margin={1.2}>
-                <StlMesh url={resolvedUrl!} onGeometryStats={onGeometryStats} />
-              </Bounds>
-            </Suspense>
+            <StlMesh url={resolvedUrl} onGeometryStats={onGeometryStats} />
             <OrbitControls enablePan enableDamping enableZoom />
           </Canvas>
         ) : (
@@ -125,23 +135,73 @@ function StlMesh({
   url: string;
   onGeometryStats?: (stats: GeometryStats | null) => void;
 }) {
-  const geometry = useLoader(STLLoader, url);
-  const mesh = useMemo(() => createMesh(geometry), [geometry]);
+  const [mesh, setMesh] = useState<THREE.Mesh | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const meshRef = useRef<THREE.Mesh | null>(null);
 
   useEffect(() => {
-    onGeometryStats?.(buildGeometryStatsFromObject3D(mesh));
+    let isMounted = true;
+
+    const loadGeometry = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+      onGeometryStats?.(null);
+
+      try {
+        const loader = new STLLoader();
+        const geometry = await loader.loadAsync(url);
+        if (!isMounted) {
+          geometry.dispose();
+          return;
+        }
+        const nextMesh = createMesh(geometry);
+        disposeMesh(meshRef.current);
+        meshRef.current = nextMesh;
+        setMesh(nextMesh);
+        onGeometryStats?.(buildGeometryStatsFromObject3D(nextMesh));
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+        console.error("[cad viewer] Failed to load STL source", error);
+        setMesh(null);
+        disposeMesh(meshRef.current);
+        meshRef.current = null;
+        setLoadError(error);
+        onGeometryStats?.(null);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadGeometry();
+
     return () => {
+      isMounted = false;
+      disposeMesh(meshRef.current);
+      meshRef.current = null;
       onGeometryStats?.(null);
     };
-  }, [mesh, onGeometryStats]);
+  }, [url, onGeometryStats]);
 
   return (
-    <primitive
-      object={mesh}
-      rotation={[-Math.PI / 2, 0, 0]}
-      castShadow
-      receiveShadow
-    />
+    <>
+      {mesh ? (
+        <Bounds fit clip observe margin={1.2}>
+          <primitive
+            object={mesh}
+            rotation={[-Math.PI / 2, 0, 0]}
+            castShadow
+            receiveShadow
+          />
+        </Bounds>
+      ) : null}
+      {isLoading && <CanvasFallback />}
+      {loadError && !isLoading && <CanvasErrorMessage />}
+    </>
   );
 }
 
@@ -166,6 +226,16 @@ function CanvasFallback() {
   );
 }
 
+function CanvasErrorMessage() {
+  return (
+    <Html center>
+      <div className="rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-100">
+        Unable to load this CAD preview.
+      </div>
+    </Html>
+  );
+}
+
 function inferExtension(source: string | null): string | null {
   if (!source) {
     return null;
@@ -173,4 +243,17 @@ function inferExtension(source: string | null): string | null {
   const trimmed = source.trim().toLowerCase();
   const match = trimmed.match(/\.([a-z0-9]+)(?:\?|#|$)/);
   return match ? `.${match[1]}` : null;
+}
+
+function disposeMesh(mesh: THREE.Mesh | null) {
+  if (!mesh) {
+    return;
+  }
+  mesh.geometry.dispose();
+  const material = mesh.material;
+  if (Array.isArray(material)) {
+    material.forEach((entry) => entry.dispose());
+  } else if (material && "dispose" in material) {
+    material.dispose();
+  }
 }
