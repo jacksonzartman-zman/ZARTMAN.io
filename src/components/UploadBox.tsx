@@ -411,6 +411,20 @@ export default function UploadBox({
   const selectedGeometryStats = selectedPart
     ? geometryStatsMap[selectedPart.id] ?? null
     : null;
+  const handleGeometryStatsUpdate = useCallback(
+    (fileId: string | null, stats: GeometryStats | null) => {
+      if (!fileId) {
+        return;
+      }
+      setGeometryStatsMap((prev) => {
+        if (prev[fileId] === stats) {
+          return prev;
+        }
+        return { ...prev, [fileId]: stats };
+      });
+    },
+    [],
+  );
   const viewerGeometryHandler = useMemo(
     () =>
       (stats: GeometryStats | null) =>
@@ -576,21 +590,6 @@ export default function UploadBox({
       return { ...prev, selectedFileId: fileId };
     });
   }, []);
-
-  const handleGeometryStatsUpdate = useCallback(
-    (fileId: string | null, stats: GeometryStats | null) => {
-      if (!fileId) {
-        return;
-      }
-      setGeometryStatsMap((prev) => {
-        if (prev[fileId] === stats) {
-          return prev;
-        }
-        return { ...prev, [fileId]: stats };
-      });
-    },
-    [],
-  );
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     try {
