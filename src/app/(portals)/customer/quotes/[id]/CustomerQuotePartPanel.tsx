@@ -7,6 +7,7 @@ import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import type { CadViewerPanelProps } from "@/app/(portals)/components/CadViewerPanel";
 import { PartDfMPanel } from "@/app/(portals)/components/PartDfMPanel";
 import type { GeometryStats } from "@/lib/dfm/basicPartChecks";
+import type { QuoteFileMeta } from "@/server/quotes/types";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
@@ -16,12 +17,8 @@ const CadViewerPanel = dynamic<CadViewerPanelProps>(
   { ssr: false },
 );
 
-type CustomerQuoteFileMeta = {
-  filename: string;
-};
-
 type CustomerQuotePartPanelProps = {
-  files: CustomerQuoteFileMeta[];
+  files: QuoteFileMeta[];
   previews: QuoteFileItem[];
   processHint?: string | null;
   quantityHint?: string | number | null;

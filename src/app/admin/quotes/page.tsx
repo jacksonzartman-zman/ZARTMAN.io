@@ -1,5 +1,9 @@
 // src/app/admin/quotes/page.tsx
-import { loadAdminQuoteMeta, loadAdminQuotesList } from "@/server/admin/quotes";
+import {
+  loadAdminQuoteMeta,
+  loadAdminQuotesList,
+  type AdminQuoteListRow,
+} from "@/server/admin/quotes";
 import { normalizePriceValue } from "@/server/admin/price";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import {
@@ -8,6 +12,7 @@ import {
   normalizeQuoteStatus,
   type QuoteStatus,
 } from "@/server/quotes/status";
+import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
 import StatusFilterChips from "../StatusFilterChips";
 import AdminDashboardShell from "../AdminDashboardShell";
@@ -112,18 +117,21 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   });
 
   const rows =
-    quotesResult.data?.map((row) => ({
-      id: row.id,
-      customerName: row.customer_name ?? "Unknown",
-      customerEmail: row.email ?? "",
-      company: row.company ?? "",
-      fileName: row.file_name ?? "",
-      status: normalizeQuoteStatus(row.status),
-      price: normalizePriceValue(row.price),
-      currency: row.currency,
-      targetDate: row.target_date,
-      createdAt: row.created_at,
-    })) ?? [];
+    quotesResult.data?.map((row: AdminQuoteListRow) => {
+      const files = buildQuoteFilesFromRow(row);
+      return {
+        id: row.id,
+        customerName: row.customer_name ?? "Unknown",
+        customerEmail: row.email ?? "",
+        company: row.company ?? "",
+        fileName: files[0]?.filename ?? row.file_name ?? "",
+        status: normalizeQuoteStatus(row.status),
+        price: normalizePriceValue(row.price),
+        currency: row.currency,
+        targetDate: row.target_date,
+        createdAt: row.created_at,
+      };
+    }) ?? [];
 
   const metaMap = await loadAdminQuoteMeta(
     rows.map((row) => ({

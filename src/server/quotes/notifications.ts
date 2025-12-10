@@ -15,6 +15,7 @@ import type {
   QuoteContactInfo,
   QuoteWinningContext,
 } from "@/server/quotes/notificationTypes";
+import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import { getQuoteStatusLabel, type QuoteStatus } from "@/server/quotes/status";
 import type {
   SupplierBidRow,
@@ -460,7 +461,8 @@ function buildLosingBidHtml(args: {
 }
 
 function getQuoteTitle(quote: QuoteContactInfo) {
-  return quote.file_name ?? quote.company ?? `Quote ${quote.id.slice(0, 6)}`;
+  const files = buildQuoteFilesFromRow(quote);
+  return files[0]?.filename ?? quote.file_name ?? quote.company ?? `Quote ${quote.id.slice(0, 6)}`;
 }
 
 function buildPortalLink(path: string) {

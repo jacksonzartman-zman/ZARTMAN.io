@@ -15,7 +15,7 @@ type QuoteContactRow = QuoteContactInfo & {
 };
 
 const QUOTE_NOTIFICATION_COLUMNS =
-  "id,file_name,company,customer_name,email,status,price,currency";
+  "id,file_name,company,customer_name,email,status,price,currency,file_names,upload_file_names,file_count,upload_file_count";
 
 export type QuoteNotificationContext = {
   quote: QuoteContactInfo;

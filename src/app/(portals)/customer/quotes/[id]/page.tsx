@@ -296,13 +296,12 @@ export default async function CustomerQuoteDetailPage({
     (usingOverride && overrideEmail) ||
     quote.email || customer.email || user.email || "customer";
 
-  const fileNameCandidates = [
-    filePreviews[0]?.label,
-    filePreviews[0]?.fileName,
-    quote.file_name,
-    quoteFiles[0]?.filename,
-  ].filter((value): value is string => Boolean(value && value.trim()));
-  const primaryFileName = fileNameCandidates[0] ?? formatQuoteId(quote.id);
+  const primaryFileName =
+    filePreviews[0]?.fileName ??
+    filePreviews[0]?.label ??
+    quote.file_name ??
+    quoteFiles[0]?.filename ??
+    formatQuoteId(quote.id);
   const leadTimeLabel =
     fastestLeadTime != null
       ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
