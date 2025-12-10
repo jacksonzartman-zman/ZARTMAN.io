@@ -1,18 +1,29 @@
 import { toTimestamp } from "@/lib/relativeTime";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
+import {
+  buildCapabilityProfile,
+  deriveSupplierMatchInsight,
+  type SupplierMatchInsight,
+} from "@/lib/supplier/matchHealth";
 import type { SupplierQuoteMatch } from "@/server/suppliers";
 import type { SupplierInboxBidAggregate } from "@/server/suppliers/inbox";
+import type { SupplierCapabilityRow } from "@/server/suppliers/types";
 import type { SupplierInboxRow } from "./SupplierInboxTable";
 
 type BuildSupplierInboxRowsArgs = {
   matches: SupplierQuoteMatch[];
   bidAggregates: Record<string, SupplierInboxBidAggregate | undefined>;
+  capabilities?: SupplierCapabilityRow[];
 };
 
 export function buildSupplierInboxRows({
   matches,
   bidAggregates,
+  capabilities = [],
 }: BuildSupplierInboxRowsArgs): SupplierInboxRow[] {
+  const capabilityProfile =
+    capabilities.length > 0 ? buildCapabilityProfile(capabilities) : null;
+
   const rows = matches.reduce<SupplierInboxRow[]>((acc, match) => {
     const quote = match.quote;
     const quoteId =
@@ -44,6 +55,15 @@ export function buildSupplierInboxRows({
       targetDate,
     });
 
+    const matchInsight = capabilityProfile
+      ? deriveSupplierMatchInsight({
+          profile: capabilityProfile,
+          quoteProcess: match.processHint,
+          materialMatches: match.materialMatches,
+          quantityHint: match.quantityHint ?? null,
+        })
+      : null;
+
     acc.push({
       id: quoteId,
       quoteId,
@@ -63,6 +83,8 @@ export function buildSupplierInboxRows({
       dueSoon: isDueSoon(targetDate),
       lastActivityAt: lastActivity.value,
       lastActivityTimestamp: lastActivity.timestamp,
+      matchHealth: matchInsight?.health ?? null,
+      matchHealthHint: formatMatchHealthHint(matchInsight, match),
     });
 
     return acc;
@@ -149,5 +171,37 @@ function formatCurrencyValue(
     }).format(numericValue);
   } catch {
     return `$${numericValue.toFixed(0)}`;
+  }
+}
+
+function formatMatchHealthHint(
+  insight: SupplierMatchInsight | null,
+  match: SupplierQuoteMatch,
+): string | null {
+  if (!insight) {
+    return null;
+  }
+
+  const processLabel = match.processHint ?? "Process TBD";
+  const primaryMaterial = match.materialMatches[0]
+    ? match.materialMatches[0].toUpperCase()
+    : null;
+
+  switch (insight.health) {
+    case "excellent":
+      return primaryMaterial
+        ? `Great fit: ${processLabel} + ${primaryMaterial}`
+        : `Great fit: ${processLabel}`;
+    case "good":
+      if (primaryMaterial) {
+        return `Good fit: ${processLabel} + ${primaryMaterial}`;
+      }
+      return `Process match: ${processLabel}`;
+    case "limited":
+      return "Limited: process match, material mismatch";
+    case "poor":
+      return "Poor fit: process mismatch";
+    default:
+      return insight.reasons[0] ?? null;
   }
 }

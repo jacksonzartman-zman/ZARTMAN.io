@@ -181,6 +181,7 @@ async function SupplierDashboardPage({
   const supplierInboxRows = buildSupplierInboxRows({
     matches: matchesData,
     bidAggregates,
+    capabilities: profile?.capabilities ?? [],
   });
   console.info("[supplier inbox] loaded", {
     supplierId: supplier?.id ?? null,
