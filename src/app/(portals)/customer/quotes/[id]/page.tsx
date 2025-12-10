@@ -36,6 +36,7 @@ import {
 import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
 import { CustomerQuoteTrackingCard } from "./CustomerQuoteTrackingCard";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
+import { CustomerQuotePartPanel } from "./CustomerQuotePartPanel";
 import { loadQuoteProject } from "@/server/quotes/projects";
 import { loadQuoteThreadForQuote } from "@/server/messages/quoteThreads";
 import {
@@ -577,6 +578,13 @@ export default async function CustomerQuoteDetailPage({
     >
       {receiptBanner}
       {summaryCard}
+      <CustomerQuotePartPanel
+        files={filePreviews}
+        processHint={uploadMeta?.manufacturing_process}
+        quantityHint={uploadMeta?.quantity}
+        targetDate={quote.target_date ?? null}
+        className="scroll-mt-20"
+      />
       {projectSection}
       <QuoteMessagesPanel
         thread={thread}

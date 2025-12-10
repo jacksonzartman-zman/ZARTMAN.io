@@ -47,7 +47,7 @@ export type QuoteIntakeFieldKey =
 export type QuoteIntakeFieldErrors = Partial<Record<QuoteIntakeFieldKey, string>>;
 
 export type QuoteIntakePayload = {
-  file: File;
+  files: File[];
   firstName: string;
   lastName: string;
   email: string;
@@ -61,6 +61,16 @@ export type QuoteIntakePayload = {
   notes: string;
   itarAcknowledged: boolean;
   termsAccepted: boolean;
+};
+
+type StoredCadFile = {
+  originalName: string;
+  sanitizedFileName: string;
+  storageKey: string;
+  storagePath: string;
+  mimeType: string;
+  sizeBytes: number;
+  bucket: string;
 };
 
 export type QuoteIntakePersistResult =
@@ -87,12 +97,16 @@ export function validateQuoteIntakeFields(
   const trimmedQuantity = payload.quantity.trim();
   const postal = payload.shippingPostalCode;
 
-  if (!payload.file) {
-    errors.file = "Attach your CAD file before submitting.";
+  if (!payload.files || payload.files.length === 0) {
+    errors.file = "Attach at least one CAD file before submitting.";
   } else {
-    const fileError = validateCadFile(payload.file);
-    if (fileError) {
-      errors.file = fileError;
+    for (const file of payload.files) {
+      if (!file) continue;
+      const fileError = validateCadFile(file);
+      if (fileError) {
+        errors.file = `${file.name}: ${fileError}`;
+        break;
+      }
     }
   }
 
@@ -151,14 +165,26 @@ export async function persistQuoteIntake(
     };
   }
 
-  const fileError = validateCadFile(payload.file);
-  if (fileError) {
+  const files = Array.isArray(payload.files) ? payload.files.filter(Boolean) : [];
+  if (files.length === 0) {
     return {
       ok: false,
-      error: fileError,
-      fieldErrors: { file: fileError },
-      reason: "file-validation",
+      error: "Attach at least one CAD file before submitting.",
+      fieldErrors: { file: "Attach at least one CAD file before submitting." },
+      reason: "file-missing",
     };
+  }
+
+  for (const file of files) {
+    const fileError = validateCadFile(file);
+    if (fileError) {
+      return {
+        ok: false,
+        error: fileError,
+        fieldErrors: { file: `${file.name}: ${fileError}` },
+        reason: "file-validation",
+      };
+    }
   }
 
   const contactName =
@@ -169,44 +195,72 @@ export async function persistQuoteIntake(
     userId: user.id,
     contactEmail,
     sessionEmail,
-    fileName: payload.file.name,
+    primaryFileName: files[0]?.name ?? null,
+    fileCount: files.length,
   };
   console.log("[quote intake] start", logContext);
 
   try {
-    const buffer = Buffer.from(await payload.file.arrayBuffer());
-    if (buffer.byteLength === 0) {
-      return {
-        ok: false,
-        error: "The uploaded file is empty. Please try again.",
-        fieldErrors: { file: "File is empty. Please choose a different CAD file." },
-        reason: "empty-file",
-      };
+    const storedFiles: StoredCadFile[] = [];
+
+    for (const [index, file] of files.entries()) {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      if (buffer.byteLength === 0) {
+        return {
+          ok: false,
+          error: `The uploaded file "${file.name}" is empty. Please try again.`,
+          fieldErrors: {
+            file: `File "${file.name}" is empty. Please choose a different CAD file.`,
+          },
+          reason: "empty-file",
+        };
+      }
+
+      const extension = getFileExtension(file.name);
+      const mimeType = detectMimeType(file, extension);
+      const safeFileName = sanitizeFileName(file.name, extension);
+      const storageKey = buildStorageKey(safeFileName);
+      const storagePath = `${CAD_BUCKET}/${storageKey}`;
+
+      const { error: storageError } = await supabaseServer.storage
+        .from(CAD_BUCKET)
+        .upload(storageKey, buffer, {
+          cacheControl: "3600",
+          contentType: mimeType,
+          upsert: false,
+        });
+
+      if (storageError) {
+        console.error("[quote intake] storage failed", {
+          ...logContext,
+          failingFile: file.name,
+          fileIndex: index,
+          error: serializeSupabaseError(storageError),
+        });
+        return {
+          ok: false,
+          error: `Uploading "${file.name}" failed. Please retry.`,
+          reason: "storage-upload",
+        };
+      }
+
+      storedFiles.push({
+        originalName: file.name,
+        sanitizedFileName: safeFileName,
+        storageKey,
+        storagePath,
+        mimeType,
+        sizeBytes: file.size,
+        bucket: CAD_BUCKET,
+      });
     }
 
-    const extension = getFileExtension(payload.file.name);
-    const mimeType = detectMimeType(payload.file, extension);
-    const safeFileName = sanitizeFileName(payload.file.name, extension);
-    const storageKey = buildStorageKey(safeFileName);
-    const storagePath = `${CAD_BUCKET}/${storageKey}`;
-
-    const { error: storageError } = await supabaseServer.storage
-      .from(CAD_BUCKET)
-      .upload(storageKey, buffer, {
-        cacheControl: "3600",
-        contentType: mimeType,
-        upsert: false,
-      });
-
-    if (storageError) {
-      console.error("[quote intake] storage failed", {
-        ...logContext,
-        error: serializeSupabaseError(storageError),
-      });
+    const primaryStoredFile = storedFiles[0];
+    if (!primaryStoredFile) {
       return {
         ok: false,
-        error: "Uploading your CAD file failed. Please retry.",
-        reason: "storage-upload",
+        error: "We couldn’t process your files. Please retry.",
+        reason: "storage-missing",
       };
     }
 
@@ -221,9 +275,9 @@ export async function persistQuoteIntake(
     const uploadResult = await supabaseServer
       .from("uploads")
       .insert({
-        file_name: payload.file.name,
-        file_path: storagePath,
-        mime_type: mimeType,
+        file_name: primaryStoredFile.originalName,
+        file_path: primaryStoredFile.storagePath,
+        mime_type: primaryStoredFile.mimeType,
         name: contactName,
         email: contactEmail,
         company: sanitizeNullable(payload.company),
@@ -266,7 +320,7 @@ export async function persistQuoteIntake(
         customer_name: contactName,
         customer_email: contactEmail,
         company: sanitizeNullable(payload.company),
-        file_name: payload.file.name,
+        file_name: primaryStoredFile.originalName,
         status: DEFAULT_QUOTE_STATUS,
         currency: "USD",
         price: null,
@@ -296,7 +350,7 @@ export async function persistQuoteIntake(
       contactName,
       contactEmail,
       company: sanitizeNullable(payload.company),
-      fileName: payload.file.name,
+      fileName: primaryStoredFile.originalName,
     });
 
     const { error: uploadLinkError } = await supabaseServer
@@ -317,33 +371,36 @@ export async function persistQuoteIntake(
     }
 
     let metadataRecorded = false;
-    try {
-      const { error: filesError } = await supabaseServer.from("files").insert({
-        filename: payload.file.name,
-        size_bytes: payload.file.size,
-        mime: mimeType,
-        storage_path: storagePath,
-        bucket_id: CAD_BUCKET,
-        quote_id: quoteId,
-      });
+    if (storedFiles.length > 0) {
+      try {
+        const rows = storedFiles.map((storedFile) => ({
+          filename: storedFile.originalName,
+          size_bytes: storedFile.sizeBytes,
+          mime: storedFile.mimeType,
+          storage_path: storedFile.storagePath,
+          bucket_id: storedFile.bucket,
+          quote_id: quoteId,
+        }));
+        const { error: filesError } = await supabaseServer.from("files").insert(rows);
 
-      if (filesError) {
-        console.warn("[quote intake] file metadata insert failed", {
+        if (filesError) {
+          console.warn("[quote intake] file metadata insert failed", {
+            ...logContext,
+            quoteId,
+            uploadId,
+            error: serializeSupabaseError(filesError),
+          });
+        } else {
+          metadataRecorded = true;
+        }
+      } catch (filesError) {
+        console.warn("[quote intake] file metadata insert crashed", {
           ...logContext,
           quoteId,
           uploadId,
           error: serializeSupabaseError(filesError),
         });
-      } else {
-        metadataRecorded = true;
       }
-    } catch (filesError) {
-      console.warn("[quote intake] file metadata insert crashed", {
-        ...logContext,
-        quoteId,
-        uploadId,
-        error: serializeSupabaseError(filesError),
-      });
     }
 
     return {

@@ -24,6 +24,9 @@ import { submitQuoteIntakeAction } from "@/app/quote/actions";
 import type { QuoteIntakeActionState } from "@/app/quote/actions";
 import { initialQuoteIntakeState } from "@/lib/quote/intakeState";
 import { QUOTE_INTAKE_FALLBACK_ERROR } from "@/lib/quote/messages";
+import { CadViewerPanel } from "@/app/(portals)/components/CadViewerPanel";
+import { PartDfMPanel } from "@/app/(portals)/components/PartDfMPanel";
+import type { GeometryStats } from "@/lib/dfm/basicPartChecks";
 
 const MANUFACTURING_PROCESS_OPTIONS = [
   "CNC machining",
@@ -54,6 +57,8 @@ const UPLOAD_EXPLAINER_POINTS = [
   "You stay in control—no obligation to award a job.",
 ];
 
+const MAX_FILES_PER_RFQ = 20;
+
 /**
  * Minimal, easily testable iOS/iPadOS detector. Modern iPadOS (13+) reports
  * itself as "Macintosh" but still includes the "Mobile" token in the UA.
@@ -64,9 +69,48 @@ const isIOSUserAgent = (userAgent: string): boolean => {
   return /macintosh/i.test(userAgent) && /mobile/i.test(userAgent);
 };
 
+type SelectedCadFile = {
+  id: string;
+  file: File;
+  objectUrl: string;
+  addedAt: number;
+};
+
+const buildFileKey = (file: File): string => {
+  const modified =
+    typeof file.lastModified === "number" && Number.isFinite(file.lastModified)
+      ? file.lastModified
+      : 0;
+  return `${file.name}:${file.size}:${modified}`;
+};
+
+const createSelectedCadFile = (file: File): SelectedCadFile => ({
+  id:
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`,
+  file,
+  objectUrl: URL.createObjectURL(file),
+  addedAt: Date.now(),
+});
+
+const disposeSelectedCadFiles = (
+  entries: SelectedCadFile | SelectedCadFile[] | null | undefined,
+) => {
+  if (!entries) {
+    return;
+  }
+  const list = Array.isArray(entries) ? entries : [entries];
+  list.forEach((entry) => {
+    if (entry?.objectUrl) {
+      URL.revokeObjectURL(entry.objectUrl);
+    }
+  });
+};
+
 type UploadState = {
-  file: File | null;
-  fileName: string | null;
+  files: SelectedCadFile[];
+  selectedFileId: string | null;
   firstName: string;
   lastName: string;
   email: string;
@@ -113,8 +157,8 @@ const FIELD_ERROR_KEY_SET = new Set<FieldErrorKey>(FIELD_ERROR_KEYS);
 type FieldErrors = Partial<Record<FieldErrorKey, string>>;
 
 const EMPTY_UPLOAD_STATE: UploadState = {
-  file: null,
-  fileName: null,
+  files: [],
+  selectedFileId: null,
   firstName: "",
   lastName: "",
   email: "",
@@ -179,8 +223,8 @@ const validateFormFields = (state: UploadState): FieldErrors => {
   const trimmedQuantity = state.quantity.trim();
   const postal = state.shippingPostalCode;
 
-  if (!state.file) {
-    errors.file = "Attach your CAD file before submitting.";
+  if (!state.files || state.files.length === 0) {
+    errors.file = "Attach at least one CAD file before submitting.";
   }
   if (!trimmedFirstName) {
     errors.firstName = "First name is required.";
@@ -234,6 +278,9 @@ export default function UploadBox({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [geometryStatsMap, setGeometryStatsMap] = useState<
+    Record<string, GeometryStats | null>
+  >({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [rawFormState, formAction] = useFormState<
     QuoteIntakeActionState,
@@ -250,7 +297,11 @@ export default function UploadBox({
     ? new Set<InputFieldKey>(["firstName", "lastName", "email"])
     : null;
   const resetUploadState = useCallback(() => {
-    setState(() => ({ ...baseState }));
+    setState((prev) => {
+      disposeSelectedCadFiles(prev.files);
+      return { ...baseState };
+    });
+    setGeometryStatsMap({});
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -269,13 +320,13 @@ export default function UploadBox({
     });
   }, [baseState, prefillContact]);
 
-  const syncFileInputWithFile = useCallback((file: File | null) => {
+  const syncFileInputWithFiles = useCallback((files: File[] | null) => {
     const input = fileInputRef.current;
     if (!input) {
       return;
     }
 
-    if (!file) {
+    if (!files || files.length === 0) {
       input.value = "";
       return;
     }
@@ -286,7 +337,7 @@ export default function UploadBox({
 
     try {
       const dataTransfer = new DataTransfer();
-      dataTransfer.items.add(file);
+      files.forEach((candidate) => dataTransfer.items.add(candidate));
       input.files = dataTransfer.files;
     } catch (syncError) {
       console.warn("[quote intake] unable to sync file input", syncError);
@@ -297,6 +348,21 @@ export default function UploadBox({
     if (typeof navigator === "undefined") return;
     setIsIOSDevice(isIOSUserAgent(navigator.userAgent));
   }, []);
+
+  const filesRef = useRef<SelectedCadFile[]>([]);
+  useEffect(() => {
+    filesRef.current = state.files;
+  }, [state.files]);
+
+  useEffect(() => {
+    return () => {
+      disposeSelectedCadFiles(filesRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    syncFileInputWithFiles(state.files.map((entry) => entry.file));
+  }, [state.files, syncFileInputWithFiles]);
 
   useEffect(() => {
     if (!hasSubmitted || !formState) {
@@ -317,8 +383,9 @@ export default function UploadBox({
     setHasSubmitted(false);
   }, [formState, hasSubmitted, resetUploadState]);
 
+  const hasFilesAttached = state.files.length > 0;
   const canSubmit = Boolean(
-    state.file &&
+    hasFilesAttached &&
       state.firstName.trim() &&
       state.lastName.trim() &&
       state.email.trim() &&
@@ -329,6 +396,27 @@ export default function UploadBox({
       state.termsAccepted,
   );
   const fileInputAccept = isIOSDevice ? undefined : CAD_ACCEPT_STRING;
+  const selectedPart = useMemo(() => {
+    if (state.files.length === 0) {
+      return null;
+    }
+    if (state.selectedFileId) {
+      return (
+        state.files.find((entry) => entry.id === state.selectedFileId) ??
+        state.files[0]
+      );
+    }
+    return state.files[0];
+  }, [state.files, state.selectedFileId]);
+  const selectedGeometryStats = selectedPart
+    ? geometryStatsMap[selectedPart.id] ?? null
+    : null;
+  const viewerGeometryHandler = useMemo(
+    () =>
+      (stats: GeometryStats | null) =>
+        handleGeometryStatsUpdate(selectedPart?.id ?? null, stats),
+    [handleGeometryStatsUpdate, selectedPart?.id],
+  );
 
   const clearFieldError = (field: FieldErrorKey) => {
     setFieldErrors((prev) => {
@@ -338,6 +426,76 @@ export default function UploadBox({
       return next;
     });
   };
+
+  const ingestFiles = useCallback(
+    (candidates: File[]) => {
+      if (!candidates || candidates.length === 0) {
+        return;
+      }
+
+      const accepted: File[] = [];
+      const rejectionMessages: string[] = [];
+
+      candidates.forEach((file) => {
+        const validationError = validateCadFile(file);
+        if (validationError) {
+          rejectionMessages.push(`${file.name}: ${validationError}`);
+          return;
+        }
+        accepted.push(file);
+      });
+
+      if (accepted.length === 0 && rejectionMessages.length > 0) {
+        const combined = rejectionMessages.join(" ");
+        setError(combined);
+        setFieldErrors((prev) => ({ ...prev, file: combined }));
+        return;
+      }
+
+      setState((prev) => {
+        const existingKeys = new Set(
+          prev.files.map((entry) => buildFileKey(entry.file)),
+        );
+        const nextFiles = [...prev.files];
+        for (const file of accepted) {
+          if (nextFiles.length >= MAX_FILES_PER_RFQ) {
+            rejectionMessages.push(
+              `Reached the ${MAX_FILES_PER_RFQ}-file limit. Remove a file before adding more.`,
+            );
+            break;
+          }
+          const key = buildFileKey(file);
+          if (existingKeys.has(key)) {
+            continue;
+          }
+          const entry = createSelectedCadFile(file);
+          nextFiles.push(entry);
+          existingKeys.add(key);
+        }
+
+        const nextSelectedId =
+          prev.selectedFileId ??
+          (nextFiles.length > 0 ? nextFiles[0].id : null);
+
+        return {
+          ...prev,
+          files: nextFiles,
+          selectedFileId: nextSelectedId,
+        };
+      });
+
+      if (rejectionMessages.length > 0) {
+        const combined = rejectionMessages.join(" ");
+        setError(combined);
+        setFieldErrors((prev) => ({ ...prev, file: combined }));
+      } else {
+        setError(null);
+        clearFieldError("file");
+      }
+      setSuccessMessage(null);
+    },
+    [clearFieldError],
+  );
 
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -362,26 +520,12 @@ export default function UploadBox({
     setIsDragging(false);
 
     try {
-      const file = e.dataTransfer?.files?.[0];
-      if (!file) {
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length === 0) {
         return;
       }
-
-      const validationError = validateCadFile(file);
-      if (validationError) {
-        setError(validationError);
-        setFieldErrors((prev) => ({ ...prev, file: validationError }));
-        setSuccessMessage(null);
-        setState((prev) => ({ ...prev, file: null, fileName: null }));
-        syncFileInputWithFile(null);
-        return;
-      }
-
-      clearFieldError("file");
-      setError(null);
-      setSuccessMessage(null);
-      setState((prev) => ({ ...prev, file, fileName: file.name }));
-      syncFileInputWithFile(file);
+      ingestFiles(files);
+      e.target.value = "";
     } catch (dropError) {
       console.error("[quote intake] client drop failed", dropError);
       setError(QUOTE_INTAKE_FALLBACK_ERROR);
@@ -389,25 +533,72 @@ export default function UploadBox({
     }
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    try {
-      const file = e.target.files?.[0] ?? null;
-      if (!file) return;
+  const handleRemovePart = useCallback(
+    (fileId: string) => {
+      setState((prev) => {
+        const target = prev.files.find((entry) => entry.id === fileId);
+        if (!target) {
+          return prev;
+        }
+        disposeSelectedCadFiles(target);
+        const nextFiles = prev.files.filter((entry) => entry.id !== fileId);
+        const nextSelectedId =
+          prev.selectedFileId && prev.selectedFileId !== fileId
+            ? prev.selectedFileId
+            : nextFiles[0]?.id ?? null;
 
-      const validationError = validateCadFile(file);
-      if (validationError) {
-        setError(validationError);
-        setFieldErrors((prev) => ({ ...prev, file: validationError }));
-        setSuccessMessage(null);
-        setState((prev) => ({ ...prev, file: null, fileName: null }));
-        e.target.value = "";
+        return {
+          ...prev,
+          files: nextFiles,
+          selectedFileId: nextSelectedId,
+        };
+      });
+      setGeometryStatsMap((prev) => {
+        if (!(fileId in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[fileId];
+        return next;
+      });
+    },
+    [setGeometryStatsMap],
+  );
+
+  const handleSelectPart = useCallback((fileId: string) => {
+    setState((prev) => {
+      if (prev.selectedFileId === fileId) {
+        return prev;
+      }
+      if (!prev.files.some((entry) => entry.id === fileId)) {
+        return prev;
+      }
+      return { ...prev, selectedFileId: fileId };
+    });
+  }, []);
+
+  const handleGeometryStatsUpdate = useCallback(
+    (fileId: string | null, stats: GeometryStats | null) => {
+      if (!fileId) {
         return;
       }
+      setGeometryStatsMap((prev) => {
+        if (prev[fileId] === stats) {
+          return prev;
+        }
+        return { ...prev, [fileId]: stats };
+      });
+    },
+    [],
+  );
 
-      clearFieldError("file");
-      setError(null);
-      setSuccessMessage(null);
-      setState((prev) => ({ ...prev, file, fileName: file.name }));
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    try {
+      const files = Array.from(e.target.files ?? []);
+      if (files.length === 0) {
+        return;
+      }
+      ingestFiles(files);
     } catch (changeError) {
       console.error("[quote intake] file picker failed", changeError);
       setError(QUOTE_INTAKE_FALLBACK_ERROR);
@@ -470,22 +661,27 @@ export default function UploadBox({
         return;
       }
 
-      if (!state.file) {
+      if (!hasFilesAttached) {
         e.preventDefault();
         setFieldErrors((prev) => ({
           ...prev,
-          file: "Attach your CAD file before submitting.",
+          file: "Attach at least one CAD file before submitting.",
         }));
-        setError("Attach your CAD file before submitting.");
+        setError("Attach at least one CAD file before submitting.");
         return;
       }
 
-      const fileValidationError = validateCadFile(state.file);
-      if (fileValidationError) {
-        e.preventDefault();
-        setFieldErrors((prev) => ({ ...prev, file: fileValidationError }));
-        setError(fileValidationError);
-        return;
+      for (const entry of state.files) {
+        const fileValidationError = validateCadFile(entry.file);
+        if (fileValidationError) {
+          e.preventDefault();
+          setFieldErrors((prev) => ({
+            ...prev,
+            file: `${entry.file.name}: ${fileValidationError}`,
+          }));
+          setError(`${entry.file.name}: ${fileValidationError}`);
+          return;
+        }
       }
 
       setFieldErrors({});
@@ -551,7 +747,7 @@ export default function UploadBox({
           onDrop={handleDrop}
         >
           <p className="text-xs text-muted">
-            {CAD_FILE_TYPE_DESCRIPTION}. Max {MAX_UPLOAD_SIZE_LABEL}.
+            {CAD_FILE_TYPE_DESCRIPTION}. Drag in up to {MAX_FILES_PER_RFQ} files. Max {MAX_UPLOAD_SIZE_LABEL} each.
           </p>
           <div className="mt-4 flex flex-col items-center gap-2">
             <label
@@ -561,29 +757,22 @@ export default function UploadBox({
               Browse from device
             </label>
             <p className="text-[11px] text-muted">
-              …or drag &amp; drop into this box
+              …or drag &amp; drop files into this box
             </p>
             <p className="mt-1 text-[11px] text-muted">
-              Selected:{" "}
-              {state.fileName ? (
-                <span className="text-foreground">
-                  {state.fileName}
-                  {state.file?.size
-                    ? ` · ${formatReadableBytes(state.file.size)}`
-                    : null}
-                </span>
-              ) : (
-                "No file selected yet"
-              )}
+              {state.files.length === 0
+                ? "No files attached yet"
+                : `${state.files.length} file${state.files.length === 1 ? "" : "s"} attached`}
             </p>
             <p className="mt-3 text-[11px] text-muted">
               Your CAD files and drawings stay private. We only share them with matched suppliers for quoting.
             </p>
           </div>
           <input
-            id="file"
-            name="file"
+            id="files"
+            name="files"
             type="file"
+            multiple
             className="hidden"
             onChange={handleFileChange}
             accept={fileInputAccept}
@@ -594,6 +783,103 @@ export default function UploadBox({
               {fieldErrors.file}
             </p>
           )}
+        </div>
+
+        <div className="mt-8 grid gap-5 lg:grid-cols-5">
+          <div className="rounded-2xl border border-white/5 bg-white/5 p-4 text-left shadow-[0_10px_30px_rgba(2,6,23,0.45)] lg:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Parts in this RFQ
+                </p>
+                <p className="text-sm text-foreground">
+                  {state.files.length === 0
+                    ? "Attach CAD to start quoting multiple parts."
+                    : "Click to set the primary preview + DFM target."}
+                </p>
+              </div>
+              <span className="rounded-full border border-border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                {state.files.length} / {MAX_FILES_PER_RFQ}
+              </span>
+            </div>
+            <div className="mt-4 space-y-2">
+              {state.files.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border/60 px-4 py-3 text-sm text-muted">
+                  Drop multiple STEP/STL files above. All files stay on the same RFQ.
+                </p>
+              ) : (
+                state.files.map((entry, index) => {
+                  const isSelected = selectedPart?.id === entry.id;
+                  return (
+                    <div
+                      key={entry.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleSelectPart(entry.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          handleSelectPart(entry.id);
+                        }
+                      }}
+                      className={clsx(
+                        "flex cursor-pointer items-start justify-between rounded-xl border px-4 py-3 transition",
+                        isSelected
+                          ? "border-accent/70 bg-accent/5"
+                          : "border-border/60 bg-black/20 hover:border-border",
+                      )}
+                    >
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="text-xs uppercase tracking-wide text-muted">{`Part ${index + 1}`}</p>
+                        <p className="truncate text-sm font-semibold text-foreground">
+                          {entry.file.name}
+                        </p>
+                        <p className="text-xs text-muted">
+                          {formatReadableBytes(entry.file.size)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={clsx(
+                            "pill text-[10px] font-semibold uppercase tracking-wide",
+                            isSelected ? "pill-info" : "pill-muted",
+                          )}
+                        >
+                          {isSelected ? "Previewing" : "Preview"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleRemovePart(entry.id);
+                          }}
+                          className="rounded-full border border-border/60 px-2 py-1 text-[11px] text-muted transition hover:border-red-400/60 hover:text-red-200"
+                          aria-label={`Remove ${entry.file.name}`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <div className="space-y-4 lg:col-span-3">
+            <CadViewerPanel
+              file={selectedPart?.file ?? null}
+              fileName={selectedPart?.file.name}
+              fallbackMessage="Select a CAD file to preview it in 3D."
+              onGeometryStats={viewerGeometryHandler}
+            />
+            <PartDfMPanel
+              geometryStats={selectedGeometryStats}
+              process={state.manufacturingProcess}
+              quantityHint={state.quantity}
+              targetDate={null}
+              className="bg-white/5"
+            />
+          </div>
         </div>
 
         <div className="mt-8 space-y-5">
