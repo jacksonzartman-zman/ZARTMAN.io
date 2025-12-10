@@ -303,7 +303,7 @@ export default function UploadBox({
   }, [rawFormState]);
   const contactFieldsLocked = Boolean(prefillContact);
   const contactFieldLockSet = contactFieldsLocked
-    ? new Set<InputFieldKey>(["firstName", "lastName", "email"])
+    ? new Set<InputFieldKey>(["email"])
     : null;
   const resetUploadState = useCallback(() => {
     setState((prev) => {
@@ -897,81 +897,65 @@ export default function UploadBox({
             </div>
           )}
           <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-1">
-            <label
-              htmlFor="firstName"
-              className="text-xs font-medium text-muted tracking-wide"
-            >
-              First name<span className="text-red-500">*</span>
-            </label>
-            <input
-              id="firstName"
-              name="firstName"
-              type="text"
-              autoComplete="given-name"
-              {...(contactFieldsLocked
-                ? { defaultValue: prefillContact?.firstName ?? "" }
-                : {
-                    value: state.firstName,
-                    onChange: handleInputChange("firstName"),
-                  })}
-              className={clsx(
-                "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
-                fieldErrors.firstName ? "border-red-500" : "border-border",
-                contactFieldsLocked &&
-                  "cursor-not-allowed bg-black/30 text-muted-foreground",
+            <div className="space-y-1">
+              <label
+                htmlFor="firstName"
+                className="text-xs font-medium text-muted tracking-wide"
+              >
+                First name<span className="text-red-500">*</span>
+              </label>
+              <input
+                id="firstName"
+                name="firstName"
+                type="text"
+                autoComplete="given-name"
+                value={state.firstName}
+                onChange={handleInputChange("firstName")}
+                className={clsx(
+                  "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
+                  fieldErrors.firstName ? "border-red-500" : "border-border",
+                )}
+                aria-invalid={Boolean(fieldErrors.firstName)}
+                aria-describedby={
+                  fieldErrors.firstName ? "firstName-error" : undefined
+                }
+              />
+              {fieldErrors.firstName && (
+                <p id="firstName-error" className="text-xs text-red-400">
+                  {fieldErrors.firstName}
+                </p>
               )}
-              aria-invalid={Boolean(fieldErrors.firstName)}
-              aria-describedby={
-                fieldErrors.firstName ? "firstName-error" : undefined
-              }
-              readOnly={contactFieldsLocked}
-              aria-readonly={contactFieldsLocked}
-            />
-            {fieldErrors.firstName && (
-              <p id="firstName-error" className="text-xs text-red-400">
-                {fieldErrors.firstName}
-              </p>
-            )}
-          </div>
-          <div className="space-y-1">
-            <label
-              htmlFor="lastName"
-              className="text-xs font-medium text-muted tracking-wide"
-            >
-              Last name<span className="text-red-500">*</span>
-            </label>
-            <input
-              id="lastName"
-              name="lastName"
-              type="text"
-              autoComplete="family-name"
-              {...(contactFieldsLocked
-                ? { defaultValue: prefillContact?.lastName ?? "" }
-                : {
-                    value: state.lastName,
-                    onChange: handleInputChange("lastName"),
-                  })}
-              className={clsx(
-                "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
-                fieldErrors.lastName ? "border-red-500" : "border-border",
-                contactFieldsLocked &&
-                  "cursor-not-allowed bg-black/30 text-muted-foreground",
+            </div>
+            <div className="space-y-1">
+              <label
+                htmlFor="lastName"
+                className="text-xs font-medium text-muted tracking-wide"
+              >
+                Last name<span className="text-red-500">*</span>
+              </label>
+              <input
+                id="lastName"
+                name="lastName"
+                type="text"
+                autoComplete="family-name"
+                value={state.lastName}
+                onChange={handleInputChange("lastName")}
+                className={clsx(
+                  "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
+                  fieldErrors.lastName ? "border-red-500" : "border-border",
+                )}
+                aria-invalid={Boolean(fieldErrors.lastName)}
+                aria-describedby={
+                  fieldErrors.lastName ? "lastName-error" : undefined
+                }
+              />
+              {fieldErrors.lastName && (
+                <p id="lastName-error" className="text-xs text-red-400">
+                  {fieldErrors.lastName}
+                </p>
               )}
-              aria-invalid={Boolean(fieldErrors.lastName)}
-              aria-describedby={
-                fieldErrors.lastName ? "lastName-error" : undefined
-              }
-              readOnly={contactFieldsLocked}
-              aria-readonly={contactFieldsLocked}
-            />
-            {fieldErrors.lastName && (
-              <p id="lastName-error" className="text-xs text-red-400">
-                {fieldErrors.lastName}
-              </p>
-            )}
+            </div>
           </div>
-        </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <div className="space-y-1">
