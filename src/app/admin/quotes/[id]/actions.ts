@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { getServerAuthUser, requireUser } from "@/server/auth";
@@ -27,6 +26,21 @@ import { upsertQuoteProject } from "@/server/quotes/projects";
 import { awardBidForQuoteAction } from "@/server/quotes/adminAward";
 import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
 
+export type AwardBidFormState = {
+  status: "idle" | "success" | "error";
+  message?: string | null;
+  error?: string | null;
+};
+
+export const AWARD_BID_FORM_INITIAL_STATE: AwardBidFormState = {
+  status: "idle",
+  message: null,
+  error: null,
+};
+
+const ADMIN_AWARD_GENERIC_ERROR =
+  "We couldn't update the award state. Please try again.";
+
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
@@ -51,16 +65,27 @@ export type AdminProjectFormState = {
   };
 };
 
-export async function awardBidFormAction(formData: FormData) {
+export async function awardBidFormAction(
+  _prevState: AwardBidFormState,
+  formData: FormData,
+): Promise<AwardBidFormState> {
   const quoteIdRaw = getFormString(formData, "quoteId");
   const bidIdRaw = getFormString(formData, "bidId");
 
   const normalizedQuoteId =
     typeof quoteIdRaw === "string" ? quoteIdRaw.trim() : "";
   const normalizedBidId = typeof bidIdRaw === "string" ? bidIdRaw.trim() : "";
-  const redirectTarget = normalizedQuoteId
-    ? `/admin/quotes/${normalizedQuoteId}`
-    : "/admin/quotes";
+
+  if (!normalizedQuoteId || !normalizedBidId) {
+    console.warn("[admin award] missing identifiers", {
+      quoteId: normalizedQuoteId || quoteIdRaw || null,
+      bidId: normalizedBidId || bidIdRaw || null,
+    });
+    return {
+      status: "error",
+      error: ADMIN_AWARD_GENERIC_ERROR,
+    };
+  }
 
   const result = await awardBidForQuoteAction(quoteIdRaw ?? "", bidIdRaw ?? "");
 
@@ -70,7 +95,10 @@ export async function awardBidFormAction(formData: FormData) {
       bidId: normalizedBidId || bidIdRaw || null,
       error: result.error,
     });
-    return redirect(redirectTarget);
+    return {
+      status: "error",
+      error: result.error ?? ADMIN_AWARD_GENERIC_ERROR,
+    };
   }
 
   revalidatePath("/admin");
@@ -78,17 +106,16 @@ export async function awardBidFormAction(formData: FormData) {
   revalidatePath("/customer");
   revalidatePath("/supplier");
 
-  if (normalizedQuoteId) {
-    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
-    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
-    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
-  }
+  revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+  revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+  revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
-  if (normalizedQuoteId && normalizedBidId) {
-    void dispatchAdminWinnerNotification(normalizedQuoteId, normalizedBidId);
-  }
+  void dispatchAdminWinnerNotification(normalizedQuoteId, normalizedBidId);
 
-  redirect(redirectTarget);
+  return {
+    status: "success",
+    message: "Winner recorded.",
+  };
 }
 
 export async function submitAdminQuoteUpdateAction(

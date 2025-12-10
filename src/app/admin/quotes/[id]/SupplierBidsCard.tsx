@@ -2,12 +2,17 @@ import { formatCurrency } from "@/lib/formatCurrency";
 import { formatDateTime } from "@/lib/formatDate";
 import type { BidRow } from "@/server/bids";
 import type { QuoteStatus } from "@/server/quotes/status";
-import { awardBidFormAction } from "./actions";
+import type { SupplierRow } from "@/server/suppliers/types";
+import { BidAwardForm } from "./BidAwardForm";
+
+export type AdminSupplierBidRow = BidRow & {
+  supplier?: SupplierRow | null;
+};
 
 type SupplierBidsCardProps = {
   quoteId: string;
   quoteStatus: QuoteStatus;
-  bids: BidRow[];
+  bids: AdminSupplierBidRow[];
   bidsLoaded: boolean;
   errorMessage?: string | null;
 };
@@ -80,7 +85,7 @@ export function SupplierBidsCard({
 }
 
 type BidRowProps = {
-  bid: BidRow;
+  bid: AdminSupplierBidRow;
   quoteId: string;
   hasWinner: boolean;
   quoteIsLocked: boolean;
@@ -96,13 +101,34 @@ function BidRow({ bid, quoteId, hasWinner, quoteIsLocked }: BidRowProps) {
   const submittedAt = bid.created_at ? formatDateTime(bid.created_at) : "—";
   const bidStatus = (bid.status ?? "submitted").toString();
   const isWinner = bidStatus.toLowerCase() === "won";
+  const supplierName =
+    bid.supplier?.company_name ??
+    bid.supplier?.primary_email ??
+    "Supplier profile pending";
+  const supplierEmail =
+    typeof bid.supplier?.primary_email === "string"
+      ? bid.supplier.primary_email
+      : null;
 
   return (
     <tr className="border-b border-slate-900/60 last:border-0">
       <td className="py-2 pr-3">
-        <span className="font-mono text-[11px] text-slate-400">
-          {bid.supplier_id}
-        </span>
+        <div className="space-y-0.5">
+          <p className="text-sm font-semibold text-slate-100">{supplierName}</p>
+          {supplierEmail ? (
+            <a
+              href={`mailto:${supplierEmail}`}
+              className="text-[11px] text-emerald-200 hover:underline"
+            >
+              {supplierEmail}
+            </a>
+          ) : (
+            <p className="text-[11px] text-slate-500">Email unavailable</p>
+          )}
+          <p className="font-mono text-[11px] text-slate-500">
+            {bid.supplier_id}
+          </p>
+        </div>
       </td>
       <td className="py-2 pr-3">
         {formattedAmount}
@@ -122,13 +148,13 @@ function BidRow({ bid, quoteId, hasWinner, quoteIsLocked }: BidRowProps) {
       </td>
       <td className="py-2 pr-3">{submittedAt}</td>
       <td className="py-2 pr-3 text-right">
-        {renderBidAction({
-          quoteId,
-          bidId: bid.id,
-          isWinner,
-          hasWinner,
-          quoteIsLocked,
-        })}
+        <BidActionCell
+          quoteId={quoteId}
+          bidId={bid.id}
+          isWinner={isWinner}
+          hasWinner={hasWinner}
+          quoteIsLocked={quoteIsLocked}
+        />
       </td>
     </tr>
   );
@@ -142,7 +168,7 @@ type BidActionProps = {
   quoteIsLocked: boolean;
 };
 
-function renderBidAction({
+function BidActionCell({
   quoteId,
   bidId,
   isWinner,
@@ -151,7 +177,7 @@ function renderBidAction({
 }: BidActionProps) {
   if (isWinner) {
     return (
-      <span className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-100">
+      <span className="inline-flex rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-100">
         Winner
       </span>
     );
@@ -159,7 +185,7 @@ function renderBidAction({
 
   if (hasWinner) {
     return (
-      <span className="rounded-full border border-slate-700 bg-slate-900/40 px-2 py-0.5 text-xs text-slate-400">
+      <span className="inline-flex rounded-full border border-slate-700 bg-slate-900/40 px-2 py-0.5 text-xs text-slate-400">
         Not selected
       </span>
     );
@@ -167,22 +193,11 @@ function renderBidAction({
 
   if (quoteIsLocked) {
     return (
-      <span className="rounded-full border border-slate-800/60 bg-slate-900/40 px-2 py-0.5 text-xs text-slate-400">
+      <span className="inline-flex rounded-full border border-slate-800/60 bg-slate-900/40 px-2 py-0.5 text-xs text-slate-400">
         Quote closed
       </span>
     );
   }
 
-  return (
-    <form action={awardBidFormAction} className="flex justify-end">
-      <input type="hidden" name="quoteId" value={quoteId} />
-      <input type="hidden" name="bidId" value={bidId} />
-      <button
-        type="submit"
-        className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-100 hover:bg-emerald-500/20"
-      >
-        Select as winner
-      </button>
-    </form>
-  );
+  return <BidAwardForm quoteId={quoteId} bidId={bidId} />;
 }
