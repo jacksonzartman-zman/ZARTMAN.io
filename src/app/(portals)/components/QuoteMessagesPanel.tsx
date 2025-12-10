@@ -51,6 +51,12 @@ type QuoteMessagesPanelProps = {
   composer?: QuoteMessagesComposerConfig | null;
 };
 
+type ComposerAction = (
+  quoteId: string,
+  prevState: unknown,
+  formData: FormData,
+) => Promise<QuoteMessageFormState>;
+
 const DEFAULT_FORM_STATE: QuoteMessageFormState = {
   ok: true,
   message: "",
@@ -58,17 +64,10 @@ const DEFAULT_FORM_STATE: QuoteMessageFormState = {
   fieldErrors: {},
 };
 
-const ACTION_BY_MODE: Record<
-  QuoteMessageComposerMode,
-  (
-    quoteId: string,
-    prevState: QuoteMessageFormState,
-    formData: FormData,
-  ) => Promise<QuoteMessageFormState>
-> = {
-  customer: submitCustomerQuoteMessageAction,
-  supplier: submitSupplierQuoteMessageAction,
-  admin: submitAdminQuoteMessageAction,
+const ACTION_BY_MODE: Record<QuoteMessageComposerMode, ComposerAction> = {
+  customer: submitCustomerQuoteMessageAction as ComposerAction,
+  supplier: submitSupplierQuoteMessageAction as ComposerAction,
+  admin: submitAdminQuoteMessageAction as ComposerAction,
 };
 
 const PILL_CLASSES: Record<QuoteMessageRole, string> = {
