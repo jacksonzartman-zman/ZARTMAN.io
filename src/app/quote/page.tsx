@@ -22,16 +22,16 @@ export default async function QuotePage() {
           </div>
           <div className="space-y-4">
             <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-ink">
-              Upload a CAD file to kick off a quote
+              Upload your CAD pack to kick off a quote
             </h1>
             <p className="text-sm sm:text-base text-ink-muted">
-              Drop STEP, IGES, STL, SolidWorks, or zipped assemblies. Your file
-              lands in Supabase storage, metadata syncs to the admin cockpit, and
-              we follow up with pricing plus any DFM notes.
+              Drag in 5–20 CAD files (STEP, IGES, STL, SolidWorks, or zipped assemblies). We keep every part on the same RFQ so suppliers see the full project context.
             </p>
           </div>
           <div className="rounded-2xl border border-line-subtle bg-surface/50 p-4 text-sm text-ink-soft">
-            <p>Need an NDA or have multiple files? Drop the first one here and we&apos;ll reply with the secure follow-up path.</p>
+            <p>
+              Need an NDA or prefer a managed upload? Drop the first file here and we&apos;ll reply with the secure follow-up path—no duplicate quotes required.
+            </p>
           </div>
         </section>
 

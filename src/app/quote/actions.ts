@@ -148,17 +148,17 @@ function parseQuoteIntakeFormData(
 ):
   | { payload: QuoteIntakePayload }
   | { ok: false; error: string; fieldErrors: QuoteIntakeFieldErrors } {
-  const fileEntry = formData.get("file");
-  if (!(fileEntry instanceof File)) {
+  const files = collectFormDataFiles(formData);
+  if (files.length === 0) {
     return {
       ok: false,
-      error: "Attach your CAD file before submitting.",
-      fieldErrors: { file: "Attach your CAD file before submitting." },
+      error: "Attach at least one CAD file before submitting.",
+      fieldErrors: { file: "Attach at least one CAD file before submitting." },
     };
   }
 
   const payload: QuoteIntakePayload = {
-    file: fileEntry,
+    files,
     firstName: getString(formData, "firstName"),
     lastName: getString(formData, "lastName"),
     email: getString(formData, "email"),
@@ -175,6 +175,26 @@ function parseQuoteIntakeFormData(
   };
 
   return { payload };
+}
+
+function collectFormDataFiles(formData: FormData): File[] {
+  const collected: File[] = [];
+  const appendIfFile = (value: FormDataEntryValue | null) => {
+    if (value instanceof File) {
+      collected.push(value);
+    }
+  };
+
+  const multi = formData.getAll("files");
+  if (multi && multi.length > 0) {
+    multi.forEach((value) => appendIfFile(value));
+  }
+
+  if (collected.length === 0) {
+    appendIfFile(formData.get("file"));
+  }
+
+  return collected;
 }
 
 function getString(formData: FormData, key: string): string {
