@@ -603,19 +603,11 @@ export default function UploadBox({
     });
   }, []);
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    try {
-      const files = Array.from(e.target.files ?? []);
-      if (files.length === 0) {
-        return;
-      }
-      ingestFiles(files);
-    } catch (changeError) {
-      console.error("[quote intake] file picker failed", changeError);
-      setError(QUOTE_INTAKE_FALLBACK_ERROR);
-      setSuccessMessage(null);
-      e.target.value = "";
-    }
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
+    ingestFiles(files);
+    event.target.value = "";
   };
 
   type InputFieldKey =
@@ -761,12 +753,13 @@ export default function UploadBox({
             {CAD_FILE_TYPE_DESCRIPTION}. Drag in up to {MAX_FILES_PER_RFQ} files. Max {MAX_UPLOAD_SIZE_LABEL} each.
           </p>
           <div className="mt-4 flex flex-col items-center gap-2">
-            <label
-              htmlFor="file"
-              className="inline-flex cursor-pointer items-center justify-center rounded-full border border-border px-4 py-2 text-xs font-medium text-foreground transition hover:border-accent hover:text-accent"
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center rounded-full border border-slate-300/40 px-6 py-2 text-sm font-semibold text-slate-50 hover:bg-slate-100/5"
             >
               Browse from device
-            </label>
+            </button>
             <p className="text-[11px] text-muted">
               …or drag &amp; drop files into this box
             </p>
