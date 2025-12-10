@@ -8,7 +8,10 @@ import {
 } from "@/lib/cadFileTypes";
 import { DEFAULT_QUOTE_STATUS } from "@/server/quotes/status";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { serializeSupabaseError } from "@/server/admin/logging";
+import {
+  serializeSupabaseError,
+  isMissingTableOrColumnError,
+} from "@/server/admin/logging";
 import { notifyAdminOnQuoteSubmitted } from "@/server/quotes/notifications";
 
 const CAD_BUCKET =
@@ -30,6 +33,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 };
 
 const FILE_SIZE_LIMIT_LABEL = `${bytesToMegabytes(MAX_UPLOAD_SIZE_BYTES)} MB`;
+const MAX_FILES_PER_RFQ = 20;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
 export type QuoteIntakeFieldKey =
@@ -99,6 +103,8 @@ export function validateQuoteIntakeFields(
 
   if (!payload.files || payload.files.length === 0) {
     errors.file = "Attach at least one CAD file before submitting.";
+  } else if (payload.files.length > MAX_FILES_PER_RFQ) {
+    errors.file = `Attach up to ${MAX_FILES_PER_RFQ} CAD files per RFQ.`;
   } else {
     for (const file of payload.files) {
       if (!file) continue;
@@ -172,6 +178,17 @@ export async function persistQuoteIntake(
       error: "Attach at least one CAD file before submitting.",
       fieldErrors: { file: "Attach at least one CAD file before submitting." },
       reason: "file-missing",
+    };
+  }
+
+  if (files.length > MAX_FILES_PER_RFQ) {
+    return {
+      ok: false,
+      error: `You can upload up to ${MAX_FILES_PER_RFQ} CAD files per RFQ.`,
+      fieldErrors: {
+        file: `Attach up to ${MAX_FILES_PER_RFQ} CAD files per RFQ.`,
+      },
+      reason: "file-limit",
     };
   }
 
@@ -254,6 +271,12 @@ export async function persistQuoteIntake(
         bucket: CAD_BUCKET,
       });
     }
+
+    console.log("[quote intake] server file summary", {
+      payloadFileCount: files.length,
+      storedFileCount: storedFiles.length,
+      storedFileNames: storedFiles.map((file) => file.originalName),
+    });
 
     const primaryStoredFile = storedFiles[0];
     if (!primaryStoredFile) {
@@ -372,34 +395,59 @@ export async function persistQuoteIntake(
 
     let metadataRecorded = false;
     if (storedFiles.length > 0) {
+      const rows = storedFiles.map((storedFile) => ({
+        filename: storedFile.originalName,
+        size_bytes: storedFile.sizeBytes,
+        mime: storedFile.mimeType,
+        storage_path: storedFile.storagePath,
+        bucket_id: storedFile.bucket,
+        quote_id: quoteId,
+      }));
+      // We support up to MAX_FILES_PER_RFQ files per RFQ; by inserting a row for
+      // every stored file we preserve the full part list instead of silently
+      // discarding entries beyond index 0.
+
       try {
-        const rows = storedFiles.map((storedFile) => ({
-          filename: storedFile.originalName,
-          size_bytes: storedFile.sizeBytes,
-          mime: storedFile.mimeType,
-          storage_path: storedFile.storagePath,
-          bucket_id: storedFile.bucket,
-          quote_id: quoteId,
-        }));
         const { error: filesError } = await supabaseServer.from("files").insert(rows);
 
         if (filesError) {
-          console.warn("[quote intake] file metadata insert failed", {
-            ...logContext,
-            quoteId,
-            uploadId,
-            error: serializeSupabaseError(filesError),
-          });
+          const serializedError = serializeSupabaseError(filesError);
+          if (isMissingTableOrColumnError(filesError)) {
+            console.warn("[quote intake] file metadata insert skipped", {
+              ...logContext,
+              quoteId,
+              uploadId,
+              error: serializedError,
+            });
+          } else {
+            console.error("[quote intake] file metadata insert failed", {
+              ...logContext,
+              quoteId,
+              uploadId,
+              error: serializedError,
+            });
+            return {
+              ok: false,
+              error: "We couldn’t record your CAD files. Please retry.",
+              reason: "db-insert-files",
+            };
+          }
         } else {
           metadataRecorded = true;
         }
       } catch (filesError) {
-        console.warn("[quote intake] file metadata insert crashed", {
+        const serializedError = serializeSupabaseError(filesError);
+        console.error("[quote intake] file metadata insert crashed", {
           ...logContext,
           quoteId,
           uploadId,
-          error: serializeSupabaseError(filesError),
+          error: serializedError,
         });
+        return {
+          ok: false,
+          error: "We couldn’t record your CAD files. Please retry.",
+          reason: "db-insert-files",
+        };
       }
     }
 
