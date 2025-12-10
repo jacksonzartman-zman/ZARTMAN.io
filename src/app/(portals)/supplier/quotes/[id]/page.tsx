@@ -41,8 +41,8 @@ import {
 import { SupplierQuoteTrackingCard } from "./SupplierQuoteTrackingCard";
 import { loadQuoteProject, type QuoteProjectRow } from "@/server/quotes/projects";
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
-import { loadQuoteMessages, type QuoteMessageRow } from "@/server/quotes/messages";
-import { SupplierQuoteMessagesCard } from "./SupplierQuoteMessagesCard";
+import { loadQuoteThreadForQuote } from "@/server/messages/quoteThreads";
+import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
 import {
   loadQuoteKickoffTasksForSupplier,
   type SupplierKickoffTasksResult,
@@ -176,12 +176,9 @@ export default async function SupplierQuoteDetailPage({
     profile.supplier.id,
   );
 
-  const messagesResult = await loadQuoteMessages(quoteId);
-  const messagesUnavailable = !messagesResult.ok;
-  const messages: QuoteMessageRow[] =
-    messagesResult.ok && Array.isArray(messagesResult.data)
-      ? messagesResult.data ?? []
-      : [];
+  const threadResult = await loadQuoteThreadForQuote(quoteId);
+  const threadUnavailable = !threadResult.ok;
+  const thread = threadResult.data ?? { quoteId, messages: [] };
 
   const bidStatus = (existingBid?.status ?? "").toLowerCase();
   const messagingUnlocked =
@@ -553,12 +550,23 @@ function SupplierQuoteWorkspace({
       {kickoffChecklistSection}
       {summaryCard}
       {projectSection}
-      <SupplierQuoteMessagesCard
-        quoteId={quote.id}
-        messages={messages}
-        messagesUnavailable={messagesUnavailable}
-        messagingUnlocked={messagingUnlocked}
-        disableReason={messagingDisabledReason}
+      <QuoteMessagesPanel
+        thread={thread}
+        viewerRole="supplier"
+        heading="Shared chat"
+        description="Customer, supplier, and admin updates for this RFQ."
+        helperText="Your note pings the Zartman admin team instantly."
+        messagesUnavailable={threadUnavailable}
+        composer={{
+          quoteId: quote.id,
+          mode: "supplier",
+          disabled: !messagingUnlocked,
+          disableReason: messagingDisabledReason ?? undefined,
+          placeholder:
+            "Share build progress, questions, or risks with the Zartman team...",
+          sendLabel: "Send update",
+          pendingLabel: "Sending...",
+        }}
       />
       <div className="space-y-2">
         <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />

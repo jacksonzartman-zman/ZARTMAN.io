@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { buildCustomerQuoteTimeline } from "@/lib/quote/tracking";
-import { loadQuoteMessages, type QuoteMessage } from "@/server/quotes/messages";
+import { loadQuoteThreadForQuote } from "@/server/messages/quoteThreads";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
 import {
@@ -16,7 +16,7 @@ import {
 } from "@/server/quotes/status";
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
-import { AdminQuoteMessagesCard } from "./AdminQuoteMessagesCard";
+import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
 import { QuoteFilesCard } from "./QuoteFilesCard";
 import {
   QuoteWorkspaceTabs,
@@ -247,18 +247,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       quote.internal_notes.trim().length > 0
         ? quote.internal_notes
         : null;
-    const quoteMessagesResult = await loadQuoteMessages(quote.id);
-
-    if (!quoteMessagesResult.ok) {
+    const threadResult = await loadQuoteThreadForQuote(quote.id);
+    if (!threadResult.ok) {
       console.error("Failed to load quote messages", {
         quoteId: quote.id,
-        error: quoteMessagesResult.error,
+        error: threadResult.error,
       });
     }
-    const messages: QuoteMessage[] = quoteMessagesResult.data ?? [];
-    const quoteMessagesError = quoteMessagesResult.ok
-      ? null
-      : quoteMessagesResult.error;
+    const thread = threadResult.data ?? { quoteId: quote.id, messages: [] };
+    const quoteMessagesError = threadResult.ok ? null : threadResult.error;
     const bidsResult = await loadBidsForQuote(quote.id);
     const baseBids = bidsResult.ok ? bidsResult.data : [];
     let bids: AdminSupplierBidRow[] = baseBids.map((bid) => ({
@@ -425,10 +422,20 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
     const messagesUnavailable = Boolean(quoteMessagesError);
     const messagesContent = (
-      <AdminQuoteMessagesCard
-        quoteId={quote.id}
-        messages={messages}
+      <QuoteMessagesPanel
+        thread={thread}
+        viewerRole="admin"
+        heading="Customer & supplier messages"
+        description="One shared conversation across portals."
+        helperText="Replies notify the customer inbox immediately."
         messagesUnavailable={messagesUnavailable}
+        composer={{
+          quoteId: quote.id,
+          mode: "admin",
+          placeholder: "Share an update or ask a follow-up question...",
+          sendLabel: "Reply",
+          pendingLabel: "Sending...",
+        }}
       />
     );
 
@@ -492,7 +499,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       {
         id: "messages",
         label: "Messages",
-        count: messages.length,
+        count: thread.messages.length,
         content: messagesContent,
       },
       { id: "edit", label: "Edit quote", content: editContent },
