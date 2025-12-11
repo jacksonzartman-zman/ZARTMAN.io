@@ -1,45 +1,50 @@
 // src/app/admin/quotes/page.tsx
 import {
-  loadAdminQuoteMeta,
   loadAdminQuotesList,
   type AdminQuoteListRow,
 } from "@/server/admin/quotes";
-import { normalizePriceValue } from "@/server/admin/price";
 import type { ReadonlyURLSearchParams } from "next/navigation";
-import {
-  QUOTE_STATUS_LABELS,
-  QUOTE_STATUS_OPTIONS,
-  normalizeQuoteStatus,
-  type QuoteStatus,
-} from "@/server/quotes/status";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
-import StatusFilterChips from "../StatusFilterChips";
 import AdminDashboardShell from "../AdminDashboardShell";
 import AdminFiltersBar from "../AdminFiltersBar";
 import AdminSearchInput from "../AdminSearchInput";
+import { loadQuoteBidAggregates } from "@/server/quotes/bidAggregates";
+import {
+  deriveAdminQuoteListStatus,
+  formatAdminBestPriceLabel,
+  formatAdminBidCountLabel,
+  formatAdminBidSummary,
+  formatAdminLeadTimeLabel,
+  getAdminQuoteStatusMeta,
+} from "@/server/quotes/adminSummary";
+import {
+  deriveQuotePrimaryLabel,
+  formatQuoteFileCountLabel,
+  resolveQuoteFileCount,
+} from "@/server/quotes/fileSummary";
+import type { AdminQuotesView } from "@/types/adminQuotes";
+import AdminQuotesViewFilter from "./AdminQuotesViewFilter";
+import {
+  normalizeAdminQuotesView,
+  viewIncludesStatus,
+} from "./viewFilters";
 
 export const dynamic = "force-dynamic";
 
 type QuotesPageSearchParams = {
-  status?: string | string[] | null;
+  view?: string | string[] | null;
   search?: string | string[] | null;
 };
 
 type ResolvedSearchParams = {
-  status?: string;
+  view?: string;
   search?: string;
 };
 
 type QuotesPageProps = {
   searchParams?: Promise<ReadonlyURLSearchParams>;
 };
-
-const VALID_STATUS_VALUES: QuoteStatus[] = [...QUOTE_STATUS_OPTIONS];
-const QUOTE_STATUS_FILTER_OPTIONS = QUOTE_STATUS_OPTIONS.map((status) => ({
-  value: status,
-  label: QUOTE_STATUS_LABELS[status],
-}));
 
 const getFirstParamValue = (
   value?: string | string[] | null,
@@ -80,14 +85,14 @@ const resolveSearchParams = async (
 
   if (isURLSearchParamsLike(resolved)) {
     return {
-      status: resolved.get("status") ?? undefined,
+      view: resolved.get("view") ?? undefined,
       search: resolved.get("search") ?? undefined,
     };
   }
 
   const maybeObject = resolved as QuotesPageSearchParams;
   return {
-    status: getFirstParamValue(maybeObject.status),
+    view: getFirstParamValue(maybeObject.view),
     search: getFirstParamValue(maybeObject.search),
   };
 };
@@ -95,15 +100,7 @@ const resolveSearchParams = async (
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const resolvedSearchParams = await resolveSearchParams(searchParams);
 
-  const normalizedStatus =
-    typeof resolvedSearchParams.status === "string"
-      ? resolvedSearchParams.status.trim().toLowerCase()
-      : "";
-  const statusFilter: QuoteStatus | "all" = VALID_STATUS_VALUES.includes(
-    normalizedStatus as QuoteStatus,
-  )
-    ? (normalizedStatus as QuoteStatus)
-    : "all";
+  const viewFilter = normalizeAdminQuotesView(resolvedSearchParams.view);
 
   const searchTerm =
     typeof resolvedSearchParams.search === "string"
@@ -112,60 +109,78 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const normalizedSearch = searchTerm.trim().toLowerCase().replace(/\s+/g, " ");
 
   const quotesResult = await loadAdminQuotesList({
-    status: statusFilter === "all" ? null : statusFilter,
+    status: null,
     search: normalizedSearch || null,
   });
 
-  const rows =
-    quotesResult.data?.map((row: AdminQuoteListRow) => {
-      const files = buildQuoteFilesFromRow(row);
-      return {
-        id: row.id,
-        customerName: row.customer_name ?? "Unknown",
-        customerEmail: row.email ?? "",
-        company: row.company ?? "",
-        fileName: files[0]?.filename ?? row.file_name ?? "",
-        status: normalizeQuoteStatus(row.status),
-        price: normalizePriceValue(row.price),
-        currency: row.currency,
-        targetDate: row.target_date,
-        createdAt: row.created_at,
-      };
-    }) ?? [];
+  const baseRows = quotesResult.data ?? [];
+  const quoteIds = baseRows.map((row) => row.id);
+  const bidAggregates =
+    quoteIds.length > 0 ? await loadQuoteBidAggregates(quoteIds) : {};
 
-  const metaMap = await loadAdminQuoteMeta(
-    rows.map((row) => ({
-      quoteId: row.id,
-      status: row.status,
-    })),
-  );
+  const enrichedRows: QuoteRow[] = baseRows.map((row) => {
+    const files = buildQuoteFilesFromRow(row);
+    const fileCount = resolveQuoteFileCount(row, files.length);
+    const fileCountLabel = formatQuoteFileCountLabel(fileCount);
+    const rfqLabel = deriveQuotePrimaryLabel(row, { files });
+    const aggregate = bidAggregates[row.id];
+    const listStatus = deriveAdminQuoteListStatus({
+      quoteStatus: row.status,
+      aggregate,
+    });
+    const statusMeta = getAdminQuoteStatusMeta(listStatus);
 
-  const enrichedRows: QuoteRow[] = rows.map((row) => {
-    const meta = metaMap[row.id];
+    const bidCountLabel =
+      aggregate && typeof aggregate.bidCount === "number"
+        ? formatAdminBidCountLabel(aggregate)
+        : "No bids yet";
+    const bestPriceLabel =
+      formatAdminBestPriceLabel(
+        aggregate?.bestPriceAmount ?? null,
+        aggregate?.bestPriceCurrency ?? null,
+      ) ?? "Pending";
+    const leadTimeLabel =
+      formatAdminLeadTimeLabel(aggregate?.fastestLeadTimeDays ?? null) ??
+      "Pending";
+
     return {
-      ...row,
-      bidCount: meta?.bidCount ?? 0,
-      hasWinner: meta?.hasWinner ?? false,
-      hasProject: meta?.hasProject ?? false,
-      needsDecision: meta?.needsDecision ?? false,
+      id: row.id,
+      rfqLabel,
+      createdAt: row.created_at,
+      customerName: row.customer_name ?? "",
+      customerEmail: row.email ?? "",
+      company: row.company ?? "",
+      fileCountLabel,
+      status: listStatus,
+      statusLabel: statusMeta.label,
+      statusHelper: statusMeta.helper,
+      statusClassName: statusMeta.pillClass,
+      bidSummary: formatAdminBidSummary(aggregate),
+      bidCountLabel,
+      bestPriceLabel,
+      leadTimeLabel,
+      hasWinningBid: Boolean(aggregate?.hasWinningBid),
+      ctaHref: `/admin/quotes/${row.id}`,
+      bidsHref: `/admin/quotes/${row.id}#bids-panel`,
     };
   });
 
   const filteredQuotes = enrichedRows.filter((row) => {
-    const matchesStatus =
-      statusFilter === "all" ? true : row.status === statusFilter;
-
-    if (!normalizedSearch) {
-      return matchesStatus;
+    if (!viewIncludesStatus(viewFilter, row.status)) {
+      return false;
     }
 
-    const haystack = `${row.customerName ?? ""} ${row.customerEmail ?? ""} ${
-      row.company ?? ""
-    } ${row.fileName ?? ""} ${row.status ?? ""}`
+    if (!normalizedSearch) {
+      return true;
+    }
+
+    const haystack = `${row.rfqLabel} ${row.customerName ?? ""} ${
+      row.customerEmail ?? ""
+    } ${row.company ?? ""} ${row.bidSummary ?? ""} ${row.statusLabel ?? ""}`
       .toLowerCase()
       .replace(/\s+/g, " ");
 
-    return matchesStatus && haystack.includes(normalizedSearch);
+    return haystack.includes(normalizedSearch);
   });
 
     return (
@@ -180,10 +195,9 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       ) : null}
         <AdminFiltersBar
           filters={
-            <StatusFilterChips
-              currentStatus={statusFilter === "all" ? "" : statusFilter}
+            <AdminQuotesViewFilter
+              currentView={viewFilter}
               basePath="/admin/quotes"
-              options={QUOTE_STATUS_FILTER_OPTIONS}
             />
           }
           search={
@@ -196,7 +210,12 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
         />
         <div className="mt-6 overflow-x-auto">
           <div className="inline-block min-w-full align-middle">
-            <QuotesTable quotes={filteredQuotes} totalCount={rows.length} />
+            <QuotesTable
+              quotes={filteredQuotes}
+              totalCount={baseRows.length}
+              currentView={viewFilter}
+              searchTerm={normalizedSearch}
+            />
           </div>
         </div>
       </AdminDashboardShell>

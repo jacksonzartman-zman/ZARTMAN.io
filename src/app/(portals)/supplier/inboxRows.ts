@@ -15,6 +15,7 @@ import type {
   SupplierQuoteRow,
 } from "@/server/suppliers/types";
 import type { SupplierInboxRow } from "./SupplierInboxTable";
+import { resolveQuoteFileCount } from "@/server/quotes/fileSummary";
 
 type BuildSupplierInboxRowsArgs = {
   matches: SupplierQuoteMatch[];
@@ -73,9 +74,7 @@ export function buildSupplierInboxRows({
       sanitizeDisplayName(fileNames[0]) ??
       null;
     const rfqLabel =
-      primaryFileName ??
-      companyName ??
-      `Quote ${quoteId.slice(0, 8)}`;
+      primaryFileName ?? companyName ?? `Quote ${quoteId.slice(0, 8)}`;
     const createdAt = match.createdAt ?? quote.created_at ?? null;
     const targetDate = quote.target_date ?? null;
     const lastBidAt = aggregate?.lastBidAt ?? null;
@@ -103,7 +102,7 @@ export function buildSupplierInboxRows({
       processHint: match.processHint,
       materials: match.materialMatches,
       quantityHint: match.quantityHint ?? null,
-      fileCount: resolveFileCount(quote, fileNames.length),
+      fileCount: resolveQuoteFileCount(quote, fileNames.length),
       priceLabel: formatCurrencyValue(quote.price, quote.currency),
       createdAt,
       status: normalizeQuoteStatus(quote.status),
@@ -185,23 +184,6 @@ function sanitizeDisplayName(value?: string | null): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function resolveFileCount(
-  quote: SupplierQuoteRow,
-  derivedCount: number,
-): number {
-  const declaredCount =
-    typeof quote.file_count === "number" && Number.isFinite(quote.file_count)
-      ? quote.file_count
-      : typeof quote.upload_file_count === "number" &&
-          Number.isFinite(quote.upload_file_count)
-        ? quote.upload_file_count
-        : null;
-  if (declaredCount && declaredCount > 0) {
-    return declaredCount;
-  }
-  return derivedCount;
 }
 
 function formatCurrencyValue(

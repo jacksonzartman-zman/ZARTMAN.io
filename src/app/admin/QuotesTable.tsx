@@ -1,60 +1,46 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
-import {
-  QUOTE_STATUS_LABELS,
-  isOpenQuoteStatus,
-  type QuoteStatus,
-} from "@/server/quotes/status";
+import type { AdminQuoteListStatus, AdminQuotesView } from "@/types/adminQuotes";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 export type QuoteRow = {
   id: string;
-  customerName: string;
-  customerEmail: string;
-  company: string;
-  fileName: string;
-  status: QuoteStatus;
-  price: number | null;
-  currency: string | null;
-  targetDate: string | null;
+  rfqLabel: string;
   createdAt: string | null;
-  bidCount: number;
-  hasWinner: boolean;
-  hasProject: boolean;
-  needsDecision: boolean;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  company?: string | null;
+  fileCountLabel: string;
+  status: AdminQuoteListStatus;
+  statusLabel: string;
+  statusHelper: string;
+  statusClassName: string;
+  bidSummary: string;
+  bidCountLabel: string;
+  bestPriceLabel: string;
+  leadTimeLabel: string;
+  hasWinningBid: boolean;
+  ctaHref: string;
+  bidsHref: string;
 };
 
 type QuotesTableProps = {
   quotes: QuoteRow[];
   totalCount: number;
+  currentView: AdminQuotesView;
+  searchTerm?: string;
 };
 
-const QUOTE_STATUS_VARIANTS: Record<QuoteStatus, string> = {
-  submitted: "pill-info",
-  in_review: "pill-info",
-  quoted: "pill-info",
-  approved: "pill-success",
-  won: "pill-success",
-  lost: "pill-warning",
-  cancelled: "pill-muted",
-};
-
-function formatMoney(amount: number | null, currency: string | null) {
-  if (amount == null) return "—";
-  const value = Number(amount);
-  if (Number.isNaN(value)) return "—";
-  const cur = currency || "USD";
-  return `${cur} ${value.toFixed(2)}`;
-}
-
-export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
+export default function QuotesTable({
+  quotes,
+  totalCount,
+  currentView,
+  searchTerm,
+}: QuotesTableProps) {
   const showEmptyState = quotes.length === 0;
-  const emptyMessage =
-    totalCount === 0
-      ? "No quotes yet. Once customers upload files and request pricing, they’ll appear here."
-      : "No quotes match your filters. Try clearing search or choosing a different status.";
+  const emptyState = getEmptyStateCopy({ totalCount, currentView, searchTerm });
 
   return (
     <AdminTableShell
@@ -62,31 +48,22 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            RFQ
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Customer
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Company
-          </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            File
+            Files
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Status
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            State
-          </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Price
-          </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Target date
-          </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Created
+            Bids
           </th>
           <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Open
+            Actions
           </th>
         </tr>
       }
@@ -94,54 +71,18 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
         showEmptyState ? (
           <tr>
             <td
-              colSpan={9}
+              colSpan={6}
               className="px-6 py-12 text-center text-base text-slate-300"
             >
-              <p className="font-medium text-slate-100">
-                {totalCount === 0
-                  ? "No quotes yet."
-                  : "No quotes match your filters."}
-              </p>
-              <p className="mt-2 text-sm text-slate-400">
-                {emptyMessage}
-              </p>
+              <p className="font-medium text-slate-100">{emptyState.title}</p>
+              <p className="mt-2 text-sm text-slate-400">{emptyState.description}</p>
             </td>
           </tr>
         ) : (
           quotes.map((row) => {
-            const createdAtDate =
-              typeof row.createdAt === "string" ? new Date(row.createdAt) : null;
-            const isStale =
-              createdAtDate &&
-              !Number.isNaN(createdAtDate.getTime()) &&
-              isOpenQuoteStatus(row.status) &&
-              (Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60) > 48;
-            const bidSummary =
-              row.bidCount === 0
-                ? "No bids yet"
-                : `${row.bidCount} bid${row.bidCount === 1 ? "" : "s"}`;
-            const baseStatusLabel = QUOTE_STATUS_LABELS[row.status];
-            const statusLabel = isStale
-              ? `${baseStatusLabel} · Aging`
-              : baseStatusLabel;
-            let stateLabel: string;
-            let stateClassName: string;
-
-            if (row.needsDecision) {
-              stateLabel = "Needs decision";
-              stateClassName = "pill-warning";
-            } else if (row.hasWinner) {
-              stateLabel = row.hasProject
-                ? "Won · Kickoff scheduled"
-                : "Won · No kickoff yet";
-              stateClassName = "pill-success";
-            } else if (row.bidCount === 0) {
-              stateLabel = "Awaiting bids";
-              stateClassName = "pill-muted";
-            } else {
-              stateLabel = "Bidding";
-              stateClassName = "pill-info";
-            }
+            const createdAtLabel = formatDateTime(row.createdAt, {
+              includeTime: true,
+            });
 
             return (
               <tr
@@ -149,81 +90,80 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
                 className="border-b border-slate-800/60 bg-slate-950/40 transition hover:bg-slate-900/40"
               >
                 <td className={adminTableCellClass}>
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-1">
                     <Link
                       href={`/admin/quotes/${row.id}`}
-                      className="text-sm font-medium text-emerald-100 hover:text-emerald-300"
-                      title={row.customerName || undefined}
+                      className="text-sm font-semibold text-emerald-100 hover:text-emerald-300"
                     >
-                      <span className="max-w-[180px] truncate">
-                        {row.customerName}
-                      </span>
+                      <span className="max-w-[240px] truncate">{row.rfqLabel}</span>
                     </Link>
-                    {row.customerEmail && (
-                      <a
-                        href={`mailto:${row.customerEmail}`}
-                        className="text-xs text-slate-400 hover:text-emerald-200"
-                        title={row.customerEmail}
-                      >
-                        <span className="max-w-[220px] truncate">
-                          {row.customerEmail}
-                        </span>
-                      </a>
-                    )}
+                    <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Created {createdAtLabel ?? "—"}
+                    </p>
                   </div>
                 </td>
                 <td className={adminTableCellClass}>
-                  <span
-                    className="max-w-[180px] truncate text-slate-100"
-                    title={row.company || undefined}
-                  >
-                    {row.company || "—"}
-                  </span>
-                </td>
-                <td
-                  className={clsx(
-                    adminTableCellClass,
-                    "max-w-[220px] truncate align-middle text-xs text-slate-300",
-                  )}
-                  title={row.fileName || undefined}
-                >
-                  {row.fileName || "—"}
+                  <div className="space-y-1 text-xs">
+                    <p className="font-medium text-slate-100">
+                      {row.company || "—"}
+                    </p>
+                    {row.customerEmail ? (
+                      <a
+                        href={`mailto:${row.customerEmail}`}
+                        className="text-emerald-200 hover:underline"
+                      >
+                        {row.customerEmail}
+                      </a>
+                    ) : (
+                      <p className="text-slate-500">Email unavailable</p>
+                    )}
+                    {row.customerName ? (
+                      <p className="text-slate-500">{row.customerName}</p>
+                    ) : null}
+                  </div>
                 </td>
                 <td className={adminTableCellClass}>
-                  <span
-                    className={clsx(
-                      "pill pill-table",
-                      QUOTE_STATUS_VARIANTS[row.status],
-                    )}
-                  >
-                    {statusLabel}
+                  <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                    {row.fileCountLabel}
                   </span>
                 </td>
                 <td className={adminTableCellClass}>
-                  <span className={clsx("pill pill-table", stateClassName)}>
-                    {stateLabel}
-                  </span>
+                  <div className="space-y-1">
+                    <span
+                      className={clsx("pill pill-table", row.statusClassName)}
+                    >
+                      {row.statusLabel}
+                    </span>
+                    <p className="text-xs text-slate-400">{row.statusHelper}</p>
+                  </div>
                 </td>
-                <td className={`${adminTableCellClass} text-xs text-slate-200`}>
-                  {formatMoney(row.price, row.currency)}
+                <td className={clsx(adminTableCellClass, "text-xs text-slate-200")}>
+                  <p className="font-semibold text-slate-100">{row.bidCountLabel}</p>
+                  <p className="text-slate-400">{row.bidSummary}</p>
+                  <div className="mt-2 flex flex-col gap-1 text-slate-400">
+                    <span>Best: {row.bestPriceLabel}</span>
+                    <span>Lead: {row.leadTimeLabel}</span>
+                  </div>
                 </td>
-                <td className={`${adminTableCellClass} text-xs text-slate-400`}>
-                  {formatDateTime(row.targetDate)}
-                </td>
-                <td className={`${adminTableCellClass} text-xs text-slate-400`}>
-                  {formatDateTime(row.createdAt, { includeTime: true })}
-                </td>
-                <td className={`${adminTableCellClass} text-right`}>
-                  <Link
-                    href={`/admin/quotes/${row.id}`}
-                    className={clsx(
-                      secondaryCtaClasses,
-                      ctaSizeClasses.sm,
-                      "inline-flex min-w-[9.5rem] justify-center",
-                    )}
-                  >
-                    Open quote
-                  </Link>
+                <td className={clsx(adminTableCellClass, "text-right")}>
+                  <div className="flex flex-col items-end gap-2">
+                    <Link
+                      href={row.ctaHref}
+                      className={clsx(
+                        secondaryCtaClasses,
+                        ctaSizeClasses.sm,
+                        "inline-flex min-w-[11rem] justify-center",
+                      )}
+                    >
+                      Open RFQ workspace
+                    </Link>
+                    <Link
+                      href={row.bidsHref}
+                      className="text-xs font-semibold text-emerald-200 hover:text-emerald-100"
+                    >
+                      View bids
+                    </Link>
+                  </div>
                 </td>
               </tr>
             );
@@ -232,4 +172,48 @@ export default function QuotesTable({ quotes, totalCount }: QuotesTableProps) {
       }
     />
   );
+}
+
+function getEmptyStateCopy({
+  totalCount,
+  currentView,
+  searchTerm,
+}: {
+  totalCount: number;
+  currentView: AdminQuotesView;
+  searchTerm?: string;
+}) {
+  if (totalCount === 0) {
+    return {
+      title: "No quotes yet.",
+      description: "New RFQs will appear here as customers submit them.",
+    };
+  }
+
+  if (searchTerm) {
+    return {
+      title: "No quotes match your search.",
+      description: "Try another keyword or clear the search box.",
+    };
+  }
+
+  if (currentView === "needs_attention") {
+    return {
+      title: "No RFQs need attention right now.",
+      description:
+        "Fresh uploads or in-flight bids will bubble back up here automatically.",
+    };
+  }
+
+  if (currentView === "awarded") {
+    return {
+      title: "No awarded RFQs yet.",
+      description: "Select a winning supplier to see those projects in this tab.",
+    };
+  }
+
+  return {
+    title: "No quotes match your filters.",
+    description: "Try switching views or clearing filters to see more RFQs.",
+  };
 }
