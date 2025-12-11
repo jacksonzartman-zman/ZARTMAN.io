@@ -25,9 +25,9 @@ import {
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import {
   deriveAdminQuoteAttentionState,
-  isWinningBidStatus,
   loadAdminQuoteDetail,
 } from "@/server/admin/quotes";
+import { isWinningBidStatus } from "@/lib/bids/status";
 import { loadBidsForQuote } from "@/server/bids";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import { listSupplierBidsForQuote } from "@/server/suppliers/bids";

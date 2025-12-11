@@ -1,5 +1,10 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { SupplierBidRow } from "@/server/suppliers/types";
+import {
+  isWinningBidStatus,
+  isLosingBidStatus,
+  normalizeBidStatus,
+} from "@/lib/bids/status";
 
 export type SupplierDecisionRfqStatus =
   | "needs_quote"
@@ -25,7 +30,7 @@ type SupplierDecisionMetadata = SupplierDecisionRfq["metadata"];
 
 export type SupplierDecision = {
   id: string;
-  type: "rfq_invite" | "bid_follow_up" | "win";
+  type: "rfq_invite" | "bid_follow_up" | "win" | "loss";
   title: string;
   description: string;
   relatedQuoteId: string;
@@ -118,6 +123,28 @@ export async function getSupplierDecisionQueue(
 
   const bidsByQuote = groupBidsByQuote(bids);
   const decisions: SupplierDecision[] = [];
+  const decidedQuotes = new Map<string, SupplierDecision["type"]>();
+
+  bids.forEach((bid) => {
+    const quoteId = bid.quote_id ?? null;
+    if (!quoteId || decidedQuotes.has(quoteId)) {
+      return;
+    }
+    const quote = quoteMap.get(quoteId);
+    if (!quote) {
+      return;
+    }
+    const normalizedStatus = normalizeBidStatus(bid.status);
+    if (isWinningBidStatus(normalizedStatus)) {
+      decisions.push(buildWinningBidDecision(quote, bid));
+      decidedQuotes.set(quoteId, "win");
+      return;
+    }
+    if (isLosingBidStatus(normalizedStatus)) {
+      decisions.push(buildLosingBidDecision(quote, bid));
+      decidedQuotes.set(quoteId, "loss");
+    }
+  });
 
   // Quotes that have an assignment but no bid yet.
   assignmentQuoteIds.forEach((quoteId) => {
@@ -125,7 +152,7 @@ export async function getSupplierDecisionQueue(
     if (!quote) {
       return;
     }
-    if (bidsByQuote.has(quote.id)) {
+    if (bidsByQuote.has(quote.id) || decidedQuotes.has(quote.id)) {
       return;
     }
     decisions.push(buildBidNeededDecision(quote));
@@ -134,7 +161,7 @@ export async function getSupplierDecisionQueue(
   // Quotes with pending bids that are getting stale.
   bids.forEach((bid) => {
     const quote = bid.quote_id ? quoteMap.get(bid.quote_id) : null;
-    if (!quote) {
+    if (!quote || decidedQuotes.has(quote.id)) {
       return;
     }
     if (bid.status !== "pending") {
@@ -358,6 +385,54 @@ function buildBidFollowUpDecision(
     urgencyLevel: deriveUrgencyLevel(quote.target_date, quote.created_at, true),
     href: `/supplier/quotes/${quote.id}`,
     ctaLabel: "Update bid",
+    metadata,
+  };
+}
+
+function buildWinningBidDecision(
+  quote: QuoteSummaryRow,
+  bid: SupplierBidRow,
+): SupplierDecision {
+  const quoteLabel = getQuoteLabel(quote);
+  const targetDate = formatTargetDate(quote.target_date);
+  const description = targetDate
+    ? `${buildCustomerLabel(quote)} awarded this RFQ to you. Target ship ${targetDate}.`
+    : `${buildCustomerLabel(quote)} awarded this RFQ to you.`;
+  const metadata = normalizeSupplierDecisionMetadata({
+    bidStatus: normalizeBidStatus(bid.status),
+  });
+
+  return {
+    id: `bid_win:${bid.id}`,
+    type: "win",
+    title: `You won ${quoteLabel}`,
+    description,
+    relatedQuoteId: quote.id,
+    urgencyLevel: "medium",
+    href: `/supplier/quotes/${quote.id}`,
+    ctaLabel: "Open workspace",
+    metadata,
+  };
+}
+
+function buildLosingBidDecision(
+  quote: QuoteSummaryRow,
+  bid: SupplierBidRow,
+): SupplierDecision {
+  const quoteLabel = getQuoteLabel(quote);
+  const metadata = normalizeSupplierDecisionMetadata({
+    bidStatus: normalizeBidStatus(bid.status),
+  });
+
+  return {
+    id: `bid_loss:${bid.id}`,
+    type: "loss",
+    title: `Not selected: ${quoteLabel}`,
+    description: `${buildCustomerLabel(quote)} moved forward with another supplier. Save your pricing for the next invite.`,
+    relatedQuoteId: quote.id,
+    urgencyLevel: "low",
+    href: `/supplier/quotes/${quote.id}`,
+    ctaLabel: "Review quote",
     metadata,
   };
 }

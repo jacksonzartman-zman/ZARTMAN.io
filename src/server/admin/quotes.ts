@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { isWinningBidStatus } from "@/lib/bids/status";
 import { loadQuoteNotificationContext } from "@/server/quotes/notificationContext";
 import {
   normalizeQuoteStatus,
@@ -446,14 +447,6 @@ function logMetaQueryError(message: string, error: unknown) {
 
 function normalizeQuoteId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-export function isWinningBidStatus(status: unknown): boolean {
-  if (typeof status !== "string") {
-    return false;
-  }
-  const normalized = status.trim().toLowerCase();
-  return normalized === "won" || normalized === "accepted" || normalized === "winner";
 }
 
 export async function updateAdminQuote(

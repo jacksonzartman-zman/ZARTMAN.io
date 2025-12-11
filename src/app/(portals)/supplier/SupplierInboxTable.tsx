@@ -4,15 +4,24 @@ import { formatDateTime } from "@/lib/formatDate";
 import AdminTableShell, {
   adminTableCellClass,
 } from "@/app/admin/AdminTableShell";
-import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import { QuoteStatusBadge } from "../components/QuoteStatusBadge";
-import { formatRelativeTimeFromTimestamp } from "@/lib/relativeTime";
+import {
+  formatRelativeTimeFromTimestamp,
+  toTimestamp,
+} from "@/lib/relativeTime";
 import type { QuoteStatus } from "@/server/quotes/status";
 import type { MatchHealth } from "@/lib/supplier/matchHealth";
+import {
+  getSupplierBidSummaryLabel,
+  type SupplierBidSummaryState,
+} from "@/lib/bids/status";
 
 export type SupplierInboxRow = {
   id: string;
   quoteId: string;
+  rfqLabel: string;
+  primaryFileName: string | null;
   companyName: string;
   processHint: string | null;
   materials: string[];
@@ -31,6 +40,7 @@ export type SupplierInboxRow = {
   lastActivityTimestamp: number | null;
   matchHealth: MatchHealth | null;
   matchHealthHint?: string | null;
+  supplierBidState: SupplierBidSummaryState;
 };
 
 type SupplierInboxTableProps = {
@@ -60,19 +70,16 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
             RFQ
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Process
-          </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Files &amp; value
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Bids
+            Your bid
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Status
+            RFQ status
           </th>
           <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Workspace
+            Action
           </th>
         </tr>
       }
@@ -88,7 +95,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
             : "Materials: —";
         const quantityLabel = row.quantityHint
           ? `Qty: ${row.quantityHint}`
-          : "Qty: —";
+          : "Qty pending";
         const fairnessLabel = row.fairnessReason
           ? `Fairness boost: ${row.fairnessReason}`
           : null;
@@ -97,25 +104,31 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
         const targetDateLabel = row.targetDate
           ? formatDateTime(row.targetDate, { includeTime: false })
           : null;
-        const bidSummary =
-          row.bidCount === 0
-            ? "No bids"
-            : `${row.bidCount} bid${row.bidCount === 1 ? "" : "s"}${
-                row.hasWinningBid ? " • winner selected" : ""
-              }`;
-        const formattedLastBid = row.lastBidAt
-          ? formatDateTime(row.lastBidAt, { includeTime: true })
-          : null;
-        const lastBidLabel =
-          row.bidCount > 0 && formattedLastBid
-            ? `Last bid: ${formattedLastBid}`
-            : "Last bid: —";
         const lastActivityLabel =
           typeof row.lastActivityTimestamp === "number"
             ? formatRelativeTimeFromTimestamp(row.lastActivityTimestamp)
             : row.lastActivityAt
               ? formatDateTime(row.lastActivityAt, { includeTime: true })
               : null;
+        const lastBidRelative =
+          row.lastBidAt && toTimestamp(row.lastBidAt)
+            ? formatRelativeTimeFromTimestamp(toTimestamp(row.lastBidAt))
+            : null;
+        const lastBidLabel =
+          row.lastBidAt && lastBidRelative
+            ? `Updated ${lastBidRelative}`
+            : row.lastBidAt
+              ? `Updated ${formatDateTime(row.lastBidAt, {
+                  includeTime: true,
+                })}`
+              : "No bids on file yet";
+        const bidStatusLabel = getSupplierBidSummaryLabel(row.supplierBidState);
+        const bidStatusHint = resolveBidStatusHint({
+          row,
+          lastBidLabel,
+          targetDateLabel,
+        });
+        const ctaLabel = getSupplierBidCtaLabel(row.supplierBidState);
 
         return (
           <tr
@@ -124,7 +137,11 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
           >
             <td className={`${adminTableCellClass} text-slate-100`}>
               <p className="text-sm font-semibold text-white">
-                {row.companyName}
+                {row.rfqLabel}
+              </p>
+              <p className="text-xs text-slate-400">
+                {row.companyName} • {quantityLabel} •{" "}
+                {row.processHint ?? "Process TBD"}
               </p>
               <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
                 <span className="text-slate-400">Submitted {createdLabel}</span>
@@ -132,7 +149,9 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
                   <span>Updated {lastActivityLabel}</span>
                 ) : null}
               </div>
-              {(row.dueSoon && targetDateLabel) || row.matchHealth ? (
+              {(row.dueSoon && targetDateLabel) ||
+              row.matchHealth ||
+              fairnessLabel ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {row.dueSoon && targetDateLabel ? (
                     <span className="inline-flex w-fit items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-100">
@@ -145,30 +164,36 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
                       hint={row.matchHealthHint}
                     />
                   ) : null}
+                  {fairnessLabel ? (
+                    <span className="inline-flex w-fit items-center rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-100">
+                      {fairnessLabel}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
-            </td>
-            <td className={`${adminTableCellClass} text-slate-200`}>
-              <p>{row.processHint ?? "Process TBD"}</p>
-              <p className="text-xs text-slate-500">{quantityLabel}</p>
             </td>
             <td className={`${adminTableCellClass} text-slate-200`}>
               <p className="text-sm font-medium text-slate-100">
                 {row.priceLabel}
               </p>
               <p className="text-xs text-slate-400">{filesLabel}</p>
-              <p className="text-xs text-slate-500">{materialsLabel}</p>
-              {fairnessLabel ? (
-                <p className="text-[11px] text-blue-200/80">{fairnessLabel}</p>
+              {row.primaryFileName ? (
+                <p className="text-xs text-slate-500">
+                  Primary: {row.primaryFileName}
+                </p>
               ) : null}
+              <p className="text-xs text-slate-500">{materialsLabel}</p>
             </td>
             <td className={adminTableCellClass}>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-slate-100">
-                  {bidSummary}
-                </span>
-                <span className="text-xs text-slate-400">{lastBidLabel}</span>
-              </div>
+              <span
+                className={clsx(
+                  "inline-flex w-fit items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                  BID_STATUS_META[row.supplierBidState].pillClass,
+                )}
+              >
+                {bidStatusLabel}
+              </span>
+              <p className="mt-2 text-xs text-slate-400">{bidStatusHint}</p>
             </td>
             <td className={adminTableCellClass}>
               <QuoteStatusBadge status={row.status} size="sm" />
@@ -177,12 +202,12 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               <Link
                 href={href}
                 className={clsx(
-                  secondaryCtaClasses,
+                  primaryCtaClasses,
                   ctaSizeClasses.sm,
                   "inline-flex min-w-[8.5rem] justify-center",
                 )}
               >
-                View quote
+                {ctaLabel}
               </Link>
             </td>
           </tr>
@@ -208,4 +233,49 @@ function MatchHealthPill({
       {meta.label}
     </span>
   );
+}
+
+const BID_STATUS_META: Record<
+  SupplierBidSummaryState,
+  { pillClass: string }
+> = {
+  no_bid: { pillClass: "pill-info" },
+  submitted: { pillClass: "pill-muted" },
+  won: { pillClass: "pill-success" },
+  lost: { pillClass: "pill-warning" },
+};
+
+function getSupplierBidCtaLabel(state: SupplierBidSummaryState): string {
+  switch (state) {
+    case "no_bid":
+      return "Review & quote";
+    case "won":
+      return "Open workspace";
+    default:
+      return "View quote";
+  }
+}
+
+function resolveBidStatusHint({
+  row,
+  lastBidLabel,
+  targetDateLabel,
+}: {
+  row: SupplierInboxRow;
+  lastBidLabel: string;
+  targetDateLabel: string | null;
+}): string {
+  switch (row.supplierBidState) {
+    case "no_bid":
+      return "Invite assigned—share pricing to stay in the rotation.";
+    case "submitted":
+      return lastBidLabel;
+    case "won":
+      return targetDateLabel
+        ? `Awarded · Target ship ${targetDateLabel}`
+        : "Awarded to your shop";
+    case "lost":
+    default:
+      return "Customer selected another supplier.";
+  }
 }

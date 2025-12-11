@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { isWinningBidStatus } from "@/lib/bids/status";
 import type { UploadStatus } from "@/app/admin/constants";
 import {
   isMissingTableOrColumnError,
@@ -375,13 +376,6 @@ function logBidAggregateError(error: unknown) {
   console.error("[admin inbox] failed to load bid aggregates", {
     error: serialized ?? error ?? null,
   });
-}
-
-function isWinningBidStatus(status: unknown): boolean {
-  if (typeof status !== "string") {
-    return false;
-  }
-  return status.trim().toLowerCase() === "won";
 }
 
 function escapeForOrFilter(value: string) {

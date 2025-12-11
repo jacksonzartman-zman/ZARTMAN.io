@@ -6,8 +6,14 @@ import {
   type SupplierMatchInsight,
 } from "@/lib/supplier/matchHealth";
 import type { SupplierQuoteMatch } from "@/server/suppliers";
-import type { SupplierInboxBidAggregate } from "@/server/suppliers/inbox";
-import type { SupplierCapabilityRow } from "@/server/suppliers/types";
+import {
+  summarizeSupplierBidState,
+  type SupplierInboxBidAggregate,
+} from "@/server/suppliers/inbox";
+import type {
+  SupplierCapabilityRow,
+  SupplierQuoteRow,
+} from "@/server/suppliers/types";
 import type { SupplierInboxRow } from "./SupplierInboxTable";
 
 type BuildSupplierInboxRowsArgs = {
@@ -62,6 +68,14 @@ export function buildSupplierInboxRows({
       sanitizeDisplayName(quote.company) ??
       sanitizeDisplayName(quote.customer_name) ??
       "Customer";
+    const primaryFileName =
+      sanitizeDisplayName(quote.file_name) ??
+      sanitizeDisplayName(fileNames[0]) ??
+      null;
+    const rfqLabel =
+      primaryFileName ??
+      companyName ??
+      `Quote ${quoteId.slice(0, 8)}`;
     const createdAt = match.createdAt ?? quote.created_at ?? null;
     const targetDate = quote.target_date ?? null;
     const lastBidAt = aggregate?.lastBidAt ?? null;
@@ -84,10 +98,12 @@ export function buildSupplierInboxRows({
       id: quoteId,
       quoteId,
       companyName,
+      rfqLabel,
+      primaryFileName,
       processHint: match.processHint,
       materials: match.materialMatches,
       quantityHint: match.quantityHint ?? null,
-      fileCount: fileNames.length,
+      fileCount: resolveFileCount(quote, fileNames.length),
       priceLabel: formatCurrencyValue(quote.price, quote.currency),
       createdAt,
       status: normalizeQuoteStatus(quote.status),
@@ -101,6 +117,7 @@ export function buildSupplierInboxRows({
       lastActivityTimestamp: lastActivity.timestamp,
       matchHealth: matchInsight?.health ?? null,
       matchHealthHint: formatMatchHealthHint(matchInsight, match),
+      supplierBidState: summarizeSupplierBidState(aggregate),
     });
 
     return acc;
@@ -168,6 +185,23 @@ function sanitizeDisplayName(value?: string | null): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveFileCount(
+  quote: SupplierQuoteRow,
+  derivedCount: number,
+): number {
+  const declaredCount =
+    typeof quote.file_count === "number" && Number.isFinite(quote.file_count)
+      ? quote.file_count
+      : typeof quote.upload_file_count === "number" &&
+          Number.isFinite(quote.upload_file_count)
+        ? quote.upload_file_count
+        : null;
+  if (declaredCount && declaredCount > 0) {
+    return declaredCount;
+  }
+  return derivedCount;
 }
 
 function formatCurrencyValue(
