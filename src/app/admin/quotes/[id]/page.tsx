@@ -23,6 +23,7 @@ import {
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
+import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
 import { QuoteFilesCard } from "./QuoteFilesCard";
 import {
   QuoteWorkspaceTabs,
@@ -40,7 +41,6 @@ import { listSupplierBidsForQuote } from "@/server/suppliers/bids";
 import { SupplierBidsCard, type AdminSupplierBidRow } from "./SupplierBidsCard";
 import { loadQuoteProject } from "@/server/quotes/projects";
 import { AdminQuoteProjectCard } from "./AdminQuoteProjectCard";
-import { AdminQuoteTrackingCard } from "./AdminQuoteTrackingCard";
 import {
   loadQuoteKickoffTasksForSupplier,
   summarizeKickoffTasks,
@@ -643,9 +643,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     );
 
     const trackingContent = (
-      <AdminQuoteTrackingCard
-        events={timelineEvents}
+      <QuoteActivityTimeline
         className={cardClasses}
+        events={timelineEvents}
+        headingLabel="Tracking"
+        title="Review > award > track"
+        description="Surface RFQ creation, bid submissions, award decisions, and kickoff moments without leaving the admin workspace."
+        emptyState="Timeline data will populate as soon as we record bids, status changes, or project kickoff activity for this quote."
       />
     );
 

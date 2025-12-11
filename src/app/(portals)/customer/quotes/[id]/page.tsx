@@ -10,6 +10,7 @@ import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
+import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
 import {
   formatQuoteId,
   getSearchParamValue,
@@ -34,7 +35,6 @@ import {
   normalizeQuoteStatus,
 } from "@/server/quotes/status";
 import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
-import { CustomerQuoteTrackingCard } from "./CustomerQuoteTrackingCard";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
 import { CustomerQuotePartPanel } from "./CustomerQuotePartPanel";
 import { loadQuoteProject } from "@/server/quotes/projects";
@@ -704,7 +704,14 @@ export default async function CustomerQuoteDetailPage({
           </>
         ) : null}
       </div>
-      <CustomerQuoteTrackingCard className={cardClasses} events={timelineEvents} />
+      <QuoteActivityTimeline
+        className={cardClasses}
+        events={timelineEvents}
+        headingLabel="TIMELINE"
+        title="Production milestones"
+        description="Follow RFQ progress, supplier bids, and status changes for this quote."
+        emptyState="We’ll show your RFQ and bid activity here as things progress."
+      />
     </PortalShell>
   );
 }
