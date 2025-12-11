@@ -4,10 +4,14 @@ import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { canUserBid } from "@/lib/permissions";
 import { getServerAuthUser, requireUser } from "@/server/auth";
 import { loadBidForSupplierAndQuote } from "@/server/bids";
-import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
+import {
+  serializeSupabaseError,
+  isMissingTableOrColumnError,
+} from "@/server/admin/logging";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import { notifyAdminOnBidSubmitted } from "@/server/quotes/notifications";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
+import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import {
   loadSupplierProfile,
   loadSupplierProfileByUserId,
@@ -35,16 +39,6 @@ export type SupplierBidFormState = {
     price?: string;
     leadTimeDays?: string;
     notes?: string;
-    [key: string]: string | undefined;
-  };
-};
-
-export type SupplierMessageFormState = {
-  ok: boolean;
-  message?: string | null;
-  error?: string | null;
-  fieldErrors?: {
-    body?: string;
     [key: string]: string | undefined;
   };
 };
@@ -228,7 +222,7 @@ export function normalizeSortOrder(value?: number | null): number | null {
 export async function postSupplierMessageImpl(
   quoteId: string,
   formData: FormData,
-): Promise<SupplierMessageFormState> {
+): Promise<QuoteMessageFormState> {
   const trimmedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
   const bodyValue = formData.get("body");
   const body =
@@ -337,22 +331,26 @@ export async function postSupplierMessageImpl(
 
     const result = await createQuoteMessage({
       quoteId: trimmedQuoteId,
+      senderId: user.id,
+      senderRole: "supplier",
       body,
-      authorType: "supplier",
-      authorName,
-      authorEmail,
+      senderName: authorName,
+      senderEmail: authorEmail,
     });
 
-    if (!result.ok || !result.data) {
+    if (!result.ok || !result.message) {
       console.error("[supplier messages] create failed", {
         quoteId: trimmedQuoteId,
         supplierId,
-        error: result.error,
+        error: result.error ?? result.reason,
       });
 
       return {
         ok: false,
-        error: result.error ?? SUPPLIER_MESSAGE_GENERIC_ERROR,
+        error:
+          typeof result.error === "string"
+            ? result.error
+            : SUPPLIER_MESSAGE_GENERIC_ERROR,
         fieldErrors: {},
       };
     }
@@ -360,7 +358,7 @@ export async function postSupplierMessageImpl(
     console.log("[supplier messages] create success", {
       quoteId: trimmedQuoteId,
       supplierId,
-      messageId: result.data.id,
+      messageId: result.message.id,
     });
 
     revalidatePath(`/supplier/quotes/${trimmedQuoteId}`);

@@ -5,7 +5,7 @@ import {
   normalizeQuoteStatus,
 } from "@/server/quotes/status";
 import type { QuoteActivityEvent } from "@/types/activity";
-import type { QuoteMessageRow } from "@/server/quotes/messages";
+import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import type { SupplierBidRow } from "@/server/suppliers/types";
 
 const EVENT_LIMIT = 10;
@@ -135,22 +135,22 @@ async function fetchQuotesByIds(
 
 async function fetchExternalMessages(
   quoteIds: string[],
-): Promise<QuoteMessageRow[]> {
+): Promise<QuoteMessageRecord[]> {
   if (quoteIds.length === 0) {
     return [];
   }
   const { data, error } = await supabaseServer
     .from("quote_messages")
-    .select("id,quote_id,author_type,author_name,body,created_at")
+    .select("id,quote_id,sender_role,sender_name,sender_email,body,created_at")
     .in("quote_id", quoteIds)
-    .in("author_type", ["admin", "customer"])
+    .in("sender_role", ["admin", "customer"])
     .order("created_at", { ascending: false })
     .limit(EVENT_LIMIT * 3);
   if (error) {
     console.error("[supplier activity] message query failed", { error });
     return [];
   }
-  return (data ?? []) as QuoteMessageRow[];
+  return (data ?? []) as QuoteMessageRecord[];
 }
 
 function buildSupplierBidEvent(
@@ -173,18 +173,26 @@ function buildSupplierBidEvent(
 }
 
 function buildSupplierMessageEvent(
-  message: QuoteMessageRow,
+  message: QuoteMessageRecord,
   quote: SupplierQuoteRow,
 ): QuoteActivityEvent {
+  const senderRole =
+    typeof message.sender_role === "string"
+      ? message.sender_role.toLowerCase()
+      : "admin";
   const actor =
-    message.author_type === "customer" ? "Customer" : "Zartman admin";
+    senderRole === "customer" ? "Customer" : "Zartman admin";
+  const displayName =
+    message.sender_name?.trim() ||
+    message.sender_email?.trim() ||
+    actor;
   return {
     id: `supplier-message:${message.id}`,
     quoteId: quote.id,
     type: "message_posted",
     title: `${actor} replied on ${getQuoteTitle(quote)}`,
     description: truncate(message.body, 160),
-    actor: message.author_name ?? actor,
+    actor: displayName,
     timestamp: safeTimestamp(message.created_at),
     href: `/supplier/quotes/${quote.id}`,
   };

@@ -10,7 +10,7 @@ import {
   loadQuoteNotificationContext,
   type QuoteNotificationContext,
 } from "@/server/quotes/notificationContext";
-import type { QuoteMessageRow } from "@/server/quotes/messages";
+import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import type {
   QuoteContactInfo,
   QuoteWinningContext,
@@ -112,24 +112,24 @@ const SITE_URL =
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 export async function notifyOnNewQuoteMessage(
-  message: QuoteMessageRow,
+  message: QuoteMessageRecord,
 ): Promise<void> {
   const context = await loadQuoteNotificationContext(message.quote_id);
   if (!context) {
     console.warn("[quote notifications] message skipped", {
       quoteId: message.quote_id,
-      authorType: message.author_type,
+      authorType: message.sender_role,
       reason: "missing-quote-context",
     });
     return;
   }
 
   const { quote, customer } = context;
-  const recipient = resolveMessageRecipient(message.author_type, quote);
+  const recipient = resolveMessageRecipient(message.sender_role, quote);
   if (!recipient) {
     console.log("[quote notifications] message skipped", {
       quoteId: quote.id,
-      authorType: message.author_type,
+      authorType: message.sender_role,
       reason: "recipient-unavailable",
     });
     return;
@@ -169,7 +169,7 @@ export async function notifyOnNewQuoteMessage(
           ? "supplier"
           : "admin",
     payload: {
-      authorType: message.author_type,
+      authorType: message.sender_role,
       recipientType: recipient.type,
       messageId: message.id,
     },
@@ -398,7 +398,7 @@ async function notifyLosingSuppliers(
 }
 
 function resolveMessageRecipient(
-  authorType: QuoteMessageRow["author_type"],
+  authorType: QuoteMessageRecord["sender_role"],
   quote: QuoteContactInfo,
 ): MessageRecipient | null {
   if (authorType === "customer") {
@@ -424,18 +424,18 @@ function resolveMessageRecipient(
 }
 
 function buildMessageHtml(
-  message: QuoteMessageRow,
+  message: QuoteMessageRecord,
   quote: QuoteContactInfo,
   recipientLabel: string,
 ) {
   const href = buildPortalLink(
-    message.author_type === "customer"
+    message.sender_role === "customer"
       ? `/admin/quotes/${quote.id}`
       : `/customer/quotes/${quote.id}`,
   );
   return `
     <p>${recipientLabel},</p>
-    <p><strong>${message.author_name ?? "A teammate"}</strong> posted a new message on <strong>${getQuoteTitle(
+    <p><strong>${message.sender_name ?? "A teammate"}</strong> posted a new message on <strong>${getQuoteTitle(
       quote,
     )}</strong>.</p>
     <blockquote style="border-left:4px solid #94a3b8;padding:0.5rem 1rem;color:#0f172a;">${

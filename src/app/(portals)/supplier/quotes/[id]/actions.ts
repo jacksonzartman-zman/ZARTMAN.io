@@ -5,16 +5,16 @@ import {
   postSupplierMessageImpl,
   completeKickoffTaskImpl,
   type SupplierBidFormState,
-  type SupplierMessageFormState,
   type SupplierKickoffFormState,
   type ToggleSupplierKickoffTaskInput,
 } from "@/server/quotes/supplierQuoteServer";
+import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
 export type {
   SupplierBidFormState,
-  SupplierMessageFormState,
   SupplierKickoffFormState,
 };
+export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
 export async function submitSupplierBid(
   _prevState: SupplierBidFormState,
@@ -23,11 +23,11 @@ export async function submitSupplierBid(
   return submitSupplierBidImpl(formData);
 }
 
-export async function postSupplierMessage(
+export async function postQuoteMessage(
   quoteId: string,
-  _prevState: SupplierMessageFormState,
+  _prevState: QuoteMessageFormState,
   formData: FormData,
-): Promise<SupplierMessageFormState> {
+): Promise<QuoteMessageFormState> {
   return postSupplierMessageImpl(quoteId, formData);
 }
 

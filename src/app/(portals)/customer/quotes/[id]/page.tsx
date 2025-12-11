@@ -9,7 +9,7 @@ import {
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
-import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
+import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
 import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
 import {
   formatQuoteId,
@@ -42,13 +42,14 @@ import {
   type QuoteProjectRecord,
 } from "@/server/quotes/projects";
 import { loadSupplierById } from "@/server/suppliers/profile";
-import { loadQuoteThreadForQuote } from "@/server/messages/quoteThreads";
+import { loadQuoteMessages } from "@/server/quotes/messages";
 import {
   loadQuoteKickoffTasksForSupplier,
   summarizeKickoffTasks,
   formatKickoffSummaryLabel,
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
+import { postQuoteMessage as postCustomerQuoteMessage } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -222,9 +223,15 @@ export default async function CustomerQuoteDetailPage({
       : kickoffSummary?.status === "in-progress"
         ? "text-blue-200"
         : "text-slate-200";
-  const threadResult = await loadQuoteThreadForQuote(quote.id);
-  const threadUnavailable = !threadResult.ok;
-  const thread = threadResult.data ?? { quoteId: quote.id, messages: [] };
+  const messagesResult = await loadQuoteMessages(quote.id);
+  if (!messagesResult.ok) {
+    console.error("[customer quote] messages load failed", {
+      quoteId: quote.id,
+      error: messagesResult.error ?? messagesResult.reason,
+    });
+  }
+  const quoteMessages = messagesResult.messages;
+  const messagesUnavailable = !messagesResult.ok;
   const showCustomerSupplierSection = bidCount > 0;
   const showCustomerAwardButtons =
     quoteAllowsCustomerAward &&
@@ -678,6 +685,8 @@ export default async function CustomerQuoteDetailPage({
       />
     ) : null;
 
+  const postMessageAction = postCustomerQuoteMessage.bind(null, quote.id);
+
   return (
     <PortalShell
       workspace="customer"
@@ -698,26 +707,27 @@ export default async function CustomerQuoteDetailPage({
         className="scroll-mt-20"
       />
       {projectSection}
-      <QuoteMessagesPanel
-        thread={thread}
-        viewerRole="customer"
-        heading="Messages"
+      {messagesUnavailable ? (
+        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
+          Messages are temporarily unavailable. Refresh the page to try again.
+        </p>
+      ) : null}
+      <QuoteMessagesThread
+        quoteId={quote.id}
+        messages={quoteMessages}
+        canPost={!readOnly}
+        postAction={postMessageAction}
+        currentUserId={user.id}
+        title="Messages"
         description="Shared with the Zartman team coordinating this RFQ."
-        helperText={
+        helperText="Your updates go directly to the Zartman admin team."
+        disabledCopy={
           readOnly
             ? "Messages are read-only while you are impersonating another customer."
-            : "Your updates go directly to the Zartman admin team."
+            : undefined
         }
-        messagesUnavailable={threadUnavailable}
-        composer={{
-          quoteId: quote.id,
-          mode: "customer",
-          readOnly,
-          placeholder:
-            "Share files, timing updates, or questions for the Zartman team...",
-          sendLabel: "Send message",
-          pendingLabel: "Sending...",
-        }}
+        emptyStateCopy="No messages yet. Use this space to coordinate build updates and questions."
+        className="scroll-mt-20"
       />
       <div className="space-y-2">
         <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />

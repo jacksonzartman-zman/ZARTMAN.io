@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { createQuoteMessage } from "@/server/quotes/messages";
+import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
   acceptSupplierBidForQuote,
@@ -21,14 +22,7 @@ import { performAwardBidForQuote } from "@/server/quotes/award";
 import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 
-export type CustomerMessageFormState = {
-  ok: boolean;
-  error?: string;
-  message?: string;
-  fieldErrors?: {
-    body?: string;
-  };
-};
+export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
 export type CustomerProjectFormState = {
   ok: boolean;
@@ -97,13 +91,12 @@ type CustomerMessageQuoteRow = {
   status: string | null;
 };
 
-export async function submitCustomerQuoteMessageAction(
+export async function postQuoteMessage(
   quoteId: string,
-  _prevState: CustomerMessageFormState,
+  _prevState: QuoteMessageFormState,
   formData: FormData,
-): Promise<CustomerMessageFormState> {
-  const normalizedQuoteId =
-    typeof quoteId === "string" ? quoteId.trim() : "";
+): Promise<QuoteMessageFormState> {
+  const normalizedQuoteId = normalizeId(quoteId);
   const redirectPath = normalizedQuoteId
     ? `/customer/quotes/${normalizedQuoteId}`
     : "/customer/quotes";
@@ -193,28 +186,31 @@ export async function submitCustomerQuoteMessageAction(
       };
     }
 
-    console.log("[customer messages] create start", {
-      quoteId: normalizedQuoteId,
-      customerId: customer.id,
-    });
+    const senderName =
+      customer.company_name ??
+      customer.email ??
+      user.email ??
+      "Customer";
+    const senderEmail =
+      customer.email ??
+      user.email ??
+      normalizedQuoteEmail ??
+      "customer@zartman.io";
 
     const result = await createQuoteMessage({
       quoteId: normalizedQuoteId,
+      senderId: user.id,
+      senderRole: "customer",
       body: trimmedBody,
-      authorType: "customer",
-      authorName: customer.company_name ?? customer.email ?? "Customer",
-      authorEmail:
-        customer.email ??
-        user.email ??
-        normalizedQuoteEmail ??
-        "customer@zartman.io",
+      senderName,
+      senderEmail,
     });
 
-    if (!result.ok || !result.data) {
-      console.error("[customer messages] create failed", {
+    if (!result.ok || !result.message) {
+      console.error("[customer messages] insert failed", {
         quoteId: normalizedQuoteId,
         customerId: customer.id,
-        error: result.error,
+        error: result.error ?? result.reason,
       });
       return {
         ok: false,
@@ -223,13 +219,15 @@ export async function submitCustomerQuoteMessageAction(
     }
 
     revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
-    void notifyOnNewQuoteMessage(result.data);
+    void notifyOnNewQuoteMessage(result.message);
 
-    console.log("[customer messages] create success", {
+    console.log("[customer messages] insert success", {
       quoteId: normalizedQuoteId,
       customerId: customer.id,
-      messageId: result.data.id,
+      messageId: result.message.id,
     });
 
     return {
@@ -237,7 +235,7 @@ export async function submitCustomerQuoteMessageAction(
       message: "Message sent.",
     };
   } catch (error) {
-    console.error("[customer messages] create crashed", {
+    console.error("[customer messages] insert crashed", {
       quoteId: normalizedQuoteId,
       error: serializeActionError(error),
     });

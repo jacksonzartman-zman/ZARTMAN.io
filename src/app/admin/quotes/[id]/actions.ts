@@ -21,8 +21,9 @@ import {
 } from "@/server/admin/quotes/logging";
 import {
   createQuoteMessage,
-  type QuoteMessageRow,
+  type QuoteMessageRecord,
 } from "@/server/quotes/messages";
+import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import {
   ensureQuoteProjectForWinner,
   upsertQuoteProject,
@@ -39,15 +40,6 @@ const ADMIN_AWARD_GENERIC_ERROR =
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
-
-export type AdminMessageFormState = {
-  ok: boolean;
-  error?: string;
-  message?: string;
-  fieldErrors?: {
-    body?: string;
-  };
-};
 
 export type AdminProjectFormState = {
   ok: boolean;
@@ -188,11 +180,13 @@ const ADMIN_PROJECT_NOTES_LENGTH_ERROR =
   "Internal notes must be 2000 characters or fewer.";
 const ADMIN_PROJECT_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-export async function submitAdminQuoteMessageAction(
+export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
+
+export async function postQuoteMessage(
   quoteId: string,
-  _prevState: AdminMessageFormState,
+  _prevState: QuoteMessageFormState,
   formData: FormData,
-): Promise<AdminMessageFormState> {
+): Promise<QuoteMessageFormState> {
   const normalizedQuoteId =
     typeof quoteId === "string" ? quoteId.trim() : "";
   const redirectPath = normalizedQuoteId
@@ -235,24 +229,20 @@ export async function submitAdminQuoteMessageAction(
   try {
     const user = await requireUser({ redirectTo: redirectPath });
 
-    console.log("[admin messages] create start", {
-      quoteId: normalizedQuoteId,
-      userId: user.id,
-    });
-
     const result = await createQuoteMessage({
       quoteId: normalizedQuoteId,
+      senderId: user.id,
+      senderRole: "admin",
       body: trimmedBody,
-      authorType: "admin",
-      authorName: "Zartman.io",
-      authorEmail: user.email ?? "admin@zartman.io",
+      senderName: "Zartman.io",
+      senderEmail: user.email ?? "admin@zartman.io",
     });
 
-    if (!result.ok || !result.data) {
+    if (!result.ok || !result.message) {
       console.error("[admin messages] create failed", {
         quoteId: normalizedQuoteId,
         userId: user.id,
-        error: result.error,
+        error: result.error ?? result.reason,
       });
       return {
         ok: false,
@@ -263,17 +253,17 @@ export async function submitAdminQuoteMessageAction(
     revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
     revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
 
-    if (result.data) {
+    if (result.message) {
       void dispatchAdminMessageNotification(
         normalizedQuoteId,
-        result.data,
+        result.message,
       );
     }
 
     console.log("[admin messages] create success", {
       quoteId: normalizedQuoteId,
       userId: user.id,
-      messageId: result.data.id,
+      messageId: result.message.id,
     });
 
     return {
@@ -393,7 +383,7 @@ export async function submitAdminQuoteProjectAction(
 
 async function dispatchAdminMessageNotification(
   quoteId: string,
-  message: QuoteMessageRow,
+  message: QuoteMessageRecord,
 ) {
   try {
     await notifyOnNewQuoteMessage(message);

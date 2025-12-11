@@ -10,7 +10,10 @@ import type {
   QuoteWithUploadsRow,
   UploadMeta,
 } from "@/server/quotes/types";
-import { loadQuoteMessages, type QuoteMessage } from "@/server/quotes/messages";
+import {
+  loadQuoteMessages,
+  type QuoteMessageRecord,
+} from "@/server/quotes/messages";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
@@ -29,7 +32,7 @@ export type QuoteWorkspaceData = {
   quote: QuoteWorkspaceQuote;
   uploadMeta: UploadMeta | null;
   filePreviews: Awaited<ReturnType<typeof getQuoteFilePreviews>>;
-  messages: QuoteMessage[];
+  messages: QuoteMessageRecord[];
   messagesError?: string | null;
   filesUnavailable?: boolean;
 };
@@ -196,10 +199,12 @@ export async function loadQuoteWorkspaceData(
     };
 
     const messagesResult = await loadQuoteMessages(enrichedQuote.id);
-    const messages = messagesResult.ok && Array.isArray(messagesResult.data)
-      ? messagesResult.data
-      : [];
-    const messagesError = messagesResult.ok ? null : messagesResult.error ?? "message-load-error";
+    const messages: QuoteMessageRecord[] = messagesResult.messages;
+    const messagesError = messagesResult.ok
+      ? null
+      : typeof messagesResult.error === "string"
+        ? messagesResult.error
+        : "message-load-error";
 
     const filesIssue = filesUnavailable || filesErrorLogged;
 
@@ -213,7 +218,9 @@ export async function loadQuoteWorkspaceData(
         messagesError,
         filesUnavailable: filesIssue,
       },
-      error: filesIssue ? "files-unavailable" : messagesError ?? null,
+        error: filesIssue
+          ? "files-unavailable"
+          : messagesError ?? null,
     };
   } catch (error) {
     console.error("Portal workspace loader: unexpected error", {
