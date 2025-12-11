@@ -90,15 +90,34 @@ export default async function SupplierDecisionsPage() {
     limit: 12,
   });
 
+  const winDecisions = decisions.filter((decision) => decision.type === "win");
+  const lossDecisions = decisions.filter(
+    (decision) => decision.type === "loss",
+  );
+  const attentionDecisions = decisions.filter(
+    (decision) =>
+      decision.type === "rfq_invite" || decision.type === "bid_follow_up",
+  );
   const hasDecisions = decisions.length > 0;
+  const decisionCallout = deriveDecisionCallout({
+    total: decisions.length,
+    wins: winDecisions.length,
+    losses: lossDecisions.length,
+    pending: attentionDecisions.length,
+  });
   const companyName =
     sanitizeDisplayName(profile.supplier.company_name) ??
     sanitizeDisplayName(user.user_metadata?.company as string | null) ??
     sanitizeDisplayName(user.user_metadata?.full_name as string | null) ??
     "your shop";
-  const statusMessage = hasDecisions
-    ? "Action needed on matched RFQs"
-    : "You’re caught up";
+  const statusMessage =
+    attentionDecisions.length > 0
+      ? "Action needed on matched RFQs"
+      : winDecisions.length > 0
+        ? "Kickoff awarded work"
+        : lossDecisions.length > 0
+          ? "Review feedback and keep quoting"
+          : "You’re caught up";
   const lastSyncedLabel =
     formatRelativeTimeFromTimestamp(Date.now()) ?? "Just now";
 
@@ -115,11 +134,36 @@ export default async function SupplierDecisionsPage() {
         description="Every RFQ that needs pricing or a quick follow-up."
       >
         {hasDecisions ? (
-          <DecisionList decisions={decisions} />
+          <div className="space-y-6">
+            {decisionCallout ? (
+              <DecisionCallout title={decisionCallout.title} description={decisionCallout.description} />
+            ) : null}
+            {winDecisions.length > 0 ? (
+              <DecisionSection
+                title="Awarded to you"
+                subtitle="Kickoff next steps and keep projects moving."
+                decisions={winDecisions}
+              />
+            ) : null}
+            {lossDecisions.length > 0 ? (
+              <DecisionSection
+                title="Not selected this round"
+                subtitle="Review feedback and stay ready for the next invite."
+                decisions={lossDecisions}
+              />
+            ) : null}
+            {attentionDecisions.length > 0 ? (
+              <DecisionSection
+                title="Needs attention"
+                subtitle="Share pricing or refresh stale bids."
+                decisions={attentionDecisions}
+              />
+            ) : null}
+          </div>
         ) : (
           <EmptyStateNotice
-            title="No decisions pending"
-            description="We’ll surface new RFQ invites and bid follow-ups the moment they exist."
+            title="No bids yet"
+            description="We’ll surface invites, awards, and feedback as soon as buyers route RFQs to you."
           />
         )}
       </PortalCard>
@@ -162,10 +206,13 @@ function DecisionList({ decisions }: { decisions: SupplierDecision[] }) {
           typeof decision.metadata?.assignment === "string"
             ? decision.metadata.assignment
             : null;
-        const bidStatusLabel =
+        const bidStatusLabel = formatDecisionBidStatus(
           typeof decision.metadata?.bidStatus === "string"
             ? decision.metadata.bidStatus
-            : null;
+            : null,
+        );
+        const badgeMeta =
+          DECISION_BADGE_META[decision.type] ?? DECISION_BADGE_META.rfq_invite;
 
         return (
           <li
@@ -189,8 +236,10 @@ function DecisionList({ decisions }: { decisions: SupplierDecision[] }) {
               <Link href={decision.href} className={primaryCtaClasses}>
                 {decision.ctaLabel}
               </Link>
-              <span className="inline-flex items-center rounded-full border border-slate-800 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-                {decision.type === "bid_follow_up" ? "Follow-up" : "RFQ invite"}
+              <span
+                className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${badgeMeta.className}`}
+              >
+                {badgeMeta.label}
               </span>
             </div>
           </li>
@@ -198,6 +247,105 @@ function DecisionList({ decisions }: { decisions: SupplierDecision[] }) {
       })}
     </ul>
   );
+}
+
+function DecisionSection({
+  title,
+  subtitle,
+  decisions,
+}: {
+  title: string;
+  subtitle?: string;
+  decisions: SupplierDecision[];
+}) {
+  if (decisions.length === 0) {
+    return null;
+  }
+  return (
+    <section className="space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-white">{title}</p>
+        {subtitle ? (
+          <p className="text-xs text-slate-400">{subtitle}</p>
+        ) : null}
+      </div>
+      <DecisionList decisions={decisions} />
+    </section>
+  );
+}
+
+function DecisionCallout({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-900/70 bg-slate-950/40 p-4">
+      <p className="text-sm font-semibold text-white">{title}</p>
+      <p className="mt-1 text-xs text-slate-400">{description}</p>
+    </div>
+  );
+}
+
+const DECISION_BADGE_META: Record<
+  SupplierDecision["type"],
+  { label: string; className: string }
+> = {
+  rfq_invite: {
+    label: "Invite",
+    className: "border-slate-800 text-slate-300",
+  },
+  bid_follow_up: {
+    label: "Follow-up",
+    className: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+  },
+  win: {
+    label: "Awarded",
+    className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+  },
+  loss: {
+    label: "Not selected",
+    className: "border-amber-500/40 bg-amber-500/10 text-amber-100",
+  },
+};
+
+function deriveDecisionCallout(args: {
+  total: number;
+  wins: number;
+  losses: number;
+  pending: number;
+}): { title: string; description: string } | null {
+  if (args.total === 0) {
+    return null;
+  }
+  if (args.pending > 0 && args.wins === 0 && args.losses === 0) {
+    return {
+      title: "Bids submitted—waiting on buyer decisions",
+      description:
+        "We’ll notify you the moment a customer awards work or needs more info.",
+    };
+  }
+  if (args.wins === 0 && args.losses > 0) {
+    return {
+      title: "Bids decided but none won yet",
+      description:
+        "Study pricing trends and keep quoting—momentum returns when you stay responsive.",
+    };
+  }
+  return null;
+}
+
+function formatDecisionBidStatus(status: string | null): string | null {
+  if (!status) {
+    return null;
+  }
+  const trimmed = status.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 function UrgencyBadge({

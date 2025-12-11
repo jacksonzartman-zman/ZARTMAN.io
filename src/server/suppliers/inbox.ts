@@ -1,11 +1,19 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { serializeSupabaseError } from "@/server/admin/logging";
+import {
+  deriveSupplierBidSummaryState,
+  isWinningBidStatus,
+  normalizeBidStatus,
+  type SupplierBidStatusNormalized,
+  type SupplierBidSummaryState,
+} from "@/lib/bids/status";
 
 export type SupplierInboxBidAggregate = {
   quoteId: string;
   bidCount: number;
   lastBidAt: string | null;
   hasWinningBid: boolean;
+  latestStatus: SupplierBidStatusNormalized | null;
 };
 
 type SupplierBidAggregateRow = {
@@ -67,12 +75,19 @@ export async function loadSupplierInboxBidAggregates(
         bidCount: 0,
         lastBidAt: null,
         hasWinningBid: false,
+        latestStatus: null,
       };
 
       const candidateTimestamp = resolveLatestTimestamp(
         row?.updated_at,
         row?.created_at,
       );
+      const normalizedStatus = normalizeBidStatus(row?.status ?? null);
+      const shouldCaptureStatus =
+        !existing.lastBidAt ||
+        (candidateTimestamp !== null &&
+          (!existing.lastBidAt ||
+            candidateTimestamp > existing.lastBidAt));
 
       aggregates[quoteId] = {
         quoteId,
@@ -83,7 +98,11 @@ export async function loadSupplierInboxBidAggregates(
             ? candidateTimestamp ?? existing.lastBidAt
             : existing.lastBidAt,
         hasWinningBid:
-          existing.hasWinningBid || isWinningStatus(row?.status ?? null),
+          existing.hasWinningBid || isWinningBidStatus(row?.status ?? null),
+        latestStatus:
+          shouldCaptureStatus && normalizedStatus
+            ? normalizedStatus
+            : existing.latestStatus,
       };
     }
 
@@ -136,10 +155,14 @@ function normalizeTimestamp(value?: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function isWinningStatus(value: string | null): boolean {
-  if (!value) {
-    return false;
+export function summarizeSupplierBidState(
+  aggregate: SupplierInboxBidAggregate | undefined,
+): SupplierBidSummaryState {
+  if (!aggregate) {
+    return "no_bid";
   }
-  const normalized = value.trim().toLowerCase();
-  return normalized === "won" || normalized === "winner" || normalized === "approved";
+  return deriveSupplierBidSummaryState({
+    bidCount: aggregate.bidCount,
+    latestStatus: aggregate.latestStatus,
+  });
 }
