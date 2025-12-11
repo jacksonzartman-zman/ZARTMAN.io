@@ -9,9 +9,7 @@ import type { QuoteThread, QuoteMessageRole } from "@/server/messages/quoteThrea
 import {
   submitCustomerQuoteMessageAction,
 } from "@/app/(portals)/customer/quotes/[id]/actions";
-import {
-  submitSupplierQuoteMessageAction,
-} from "@/app/(portals)/supplier/quotes/[id]/actions";
+import { postSupplierMessage } from "@/app/(portals)/supplier/quotes/[id]/actions";
 import {
   submitAdminQuoteMessageAction,
 } from "@/app/admin/quotes/[id]/actions";
@@ -66,7 +64,7 @@ const DEFAULT_FORM_STATE: QuoteMessageFormState = {
 
 const ACTION_BY_MODE: Record<QuoteMessageComposerMode, ComposerAction> = {
   customer: submitCustomerQuoteMessageAction as ComposerAction,
-  supplier: submitSupplierQuoteMessageAction as ComposerAction,
+  supplier: postSupplierMessage as ComposerAction,
   admin: submitAdminQuoteMessageAction as ComposerAction,
 };
 

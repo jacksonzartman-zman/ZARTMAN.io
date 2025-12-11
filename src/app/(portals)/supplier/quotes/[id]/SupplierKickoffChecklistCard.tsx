@@ -9,8 +9,8 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTask,
 } from "@/lib/quote/kickoffChecklist";
-import { toggleSupplierKickoffTaskAction } from "./actions";
-import type { SupplierKickoffTaskActionState } from "@/server/quotes/supplierQuoteServer";
+import { completeKickoffTask } from "./actions";
+import type { SupplierKickoffFormState } from "@/server/quotes/supplierQuoteServer";
 
 type SupplierKickoffChecklistCardProps = {
   quoteId: string;
@@ -29,8 +29,7 @@ export function SupplierKickoffChecklistCard({
   );
   const [localTasks, setLocalTasks] = useState(mergedTasks);
   const [pendingTaskKey, setPendingTaskKey] = useState<string | null>(null);
-  const [result, setResult] =
-    useState<SupplierKickoffTaskActionState | null>(null);
+  const [result, setResult] = useState<SupplierKickoffFormState | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -55,7 +54,7 @@ export function SupplierKickoffChecklistCard({
     );
 
     startTransition(() => {
-      toggleSupplierKickoffTaskAction({
+      completeKickoffTask({
         quoteId,
         supplierId,
         taskKey: task.taskKey,

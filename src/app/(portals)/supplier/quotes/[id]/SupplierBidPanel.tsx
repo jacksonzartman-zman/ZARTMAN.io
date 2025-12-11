@@ -10,13 +10,13 @@ import {
 import clsx from "clsx";
 import { useFormState, useFormStatus } from "react-dom";
 import type { BidRow } from "@/server/bids";
-import { submitSupplierBidAction } from "./actions";
-import type { SupplierBidActionState } from "@/server/quotes/supplierQuoteServer";
+import { submitSupplierBid } from "./actions";
+import type { SupplierBidFormState } from "@/server/quotes/supplierQuoteServer";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 
-const INITIAL_SUPPLIER_BID_STATE: SupplierBidActionState = {
+const INITIAL_SUPPLIER_BID_STATE: SupplierBidFormState = {
   ok: true,
   message: "",
 };
@@ -42,9 +42,9 @@ export function SupplierBidPanel({
   const formRef = useRef<HTMLFormElement>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [rawState, formAction] = useFormState<
-    SupplierBidActionState,
+    SupplierBidFormState,
     FormData
-  >(submitSupplierBidAction, INITIAL_SUPPLIER_BID_STATE);
+  >(submitSupplierBid, INITIAL_SUPPLIER_BID_STATE);
   const state = useMemo(
     () => normalizeSupplierBidState(rawState),
     [rawState],
@@ -107,7 +107,7 @@ export function SupplierBidPanel({
             prefix="$"
             autoComplete="off"
           error={
-            hasSubmitted && !state.ok ? state.fieldErrors.amount : undefined
+            hasSubmitted && !state.ok ? state.fieldErrors.price : undefined
           }
           />
           <Field
@@ -293,7 +293,7 @@ type NormalizedSupplierBidState =
   | { ok: false; error: string; fieldErrors: Record<string, string> };
 
 function normalizeSupplierBidState(
-  value: SupplierBidActionState | null | undefined,
+  value: SupplierBidFormState | null | undefined,
 ): NormalizedSupplierBidState {
   if (!value) {
     return {
