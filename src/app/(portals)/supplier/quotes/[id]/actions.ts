@@ -10,23 +10,29 @@ import {
   type ToggleSupplierKickoffTaskInput,
 } from "@/server/quotes/supplierQuoteServer";
 
-export const submitSupplierBid = async (
-  _prevState: SupplierBidFormState,
-  formData: FormData,
-): Promise<SupplierBidFormState> => {
-  return submitSupplierBidImpl(formData);
+export type {
+  SupplierBidFormState,
+  SupplierMessageFormState,
+  SupplierKickoffFormState,
 };
 
-export const postSupplierMessage = async (
+export async function submitSupplierBid(
+  _prevState: SupplierBidFormState,
+  formData: FormData,
+): Promise<SupplierBidFormState> {
+  return submitSupplierBidImpl(formData);
+}
+
+export async function postSupplierMessage(
   quoteId: string,
   _prevState: SupplierMessageFormState,
   formData: FormData,
-): Promise<SupplierMessageFormState> => {
+): Promise<SupplierMessageFormState> {
   return postSupplierMessageImpl(quoteId, formData);
-};
+}
 
-export const completeKickoffTask = async (
+export async function completeKickoffTask(
   input: ToggleSupplierKickoffTaskInput,
-): Promise<SupplierKickoffFormState> => {
+): Promise<SupplierKickoffFormState> {
   return completeKickoffTaskImpl(input);
-};
+}
