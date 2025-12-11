@@ -3,10 +3,8 @@
 import clsx from "clsx";
 import { useMemo } from "react";
 import { useFormState, useFormStatus } from "react-dom";
-import {
-  awardBidFormAction,
-  AWARD_BID_FORM_INITIAL_STATE,
-} from "./actions";
+import { awardBidFormAction } from "./actions";
+import { AWARD_BID_FORM_INITIAL_STATE } from "./awardFormState";
 
 type BidAwardFormProps = {
   quoteId: string;
