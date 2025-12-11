@@ -306,6 +306,33 @@ export default async function CustomerQuoteDetailPage({
     fastestLeadTime != null
       ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
       : "Pending";
+  const bestPriceLabel =
+    bestPriceValue != null
+      ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
+      : "Pending";
+  const bidSummaryBadgeLabel = bidsUnavailable
+    ? "Bids unavailable"
+    : bidCount === 0
+      ? "No bids yet"
+      : `${bidCount} bid${bidCount === 1 ? "" : "s"}`;
+  const bidSummaryHelper = bidsUnavailable
+    ? "Supplier bidding isn't enabled in this environment."
+    : bidCount === 0
+      ? "Waiting on suppliers to quote."
+      : quoteHasWinner
+        ? "Supplier selected—kickoff tasks are unlocked."
+        : "Review pricing and pick a supplier to move forward.";
+  const winningBidPriceLabel =
+    typeof winningBid?.amount === "number"
+      ? formatCurrency(winningBid.amount, winningBid.currency ?? undefined)
+      : bestPriceLabel;
+  const winningBidLeadTimeLabel =
+    typeof winningBid?.lead_time_days === "number" &&
+    Number.isFinite(winningBid.lead_time_days)
+      ? `${winningBid.lead_time_days} day${
+          winningBid.lead_time_days === 1 ? "" : "s"
+        }`
+      : leadTimeLabel;
   const headerTitle = `${customerName ?? "RFQ"} · ${formatQuoteId(quote.id)}`;
   const headerActions = (
     <Link
@@ -387,6 +414,60 @@ export default async function CustomerQuoteDetailPage({
     </div>
   );
 
+  const winningBidCallout = quoteHasWinner ? (
+    <div className="rounded-xl border border-emerald-500/60 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="pill pill-success">Supplier selected</span>
+        <span className="text-xs uppercase tracking-wide text-emerald-200">
+          Winning bid locked in
+        </span>
+      </div>
+      <p className="mt-2 text-base font-semibold text-white">
+        {winningBidPriceLabel}
+      </p>
+      <p className="text-xs text-emerald-100">
+        Lead time {winningBidLeadTimeLabel}
+      </p>
+    </div>
+  ) : null;
+
+  const bidSummaryPanel = (
+    <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            Bid summary
+          </p>
+          <p className="text-sm text-slate-300">{bidSummaryHelper}</p>
+        </div>
+        <span className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-slate-200">
+          {bidSummaryBadgeLabel}
+        </span>
+      </div>
+      <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Bids received
+          </dt>
+          <dd className="text-slate-100">{bidSummaryBadgeLabel}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Best price
+          </dt>
+          <dd className="text-slate-100">{bestPriceLabel}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Fastest lead time
+          </dt>
+          <dd className="text-slate-100">{leadTimeLabel}</dd>
+        </div>
+      </dl>
+      {winningBidCallout}
+    </div>
+  );
+
   const summaryCard = (
     <section className={clsx(cardClasses, "space-y-5")}>
       <header className="space-y-1">
@@ -410,6 +491,7 @@ export default async function CustomerQuoteDetailPage({
         currentLabel={quoteStatusLabel}
         nextState={nextWorkflowState}
       />
+      {bidSummaryPanel}
       <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
         <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
           <dt className="text-[11px] uppercase tracking-wide text-slate-500">
