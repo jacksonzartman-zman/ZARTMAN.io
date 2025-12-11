@@ -12,14 +12,9 @@ import {
   isSupplierApproved,
 } from "@/server/suppliers";
 import type { SupplierBidRow } from "@/server/suppliers";
-import {
-  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
-  type SafeQuoteWithUploadsField,
-} from "@/server/suppliers/types";
 import { loadBidForSupplierAndQuote } from "@/server/bids";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { canUserBid } from "@/lib/permissions";
-import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import { getServerAuthUser, requireUser } from "@/server/auth";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import {
@@ -28,24 +23,36 @@ import {
   matchesSupplierProcess,
   supplierHasAccess,
 } from "./supplierAccess";
-
-export type SupplierMessageFormState = {
-  ok: boolean;
-  message?: string | null;
-  error?: string | null;
-  fieldErrors?: {
-    body?: string;
-  };
-};
-
-const SUPPLIER_MESSAGE_PROFILE_ERROR =
-  "We couldn’t find your supplier profile.";
-const SUPPLIER_MESSAGE_GENERIC_ERROR =
-  "We couldn’t send your message. Please try again.";
-const SUPPLIER_MESSAGE_ACCESS_ERROR =
-  "Chat is only available after your bid is selected for this RFQ.";
-const SUPPLIER_MESSAGE_LOCKED_ERROR =
-  "Chat unlocks after your bid is accepted for this RFQ.";
+import {
+  BID_AMOUNT_INVALID_ERROR,
+  BID_ENV_DISABLED_ERROR,
+  BID_SUBMIT_ERROR,
+  KICKOFF_TASKS_GENERIC_ERROR,
+  KICKOFF_TASKS_SCHEMA_ERROR,
+  SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE,
+  SUPPLIER_KICKOFF_TASKS_TABLE,
+  SUPPLIER_MESSAGE_ACCESS_ERROR,
+  SUPPLIER_MESSAGE_GENERIC_ERROR,
+  SUPPLIER_MESSAGE_LOCKED_ERROR,
+  SUPPLIER_MESSAGE_PROFILE_ERROR,
+  isBidsEnvErrorMessage,
+  loadQuoteAccessRow,
+  loadUploadProcessHint,
+  logBidSubmitFailure,
+  normalizeIdentifier,
+  normalizeSortOrder,
+  normalizeTaskDescription,
+  normalizeTaskKey,
+  normalizeTaskTitle,
+  parseLeadTimeDays,
+  parseSupplierBidAmount,
+} from "@/server/quotes/supplierQuoteServer";
+import type {
+  SupplierBidActionState,
+  SupplierKickoffTaskActionState,
+  SupplierMessageFormState,
+  ToggleSupplierKickoffTaskInput,
+} from "@/server/quotes/supplierQuoteServer";
 
 export async function submitSupplierQuoteMessageAction(
   quoteId: string,
@@ -215,17 +222,6 @@ export async function submitSupplierQuoteMessageAction(
   }
 }
 
-export type SupplierBidActionState =
-  | { ok: true; message: string }
-  | { ok: false; error: string; fieldErrors?: Record<string, string> };
-
-const BID_SUBMIT_ERROR = "We couldn't submit your bid. Please try again.";
-const BID_ENV_DISABLED_ERROR = "Bids are not enabled in this environment yet.";
-const BID_AMOUNT_INVALID_ERROR = "Enter a valid bid amount greater than 0.";
-const SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE =
-  "Bids are not available in this environment.";
-
-type QuoteAccessRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
 
 
 export async function submitSupplierBidAction(
@@ -613,119 +609,6 @@ export async function submitSupplierBidAction(
   }
 }
 
-const QUOTE_ACCESS_SELECT = SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(",");
-
-async function loadQuoteAccessRow(quoteId: string) {
-  return supabaseServer
-    .from("quotes_with_uploads")
-    .select(QUOTE_ACCESS_SELECT)
-    .eq("id", quoteId)
-    .maybeSingle<QuoteAccessRow>();
-}
-
-async function loadUploadProcessHint(
-  uploadId: string | null,
-): Promise<string | null> {
-  if (!uploadId) {
-    return null;
-  }
-  const { data, error } = await supabaseServer
-    .from("uploads")
-    .select("manufacturing_process")
-    .eq("id", uploadId)
-    .maybeSingle<{ manufacturing_process: string | null }>();
-
-  if (error) {
-    console.error("Supplier bid action: upload lookup failed", error);
-    return null;
-  }
-
-  return data?.manufacturing_process ?? null;
-}
-
-function parseSupplierBidAmount(
-  value: FormDataEntryValue | null,
-): number | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const normalized = value.trim().replace(/[,\s]/g, "");
-  if (normalized.length === 0) {
-    return null;
-  }
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  return parsed;
-}
-
-function logBidSubmitFailure(args: {
-  quoteId: string | null;
-  supplierId: string | null;
-  reason: string;
-  phase?: string;
-  supabaseError?: unknown;
-  details?: unknown;
-}) {
-  const { quoteId, supplierId, reason, phase, supabaseError, details } = args;
-  console.error("[bids] submit failed", {
-    quoteId,
-    supplierId,
-    reason,
-    phase,
-    supabaseError,
-    details,
-  });
-}
-
-function parseLeadTimeDays(
-  value: FormDataEntryValue | null,
-): { ok: true; value: number | null } | { ok: false; error: string } {
-  if (typeof value !== "string") {
-    return { ok: true, value: null };
-  }
-
-  const normalized = value.trim().replace(/[,]/g, "");
-  if (normalized.length === 0) {
-    return { ok: true, value: null };
-  }
-
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return { ok: false, error: "Lead time must be zero or more days." };
-  }
-
-  return { ok: true, value: parsed };
-}
-
-function isBidsEnvErrorMessage(message?: string | null): boolean {
-  if (!message) {
-    return false;
-  }
-  return message.includes(SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE);
-}
-
-const SUPPLIER_KICKOFF_TASKS_TABLE = "quote_kickoff_tasks";
-const KICKOFF_TASKS_GENERIC_ERROR =
-  "We couldn’t update the kickoff checklist. Please try again.";
-const KICKOFF_TASKS_SCHEMA_ERROR =
-  "Kickoff checklist isn’t available in this environment yet.";
-
-type ToggleSupplierKickoffTaskInput = {
-  quoteId: string;
-  supplierId: string;
-  taskKey: string;
-  completed: boolean;
-  title?: string | null;
-  description?: string | null;
-  sortOrder?: number | null;
-};
-
-export type SupplierKickoffTaskActionState =
-  | { ok: true; message: string }
-  | { ok: false; error: string };
-
 export async function toggleSupplierKickoffTaskAction(
   input: ToggleSupplierKickoffTaskInput,
 ): Promise<SupplierKickoffTaskActionState> {
@@ -837,41 +720,3 @@ export async function toggleSupplierKickoffTaskAction(
   }
 }
 
-function normalizeIdentifier(value?: string | null): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeTaskKey(value?: string | null): string {
-  const key = typeof value === "string" ? value.trim().toLowerCase() : "";
-  return key.replace(/[^a-z0-9_-]/gi, "");
-}
-
-function normalizeTaskTitle(
-  value: string | null | undefined,
-  fallback: string,
-): string {
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value.trim().slice(0, 120);
-  }
-  return fallback;
-}
-
-function normalizeTaskDescription(
-  value: string | null | undefined,
-): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  return trimmed.slice(0, 500);
-}
-
-function normalizeSortOrder(value?: number | null): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  return null;
-}

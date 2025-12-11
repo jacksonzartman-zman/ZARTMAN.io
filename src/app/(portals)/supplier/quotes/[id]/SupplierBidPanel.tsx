@@ -10,10 +10,8 @@ import {
 import clsx from "clsx";
 import { useFormState, useFormStatus } from "react-dom";
 import type { BidRow } from "@/server/bids";
-import {
-  submitSupplierBidAction,
-  type SupplierBidActionState,
-} from "./actions";
+import { submitSupplierBidAction } from "./actions";
+import type { SupplierBidActionState } from "@/server/quotes/supplierQuoteServer";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";

@@ -9,10 +9,8 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTask,
 } from "@/lib/quote/kickoffChecklist";
-import {
-  toggleSupplierKickoffTaskAction,
-  type SupplierKickoffTaskActionState,
-} from "./actions";
+import { toggleSupplierKickoffTaskAction } from "./actions";
+import type { SupplierKickoffTaskActionState } from "@/server/quotes/supplierQuoteServer";
 
 type SupplierKickoffChecklistCardProps = {
   quoteId: string;
