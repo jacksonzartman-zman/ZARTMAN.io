@@ -6,6 +6,11 @@ import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesTable } from "@/server/customers/activity";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
+import {
+  deriveQuotePrimaryLabel,
+  formatQuoteFileCountLabel,
+  resolveQuoteFileCount,
+} from "@/server/quotes/fileSummary";
 import { loadQuoteBidAggregates } from "@/server/quotes/bidAggregates";
 import {
   deriveCustomerQuoteListStatus,
@@ -144,12 +149,7 @@ export default async function CustomerQuotesPage() {
               <tbody className="divide-y divide-slate-900/70">
                 {quotes.map((quote) => {
                   const files = buildQuoteFilesFromRow(quote);
-                  const primaryLabel =
-                    quote.project_label ||
-                    quote.upload_name ||
-                    files[0]?.filename ||
-                    quote.file_name ||
-                    "Untitled RFQ";
+                  const primaryLabel = deriveQuotePrimaryLabel(quote, { files });
 
                   const lastUpdated =
                     quote.updated_at ?? quote.created_at ?? null;
@@ -162,11 +162,8 @@ export default async function CustomerQuotesPage() {
                   const bidHint = formatCustomerBidHint(aggregate);
                   const bidCount = aggregate?.bidCount ?? 0;
                   const ctaLabel = bidCount > 0 ? "Review bids" : "View RFQ";
-                  const fileCount = resolveQuoteFileCount(
-                    quote,
-                    files.length,
-                  );
-                  const fileCountLabel = formatFileCountLabel(fileCount);
+                  const fileCount = resolveQuoteFileCount(quote, files.length);
+                  const fileCountLabel = formatQuoteFileCountLabel(fileCount);
 
                   return (
                     <tr key={quote.id} className="hover:bg-slate-900/50">
@@ -224,31 +221,4 @@ export default async function CustomerQuotesPage() {
       </PortalCard>
     </PortalShell>
   );
-}
-
-function resolveQuoteFileCount(
-  quote: Pick<CustomerQuoteListRow, "file_count" | "upload_file_count">,
-  derivedCount: number,
-): number {
-  const declared =
-    typeof quote.file_count === "number" && Number.isFinite(quote.file_count)
-      ? quote.file_count
-      : typeof quote.upload_file_count === "number" &&
-          Number.isFinite(quote.upload_file_count)
-        ? quote.upload_file_count
-        : null;
-  if (declared && declared > 0) {
-    return declared;
-  }
-  return derivedCount;
-}
-
-function formatFileCountLabel(count: number): string {
-  if (!count || count <= 0) {
-    return "No files";
-  }
-  if (count === 1) {
-    return "1 file";
-  }
-  return `${count} files`;
 }

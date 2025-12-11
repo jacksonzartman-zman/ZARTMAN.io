@@ -15,6 +15,7 @@ type SupplierBidsCardProps = {
   bids: AdminSupplierBidRow[];
   bidsLoaded: boolean;
   errorMessage?: string | null;
+  id?: string;
 };
 
 const TERMINAL_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
@@ -25,6 +26,7 @@ export function SupplierBidsCard({
   bids,
   bidsLoaded,
   errorMessage,
+  id,
 }: SupplierBidsCardProps) {
   const quoteIsInTerminalStatus = TERMINAL_STATUSES.includes(quoteStatus);
   const bidsAvailable = bidsLoaded && bids.length > 0;
@@ -33,7 +35,10 @@ export function SupplierBidsCard({
     bids.some((bid) => (bid.status ?? "").toLowerCase() === "won");
 
   return (
-    <section className="mt-8 rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
+    <section
+      id={id}
+      className="mt-8 rounded-2xl border border-slate-900 bg-slate-950/40 p-4"
+    >
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-100">Supplier bids</h2>
         {!bidsLoaded ? (

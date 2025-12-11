@@ -14,6 +14,12 @@ import {
   normalizeQuoteStatus,
   type QuoteStatus,
 } from "@/server/quotes/status";
+import { loadQuoteBidAggregates } from "@/server/quotes/bidAggregates";
+import {
+  formatAdminBestPriceLabel,
+  formatAdminBidCountLabel,
+  formatAdminLeadTimeLabel,
+} from "@/server/quotes/adminSummary";
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
@@ -257,6 +263,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const thread = threadResult.data ?? { quoteId: quote.id, messages: [] };
     const quoteMessagesError = threadResult.ok ? null : threadResult.error;
     const bidsResult = await loadBidsForQuote(quote.id);
+    const bidAggregateMap = await loadQuoteBidAggregates([quote.id]);
+    const bidAggregate = bidAggregateMap[quote.id];
     const baseBids = bidsResult.ok ? bidsResult.data : [];
     let bids: AdminSupplierBidRow[] = baseBids.map((bid) => ({
       ...bid,
@@ -283,7 +291,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       }
     }
 
-    const bidCount = bids.length;
+    const fallbackBestPriceBid = findBestPriceBid(bids);
+    const fallbackBestPriceAmount =
+      typeof fallbackBestPriceBid?.amount === "number" &&
+      Number.isFinite(fallbackBestPriceBid.amount)
+        ? fallbackBestPriceBid.amount
+        : null;
+    const fallbackBestPriceCurrency = fallbackBestPriceBid?.currency ?? null;
+    const fallbackFastestLeadTime = findFastestLeadTime(bids);
+    const aggregateBidCount = bidAggregate?.bidCount ?? bids.length;
     const hasWinningBid = bids.some((bid) => isWinningBidStatus(bid?.status));
     const winningBidRow =
       bids.find((bid) => isWinningBidStatus(bid?.status)) ?? null;
@@ -315,7 +331,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const attentionState = deriveAdminQuoteAttentionState({
       quoteId: quote.id,
       status,
-      bidCount,
+      bidCount: aggregateBidCount,
       hasWinner: hasWinningBid,
       hasProject,
     });
@@ -349,6 +365,150 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           ? "1 attached"
           : `${filePreviews.length} attached`;
     const fileCardAnchorId = "quote-files-card";
+    const bidCountLabel =
+      bidAggregate && aggregateBidCount >= 0
+        ? formatAdminBidCountLabel(bidAggregate)
+        : aggregateBidCount === 0
+          ? "No bids yet"
+          : `${aggregateBidCount} bid${aggregateBidCount === 1 ? "" : "s"} received`;
+    const bestPriceDisplay =
+      formatAdminBestPriceLabel(
+        bidAggregate?.bestPriceAmount ?? fallbackBestPriceAmount,
+        bidAggregate?.bestPriceCurrency ?? fallbackBestPriceCurrency,
+      ) ?? (aggregateBidCount > 0 ? "Awaiting pricing" : "Pending");
+    const fastestLeadTimeDisplay =
+      formatAdminLeadTimeLabel(
+        bidAggregate?.fastestLeadTimeDays ?? fallbackFastestLeadTime,
+      ) ?? (aggregateBidCount > 0 ? "Awaiting lead time" : "Pending");
+    const lastBidAtLabel =
+      bidAggregate?.lastBidAt
+        ? formatDateTime(bidAggregate.lastBidAt, { includeTime: true })
+        : aggregateBidCount > 0
+          ? "See bid table"
+          : "No bids yet";
+    const winningBidExists = bidAggregate?.hasWinningBid || hasWinningBid;
+    const fallbackWinningAmount =
+      typeof winningBidRow?.amount === "number" ? winningBidRow.amount : null;
+    const fallbackWinningCurrency = winningBidRow?.currency ?? null;
+    const winningBidAmountLabel =
+      formatAdminBestPriceLabel(
+        bidAggregate?.winningBidAmount ?? fallbackWinningAmount,
+        bidAggregate?.winningBidCurrency ?? fallbackWinningCurrency,
+      ) ?? bestPriceDisplay;
+    const fallbackWinningLeadTime =
+      typeof winningBidRow?.lead_time_days === "number"
+        ? winningBidRow.lead_time_days
+        : null;
+    const winningLeadTimeLabel =
+      formatAdminLeadTimeLabel(
+        bidAggregate?.winningBidLeadTimeDays ?? fallbackWinningLeadTime,
+      ) ?? fastestLeadTimeDisplay;
+    const winningSupplierName =
+      winningBidRow?.supplier?.company_name ??
+      winningBidRow?.supplier?.primary_email ??
+      winningBidRow?.supplier_id ??
+      null;
+    const winningSupplierEmail =
+      winningBidRow?.supplier?.primary_email ?? null;
+
+    const winningBidCallout = winningBidExists ? (
+      <div className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-100">
+        <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-emerald-200">
+          <span className="pill pill-success px-3 py-0.5 text-[11px] font-semibold">
+            Winning supplier
+          </span>
+          <span>Award locked in</span>
+        </div>
+        <p className="mt-2 text-base font-semibold text-white">
+          {winningSupplierName ?? "Supplier selected"}
+        </p>
+        {winningSupplierEmail ? (
+          <a
+            href={`mailto:${winningSupplierEmail}`}
+            className="text-xs text-emerald-200 hover:underline"
+          >
+            {winningSupplierEmail}
+          </a>
+        ) : null}
+        <p className="mt-1 text-xs text-emerald-100">
+          {winningBidAmountLabel} • {winningLeadTimeLabel}
+        </p>
+      </div>
+    ) : null;
+
+    const bidSummaryPanel = (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Bid summary
+            </p>
+            <p className="text-xs text-slate-400">
+              {aggregateBidCount > 0
+                ? "Latest supplier bidding snapshot."
+                : "We’ll surface supplier bids here as they arrive."}
+            </p>
+          </div>
+          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs font-semibold text-slate-100">
+            {bidCountLabel}
+          </span>
+        </div>
+        <dl className="mt-4 grid gap-4 text-slate-100 sm:grid-cols-3">
+          <div>
+            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+              Best price
+            </dt>
+            <dd className="mt-1 font-semibold">{bestPriceDisplay}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+              Fastest lead time
+            </dt>
+            <dd className="mt-1 font-semibold">{fastestLeadTimeDisplay}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+              Last bid
+            </dt>
+            <dd className="mt-1 font-semibold">{lastBidAtLabel}</dd>
+          </div>
+        </dl>
+        {winningBidCallout}
+      </section>
+    );
+
+    const workflowPanel = (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          Workflow & next steps
+        </p>
+        <div className="mt-4 space-y-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">
+              Kickoff status
+            </p>
+            <p className={clsx("mt-1 font-semibold", kickoffSummaryTone)}>
+              {kickoffSummaryLabel}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">
+              Next action
+            </p>
+            <p
+              className={clsx(
+                "mt-1 font-semibold",
+                attentionState.needsDecision ? "text-amber-200" : "text-slate-300",
+              )}
+            >
+              {attentionState.needsDecision
+                ? "Needs award decision"
+                : "No pending actions"}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
 
     const rfqSummaryCard = (
       <section className={cardClasses}>
@@ -604,33 +764,16 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               )}
             </div>
 
-            <div className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
-              <div className="flex flex-wrap gap-4">
-                <span className="font-semibold text-slate-50">
-                  Bids: {attentionState.bidCount}
-                  {attentionState.hasWinner ? " · Winner selected" : ""}
-                </span>
-                <span className="text-slate-300">
-                  Kickoff:{" "}
-                  <span className={kickoffSummaryTone}>{kickoffSummaryLabel}</span>
-                </span>
-                <span
-                  className={
-                    attentionState.needsDecision
-                      ? "font-semibold text-amber-200"
-                      : "text-slate-500"
-                  }
-                >
-                  Next action:{" "}
-                  {attentionState.needsDecision ? "Needs award decision" : "None"}
-                </span>
-              </div>
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)]">
+              {bidSummaryPanel}
+              {workflowPanel}
             </div>
           </div>
 
           <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
 
           <SupplierBidsCard
+            id="bids-panel"
             quoteId={quote.id}
             quoteStatus={status}
             bids={bids}
@@ -640,4 +783,33 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         </div>
       </AdminDashboardShell>
     );
+}
+
+function findBestPriceBid(
+  bids: AdminSupplierBidRow[],
+): AdminSupplierBidRow | null {
+  return bids.reduce<AdminSupplierBidRow | null>((currentBest, bid) => {
+    if (typeof bid.amount !== "number" || Number.isNaN(bid.amount)) {
+      return currentBest;
+    }
+    if (!currentBest || (currentBest.amount ?? Infinity) > bid.amount) {
+      return bid;
+    }
+    return currentBest;
+  }, null);
+}
+
+function findFastestLeadTime(bids: AdminSupplierBidRow[]): number | null {
+  return bids.reduce<number | null>((currentBest, bid) => {
+    if (
+      typeof bid.lead_time_days !== "number" ||
+      Number.isNaN(bid.lead_time_days)
+    ) {
+      return currentBest;
+    }
+    if (currentBest === null || bid.lead_time_days < currentBest) {
+      return bid.lead_time_days;
+    }
+    return currentBest;
+  }, null);
 }
