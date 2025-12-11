@@ -10,11 +10,10 @@ import type { HeaderUser } from "./AppHeader";
 import type { NotificationPayload } from "@/types/notifications";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { BrandMark } from "@/components/BrandMark";
-
-type NavLink = {
-  label: string;
-  href: string;
-};
+import {
+  PortalNavTabs,
+  type PortalNavLink,
+} from "@/app/(portals)/components/PortalNavTabs";
 
 const ROLE_BADGE_COPY: Record<PortalRole, string> = {
   customer: "Customer workspace",
@@ -28,7 +27,7 @@ const ROLE_BADGE_CLASSES: Record<PortalRole, string> = {
     "border-blue-400/40 text-blue-200 bg-blue-500/5",
 };
 
-const NAV_LINKS: Record<PortalRole, NavLink[]> = {
+const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
   customer: [
     { label: "Dashboard", href: "/customer" },
     { label: "Quotes", href: "/customer/quotes" },
@@ -57,7 +56,27 @@ export default function AppHeaderClient({
 }: AppHeaderClientProps) {
   const pathname = usePathname() ?? "/";
   const role = useMemo(() => deriveRoleFromPath(pathname), [pathname]);
-  const navLinks = role ? NAV_LINKS[role] : [];
+  const navLinks: PortalNavLink[] = role ? NAV_LINKS[role] : [];
+  const navLinksWithBadges = navLinks.map((link) => {
+    const showBadge =
+      role === "supplier" &&
+      link.href === "/supplier/decisions" &&
+      typeof supplierDecisionCount === "number" &&
+      supplierDecisionCount > 0;
+
+    if (!showBadge) {
+      return link;
+    }
+
+    return {
+      ...link,
+      badge: (
+        <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100">
+          {formatBadgeCount(supplierDecisionCount)}
+        </span>
+      ),
+    };
+  });
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-900/70 bg-neutral-950/95 backdrop-blur">
@@ -108,36 +127,8 @@ export default function AppHeaderClient({
           </div>
         </div>
 
-        {user && navLinks.length > 0 ? (
-          <nav className="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-400">
-            {navLinks.map((link) => {
-              const active = isPathActive(pathname, link.href);
-              const showBadge =
-                role === "supplier" &&
-                link.href === "/supplier/decisions" &&
-                typeof supplierDecisionCount === "number" &&
-                supplierDecisionCount > 0;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={clsx(
-                    "rounded-full px-3 py-1.5 transition-colors",
-                    active
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-400 hover:text-white",
-                  )}
-                >
-                  <span>{link.label}</span>
-                  {showBadge ? (
-                    <span className="ml-2 inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100">
-                      {formatBadgeCount(supplierDecisionCount)}
-                    </span>
-                  ) : null}
-                </Link>
-              );
-            })}
-          </nav>
+        {user && navLinksWithBadges.length > 0 ? (
+          <PortalNavTabs links={navLinksWithBadges} currentPath={pathname} />
         ) : null}
       </div>
     </header>
@@ -304,10 +295,6 @@ function deriveRoleFromPath(pathname: string): PortalRole | null {
     return "supplier";
   }
   return null;
-}
-
-function isPathActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function formatBadgeCount(value?: number): string {
