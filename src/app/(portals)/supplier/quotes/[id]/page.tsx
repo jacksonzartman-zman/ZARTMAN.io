@@ -173,11 +173,19 @@ export default async function SupplierQuoteDetailPage({
   const initialBid = bidResult.ok ? bidResult.data : null;
   const bidsUnavailableMessage = bidResult.ok ? null : bidResult.error ?? null;
   const existingBid = initialBid;
-
-  const kickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
-    quoteId,
-    profile.supplier.id,
+  const kickoffVisibility = deriveSupplierKickoffVisibility(
+    workspaceData.quote.status,
+    existingBid?.status ?? null,
+    Boolean(project),
   );
+
+  let kickoffTasksResult: SupplierKickoffTasksResult | null = null;
+  if (kickoffVisibility.showKickoffChecklist) {
+    kickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
+      quoteId,
+      profile.supplier.id,
+    );
+  }
 
   const threadResult = await loadQuoteThreadForQuote(quoteId);
   const threadUnavailable = !threadResult.ok;
@@ -216,6 +224,7 @@ export default async function SupplierQuoteDetailPage({
       project={project}
       projectUnavailable={projectUnavailable}
       kickoffTasksResult={kickoffTasksResult}
+      kickoffVisibility={kickoffVisibility}
     />
   );
 }
@@ -239,6 +248,7 @@ function SupplierQuoteWorkspace({
   project,
   projectUnavailable,
   kickoffTasksResult,
+  kickoffVisibility,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
@@ -258,6 +268,7 @@ function SupplierQuoteWorkspace({
   project: QuoteProjectRow | null;
   projectUnavailable: boolean;
   kickoffTasksResult: SupplierKickoffTasksResult | null;
+  kickoffVisibility: SupplierKickoffVisibility;
 }) {
   const { quote, uploadMeta, filePreviews } = data;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
@@ -271,24 +282,21 @@ function SupplierQuoteWorkspace({
     accessGranted: true,
   });
   const bidLocked = !canSubmitBid;
-  const normalizedQuoteStatus = (quote.status ?? "").trim().toLowerCase();
-  const normalizedBidStatus =
-    typeof existingBid?.status === "string"
-      ? existingBid.status.trim().toLowerCase()
-      : "";
-  const bidSelectedAsWinner = ["accepted", "won", "winner"].includes(
-    normalizedBidStatus,
-  );
-  const quoteReadyForKickoff = [
-    "approved",
-    "won",
-    "winner_selected",
-    "winner-selected",
-    "winner",
-  ].includes(normalizedQuoteStatus);
   const hasProject = Boolean(project);
-  const showKickoffChecklist =
-    bidSelectedAsWinner && (quoteReadyForKickoff || hasProject);
+  const kickoffVisibilityState =
+    kickoffVisibility ??
+    deriveSupplierKickoffVisibility(
+      quote.status,
+      existingBid?.status ?? null,
+      hasProject,
+    );
+  const {
+    normalizedQuoteStatus,
+    normalizedBidStatus,
+    bidSelectedAsWinner,
+    quoteReadyForKickoff,
+    showKickoffChecklist,
+  } = kickoffVisibilityState;
   const acceptedLock = normalizedBidStatus === "accepted";
   const closedWindowLock = bidLocked && !acceptedLock;
   console.log("[supplier kickoff] visibility debug", {
@@ -586,6 +594,44 @@ function SupplierQuoteWorkspace({
       <SupplierQuoteTrackingCard className={cardClasses} events={timelineEvents} />
     </PortalShell>
   );
+}
+
+type SupplierKickoffVisibility = {
+  normalizedQuoteStatus: string;
+  normalizedBidStatus: string;
+  bidSelectedAsWinner: boolean;
+  quoteReadyForKickoff: boolean;
+  showKickoffChecklist: boolean;
+};
+
+function deriveSupplierKickoffVisibility(
+  quoteStatus: string | null | undefined,
+  bidStatus: string | null | undefined,
+  hasProject: boolean,
+): SupplierKickoffVisibility {
+  const normalizedQuoteStatus = (quoteStatus ?? "").trim().toLowerCase();
+  const normalizedBidStatus =
+    typeof bidStatus === "string" ? bidStatus.trim().toLowerCase() : "";
+  const bidSelectedAsWinner = ["accepted", "won", "winner"].includes(
+    normalizedBidStatus,
+  );
+  const quoteReadyForKickoff = [
+    "approved",
+    "won",
+    "winner_selected",
+    "winner-selected",
+    "winner",
+  ].includes(normalizedQuoteStatus);
+  const showKickoffChecklist =
+    bidSelectedAsWinner && (quoteReadyForKickoff || hasProject);
+
+  return {
+    normalizedQuoteStatus,
+    normalizedBidStatus,
+    bidSelectedAsWinner,
+    quoteReadyForKickoff,
+    showKickoffChecklist,
+  };
 }
 
 function formatProcessLabel(processHint: string | null): string {
