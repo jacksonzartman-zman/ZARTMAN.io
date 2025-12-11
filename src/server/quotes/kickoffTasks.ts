@@ -4,6 +4,7 @@ import {
   isMissingTableOrColumnError,
 } from "@/server/admin/logging";
 import {
+  DEFAULT_SUPPLIER_KICKOFF_TASKS,
   type SupplierKickoffTask,
   type KickoffTasksSummary,
   mergeKickoffTasksWithDefaults,
@@ -19,7 +20,27 @@ export type SupplierKickoffTasksResult = {
   ok: boolean;
   tasks: SupplierKickoffTask[];
   error: string | null;
-  reason?: "schema-missing" | "load-error" | "missing-identifiers";
+  reason?:
+    | "schema-missing"
+    | "load-error"
+    | "missing-identifiers"
+    | "seed-error";
+};
+
+export type ToggleSupplierKickoffTaskPayload = {
+  quoteId: string;
+  supplierId: string;
+  taskKey: string;
+  title: string;
+  description: string | null;
+  completed: boolean;
+  sortOrder: number | null;
+};
+
+export type ToggleSupplierKickoffTaskResult = {
+  ok: boolean;
+  error: string | null;
+  reason?: "schema-missing" | "missing-identifiers" | "upsert-error";
 };
 
 type QuoteKickoffTaskRow = {
@@ -33,6 +54,19 @@ type QuoteKickoffTaskRow = {
   sort_order: number | null;
   updated_at: string | null;
 };
+
+type KickoffTaskRowsResult =
+  | {
+      ok: true;
+      rows: QuoteKickoffTaskRow[];
+      error: null;
+    }
+  | {
+      ok: false;
+      rows: QuoteKickoffTaskRow[];
+      error: string;
+      reason: "schema-missing" | "load-error" | "seed-error";
+    };
 
 export async function loadQuoteKickoffTasksForSupplier(
   quoteId: string,
@@ -50,12 +84,168 @@ export async function loadQuoteKickoffTasksForSupplier(
     };
   }
 
+  const initialRows = await fetchKickoffTaskRows(
+    normalizedQuoteId,
+    normalizedSupplierId,
+  );
+  if (!initialRows.ok) {
+    return {
+      ok: false,
+      tasks: [],
+      error: initialRows.error,
+      reason: initialRows.reason,
+    };
+  }
+
+  let rows = initialRows.rows;
+
+  if (rows.length === 0) {
+    const seedResult = await seedKickoffTasks(
+      normalizedQuoteId,
+      normalizedSupplierId,
+    );
+    if (!seedResult.ok) {
+      return {
+        ok: false,
+        tasks: [],
+        error: seedResult.error,
+        reason: seedResult.reason,
+      };
+    }
+    rows = seedResult.rows;
+  }
+
+  const tasks = rows
+    .map((row) => mapRowToTask(row))
+    .filter(
+      (task): task is SupplierKickoffTask => Boolean(task?.taskKey?.length),
+    );
+
+  console.info("[quote kickoff tasks] load success", {
+    quoteId: normalizedQuoteId,
+    supplierId: normalizedSupplierId,
+    taskCount: tasks.length,
+  });
+
+  return {
+    ok: true,
+    tasks,
+    error: null,
+  };
+}
+
+export async function toggleSupplierKickoffTask(
+  payload: ToggleSupplierKickoffTaskPayload,
+): Promise<ToggleSupplierKickoffTaskResult> {
+  const quoteId = normalizeId(payload.quoteId);
+  const supplierId = normalizeId(payload.supplierId);
+  const taskKey = normalizeId(payload.taskKey);
+
+  if (!quoteId || !supplierId || !taskKey) {
+    return {
+      ok: false,
+      error: "missing-identifiers",
+      reason: "missing-identifiers",
+    };
+  }
+
+  const now = new Date().toISOString();
+
+  try {
+    const { error } = await supabaseServer
+      .from(TABLE_NAME)
+      .upsert(
+        {
+          quote_id: quoteId,
+          supplier_id: supplierId,
+          task_key: taskKey,
+          title: payload.title,
+          description: payload.description,
+          completed: Boolean(payload.completed),
+          sort_order: payload.sortOrder,
+          updated_at: now,
+        },
+        { onConflict: "quote_id,supplier_id,task_key" },
+      );
+
+    if (error) {
+      const serialized = serializeSupabaseError(error);
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[quote kickoff tasks] upsert missing schema", {
+          quoteId,
+          supplierId,
+          taskKey,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          error: "schema-missing",
+          reason: "schema-missing",
+        };
+      }
+      console.error("[quote kickoff tasks] upsert failed", {
+        quoteId,
+        supplierId,
+        taskKey,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: "upsert-error",
+        reason: "upsert-error",
+      };
+    }
+
+    console.log("[quote kickoff tasks] upsert success", {
+      quoteId,
+      supplierId,
+      taskKey,
+      completed: payload.completed,
+    });
+
+    return {
+      ok: true,
+      error: null,
+    };
+  } catch (error) {
+    const serialized = serializeSupabaseError(error);
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[quote kickoff tasks] upsert crashed (missing schema)", {
+        quoteId,
+        supplierId,
+        taskKey,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: "schema-missing",
+        reason: "schema-missing",
+      };
+    }
+    console.error("[quote kickoff tasks] upsert crashed", {
+      quoteId,
+      supplierId,
+      taskKey,
+      error: serialized ?? error,
+    });
+    return {
+      ok: false,
+      error: "upsert-error",
+      reason: "upsert-error",
+    };
+  }
+}
+
+async function fetchKickoffTaskRows(
+  quoteId: string,
+  supplierId: string,
+): Promise<KickoffTaskRowsResult> {
   try {
     const { data, error } = await supabaseServer
       .from(TABLE_NAME)
       .select(SELECT_COLUMNS)
-      .eq("quote_id", normalizedQuoteId)
-      .eq("supplier_id", normalizedSupplierId)
+      .eq("quote_id", quoteId)
+      .eq("supplier_id", supplierId)
       .order("sort_order", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true, nullsFirst: true })
       .returns<QuoteKickoffTaskRow[]>();
@@ -64,73 +254,151 @@ export async function loadQuoteKickoffTasksForSupplier(
       const serialized = serializeSupabaseError(error);
       if (isMissingTableOrColumnError(error)) {
         console.warn("[quote kickoff tasks] load missing schema", {
-          quoteId: normalizedQuoteId,
-          supplierId: normalizedSupplierId,
+          quoteId,
+          supplierId,
           error: serialized,
         });
         return {
           ok: false,
-          tasks: [],
+          rows: [],
           error: "schema-missing",
           reason: "schema-missing",
         };
       }
       console.error("[quote kickoff tasks] load failed", {
-        quoteId: normalizedQuoteId,
-        supplierId: normalizedSupplierId,
+        quoteId,
+        supplierId,
         error: serialized,
       });
       return {
         ok: false,
-        tasks: [],
+        rows: [],
         error: "load-error",
         reason: "load-error",
       };
     }
 
-    const rows = Array.isArray(data) ? data : [];
-    const tasks = rows
-      .map((row) => mapRowToTask(row))
-      .filter(
-        (task): task is SupplierKickoffTask => Boolean(task?.taskKey?.length),
-      );
-
-    console.info("[quote kickoff tasks] load success", {
-      quoteId: normalizedQuoteId,
-      supplierId: normalizedSupplierId,
-      taskCount: tasks.length,
-    });
-
     return {
       ok: true,
-      tasks,
+      rows: Array.isArray(data) ? data : [],
       error: null,
     };
   } catch (error) {
     const serialized = serializeSupabaseError(error);
     if (isMissingTableOrColumnError(error)) {
       console.warn("[quote kickoff tasks] load crashed (missing schema)", {
-        quoteId: normalizedQuoteId,
-        supplierId: normalizedSupplierId,
+        quoteId,
+        supplierId,
         error: serialized,
       });
       return {
         ok: false,
-        tasks: [],
+        rows: [],
         error: "schema-missing",
         reason: "schema-missing",
       };
     }
     console.error("[quote kickoff tasks] load crashed", {
-      quoteId: normalizedQuoteId,
-      supplierId: normalizedSupplierId,
+      quoteId,
+      supplierId,
       error: serialized ?? error,
     });
     return {
       ok: false,
-      tasks: [],
+      rows: [],
       error: "load-error",
       reason: "load-error",
+    };
+  }
+}
+
+async function seedKickoffTasks(
+  quoteId: string,
+  supplierId: string,
+): Promise<KickoffTaskRowsResult> {
+  const seedRows = DEFAULT_SUPPLIER_KICKOFF_TASKS.map((definition) => ({
+    quote_id: quoteId,
+    supplier_id: supplierId,
+    task_key: definition.taskKey,
+    title: definition.title,
+    description: definition.description ?? null,
+    completed: false,
+    sort_order: definition.sortOrder ?? null,
+  }));
+
+  if (seedRows.length === 0) {
+    return {
+      ok: true,
+      rows: [],
+      error: null,
+    };
+  }
+
+  try {
+    const { error } = await supabaseServer
+      .from(TABLE_NAME)
+      .upsert(seedRows, { onConflict: "quote_id,supplier_id,task_key" });
+
+    if (error) {
+      const serialized = serializeSupabaseError(error);
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[quote kickoff tasks] seed missing schema", {
+          quoteId,
+          supplierId,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          rows: [],
+          error: "schema-missing",
+          reason: "schema-missing",
+        };
+      }
+      console.error("[quote kickoff tasks] seed failed", {
+        quoteId,
+        supplierId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        rows: [],
+        error: "seed-error",
+        reason: "seed-error",
+      };
+    }
+
+    console.info("[quote kickoff tasks] seeded defaults", {
+      quoteId,
+      supplierId,
+      count: seedRows.length,
+    });
+
+    return fetchKickoffTaskRows(quoteId, supplierId);
+  } catch (error) {
+    const serialized = serializeSupabaseError(error);
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[quote kickoff tasks] seed crashed (missing schema)", {
+        quoteId,
+        supplierId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        rows: [],
+        error: "schema-missing",
+        reason: "schema-missing",
+      };
+    }
+    console.error("[quote kickoff tasks] seed crashed", {
+      quoteId,
+      supplierId,
+      error: serialized ?? error,
+    });
+    return {
+      ok: false,
+      rows: [],
+      error: "seed-error",
+      reason: "seed-error",
     };
   }
 }

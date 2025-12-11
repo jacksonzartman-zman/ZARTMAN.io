@@ -25,6 +25,7 @@ import {
   matchesSupplierProcess,
   supplierHasAccess,
 } from "@/app/(portals)/supplier/quotes/[id]/supplierAccess";
+import { toggleSupplierKickoffTask } from "@/server/quotes/kickoffTasks";
 
 export type SupplierBidFormState = {
   ok: boolean;
@@ -170,7 +171,6 @@ export function isBidsEnvErrorMessage(message?: string | null): boolean {
   return message.includes(SUPPLIER_BIDS_MISSING_SCHEMA_MESSAGE);
 }
 
-export const SUPPLIER_KICKOFF_TASKS_TABLE = "quote_kickoff_tasks";
 export const KICKOFF_TASKS_GENERIC_ERROR =
   "We couldn’t update the kickoff checklist. Please try again.";
 export const KICKOFF_TASKS_SCHEMA_ERROR =
@@ -789,57 +789,30 @@ export async function completeKickoffTaskImpl(
   const title = normalizeTaskTitle(input?.title, taskKey);
   const description = normalizeTaskDescription(input?.description);
   const sortOrder = normalizeSortOrder(input?.sortOrder);
-  const now = new Date().toISOString();
 
   try {
-    const { error } = await supabaseServer
-      .from(SUPPLIER_KICKOFF_TASKS_TABLE)
-      .upsert(
-        {
-          quote_id: quoteId,
-          supplier_id: supplierId,
-          task_key: taskKey,
-          title,
-          description,
-          completed,
-          sort_order: sortOrder,
-          updated_at: now,
-        },
-        { onConflict: "quote_id,supplier_id,task_key" },
-      );
+    const result = await toggleSupplierKickoffTask({
+      quoteId,
+      supplierId,
+      taskKey,
+      completed,
+      title,
+      description,
+      sortOrder,
+    });
 
-    if (error) {
-      const serialized = serializeSupabaseError(error);
-      if (isMissingTableOrColumnError(error)) {
-        console.warn("[supplier kickoff tasks] upsert missing schema", {
-          quoteId,
-          supplierId,
-          taskKey,
-          error: serialized,
-        });
+    if (!result.ok) {
+      if (result.reason === "schema-missing") {
         return {
           ok: false,
           error: KICKOFF_TASKS_SCHEMA_ERROR,
         };
       }
-      console.error("[supplier kickoff tasks] upsert failed", {
-        quoteId,
-        supplierId,
-        taskKey,
-        error: serialized,
-      });
       return {
         ok: false,
         error: KICKOFF_TASKS_GENERIC_ERROR,
       };
     }
-
-    console.log("[supplier kickoff tasks] upsert success", {
-      quoteId,
-      supplierId,
-      taskKey,
-      completed,
-    });
 
     revalidatePath(`/supplier/quotes/${quoteId}`);
     revalidatePath("/supplier");
@@ -857,19 +830,7 @@ export async function completeKickoffTaskImpl(
     };
   } catch (error) {
     const serialized = serializeSupabaseError(error);
-    if (isMissingTableOrColumnError(error)) {
-      console.warn("[supplier kickoff tasks] upsert crashed (missing schema)", {
-        quoteId,
-        supplierId,
-        taskKey,
-        error: serialized,
-      });
-      return {
-        ok: false,
-        error: KICKOFF_TASKS_SCHEMA_ERROR,
-      };
-    }
-    console.error("[supplier kickoff tasks] upsert crashed", {
+    console.error("[supplier kickoff tasks] action crashed", {
       quoteId,
       supplierId,
       taskKey,
