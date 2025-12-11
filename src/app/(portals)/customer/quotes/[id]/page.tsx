@@ -37,7 +37,11 @@ import {
 import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
 import { CustomerQuotePartPanel } from "./CustomerQuotePartPanel";
-import { loadQuoteProject } from "@/server/quotes/projects";
+import {
+  loadQuoteProjectForQuote,
+  type QuoteProjectRecord,
+} from "@/server/quotes/projects";
+import { loadSupplierById } from "@/server/suppliers/profile";
 import { loadQuoteThreadForQuote } from "@/server/messages/quoteThreads";
 import {
   loadQuoteKickoffTasksForSupplier,
@@ -150,12 +154,13 @@ export default async function CustomerQuoteDetailPage({
   const bids = bidsResult.ok && Array.isArray(bidsResult.data)
     ? (bidsResult.data ?? [])
     : [];
-  const projectResult = await loadQuoteProject(quote.id);
-  const project = projectResult.data;
-  const projectUnavailable = projectResult.unavailable;
+  const projectResult = await loadQuoteProjectForQuote(quote.id);
+  const hasProject = projectResult.ok;
+  const project = hasProject ? projectResult.project : null;
+  const projectUnavailable = !hasProject && projectResult.reason !== "not_found";
   console.info("[customer quote] project loaded", {
     quoteId: quote.id,
-    hasProject: Boolean(project),
+    hasProject,
     unavailable: projectUnavailable,
   });
   const bidCount = bids.length;
@@ -185,6 +190,13 @@ export default async function CustomerQuoteDetailPage({
     typeof winningBid?.supplier_id === "string"
       ? winningBid.supplier_id
       : null;
+  const winningSupplierProfile = winningSupplierId
+    ? await loadSupplierById(winningSupplierId)
+    : null;
+  const winningSupplierName =
+    winningSupplierProfile?.company_name?.trim() ||
+    winningSupplierProfile?.primary_email ||
+    winningSupplierId;
   let supplierKickoffTasksResult: SupplierKickoffTasksResult | null = null;
   if (winningSupplierId) {
     supplierKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
@@ -196,6 +208,7 @@ export default async function CustomerQuoteDetailPage({
     supplierKickoffTasksResult?.ok
       ? summarizeKickoffTasks(supplierKickoffTasksResult.tasks)
       : null;
+  const kickoffSummaryStatus = kickoffSummary?.status ?? null;
   const kickoffSummaryLabel = quoteHasWinner
     ? kickoffSummary
       ? formatKickoffSummaryLabel(kickoffSummary)
@@ -652,6 +665,19 @@ export default async function CustomerQuoteDetailPage({
     </PortalCard>
   );
 
+  const projectSnapshotCard =
+    hasProject && project ? (
+      <CustomerProjectSnapshotCard
+        project={project}
+        projectUnavailable={projectUnavailable}
+        winningSupplierName={winningSupplierName}
+        winningBidAmountLabel={winningBidPriceLabel}
+        winningBidLeadTimeLabel={winningBidLeadTimeLabel}
+        kickoffSummaryLabel={kickoffSummaryLabel}
+        kickoffSummaryStatus={kickoffSummaryStatus}
+      />
+    ) : null;
+
   return (
     <PortalShell
       workspace="customer"
@@ -662,6 +688,7 @@ export default async function CustomerQuoteDetailPage({
     >
       {receiptBanner}
       {summaryCard}
+      {projectSnapshotCard}
       <CustomerQuotePartPanel
         files={quoteFiles}
         previews={filePreviews}
@@ -729,4 +756,117 @@ function PortalNoticeCard({
       <p className="mt-2 text-sm text-slate-400">{description}</p>
     </section>
   );
+}
+
+function CustomerProjectSnapshotCard({
+  project,
+  projectUnavailable,
+  winningSupplierName,
+  winningBidAmountLabel,
+  winningBidLeadTimeLabel,
+  kickoffSummaryLabel,
+  kickoffSummaryStatus,
+}: {
+  project: QuoteProjectRecord;
+  projectUnavailable: boolean;
+  winningSupplierName?: string | null;
+  winningBidAmountLabel: string;
+  winningBidLeadTimeLabel: string;
+  kickoffSummaryLabel: string;
+  kickoffSummaryStatus: string | null;
+}) {
+  const createdAtLabel = project?.created_at
+    ? formatDateTime(project.created_at, { includeTime: true }) ?? project.created_at
+    : "Awaiting kickoff";
+  const projectStatus = formatCustomerProjectStatus(project?.status);
+  const nextStepMessage = deriveCustomerNextStep(kickoffSummaryStatus);
+  const supplierLabel = winningSupplierName?.trim() || "Supplier selected";
+
+  return (
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4 text-sm text-slate-200">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Project summary
+          </p>
+          <h2 className="text-lg font-semibold text-white">Kickoff snapshot</h2>
+          <p className="text-xs text-slate-400">{nextStepMessage}</p>
+        </div>
+        <span
+          className={clsx(
+            "rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide",
+            projectStatus.pillClasses,
+          )}
+        >
+          {projectStatus.label}
+        </span>
+      </header>
+
+      {projectUnavailable ? (
+        <p className="mt-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-yellow-100">
+          Project details are temporarily unavailable.
+        </p>
+      ) : null}
+
+      <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-2 lg:grid-cols-4">
+        <SnapshotItem label="Created" value={createdAtLabel} />
+        <SnapshotItem label="Winning supplier" value={supplierLabel} />
+        <SnapshotItem label="Winning bid" value={winningBidAmountLabel} />
+        <SnapshotItem label="Lead time" value={winningBidLeadTimeLabel} />
+      </dl>
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+        <span className="rounded-full border border-slate-800 bg-slate-950/70 px-3 py-1 text-slate-200">
+          Kickoff: {kickoffSummaryLabel}
+        </span>
+        <span>View supplier workspace (coming soon)</span>
+      </div>
+    </section>
+  );
+}
+
+function SnapshotItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+      <dt className="text-[11px] uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="text-slate-100">{value}</dd>
+    </div>
+  );
+}
+
+function formatCustomerProjectStatus(status?: string | null): {
+  label: string;
+  pillClasses: string;
+} {
+  const normalized = typeof status === "string" ? status.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "kickoff":
+    case "in_progress":
+    case "in-progress":
+      return {
+        label: "Kickoff in progress",
+        pillClasses: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+      };
+    case "production":
+    case "in_production":
+      return {
+        label: "In production",
+        pillClasses: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+      };
+    default:
+      return {
+        label: "Planning",
+        pillClasses: "border-slate-700 bg-slate-900/40 text-slate-200",
+      };
+  }
+}
+
+function deriveCustomerNextStep(status?: string | null): string {
+  switch (status) {
+    case "complete":
+      return "Supplier finished kickoff tasks — awaiting PO release.";
+    case "in-progress":
+      return "Supplier is prepping for kickoff.";
+    default:
+      return "Supplier handoff will start once final PO details are ready.";
+  }
 }

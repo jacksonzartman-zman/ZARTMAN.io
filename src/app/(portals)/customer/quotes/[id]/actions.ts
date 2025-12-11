@@ -13,7 +13,10 @@ import {
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { getFormString, serializeActionError } from "@/lib/forms";
-import { upsertQuoteProject } from "@/server/quotes/projects";
+import {
+  ensureQuoteProjectForWinner,
+  upsertQuoteProject,
+} from "@/server/quotes/projects";
 import { performAwardBidForQuote } from "@/server/quotes/award";
 import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
@@ -698,6 +701,11 @@ async function performCustomerAwardFlow(
     bidId,
     caller: "customer",
   });
+  await ensureProjectAfterAward({
+    quoteId,
+    bidId,
+    caller: "customer",
+  });
 
   console.info("[customer award] success", {
     quoteId,
@@ -753,6 +761,72 @@ function revalidateCustomerAwardPaths(quoteId: string) {
   targets.forEach((path) => {
     revalidatePath(path);
   });
+}
+
+async function ensureProjectAfterAward({
+  quoteId,
+  bidId,
+  caller,
+}: {
+  quoteId: string;
+  bidId: string;
+  caller: "admin" | "customer";
+}) {
+  const normalizedQuoteId = quoteId.trim();
+  const normalizedBidId = bidId.trim();
+  if (!normalizedQuoteId || !normalizedBidId) {
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("supplier_bids")
+      .select("supplier_id")
+      .eq("id", normalizedBidId)
+      .maybeSingle<{ supplier_id: string | null }>();
+
+    if (error) {
+      console.error("[quote projects] ensure lookup failed", {
+        quoteId: normalizedQuoteId,
+        bidId: normalizedBidId,
+        caller,
+        error: serializeActionError(error),
+      });
+      return;
+    }
+
+    const supplierId = data?.supplier_id?.trim();
+    if (!supplierId) {
+      console.warn("[quote projects] ensure skipped (missing supplier)", {
+        quoteId: normalizedQuoteId,
+        bidId: normalizedBidId,
+        caller,
+      });
+      return;
+    }
+
+    const result = await ensureQuoteProjectForWinner({
+      quoteId: normalizedQuoteId,
+      winningSupplierId: supplierId,
+    });
+
+    if (!result.ok) {
+      console.error("[quote projects] ensure failed", {
+        quoteId: normalizedQuoteId,
+        bidId: normalizedBidId,
+        caller,
+        reason: result.reason,
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    console.error("[quote projects] ensure crashed", {
+      quoteId: normalizedQuoteId,
+      bidId: normalizedBidId,
+      caller,
+      error: serializeActionError(error),
+    });
+  }
 }
 
 async function handleBidDecision(formData: FormData, mode: "accept" | "decline") {

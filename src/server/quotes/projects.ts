@@ -1,26 +1,59 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
-  serializeSupabaseError,
   isMissingTableOrColumnError,
+  serializeSupabaseError,
 } from "@/server/admin/logging";
-import type { LoadResult, MutationResult } from "@/server/types/results";
 import { notifyOnProjectKickoffChange } from "@/server/quotes/notifications";
+import type { MutationResult } from "@/server/types/results";
 
-export interface QuoteProjectRow {
+const TABLE_NAME = "quote_projects";
+const SELECT_COLUMNS =
+  "id,quote_id,supplier_id,status,po_number,target_ship_date,notes,created_at,updated_at";
+const DEFAULT_PROJECT_STATUS = "planning";
+
+/**
+ * public.quote_projects currently stores:
+ * - id: primary key for the project row.
+ * - quote_id: reference to public.quotes(id).
+ * - supplier_id: optional reference to public.suppliers(id) for the winner.
+ * - status: text status for the project lifecycle (defaults to "planning").
+ * - po_number: customer-supplied purchase order identifier.
+ * - target_ship_date: target shipment date (stored as YYYY-MM-DD).
+ * - notes: kickoff notes visible to admins, customers, and the winning supplier.
+ * - created_at / updated_at: timestamps maintained server-side.
+ */
+export type QuoteProjectRecord = {
   id: string;
   quote_id: string;
+  supplier_id: string | null;
+  status: string | null;
   po_number: string | null;
   target_ship_date: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
-}
-
-export type ProjectLoadResult = LoadResult<QuoteProjectRow | null> & {
-  unavailable: boolean;
 };
 
-export type ProjectMutationResult = MutationResult<QuoteProjectRow>;
+export type QuoteProjectFailureReason =
+  | "not_found"
+  | "schema_error"
+  | "unknown";
+
+export type QuoteProjectResult =
+  | { ok: true; project: QuoteProjectRecord }
+  | {
+      ok: false;
+      project: null;
+      reason: QuoteProjectFailureReason;
+      error?: unknown;
+    };
+
+export type ProjectMutationResult = MutationResult<QuoteProjectRecord>;
+
+type EnsureWinnerParams = {
+  quoteId: string;
+  winningSupplierId: string;
+};
 
 type UpsertProjectParams = {
   quoteId: string;
@@ -29,25 +62,16 @@ type UpsertProjectParams = {
   notes?: string | null;
 };
 
-const TABLE_NAME = "quote_projects";
-const SELECT_COLUMNS =
-  "id,quote_id,po_number,target_ship_date,notes,created_at,updated_at";
-const LOAD_GENERIC_ERROR =
-  "Project details are unavailable right now. Please try again.";
-const MUTATION_GENERIC_ERROR =
-  "We couldn’t update the project details. Please retry.";
-
-export async function loadQuoteProject(
+export async function loadQuoteProjectForQuote(
   quoteId: string,
-): Promise<ProjectLoadResult> {
+): Promise<QuoteProjectResult> {
   const normalizedQuoteId = normalizeId(quoteId);
-
   if (!normalizedQuoteId) {
     return {
       ok: false,
-      data: null,
+      project: null,
+      reason: "not_found",
       error: "quoteId is required",
-      unavailable: true,
     };
   }
 
@@ -56,41 +80,197 @@ export async function loadQuoteProject(
       .from(TABLE_NAME)
       .select(SELECT_COLUMNS)
       .eq("quote_id", normalizedQuoteId)
-      .maybeSingle<QuoteProjectRow>();
+      .maybeSingle<QuoteProjectRecord>();
 
     if (error) {
       const serialized = serializeSupabaseError(error);
-      if (isMissingTableOrColumnError(error)) {
-        console.warn("[quote projects] load missing schema", {
-          quoteId: normalizedQuoteId,
-          error: serialized,
-        });
-        return buildUnavailableResult(normalizedQuoteId, LOAD_GENERIC_ERROR);
-      }
-      console.error("[quote projects] load failed", {
+      const reason: QuoteProjectFailureReason = isMissingTableOrColumnError(error)
+        ? "schema_error"
+        : "unknown";
+
+      logProjectLoadOutcome(normalizedQuoteId, null, reason);
+
+      const logPayload = {
         quoteId: normalizedQuoteId,
         error: serialized,
-      });
-      return buildUnavailableResult(normalizedQuoteId, LOAD_GENERIC_ERROR);
+      };
+      if (reason === "schema_error") {
+        console.warn("[quote projects] load missing schema", logPayload);
+      } else {
+        console.error("[quote projects] load failed", logPayload);
+      }
+
+      return {
+        ok: false,
+        project: null,
+        reason,
+        error: serialized,
+      };
     }
 
-    const project = data ?? null;
-    logProjectLoadOutcome(normalizedQuoteId, project, false);
-    return { ok: true, data: project, error: null, unavailable: false };
+    if (!data) {
+      logProjectLoadOutcome(normalizedQuoteId, null, "not_found");
+      return { ok: false, project: null, reason: "not_found" };
+    }
+
+    logProjectLoadOutcome(normalizedQuoteId, data, null);
+    return { ok: true, project: data };
   } catch (error) {
     const serialized = serializeSupabaseError(error);
-    if (isMissingTableOrColumnError(error)) {
+    const reason: QuoteProjectFailureReason = isMissingTableOrColumnError(error)
+      ? "schema_error"
+      : "unknown";
+
+    logProjectLoadOutcome(normalizedQuoteId, null, reason);
+
+    if (reason === "schema_error") {
       console.warn("[quote projects] load crashed (missing schema)", {
         quoteId: normalizedQuoteId,
         error: serialized,
       });
-      return buildUnavailableResult(normalizedQuoteId, LOAD_GENERIC_ERROR);
+    } else {
+      console.error("[quote projects] load crashed", {
+        quoteId: normalizedQuoteId,
+        error: serialized ?? error,
+      });
     }
-    console.error("[quote projects] load crashed", {
-      quoteId: normalizedQuoteId,
+
+    return {
+      ok: false,
+      project: null,
+      reason,
       error: serialized ?? error,
+    };
+  }
+}
+
+export async function ensureQuoteProjectForWinner(
+  params: EnsureWinnerParams,
+): Promise<QuoteProjectResult> {
+  const quoteId = normalizeId(params?.quoteId);
+  const winningSupplierId = normalizeId(params?.winningSupplierId);
+
+  if (!quoteId || !winningSupplierId) {
+    console.warn("[quote projects] ensure skipped (missing identifiers)", {
+      quoteId: quoteId || params?.quoteId || null,
+      winningSupplierId: winningSupplierId || params?.winningSupplierId || null,
     });
-    return buildUnavailableResult(normalizedQuoteId, LOAD_GENERIC_ERROR);
+    return {
+      ok: false,
+      project: null,
+      reason: "unknown",
+      error: "missing-identifiers",
+    };
+  }
+
+  const payload = {
+    quote_id: quoteId,
+    supplier_id: winningSupplierId,
+    status: DEFAULT_PROJECT_STATUS,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(TABLE_NAME)
+      .insert(payload)
+      .select(SELECT_COLUMNS)
+      .single<QuoteProjectRecord>();
+
+    if (error) {
+      const serialized = serializeSupabaseError(error);
+
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[quote projects] ensure missing schema", {
+          quoteId,
+          winningSupplierId,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          project: null,
+          reason: "schema_error",
+          error: serialized,
+        };
+      }
+
+      if (isUniqueConstraintError(error)) {
+        const existing = await loadQuoteProjectForQuote(quoteId);
+        if (existing.ok) {
+          console.info("[quote projects] ensure reused existing", {
+            quoteId,
+            winningSupplierId,
+            projectId: existing.project.id,
+          });
+          return existing;
+        }
+
+        console.error("[quote projects] ensure conflict but fetch failed", {
+          quoteId,
+          winningSupplierId,
+          error: existing.error,
+        });
+        return existing;
+      }
+
+      console.error("[quote projects] ensure failed", {
+        quoteId,
+        winningSupplierId,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        project: null,
+        reason: "unknown",
+        error: serialized,
+      };
+    }
+
+    if (data) {
+      console.info("[quote projects] ensure created", {
+        quoteId,
+        winningSupplierId,
+        projectId: data.id,
+      });
+      return { ok: true, project: data };
+    }
+
+    console.error("[quote projects] ensure missing payload", {
+      quoteId,
+      winningSupplierId,
+    });
+    return {
+      ok: false,
+      project: null,
+      reason: "unknown",
+      error: "insert-missing-data",
+    };
+  } catch (error) {
+    const serialized = serializeSupabaseError(error);
+    const reason: QuoteProjectFailureReason = isMissingTableOrColumnError(error)
+      ? "schema_error"
+      : "unknown";
+
+    if (reason === "schema_error") {
+      console.warn("[quote projects] ensure crashed (missing schema)", {
+        quoteId,
+        winningSupplierId,
+        error: serialized,
+      });
+    } else {
+      console.error("[quote projects] ensure crashed", {
+        quoteId,
+        winningSupplierId,
+        error: serialized ?? error,
+      });
+    }
+
+    return {
+      ok: false,
+      project: null,
+      reason,
+      error: serialized ?? error,
+    };
   }
 }
 
@@ -151,7 +331,7 @@ export async function upsertQuoteProject(
       .from(TABLE_NAME)
       .upsert(payload, { onConflict: "quote_id" })
       .select(SELECT_COLUMNS)
-      .single<QuoteProjectRow>();
+      .single<QuoteProjectRecord>();
 
     if (error || !data) {
       const serialized = serializeSupabaseError(error);
@@ -207,28 +387,16 @@ export async function upsertQuoteProject(
   }
 }
 
-function buildUnavailableResult(
-  quoteId: string,
-  errorMessage: string,
-): ProjectLoadResult {
-  const result: ProjectLoadResult = {
-    ok: false,
-    data: null,
-    error: errorMessage,
-    unavailable: true,
-  };
-  logProjectLoadOutcome(quoteId, null, true);
-  return result;
-}
-
 function logProjectLoadOutcome(
   quoteId: string,
-  project: QuoteProjectRow | null,
-  unavailable: boolean,
+  project: QuoteProjectRecord | null,
+  failureReason: QuoteProjectFailureReason | null,
 ) {
   if (!quoteId) {
     return;
   }
+  const unavailable =
+    failureReason !== null && failureReason !== undefined && failureReason !== "not_found";
   console.info("[quote projects] load result", {
     quoteId,
     hasProject: Boolean(project),
@@ -272,5 +440,16 @@ function sanitizeNotes(value?: string | null): string | null {
   }
   return trimmed.slice(0, 2000);
 }
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const code = (error as { code?: string }).code;
+  return code === "23505";
+}
+
+const MUTATION_GENERIC_ERROR =
+  "We couldn’t update the project details. Please retry.";
 
 const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;

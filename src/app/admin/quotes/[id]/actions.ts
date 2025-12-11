@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getFormString, serializeActionError } from "@/lib/forms";
+import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { getServerAuthUser, requireUser } from "@/server/auth";
 import {
@@ -22,7 +23,10 @@ import {
   createQuoteMessage,
   type QuoteMessageRow,
 } from "@/server/quotes/messages";
-import { upsertQuoteProject } from "@/server/quotes/projects";
+import {
+  ensureQuoteProjectForWinner,
+  upsertQuoteProject,
+} from "@/server/quotes/projects";
 import { awardBidForQuoteAction } from "@/server/quotes/adminAward";
 import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
 import type { AwardBidFormState } from "./awardFormState";
@@ -102,6 +106,11 @@ export async function awardBidFormAction(
   revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
   void dispatchAdminWinnerNotification(normalizedQuoteId, normalizedBidId);
+  await ensureProjectAfterAward({
+    quoteId: normalizedQuoteId,
+    bidId: normalizedBidId,
+    caller: "admin",
+  });
 
   return {
     status: "success",
@@ -392,6 +401,72 @@ async function dispatchAdminMessageNotification(
     console.error("[admin messages] notification failed", {
       quoteId,
       messageId: message.id,
+      error: serializeActionError(error),
+    });
+  }
+}
+
+async function ensureProjectAfterAward({
+  quoteId,
+  bidId,
+  caller,
+}: {
+  quoteId: string;
+  bidId: string;
+  caller: "admin" | "customer";
+}) {
+  const trimmedQuoteId = quoteId.trim();
+  const trimmedBidId = bidId.trim();
+  if (!trimmedQuoteId || !trimmedBidId) {
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("supplier_bids")
+      .select("supplier_id")
+      .eq("id", trimmedBidId)
+      .maybeSingle<{ supplier_id: string | null }>();
+
+    if (error) {
+      console.error("[quote projects] ensure lookup failed", {
+        quoteId: trimmedQuoteId,
+        bidId: trimmedBidId,
+        caller,
+        error: serializeActionError(error),
+      });
+      return;
+    }
+
+    const supplierId = data?.supplier_id?.trim();
+    if (!supplierId) {
+      console.warn("[quote projects] ensure skipped (missing supplier)", {
+        quoteId: trimmedQuoteId,
+        bidId: trimmedBidId,
+        caller,
+      });
+      return;
+    }
+
+    const result = await ensureQuoteProjectForWinner({
+      quoteId: trimmedQuoteId,
+      winningSupplierId: supplierId,
+    });
+
+    if (!result.ok) {
+      console.error("[quote projects] ensure failed", {
+        quoteId: trimmedQuoteId,
+        bidId: trimmedBidId,
+        caller,
+        reason: result.reason,
+        error: result.error,
+      });
+    }
+  } catch (error) {
+    console.error("[quote projects] ensure crashed", {
+      quoteId: trimmedQuoteId,
+      bidId: trimmedBidId,
+      caller,
       error: serializeActionError(error),
     });
   }

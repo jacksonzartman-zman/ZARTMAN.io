@@ -2,6 +2,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatCurrency } from "@/lib/formatCurrency";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
@@ -39,7 +40,10 @@ import {
   type QuoteTimelineEvent,
 } from "@/lib/quote/tracking";
 import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
-import { loadQuoteProject, type QuoteProjectRow } from "@/server/quotes/projects";
+import {
+  loadQuoteProjectForQuote,
+  type QuoteProjectRecord,
+} from "@/server/quotes/projects";
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
 import {
   loadQuoteThreadForQuote,
@@ -109,12 +113,13 @@ export default async function SupplierQuoteDetailPage({
   }
   const workspaceData = workspaceResult.data;
 
-  const projectResult = await loadQuoteProject(quoteId);
-  const project = projectResult.data;
-  const projectUnavailable = projectResult.unavailable;
+  const projectResult = await loadQuoteProjectForQuote(quoteId);
+  const hasProject = projectResult.ok;
+  const project = hasProject ? projectResult.project : null;
+  const projectUnavailable = !hasProject && projectResult.reason !== "not_found";
   console.info("[supplier quote] project loaded", {
     quoteId,
-    hasProject: Boolean(project),
+    hasProject,
     unavailable: projectUnavailable,
   });
 
@@ -265,7 +270,7 @@ function SupplierQuoteWorkspace({
   thread: QuoteThread;
   threadUnavailable: boolean;
   timelineEvents: QuoteTimelineEvent[];
-  project: QuoteProjectRow | null;
+  project: QuoteProjectRecord | null;
   projectUnavailable: boolean;
   kickoffTasksResult: SupplierKickoffTasksResult | null;
   kickoffVisibility: SupplierKickoffVisibility;
@@ -330,7 +335,17 @@ function SupplierQuoteWorkspace({
     quoteFiles[0]?.filename ??
     formatQuoteId(quote.id);
   const isWinningSupplier = bidSelectedAsWinner;
-  const showSupplierProjectCard = isWinningSupplier;
+  const winningBidAmountLabel =
+    typeof existingBid?.amount === "number" && Number.isFinite(existingBid.amount)
+      ? formatCurrency(existingBid.amount, existingBid.currency ?? undefined)
+      : "Pricing pending";
+  const winningBidLeadTimeLabel =
+    typeof existingBid?.lead_time_days === "number" &&
+    Number.isFinite(existingBid.lead_time_days)
+      ? `${existingBid.lead_time_days} day${
+          existingBid.lead_time_days === 1 ? "" : "s"
+        }`
+      : "Lead time pending";
   const headerTitle = `${formatQuoteId(quote.id)} · ${derived.customerName}`;
   const headerActions = (
     <Link
@@ -535,23 +550,40 @@ function SupplierQuoteWorkspace({
     </section>
   );
 
-  const projectSection = showSupplierProjectCard ? (
-    <SupplierQuoteProjectCard
-      className={cardClasses}
-      project={project}
-      unavailable={projectUnavailable}
-    />
-  ) : (
-    <PortalCard
-      title="Project kickoff"
-      description="Read-only PO details unlock once your bid is selected as the winner."
-    >
-      <p className="text-sm text-slate-300">
-        We’ll surface the customer’s PO number, target ship date, and kickoff notes as soon as they select
-        your bid.
-      </p>
-    </PortalCard>
-  );
+  let projectSection: ReactNode = null;
+  if (isWinningSupplier) {
+    projectSection = hasProject ? (
+      <SupplierQuoteProjectCard
+        className={cardClasses}
+        project={project}
+        unavailable={projectUnavailable}
+        winningBidAmountLabel={winningBidAmountLabel}
+        winningBidLeadTimeLabel={winningBidLeadTimeLabel}
+      />
+    ) : (
+      <PortalCard
+        title="Project kickoff"
+        description="Read-only PO details unlock once your bid is selected as the winner."
+      >
+        <p className="text-sm text-slate-300">
+          We’ll surface the customer’s PO number, target ship date, and kickoff notes as soon as they select
+          your bid.
+        </p>
+      </PortalCard>
+    );
+  } else {
+    projectSection = (
+      <PortalCard
+        title="Project kickoff"
+        description="Stay tuned—project details appear for the supplier that wins the RFQ."
+      >
+        <p className="text-sm text-slate-300">
+          Keep bidding with your best pricing and lead times. Once a customer selects your proposal, we’ll
+          unlock the kickoff prep card automatically.
+        </p>
+      </PortalCard>
+    );
+  }
 
   return (
     <PortalShell
@@ -562,9 +594,9 @@ function SupplierQuoteWorkspace({
       actions={headerActions}
     >
       {winnerCallout}
+      {projectSection}
       {kickoffChecklistSection}
       {summaryCard}
-      {projectSection}
       <QuoteMessagesPanel
         thread={thread}
         viewerRole="supplier"

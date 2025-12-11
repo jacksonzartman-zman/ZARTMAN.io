@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
-import type { QuoteProjectRow } from "@/server/quotes/projects";
+import type { QuoteProjectRecord } from "@/server/quotes/projects";
 import {
   submitCustomerQuoteProjectAction,
   type CustomerProjectFormState,
@@ -12,7 +12,7 @@ import { formatDateTime } from "@/lib/formatDate";
 
 type CustomerQuoteProjectCardProps = {
   quoteId: string;
-  project: QuoteProjectRow | null;
+  project: QuoteProjectRecord | null;
   readOnly?: boolean;
   projectUnavailable?: boolean;
 };

@@ -39,7 +39,10 @@ import { loadBidsForQuote } from "@/server/bids";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import { listSupplierBidsForQuote } from "@/server/suppliers/bids";
 import { SupplierBidsCard, type AdminSupplierBidRow } from "./SupplierBidsCard";
-import { loadQuoteProject } from "@/server/quotes/projects";
+import {
+  loadQuoteProjectForQuote,
+  type QuoteProjectRecord,
+} from "@/server/quotes/projects";
 import { AdminQuoteProjectCard } from "./AdminQuoteProjectCard";
 import {
   loadQuoteKickoffTasksForSupplier,
@@ -119,12 +122,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     );
   }
 
-  const projectResult = await loadQuoteProject(quote.id);
-  const project = projectResult.data;
-  const projectUnavailable = projectResult.unavailable;
+  const projectResult = await loadQuoteProjectForQuote(quote.id);
+  const hasProject = projectResult.ok;
+  const project = hasProject ? projectResult.project : null;
+  const projectUnavailable = !hasProject && projectResult.reason !== "not_found";
   console.info("[admin quote] project loaded", {
     quoteId: quote.id,
-    hasProject: Boolean(project),
+    hasProject,
     unavailable: projectUnavailable,
   });
 
@@ -327,7 +331,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         : kickoffSummary?.status === "in-progress"
           ? "text-blue-200"
           : "text-slate-200";
-    const hasProject = Boolean(project);
     const attentionState = deriveAdminQuoteAttentionState({
       quoteId: quote.id,
       status,
@@ -509,6 +512,52 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         </div>
       </section>
     );
+
+    const projectSnapshotPanel =
+      hasProject && project ? (
+        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+          <header className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Project snapshot
+              </p>
+              <h2 className="text-base font-semibold text-slate-100">Winner handoff</h2>
+            </div>
+            <span
+              className={clsx(
+                "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                mapProjectStatusToPill(project.status).pillClasses,
+              )}
+            >
+              {mapProjectStatusToPill(project.status).label}
+            </span>
+          </header>
+          {projectUnavailable ? (
+            <p className="mt-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
+              Project details are temporarily unavailable.
+            </p>
+          ) : null}
+          <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-2">
+            <SnapshotField
+              label="Created"
+              value={
+                project.created_at
+                  ? formatDateTime(project.created_at, { includeTime: true }) ?? project.created_at
+                  : "Awaiting kickoff"
+              }
+            />
+            <SnapshotField
+              label="Winning supplier"
+              value={winningSupplierName ?? "Supplier selected"}
+            />
+            <SnapshotField label="Winning bid" value={winningBidAmountLabel} />
+            <SnapshotField label="Lead time" value={winningLeadTimeLabel} />
+          </dl>
+          <p className="mt-3 text-xs text-slate-400">
+            {kickoffSummaryLabel} &middot; keep supplier + customer in sync via messages below.
+          </p>
+        </section>
+      ) : null;
 
     const rfqSummaryCard = (
       <section className={cardClasses}>
@@ -770,7 +819,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)]">
               {bidSummaryPanel}
-              {workflowPanel}
+              <div className="space-y-4">
+                {workflowPanel}
+                {projectSnapshotPanel}
+              </div>
             </div>
           </div>
 
@@ -787,6 +839,42 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         </div>
       </AdminDashboardShell>
     );
+}
+
+function SnapshotField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+      <dt className="text-[11px] uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="font-medium text-slate-100">{value}</dd>
+    </div>
+  );
+}
+
+function mapProjectStatusToPill(status?: string | null): {
+  label: string;
+  pillClasses: string;
+} {
+  const normalized = typeof status === "string" ? status.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "kickoff":
+    case "in_progress":
+    case "in-progress":
+      return {
+        label: "Kickoff in progress",
+        pillClasses: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+      };
+    case "production":
+    case "in_production":
+      return {
+        label: "In production",
+        pillClasses: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+      };
+    default:
+      return {
+        label: "Planning",
+        pillClasses: "border-slate-700 bg-slate-900/40 text-slate-200",
+      };
+  }
 }
 
 function findBestPriceBid(
