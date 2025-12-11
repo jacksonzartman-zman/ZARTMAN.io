@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { useMemo, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
-import type { QuoteProjectRow } from "@/server/quotes/projects";
+import type { QuoteProjectRecord } from "@/server/quotes/projects";
 import {
   submitAdminQuoteProjectAction,
   type AdminProjectFormState,
@@ -13,7 +13,7 @@ import { formatDateTime } from "@/lib/formatDate";
 
 type AdminQuoteProjectCardProps = {
   quoteId: string;
-  project: QuoteProjectRow | null;
+  project: QuoteProjectRecord | null;
   projectUnavailable?: boolean;
   className?: string;
 };
