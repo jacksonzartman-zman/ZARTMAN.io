@@ -45,17 +45,19 @@ import {
   type QuoteProjectRecord,
 } from "@/server/quotes/projects";
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
+import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
 import {
-  loadQuoteThreadForQuote,
-  type QuoteThread,
-} from "@/server/messages/quoteThreads";
-import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
+  loadQuoteMessages,
+  type QuoteMessageRecord,
+} from "@/server/quotes/messages";
 import {
   loadQuoteKickoffTasksForSupplier,
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
 import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
 import { KickoffChecklist } from "./KickoffChecklist";
+import { postQuoteMessage as postSupplierQuoteMessage } from "./actions";
+import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
 export const dynamic = "force-dynamic";
 
@@ -192,9 +194,15 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-  const threadResult = await loadQuoteThreadForQuote(quoteId);
-  const threadUnavailable = !threadResult.ok;
-  const thread = threadResult.data ?? { quoteId, messages: [] };
+  const messagesResult = await loadQuoteMessages(quoteId);
+  if (!messagesResult.ok) {
+    console.error("[supplier quote] messages load failed", {
+      quoteId,
+      error: messagesResult.error ?? messagesResult.reason,
+    });
+  }
+  const quoteMessages = messagesResult.messages;
+  const messagesUnavailable = !messagesResult.ok;
 
   const bidStatus = (existingBid?.status ?? "").toLowerCase();
   const messagingUnlocked =
@@ -203,6 +211,9 @@ export default async function SupplierQuoteDetailPage({
   const messagingDisabledReason = messagingUnlocked
     ? null
     : "Chat unlocks after your bid is accepted or selected as the winner for this RFQ.";
+
+  const supplierPostMessageAction =
+    postSupplierQuoteMessage.bind(null, quoteId);
 
   return (
     <SupplierQuoteWorkspace
@@ -223,8 +234,10 @@ export default async function SupplierQuoteDetailPage({
       approved={approved}
       messagingUnlocked={messagingUnlocked}
       messagingDisabledReason={messagingDisabledReason}
-      thread={thread}
-      threadUnavailable={threadUnavailable}
+      quoteMessages={quoteMessages}
+      messagesUnavailable={messagesUnavailable}
+      postMessageAction={supplierPostMessageAction}
+      currentUserId={user.id}
       timelineEvents={supplierTimelineEvents}
       project={project}
       projectUnavailable={projectUnavailable}
@@ -247,8 +260,10 @@ function SupplierQuoteWorkspace({
   approved,
   messagingUnlocked,
   messagingDisabledReason,
-  thread,
-  threadUnavailable,
+  quoteMessages,
+  messagesUnavailable,
+  postMessageAction,
+  currentUserId,
   timelineEvents,
   project,
   projectUnavailable,
@@ -267,8 +282,13 @@ function SupplierQuoteWorkspace({
   approved: boolean;
   messagingUnlocked: boolean;
   messagingDisabledReason?: string | null;
-  thread: QuoteThread;
-  threadUnavailable: boolean;
+  quoteMessages: QuoteMessageRecord[];
+  messagesUnavailable: boolean;
+  postMessageAction: (
+    prevState: QuoteMessageFormState,
+    formData: FormData,
+  ) => Promise<QuoteMessageFormState>;
+  currentUserId: string;
   timelineEvents: QuoteTimelineEvent[];
   project: QuoteProjectRecord | null;
   projectUnavailable: boolean;
@@ -597,23 +617,22 @@ function SupplierQuoteWorkspace({
       {projectSection}
       {kickoffChecklistSection}
       {summaryCard}
-      <QuoteMessagesPanel
-        thread={thread}
-        viewerRole="supplier"
-        heading="Shared chat"
+      {messagesUnavailable ? (
+        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
+          Messages are temporarily unavailable. Refresh the page to try again.
+        </p>
+      ) : null}
+      <QuoteMessagesThread
+        quoteId={quote.id}
+        messages={quoteMessages}
+        canPost={messagingUnlocked}
+        postAction={postMessageAction}
+        currentUserId={currentUserId}
+        title="Shared chat"
         description="Customer, supplier, and admin updates for this RFQ."
         helperText="Your note pings the Zartman admin team instantly."
-        messagesUnavailable={threadUnavailable}
-        composer={{
-          quoteId: quote.id,
-          mode: "supplier",
-          disabled: !messagingUnlocked,
-          disableReason: messagingDisabledReason ?? undefined,
-          placeholder:
-            "Share build progress, questions, or risks with the Zartman team...",
-          sendLabel: "Send update",
-          pendingLabel: "Sending...",
-        }}
+        disabledCopy={messagingDisabledReason ?? undefined}
+        emptyStateCopy="No messages yet. Keep the project moving by posting build updates here."
       />
       <div className="space-y-2">
         <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />

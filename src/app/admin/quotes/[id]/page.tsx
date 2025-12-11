@@ -5,7 +5,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { buildCustomerQuoteTimeline } from "@/lib/quote/tracking";
-import { loadQuoteThreadForQuote } from "@/server/messages/quoteThreads";
+import {
+  loadQuoteMessages,
+  type QuoteMessageRecord,
+} from "@/server/quotes/messages";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
 import {
@@ -22,7 +25,7 @@ import {
 } from "@/server/quotes/adminSummary";
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
-import { QuoteMessagesPanel } from "@/app/(portals)/components/QuoteMessagesPanel";
+import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
 import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
 import { QuoteFilesCard } from "./QuoteFilesCard";
 import {
@@ -50,6 +53,7 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
+import { postQuoteMessage as postAdminQuoteMessage } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -257,15 +261,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       quote.internal_notes.trim().length > 0
         ? quote.internal_notes
         : null;
-    const threadResult = await loadQuoteThreadForQuote(quote.id);
-    if (!threadResult.ok) {
+    const messagesResult = await loadQuoteMessages(quote.id);
+    if (!messagesResult.ok) {
       console.error("Failed to load quote messages", {
         quoteId: quote.id,
-        error: threadResult.error,
+        error: messagesResult.error ?? messagesResult.reason,
       });
     }
-    const thread = threadResult.data ?? { quoteId: quote.id, messages: [] };
-    const quoteMessagesError = threadResult.ok ? null : threadResult.error;
+    const quoteMessages: QuoteMessageRecord[] = messagesResult.messages;
+    const quoteMessagesError = messagesResult.ok ? null : messagesResult.error;
     const bidsResult = await loadBidsForQuote(quote.id);
     const bidAggregateMap = await loadQuoteBidAggregates([quote.id]);
     const bidAggregate = bidAggregateMap[quote.id];
@@ -630,22 +634,26 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     );
 
     const messagesUnavailable = Boolean(quoteMessagesError);
+    const postMessageAction = postAdminQuoteMessage.bind(null, quote.id);
     const messagesContent = (
-      <QuoteMessagesPanel
-        thread={thread}
-        viewerRole="admin"
-        heading="Customer & supplier messages"
-        description="One shared conversation across portals."
-        helperText="Replies notify the customer inbox immediately."
-        messagesUnavailable={messagesUnavailable}
-        composer={{
-          quoteId: quote.id,
-          mode: "admin",
-          placeholder: "Share an update or ask a follow-up question...",
-          sendLabel: "Reply",
-          pendingLabel: "Sending...",
-        }}
-      />
+      <div className="space-y-3">
+        {messagesUnavailable ? (
+          <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
+            Messages are temporarily unavailable. Refresh the page to try again.
+          </p>
+        ) : null}
+        <QuoteMessagesThread
+          quoteId={quote.id}
+          messages={quoteMessages}
+          canPost
+          postAction={postMessageAction}
+          currentUserId={null}
+          title="Customer & supplier messages"
+          description="One shared conversation across portals."
+          helperText="Replies notify the customer inbox immediately."
+          emptyStateCopy="No messages yet. Use this thread to keep the customer and suppliers aligned."
+        />
+      </div>
     );
 
     const editContent = (
@@ -712,7 +720,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       {
         id: "messages",
         label: "Messages",
-        count: thread.messages.length,
+        count: quoteMessages.length,
         content: messagesContent,
       },
       { id: "edit", label: "Edit quote", content: editContent },

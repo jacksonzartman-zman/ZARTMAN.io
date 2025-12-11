@@ -6,7 +6,7 @@ import {
   normalizeQuoteStatus,
 } from "@/server/quotes/status";
 import type { QuoteActivityEvent } from "@/types/activity";
-import type { QuoteMessageRow } from "@/server/quotes/messages";
+import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import type { SupplierBidRow } from "@/server/suppliers/types";
 import { formatCurrency } from "@/lib/formatCurrency";
 
@@ -108,7 +108,7 @@ export async function loadRecentCustomerActivity(
     if (!quote) {
       continue;
     }
-    if (message.author_type === "customer") {
+    if ((message.sender_role ?? "").toLowerCase() === "customer") {
       continue;
     }
     events.push(buildMessageEvent(message, quote));
@@ -213,13 +213,15 @@ export async function loadCustomerQuotesTable(
   return quotes;
 }
 
-async function fetchQuoteMessages(quoteIds: string[]): Promise<QuoteMessageRow[]> {
+async function fetchQuoteMessages(
+  quoteIds: string[],
+): Promise<QuoteMessageRecord[]> {
   if (quoteIds.length === 0) {
     return [];
   }
   const { data, error } = await supabaseServer
     .from("quote_messages")
-    .select("id,quote_id,author_type,author_name,body,created_at")
+    .select("id,quote_id,sender_role,sender_name,sender_email,body,created_at")
     .in("quote_id", quoteIds)
     .order("created_at", { ascending: false })
     .limit(EVENT_LIMIT * 4);
@@ -227,7 +229,7 @@ async function fetchQuoteMessages(quoteIds: string[]): Promise<QuoteMessageRow[]
     console.error("[customer activity] message query failed", { error });
     return [];
   }
-  return (data ?? []) as QuoteMessageRow[];
+  return (data ?? []) as QuoteMessageRecord[];
 }
 
 async function fetchQuoteBids(quoteIds: string[]): Promise<SupplierBidRow[]> {
@@ -283,16 +285,30 @@ function buildStatusEvent(
 }
 
 function buildMessageEvent(
-  message: QuoteMessageRow,
+  message: QuoteMessageRecord,
   quote: CustomerQuoteRow,
 ): QuoteActivityEvent {
+  const senderRole =
+    typeof message.sender_role === "string"
+      ? message.sender_role.toLowerCase()
+      : "admin";
+  const roleLabel =
+    senderRole === "customer"
+      ? "Customer"
+      : senderRole === "supplier"
+        ? "Supplier"
+        : "Zartman admin";
+  const displayName =
+    message.sender_name?.trim() ||
+    message.sender_email?.trim() ||
+    roleLabel;
   return {
     id: `message:${message.id}`,
     quoteId: quote.id,
     type: "message_posted",
-    title: `${message.author_name ?? "A teammate"} replied on ${getQuoteTitle(quote)}`,
+    title: `${displayName} replied on ${getQuoteTitle(quote)}`,
     description: truncate(message.body, 180),
-    actor: message.author_name ?? message.author_type,
+    actor: displayName,
     timestamp: safeTimestamp(message.created_at),
     href: `/customer/quotes/${quote.id}`,
   };
