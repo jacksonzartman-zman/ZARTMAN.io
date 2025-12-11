@@ -38,7 +38,7 @@ import {
   buildSupplierQuoteTimeline,
   type QuoteTimelineEvent,
 } from "@/lib/quote/tracking";
-import { SupplierQuoteTrackingCard } from "./SupplierQuoteTrackingCard";
+import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
 import { loadQuoteProject, type QuoteProjectRow } from "@/server/quotes/projects";
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
 import {
@@ -591,7 +591,14 @@ function SupplierQuoteWorkspace({
           </p>
         ) : null}
       </div>
-      <SupplierQuoteTrackingCard className={cardClasses} events={timelineEvents} />
+      <QuoteActivityTimeline
+        className={cardClasses}
+        events={timelineEvents}
+        headingLabel="TIMELINE"
+        title="Quote activity timeline"
+        description="Keep tabs on RFQ milestones, your bid submissions, and final decisions."
+        emptyState="We’ll surface status changes and your bid history once activity begins."
+      />
     </PortalShell>
   );
 }
