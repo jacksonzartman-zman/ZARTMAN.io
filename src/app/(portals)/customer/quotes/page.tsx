@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
 
@@ -5,9 +6,14 @@ import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesTable } from "@/server/customers/activity";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
+import { loadQuoteBidAggregates } from "@/server/quotes/bidAggregates";
+import {
+  deriveCustomerQuoteListStatus,
+  formatCustomerBidHint,
+  getCustomerQuoteStatusMeta,
+} from "@/server/quotes/customerSummary";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
-import { QuoteStatusBadge } from "../../components/QuoteStatusBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +27,10 @@ function formatRelativeDate(value: string | null | undefined): string {
   }
   return formatDistanceToNowStrict(date, { addSuffix: true });
 }
+
+type CustomerQuoteListRow = Awaited<
+  ReturnType<typeof loadCustomerQuotesTable>
+>[number];
 
 export default async function CustomerQuotesPage() {
   const user = await requireUser({ redirectTo: "/customer" });
@@ -58,6 +68,9 @@ export default async function CustomerQuotesPage() {
   }
 
   const quotes = await loadCustomerQuotesTable(customer.id);
+  const quoteIds = quotes.map((quote) => quote.id);
+  const bidAggregates =
+    quoteIds.length > 0 ? await loadQuoteBidAggregates(quoteIds) : {};
   const shouldShowFirstTimeCard = quotes.length <= 1;
 
   return (
@@ -115,6 +128,9 @@ export default async function CustomerQuotesPage() {
                     RFQ
                   </th>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    Files
+                  </th>
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Status
                   </th>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -137,6 +153,20 @@ export default async function CustomerQuotesPage() {
 
                   const lastUpdated =
                     quote.updated_at ?? quote.created_at ?? null;
+                  const aggregate = bidAggregates[quote.id];
+                  const statusKey = deriveCustomerQuoteListStatus({
+                    quoteStatus: quote.status,
+                    aggregate,
+                  });
+                  const statusMeta = getCustomerQuoteStatusMeta(statusKey);
+                  const bidHint = formatCustomerBidHint(aggregate);
+                  const bidCount = aggregate?.bidCount ?? 0;
+                  const ctaLabel = bidCount > 0 ? "Review bids" : "View RFQ";
+                  const fileCount = resolveQuoteFileCount(
+                    quote,
+                    files.length,
+                  );
+                  const fileCountLabel = formatFileCountLabel(fileCount);
 
                   return (
                     <tr key={quote.id} className="hover:bg-slate-900/50">
@@ -151,7 +181,22 @@ export default async function CustomerQuotesPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4 align-middle">
-                        <QuoteStatusBadge status={quote.status} size="sm" />
+                        <span className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                          {fileCountLabel}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <div className="space-y-1">
+                          <span
+                            className={clsx(
+                              "pill pill-table",
+                              statusMeta.pillClass,
+                            )}
+                          >
+                            {statusMeta.label}
+                          </span>
+                          <p className="text-xs text-slate-400">{bidHint}</p>
+                        </div>
                       </td>
                       <td className="px-5 py-4 align-middle text-slate-300">
                         {formatRelativeDate(lastUpdated)}
@@ -159,9 +204,14 @@ export default async function CustomerQuotesPage() {
                       <td className="px-5 py-4 align-middle text-right">
                         <Link
                           href={`/customer/quotes/${quote.id}`}
-                          className="inline-flex items-center rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-100 hover:border-emerald-400 hover:text-emerald-300"
+                          className={clsx(
+                            "inline-flex min-w-[7.5rem] items-center justify-center rounded-lg px-3 py-1.5 text-xs font-semibold transition",
+                            bidCount > 0
+                              ? "bg-emerald-500 text-black hover:bg-emerald-400"
+                              : "border border-slate-700 text-slate-100 hover:border-emerald-400 hover:text-emerald-300",
+                          )}
                         >
-                          Open quote
+                          {ctaLabel}
                         </Link>
                       </td>
                     </tr>
@@ -174,4 +224,31 @@ export default async function CustomerQuotesPage() {
       </PortalCard>
     </PortalShell>
   );
+}
+
+function resolveQuoteFileCount(
+  quote: Pick<CustomerQuoteListRow, "file_count" | "upload_file_count">,
+  derivedCount: number,
+): number {
+  const declared =
+    typeof quote.file_count === "number" && Number.isFinite(quote.file_count)
+      ? quote.file_count
+      : typeof quote.upload_file_count === "number" &&
+          Number.isFinite(quote.upload_file_count)
+        ? quote.upload_file_count
+        : null;
+  if (declared && declared > 0) {
+    return declared;
+  }
+  return derivedCount;
+}
+
+function formatFileCountLabel(count: number): string {
+  if (!count || count <= 0) {
+    return "No files";
+  }
+  if (count === 1) {
+    return "1 file";
+  }
+  return `${count} files`;
 }
