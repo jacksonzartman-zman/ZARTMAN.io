@@ -7,6 +7,7 @@ import {
 } from "@/server/suppliers/activityLogging";
 import {
   approvalsEnabled,
+  isMissingQuoteAwardColumnsError,
   isMissingSupplierAssignmentsColumnError,
   isSupplierAssignmentsEnabled,
 } from "@/server/suppliers/flags";
@@ -350,6 +351,10 @@ async function selectQuotesByFilter(
         logAssignmentsColumnWarning(context, error);
         return [];
       }
+      if (shouldSkipAwardColumnsError(error, context)) {
+        logAwardColumnsWarning(context, error);
+        return [];
+      }
       logQuoteError(error, context);
       if (shouldThrow) {
         throw toSupplierActivityQueryError("quotes_with_uploads", error);
@@ -360,6 +365,10 @@ async function selectQuotesByFilter(
   } catch (error) {
     if (shouldSkipAssignmentsColumnError(error, context)) {
       logAssignmentsColumnWarning(context, error);
+      return [];
+    }
+    if (shouldSkipAwardColumnsError(error, context)) {
+      logAwardColumnsWarning(context, error);
       return [];
     }
     logQuoteError(error, context);
@@ -430,11 +439,34 @@ function shouldSkipAssignmentsColumnError(
   return isMissingSupplierAssignmentsColumnError(extractSupabaseSource(error));
 }
 
+function shouldSkipAwardColumnsError(
+  error: unknown,
+  context?: ActivityQueryContext,
+): boolean {
+  if (context?.label !== SUPPLIER_ACTIVITY_LABEL) {
+    return false;
+  }
+  return isMissingQuoteAwardColumnsError(extractSupabaseSource(error));
+}
+
 function logAssignmentsColumnWarning(
   context: ActivityQueryContext | undefined,
   rawError: unknown,
 ) {
   console.warn("[supplier activity] assignments disabled: missing column", {
+    loader: context?.loader ?? null,
+    supplierId: context?.supplierId ?? null,
+    supplierEmail: context?.supplierEmail ?? null,
+    stage: context?.loader ?? null,
+    supabaseError: formatSupabaseError(extractSupabaseSource(rawError)),
+  });
+}
+
+function logAwardColumnsWarning(
+  context: ActivityQueryContext | undefined,
+  rawError: unknown,
+) {
+  console.warn("[supplier activity] awards disabled: missing column", {
     loader: context?.loader ?? null,
     supplierId: context?.supplierId ?? null,
     supplierEmail: context?.supplierEmail ?? null,
