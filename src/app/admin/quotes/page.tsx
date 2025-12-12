@@ -1,5 +1,8 @@
 // src/app/admin/quotes/page.tsx
-import { getAdminQuotesInbox } from "@/server/admin/quotesInbox";
+import {
+  ADMIN_QUOTES_INBOX_PAGE_SIZES,
+  getAdminQuotesInbox,
+} from "@/server/admin/quotesInbox";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
@@ -23,6 +26,7 @@ import {
 import type { AdminQuotesView } from "@/types/adminQuotes";
 import AdminQuotesInboxControls from "./AdminQuotesInboxControls";
 import type { AdminQuotesInboxSort } from "@/server/admin/quotesInbox";
+import TablePaginationControls from "../components/TablePaginationControls";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +36,8 @@ type QuotesPageSearchParams = {
   hasBids?: string | string[] | null;
   awarded?: string | string[] | null;
   search?: string | string[] | null;
+  page?: string | string[] | null;
+  pageSize?: string | string[] | null;
 };
 
 type ResolvedSearchParams = {
@@ -40,6 +46,8 @@ type ResolvedSearchParams = {
   hasBids?: string;
   awarded?: string;
   search?: string;
+  page?: string;
+  pageSize?: string;
 };
 
 type QuotesPageProps = {
@@ -90,6 +98,8 @@ const resolveSearchParams = async (
       hasBids: resolved.get("hasBids") ?? undefined,
       awarded: resolved.get("awarded") ?? undefined,
       search: resolved.get("search") ?? undefined,
+      page: resolved.get("page") ?? undefined,
+      pageSize: resolved.get("pageSize") ?? undefined,
     };
   }
 
@@ -100,6 +110,8 @@ const resolveSearchParams = async (
     hasBids: getFirstParamValue(maybeObject.hasBids),
     awarded: getFirstParamValue(maybeObject.awarded),
     search: getFirstParamValue(maybeObject.search),
+    page: getFirstParamValue(maybeObject.page),
+    pageSize: getFirstParamValue(maybeObject.pageSize),
   };
 };
 
@@ -117,12 +129,15 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       : "";
   const normalizedSearch = searchTerm.trim().toLowerCase().replace(/\s+/g, " ");
 
+  const page = parsePageNumber(resolvedSearchParams.page);
+  const pageSize = parsePageSize(resolvedSearchParams.pageSize);
+
   const inboxResult = await getAdminQuotesInbox({
     sort: (typeof sort === "string"
       ? (sort.trim().toLowerCase() as AdminQuotesInboxSort)
       : null),
-    page: 1,
-    pageSize: 50,
+    page,
+    pageSize,
     filter: {
       status: status?.trim() || null,
       search: normalizedSearch || null,
@@ -133,6 +148,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
 
   const baseRows = inboxResult.data.rows ?? [];
   const totalCount = inboxResult.data.count ?? baseRows.length;
+  const hasMore = Boolean(inboxResult.data.hasMore);
 
   const enrichedRows: QuoteRow[] = baseRows.map((row) => {
     const files = buildQuoteFilesFromRow(row);
@@ -220,6 +236,21 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
               currentView={"all" as AdminQuotesView}
               searchTerm={normalizedSearch}
             />
+            <TablePaginationControls
+              basePath="/admin/quotes"
+              page={page}
+              pageSize={pageSize}
+              hasMore={hasMore}
+              totalCount={inboxResult.data.count}
+              rowsOnPage={filteredQuotes.length}
+              existingQueryParams={{
+                sort: sort ?? undefined,
+                status: status ?? undefined,
+                hasBids: hasBids ? "1" : undefined,
+                awarded: awarded ? "1" : undefined,
+                search: searchTerm.trim() || undefined,
+              }}
+            />
           </div>
         </div>
     </AdminDashboardShell>
@@ -245,4 +276,23 @@ function buildInboxAggregate(row: {
     winningBidCurrency: null,
     winningBidLeadTimeDays: null,
   };
+}
+
+function parsePageNumber(raw?: string): number {
+  if (typeof raw !== "string") return 1;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.floor(parsed));
+}
+
+function parsePageSize(raw?: string): number {
+  if (typeof raw !== "string") return 25;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return 25;
+  const normalized = Math.floor(parsed);
+  return ADMIN_QUOTES_INBOX_PAGE_SIZES.includes(
+    normalized as (typeof ADMIN_QUOTES_INBOX_PAGE_SIZES)[number],
+  )
+    ? normalized
+    : 25;
 }

@@ -88,12 +88,15 @@ export type AdminQuotesInboxRow = {
 export type AdminQuotesInboxData = {
   rows: AdminQuotesInboxRow[];
   count: number | null;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
   degraded?: boolean;
   degradedReason?: "schema_mismatch" | "misconfigured_service_role_key";
 };
 
-const DEFAULT_PAGE_SIZE = 25;
-const MAX_PAGE_SIZE = 100;
+export const ADMIN_QUOTES_INBOX_PAGE_SIZES = [10, 25, 50, 100] as const;
+const DEFAULT_PAGE_SIZE: (typeof ADMIN_QUOTES_INBOX_PAGE_SIZES)[number] = 25;
 const DEFAULT_SORT: AdminQuotesInboxSort = "newest_rfq";
 
 let warnedMissingAdminInboxSchema = false;
@@ -142,7 +145,8 @@ export async function getAdminQuotesInbox(
   const normalizedSearch = filter.search ?? "";
 
   const rangeFrom = (page - 1) * pageSize;
-  const rangeTo = rangeFrom + pageSize - 1;
+  // Fetch one extra row so we can answer "hasMore" without relying on total count.
+  const rangeTo = rangeFrom + pageSize;
 
   try {
     const supabase = getServiceRoleSupabaseClient();
@@ -165,6 +169,9 @@ export async function getAdminQuotesInbox(
         data: {
           rows: [],
           count: 0,
+          page,
+          pageSize,
+          hasMore: false,
           degraded: true,
           degradedReason: "misconfigured_service_role_key",
         },
@@ -215,7 +222,15 @@ export async function getAdminQuotesInbox(
         }
         return {
           ok: true,
-          data: { rows: [], count: 0, degraded: true, degradedReason: "schema_mismatch" },
+          data: {
+            rows: [],
+            count: 0,
+            page,
+            pageSize,
+            hasMore: false,
+            degraded: true,
+            degradedReason: "schema_mismatch",
+          },
           error: null,
         };
       }
@@ -225,17 +240,20 @@ export async function getAdminQuotesInbox(
       });
       return {
         ok: false,
-        data: { rows: [], count: 0 },
+        data: { rows: [], count: 0, page, pageSize, hasMore: false },
         error: "Unable to load the inbox right now. Please refresh to try again.",
       };
     }
 
-    const rows = Array.isArray(data) ? data : [];
+    const fetchedRows = Array.isArray(data) ? data : [];
+    const hasMore = fetchedRows.length > pageSize;
+    const rows = hasMore ? fetchedRows.slice(0, pageSize) : fetchedRows;
     logAdminQuotesInfo("admin inbox loaded", {
       count: rows.length,
       page,
       pageSize,
       sort,
+      hasMore,
       hasSearch: Boolean(normalizedSearch),
       status: filter.status ?? null,
       hasBids: filter.hasBids ?? null,
@@ -244,7 +262,13 @@ export async function getAdminQuotesInbox(
 
     return {
       ok: true,
-      data: { rows, count: typeof count === "number" ? count : null },
+      data: {
+        rows,
+        count: typeof count === "number" ? count : null,
+        page,
+        pageSize,
+        hasMore,
+      },
       error: null,
     };
   } catch (error) {
@@ -257,7 +281,15 @@ export async function getAdminQuotesInbox(
       }
       return {
         ok: true,
-        data: { rows: [], count: 0, degraded: true, degradedReason: "schema_mismatch" },
+        data: {
+          rows: [],
+          count: 0,
+          page,
+          pageSize,
+          hasMore: false,
+          degraded: true,
+          degradedReason: "schema_mismatch",
+        },
         error: null,
       };
     }
@@ -267,7 +299,7 @@ export async function getAdminQuotesInbox(
     });
     return {
       ok: false,
-      data: { rows: [], count: 0 },
+      data: { rows: [], count: 0, page, pageSize, hasMore: false },
       error: "Unable to load the inbox right now. Please refresh to try again.",
     };
   }
@@ -284,8 +316,12 @@ function normalizePageSize(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return DEFAULT_PAGE_SIZE;
   }
-  const clamped = Math.max(1, Math.floor(value));
-  return Math.min(clamped, MAX_PAGE_SIZE);
+  const normalized = Math.floor(value);
+  return ADMIN_QUOTES_INBOX_PAGE_SIZES.includes(
+    normalized as (typeof ADMIN_QUOTES_INBOX_PAGE_SIZES)[number],
+  )
+    ? normalized
+    : DEFAULT_PAGE_SIZE;
 }
 
 function normalizeSort(value: unknown): AdminQuotesInboxSort {
