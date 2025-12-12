@@ -25,9 +25,9 @@ import { approvalsEnabled } from "@/server/suppliers/flags";
 import { buildSupplierInboxRows } from "../inboxRows";
 import { isOpenQuoteStatus } from "@/server/quotes/status";
 import { formatRelativeTimeFromTimestamp } from "@/lib/relativeTime";
-import AdminSearchInput from "@/app/admin/AdminSearchInput";
-import TablePaginationControls from "@/app/admin/components/TablePaginationControls";
 import { parseListState } from "@/app/(portals)/lib/listState";
+import PortalSearchInput from "@/app/(portals)/components/PortalSearchInput";
+import PortalTablePaginationControls from "@/app/(portals)/components/PortalTablePaginationControls";
 import {
   SUPPLIER_RFQS_LIST_STATE_CONFIG,
   type SupplierRfqsSortKey,
@@ -246,7 +246,7 @@ export default async function SupplierQuotesPage({
             filterOptions={filterOptions}
             listStateConfig={SUPPLIER_RFQS_LIST_STATE_CONFIG}
           />
-          <AdminSearchInput
+          <PortalSearchInput
             initialValue={searchTerm}
             basePath="/supplier/quotes"
             placeholder="Search RFQs by customer, file, process, or material..."
@@ -263,7 +263,7 @@ export default async function SupplierQuotesPage({
           ) : pageRows.length > 0 ? (
             <>
               <SupplierInboxTable rows={pageRows} />
-              <TablePaginationControls
+              <PortalTablePaginationControls
                 basePath="/supplier/quotes"
                 page={page}
                 pageSize={pageSize}
