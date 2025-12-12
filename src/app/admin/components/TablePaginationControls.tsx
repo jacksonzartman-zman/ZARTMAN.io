@@ -4,6 +4,12 @@ import clsx from "clsx";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
+import {
+  parseListState,
+  setPage,
+  setPageSize,
+  type ListStateConfig,
+} from "@/app/(portals)/lib/listState";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
@@ -13,6 +19,7 @@ export type TablePaginationControlsProps = {
   hasMore: boolean;
   basePath: string;
   existingQueryParams?: Record<string, string | null | undefined>;
+  listStateConfig?: ListStateConfig;
   totalCount?: number | null;
   rowsOnPage?: number;
   className?: string;
@@ -24,6 +31,7 @@ export default function TablePaginationControls({
   hasMore,
   basePath,
   existingQueryParams,
+  listStateConfig,
   totalCount,
   rowsOnPage,
   className,
@@ -44,7 +52,18 @@ export default function TablePaginationControls({
       ? Math.min(showingEnd, totalCount)
       : showingEnd;
 
-  const buildParams = () => {
+  const navigateQuery = (query: string) => {
+    const nextUrl = query ? `${basePath}?${query}` : basePath;
+    startTransition(() => {
+      router.push(nextUrl, { scroll: false });
+    });
+  };
+
+  const listState = listStateConfig
+    ? parseListState(searchParams, listStateConfig)
+    : null;
+
+  const navigateLegacy = (mutate: (params: URLSearchParams) => void) => {
     const params = new URLSearchParams(searchParams.toString());
 
     if (existingQueryParams) {
@@ -54,17 +73,8 @@ export default function TablePaginationControls({
       }
     }
 
-    return params;
-  };
-
-  const navigate = (mutate: (params: URLSearchParams) => void) => {
-    const params = buildParams();
     mutate(params);
-    const query = params.toString();
-    const nextUrl = query ? `${basePath}?${query}` : basePath;
-    startTransition(() => {
-      router.push(nextUrl, { scroll: false });
-    });
+    navigateQuery(params.toString());
   };
 
   const canGoPrev = page > 1;
@@ -89,7 +99,12 @@ export default function TablePaginationControls({
               ? nextSize
               : 25;
 
-            navigate((params) => {
+            if (listState && listStateConfig) {
+              navigateQuery(setPageSize(listState, normalized, listStateConfig));
+              return;
+            }
+
+            navigateLegacy((params) => {
               // Persist page size, but keep URLs tidy for the default.
               if (normalized === 25) params.delete("pageSize");
               else params.set("pageSize", String(normalized));
@@ -124,11 +139,13 @@ export default function TablePaginationControls({
         <button
           type="button"
           onClick={() =>
-            navigate((params) => {
-              const nextPage = Math.max(1, page - 1);
-              if (nextPage === 1) params.delete("page");
-              else params.set("page", String(nextPage));
-            })
+            listState && listStateConfig
+              ? navigateQuery(setPage(listState, page - 1, listStateConfig))
+              : navigateLegacy((params) => {
+                  const nextPage = Math.max(1, page - 1);
+                  if (nextPage === 1) params.delete("page");
+                  else params.set("page", String(nextPage));
+                })
           }
           className={clsx(
             secondaryCtaClasses,
@@ -143,10 +160,12 @@ export default function TablePaginationControls({
         <button
           type="button"
           onClick={() =>
-            navigate((params) => {
-              const nextPage = page + 1;
-              params.set("page", String(nextPage));
-            })
+            listState && listStateConfig
+              ? navigateQuery(setPage(listState, page + 1, listStateConfig))
+              : navigateLegacy((params) => {
+                  const nextPage = page + 1;
+                  params.set("page", String(nextPage));
+                })
           }
           className={clsx(
             secondaryCtaClasses,

@@ -1,14 +1,12 @@
 // src/app/admin/quotes/page.tsx
-import {
-  ADMIN_QUOTES_INBOX_PAGE_SIZES,
-  getAdminQuotesInbox,
-} from "@/server/admin/quotesInbox";
+import { getAdminQuotesInbox } from "@/server/admin/quotesInbox";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
 import AdminDashboardShell from "../AdminDashboardShell";
 import AdminFiltersBar from "../AdminFiltersBar";
 import AdminSearchInput from "../AdminSearchInput";
+import { parseListState } from "@/app/(portals)/lib/listState";
 import type { QuoteBidAggregate } from "@/server/quotes/bidAggregates";
 import {
   deriveAdminQuoteListStatus,
@@ -25,117 +23,32 @@ import {
 } from "@/server/quotes/fileSummary";
 import type { AdminQuotesView } from "@/types/adminQuotes";
 import AdminQuotesInboxControls from "./AdminQuotesInboxControls";
-import type { AdminQuotesInboxSort } from "@/server/admin/quotesInbox";
 import TablePaginationControls from "../components/TablePaginationControls";
+import { ADMIN_QUOTES_LIST_STATE_CONFIG } from "./listState";
 
 export const dynamic = "force-dynamic";
-
-type QuotesPageSearchParams = {
-  sort?: string | string[] | null;
-  status?: string | string[] | null;
-  hasBids?: string | string[] | null;
-  awarded?: string | string[] | null;
-  search?: string | string[] | null;
-  page?: string | string[] | null;
-  pageSize?: string | string[] | null;
-};
-
-type ResolvedSearchParams = {
-  sort?: string;
-  status?: string;
-  hasBids?: string;
-  awarded?: string;
-  search?: string;
-  page?: string;
-  pageSize?: string;
-};
 
 type QuotesPageProps = {
   searchParams?: Promise<ReadonlyURLSearchParams>;
 };
 
-const getFirstParamValue = (
-  value?: string | string[] | null,
-): string | undefined => {
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-
-  return value ?? undefined;
-};
-
-type ResolvableSearchParams =
-  | QuotesPageProps["searchParams"]
-  | URLSearchParams
-  | ReadonlyURLSearchParams
-  | QuotesPageSearchParams
-  | null
-  | undefined;
-
-const isURLSearchParamsLike = (
-  value: unknown,
-): value is Pick<URLSearchParams, "get"> => {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as Record<string, unknown>).get === "function"
-  );
-};
-
-const resolveSearchParams = async (
-  rawSearchParams?: ResolvableSearchParams,
-): Promise<ResolvedSearchParams> => {
-  const resolved = await rawSearchParams;
-
-  if (!resolved) {
-    return {};
-  }
-
-  if (isURLSearchParamsLike(resolved)) {
-    return {
-      sort: resolved.get("sort") ?? undefined,
-      status: resolved.get("status") ?? undefined,
-      hasBids: resolved.get("hasBids") ?? undefined,
-      awarded: resolved.get("awarded") ?? undefined,
-      search: resolved.get("search") ?? undefined,
-      page: resolved.get("page") ?? undefined,
-      pageSize: resolved.get("pageSize") ?? undefined,
-    };
-  }
-
-  const maybeObject = resolved as QuotesPageSearchParams;
-  return {
-    sort: getFirstParamValue(maybeObject.sort),
-    status: getFirstParamValue(maybeObject.status),
-    hasBids: getFirstParamValue(maybeObject.hasBids),
-    awarded: getFirstParamValue(maybeObject.awarded),
-    search: getFirstParamValue(maybeObject.search),
-    page: getFirstParamValue(maybeObject.page),
-    pageSize: getFirstParamValue(maybeObject.pageSize),
-  };
-};
-
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
-  const resolvedSearchParams = await resolveSearchParams(searchParams);
+  const resolvedSearchParams = await searchParams;
+  const listState = parseListState(resolvedSearchParams, ADMIN_QUOTES_LIST_STATE_CONFIG);
 
-  const sort = typeof resolvedSearchParams.sort === "string" ? resolvedSearchParams.sort : null;
-  const status = typeof resolvedSearchParams.status === "string" ? resolvedSearchParams.status : null;
-  const hasBids = (resolvedSearchParams.hasBids ?? "").trim() === "1";
-  const awarded = (resolvedSearchParams.awarded ?? "").trim() === "1";
+  const sort = listState.sort ?? null;
+  const status = listState.status ?? null;
+  const hasBids = Boolean(listState.hasBids);
+  const awarded = Boolean(listState.awarded);
 
-  const searchTerm =
-    typeof resolvedSearchParams.search === "string"
-      ? resolvedSearchParams.search
-      : "";
+  const searchTerm = listState.q;
   const normalizedSearch = searchTerm.trim().toLowerCase().replace(/\s+/g, " ");
 
-  const page = parsePageNumber(resolvedSearchParams.page);
-  const pageSize = parsePageSize(resolvedSearchParams.pageSize);
+  const page = listState.page;
+  const pageSize = listState.pageSize;
 
   const inboxResult = await getAdminQuotesInbox({
-    sort: (typeof sort === "string"
-      ? (sort.trim().toLowerCase() as AdminQuotesInboxSort)
-      : null),
+    sort,
     page,
     pageSize,
     filter: {
@@ -225,6 +138,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
               initialValue={searchTerm}
               basePath="/admin/quotes"
               placeholder="Search by customer, email, company, file, or status..."
+              listStateConfig={ADMIN_QUOTES_LIST_STATE_CONFIG}
             />
           }
         />
@@ -243,13 +157,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
               hasMore={hasMore}
               totalCount={inboxResult.data.count}
               rowsOnPage={filteredQuotes.length}
-              existingQueryParams={{
-                sort: sort ?? undefined,
-                status: status ?? undefined,
-                hasBids: hasBids ? "1" : undefined,
-                awarded: awarded ? "1" : undefined,
-                search: searchTerm.trim() || undefined,
-              }}
+              listStateConfig={ADMIN_QUOTES_LIST_STATE_CONFIG}
             />
           </div>
         </div>
@@ -276,23 +184,4 @@ function buildInboxAggregate(row: {
     winningBidCurrency: null,
     winningBidLeadTimeDays: null,
   };
-}
-
-function parsePageNumber(raw?: string): number {
-  if (typeof raw !== "string") return 1;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return 1;
-  return Math.max(1, Math.floor(parsed));
-}
-
-function parsePageSize(raw?: string): number {
-  if (typeof raw !== "string") return 25;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return 25;
-  const normalized = Math.floor(parsed);
-  return ADMIN_QUOTES_INBOX_PAGE_SIZES.includes(
-    normalized as (typeof ADMIN_QUOTES_INBOX_PAGE_SIZES)[number],
-  )
-    ? normalized
-    : 25;
 }
