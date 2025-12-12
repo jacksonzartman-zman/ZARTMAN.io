@@ -40,16 +40,25 @@ export default function PortalTablePaginationControls({
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
+  const resolvedTotalCount =
+    typeof totalCount === "number" && Number.isFinite(totalCount) ? Math.max(0, totalCount) : null;
+
   const resolvedRowsOnPage =
     typeof rowsOnPage === "number" && Number.isFinite(rowsOnPage)
       ? Math.max(0, Math.floor(rowsOnPage))
       : 0;
 
+  // Always show the footer when the list has rows (even if there is only one page),
+  // but avoid rendering it for an empty list.
+  const shouldRender =
+    resolvedTotalCount !== null ? resolvedTotalCount > 0 : resolvedRowsOnPage > 0;
+  if (!shouldRender) return null;
+
   const showingStart = resolvedRowsOnPage > 0 ? (page - 1) * pageSize + 1 : 0;
   const showingEnd = resolvedRowsOnPage > 0 ? showingStart + resolvedRowsOnPage - 1 : 0;
   const showingEndClamped =
-    typeof totalCount === "number" && Number.isFinite(totalCount)
-      ? Math.min(showingEnd, totalCount)
+    resolvedTotalCount !== null
+      ? Math.min(showingEnd, resolvedTotalCount)
       : showingEnd;
 
   const navigateQuery = (query: string) => {
@@ -81,7 +90,7 @@ export default function PortalTablePaginationControls({
   return (
     <div
       className={clsx(
-        "mt-3 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3 text-sm text-slate-200 sm:flex-row sm:items-center sm:justify-between",
+        "mt-4 flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3 pb-6 text-sm text-slate-200 sm:flex-row sm:items-center sm:justify-between",
         className,
       )}
     >
@@ -130,8 +139,8 @@ export default function PortalTablePaginationControls({
         {resolvedRowsOnPage > 0 ? (
           <span>
             Showing {showingStart}–{showingEndClamped}
-            {typeof totalCount === "number" && Number.isFinite(totalCount)
-              ? ` of ${totalCount}`
+            {resolvedTotalCount !== null
+              ? ` of ${resolvedTotalCount}`
               : ""}
           </span>
         ) : (
