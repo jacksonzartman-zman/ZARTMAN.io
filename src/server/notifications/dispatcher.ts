@@ -1,4 +1,9 @@
 import { sendNotificationEmail } from "@/server/notifications/email";
+import {
+  shouldSendNotification,
+  type ShouldSendNotificationResult,
+} from "@/server/notifications/preferences";
+import type { NotificationPreferenceRole } from "@/types/notificationPreferences";
 
 export type NotificationAudience = "customer" | "supplier" | "admin" | "internal";
 export type NotificationChannel = "email" | "activity" | "webhook";
@@ -7,6 +12,9 @@ export type NotificationDispatchContext = {
   eventType: string;
   quoteId?: string | null;
   recipientEmail?: string | null;
+  recipientUserId?: string | null;
+  recipientRole?: NotificationPreferenceRole | "internal" | null;
+  actorUserId?: string | null;
   audience?: NotificationAudience;
   channel?: NotificationChannel;
   payload?: Record<string, unknown>;
@@ -59,8 +67,27 @@ export async function dispatchEmailNotification(
     return false;
   }
 
+  const channel = context.channel ?? "email";
+  let gateResult: ShouldSendNotificationResult = { allow: true, reason: null };
+
+  if (channel === "email") {
+    gateResult = await shouldSendNotification({
+      eventType: context.eventType,
+      quoteId: context.quoteId,
+      channel: "email",
+      recipientRole: resolveRecipientRole(context),
+      recipientUserId: context.recipientUserId,
+      actorUserId: context.actorUserId,
+    });
+  }
+
+  if (!gateResult.allow) {
+    logSkippedDispatch(logContext, gateResult);
+    return false;
+  }
+
   return dispatchNotification(
-    { ...context, recipientEmail, channel: context.channel ?? "email" },
+    { ...context, recipientEmail, channel },
     () =>
       sendNotificationEmail({
         to: recipientEmail ?? "",
@@ -76,6 +103,9 @@ function buildLogContext(context: NotificationDispatchContext) {
     eventType: context.eventType,
     quoteId: context.quoteId ?? null,
     recipientEmail: context.recipientEmail ?? null,
+    recipientUserId: context.recipientUserId ?? null,
+    recipientRole: context.recipientRole ?? null,
+    actorUserId: context.actorUserId ?? null,
     audience: context.audience ?? null,
     channel: context.channel ?? null,
     payload: context.payload ?? null,
@@ -94,4 +124,44 @@ function serializeError(error: unknown) {
     return { ...error };
   }
   return error ?? null;
+}
+
+function resolveRecipientRole(
+  context: NotificationDispatchContext,
+): NotificationPreferenceRole | null {
+  if (context.recipientRole && context.recipientRole !== "internal") {
+    return context.recipientRole;
+  }
+  if (context.recipientRole === "internal") {
+    return "admin";
+  }
+  if (
+    context.audience === "customer" ||
+    context.audience === "supplier" ||
+    context.audience === "admin"
+  ) {
+    return context.audience;
+  }
+  if (context.audience === "internal") {
+    return "admin";
+  }
+  return null;
+}
+
+function logSkippedDispatch(
+  logContext: ReturnType<typeof buildLogContext>,
+  result: ShouldSendNotificationResult,
+) {
+  console.log("[notifications] dispatch start", logContext);
+  const reason =
+    result.reason === "compliance_mode"
+      ? "skipped due to compliance_mode"
+      : result.reason === "preference_disabled"
+        ? "skipped due to notification_preferences"
+        : "skipped (self_recipient)";
+  console.warn("[notifications] dispatch skipped", {
+    ...logContext,
+    reason,
+    skipReason: result.reason,
+  });
 }

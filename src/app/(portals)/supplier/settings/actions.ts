@@ -1,13 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { SUPPLIER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
+import { serializeActionError } from "@/lib/forms";
 import { requireUser } from "@/server/auth";
 import {
   loadSupplierByPrimaryEmail,
   loadSupplierByUserId,
 } from "@/server/suppliers/profile";
-import { serializeActionError } from "@/lib/forms";
+import { upsertNotificationPreference } from "@/server/notifications/preferences";
 
 export type SupplierNotificationSettingsFormState =
   | { ok: true; message: string }
@@ -36,29 +37,35 @@ export async function submitSupplierNotificationSettingsAction(
       };
     }
 
-    const notifyQuoteMessages = Boolean(formData.get("notify_quote_messages"));
-    const notifyQuoteWinner = Boolean(formData.get("notify_quote_winner"));
+    const updates = SUPPLIER_NOTIFICATION_OPTIONS.map((option) => ({
+      eventType: option.eventType,
+      channel: option.channel,
+      enabled: Boolean(formData.get(option.inputName)),
+    }));
 
-    const { error } = await supabaseServer
-      .from("suppliers")
-      .update({
-        notify_quote_messages: notifyQuoteMessages,
-        notify_quote_winner: notifyQuoteWinner,
-      })
-      .eq("id", supplier.id);
+    const results = await Promise.all(
+      updates.map((update) =>
+        upsertNotificationPreference({
+          userId: user.id,
+          role: "supplier",
+          eventType: update.eventType,
+          channel: update.channel,
+          enabled: update.enabled,
+        }),
+      ),
+    );
 
-    if (error) {
-      console.error("[settings notifications] supplier update failed", {
+    if (results.some((ok) => !ok)) {
+      console.error("[settings notifications] supplier prefs write failed", {
         supplierId: supplier.id,
-        error: serializeActionError(error),
+        updates,
       });
       return { ok: false, error: GENERIC_ERROR };
     }
 
     console.log("[settings notifications] supplier prefs updated", {
       supplierId: supplier.id,
-      notifyQuoteMessages,
-      notifyQuoteWinner,
+      updates,
     });
 
     revalidatePath("/supplier/settings");

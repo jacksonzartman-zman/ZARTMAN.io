@@ -1,12 +1,14 @@
 import Link from "next/link";
+import { CUSTOMER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
+import { CustomerNotificationSettingsForm } from "./CustomerNotificationSettingsForm";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
+import { loadNotificationPreferencesMap } from "@/server/notifications/preferences";
 import type { Org } from "@/types/org";
 import {
   deriveOrgFromSession,
   deriveOrgSeatSummary,
 } from "@/types/org";
-import { CustomerNotificationSettingsForm } from "./CustomerNotificationSettingsForm";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +24,11 @@ export default async function CustomerSettingsPage() {
   const seatSummary = deriveOrgSeatSummary(org, user);
   const planLabel = formatPlanLabel(org.plan);
 
-  const notificationSettings = {
-    notifyQuoteMessages: customer?.notify_quote_messages ?? true,
-    notifyQuoteWinner: customer?.notify_quote_winner ?? true,
-  };
+  const notificationSettings = await loadNotificationPreferencesMap({
+    userId: user.id,
+    role: "customer",
+    eventTypes: CUSTOMER_NOTIFICATION_OPTIONS.map((option) => option.eventType),
+  });
 
   return (
     <div className="space-y-6">
