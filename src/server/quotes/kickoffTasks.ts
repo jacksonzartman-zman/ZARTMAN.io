@@ -4,6 +4,7 @@ import {
   isMissingTableOrColumnError,
   isRowLevelSecurityDeniedError,
 } from "@/server/admin/logging";
+import { normalizeQuoteStatus } from "@/server/quotes/status";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_SUPPLIER_KICKOFF_TASKS,
@@ -152,7 +153,7 @@ export async function toggleSupplierKickoffTask(
     };
   }
 
-  const awardCheck = await loadQuoteAwardedSupplierId(quoteId);
+  const awardCheck = await loadQuoteAwardInfoForKickoff(quoteId);
   if (!awardCheck.ok) {
     if (awardCheck.reason === "schema-missing") {
       return {
@@ -168,11 +169,20 @@ export async function toggleSupplierKickoffTask(
     };
   }
 
-  if (awardCheck.awardedSupplierId !== supplierId) {
+  const awardedSupplierId = awardCheck.awardedSupplierId;
+  const quoteStatus = awardCheck.status;
+  if (normalizeQuoteStatus(quoteStatus) === "won" && !awardedSupplierId) {
+    console.warn("[quote integrity] won quote missing awarded_supplier_id", {
+      quoteId,
+      status: quoteStatus ?? null,
+    });
+  }
+
+  if (!awardedSupplierId || awardedSupplierId !== supplierId) {
     console.warn("[kickoff access] denied: not awarded supplier", {
       quoteId,
-      supplierId,
-      awardedSupplierId: awardCheck.awardedSupplierId,
+      quote: { awarded_supplier_id: awardedSupplierId },
+      resolved: { supplierId },
     });
     return {
       ok: false,
@@ -185,26 +195,31 @@ export async function toggleSupplierKickoffTask(
   const supabase = options?.supabase ?? supabaseServer;
 
   try {
-    const { error } = await supabase
-      .from(TABLE_NAME)
-      .upsert(
-        {
-          quote_id: quoteId,
-          supplier_id: supplierId,
-          task_key: taskKey,
-          title: payload.title,
-          description: payload.description,
-          completed: Boolean(payload.completed),
-          sort_order: payload.sortOrder,
-          updated_at: now,
-        },
-        { onConflict: "quote_id,supplier_id,task_key" },
-      );
+    const updatePayload = {
+      title: payload.title,
+      description: payload.description,
+      completed: Boolean(payload.completed),
+      sort_order: payload.sortOrder,
+      updated_at: now,
+    };
 
-    if (error) {
-      const serialized = serializeSupabaseError(error);
-      if (isMissingTableOrColumnError(error)) {
-        console.warn("[quote kickoff tasks] upsert missing schema", {
+    // Prefer UPDATE to avoid INSERT RLS checks for existing rows.
+    const {
+      data: updatedRows,
+      error: updateError,
+      count: updatedCount,
+    } = await supabase
+      .from(TABLE_NAME)
+      .update(updatePayload)
+      .eq("quote_id", quoteId)
+      .eq("supplier_id", supplierId)
+      .eq("task_key", taskKey)
+      .select("id", { count: "exact" });
+
+    if (updateError) {
+      const serialized = serializeSupabaseError(updateError);
+      if (isMissingTableOrColumnError(updateError)) {
+        console.warn("[quote kickoff tasks] update missing schema", {
           quoteId,
           supplierId,
           taskKey,
@@ -216,12 +231,12 @@ export async function toggleSupplierKickoffTask(
           reason: "schema-missing",
         };
       }
-      if (isRowLevelSecurityDeniedError(error)) {
-        console.warn("[quote kickoff tasks] upsert denied by RLS", {
+      if (isRowLevelSecurityDeniedError(updateError)) {
+        console.warn("[quote kickoff tasks] update denied by RLS", {
           quoteId,
           supplierId,
           taskKey,
-          error: serialized ?? error,
+          error: serialized ?? updateError,
         });
         return {
           ok: false,
@@ -229,7 +244,7 @@ export async function toggleSupplierKickoffTask(
           reason: "denied",
         };
       }
-      console.error("[quote kickoff tasks] upsert failed", {
+      console.error("[quote kickoff tasks] update failed", {
         quoteId,
         supplierId,
         taskKey,
@@ -242,7 +257,77 @@ export async function toggleSupplierKickoffTask(
       };
     }
 
-    console.log("[quote kickoff tasks] upsert success", {
+    const normalizedUpdatedCount =
+      typeof updatedCount === "number"
+        ? updatedCount
+        : Array.isArray(updatedRows)
+          ? updatedRows.length
+          : 0;
+
+    if (normalizedUpdatedCount > 0) {
+      console.log("[quote kickoff tasks] update success", {
+        quoteId,
+        supplierId,
+        taskKey,
+        completed: payload.completed,
+      });
+
+      return {
+        ok: true,
+        error: null,
+      };
+    }
+
+    // Fallback: row wasn't present (should be rare if tasks were seeded). Insert explicitly.
+    const { error: insertError } = await supabase.from(TABLE_NAME).insert({
+      quote_id: quoteId,
+      supplier_id: supplierId,
+      task_key: taskKey,
+      ...updatePayload,
+    });
+
+    if (insertError) {
+      const serialized = serializeSupabaseError(insertError);
+      if (isMissingTableOrColumnError(insertError)) {
+        console.warn("[quote kickoff tasks] insert missing schema", {
+          quoteId,
+          supplierId,
+          taskKey,
+          error: serialized,
+        });
+        return {
+          ok: false,
+          error: "schema-missing",
+          reason: "schema-missing",
+        };
+      }
+      if (isRowLevelSecurityDeniedError(insertError)) {
+        console.warn("[quote kickoff tasks] insert denied by RLS", {
+          quoteId,
+          supplierId,
+          taskKey,
+          error: serialized ?? insertError,
+        });
+        return {
+          ok: false,
+          error: "denied",
+          reason: "denied",
+        };
+      }
+      console.error("[quote kickoff tasks] insert failed", {
+        quoteId,
+        supplierId,
+        taskKey,
+        error: serialized,
+      });
+      return {
+        ok: false,
+        error: "upsert-error",
+        reason: "upsert-error",
+      };
+    }
+
+    console.log("[quote kickoff tasks] insert success", {
       quoteId,
       supplierId,
       taskKey,
@@ -256,7 +341,7 @@ export async function toggleSupplierKickoffTask(
   } catch (error) {
     const serialized = serializeSupabaseError(error);
     if (isMissingTableOrColumnError(error)) {
-      console.warn("[quote kickoff tasks] upsert crashed (missing schema)", {
+      console.warn("[quote kickoff tasks] write crashed (missing schema)", {
         quoteId,
         supplierId,
         taskKey,
@@ -269,7 +354,7 @@ export async function toggleSupplierKickoffTask(
       };
     }
     if (isRowLevelSecurityDeniedError(error)) {
-      console.warn("[quote kickoff tasks] upsert denied by RLS", {
+      console.warn("[quote kickoff tasks] write denied by RLS", {
         quoteId,
         supplierId,
         taskKey,
@@ -281,7 +366,7 @@ export async function toggleSupplierKickoffTask(
         reason: "denied",
       };
     }
-    console.error("[quote kickoff tasks] upsert crashed", {
+    console.error("[quote kickoff tasks] write crashed", {
       quoteId,
       supplierId,
       taskKey,
@@ -295,34 +380,38 @@ export async function toggleSupplierKickoffTask(
   }
 }
 
-type QuoteAwardLookupResult =
-  | { ok: true; awardedSupplierId: string | null }
+type QuoteAwardInfoLookupResult =
+  | { ok: true; status: string | null; awardedSupplierId: string | null }
   | {
       ok: false;
       error: string;
       reason: "schema-missing" | "load-error" | "not-found";
     };
 
-async function loadQuoteAwardedSupplierId(
+async function loadQuoteAwardInfoForKickoff(
   quoteId: string,
-): Promise<QuoteAwardLookupResult> {
+): Promise<QuoteAwardInfoLookupResult> {
   try {
     const { data, error } = await supabaseServer
       .from("quotes")
-      .select("id,awarded_supplier_id")
+      .select("id,status,awarded_supplier_id")
       .eq("id", quoteId)
-      .maybeSingle<{ id: string; awarded_supplier_id: string | null }>();
+      .maybeSingle<{
+        id: string;
+        status: string | null;
+        awarded_supplier_id: string | null;
+      }>();
 
     if (error) {
       const serialized = serializeSupabaseError(error);
       if (isMissingTableOrColumnError(error)) {
-        console.warn("[quote kickoff tasks] award lookup missing schema", {
+        console.warn("[quote kickoff tasks] award info lookup missing schema", {
           quoteId,
           error: serialized,
         });
         return { ok: false, error: "schema-missing", reason: "schema-missing" };
       }
-      console.error("[quote kickoff tasks] award lookup failed", {
+      console.error("[quote kickoff tasks] award info lookup failed", {
         quoteId,
         error: serialized ?? error,
       });
@@ -334,13 +423,14 @@ async function loadQuoteAwardedSupplierId(
     }
 
     const awardedSupplierId = normalizeId(data.awarded_supplier_id) || null;
-    return { ok: true, awardedSupplierId };
+    const status = typeof data.status === "string" ? data.status : null;
+    return { ok: true, status, awardedSupplierId };
   } catch (error) {
     const serialized = serializeSupabaseError(error);
     if (isMissingTableOrColumnError(error)) {
       return { ok: false, error: "schema-missing", reason: "schema-missing" };
     }
-    console.error("[quote kickoff tasks] award lookup crashed", {
+    console.error("[quote kickoff tasks] award info lookup crashed", {
       quoteId,
       error: serialized ?? error,
     });
