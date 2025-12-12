@@ -48,18 +48,15 @@ export default function PortalTablePaginationControls({
       ? Math.max(0, Math.floor(rowsOnPage))
       : 0;
 
-  // Always show the footer when the list has rows (even if there is only one page),
-  // but avoid rendering it for an empty list.
-  const shouldRender =
-    resolvedTotalCount !== null ? resolvedTotalCount > 0 : resolvedRowsOnPage > 0;
+  // When list-state is enabled, always render the footer to avoid "missing controls"
+  // confusion (even for a single page or empty results).
+  const shouldRender = Boolean(listStateConfig) || resolvedRowsOnPage > 0 || page > 1;
   if (!shouldRender) return null;
 
   const showingStart = resolvedRowsOnPage > 0 ? (page - 1) * pageSize + 1 : 0;
   const showingEnd = resolvedRowsOnPage > 0 ? showingStart + resolvedRowsOnPage - 1 : 0;
   const showingEndClamped =
-    resolvedTotalCount !== null
-      ? Math.min(showingEnd, resolvedTotalCount)
-      : showingEnd;
+    resolvedTotalCount !== null ? Math.min(showingEnd, resolvedTotalCount) : showingEnd;
 
   const navigateQuery = (query: string) => {
     const nextUrl = query ? `${basePath}?${query}` : basePath;
@@ -85,7 +82,8 @@ export default function PortalTablePaginationControls({
   };
 
   const canGoPrev = page > 1;
-  const canGoNext = hasMore;
+  const canGoNext =
+    resolvedTotalCount !== null ? page * pageSize < resolvedTotalCount : hasMore;
 
   return (
     <div
@@ -136,12 +134,13 @@ export default function PortalTablePaginationControls({
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
         <span className="font-semibold text-slate-200">Page {page}</span>
-        {resolvedRowsOnPage > 0 ? (
+        {resolvedTotalCount !== null ? (
+          <span>
+            Showing {showingStart}–{showingEndClamped} of {resolvedTotalCount}
+          </span>
+        ) : resolvedRowsOnPage > 0 ? (
           <span>
             Showing {showingStart}–{showingEndClamped}
-            {resolvedTotalCount !== null
-              ? ` of ${resolvedTotalCount}`
-              : ""}
           </span>
         ) : (
           <span>Showing 0</span>

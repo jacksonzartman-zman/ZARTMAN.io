@@ -40,6 +40,9 @@ export default function TablePaginationControls({
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
+  const resolvedTotalCount =
+    typeof totalCount === "number" && Number.isFinite(totalCount) ? Math.max(0, totalCount) : null;
+
   const resolvedRowsOnPage =
     typeof rowsOnPage === "number" && Number.isFinite(rowsOnPage)
       ? Math.max(0, Math.floor(rowsOnPage))
@@ -78,7 +81,8 @@ export default function TablePaginationControls({
   };
 
   const canGoPrev = page > 1;
-  const canGoNext = hasMore;
+  const canGoNext =
+    resolvedTotalCount !== null ? page * pageSize < resolvedTotalCount : hasMore;
 
   return (
     <div
