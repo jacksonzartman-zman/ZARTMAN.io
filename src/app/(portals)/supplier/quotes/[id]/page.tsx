@@ -19,11 +19,10 @@ import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePrese
 import {
   getSupplierDisplayName,
   loadSupplierAssignments,
-  matchesSupplierProcess,
-  supplierHasAccess,
   type SupplierAssignment,
 } from "./supplierAccess";
 import { loadSupplierProfile } from "@/server/suppliers";
+import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import {
   loadBidForSupplierAndQuote,
   loadBidsForQuote,
@@ -101,6 +100,26 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
+  const accessResult = await assertSupplierQuoteAccess({
+    quoteId,
+    supplierId: profile.supplier.id,
+  });
+
+  if (!accessResult.ok) {
+    console.warn("[supplier access] denied", {
+      quoteId,
+      supplierId: profile.supplier.id,
+      reason: accessResult.reason,
+    });
+
+    return (
+      <PortalNoticeCard
+        title="Not invited to this RFQ"
+        description="You can only open RFQs you’ve been invited to (or where you’ve submitted a bid). If you believe you should have access, contact the Zartman team."
+      />
+    );
+  }
+
   const workspaceResult = await loadQuoteWorkspaceData(quoteId);
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[supplier quote] load failed", {
@@ -116,42 +135,59 @@ export default async function SupplierQuoteDetailPage({
   }
   const workspaceData = workspaceResult.data;
 
-  const projectResult = await loadQuoteProjectForQuote(quoteId);
-  const hasProject = projectResult.ok;
-  const project = hasProject ? projectResult.project : null;
-  const projectUnavailable = !hasProject && projectResult.reason !== "not_found";
-  console.info("[supplier quote] project loaded", {
-    quoteId,
-    hasProject,
-    unavailable: projectUnavailable,
-  });
-
   const assignments = await loadSupplierAssignments(quoteId);
-  const capabilities = profile.capabilities ?? [];
-  const verifiedProcessMatch = matchesSupplierProcess(
-    capabilities,
-    workspaceData.uploadMeta?.manufacturing_process ?? null,
+
+  const approvalsOn = approvalsEnabled();
+  const approved = approvalsOn ? profile.approved : true;
+  const bidResult = await loadBidForSupplierAndQuote(
+    profile.supplier.id,
+    quoteId,
+  );
+  const initialBid = bidResult.ok ? bidResult.data : null;
+  const bidsUnavailableMessage = bidResult.ok ? null : bidResult.error ?? null;
+  const existingBid = initialBid;
+
+  const normalizedAwardedSupplierId =
+    typeof workspaceData.quote.awarded_supplier_id === "string"
+      ? workspaceData.quote.awarded_supplier_id.trim()
+      : "";
+  const awardedToSupplier =
+    Boolean(normalizedAwardedSupplierId) &&
+    normalizedAwardedSupplierId === profile.supplier.id;
+  const bidStatus = (existingBid?.status ?? "").toLowerCase();
+  const isWinningBidStatus =
+    bidStatus === "accepted" || bidStatus === "won" || bidStatus === "winner";
+  const isWinningSupplier = awardedToSupplier || isWinningBidStatus;
+
+  let project: QuoteProjectRecord | null = null;
+  let projectUnavailable = false;
+  if (isWinningSupplier) {
+    const projectResult = await loadQuoteProjectForQuote(quoteId);
+    if (projectResult.ok) {
+      project = projectResult.project;
+    } else {
+      projectUnavailable = projectResult.reason !== "not_found";
+    }
+    console.info("[supplier quote] project loaded", {
+      quoteId,
+      hasProject: Boolean(project),
+      unavailable: projectUnavailable,
+    });
+  }
+
+  const kickoffVisibility = deriveSupplierKickoffVisibility(
+    workspaceData.quote.status,
+    existingBid?.status ?? null,
+    Boolean(project),
+    workspaceData.quote.awarded_supplier_id ?? null,
+    profile.supplier.id,
   );
 
-  if (
-    !supplierHasAccess(supplierEmail, workspaceData.quote, assignments, {
-      supplier: profile.supplier,
-      verifiedProcessMatch,
-    })
-  ) {
-    console.error("Supplier portal: access denied", {
+  let kickoffTasksResult: SupplierKickoffTasksResult | null = null;
+  if (kickoffVisibility.showKickoffChecklist) {
+    kickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
       quoteId,
-      identityEmail: supplierEmail,
-      quoteEmail: workspaceData.quote.email,
-      assignmentCount: assignments.length,
-      reason: "ACCESS_DENIED",
-      verifiedProcessMatch,
-    });
-    return (
-      <PortalNoticeCard
-        title="Access denied"
-        description="This RFQ isn’t assigned to your inbox. Contact your Zartman rep if you believe this is an error."
-      />
+      profile.supplier.id,
     );
   }
 
@@ -172,31 +208,6 @@ export default async function SupplierQuoteDetailPage({
     eventCount: supplierTimelineEvents.length,
   });
 
-  const approvalsOn = approvalsEnabled();
-  const approved = approvalsOn ? profile.approved : true;
-  const bidResult = await loadBidForSupplierAndQuote(
-    profile.supplier.id,
-    quoteId,
-  );
-  const initialBid = bidResult.ok ? bidResult.data : null;
-  const bidsUnavailableMessage = bidResult.ok ? null : bidResult.error ?? null;
-  const existingBid = initialBid;
-  const kickoffVisibility = deriveSupplierKickoffVisibility(
-    workspaceData.quote.status,
-    existingBid?.status ?? null,
-    Boolean(project),
-    workspaceData.quote.awarded_supplier_id ?? null,
-    profile.supplier.id,
-  );
-
-  let kickoffTasksResult: SupplierKickoffTasksResult | null = null;
-  if (kickoffVisibility.showKickoffChecklist) {
-    kickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
-      quoteId,
-      profile.supplier.id,
-    );
-  }
-
   const messagesResult = await loadQuoteMessages(quoteId);
   if (!messagesResult.ok) {
     console.error("[supplier quote] messages load failed", {
@@ -207,23 +218,8 @@ export default async function SupplierQuoteDetailPage({
   const quoteMessages = messagesResult.messages;
   const messagesUnavailable = !messagesResult.ok;
 
-  const normalizedAwardedSupplierId =
-    typeof workspaceData.quote.awarded_supplier_id === "string"
-      ? workspaceData.quote.awarded_supplier_id.trim()
-      : "";
-  const awardedToSupplier =
-    Boolean(normalizedAwardedSupplierId) &&
-    normalizedAwardedSupplierId === profile.supplier.id;
-  const bidStatus = (existingBid?.status ?? "").toLowerCase();
-  const messagingUnlocked =
-    awardedToSupplier ||
-    bidStatus === "accepted" ||
-    bidStatus === "won" ||
-    bidStatus === "winner";
-
-  const messagingDisabledReason = messagingUnlocked
-    ? null
-    : "Chat unlocks after your bid is accepted or selected as the winner for this RFQ.";
+  const messagingUnlocked = true;
+  const messagingDisabledReason = null;
 
   const supplierPostMessageAction =
     postSupplierQuoteMessage.bind(null, quoteId);

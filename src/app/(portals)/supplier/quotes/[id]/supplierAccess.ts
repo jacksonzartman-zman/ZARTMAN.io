@@ -1,11 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
-import type {
-  SupplierCapabilityRow,
-  SupplierRow,
-} from "@/server/suppliers";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
-import { canUserViewQuote } from "@/lib/permissions";
 
 export type SupplierAssignment = {
   supplier_email: string | null;
@@ -35,81 +30,6 @@ export async function loadSupplierAssignments(
 
 type QuoteAssignmentSource = Pick<QuoteWithUploadsRow, "id" | "email">;
 
-type SupplierAccessOptions = {
-  supplier?: SupplierRow | null;
-  verifiedProcessMatch?: boolean;
-};
-
-export function supplierHasAccess(
-  supplierEmail: string | null,
-  quote: QuoteAssignmentSource,
-  assignments: SupplierAssignment[],
-  options?: SupplierAccessOptions,
-): boolean {
-  const normalizedEmail = normalizeEmailInput(supplierEmail);
-  if (!normalizedEmail) {
-    console.error("Supplier access: missing or invalid identity email", {
-      quoteId: quote.id,
-      supplierEmail,
-    });
-    return false;
-  }
-
-  const hasExplicitAssignment = assignments.some(
-    (assignment) =>
-      normalizeEmailInput(assignment.supplier_email) === normalizedEmail,
-  );
-  const supplierPrimaryEmail = normalizeEmailInput(
-    options?.supplier?.primary_email ?? null,
-  );
-  const verifiedAccess =
-    Boolean(options?.supplier?.verified) &&
-    Boolean(options?.verifiedProcessMatch) &&
-    supplierPrimaryEmail === normalizedEmail;
-  const normalizedQuoteEmail = normalizeEmailInput(quote.email);
-
-  const permissionPayload = {
-    ...quote,
-    supplierAssignments: assignments,
-    allowedSupplierEmails: assignments
-      .map((assignment) => assignment.supplier_email)
-      .filter((value): value is string => Boolean(value)),
-    supplierContext: {
-      verifiedAccess,
-      verifiedEmails: [supplierPrimaryEmail, normalizedEmail].filter(
-        (value): value is string => Boolean(value),
-      ),
-    },
-  };
-
-  if (canUserViewQuote("supplier", normalizedEmail, permissionPayload)) {
-    if (!hasExplicitAssignment && verifiedAccess) {
-      console.warn("Supplier access: allowing via verified capability match", {
-        quoteId: quote.id,
-        supplierEmail: normalizedEmail,
-      });
-    } else if (
-      !hasExplicitAssignment &&
-      normalizedQuoteEmail === normalizedEmail
-    ) {
-      console.warn("Supplier access: using dev fallback via quote.email match", {
-        quoteId: quote.id,
-        supplierEmail: normalizedEmail,
-        quoteEmail: quote.email,
-      });
-    }
-    return true;
-  }
-
-  console.error("Supplier access denied", {
-    quoteId: quote.id,
-    supplierEmail: normalizedEmail,
-    quoteEmail: quote.email,
-    assignmentCount: assignments.length,
-  });
-  return false;
-}
-
 export function getSupplierDisplayName(
   supplierEmail: string,
   _quote: QuoteAssignmentSource,
@@ -126,33 +46,4 @@ export function getSupplierDisplayName(
   }
 
   return normalizedEmail ?? supplierEmail ?? "Supplier";
-}
-
-export function matchesSupplierProcess(
-  capabilities: SupplierCapabilityRow[],
-  processHint?: string | null,
-): boolean {
-  if (!processHint || capabilities.length === 0) {
-    return false;
-  }
-
-  const normalizedProcess = processHint.trim().toLowerCase();
-  if (!normalizedProcess) {
-    return false;
-  }
-
-  return capabilities.some((capability) => {
-    if (!capability?.process) {
-      return false;
-    }
-    const capabilityProcess = capability.process.trim().toLowerCase();
-    if (!capabilityProcess) {
-      return false;
-    }
-    return (
-      capabilityProcess === normalizedProcess ||
-      normalizedProcess.includes(capabilityProcess) ||
-      capabilityProcess.includes(normalizedProcess)
-    );
-  });
 }
