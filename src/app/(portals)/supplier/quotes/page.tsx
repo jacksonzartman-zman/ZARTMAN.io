@@ -1,4 +1,3 @@
-import clsx from "clsx";
 import Link from "next/link";
 import { PortalShell } from "../../components/PortalShell";
 import { PortalLoginPanel } from "../../PortalLoginPanel";
@@ -18,7 +17,6 @@ import {
 import { getServerAuthUser } from "@/server/auth";
 import {
   normalizeEmailInput,
-  getSearchParamValue,
   resolveMaybePromise,
   type SearchParamsLike,
 } from "@/app/(portals)/quotes/pageUtils";
@@ -27,14 +25,21 @@ import { approvalsEnabled } from "@/server/suppliers/flags";
 import { buildSupplierInboxRows } from "../inboxRows";
 import { isOpenQuoteStatus } from "@/server/quotes/status";
 import { formatRelativeTimeFromTimestamp } from "@/lib/relativeTime";
+import AdminSearchInput from "@/app/admin/AdminSearchInput";
+import TablePaginationControls from "@/app/admin/components/TablePaginationControls";
+import { parseListState } from "@/app/(portals)/lib/listState";
+import {
+  SUPPLIER_RFQS_LIST_STATE_CONFIG,
+  type SupplierRfqsSortKey,
+  type SupplierRfqsStatusFilter,
+} from "./listState";
+import SupplierRfqsListControls from "./SupplierRfqsListControls";
 
 export const dynamic = "force-dynamic";
 
 type SupplierQuotesPageProps = {
   searchParams?: Promise<SearchParamsLike>;
 };
-
-type FilterValue = "all" | "open" | "closed";
 
 export default async function SupplierQuotesPage({
   searchParams,
@@ -119,9 +124,28 @@ export default async function SupplierQuotesPage({
     getSupplierApprovalStatus({ status: supplierStatus });
   const approvalGateActive = approvalsOn && approvalStatus !== "approved";
 
+  const resolvedSearchParams = await resolveMaybePromise(searchParams);
+  const listState = parseListState(resolvedSearchParams, SUPPLIER_RFQS_LIST_STATE_CONFIG);
+  const page = listState.page;
+  const pageSize = listState.pageSize;
+  const sort = (listState.sort ??
+    SUPPLIER_RFQS_LIST_STATE_CONFIG.defaultSort ??
+    "recently_updated") as SupplierRfqsSortKey;
+  const status = (listState.status ?? undefined) as SupplierRfqsStatusFilter | undefined;
+
+  const desiredMatchLimit = Math.min(1000, Math.max(100, page * pageSize + 50));
+  const desiredQuoteScanLimit = Math.min(
+    2000,
+    Math.max(200, desiredMatchLimit * 3),
+  );
+
   const matchesResult = await loadMatchesForSupplier({
     supplierId: supplier.id,
     supplierEmail: supplier.primary_email ?? supplierEmail,
+    options: {
+      maxMatches: desiredMatchLimit,
+      quoteFetchLimit: desiredQuoteScanLimit,
+    },
   });
   const matchesData = matchesResult.data ?? [];
   const bidAggregates =
@@ -137,10 +161,37 @@ export default async function SupplierQuotesPage({
     capabilities: profile?.capabilities ?? [],
   });
 
-  const resolvedSearchParams = await resolveMaybePromise(searchParams);
-  const filterValue = resolveFilterValue(resolvedSearchParams);
-  const filteredRows = filterRows(supplierInboxRows, filterValue);
-  const filterOptions = deriveFilterOptions(supplierInboxRows);
+  const searchTerm = listState.q;
+  const normalizedSearch = searchTerm.trim().toLowerCase().replace(/\s+/g, " ");
+
+  const searchedRows = normalizedSearch
+    ? supplierInboxRows.filter((row) => matchesSupplierRfqSearch(row, normalizedSearch))
+    : supplierInboxRows;
+
+  const openCount = searchedRows.filter((row) => isOpenQuoteStatus(row.status)).length;
+  const totalCount = searchedRows.length;
+  const closedCount = totalCount - openCount;
+  const filterOptions: Array<{
+    label: string;
+    value: "all" | SupplierRfqsStatusFilter;
+    count: number;
+  }> = [
+    { label: "All", value: "all", count: totalCount },
+    { label: "Open", value: "open", count: openCount },
+    { label: "Closed", value: "closed", count: closedCount },
+  ];
+
+  const statusFilteredRows =
+    status === "open"
+      ? searchedRows.filter((row) => isOpenQuoteStatus(row.status))
+      : status === "closed"
+        ? searchedRows.filter((row) => !isOpenQuoteStatus(row.status))
+        : searchedRows;
+
+  const sortedRows = sortSupplierRfqs(statusFilteredRows, sort);
+  const pageStart = (page - 1) * pageSize;
+  const pageRows = sortedRows.slice(pageStart, pageStart + pageSize);
+  const hasMore = pageStart + pageSize < sortedRows.length;
   const latestActivityTimestamp =
     supplierInboxRows[0]?.lastActivityTimestamp ?? null;
   const syncedLabel =
@@ -189,14 +240,18 @@ export default async function SupplierQuotesPage({
           </p>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {filterOptions.map((option) => (
-            <FilterChip
-              key={option.value}
-              option={option}
-              selected={option.value === filterValue}
-            />
-          ))}
+        <div className="mt-5 space-y-4">
+          <SupplierRfqsListControls
+            basePath="/supplier/quotes"
+            filterOptions={filterOptions}
+            listStateConfig={SUPPLIER_RFQS_LIST_STATE_CONFIG}
+          />
+          <AdminSearchInput
+            initialValue={searchTerm}
+            basePath="/supplier/quotes"
+            placeholder="Search RFQs by customer, file, process, or material..."
+            listStateConfig={SUPPLIER_RFQS_LIST_STATE_CONFIG}
+          />
         </div>
 
         <div className="mt-6">
@@ -205,21 +260,32 @@ export default async function SupplierQuotesPage({
               title="RFQs unlock after approval"
               description="We’ll populate this list as soon as your supplier profile is approved."
             />
-          ) : filteredRows.length > 0 ? (
-            <SupplierInboxTable rows={filteredRows} />
+          ) : pageRows.length > 0 ? (
+            <>
+              <SupplierInboxTable rows={pageRows} />
+              <TablePaginationControls
+                basePath="/supplier/quotes"
+                page={page}
+                pageSize={pageSize}
+                hasMore={hasMore}
+                totalCount={sortedRows.length}
+                rowsOnPage={pageRows.length}
+                listStateConfig={SUPPLIER_RFQS_LIST_STATE_CONFIG}
+              />
+            </>
           ) : (
             <EmptyStateNotice
               title={
-                filterValue === "open"
+                status === "open"
                   ? "No open RFQs"
-                  : filterValue === "closed"
+                  : status === "closed"
                     ? "No closed RFQs yet"
                     : "No RFQs matched yet"
               }
               description={
-                filterValue === "open"
+                status === "open"
                   ? "You’re caught up on every active invitation. We’ll notify you the moment a new RFQ routes in."
-                  : filterValue === "closed"
+                  : status === "closed"
                     ? "Close out a bid or mark an RFQ complete to see it here."
                     : "We’re constantly matching your capabilities. The first compatible RFQ drops here automatically."
               }
@@ -237,13 +303,17 @@ export default async function SupplierQuotesPage({
 async function loadMatchesForSupplier(args: {
   supplierId: string;
   supplierEmail: string | null;
+  options?: {
+    maxMatches?: number;
+    quoteFetchLimit?: number;
+  };
 }): Promise<SupplierActivityResult<SupplierQuoteMatch[]>> {
-  const { supplierId, supplierEmail } = args;
+  const { supplierId, supplierEmail, options } = args;
   try {
     return await matchQuotesToSupplier({
       supplierId,
       supplierEmail: supplierEmail ?? undefined,
-    });
+    }, options);
   } catch (error) {
     console.error("[supplier quotes] failed to load matches", {
       supplierId,
@@ -261,67 +331,44 @@ function collectQuoteIds(matches: SupplierQuoteMatch[]): string[] {
     );
 }
 
-function resolveFilterValue(params?: SearchParamsLike): FilterValue {
-  const raw = (getSearchParamValue(params, "status") ?? "").toLowerCase();
-  if (raw === "open" || raw === "closed") {
-    return raw;
+function sortSupplierRfqs(
+  rows: SupplierInboxRow[],
+  sort: SupplierRfqsSortKey,
+): SupplierInboxRow[] {
+  const copy = rows.slice();
+
+  if (sort === "newest") {
+    copy.sort(
+      (a, b) =>
+        (toSortableTimestamp(b.createdAt) ?? 0) -
+        (toSortableTimestamp(a.createdAt) ?? 0),
+    );
+    return copy;
   }
-  return "all";
+
+  // recently_updated (default)
+  copy.sort((a, b) => (b.lastActivityTimestamp ?? 0) - (a.lastActivityTimestamp ?? 0));
+  return copy;
 }
 
-function filterRows(rows: SupplierInboxRow[], filter: FilterValue) {
-  if (filter === "open") {
-    return rows.filter((row) => isOpenQuoteStatus(row.status));
-  }
-  if (filter === "closed") {
-    return rows.filter((row) => !isOpenQuoteStatus(row.status));
-  }
-  return rows;
+function toSortableTimestamp(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
-function deriveFilterOptions(rows: SupplierInboxRow[]) {
-  const openCount = rows.filter((row) => isOpenQuoteStatus(row.status)).length;
-  const total = rows.length;
-  const closedCount = total - openCount;
-  return [
-    { label: "All", value: "all", count: total },
-    { label: "Open", value: "open", count: openCount },
-    { label: "Closed", value: "closed", count: closedCount },
-  ] satisfies { label: string; value: FilterValue; count: number }[];
-}
+function matchesSupplierRfqSearch(row: SupplierInboxRow, normalizedNeedle: string): boolean {
+  const haystack = [
+    row.rfqLabel,
+    row.companyName,
+    row.primaryFileName ?? "",
+    row.processHint ?? "",
+    row.materials.join(" "),
+  ]
+    .join(" ")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 
-function FilterChip({
-  option,
-  selected,
-}: {
-  option: { label: string; value: FilterValue; count: number };
-  selected: boolean;
-}) {
-  const href =
-    option.value === "all"
-      ? "/supplier/quotes"
-      : `/supplier/quotes?status=${option.value}`;
-  return (
-    <Link
-      href={href}
-      className={clsx(
-        "inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.25em] transition",
-        selected
-          ? "border-white bg-white/10 text-white"
-          : "border-slate-800 text-slate-400 hover:text-white",
-      )}
-    >
-      {option.label}
-      <span
-        className={clsx(
-          "rounded-full px-2 py-0.5 text-[10px]",
-          selected
-            ? "bg-white/20 text-white"
-            : "bg-slate-800 text-slate-400",
-        )}
-      >
-        {option.count}
-      </span>
-    </Link>
-  );
+  return haystack.includes(normalizedNeedle);
 }

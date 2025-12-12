@@ -251,6 +251,8 @@ export function setFilter<Sort extends string = string, Status extends string = 
   patch: Partial<Pick<ListState<Sort, Status>, "status" | "hasBids" | "awarded">>,
   config: ListStateConfig<Sort, Status> = {},
 ): string {
+  const patchHasStatusKey = Object.prototype.hasOwnProperty.call(patch, "status");
+
   const nextStatus = normalizeEnumValue(
     typeof patch.status === "string" ? patch.status : undefined,
     config.allowedStatuses as readonly Status[] | undefined,
@@ -259,7 +261,9 @@ export function setFilter<Sort extends string = string, Status extends string = 
 
   const nextState: ListState<Sort, Status> = {
     ...state,
-    status: patch.status === undefined ? state.status : nextStatus,
+    // If the caller explicitly sets status (even to undefined), treat that as a change.
+    // This allows clearing the status filter by passing `{ status: undefined }`.
+    status: patchHasStatusKey ? nextStatus : state.status,
     hasBids: patch.hasBids === undefined ? state.hasBids : Boolean(patch.hasBids),
     awarded: patch.awarded === undefined ? state.awarded : Boolean(patch.awarded),
   };
