@@ -1,7 +1,6 @@
-import { supabaseServer } from "@/lib/supabaseServer";
-import type { QuoteWithUploadsRow } from "@/server/quotes/types";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { requireAdminUser } from "@/server/auth";
 import {
-  SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
 } from "@/server/suppliers/types";
 import {
@@ -40,15 +39,46 @@ type InboxExtraField =
   | "has_awarded_bid"
   | "awarded_supplier_name";
 
-const ADMIN_QUOTES_INBOX_FIELDS: readonly (InboxBaseField | InboxExtraField)[] = [
-  ...SAFE_QUOTE_WITH_UPLOADS_FIELDS,
+// Explicit select list: keep this aligned with what the admin quotes UI reads.
+// Note: `admin_quotes_inbox` is service-role only (see sql/019_gap6_admin_inbox_activity.sql).
+const ADMIN_QUOTES_INBOX_SELECT = [
+  // Base quote fields used by /admin/quotes UI
+  "id",
+  "upload_id",
+  "created_at",
+  "status",
+  "customer_name",
+  "email",
+  "company",
+  "file_name",
+  "file_names",
+  "upload_file_names",
+  "file_count",
+  "upload_file_count",
+  "upload_name",
+  "awarded_at",
+  // View-projected admin activity fields
   "bid_count",
   "latest_bid_at",
   "has_awarded_bid",
   "awarded_supplier_name",
-];
+] as const satisfies readonly (InboxBaseField | InboxExtraField | "upload_name")[];
 
-export type AdminQuotesInboxRow = Pick<QuoteWithUploadsRow, InboxBaseField> & {
+export type AdminQuotesInboxRow = {
+  id: string;
+  upload_id: string | null;
+  created_at: string | null;
+  status: string | null;
+  customer_name: string | null;
+  email: string | null;
+  company: string | null;
+  file_name: string | null;
+  file_names?: string[] | null;
+  upload_file_names?: string[] | null;
+  file_count?: number | null;
+  upload_file_count?: number | null;
+  upload_name?: string | null;
+  awarded_at?: string | null;
   bid_count: number;
   latest_bid_at: string | null;
   has_awarded_bid: boolean;
@@ -59,6 +89,7 @@ export type AdminQuotesInboxData = {
   rows: AdminQuotesInboxRow[];
   count: number | null;
   degraded?: boolean;
+  degradedReason?: "schema_mismatch" | "misconfigured_service_role_key";
 };
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -66,10 +97,43 @@ const MAX_PAGE_SIZE = 100;
 const DEFAULT_SORT: AdminQuotesInboxSort = "newest_rfq";
 
 let warnedMissingAdminInboxSchema = false;
+let warnedMissingServiceRoleKey = false;
+let cachedServiceRoleClient: SupabaseClient | null | undefined;
+
+function getServiceRoleSupabaseClient(): SupabaseClient | null {
+  if (cachedServiceRoleClient !== undefined) {
+    return cachedServiceRoleClient;
+  }
+
+  const url =
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? null;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? null;
+
+  if (!url || typeof url !== "string" || url.trim().length === 0) {
+    cachedServiceRoleClient = null;
+    return cachedServiceRoleClient;
+  }
+
+  if (!serviceKey || typeof serviceKey !== "string" || serviceKey.trim().length === 0) {
+    cachedServiceRoleClient = null;
+    return cachedServiceRoleClient;
+  }
+
+  cachedServiceRoleClient = createClient(url, serviceKey, {
+    auth: { persistSession: false },
+    global: { fetch },
+  });
+
+  return cachedServiceRoleClient;
+}
 
 export async function getAdminQuotesInbox(
   args: AdminQuotesInboxArgs = {},
 ): Promise<AdminLoaderResult<AdminQuotesInboxData>> {
+  // Defense-in-depth: admin routes are already gated in `src/app/admin/layout.tsx`,
+  // but keep this here so service-role backed data can't be queried accidentally.
+  await requireAdminUser();
+
   const page = normalizePage(args.page);
   const pageSize = normalizePageSize(args.pageSize);
   const sort = normalizeSort(args.sort);
@@ -81,9 +145,36 @@ export async function getAdminQuotesInbox(
   const rangeTo = rangeFrom + pageSize - 1;
 
   try {
-    let query = supabaseServer
+    const supabase = getServiceRoleSupabaseClient();
+
+    if (!supabase) {
+      if (!warnedMissingServiceRoleKey) {
+        warnedMissingServiceRoleKey = true;
+        logAdminQuotesError(
+          "SUPABASE_SERVICE_ROLE_KEY missing; cannot query admin inbox view",
+          {
+            reason: "misconfigured_service_role_key",
+          },
+        );
+      }
+
+      // Match the existing degraded "schema mismatch" behavior: return empty
+      // rows with `ok: true` so the UI stays stable, but include a reason for logs.
+      return {
+        ok: true,
+        data: {
+          rows: [],
+          count: 0,
+          degraded: true,
+          degradedReason: "misconfigured_service_role_key",
+        },
+        error: null,
+      };
+    }
+
+    let query = supabase
       .from("admin_quotes_inbox")
-      .select(ADMIN_QUOTES_INBOX_FIELDS.join(","), { count: "exact" })
+      .select(ADMIN_QUOTES_INBOX_SELECT.join(","), { count: "exact" })
       .range(rangeFrom, rangeTo);
 
     if (filter.status) {
@@ -124,7 +215,7 @@ export async function getAdminQuotesInbox(
         }
         return {
           ok: true,
-          data: { rows: [], count: 0, degraded: true },
+          data: { rows: [], count: 0, degraded: true, degradedReason: "schema_mismatch" },
           error: null,
         };
       }
@@ -166,7 +257,7 @@ export async function getAdminQuotesInbox(
       }
       return {
         ok: true,
-        data: { rows: [], count: 0, degraded: true },
+        data: { rows: [], count: 0, degraded: true, degradedReason: "schema_mismatch" },
         error: null,
       };
     }
