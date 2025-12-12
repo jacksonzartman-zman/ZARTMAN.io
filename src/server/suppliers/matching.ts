@@ -26,7 +26,8 @@ import { computeFairnessBoost } from "@/lib/fairness";
 import { approvalsEnabled } from "./flags";
 import { QUOTE_OPEN_STATUSES, isOpenQuoteStatus } from "@/server/quotes/status";
 
-const MATCH_LIMIT = 20;
+const DEFAULT_MATCH_LIMIT = 20;
+const DEFAULT_OPEN_QUOTE_FETCH_LIMIT = 50;
 
 export type QuoteAssignmentRow = {
   quote_id: string | null;
@@ -47,6 +48,12 @@ type UploadMatchingRow = Pick<
 
 export async function matchQuotesToSupplier(
   args: SupplierActivityIdentity,
+  options?: {
+    /** Max number of matches to return (pre-pagination). */
+    maxMatches?: number;
+    /** Max number of open quotes to scan for matches. */
+    quoteFetchLimit?: number;
+  },
 ): Promise<SupplierActivityResult<SupplierQuoteMatch[]>> {
   const supplierId = args.supplierId ?? null;
   const supplierEmail = normalizeEmail(args.supplierEmail);
@@ -71,6 +78,15 @@ export async function matchQuotesToSupplier(
   console.log("[supplier activity] loading", logContext);
 
   try {
+    const matchLimit =
+      typeof options?.maxMatches === "number" && Number.isFinite(options.maxMatches)
+        ? Math.max(1, Math.floor(options.maxMatches))
+        : DEFAULT_MATCH_LIMIT;
+    const quoteFetchLimit =
+      typeof options?.quoteFetchLimit === "number" && Number.isFinite(options.quoteFetchLimit)
+        ? Math.max(1, Math.floor(options.quoteFetchLimit))
+        : DEFAULT_OPEN_QUOTE_FETCH_LIMIT;
+
     const supplier = await loadSupplierById(supplierId);
     if (!supplier) {
       console.warn("[supplier activity] loading skipped", {
@@ -149,7 +165,7 @@ export async function matchQuotesToSupplier(
 
     const canViewGlobalMatches = supplier.verified || (approvalsOn && approved);
 
-    const quotes = await selectOpenQuotes();
+    const quotes = await selectOpenQuotes(quoteFetchLimit);
     if (quotes.length === 0) {
       console.log("[supplier activity] quote query result", {
         ...logContext,
@@ -263,7 +279,7 @@ export async function matchQuotesToSupplier(
         score,
       });
 
-      if (matches.length >= MATCH_LIMIT) {
+      if (matches.length >= matchLimit) {
         break;
       }
     }
@@ -430,14 +446,18 @@ export function normalizeEmail(value?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-async function selectOpenQuotes(): Promise<SupplierQuoteRow[]> {
+async function selectOpenQuotes(limit = DEFAULT_OPEN_QUOTE_FETCH_LIMIT): Promise<SupplierQuoteRow[]> {
+  const safeLimit =
+    typeof limit === "number" && Number.isFinite(limit)
+      ? Math.max(1, Math.floor(limit))
+      : DEFAULT_OPEN_QUOTE_FETCH_LIMIT;
   try {
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
       .select(SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(","))
       .in("status", Array.from(QUOTE_OPEN_STATUSES))
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(safeLimit);
 
     if (error) {
       throw toSupplierActivityQueryError("quotes_with_uploads", error);
