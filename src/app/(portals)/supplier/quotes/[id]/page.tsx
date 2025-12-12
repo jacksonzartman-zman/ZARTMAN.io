@@ -498,7 +498,6 @@ function SupplierQuoteWorkspace({
       kickoffChecklistSection = (
         <SupplierKickoffChecklistCard
           quoteId={quote.id}
-          supplierId={supplierId}
           tasks={kickoffTasksResult.tasks}
         />
       );

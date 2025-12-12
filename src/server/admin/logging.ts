@@ -133,3 +133,42 @@ export function isMissingTableOrColumnError(error: unknown): boolean {
 
   return MISSING_SCHEMA_CODES.has(code);
 }
+
+const RLS_DENIED_CODES = new Set([
+  // Postgres: insufficient_privilege (commonly returned for RLS violations)
+  "42501",
+  // PostgREST: insufficient privileges / RLS blocked (varies by version)
+  "PGRST301",
+]);
+
+export function isRowLevelSecurityDeniedError(error: unknown): boolean {
+  const source = extractSupabaseSource(error);
+  if (!source || typeof source !== "object") {
+    return false;
+  }
+
+  const code =
+    "code" in source && typeof (source as { code?: unknown }).code === "string"
+      ? ((source as { code?: string }).code as string)
+      : null;
+  const message =
+    "message" in source &&
+    typeof (source as { message?: unknown }).message === "string"
+      ? ((source as { message?: string }).message as string)
+      : null;
+
+  if (code && RLS_DENIED_CODES.has(code)) {
+    return true;
+  }
+
+  if (!message) {
+    return false;
+  }
+
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("row-level security") ||
+    normalized.includes("new row violates row-level security policy") ||
+    normalized.includes("permission denied")
+  );
+}

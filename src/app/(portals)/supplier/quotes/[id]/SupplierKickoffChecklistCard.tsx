@@ -14,13 +14,11 @@ import type { SupplierKickoffFormState } from "@/server/quotes/supplierQuoteServ
 
 type SupplierKickoffChecklistCardProps = {
   quoteId: string;
-  supplierId: string;
   tasks: SupplierKickoffTask[];
 };
 
 export function SupplierKickoffChecklistCard({
   quoteId,
-  supplierId,
   tasks,
 }: SupplierKickoffChecklistCardProps) {
   const mergedTasks = useMemo(
@@ -56,7 +54,6 @@ export function SupplierKickoffChecklistCard({
     startTransition(() => {
       completeKickoffTask({
         quoteId,
-        supplierId,
         taskKey: task.taskKey,
         completed: nextCompleted,
         title: task.title,
@@ -78,7 +75,6 @@ export function SupplierKickoffChecklistCard({
         .catch((error) => {
           console.error("[supplier kickoff tasks] action crashed", {
             quoteId,
-            supplierId,
             taskKey: task.taskKey,
             error,
           });
