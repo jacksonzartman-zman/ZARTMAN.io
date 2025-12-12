@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
 import { formatDateTime } from "@/lib/formatDate";
@@ -32,10 +32,17 @@ export function CustomerQuoteAwardPanel({
     action,
     INITIAL_AWARD_STATE,
   );
+  const [confirmingBidId, setConfirmingBidId] = useState<string | null>(null);
 
   const resolvedWinnerId = state.selectedBidId ?? winningBidId ?? null;
   const selectionLocked = Boolean(resolvedWinnerId);
   const showDisableNotice = Boolean(disableReason) && (!canSubmit || selectionLocked);
+
+  useEffect(() => {
+    if (state.ok && state.selectedBidId) {
+      setConfirmingBidId(null);
+    }
+  }, [state.ok, state.selectedBidId]);
 
   return (
     <section className="space-y-5 rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5">
@@ -83,6 +90,7 @@ export function CustomerQuoteAwardPanel({
           const submittedText = formatDateTime(bid.createdAt, { includeTime: true }) ?? "Just now";
           const statusLabel = formatBidStatusLabel(bid.status);
           const statusClasses = getStatusClasses(bid.status);
+          const isConfirming = confirmingBidId === bid.id;
 
           return (
             <li
@@ -112,7 +120,7 @@ export function CustomerQuoteAwardPanel({
                   </span>
                   {isWinner ? (
                     <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
-                      Selected winner
+                      Winner selected
                     </span>
                   ) : null}
                 </div>
@@ -142,7 +150,14 @@ export function CustomerQuoteAwardPanel({
               </dl>
 
               {showActionButton ? (
-                <AwardBidForm formAction={formAction} bidId={bid.id} quoteId={quoteId} />
+                <AwardBidControls
+                  formAction={formAction}
+                  bidId={bid.id}
+                  quoteId={quoteId}
+                  isConfirming={isConfirming}
+                  onConfirmRequest={() => setConfirmingBidId(bid.id)}
+                  onCancelConfirm={() => setConfirmingBidId(null)}
+                />
               ) : null}
             </li>
           );
@@ -161,35 +176,73 @@ export function CustomerQuoteAwardPanel({
   );
 }
 
-type AwardBidFormProps = {
+type AwardBidControlsProps = {
   formAction: (payload: FormData) => void;
   bidId: string;
   quoteId: string;
+  isConfirming: boolean;
+  onConfirmRequest: () => void;
+  onCancelConfirm: () => void;
 };
 
-function AwardBidForm({ formAction, bidId, quoteId }: AwardBidFormProps) {
+function AwardBidControls({
+  formAction,
+  bidId,
+  quoteId,
+  isConfirming,
+  onConfirmRequest,
+  onCancelConfirm,
+}: AwardBidControlsProps) {
   return (
-    <form action={formAction} className="flex flex-wrap items-center gap-3 border-t border-slate-900/60 pt-4">
-      <input type="hidden" name="quoteId" value={quoteId} />
-      <input type="hidden" name="bidId" value={bidId} />
-      <AwardSubmitButton />
-    </form>
+    <div className="border-t border-slate-900/60 pt-4">
+      {isConfirming ? (
+        <form action={formAction} className="space-y-3">
+          <input type="hidden" name="quoteId" value={quoteId} />
+          <input type="hidden" name="bidId" value={bidId} />
+          <p className="text-xs text-slate-400">
+            Selecting a winner notifies the supplier immediately and locks other bids.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <ConfirmAwardButton />
+            <CancelConfirmButton onClick={onCancelConfirm} />
+          </div>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={onConfirmRequest}
+          className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+        >
+          Award supplier
+        </button>
+      )}
+    </div>
   );
 }
 
-type AwardSubmitButtonProps = {
-  disabled?: boolean;
-};
-
-function AwardSubmitButton({ disabled = false }: AwardSubmitButtonProps) {
+function ConfirmAwardButton() {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={disabled || pending}
+      disabled={pending}
       className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {pending ? "Saving choice..." : "Choose this supplier"}
+      {pending ? "Awarding..." : "Confirm award"}
+    </button>
+  );
+}
+
+function CancelConfirmButton({ onClick }: { onClick: () => void }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={pending}
+      className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      Cancel
     </button>
   );
 }

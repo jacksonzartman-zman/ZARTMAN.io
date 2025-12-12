@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { createQuoteMessage } from "@/server/quotes/messages";
@@ -57,6 +56,7 @@ const CUSTOMER_AWARD_ALREADY_WON_ERROR =
   "A winning supplier has already been selected for this quote.";
 const CUSTOMER_AWARD_GENERIC_ERROR =
   "We couldn’t update the winner. Please try again.";
+const CUSTOMER_AWARD_SUCCESS_MESSAGE = "Winning supplier selected.";
 const CUSTOMER_AWARD_ALLOWED_STATUSES = new Set([
   "submitted",
   "in_review",
@@ -454,50 +454,6 @@ export async function awardQuoteToBidAction(
   }
 }
 
-export async function customerAwardBidAction(
-  formData: FormData,
-): Promise<void> {
-  const quoteId = normalizeId(getFormString(formData, "quoteId"));
-  const bidId = normalizeId(getFormString(formData, "bidId"));
-  const redirectTarget = quoteId
-    ? `/customer/quotes/${quoteId}`
-    : "/customer/quotes";
-
-  if (!quoteId || !bidId) {
-    logCustomerAwardNotAllowed({
-      quoteId,
-      bidId,
-      userId: "anonymous",
-      customerId: null,
-      reason: "missing-identifiers",
-    });
-    return redirect(redirectTarget);
-  }
-
-  const user = await requireUser({ redirectTo: "/customer/login" });
-  const customer = await getCustomerByUserId(user.id);
-  const customerId = customer?.id ?? null;
-
-  const result = await performCustomerAwardFlow({
-    quoteId,
-    bidId,
-    user,
-    customer,
-  });
-
-  if (!result.ok) {
-    logCustomerAwardNotAllowed({
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      reason: "legacy-form-error",
-    });
-  }
-
-  redirect(redirectTarget);
-}
-
 type CustomerAwardLogContext = {
   quoteId: string | null;
   bidId?: string | null;
@@ -672,6 +628,13 @@ async function performCustomerAwardFlow(
     return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
   }
 
+  console.info("[customer award] start", {
+    quoteId,
+    bidId,
+    userId: user.id,
+    customerId,
+  });
+
   const awardResult = await performAwardBidForQuote({
     quoteId,
     bidId,
@@ -715,6 +678,7 @@ async function performCustomerAwardFlow(
   return {
     ok: true,
     selectedBidId: bidId,
+    message: CUSTOMER_AWARD_SUCCESS_MESSAGE,
   };
 }
 
