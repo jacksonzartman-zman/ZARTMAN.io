@@ -74,9 +74,11 @@ type KickoffTaskRowsResult =
 export async function loadQuoteKickoffTasksForSupplier(
   quoteId: string,
   supplierId: string,
+  options?: { seedIfEmpty?: boolean },
 ): Promise<SupplierKickoffTasksResult> {
   const normalizedQuoteId = normalizeId(quoteId);
   const normalizedSupplierId = normalizeId(supplierId);
+  const seedIfEmpty = options?.seedIfEmpty !== false;
 
   if (!normalizedQuoteId || !normalizedSupplierId) {
     return {
@@ -103,19 +105,21 @@ export async function loadQuoteKickoffTasksForSupplier(
   let rows = initialRows.rows;
 
   if (rows.length === 0) {
-    const seedResult = await seedKickoffTasks(
-      normalizedQuoteId,
-      normalizedSupplierId,
-    );
-    if (!seedResult.ok) {
-      return {
-        ok: false,
-        tasks: [],
-        error: seedResult.error,
-        reason: seedResult.reason,
-      };
+    if (seedIfEmpty) {
+      const seedResult = await seedKickoffTasks(
+        normalizedQuoteId,
+        normalizedSupplierId,
+      );
+      if (!seedResult.ok) {
+        return {
+          ok: false,
+          tasks: [],
+          error: seedResult.error,
+          reason: seedResult.reason,
+        };
+      }
+      rows = seedResult.rows;
     }
-    rows = seedResult.rows;
   }
 
   const tasks = rows
@@ -123,12 +127,6 @@ export async function loadQuoteKickoffTasksForSupplier(
     .filter(
       (task): task is SupplierKickoffTask => Boolean(task?.taskKey?.length),
     );
-
-  console.info("[quote kickoff tasks] load success", {
-    quoteId: normalizedQuoteId,
-    supplierId: normalizedSupplierId,
-    taskCount: tasks.length,
-  });
 
   return {
     ok: true,
@@ -150,44 +148,6 @@ export async function toggleSupplierKickoffTask(
       ok: false,
       error: "missing-identifiers",
       reason: "missing-identifiers",
-    };
-  }
-
-  const awardCheck = await loadQuoteAwardInfoForKickoff(quoteId);
-  if (!awardCheck.ok) {
-    if (awardCheck.reason === "schema-missing") {
-      return {
-        ok: false,
-        error: "schema-missing",
-        reason: "schema-missing",
-      };
-    }
-    return {
-      ok: false,
-      error: "upsert-error",
-      reason: "upsert-error",
-    };
-  }
-
-  const awardedSupplierId = awardCheck.awardedSupplierId;
-  const quoteStatus = awardCheck.status;
-  if (normalizeQuoteStatus(quoteStatus) === "won" && !awardedSupplierId) {
-    console.warn("[quote integrity] won quote missing awarded_supplier_id", {
-      quoteId,
-      status: quoteStatus ?? null,
-    });
-  }
-
-  if (!awardedSupplierId || awardedSupplierId !== supplierId) {
-    console.warn("[kickoff access] denied: not awarded supplier", {
-      quoteId,
-      quote: { awarded_supplier_id: awardedSupplierId },
-      resolved: { supplierId },
-    });
-    return {
-      ok: false,
-      error: "denied",
-      reason: "denied",
     };
   }
 
@@ -218,12 +178,6 @@ export async function toggleSupplierKickoffTask(
     if (updateError) {
       const serialized = serializeSupabaseError(updateError);
       if (isMissingTableOrColumnError(updateError)) {
-        console.warn("[quote kickoff tasks] update missing schema", {
-          quoteId,
-          supplierId,
-          taskKey,
-          error: serialized,
-        });
         return {
           ok: false,
           error: "schema-missing",
@@ -231,24 +185,12 @@ export async function toggleSupplierKickoffTask(
         };
       }
       if (isRowLevelSecurityDeniedError(updateError)) {
-        console.warn("[quote kickoff tasks] update denied by RLS", {
-          quoteId,
-          supplierId,
-          taskKey,
-          error: serialized ?? updateError,
-        });
         return {
           ok: false,
           error: "denied",
           reason: "denied",
         };
       }
-      console.error("[quote kickoff tasks] update failed", {
-        quoteId,
-        supplierId,
-        taskKey,
-        error: serialized,
-      });
       return {
         ok: false,
         error: "upsert-error",
@@ -259,13 +201,6 @@ export async function toggleSupplierKickoffTask(
     const updatedCount = Array.isArray(updatedRows) ? updatedRows.length : 0;
 
     if (updatedCount > 0) {
-      console.log("[quote kickoff tasks] update success", {
-        quoteId,
-        supplierId,
-        taskKey,
-        completed: payload.completed,
-      });
-
       return {
         ok: true,
         error: null,
@@ -283,12 +218,6 @@ export async function toggleSupplierKickoffTask(
     if (insertError) {
       const serialized = serializeSupabaseError(insertError);
       if (isMissingTableOrColumnError(insertError)) {
-        console.warn("[quote kickoff tasks] insert missing schema", {
-          quoteId,
-          supplierId,
-          taskKey,
-          error: serialized,
-        });
         return {
           ok: false,
           error: "schema-missing",
@@ -296,37 +225,18 @@ export async function toggleSupplierKickoffTask(
         };
       }
       if (isRowLevelSecurityDeniedError(insertError)) {
-        console.warn("[quote kickoff tasks] insert denied by RLS", {
-          quoteId,
-          supplierId,
-          taskKey,
-          error: serialized ?? insertError,
-        });
         return {
           ok: false,
           error: "denied",
           reason: "denied",
         };
       }
-      console.error("[quote kickoff tasks] insert failed", {
-        quoteId,
-        supplierId,
-        taskKey,
-        error: serialized,
-      });
       return {
         ok: false,
         error: "upsert-error",
         reason: "upsert-error",
       };
     }
-
-    console.log("[quote kickoff tasks] insert success", {
-      quoteId,
-      supplierId,
-      taskKey,
-      completed: payload.completed,
-    });
 
     return {
       ok: true,
@@ -335,12 +245,6 @@ export async function toggleSupplierKickoffTask(
   } catch (error) {
     const serialized = serializeSupabaseError(error);
     if (isMissingTableOrColumnError(error)) {
-      console.warn("[quote kickoff tasks] write crashed (missing schema)", {
-        quoteId,
-        supplierId,
-        taskKey,
-        error: serialized,
-      });
       return {
         ok: false,
         error: "schema-missing",
@@ -348,24 +252,12 @@ export async function toggleSupplierKickoffTask(
       };
     }
     if (isRowLevelSecurityDeniedError(error)) {
-      console.warn("[quote kickoff tasks] write denied by RLS", {
-        quoteId,
-        supplierId,
-        taskKey,
-        error: serialized ?? error,
-      });
       return {
         ok: false,
         error: "denied",
         reason: "denied",
       };
     }
-    console.error("[quote kickoff tasks] write crashed", {
-      quoteId,
-      supplierId,
-      taskKey,
-      error: serialized ?? error,
-    });
     return {
       ok: false,
       error: "upsert-error",
@@ -538,11 +430,6 @@ async function seedKickoffTasks(
     if (error) {
       const serialized = serializeSupabaseError(error);
       if (isMissingTableOrColumnError(error)) {
-        console.warn("[quote kickoff tasks] seed missing schema", {
-          quoteId,
-          supplierId,
-          error: serialized,
-        });
         return {
           ok: false,
           rows: [],
@@ -550,11 +437,6 @@ async function seedKickoffTasks(
           reason: "schema-missing",
         };
       }
-      console.error("[quote kickoff tasks] seed failed", {
-        quoteId,
-        supplierId,
-        error: serialized,
-      });
       return {
         ok: false,
         rows: [],
@@ -563,21 +445,10 @@ async function seedKickoffTasks(
       };
     }
 
-    console.info("[quote kickoff tasks] seeded defaults", {
-      quoteId,
-      supplierId,
-      count: seedRows.length,
-    });
-
     return fetchKickoffTaskRows(quoteId, supplierId);
   } catch (error) {
     const serialized = serializeSupabaseError(error);
     if (isMissingTableOrColumnError(error)) {
-      console.warn("[quote kickoff tasks] seed crashed (missing schema)", {
-        quoteId,
-        supplierId,
-        error: serialized,
-      });
       return {
         ok: false,
         rows: [],
@@ -585,11 +456,6 @@ async function seedKickoffTasks(
         reason: "schema-missing",
       };
     }
-    console.error("[quote kickoff tasks] seed crashed", {
-      quoteId,
-      supplierId,
-      error: serialized ?? error,
-    });
     return {
       ok: false,
       rows: [],

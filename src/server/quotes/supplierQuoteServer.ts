@@ -43,6 +43,13 @@ export type SupplierKickoffFormState = {
   ok: boolean;
   message?: string | null;
   error?: string | null;
+  reason?:
+    | "missing_profile"
+    | "not_awarded_supplier"
+    | "access_denied"
+    | "rls_denied"
+    | "unknown"
+    | null;
   fieldErrors?: {
     taskId?: string;
     [key: string]: string | undefined;
@@ -192,6 +199,30 @@ export function normalizeSortOrder(value?: number | null): number | null {
   return null;
 }
 
+type KickoffToggleDenyReason =
+  | "missing_profile"
+  | "not_awarded_supplier"
+  | "access_denied"
+  | "rls_denied";
+
+function logKickoffToggleFailure(args: {
+  quoteId: string;
+  supplierId: string | null;
+  taskKey: string;
+  reason: KickoffToggleDenyReason;
+}) {
+  console.warn("[kickoff toggle] denied", args);
+}
+
+function logKickoffToggleUnexpectedFailure(args: {
+  quoteId: string;
+  supplierId: string | null;
+  taskKey: string;
+  error: unknown;
+}) {
+  console.error("[kickoff toggle] failed", args);
+}
+
 export async function postSupplierMessageImpl(
   quoteId: string,
   formData: FormData,
@@ -246,6 +277,7 @@ export async function postSupplierMessageImpl(
       return {
         ok: false,
         error: SUPPLIER_MESSAGE_PROFILE_ERROR,
+        reason: "missing_profile",
         fieldErrors: {},
       };
     }
@@ -265,6 +297,7 @@ export async function postSupplierMessageImpl(
       return {
         ok: false,
         error: SUPPLIER_MESSAGE_DENIED_ERROR,
+        reason: "access_denied",
         fieldErrors: {},
       };
     }
@@ -307,6 +340,7 @@ export async function postSupplierMessageImpl(
             : typeof result.error === "string"
               ? result.error
               : SUPPLIER_MESSAGE_GENERIC_ERROR,
+        reason: result.reason === "unauthorized" ? "rls_denied" : "unknown",
         fieldErrors: {},
       };
     }
@@ -335,6 +369,7 @@ export async function postSupplierMessageImpl(
     return {
       ok: false,
       error: "Unexpected error while sending your message.",
+      reason: "unknown",
       fieldErrors: {},
     };
   }
@@ -744,6 +779,7 @@ export async function completeKickoffTaskImpl(
       return {
         ok: false,
         error: SUPPLIER_MESSAGE_PROFILE_ERROR,
+        reason: "missing_profile",
       };
     }
 
@@ -754,27 +790,31 @@ export async function completeKickoffTaskImpl(
       .maybeSingle<{ id: string; awarded_supplier_id: string | null }>();
 
     if (quoteError) {
-      console.error("[supplier kickoff tasks] quote lookup failed", {
+      logKickoffToggleUnexpectedFailure({
         quoteId,
         supplierId: resolvedSupplierId,
-        error: serializeSupabaseError(quoteError),
+        taskKey,
+        error: serializeSupabaseError(quoteError) ?? quoteError,
       });
       return {
         ok: false,
         error: KICKOFF_TASKS_GENERIC_ERROR,
+        reason: "unknown",
       };
     }
 
     const awardedSupplierId = normalizeIdentifier(quoteRow?.awarded_supplier_id ?? null);
     if (!awardedSupplierId || awardedSupplierId !== resolvedSupplierId) {
-      console.warn("[kickoff access] denied: not awarded supplier", {
+      logKickoffToggleFailure({
         quoteId,
         supplierId: resolvedSupplierId,
-        awardedSupplierId: awardedSupplierId || null,
+        taskKey,
+        reason: "not_awarded_supplier",
       });
       return {
         ok: false,
         error: "You can’t update the kickoff checklist for this RFQ.",
+        reason: "not_awarded_supplier",
       };
     }
 
@@ -784,14 +824,16 @@ export async function completeKickoffTaskImpl(
     });
 
     if (!access.ok) {
-      console.warn("[supplier access] denied", {
+      logKickoffToggleFailure({
         quoteId,
         supplierId: resolvedSupplierId,
-        reason: access.reason,
+        taskKey,
+        reason: "access_denied",
       });
       return {
         ok: false,
         error: "You don’t have access to this RFQ.",
+        reason: "access_denied",
       };
     }
 
@@ -814,21 +856,32 @@ export async function completeKickoffTaskImpl(
         return {
           ok: false,
           error: KICKOFF_TASKS_SCHEMA_ERROR,
+          reason: "unknown",
         };
       }
       if (result.reason === "denied") {
-        console.warn("[kickoff access] denied: not awarded supplier", {
+        logKickoffToggleFailure({
           quoteId,
           supplierId: resolvedSupplierId,
+          taskKey,
+          reason: "rls_denied",
         });
         return {
           ok: false,
           error: "You can’t update the kickoff checklist for this RFQ.",
+          reason: "rls_denied",
         };
       }
+      logKickoffToggleUnexpectedFailure({
+        quoteId,
+        supplierId: resolvedSupplierId,
+        taskKey,
+        error: result.error ?? result.reason ?? "unknown",
+      });
       return {
         ok: false,
         error: KICKOFF_TASKS_GENERIC_ERROR,
+        reason: "unknown",
       };
     }
 
@@ -847,15 +900,16 @@ export async function completeKickoffTaskImpl(
         : "Marked task incomplete.",
     };
   } catch (error) {
-    const serialized = serializeSupabaseError(error);
-    console.error("[supplier kickoff tasks] action crashed", {
+    logKickoffToggleUnexpectedFailure({
       quoteId,
+      supplierId: null,
       taskKey,
-      error: serialized ?? error,
+      error: serializeSupabaseError(error) ?? error,
     });
     return {
       ok: false,
       error: KICKOFF_TASKS_GENERIC_ERROR,
+      reason: "unknown",
     };
   }
 }
