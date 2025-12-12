@@ -17,8 +17,10 @@ import {
   ensureQuoteProjectForWinner,
   upsertQuoteProject,
 } from "@/server/quotes/projects";
-import { performAwardBidForQuote } from "@/server/quotes/award";
-import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
+import {
+  performAwardFlow,
+  type AwardFailureReason,
+} from "@/server/quotes/award";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 
 export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
@@ -57,12 +59,6 @@ const CUSTOMER_AWARD_ALREADY_WON_ERROR =
 const CUSTOMER_AWARD_GENERIC_ERROR =
   "We couldn’t update the winner. Please try again.";
 const CUSTOMER_AWARD_SUCCESS_MESSAGE = "Winning supplier selected.";
-const CUSTOMER_AWARD_ALLOWED_STATUSES = new Set([
-  "submitted",
-  "in_review",
-  "quoted",
-  "approved",
-]);
 
 const CUSTOMER_MESSAGE_GENERIC_ERROR =
   "Unable to send your message right now. Please try again.";
@@ -78,12 +74,6 @@ const CUSTOMER_PROJECT_DATE_ERROR =
 const CUSTOMER_PROJECT_NOTES_LENGTH_ERROR =
   "Project notes must be 2000 characters or fewer.";
 const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-type QuoteSelectionRow = {
-  id: string;
-  email: string | null;
-  status: string | null;
-};
 
 type CustomerMessageQuoteRow = {
   id: string;
@@ -418,12 +408,9 @@ export async function awardQuoteToBidAction(
   const bidId = normalizeId(getFormString(formData, "bidId"));
 
   if (!quoteId || !bidId) {
-    logCustomerAwardNotAllowed({
+    console.warn("[customer award] missing identifiers", {
       quoteId,
       bidId,
-      userId: "anonymous",
-      customerId: null,
-      reason: "missing-identifiers",
     });
     return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
   }
@@ -437,13 +424,52 @@ export async function awardQuoteToBidAction(
       getFormString(formData, "overrideEmail") ?? null,
     );
 
-    return await performCustomerAwardFlow({
+    if (!customer) {
+      return {
+        ok: false,
+        error: CUSTOMER_AWARD_ACCESS_ERROR,
+      };
+    }
+
+    const result = await performAwardFlow({
       quoteId,
       bidId,
-      user,
-      customer,
+      actorRole: "customer",
+      actorUserId: user.id,
+      actorEmail: user.email ?? null,
+      customerId: customer.id,
+      customerEmail: customer.email,
       overrideEmail,
     });
+
+    if (!result.ok) {
+      const message = mapCustomerAwardError(result.reason);
+      console.error("[customer award] failed", {
+        quoteId,
+        bidId,
+        userId: user.id,
+        customerId: customer.id,
+        reason: result.reason,
+        error: result.error,
+      });
+      return {
+        ok: false,
+        error: message ?? CUSTOMER_AWARD_GENERIC_ERROR,
+      };
+    }
+
+    console.info("[customer award] success", {
+      quoteId,
+      bidId,
+      userId: user.id,
+      customerId: customer.id,
+    });
+
+    return {
+      ok: true,
+      selectedBidId: bidId,
+      message: CUSTOMER_AWARD_SUCCESS_MESSAGE,
+    };
   } catch (error) {
     console.error("[customer award] form state crashed", {
       quoteId,
@@ -451,343 +477,6 @@ export async function awardQuoteToBidAction(
       error: serializeActionError(error),
     });
     return { ok: false, error: CUSTOMER_AWARD_GENERIC_ERROR };
-  }
-}
-
-type CustomerAwardLogContext = {
-  quoteId: string | null;
-  bidId?: string | null;
-  userId: string;
-  customerId: string | null;
-  reason: string;
-};
-
-type CustomerAwardUser = Awaited<ReturnType<typeof requireUser>>;
-type CustomerRecord = Awaited<ReturnType<typeof getCustomerByUserId>>;
-
-type CustomerAwardFlowParams = {
-  quoteId: string;
-  bidId: string;
-  user: CustomerAwardUser;
-  customer: CustomerRecord;
-  overrideEmail?: string | null;
-};
-
-async function performCustomerAwardFlow(
-  params: CustomerAwardFlowParams,
-): Promise<AwardActionState> {
-  const { quoteId, bidId, user, customer, overrideEmail } = params;
-  const customerId = customer?.id ?? null;
-
-  if (!customer) {
-    logCustomerAwardNotAllowed({
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      reason: "missing-profile",
-    });
-    return {
-      ok: false,
-      error: CUSTOMER_AWARD_ACCESS_ERROR,
-    };
-  }
-
-  const { data: quoteRow, error: quoteError } = await supabaseServer
-    .from("quotes_with_uploads")
-    .select("id,email,status")
-    .eq("id", quoteId)
-    .maybeSingle<QuoteSelectionRow>();
-
-  if (quoteError) {
-    console.error("[customer award] quote lookup failed", {
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      error: serializeActionError(quoteError),
-    });
-    return { ok: false, error: CUSTOMER_AWARD_GENERIC_ERROR };
-  }
-
-  if (!quoteRow) {
-    logCustomerAwardNotAllowed({
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      reason: "quote-not-found",
-    });
-    return { ok: false, error: CUSTOMER_AWARD_ACCESS_ERROR };
-  }
-
-  const normalizedStatus = normalizeQuoteStatus(quoteRow.status ?? undefined);
-  if (!isCustomerAwardStatusAllowed(normalizedStatus)) {
-    logCustomerAwardNotAllowed({
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      reason: `status-not-eligible-${normalizedStatus ?? "unknown"}`,
-    });
-    return { ok: false, error: CUSTOMER_AWARD_STATUS_ERROR };
-  }
-
-  const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
-  const normalizedCustomerEmail = normalizeEmailInput(customer.email ?? null);
-  const normalizedUserEmail = normalizeEmailInput(user.email);
-  const normalizedOverrideEmail = normalizeEmailInput(overrideEmail ?? null);
-  const allowedEmails = [
-    normalizedCustomerEmail,
-    normalizedUserEmail,
-    normalizedOverrideEmail,
-  ].filter((value): value is string => Boolean(value));
-
-  const emailMatches =
-    normalizedQuoteEmail !== null &&
-    allowedEmails.some((value) => value === normalizedQuoteEmail);
-
-  if (!emailMatches) {
-    logCustomerAwardNotAllowed({
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      reason: "access-denied",
-    });
-    return { ok: false, error: CUSTOMER_AWARD_ACCESS_ERROR };
-  }
-
-  const { data: existingWinner, error: winnerError } = await supabaseServer
-    .from("supplier_bids")
-    .select("id")
-    .eq("quote_id", quoteId)
-    .eq("status", "won")
-    .limit(1)
-    .maybeSingle<{ id: string }>();
-
-  if (winnerError) {
-    console.error("[customer award] winner lookup failed", {
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      error: serializeActionError(winnerError),
-    });
-    return { ok: false, error: CUSTOMER_AWARD_GENERIC_ERROR };
-  }
-
-  if (existingWinner) {
-    logCustomerAwardNotAllowed({
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      reason: "winner-exists",
-    });
-    return { ok: false, error: CUSTOMER_AWARD_ALREADY_WON_ERROR };
-  }
-
-  const { data: bidRow, error: bidError } = await supabaseServer
-    .from("supplier_bids")
-    .select("id,quote_id,status")
-    .eq("id", bidId)
-    .maybeSingle<{ id: string; quote_id: string; status: string | null }>();
-
-  if (bidError) {
-    console.error("[customer award] bid lookup failed", {
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      error: serializeActionError(bidError),
-    });
-    return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
-  }
-
-  if (!bidRow || bidRow.quote_id !== quoteId) {
-    logCustomerAwardNotAllowed({
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      reason: "bid-not-found",
-    });
-    return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
-  }
-
-  const bidStatus = normalizeBidStatus(bidRow.status);
-  if (!isBidEligibleForAward(bidStatus)) {
-    logCustomerAwardNotAllowed({
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      reason: `bid-ineligible-${bidStatus}`,
-    });
-    return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
-  }
-
-  console.info("[customer award] start", {
-    quoteId,
-    bidId,
-    userId: user.id,
-    customerId,
-  });
-
-  const awardResult = await performAwardBidForQuote({
-    quoteId,
-    bidId,
-    caller: "customer",
-  });
-
-  if (!awardResult.ok) {
-    console.error("[customer award] failed", {
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId,
-      error: awardResult.error,
-    });
-    return {
-      ok: false,
-      error: awardResult.error ?? CUSTOMER_AWARD_GENERIC_ERROR,
-    };
-  }
-
-  revalidateCustomerAwardPaths(quoteId);
-
-  void dispatchWinnerNotification({
-    quoteId,
-    bidId,
-    caller: "customer",
-  });
-  await ensureProjectAfterAward({
-    quoteId,
-    bidId,
-    caller: "customer",
-  });
-
-  console.info("[customer award] success", {
-    quoteId,
-    bidId,
-    userId: user.id,
-    customerId,
-  });
-
-  return {
-    ok: true,
-    selectedBidId: bidId,
-    message: CUSTOMER_AWARD_SUCCESS_MESSAGE,
-  };
-}
-
-function logCustomerAwardNotAllowed(context: CustomerAwardLogContext) {
-  console.warn("[customer award] not allowed", context);
-}
-
-function normalizeId(value?: string | null): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeBidStatus(status?: string | null): string {
-  return typeof status === "string" ? status.trim().toLowerCase() : "";
-}
-
-function isCustomerAwardStatusAllowed(status?: string | null): boolean {
-  if (!status) {
-    return false;
-  }
-  return CUSTOMER_AWARD_ALLOWED_STATUSES.has(status);
-}
-
-function isBidEligibleForAward(status: string): boolean {
-  if (!status) {
-    return true;
-  }
-  return status !== "won" && status !== "lost";
-}
-
-function revalidateCustomerAwardPaths(quoteId: string) {
-  const targets = [
-    "/customer",
-    "/customer/quotes",
-    `/customer/quotes/${quoteId}`,
-    "/admin",
-    "/admin/quotes",
-    `/admin/quotes/${quoteId}`,
-    "/supplier",
-    "/supplier/quotes",
-    `/supplier/quotes/${quoteId}`,
-  ];
-  targets.forEach((path) => {
-    revalidatePath(path);
-  });
-}
-
-async function ensureProjectAfterAward({
-  quoteId,
-  bidId,
-  caller,
-}: {
-  quoteId: string;
-  bidId: string;
-  caller: "admin" | "customer";
-}) {
-  const normalizedQuoteId = quoteId.trim();
-  const normalizedBidId = bidId.trim();
-  if (!normalizedQuoteId || !normalizedBidId) {
-    return;
-  }
-
-  try {
-    const { data, error } = await supabaseServer
-      .from("supplier_bids")
-      .select("supplier_id")
-      .eq("id", normalizedBidId)
-      .maybeSingle<{ supplier_id: string | null }>();
-
-    if (error) {
-      console.error("[quote projects] ensure lookup failed", {
-        quoteId: normalizedQuoteId,
-        bidId: normalizedBidId,
-        caller,
-        error: serializeActionError(error),
-      });
-      return;
-    }
-
-    const supplierId = data?.supplier_id?.trim();
-    if (!supplierId) {
-      console.warn("[quote projects] ensure skipped (missing supplier)", {
-        quoteId: normalizedQuoteId,
-        bidId: normalizedBidId,
-        caller,
-      });
-      return;
-    }
-
-    const result = await ensureQuoteProjectForWinner({
-      quoteId: normalizedQuoteId,
-      winningSupplierId: supplierId,
-    });
-
-    if (!result.ok) {
-      console.error("[quote projects] ensure failed", {
-        quoteId: normalizedQuoteId,
-        bidId: normalizedBidId,
-        caller,
-        reason: result.reason,
-        error: result.error,
-      });
-    }
-  } catch (error) {
-    console.error("[quote projects] ensure crashed", {
-      quoteId: normalizedQuoteId,
-      bidId: normalizedBidId,
-      caller,
-      error: serializeActionError(error),
-    });
   }
 }
 
@@ -887,5 +576,28 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
       success: false,
       error: "Unable to update the bid. Please try again.",
     };
+  }
+}
+
+function normalizeId(value?: string | null): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function mapCustomerAwardError(
+  reason?: AwardFailureReason,
+): string {
+  switch (reason) {
+    case "invalid_input":
+    case "bid_not_found":
+    case "bid_ineligible":
+      return CUSTOMER_AWARD_BID_ERROR;
+    case "access_denied":
+      return CUSTOMER_AWARD_ACCESS_ERROR;
+    case "status_not_allowed":
+      return CUSTOMER_AWARD_STATUS_ERROR;
+    case "winner_exists":
+      return CUSTOMER_AWARD_ALREADY_WON_ERROR;
+    default:
+      return CUSTOMER_AWARD_GENERIC_ERROR;
   }
 }

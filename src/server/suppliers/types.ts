@@ -18,6 +18,11 @@ export const SAFE_QUOTE_WITH_UPLOADS_FIELDS = [
   "upload_file_names",
   "file_count",
   "upload_file_count",
+  "awarded_bid_id",
+  "awarded_supplier_id",
+  "awarded_at",
+  "awarded_by_user_id",
+  "awarded_by_role",
 ] as const;
 
 export type SafeQuoteWithUploadsField =

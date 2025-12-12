@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
+import { formatAwardedByLabel } from "@/lib/awards";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
@@ -184,6 +185,8 @@ export default async function SupplierQuoteDetailPage({
     workspaceData.quote.status,
     existingBid?.status ?? null,
     Boolean(project),
+    workspaceData.quote.awarded_supplier_id ?? null,
+    profile.supplier.id,
   );
 
   let kickoffTasksResult: SupplierKickoffTasksResult | null = null;
@@ -204,9 +207,19 @@ export default async function SupplierQuoteDetailPage({
   const quoteMessages = messagesResult.messages;
   const messagesUnavailable = !messagesResult.ok;
 
+  const normalizedAwardedSupplierId =
+    typeof workspaceData.quote.awarded_supplier_id === "string"
+      ? workspaceData.quote.awarded_supplier_id.trim()
+      : "";
+  const awardedToSupplier =
+    Boolean(normalizedAwardedSupplierId) &&
+    normalizedAwardedSupplierId === profile.supplier.id;
   const bidStatus = (existingBid?.status ?? "").toLowerCase();
   const messagingUnlocked =
-    bidStatus === "accepted" || bidStatus === "won" || bidStatus === "winner";
+    awardedToSupplier ||
+    bidStatus === "accepted" ||
+    bidStatus === "won" ||
+    bidStatus === "winner";
 
   const messagingDisabledReason = messagingUnlocked
     ? null
@@ -243,6 +256,8 @@ export default async function SupplierQuoteDetailPage({
       projectUnavailable={projectUnavailable}
       kickoffTasksResult={kickoffTasksResult}
       kickoffVisibility={kickoffVisibility}
+      awardedSupplierId={workspaceData.quote.awarded_supplier_id ?? null}
+      awardedToSupplier={awardedToSupplier}
     />
   );
 }
@@ -269,6 +284,8 @@ function SupplierQuoteWorkspace({
   projectUnavailable,
   kickoffTasksResult,
   kickoffVisibility,
+  awardedSupplierId,
+  awardedToSupplier,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
@@ -294,12 +311,22 @@ function SupplierQuoteWorkspace({
   projectUnavailable: boolean;
   kickoffTasksResult: SupplierKickoffTasksResult | null;
   kickoffVisibility: SupplierKickoffVisibility;
+  awardedSupplierId: string | null;
+  awardedToSupplier: boolean;
 }) {
   const { quote, uploadMeta, filePreviews } = data;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
   const fileCount =
     typeof quote.fileCount === "number" ? quote.fileCount : quoteFiles.length;
   const derived = deriveQuotePresentation(quote, uploadMeta);
+  const normalizedAwardedSupplierId =
+    typeof awardedSupplierId === "string" ? awardedSupplierId.trim() : "";
+  const quoteHasWinner =
+    Boolean(normalizedAwardedSupplierId) || Boolean(quote.awarded_at);
+  const awardedAtLabel = quote.awarded_at
+    ? formatDateTime(quote.awarded_at, { includeTime: true })
+    : null;
+  const awardedByLabel = formatAwardedByLabel(quote.awarded_by_role);
   const nextWorkflowState = getNextWorkflowState(derived.status);
   const canSubmitBid = canUserBid("supplier", {
     status: quote.status,
@@ -314,6 +341,8 @@ function SupplierQuoteWorkspace({
       quote.status,
       existingBid?.status ?? null,
       hasProject,
+      awardedSupplierId,
+      supplierId,
     );
   const {
     normalizedQuoteStatus,
@@ -322,6 +351,7 @@ function SupplierQuoteWorkspace({
     quoteReadyForKickoff,
     showKickoffChecklist,
   } = kickoffVisibilityState;
+  const isWinningSupplier = awardedToSupplier || bidSelectedAsWinner;
   const acceptedLock = normalizedBidStatus === "accepted";
   const closedWindowLock = bidLocked && !acceptedLock;
   console.log("[supplier kickoff] visibility debug", {
@@ -354,7 +384,6 @@ function SupplierQuoteWorkspace({
     quote.file_name ??
     quoteFiles[0]?.filename ??
     formatQuoteId(quote.id);
-  const isWinningSupplier = bidSelectedAsWinner;
   const winningBidAmountLabel =
     typeof existingBid?.amount === "number" && Number.isFinite(existingBid.amount)
       ? formatCurrency(existingBid.amount, existingBid.currency ?? undefined)
@@ -434,7 +463,7 @@ function SupplierQuoteWorkspace({
             <span className="text-slate-200">{assignmentNames.join(", ")}</span>
           </span>
         ) : null}
-        {bidSelectedAsWinner ? (
+        {isWinningSupplier ? (
           <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
             Selected by customer
           </span>
@@ -443,16 +472,28 @@ function SupplierQuoteWorkspace({
     </div>
   );
 
-  const winnerCallout = bidSelectedAsWinner ? (
-    <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-50">
-      <p className="text-base font-semibold text-emerald-100">
-        Your bid won this RFQ
-      </p>
-      <p className="mt-1 text-emerald-50/80">
-        We&apos;re coordinating kickoff now. Use the checklist below to lock in
-        materials, timing, and any handoff notes.
-      </p>
-    </section>
+  const winnerCallout = quoteHasWinner ? (
+    awardedToSupplier ? (
+      <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-50">
+        <p className="text-base font-semibold text-emerald-100">
+          Awarded to you
+        </p>
+        <p className="mt-1 text-emerald-50/80">
+          {awardedAtLabel ? `Awarded ${awardedAtLabel}. ` : null}
+          We&apos;re coordinating kickoff now. Use the checklist below to lock in materials, timing, and any handoff notes.
+        </p>
+        <p className="mt-2 text-xs text-emerald-200">
+          Awarded by {awardedByLabel}
+        </p>
+      </section>
+    ) : (
+      <section className="rounded-2xl border border-slate-800 bg-slate-950/40 px-5 py-4 text-sm text-slate-200">
+        <p className="text-base font-semibold text-white">Not selected</p>
+        <p className="mt-1 text-slate-300">
+          This RFQ was awarded to another supplier{awardedAtLabel ? ` on ${awardedAtLabel}` : ""}. Keep an eye out for the next opportunity.
+        </p>
+      </section>
+    )
   ) : null;
 
   let kickoffChecklistSection: ReactNode = null;
@@ -666,13 +707,27 @@ function deriveSupplierKickoffVisibility(
   quoteStatus: string | null | undefined,
   bidStatus: string | null | undefined,
   hasProject: boolean,
+  awardedSupplierId?: string | null,
+  supplierId?: string,
 ): SupplierKickoffVisibility {
   const normalizedQuoteStatus = (quoteStatus ?? "").trim().toLowerCase();
   const normalizedBidStatus =
     typeof bidStatus === "string" ? bidStatus.trim().toLowerCase() : "";
-  const bidSelectedAsWinner = ["accepted", "won", "winner"].includes(
-    normalizedBidStatus,
-  );
+  const normalizedAwardedSupplierId =
+    typeof awardedSupplierId === "string"
+      ? awardedSupplierId.trim()
+      : "";
+  const normalizedSupplierId =
+    typeof supplierId === "string" ? supplierId.trim() : "";
+  const awardMatchesSupplier =
+    normalizedAwardedSupplierId &&
+    normalizedSupplierId &&
+    normalizedAwardedSupplierId === normalizedSupplierId;
+  const bidSelectedAsWinner =
+    awardMatchesSupplier ||
+    ["accepted", "won", "winner"].includes(
+      normalizedBidStatus,
+    );
   const quoteReadyForKickoff = [
     "approved",
     "won",
