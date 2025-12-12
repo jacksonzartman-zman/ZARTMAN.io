@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatAwardedByLabel, formatShortId } from "@/lib/awards";
 import { buildCustomerQuoteTimeline } from "@/lib/quote/tracking";
 import {
   loadQuoteMessages,
@@ -417,6 +418,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       null;
     const winningSupplierEmail =
       winningBidRow?.supplier?.primary_email ?? null;
+    const awardedAtLabel = quote.awarded_at
+      ? formatDateTime(quote.awarded_at, { includeTime: true })
+      : null;
+    const awardedByLabel = formatAwardedByLabel(quote.awarded_by_role);
+    const awardedBidDisplayId = quote.awarded_bid_id ?? winningBidRow?.id ?? null;
+    const awardedBidDisplay =
+      awardedBidDisplayId
+        ? `${formatShortId(awardedBidDisplayId)} · ${winningSupplierName ?? "Supplier selected"}`
+        : winningSupplierName ?? "Supplier selected";
 
     const winningBidCallout = winningBidExists ? (
       <div className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-100">
@@ -516,6 +526,36 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         </div>
       </section>
     );
+    const awardAuditPanel =
+      quote.awarded_at || quote.awarded_bid_id || winningBidExists ? (
+        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Winner audit
+          </p>
+          <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-3">
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                Awarded at
+              </dt>
+              <dd className="mt-1 font-semibold">
+                {awardedAtLabel ?? "Pending"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                Awarded by
+              </dt>
+              <dd className="mt-1 font-semibold">{awardedByLabel}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                Winning bid
+              </dt>
+              <dd className="mt-1 font-semibold">{awardedBidDisplay}</dd>
+            </div>
+          </dl>
+        </section>
+      ) : null;
 
     const projectSnapshotPanel =
       hasProject && project ? (
@@ -829,6 +869,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               {bidSummaryPanel}
               <div className="space-y-4">
                 {workflowPanel}
+                {awardAuditPanel}
                 {projectSnapshotPanel}
               </div>
             </div>

@@ -2,9 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getFormString, serializeActionError } from "@/lib/forms";
-import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
-import { getServerAuthUser, requireUser } from "@/server/auth";
+import { getServerAuthUser, requireAdminUser, requireUser } from "@/server/auth";
 import {
   QUOTE_UPDATE_ERROR,
   updateAdminQuote,
@@ -24,18 +23,21 @@ import {
   type QuoteMessageRecord,
 } from "@/server/quotes/messages";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
+import { upsertQuoteProject } from "@/server/quotes/projects";
 import {
-  ensureQuoteProjectForWinner,
-  upsertQuoteProject,
-} from "@/server/quotes/projects";
-import { awardBidForQuoteAction } from "@/server/quotes/adminAward";
-import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
+  performAwardFlow,
+  type AwardFailureReason,
+} from "@/server/quotes/award";
 import type { AwardBidFormState } from "./awardFormState";
 
 export type { AwardBidFormState } from "./awardFormState";
 
 const ADMIN_AWARD_GENERIC_ERROR =
   "We couldn't update the award state. Please try again.";
+const ADMIN_AWARD_BID_ERROR =
+  "We couldn't verify that bid. Please retry.";
+const ADMIN_AWARD_ALREADY_WON_ERROR =
+  "A winning supplier has already been selected for this quote.";
 
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
@@ -74,35 +76,29 @@ export async function awardBidFormAction(
     };
   }
 
-  const result = await awardBidForQuoteAction(quoteIdRaw ?? "", bidIdRaw ?? "");
+  const adminUser = await requireAdminUser();
+
+  const result = await performAwardFlow({
+    quoteId: normalizedQuoteId,
+    bidId: normalizedBidId,
+    actorRole: "admin",
+    actorUserId: adminUser.id,
+    actorEmail: adminUser.email ?? null,
+  });
 
   if (!result.ok) {
+    const message = mapAdminAwardError(result.reason);
     console.error("[admin award] form error", {
-      quoteId: normalizedQuoteId || quoteIdRaw || null,
-      bidId: normalizedBidId || bidIdRaw || null,
+      quoteId: normalizedQuoteId,
+      bidId: normalizedBidId,
+      reason: result.reason,
       error: result.error,
     });
     return {
       status: "error",
-      error: result.error ?? ADMIN_AWARD_GENERIC_ERROR,
+      error: message ?? ADMIN_AWARD_GENERIC_ERROR,
     };
   }
-
-  revalidatePath("/admin");
-  revalidatePath("/admin/quotes");
-  revalidatePath("/customer");
-  revalidatePath("/supplier");
-
-  revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
-  revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
-  revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
-
-  void dispatchAdminWinnerNotification(normalizedQuoteId, normalizedBidId);
-  await ensureProjectAfterAward({
-    quoteId: normalizedQuoteId,
-    bidId: normalizedBidId,
-    caller: "admin",
-  });
 
   return {
     status: "success",
@@ -396,87 +392,18 @@ async function dispatchAdminMessageNotification(
   }
 }
 
-async function ensureProjectAfterAward({
-  quoteId,
-  bidId,
-  caller,
-}: {
-  quoteId: string;
-  bidId: string;
-  caller: "admin" | "customer";
-}) {
-  const trimmedQuoteId = quoteId.trim();
-  const trimmedBidId = bidId.trim();
-  if (!trimmedQuoteId || !trimmedBidId) {
-    return;
-  }
-
-  try {
-    const { data, error } = await supabaseServer
-      .from("supplier_bids")
-      .select("supplier_id")
-      .eq("id", trimmedBidId)
-      .maybeSingle<{ supplier_id: string | null }>();
-
-    if (error) {
-      console.error("[quote projects] ensure lookup failed", {
-        quoteId: trimmedQuoteId,
-        bidId: trimmedBidId,
-        caller,
-        error: serializeActionError(error),
-      });
-      return;
-    }
-
-    const supplierId = data?.supplier_id?.trim();
-    if (!supplierId) {
-      console.warn("[quote projects] ensure skipped (missing supplier)", {
-        quoteId: trimmedQuoteId,
-        bidId: trimmedBidId,
-        caller,
-      });
-      return;
-    }
-
-    const result = await ensureQuoteProjectForWinner({
-      quoteId: trimmedQuoteId,
-      winningSupplierId: supplierId,
-    });
-
-    if (!result.ok) {
-      console.error("[quote projects] ensure failed", {
-        quoteId: trimmedQuoteId,
-        bidId: trimmedBidId,
-        caller,
-        reason: result.reason,
-        error: result.error,
-      });
-    }
-  } catch (error) {
-    console.error("[quote projects] ensure crashed", {
-      quoteId: trimmedQuoteId,
-      bidId: trimmedBidId,
-      caller,
-      error: serializeActionError(error),
-    });
+function mapAdminAwardError(
+  reason?: AwardFailureReason,
+): string {
+  switch (reason) {
+    case "invalid_input":
+    case "bid_not_found":
+    case "bid_ineligible":
+      return ADMIN_AWARD_BID_ERROR;
+    case "winner_exists":
+      return ADMIN_AWARD_ALREADY_WON_ERROR;
+    default:
+      return ADMIN_AWARD_GENERIC_ERROR;
   }
 }
 
-async function dispatchAdminWinnerNotification(
-  quoteId: string,
-  bidId: string,
-) {
-  try {
-    await dispatchWinnerNotification({
-      quoteId,
-      bidId,
-      caller: "admin",
-    });
-  } catch (error) {
-    console.error("[admin bids] winner notification failed", {
-      quoteId,
-      bidId,
-      error: serializeActionError(error),
-    });
-  }
-}

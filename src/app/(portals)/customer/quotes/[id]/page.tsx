@@ -2,6 +2,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
+import { formatAwardedByLabel } from "@/lib/awards";
 import {
   buildCustomerQuoteTimeline,
   type QuoteTimelineEvent,
@@ -191,7 +192,7 @@ export default async function CustomerQuoteDetailPage({
   const quoteIsWon = normalizedQuoteStatus === "won";
   const quoteAllowsCustomerAward =
     normalizedQuoteStatus === "quoted" || normalizedQuoteStatus === "approved";
-  const winningBid =
+  const statusWinningBid =
     bids.find(
       (bid) =>
         typeof bid.status === "string" &&
@@ -199,12 +200,18 @@ export default async function CustomerQuoteDetailPage({
           bid.status.trim().toLowerCase(),
         ),
     ) ?? null;
-  const winningBidId = winningBid?.id ?? null;
-  const quoteHasWinner = Boolean(winningBidId);
+  const winningBidId =
+    quote.awarded_bid_id ??
+    (statusWinningBid?.id ?? null);
+  const winningBid =
+    winningBidId
+      ? bids.find((bid) => bid.id === winningBidId) ?? statusWinningBid
+      : statusWinningBid;
   const winningSupplierId =
-    typeof winningBid?.supplier_id === "string"
+    quote.awarded_supplier_id ??
+    (typeof winningBid?.supplier_id === "string"
       ? winningBid.supplier_id
-      : null;
+      : null);
   const winningSupplierProfile = winningSupplierId
     ? await loadSupplierById(winningSupplierId)
     : null;
@@ -212,6 +219,8 @@ export default async function CustomerQuoteDetailPage({
     winningSupplierProfile?.company_name?.trim() ||
     winningSupplierProfile?.primary_email ||
     winningSupplierId;
+  const quoteHasWinner =
+    Boolean(quote.awarded_at) || Boolean(quote.awarded_bid_id) || Boolean(winningBidId);
   let supplierKickoffTasksResult: SupplierKickoffTasksResult | null = null;
   if (winningSupplierId) {
     supplierKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
@@ -367,6 +376,12 @@ export default async function CustomerQuoteDetailPage({
           winningBid.lead_time_days === 1 ? "" : "s"
         }`
       : leadTimeLabel;
+  const awardedAtLabel = quote.awarded_at
+    ? formatDateTime(quote.awarded_at, { includeTime: true })
+    : null;
+  const awardedByLabel = formatAwardedByLabel(quote.awarded_by_role, {
+    perspective: "customer",
+  });
   const headerTitle = `${customerName ?? "RFQ"} · ${formatQuoteId(quote.id)}`;
   const headerActions = (
     <Link
@@ -451,16 +466,21 @@ export default async function CustomerQuoteDetailPage({
   const winningBidCallout = quoteHasWinner ? (
     <div className="rounded-xl border border-emerald-500/60 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="pill pill-success">Supplier selected</span>
-        <span className="text-xs uppercase tracking-wide text-emerald-200">
-          Winning bid locked in
-        </span>
+        <span className="pill pill-success">Winner selected</span>
+        {awardedAtLabel ? (
+          <span className="text-xs uppercase tracking-wide text-emerald-200">
+            Awarded {awardedAtLabel}
+          </span>
+        ) : null}
       </div>
       <p className="mt-2 text-base font-semibold text-white">
-        {winningBidPriceLabel}
+        {winningSupplierName ?? "Supplier selected"}
       </p>
       <p className="text-xs text-emerald-100">
-        Lead time {winningBidLeadTimeLabel}
+        {winningBidPriceLabel} &middot; Lead time {winningBidLeadTimeLabel}
+      </p>
+      <p className="mt-1 text-xs text-emerald-200">
+        Awarded by: {awardedByLabel}
       </p>
     </div>
   ) : null;
