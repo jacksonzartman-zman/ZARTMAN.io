@@ -10,12 +10,18 @@ import {
   useTransition,
 } from "react";
 import { primaryCtaClasses } from "@/lib/ctas";
+import {
+  parseListState,
+  setSearch,
+  type ListStateConfig,
+} from "@/app/(portals)/lib/listState";
 
 type AdminSearchInputProps = {
   initialValue?: string;
   placeholder?: string;
   basePath?: string;
   inputType?: HTMLInputTypeAttribute;
+  listStateConfig?: ListStateConfig;
 };
 
 export default function AdminSearchInput({
@@ -23,6 +29,7 @@ export default function AdminSearchInput({
   placeholder = "Search company, contact, email, or file...",
   basePath,
   inputType = "search",
+  listStateConfig,
 }: AdminSearchInputProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,14 +44,22 @@ export default function AdminSearchInput({
   const targetPath = basePath || pathname;
 
   const navigateWithValue = (nextValue: string) => {
+    if (listStateConfig) {
+      const state = parseListState(searchParams, listStateConfig);
+      const query = setSearch(state, nextValue, listStateConfig);
+      const nextUrl = query ? `${targetPath}?${query}` : targetPath;
+
+      startTransition(() => {
+        router.push(nextUrl, { scroll: false });
+      });
+      return;
+    }
+
     const params = new URLSearchParams(searchParams.toString());
     const trimmed = nextValue.trim();
 
-    if (trimmed.length > 0) {
-      params.set("search", trimmed);
-    } else {
-      params.delete("search");
-    }
+    if (trimmed.length > 0) params.set("search", trimmed);
+    else params.delete("search");
 
     const query = params.toString();
     const nextUrl = query ? `${targetPath}?${query}` : targetPath;

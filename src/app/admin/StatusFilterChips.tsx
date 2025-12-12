@@ -13,6 +13,7 @@ type Props = {
   basePath: string; // e.g. "/admin/uploads" or "/admin/quotes"
   className?: string;
   options?: { value: string; label: string }[];
+  onSelect?: (value: string) => void;
 };
 
 const DEFAULT_STATUS_OPTIONS = UPLOAD_STATUS_OPTIONS.map((status) => ({
@@ -25,6 +26,7 @@ export default function StatusFilterChips({
   basePath,
   className,
   options,
+  onSelect,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -36,6 +38,11 @@ export default function StatusFilterChips({
   ];
 
   const handleClick = (value: string) => {
+    if (onSelect) {
+      onSelect(value);
+      return;
+    }
+
     const params = new URLSearchParams(searchParams.toString());
     const isActive =
       (value === "all" && !resolvedStatus) || resolvedStatus === value;

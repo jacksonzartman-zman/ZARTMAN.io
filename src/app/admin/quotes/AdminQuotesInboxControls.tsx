@@ -4,10 +4,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import StatusFilterChips from "../StatusFilterChips";
 import { useTransition } from "react";
 import clsx from "clsx";
+import {
+  parseListState,
+  setFilter,
+  setSort,
+} from "@/app/(portals)/lib/listState";
+import {
+  ADMIN_QUOTES_LIST_STATE_CONFIG,
+  type AdminQuotesSortKey,
+  type AdminQuotesStatusFilter,
+} from "./listState";
 
-type SortKey = "newest_rfq" | "latest_bid_activity" | "awarded_recently" | "most_bids";
-
-const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
+const SORT_OPTIONS: Array<{ value: AdminQuotesSortKey; label: string }> = [
   { value: "newest_rfq", label: "Newest RFQ" },
   { value: "latest_bid_activity", label: "Latest bid activity" },
   { value: "awarded_recently", label: "Awarded recently" },
@@ -32,17 +40,13 @@ export default function AdminQuotesInboxControls({
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
-  const currentSort = ((searchParams.get("sort") ?? "newest_rfq")
-    .trim()
-    .toLowerCase() || "newest_rfq") as SortKey;
-  const hasBids = (searchParams.get("hasBids") ?? "").trim() === "1";
-  const awarded = (searchParams.get("awarded") ?? "").trim() === "1";
-  const status = (searchParams.get("status") ?? "").trim();
+  const listState = parseListState(searchParams, ADMIN_QUOTES_LIST_STATE_CONFIG);
+  const currentSort = listState.sort ?? ADMIN_QUOTES_LIST_STATE_CONFIG.defaultSort ?? "newest_rfq";
+  const hasBids = Boolean(listState.hasBids);
+  const awarded = Boolean(listState.awarded);
+  const status = listState.status ?? "";
 
-  const navigate = (mutate: (params: URLSearchParams) => void) => {
-    const params = new URLSearchParams(searchParams.toString());
-    mutate(params);
-    const query = params.toString();
+  const navigate = (query: string) => {
     const nextUrl = query ? `${basePath}?${query}` : basePath;
     startTransition(() => {
       router.push(nextUrl, { scroll: false });
@@ -57,9 +61,13 @@ export default function AdminQuotesInboxControls({
           <select
             value={SORT_OPTIONS.some((opt) => opt.value === currentSort) ? currentSort : "newest_rfq"}
             onChange={(event) =>
-              navigate((params) => {
-                params.set("sort", event.target.value);
-              })
+              navigate(
+                setSort(
+                  listState,
+                  event.target.value as AdminQuotesSortKey,
+                  ADMIN_QUOTES_LIST_STATE_CONFIG,
+                ),
+              )
             }
             className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
             disabled={pending}
@@ -77,11 +85,13 @@ export default function AdminQuotesInboxControls({
             type="checkbox"
             checked={hasBids}
             onChange={() =>
-              navigate((params) => {
-                const next = !hasBids;
-                if (next) params.set("hasBids", "1");
-                else params.delete("hasBids");
-              })
+              navigate(
+                setFilter(
+                  listState,
+                  { hasBids: !hasBids },
+                  ADMIN_QUOTES_LIST_STATE_CONFIG,
+                ),
+              )
             }
             disabled={pending}
             className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
@@ -94,11 +104,13 @@ export default function AdminQuotesInboxControls({
             type="checkbox"
             checked={awarded}
             onChange={() =>
-              navigate((params) => {
-                const next = !awarded;
-                if (next) params.set("awarded", "1");
-                else params.delete("awarded");
-              })
+              navigate(
+                setFilter(
+                  listState,
+                  { awarded: !awarded },
+                  ADMIN_QUOTES_LIST_STATE_CONFIG,
+                ),
+              )
             }
             disabled={pending}
             className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
@@ -112,6 +124,26 @@ export default function AdminQuotesInboxControls({
         basePath={basePath}
         options={STATUS_OPTIONS}
         className="flex-wrap"
+        onSelect={(value) => {
+          const resolvedCurrent = (status ?? "").trim().toLowerCase();
+          const resolvedNext = value.trim().toLowerCase();
+          const isActive =
+            (resolvedNext === "all" && !resolvedCurrent) ||
+            (resolvedNext !== "all" && resolvedCurrent === resolvedNext);
+
+          const nextStatus =
+            resolvedNext === "all" || isActive
+              ? undefined
+              : (resolvedNext as AdminQuotesStatusFilter);
+
+          navigate(
+            setFilter(
+              listState,
+              { status: nextStatus },
+              ADMIN_QUOTES_LIST_STATE_CONFIG,
+            ),
+          );
+        }}
       />
     </div>
   );
