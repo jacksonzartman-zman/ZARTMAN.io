@@ -55,6 +55,7 @@ import {
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
 import { postQuoteMessage as postAdminQuoteMessage } from "./actions";
+import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -69,27 +70,29 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
   if (!quoteResult.ok) {
     return (
-      <main className="mx-auto max-w-3xl px-6 py-10">
-        <section className="rounded-2xl border border-red-500/30 bg-red-950/40 p-6 text-center">
-          <h1 className="text-xl font-semibold text-red-50">
-            We had trouble loading this quote.
-          </h1>
-          <p className="mt-2 text-sm text-red-100">
-            Check logs and try again. The quote data stayed untouched.
-          </p>
-          <div className="mt-4">
-            <Link
-              href="/admin/quotes"
-              className={clsx(
-                secondaryCtaClasses,
-                ctaSizeClasses.sm,
-                "inline-flex",
-              )}
-            >
-              Back to quotes
-            </Link>
-          </div>
-        </section>
+      <main className="py-10">
+        <PortalContainer>
+          <section className="mx-auto max-w-3xl rounded-2xl border border-red-500/30 bg-red-950/40 p-6 text-center">
+            <h1 className="text-xl font-semibold text-red-50">
+              We had trouble loading this quote.
+            </h1>
+            <p className="mt-2 text-sm text-red-100">
+              Check logs and try again. The quote data stayed untouched.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/admin/quotes"
+                className={clsx(
+                  secondaryCtaClasses,
+                  ctaSizeClasses.sm,
+                  "inline-flex",
+                )}
+              >
+                Back to quotes
+              </Link>
+            </div>
+          </section>
+        </PortalContainer>
       </main>
     );
   }
@@ -98,31 +101,33 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
   if (!quote) {
     return (
-      <main className="mx-auto max-w-3xl px-6 py-10">
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-center">
-          <h1 className="text-xl font-semibold text-slate-50">
-            Quote not found
-          </h1>
-          <p className="mt-2 text-sm text-slate-400">
-            We couldn’t find a quote with ID{" "}
-            <span className="font-mono text-slate-200">
-              {resolvedParams.id}
-            </span>
-            .
-          </p>
-          <div className="mt-4">
-            <Link
-              href="/admin/quotes"
+      <main className="py-10">
+        <PortalContainer>
+          <section className="mx-auto max-w-3xl rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-center">
+            <h1 className="text-xl font-semibold text-slate-50">
+              Quote not found
+            </h1>
+            <p className="mt-2 text-sm text-slate-400">
+              We couldn’t find a quote with ID{" "}
+              <span className="font-mono text-slate-200">
+                {resolvedParams.id}
+              </span>
+              .
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/admin/quotes"
                 className={clsx(
                   secondaryCtaClasses,
                   ctaSizeClasses.sm,
                   "inline-flex",
                 )}
-            >
-              Back to quotes
-            </Link>
-          </div>
-        </section>
+              >
+                Back to quotes
+              </Link>
+            </div>
+          </section>
+        </PortalContainer>
       </main>
     );
   }

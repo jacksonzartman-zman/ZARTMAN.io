@@ -20,7 +20,7 @@ export default function AdminTableShell({
   return (
     <div
       className={clsx(
-        "overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/50 shadow-sm",
+        "overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/50 shadow-sm",
         className,
       )}
     >
