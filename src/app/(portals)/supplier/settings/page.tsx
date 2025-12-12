@@ -1,17 +1,19 @@
+import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import { SUPPLIER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
+import { SupplierNotificationSettingsForm } from "./SupplierNotificationSettingsForm";
 import { requireUser } from "@/server/auth";
+import { loadNotificationPreferencesMap } from "@/server/notifications/preferences";
 import {
   getSupplierApprovalStatus,
   loadSupplierProfile,
 } from "@/server/suppliers";
-import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import { approvalsEnabled } from "@/server/suppliers/flags";
+import { SupplierProfileCard } from "../components/SupplierProfileCard";
 import type { Org } from "@/types/org";
 import {
   deriveOrgFromSession,
   deriveOrgSeatSummary,
 } from "@/types/org";
-import { SupplierNotificationSettingsForm } from "./SupplierNotificationSettingsForm";
-import { approvalsEnabled } from "@/server/suppliers/flags";
-import { SupplierProfileCard } from "../components/SupplierProfileCard";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +37,11 @@ export default async function SupplierSettingsPage() {
   const seatSummary = deriveOrgSeatSummary(org, user);
   const planLabel = formatPlanLabel(org.plan);
 
-  const notificationSettings = {
-    notifyQuoteMessages: supplier?.notify_quote_messages ?? true,
-    notifyQuoteWinner: supplier?.notify_quote_winner ?? true,
-  };
+  const notificationSettings = await loadNotificationPreferencesMap({
+    userId: user.id,
+    role: "supplier",
+    eventTypes: SUPPLIER_NOTIFICATION_OPTIONS.map((option) => option.eventType),
+  });
 
   return (
     <div className="space-y-6">

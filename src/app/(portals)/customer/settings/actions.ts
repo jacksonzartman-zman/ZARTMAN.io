@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { CUSTOMER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
+import { serializeActionError } from "@/lib/forms";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
-import { serializeActionError } from "@/lib/forms";
+import { upsertNotificationPreference } from "@/server/notifications/preferences";
 
 export type CustomerNotificationSettingsFormState =
   | { ok: true; message: string }
@@ -29,30 +30,35 @@ export async function submitCustomerNotificationSettingsAction(
       };
     }
 
-    const notifyQuoteMessages = Boolean(formData.get("notify_quote_messages"));
-    const notifyQuoteWinner = Boolean(formData.get("notify_quote_winner"));
+    const updates = CUSTOMER_NOTIFICATION_OPTIONS.map((option) => ({
+      eventType: option.eventType,
+      channel: option.channel,
+      enabled: Boolean(formData.get(option.inputName)),
+    }));
 
-    const { error } = await supabaseServer
-      .from("customers")
-      .update({
-        notify_quote_messages: notifyQuoteMessages,
-        notify_quote_winner: notifyQuoteWinner,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", customer.id);
+    const results = await Promise.all(
+      updates.map((update) =>
+        upsertNotificationPreference({
+          userId: user.id,
+          role: "customer",
+          eventType: update.eventType,
+          channel: update.channel,
+          enabled: update.enabled,
+        }),
+      ),
+    );
 
-    if (error) {
-      console.error("[settings notifications] customer update failed", {
+    if (results.some((ok) => !ok)) {
+      console.error("[settings notifications] customer prefs write failed", {
         customerId: customer.id,
-        error: serializeActionError(error),
+        updates,
       });
       return { ok: false, error: GENERIC_ERROR };
     }
 
     console.log("[settings notifications] customer prefs updated", {
       customerId: customer.id,
-      notifyQuoteMessages,
-      notifyQuoteWinner,
+      updates,
     });
 
     revalidatePath("/customer/settings");

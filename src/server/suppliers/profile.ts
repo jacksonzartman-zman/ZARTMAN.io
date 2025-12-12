@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 const SUPPLIER_SELECT_COLUMNS =
-  "id,company_name,primary_email,user_id,phone,website,country,verified,created_at,notify_quote_messages,notify_quote_winner";
+  "id,company_name,primary_email,user_id,phone,website,country,verified,created_at";
 
 function normalizeEmail(value?: string | null): string | null {
   if (typeof value !== "string") {

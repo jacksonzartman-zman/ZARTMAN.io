@@ -2,16 +2,14 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
+import { SUPPLIER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
 import { primaryCtaClasses } from "@/lib/ctas";
 import {
   submitSupplierNotificationSettingsAction,
   type SupplierNotificationSettingsFormState,
 } from "./actions";
 
-type NotificationSettingsValues = {
-  notifyQuoteMessages: boolean;
-  notifyQuoteWinner: boolean;
-};
+type NotificationSettingsValues = Record<string, boolean>;
 
 type SupplierNotificationSettingsFormProps = {
   initialValues: NotificationSettingsValues;
@@ -36,20 +34,16 @@ export function SupplierNotificationSettingsForm({
     <form action={formAction} className="space-y-5">
       <StatusMessage state={state} />
       <fieldset className="space-y-4" disabled={disabled}>
-        <NotificationToggle
-          id="supplier-notify-quote-messages"
-          name="notify_quote_messages"
-          label="New messages on accepted or won RFQs"
-          description="We’ll ping you when customers or Zartman leave updates on awarded work."
-          defaultChecked={initialValues.notifyQuoteMessages}
-        />
-        <NotificationToggle
-          id="supplier-notify-quote-winner"
-          name="notify_quote_winner"
-          label="Customer selects a winning supplier (if it’s you)"
-          description="Heads-up that you won the work so you can prep handoff."
-          defaultChecked={initialValues.notifyQuoteWinner}
-        />
+        {SUPPLIER_NOTIFICATION_OPTIONS.map((option) => (
+          <NotificationToggle
+            key={option.eventType}
+            id={`supplier-${option.eventType}`}
+            name={option.inputName}
+            label={option.label}
+            description={option.description}
+            defaultChecked={initialValues[option.eventType] ?? true}
+          />
+        ))}
       </fieldset>
       <SaveButton disabled={disabled} />
     </form>

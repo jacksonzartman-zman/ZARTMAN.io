@@ -2,16 +2,14 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
+import { CUSTOMER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
 import { primaryCtaClasses } from "@/lib/ctas";
 import {
   submitCustomerNotificationSettingsAction,
   type CustomerNotificationSettingsFormState,
 } from "./actions";
 
-type NotificationSettingsValues = {
-  notifyQuoteMessages: boolean;
-  notifyQuoteWinner: boolean;
-};
+type NotificationSettingsValues = Record<string, boolean>;
 
 type CustomerNotificationSettingsFormProps = {
   initialValues: NotificationSettingsValues;
@@ -36,20 +34,16 @@ export function CustomerNotificationSettingsForm({
     <form action={formAction} className="space-y-5">
       <StatusMessage state={state} />
       <fieldset className="space-y-4" disabled={disabled}>
-        <NotificationToggle
-          id="customer-notify-quote-messages"
-          name="notify_quote_messages"
-          label="New messages on my quotes"
-          description="We’ll email you when admins or suppliers reply in shared threads."
-          defaultChecked={initialValues.notifyQuoteMessages}
-        />
-        <NotificationToggle
-          id="customer-notify-quote-winner"
-          name="notify_quote_winner"
-          label="A supplier bid is selected as winner"
-          description="Alerts you when a project moves to the awarded stage."
-          defaultChecked={initialValues.notifyQuoteWinner}
-        />
+        {CUSTOMER_NOTIFICATION_OPTIONS.map((option) => (
+          <NotificationToggle
+            key={option.eventType}
+            id={`customer-${option.eventType}`}
+            name={option.inputName}
+            label={option.label}
+            description={option.description}
+            defaultChecked={initialValues[option.eventType] ?? true}
+          />
+        ))}
       </fieldset>
       <SaveButton disabled={disabled} />
     </form>
