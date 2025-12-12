@@ -15,11 +15,13 @@ import type { SupplierKickoffFormState } from "@/server/quotes/supplierQuoteServ
 type SupplierKickoffChecklistCardProps = {
   quoteId: string;
   tasks: SupplierKickoffTask[];
+  readOnly?: boolean;
 };
 
 export function SupplierKickoffChecklistCard({
   quoteId,
   tasks,
+  readOnly = false,
 }: SupplierKickoffChecklistCardProps) {
   const mergedTasks = useMemo(
     () => mergeKickoffTasksWithDefaults(tasks),
@@ -41,6 +43,9 @@ export function SupplierKickoffChecklistCard({
   const summaryLabel = formatKickoffSummaryLabel(summary);
 
   const handleToggle = (task: SupplierKickoffTask, nextCompleted: boolean) => {
+    if (readOnly) {
+      return;
+    }
     setResult(null);
     setPendingTaskKey(task.taskKey);
     setLocalTasks((current) =>
@@ -138,12 +143,20 @@ export function SupplierKickoffChecklistCard({
           {errorMessage}
         </p>
       ) : null}
+      {readOnly ? (
+        <p className="mt-3 rounded-xl border border-slate-800 bg-black/30 px-4 py-2 text-xs text-slate-400">
+          Read-only: only the awarded supplier can update kickoff progress.
+        </p>
+      ) : null}
 
       <ul className="mt-4 space-y-3">
         {localTasks.map((task) => {
           const checkboxId = `kickoff-task-${task.taskKey}`;
           const disabled =
-            isPending || pendingTaskKey === task.taskKey || !task.taskKey;
+            readOnly ||
+            isPending ||
+            pendingTaskKey === task.taskKey ||
+            !task.taskKey;
           return (
             <li
               key={task.taskKey}

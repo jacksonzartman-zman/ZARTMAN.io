@@ -188,6 +188,7 @@ export default async function SupplierQuoteDetailPage({
     kickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
       quoteId,
       profile.supplier.id,
+      { seedIfEmpty: awardedToSupplier },
     );
   }
 
@@ -499,6 +500,7 @@ function SupplierQuoteWorkspace({
         <SupplierKickoffChecklistCard
           quoteId={quote.id}
           tasks={kickoffTasksResult.tasks}
+          readOnly={!awardedToSupplier}
         />
       );
     } else {
@@ -730,8 +732,9 @@ function deriveSupplierKickoffVisibility(
     "winner-selected",
     "winner",
   ].includes(normalizedQuoteStatus);
+  const quoteHasWinner = Boolean(normalizedAwardedSupplierId);
   const showKickoffChecklist =
-    bidSelectedAsWinner && (quoteReadyForKickoff || hasProject);
+    quoteHasWinner && (quoteReadyForKickoff || hasProject);
 
   return {
     normalizedQuoteStatus,
