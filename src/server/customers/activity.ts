@@ -38,6 +38,8 @@ type CustomerActivityOptions = {
   emailOverride?: string | null;
 };
 
+export type CustomerQuotesTableSortKey = "recently_updated" | "newest";
+
 export async function loadRecentCustomerActivity(
   customerId: string,
   options?: CustomerActivityOptions,
@@ -211,6 +213,90 @@ export async function loadCustomerQuotesTable(
   });
 
   return quotes;
+}
+
+export async function loadCustomerQuotesTablePage(
+  customerId: string,
+  options: {
+    page: number;
+    pageSize: number;
+    sort: CustomerQuotesTableSortKey;
+    q?: string;
+    emailOverride?: string | null;
+  },
+): Promise<{ rows: CustomerQuoteRow[]; count: number | null; hasMore: boolean }> {
+  const page = Math.max(1, Math.floor(options.page));
+  const pageSize = Math.max(1, Math.floor(options.pageSize));
+  const sort = options.sort;
+
+  const overrideEmail = normalizeEmailInput(options.emailOverride ?? null);
+  const q = typeof options.q === "string" ? options.q.trim() : "";
+
+  let emailToUse = overrideEmail;
+  if (!emailToUse) {
+    const customer = await getCustomerById(customerId);
+    if (!customer) {
+      console.warn("[customer quotes] no customer found for id", { customerId });
+      return { rows: [], count: 0, hasMore: false };
+    }
+
+    const normalized = normalizeEmailInput(customer.email ?? null);
+    if (!normalized) {
+      console.warn("[customer quotes] customer email missing/invalid", {
+        customerId,
+        rawEmail: customer.email ?? null,
+      });
+      return { rows: [], count: 0, hasMore: false };
+    }
+    emailToUse = normalized;
+  }
+
+  const offset = (page - 1) * pageSize;
+  const endInclusive = offset + pageSize; // fetch 1 extra row to detect hasMore
+
+  let query = supabaseServer
+    .from("quotes_with_uploads")
+    .select(QUOTE_COLUMNS, { count: "exact" })
+    .ilike("email", emailToUse);
+
+  const orFilter = buildCustomerQuotesSearchOr(q);
+  if (orFilter) {
+    query = query.or(orFilter);
+  }
+
+  if (sort === "newest") {
+    query = query.order("created_at", { ascending: false });
+  } else {
+    // recently_updated (default)
+    query = query.order("updated_at", { ascending: false });
+  }
+
+  const { data, error, count } = await query.range(offset, endInclusive);
+  if (error) {
+    console.error("[customer quotes] paged query failed", {
+      customerId,
+      email: emailToUse,
+      page,
+      pageSize,
+      sort,
+      q,
+      error,
+    });
+    return { rows: [], count: 0, hasMore: false };
+  }
+
+  const rows = (data ?? []) as CustomerQuoteRow[];
+  const pageRows = rows.slice(0, pageSize);
+
+  const resolvedCount =
+    typeof count === "number" && Number.isFinite(count) ? count : null;
+
+  const hasMore =
+    typeof resolvedCount === "number"
+      ? offset + pageRows.length < resolvedCount
+      : rows.length > pageSize;
+
+  return { rows: pageRows, count: resolvedCount, hasMore };
 }
 
 async function fetchQuoteMessages(
@@ -419,4 +505,27 @@ function formatBidSummary(bid: SupplierBidRow) {
       ? `${bid.lead_time_days} day${bid.lead_time_days === 1 ? "" : "s"}`
       : "Lead time pending";
   return `${priceLabel} • ${leadTime}`;
+}
+
+function buildCustomerQuotesSearchOr(rawNeedle: string): string | null {
+  const needle = sanitizePostgrestOrNeedle(rawNeedle);
+  if (!needle) return null;
+
+  const wildcard = `*${needle}*`;
+  return [
+    `file_name.ilike.${wildcard}`,
+    `company.ilike.${wildcard}`,
+    `customer_name.ilike.${wildcard}`,
+    `status.ilike.${wildcard}`,
+  ].join(",");
+}
+
+function sanitizePostgrestOrNeedle(value: string): string {
+  // Keep PostgREST `.or()` strings stable and prevent delimiter injection.
+  // We also strip `*` since it's the wildcard token in `.or()` filters.
+  return (value ?? "")
+    .trim()
+    .replace(/[*(),]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }

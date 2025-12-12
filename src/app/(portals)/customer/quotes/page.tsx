@@ -1,10 +1,11 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
+import type { ReadonlyURLSearchParams } from "next/navigation";
 
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
-import { loadCustomerQuotesTable } from "@/server/customers/activity";
+import { loadCustomerQuotesTablePage } from "@/server/customers/activity";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import {
   deriveQuotePrimaryLabel,
@@ -19,6 +20,14 @@ import {
 } from "@/server/quotes/customerSummary";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
+import { parseListState } from "@/app/(portals)/lib/listState";
+import PortalSearchInput from "@/app/(portals)/components/PortalSearchInput";
+import PortalTablePaginationControls from "@/app/(portals)/components/PortalTablePaginationControls";
+import CustomerQuotesListControls from "./CustomerQuotesListControls";
+import {
+  CUSTOMER_QUOTES_LIST_STATE_CONFIG,
+  type CustomerQuotesSortKey,
+} from "./listState";
 
 export const dynamic = "force-dynamic";
 
@@ -33,11 +42,13 @@ function formatRelativeDate(value: string | null | undefined): string {
   return formatDistanceToNowStrict(date, { addSuffix: true });
 }
 
-type CustomerQuoteListRow = Awaited<
-  ReturnType<typeof loadCustomerQuotesTable>
->[number];
+type CustomerQuotesPageProps = {
+  searchParams?: Promise<ReadonlyURLSearchParams>;
+};
 
-export default async function CustomerQuotesPage() {
+export default async function CustomerQuotesPage({
+  searchParams,
+}: CustomerQuotesPageProps) {
   const user = await requireUser({ redirectTo: "/customer" });
   const customer = await getCustomerByUserId(user.id);
 
@@ -72,11 +83,36 @@ export default async function CustomerQuotesPage() {
     );
   }
 
-  const quotes = await loadCustomerQuotesTable(customer.id);
+  const resolvedSearchParams = await searchParams;
+  const listState = parseListState(
+    resolvedSearchParams,
+    CUSTOMER_QUOTES_LIST_STATE_CONFIG,
+  );
+  const page = listState.page;
+  const pageSize = listState.pageSize;
+  const sort = (listState.sort ??
+    CUSTOMER_QUOTES_LIST_STATE_CONFIG.defaultSort ??
+    "recently_updated") as CustomerQuotesSortKey;
+  const searchTerm = listState.q;
+
+  const inbox = await loadCustomerQuotesTablePage(customer.id, {
+    page,
+    pageSize,
+    sort,
+    q: searchTerm,
+  });
+
+  const quotes = inbox.rows;
+  const totalCount =
+    typeof inbox.count === "number" && Number.isFinite(inbox.count)
+      ? inbox.count
+      : quotes.length;
+  const hasMore = Boolean(inbox.hasMore);
+
   const quoteIds = quotes.map((quote) => quote.id);
   const bidAggregates =
     quoteIds.length > 0 ? await loadQuoteBidAggregates(quoteIds) : {};
-  const shouldShowFirstTimeCard = quotes.length <= 1;
+  const shouldShowFirstTimeCard = totalCount <= 1;
 
   return (
     <PortalShell
@@ -94,8 +130,25 @@ export default async function CustomerQuotesPage() {
     >
       <PortalCard
         title="RFQ list"
-        description="Every RFQ you’ve uploaded, sorted by the most recent update."
+        description={
+          sort === "newest"
+            ? "Every RFQ you’ve uploaded, sorted by newest first."
+            : "Every RFQ you’ve uploaded, sorted by the most recent update."
+        }
       >
+        <div className="mb-4 space-y-3">
+          <CustomerQuotesListControls
+            basePath="/customer/quotes"
+            listStateConfig={CUSTOMER_QUOTES_LIST_STATE_CONFIG}
+          />
+          <PortalSearchInput
+            initialValue={searchTerm}
+            basePath="/customer/quotes"
+            placeholder="Search RFQs by file, company, or status..."
+            listStateConfig={CUSTOMER_QUOTES_LIST_STATE_CONFIG}
+          />
+        </div>
+
         {shouldShowFirstTimeCard ? (
           <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -108,7 +161,7 @@ export default async function CustomerQuotesPage() {
             </p>
           </div>
         ) : null}
-        {quotes.length === 0 ? (
+        {totalCount === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-800 bg-black/40 px-4 py-6 text-sm text-slate-300">
             <p className="font-medium text-slate-100">No quotes yet.</p>
             <p className="mt-1 text-slate-400">
@@ -125,98 +178,101 @@ export default async function CustomerQuotesPage() {
             </div>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
-            <table className="min-w-full divide-y divide-slate-900/70 text-sm">
-              <thead className="bg-slate-900/60">
-                <tr>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    RFQ
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Files
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Status
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Last update
-                  </th>
-                  <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-900/70">
-                {quotes.map((quote) => {
-                  const files = buildQuoteFilesFromRow(quote);
-                  const primaryLabel = deriveQuotePrimaryLabel(quote, { files });
+          <>
+            <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
+              <table className="min-w-full divide-y divide-slate-900/70 text-sm">
+                <thead className="bg-slate-900/60">
+                  <tr>
+                    <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      RFQ
+                    </th>
+                    <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      Files
+                    </th>
+                    <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      Status
+                    </th>
+                    <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      Last update
+                    </th>
+                    <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-900/70">
+                  {quotes.map((quote) => {
+                    const files = buildQuoteFilesFromRow(quote);
+                    const primaryLabel = deriveQuotePrimaryLabel(quote, { files });
 
-                  const lastUpdated =
-                    quote.updated_at ?? quote.created_at ?? null;
-                  const aggregate = bidAggregates[quote.id];
-                  const statusKey = deriveCustomerQuoteListStatus({
-                    quoteStatus: quote.status,
-                    aggregate,
-                  });
-                  const statusMeta = getCustomerQuoteStatusMeta(statusKey);
-                  const bidHint = formatCustomerBidHint(aggregate);
-                  const bidCount = aggregate?.bidCount ?? 0;
-                  const ctaLabel = bidCount > 0 ? "Review bids" : "View RFQ";
-                  const fileCount = resolveQuoteFileCount(quote, files.length);
-                  const fileCountLabel = formatQuoteFileCountLabel(fileCount);
+                    const lastUpdated = quote.updated_at ?? quote.created_at ?? null;
+                    const aggregate = bidAggregates[quote.id];
+                    const statusKey = deriveCustomerQuoteListStatus({
+                      quoteStatus: quote.status,
+                      aggregate,
+                    });
+                    const statusMeta = getCustomerQuoteStatusMeta(statusKey);
+                    const bidHint = formatCustomerBidHint(aggregate);
+                    const bidCount = aggregate?.bidCount ?? 0;
+                    const ctaLabel = bidCount > 0 ? "Review bids" : "View RFQ";
+                    const fileCount = resolveQuoteFileCount(quote, files.length);
+                    const fileCountLabel = formatQuoteFileCountLabel(fileCount);
 
-                  return (
-                    <tr key={quote.id} className="hover:bg-slate-900/50">
-                      <td className="px-5 py-4 align-middle">
-                        <div className="flex flex-col">
-                          <span className="font-medium text-slate-100">
-                            {primaryLabel}
+                    return (
+                      <tr key={quote.id} className="hover:bg-slate-900/50">
+                        <td className="px-5 py-4 align-middle">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-slate-100">{primaryLabel}</span>
+                            <span className="text-xs text-slate-500">
+                              Submitted {formatRelativeDate(quote.created_at ?? null)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 align-middle">
+                          <span className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                            {fileCountLabel}
                           </span>
-                          <span className="text-xs text-slate-500">
-                            Submitted {formatRelativeDate(quote.created_at ?? null)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <span className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-                          {fileCountLabel}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <div className="space-y-1">
-                          <span
+                        </td>
+                        <td className="px-5 py-4 align-middle">
+                          <div className="space-y-1">
+                            <span className={clsx("pill pill-table", statusMeta.pillClass)}>
+                              {statusMeta.label}
+                            </span>
+                            <p className="text-xs text-slate-400">{bidHint}</p>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 align-middle text-slate-300">
+                          {formatRelativeDate(lastUpdated)}
+                        </td>
+                        <td className="px-5 py-4 align-middle text-right">
+                          <Link
+                            href={`/customer/quotes/${quote.id}`}
                             className={clsx(
-                              "pill pill-table",
-                              statusMeta.pillClass,
+                              "inline-flex min-w-[7.5rem] items-center justify-center rounded-lg px-3 py-1.5 text-xs font-semibold transition",
+                              bidCount > 0
+                                ? "bg-emerald-500 text-black hover:bg-emerald-400"
+                                : "border border-slate-700 text-slate-100 hover:border-emerald-400 hover:text-emerald-300",
                             )}
                           >
-                            {statusMeta.label}
-                          </span>
-                          <p className="text-xs text-slate-400">{bidHint}</p>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 align-middle text-slate-300">
-                        {formatRelativeDate(lastUpdated)}
-                      </td>
-                      <td className="px-5 py-4 align-middle text-right">
-                        <Link
-                          href={`/customer/quotes/${quote.id}`}
-                          className={clsx(
-                            "inline-flex min-w-[7.5rem] items-center justify-center rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                            bidCount > 0
-                              ? "bg-emerald-500 text-black hover:bg-emerald-400"
-                              : "border border-slate-700 text-slate-100 hover:border-emerald-400 hover:text-emerald-300",
-                          )}
-                        >
-                          {ctaLabel}
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            {ctaLabel}
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <PortalTablePaginationControls
+              basePath="/customer/quotes"
+              page={page}
+              pageSize={pageSize}
+              hasMore={hasMore}
+              totalCount={totalCount}
+              rowsOnPage={quotes.length}
+              listStateConfig={CUSTOMER_QUOTES_LIST_STATE_CONFIG}
+            />
+          </>
         )}
       </PortalCard>
     </PortalShell>
