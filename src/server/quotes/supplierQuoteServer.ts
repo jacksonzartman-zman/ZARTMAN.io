@@ -8,6 +8,7 @@ import {
   serializeSupabaseError,
   isMissingTableOrColumnError,
 } from "@/server/admin/logging";
+import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import { notifyAdminOnBidSubmitted } from "@/server/quotes/notifications";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
@@ -24,11 +25,6 @@ import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
 } from "@/server/suppliers/types";
-import {
-  loadSupplierAssignments,
-  matchesSupplierProcess,
-  supplierHasAccess,
-} from "@/app/(portals)/supplier/quotes/[id]/supplierAccess";
 import { toggleSupplierKickoffTask } from "@/server/quotes/kickoffTasks";
 
 export type SupplierBidFormState = {
@@ -57,10 +53,8 @@ export const SUPPLIER_MESSAGE_PROFILE_ERROR =
   "We couldn’t find your supplier profile.";
 export const SUPPLIER_MESSAGE_GENERIC_ERROR =
   "We couldn’t send your message. Please try again.";
-export const SUPPLIER_MESSAGE_ACCESS_ERROR =
-  "Chat is only available after your bid is selected for this RFQ.";
-export const SUPPLIER_MESSAGE_LOCKED_ERROR =
-  "Chat unlocks after your bid is accepted for this RFQ.";
+export const SUPPLIER_MESSAGE_DENIED_ERROR =
+  "You don’t have access to this RFQ.";
 
 export const BID_SUBMIT_ERROR = "We couldn't submit your bid. Please try again.";
 export const BID_ENV_DISABLED_ERROR =
@@ -80,26 +74,6 @@ export async function loadQuoteAccessRow(quoteId: string) {
     .select(QUOTE_ACCESS_SELECT)
     .eq("id", quoteId)
     .maybeSingle<QuoteAccessRow>();
-}
-
-export async function loadUploadProcessHint(
-  uploadId: string | null,
-): Promise<string | null> {
-  if (!uploadId) {
-    return null;
-  }
-  const { data, error } = await supabaseServer
-    .from("uploads")
-    .select("manufacturing_process")
-    .eq("id", uploadId)
-    .maybeSingle<{ manufacturing_process: string | null }>();
-
-  if (error) {
-    console.error("Supplier bid action: upload lookup failed", error);
-    return null;
-  }
-
-  return data?.manufacturing_process ?? null;
 }
 
 export function parseSupplierBidAmount(
@@ -282,38 +256,20 @@ export async function postSupplierMessageImpl(
     }
 
     const supplierId = profile.supplier.id;
-    const bidResult = await loadBidForSupplierAndQuote(
+    const access = await assertSupplierQuoteAccess({
+      quoteId: trimmedQuoteId,
       supplierId,
-      trimmedQuoteId,
-    );
+    });
 
-    if (!bidResult.ok || !bidResult.data) {
-      console.error("[supplier messages] access denied – no bid", {
+    if (!access.ok) {
+      console.warn("[supplier access] denied", {
         quoteId: trimmedQuoteId,
         supplierId,
-        error: bidResult.error,
+        reason: access.reason,
       });
       return {
         ok: false,
-        error: SUPPLIER_MESSAGE_ACCESS_ERROR,
-        fieldErrors: {},
-      };
-    }
-
-    const bid = bidResult.data;
-    const status = (bid?.status ?? "").toLowerCase();
-    const messagingUnlocked =
-      status === "accepted" || status === "won" || status === "winner";
-
-    if (!messagingUnlocked) {
-      console.error("[supplier messages] access denied – bid not accepted", {
-        quoteId: trimmedQuoteId,
-        supplierId,
-        status,
-      });
-      return {
-        ok: false,
-        error: SUPPLIER_MESSAGE_LOCKED_ERROR,
+        error: SUPPLIER_MESSAGE_DENIED_ERROR,
         fieldErrors: {},
       };
     }
@@ -499,6 +455,22 @@ export async function submitSupplierBidImpl(
       };
     }
 
+    const access = await assertSupplierQuoteAccess({
+      quoteId,
+      supplierId: supplier.id,
+    });
+    if (!access.ok) {
+      console.warn("[supplier access] denied", {
+        quoteId,
+        supplierId: supplier.id,
+        reason: access.reason,
+      });
+      return {
+        ok: false,
+        error: "You do not have access to this RFQ.",
+      };
+    }
+
     const quoteResult = await loadQuoteAccessRow(quoteId);
     const quote = quoteResult.data;
     const quoteError = quoteResult.error;
@@ -545,34 +517,6 @@ export async function submitSupplierBidImpl(
       return {
         ok: false,
         error: "Quote not found.",
-      };
-    }
-
-    const [assignments, uploadProcess] = await Promise.all([
-      loadSupplierAssignments(quoteId),
-      loadUploadProcessHint(quote.upload_id ?? null),
-    ]);
-
-    const verifiedProcessMatch = matchesSupplierProcess(
-      supplierProfile.capabilities ?? [],
-      uploadProcess,
-    );
-
-    if (
-      !supplierHasAccess(supplierEmail, quote, assignments, {
-        supplier,
-        verifiedProcessMatch,
-      })
-    ) {
-      console.error("Supplier bid action: access denied", {
-        quoteId,
-        supplierEmail,
-        supplierId: supplier.id,
-        reason: "ACCESS_DENIED",
-      });
-      return {
-        ok: false,
-        error: "You do not have access to this quote.",
       };
     }
 
@@ -772,10 +716,9 @@ export async function completeKickoffTaskImpl(
   input: ToggleSupplierKickoffTaskInput,
 ): Promise<SupplierKickoffFormState> {
   const quoteId = normalizeIdentifier(input?.quoteId);
-  const supplierId = normalizeIdentifier(input?.supplierId);
   const taskKey = normalizeTaskKey(input?.taskKey);
 
-  if (!quoteId || !supplierId || !taskKey) {
+  if (!quoteId || !taskKey) {
     return {
       ok: false,
       error: KICKOFF_TASKS_GENERIC_ERROR,
@@ -789,9 +732,44 @@ export async function completeKickoffTaskImpl(
   const sortOrder = normalizeSortOrder(input?.sortOrder);
 
   try {
+    const user = await requireUser({
+      redirectTo: `/supplier/quotes/${quoteId}`,
+      message: "Sign in to update kickoff tasks.",
+    });
+
+    let profile = user.id ? await loadSupplierProfileByUserId(user.id) : null;
+    if (!profile && user.email) {
+      profile = await loadSupplierProfile(user.email);
+    }
+
+    const resolvedSupplierId = normalizeIdentifier(profile?.supplier?.id ?? null);
+    if (!resolvedSupplierId) {
+      return {
+        ok: false,
+        error: SUPPLIER_MESSAGE_PROFILE_ERROR,
+      };
+    }
+
+    const access = await assertSupplierQuoteAccess({
+      quoteId,
+      supplierId: resolvedSupplierId,
+    });
+
+    if (!access.ok) {
+      console.warn("[supplier access] denied", {
+        quoteId,
+        supplierId: resolvedSupplierId,
+        reason: access.reason,
+      });
+      return {
+        ok: false,
+        error: "You don’t have access to this RFQ.",
+      };
+    }
+
     const result = await toggleSupplierKickoffTask({
       quoteId,
-      supplierId,
+      supplierId: resolvedSupplierId,
       taskKey,
       completed,
       title,
@@ -830,7 +808,6 @@ export async function completeKickoffTaskImpl(
     const serialized = serializeSupabaseError(error);
     console.error("[supplier kickoff tasks] action crashed", {
       quoteId,
-      supplierId,
       taskKey,
       error: serialized ?? error,
     });
