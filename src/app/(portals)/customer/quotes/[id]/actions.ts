@@ -10,7 +10,7 @@ import {
   acceptSupplierBidForQuote,
   declineSupplierBid,
 } from "@/server/suppliers";
-import { requireUser } from "@/server/auth";
+import { createAuthClient, requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import {
@@ -77,8 +77,7 @@ const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 type CustomerMessageQuoteRow = {
   id: string;
-  email: string | null;
-  status: string | null;
+  customer_id: string | null;
 };
 
 export async function postQuoteMessage(
@@ -132,8 +131,8 @@ export async function postQuoteMessage(
     }
 
     const { data: quoteRow, error: quoteError } = await supabaseServer
-      .from("quotes_with_uploads")
-      .select("id,email,status")
+      .from("quotes")
+      .select("id,customer_id")
       .eq("id", normalizedQuoteId)
       .maybeSingle<CustomerMessageQuoteRow>();
 
@@ -155,16 +154,9 @@ export async function postQuoteMessage(
       return { ok: false, error: "Quote not found." };
     }
 
-    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
-    const normalizedCustomerEmail = normalizeEmailInput(customer.email);
-    const normalizedUserEmail = normalizeEmailInput(user.email);
-
-    const emailMatches =
-      normalizedQuoteEmail !== null &&
-      (normalizedCustomerEmail === normalizedQuoteEmail ||
-        normalizedUserEmail === normalizedQuoteEmail);
-
-    if (!emailMatches) {
+    const normalizedQuoteCustomerId =
+      typeof quoteRow.customer_id === "string" ? quoteRow.customer_id.trim() : "";
+    if (!normalizedQuoteCustomerId || normalizedQuoteCustomerId !== customer.id) {
       console.warn("[customer messages] access denied", {
         quoteId: normalizedQuoteId,
         customerId: customer.id,
@@ -182,11 +174,9 @@ export async function postQuoteMessage(
       user.email ??
       "Customer";
     const senderEmail =
-      customer.email ??
-      user.email ??
-      normalizedQuoteEmail ??
-      "customer@zartman.io";
+      customer.email ?? user.email ?? normalizeEmailInput(customer.email) ?? "customer@zartman.io";
 
+    const supabase = createAuthClient();
     const result = await createQuoteMessage({
       quoteId: normalizedQuoteId,
       senderId: user.id,
@@ -194,17 +184,22 @@ export async function postQuoteMessage(
       body: trimmedBody,
       senderName,
       senderEmail,
+      supabase,
     });
 
     if (!result.ok || !result.message) {
-      console.error("[customer messages] insert failed", {
+      const log = result.reason === "unauthorized" ? console.warn : console.error;
+      log("[customer messages] insert failed", {
         quoteId: normalizedQuoteId,
         customerId: customer.id,
         error: result.error ?? result.reason,
       });
       return {
         ok: false,
-        error: CUSTOMER_MESSAGE_GENERIC_ERROR,
+        error:
+          result.reason === "unauthorized"
+            ? "You don't have access to this quote."
+            : CUSTOMER_MESSAGE_GENERIC_ERROR,
       };
     }
 

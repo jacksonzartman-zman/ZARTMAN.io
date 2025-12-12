@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { canUserBid } from "@/lib/permissions";
-import { getServerAuthUser, requireUser } from "@/server/auth";
+import { createAuthClient, getServerAuthUser, requireUser } from "@/server/auth";
 import { loadBidForSupplierAndQuote } from "@/server/bids";
 import {
   serializeSupabaseError,
@@ -146,7 +146,6 @@ export const KICKOFF_TASKS_SCHEMA_ERROR =
 
 export type ToggleSupplierKickoffTaskInput = {
   quoteId: string;
-  supplierId: string;
   taskKey: string;
   completed: boolean;
   title?: string | null;
@@ -236,11 +235,7 @@ export async function postSupplierMessageImpl(
       message: "Sign in to post a message.",
     });
 
-    let profile = user.id ? await loadSupplierProfileByUserId(user.id) : null;
-
-    if (!profile && user.email) {
-      profile = await loadSupplierProfile(user.email);
-    }
+    const profile = user.id ? await loadSupplierProfileByUserId(user.id) : null;
 
     if (!profile?.supplier?.id) {
       console.error("[supplier messages] no supplier profile for user", {
@@ -285,6 +280,7 @@ export async function postSupplierMessageImpl(
       supplierId,
     });
 
+    const supabase = createAuthClient();
     const result = await createQuoteMessage({
       quoteId: trimmedQuoteId,
       senderId: user.id,
@@ -292,10 +288,12 @@ export async function postSupplierMessageImpl(
       body,
       senderName: authorName,
       senderEmail: authorEmail,
+      supabase,
     });
 
     if (!result.ok || !result.message) {
-      console.error("[supplier messages] create failed", {
+      const log = result.reason === "unauthorized" ? console.warn : console.error;
+      log("[supplier messages] create failed", {
         quoteId: trimmedQuoteId,
         supplierId,
         error: result.error ?? result.reason,
@@ -304,9 +302,11 @@ export async function postSupplierMessageImpl(
       return {
         ok: false,
         error:
-          typeof result.error === "string"
-            ? result.error
-            : SUPPLIER_MESSAGE_GENERIC_ERROR,
+          result.reason === "unauthorized"
+            ? SUPPLIER_MESSAGE_DENIED_ERROR
+            : typeof result.error === "string"
+              ? result.error
+              : SUPPLIER_MESSAGE_GENERIC_ERROR,
         fieldErrors: {},
       };
     }
@@ -737,16 +737,44 @@ export async function completeKickoffTaskImpl(
       message: "Sign in to update kickoff tasks.",
     });
 
-    let profile = user.id ? await loadSupplierProfileByUserId(user.id) : null;
-    if (!profile && user.email) {
-      profile = await loadSupplierProfile(user.email);
-    }
+    const profile = user.id ? await loadSupplierProfileByUserId(user.id) : null;
 
     const resolvedSupplierId = normalizeIdentifier(profile?.supplier?.id ?? null);
     if (!resolvedSupplierId) {
       return {
         ok: false,
         error: SUPPLIER_MESSAGE_PROFILE_ERROR,
+      };
+    }
+
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes")
+      .select("id,awarded_supplier_id")
+      .eq("id", quoteId)
+      .maybeSingle<{ id: string; awarded_supplier_id: string | null }>();
+
+    if (quoteError) {
+      console.error("[supplier kickoff tasks] quote lookup failed", {
+        quoteId,
+        supplierId: resolvedSupplierId,
+        error: serializeSupabaseError(quoteError),
+      });
+      return {
+        ok: false,
+        error: KICKOFF_TASKS_GENERIC_ERROR,
+      };
+    }
+
+    const awardedSupplierId = normalizeIdentifier(quoteRow?.awarded_supplier_id ?? null);
+    if (!awardedSupplierId || awardedSupplierId !== resolvedSupplierId) {
+      console.warn("[kickoff access] denied: not awarded supplier", {
+        quoteId,
+        supplierId: resolvedSupplierId,
+        awardedSupplierId: awardedSupplierId || null,
+      });
+      return {
+        ok: false,
+        error: "You can’t update the kickoff checklist for this RFQ.",
       };
     }
 
@@ -767,7 +795,9 @@ export async function completeKickoffTaskImpl(
       };
     }
 
-    const result = await toggleSupplierKickoffTask({
+    const supabase = createAuthClient();
+    const result = await toggleSupplierKickoffTask(
+      {
       quoteId,
       supplierId: resolvedSupplierId,
       taskKey,
@@ -775,13 +805,25 @@ export async function completeKickoffTaskImpl(
       title,
       description,
       sortOrder,
-    });
+      },
+      { supabase },
+    );
 
     if (!result.ok) {
       if (result.reason === "schema-missing") {
         return {
           ok: false,
           error: KICKOFF_TASKS_SCHEMA_ERROR,
+        };
+      }
+      if (result.reason === "denied") {
+        console.warn("[kickoff access] denied: not awarded supplier", {
+          quoteId,
+          supplierId: resolvedSupplierId,
+        });
+        return {
+          ok: false,
+          error: "You can’t update the kickoff checklist for this RFQ.",
         };
       }
       return {

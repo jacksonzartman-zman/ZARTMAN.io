@@ -2,7 +2,9 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import {
   serializeSupabaseError,
   isMissingTableOrColumnError,
+  isRowLevelSecurityDeniedError,
 } from "@/server/admin/logging";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_SUPPLIER_KICKOFF_TASKS,
   type SupplierKickoffTask,
@@ -40,7 +42,7 @@ export type ToggleSupplierKickoffTaskPayload = {
 export type ToggleSupplierKickoffTaskResult = {
   ok: boolean;
   error: string | null;
-  reason?: "schema-missing" | "missing-identifiers" | "upsert-error";
+  reason?: "schema-missing" | "missing-identifiers" | "denied" | "upsert-error";
 };
 
 type QuoteKickoffTaskRow = {
@@ -136,6 +138,7 @@ export async function loadQuoteKickoffTasksForSupplier(
 
 export async function toggleSupplierKickoffTask(
   payload: ToggleSupplierKickoffTaskPayload,
+  options?: { supabase?: SupabaseClient },
 ): Promise<ToggleSupplierKickoffTaskResult> {
   const quoteId = normalizeId(payload.quoteId);
   const supplierId = normalizeId(payload.supplierId);
@@ -149,10 +152,40 @@ export async function toggleSupplierKickoffTask(
     };
   }
 
+  const awardCheck = await loadQuoteAwardedSupplierId(quoteId);
+  if (!awardCheck.ok) {
+    if (awardCheck.reason === "schema-missing") {
+      return {
+        ok: false,
+        error: "schema-missing",
+        reason: "schema-missing",
+      };
+    }
+    return {
+      ok: false,
+      error: "upsert-error",
+      reason: "upsert-error",
+    };
+  }
+
+  if (awardCheck.awardedSupplierId !== supplierId) {
+    console.warn("[kickoff access] denied: not awarded supplier", {
+      quoteId,
+      supplierId,
+      awardedSupplierId: awardCheck.awardedSupplierId,
+    });
+    return {
+      ok: false,
+      error: "denied",
+      reason: "denied",
+    };
+  }
+
   const now = new Date().toISOString();
+  const supabase = options?.supabase ?? supabaseServer;
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabase
       .from(TABLE_NAME)
       .upsert(
         {
@@ -181,6 +214,19 @@ export async function toggleSupplierKickoffTask(
           ok: false,
           error: "schema-missing",
           reason: "schema-missing",
+        };
+      }
+      if (isRowLevelSecurityDeniedError(error)) {
+        console.warn("[quote kickoff tasks] upsert denied by RLS", {
+          quoteId,
+          supplierId,
+          taskKey,
+          error: serialized ?? error,
+        });
+        return {
+          ok: false,
+          error: "denied",
+          reason: "denied",
         };
       }
       console.error("[quote kickoff tasks] upsert failed", {
@@ -222,6 +268,19 @@ export async function toggleSupplierKickoffTask(
         reason: "schema-missing",
       };
     }
+    if (isRowLevelSecurityDeniedError(error)) {
+      console.warn("[quote kickoff tasks] upsert denied by RLS", {
+        quoteId,
+        supplierId,
+        taskKey,
+        error: serialized ?? error,
+      });
+      return {
+        ok: false,
+        error: "denied",
+        reason: "denied",
+      };
+    }
     console.error("[quote kickoff tasks] upsert crashed", {
       quoteId,
       supplierId,
@@ -233,6 +292,59 @@ export async function toggleSupplierKickoffTask(
       error: "upsert-error",
       reason: "upsert-error",
     };
+  }
+}
+
+type QuoteAwardLookupResult =
+  | { ok: true; awardedSupplierId: string | null }
+  | {
+      ok: false;
+      error: string;
+      reason: "schema-missing" | "load-error" | "not-found";
+    };
+
+async function loadQuoteAwardedSupplierId(
+  quoteId: string,
+): Promise<QuoteAwardLookupResult> {
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes")
+      .select("id,awarded_supplier_id")
+      .eq("id", quoteId)
+      .maybeSingle<{ id: string; awarded_supplier_id: string | null }>();
+
+    if (error) {
+      const serialized = serializeSupabaseError(error);
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[quote kickoff tasks] award lookup missing schema", {
+          quoteId,
+          error: serialized,
+        });
+        return { ok: false, error: "schema-missing", reason: "schema-missing" };
+      }
+      console.error("[quote kickoff tasks] award lookup failed", {
+        quoteId,
+        error: serialized ?? error,
+      });
+      return { ok: false, error: "load-error", reason: "load-error" };
+    }
+
+    if (!data?.id) {
+      return { ok: false, error: "not-found", reason: "not-found" };
+    }
+
+    const awardedSupplierId = normalizeId(data.awarded_supplier_id) || null;
+    return { ok: true, awardedSupplierId };
+  } catch (error) {
+    const serialized = serializeSupabaseError(error);
+    if (isMissingTableOrColumnError(error)) {
+      return { ok: false, error: "schema-missing", reason: "schema-missing" };
+    }
+    console.error("[quote kickoff tasks] award lookup crashed", {
+      quoteId,
+      error: serialized ?? error,
+    });
+    return { ok: false, error: "load-error", reason: "load-error" };
   }
 }
 

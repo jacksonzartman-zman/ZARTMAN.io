@@ -1,8 +1,10 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
   isMissingTableOrColumnError,
+  isRowLevelSecurityDeniedError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type QuoteMessageSenderRole =
   | "admin"
@@ -43,6 +45,7 @@ type CreateQuoteMessageParams = {
   body: string;
   senderName?: string | null;
   senderEmail?: string | null;
+  supabase?: SupabaseClient;
 };
 
 const MESSAGE_COLUMNS =
@@ -150,6 +153,7 @@ export async function createQuoteMessage(
   });
 
   try {
+    const supabase = params.supabase ?? supabaseServer;
     const payload = {
       quote_id: normalizedQuoteId,
       sender_id: normalizedSenderId,
@@ -159,7 +163,7 @@ export async function createQuoteMessage(
       body: trimmedBody,
     };
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from("quote_messages")
       .insert(payload)
       .select(MESSAGE_COLUMNS)
@@ -167,6 +171,20 @@ export async function createQuoteMessage(
 
     if (error || !data) {
       const serialized = serializeSupabaseError(error);
+      if (isRowLevelSecurityDeniedError(error)) {
+        console.warn("[quote messages] insert denied by RLS", {
+          quoteId: normalizedQuoteId,
+          senderId: normalizedSenderId,
+          senderRole: normalizedSenderRole,
+          error: serialized ?? error,
+        });
+        return {
+          ok: false,
+          message: null,
+          reason: "unauthorized",
+          error: serialized ?? error,
+        };
+      }
       const reason = isMissingTableOrColumnError(error)
         ? "schema_error"
         : isUniqueConstraintError(error)
@@ -199,6 +217,20 @@ export async function createQuoteMessage(
       message: data,
     };
   } catch (error) {
+    if (isRowLevelSecurityDeniedError(error)) {
+      console.warn("[quote messages] insert denied by RLS", {
+        quoteId: normalizedQuoteId,
+        senderId: normalizedSenderId,
+        senderRole: normalizedSenderRole,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return {
+        ok: false,
+        message: null,
+        reason: "unauthorized",
+        error: serializeSupabaseError(error) ?? error,
+      };
+    }
     console.error("[quote messages] insert failed", {
       quoteId: normalizedQuoteId,
       senderId: normalizedSenderId,
