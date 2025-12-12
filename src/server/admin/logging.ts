@@ -114,7 +114,11 @@ export function serializeSupabaseError(error: unknown) {
   };
 }
 
-const MISSING_SCHEMA_CODES = new Set(["PGRST205", "42703"]);
+// Missing schema drift codes:
+// - PGRST205: PostgREST schema cache / missing relation/column
+// - 42703: undefined_column
+// - 42P01: undefined_table / undefined_relation (includes missing views)
+const MISSING_SCHEMA_CODES = new Set(["PGRST205", "42703", "42P01"]);
 
 export function isMissingTableOrColumnError(error: unknown): boolean {
   const source = extractSupabaseSource(error);
@@ -132,6 +136,11 @@ export function isMissingTableOrColumnError(error: unknown): boolean {
   }
 
   return MISSING_SCHEMA_CODES.has(code);
+}
+
+// Alias for clarity when guarding admin-only views / RPCs.
+export function isMissingSchemaError(error: unknown): boolean {
+  return isMissingTableOrColumnError(error);
 }
 
 const RLS_DENIED_CODES = new Set([

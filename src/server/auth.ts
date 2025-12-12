@@ -116,20 +116,12 @@ function isDynamicServerUsageError(error: unknown): boolean {
 
 export async function getServerAuthUser(): Promise<ServerAuthUserResult> {
   try {
-    const cookieStore = await cookies();
-    const cookieNames =
-      typeof cookieStore.getAll === "function"
-        ? cookieStore.getAll().map((entry) => entry.name)
-        : [];
-    console.log("[auth] cookies seen by server:", cookieNames);
-
     const supabase = await createReadOnlyAuthClient();
     const { data, error } = await supabase.auth.getUser();
     const serializedError = error ? serializeSupabaseError(error) : null;
 
     console.info("[auth] getUser result:", {
       hasUser: Boolean(data?.user),
-      email: data?.user?.email ?? null,
       error: serializedError,
     });
 
@@ -195,6 +187,17 @@ export async function requireUser(options?: RequireUserOptions): Promise<User> {
 export async function requireAdminUser(
   options?: RequireUserOptions,
 ): Promise<User> {
-  // TODO: tighten this check once we persist admin roles in auth metadata.
-  return requireUser(options);
+  const user = await requireUser(options);
+
+  // Hard gate: admin routes/actions are protected by a server-set httpOnly cookie.
+  // This avoids relying on email heuristics and prevents accidental exposure of
+  // service-role backed admin data to regular authenticated users.
+  const cookieStore = await cookies();
+  const isUnlocked = cookieStore.get("zartman_admin")?.value === "1";
+
+  if (!isUnlocked) {
+    throw new UnauthorizedError(options?.message ?? "Not authorized.");
+  }
+
+  return user;
 }

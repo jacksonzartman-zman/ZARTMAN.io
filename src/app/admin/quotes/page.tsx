@@ -1,15 +1,12 @@
 // src/app/admin/quotes/page.tsx
-import {
-  loadAdminQuotesList,
-  type AdminQuoteListRow,
-} from "@/server/admin/quotes";
+import { getAdminQuotesInbox } from "@/server/admin/quotesInbox";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import QuotesTable, { type QuoteRow } from "../QuotesTable";
 import AdminDashboardShell from "../AdminDashboardShell";
 import AdminFiltersBar from "../AdminFiltersBar";
 import AdminSearchInput from "../AdminSearchInput";
-import { loadQuoteBidAggregates } from "@/server/quotes/bidAggregates";
+import type { QuoteBidAggregate } from "@/server/quotes/bidAggregates";
 import {
   deriveAdminQuoteListStatus,
   formatAdminBestPriceLabel,
@@ -24,21 +21,24 @@ import {
   resolveQuoteFileCount,
 } from "@/server/quotes/fileSummary";
 import type { AdminQuotesView } from "@/types/adminQuotes";
-import AdminQuotesViewFilter from "./AdminQuotesViewFilter";
-import {
-  normalizeAdminQuotesView,
-  viewIncludesStatus,
-} from "./viewFilters";
+import AdminQuotesInboxControls from "./AdminQuotesInboxControls";
+import type { AdminQuotesInboxSort } from "@/server/admin/quotesInbox";
 
 export const dynamic = "force-dynamic";
 
 type QuotesPageSearchParams = {
-  view?: string | string[] | null;
+  sort?: string | string[] | null;
+  status?: string | string[] | null;
+  hasBids?: string | string[] | null;
+  awarded?: string | string[] | null;
   search?: string | string[] | null;
 };
 
 type ResolvedSearchParams = {
-  view?: string;
+  sort?: string;
+  status?: string;
+  hasBids?: string;
+  awarded?: string;
   search?: string;
 };
 
@@ -85,14 +85,20 @@ const resolveSearchParams = async (
 
   if (isURLSearchParamsLike(resolved)) {
     return {
-      view: resolved.get("view") ?? undefined,
+      sort: resolved.get("sort") ?? undefined,
+      status: resolved.get("status") ?? undefined,
+      hasBids: resolved.get("hasBids") ?? undefined,
+      awarded: resolved.get("awarded") ?? undefined,
       search: resolved.get("search") ?? undefined,
     };
   }
 
   const maybeObject = resolved as QuotesPageSearchParams;
   return {
-    view: getFirstParamValue(maybeObject.view),
+    sort: getFirstParamValue(maybeObject.sort),
+    status: getFirstParamValue(maybeObject.status),
+    hasBids: getFirstParamValue(maybeObject.hasBids),
+    awarded: getFirstParamValue(maybeObject.awarded),
     search: getFirstParamValue(maybeObject.search),
   };
 };
@@ -100,7 +106,10 @@ const resolveSearchParams = async (
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const resolvedSearchParams = await resolveSearchParams(searchParams);
 
-  const viewFilter = normalizeAdminQuotesView(resolvedSearchParams.view);
+  const sort = typeof resolvedSearchParams.sort === "string" ? resolvedSearchParams.sort : null;
+  const status = typeof resolvedSearchParams.status === "string" ? resolvedSearchParams.status : null;
+  const hasBids = (resolvedSearchParams.hasBids ?? "").trim() === "1";
+  const awarded = (resolvedSearchParams.awarded ?? "").trim() === "1";
 
   const searchTerm =
     typeof resolvedSearchParams.search === "string"
@@ -108,22 +117,29 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       : "";
   const normalizedSearch = searchTerm.trim().toLowerCase().replace(/\s+/g, " ");
 
-  const quotesResult = await loadAdminQuotesList({
-    status: null,
-    search: normalizedSearch || null,
+  const inboxResult = await getAdminQuotesInbox({
+    sort: (typeof sort === "string"
+      ? (sort.trim().toLowerCase() as AdminQuotesInboxSort)
+      : null),
+    page: 1,
+    pageSize: 50,
+    filter: {
+      status: status?.trim() || null,
+      search: normalizedSearch || null,
+      hasBids: hasBids || null,
+      awarded: awarded || null,
+    },
   });
 
-  const baseRows = quotesResult.data ?? [];
-  const quoteIds = baseRows.map((row) => row.id);
-  const bidAggregates =
-    quoteIds.length > 0 ? await loadQuoteBidAggregates(quoteIds) : {};
+  const baseRows = inboxResult.data.rows ?? [];
+  const totalCount = inboxResult.data.count ?? baseRows.length;
 
   const enrichedRows: QuoteRow[] = baseRows.map((row) => {
     const files = buildQuoteFilesFromRow(row);
     const fileCount = resolveQuoteFileCount(row, files.length);
     const fileCountLabel = formatQuoteFileCountLabel(fileCount);
     const rfqLabel = deriveQuotePrimaryLabel(row, { files });
-    const aggregate = bidAggregates[row.id];
+    const aggregate = buildInboxAggregate(row);
     const listStatus = deriveAdminQuoteListStatus({
       quoteStatus: row.status,
       aggregate,
@@ -160,45 +176,33 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       bestPriceLabel,
       leadTimeLabel,
       hasWinningBid: Boolean(aggregate?.hasWinningBid),
+      bidCount: aggregate?.bidCount ?? 0,
+      latestBidAt: aggregate?.lastBidAt ?? null,
+      hasAwardedBid: Boolean(row.has_awarded_bid),
+      awardedAt: row.awarded_at ?? null,
+      awardedSupplierName: row.awarded_supplier_name ?? null,
       ctaHref: `/admin/quotes/${row.id}`,
       bidsHref: `/admin/quotes/${row.id}#bids-panel`,
     };
   });
 
-  const filteredQuotes = enrichedRows.filter((row) => {
-    if (!viewIncludesStatus(viewFilter, row.status)) {
-      return false;
-    }
+  const filteredQuotes = enrichedRows;
 
-    if (!normalizedSearch) {
-      return true;
-    }
-
-    const haystack = `${row.rfqLabel} ${row.customerName ?? ""} ${
-      row.customerEmail ?? ""
-    } ${row.company ?? ""} ${row.bidSummary ?? ""} ${row.statusLabel ?? ""}`
-      .toLowerCase()
-      .replace(/\s+/g, " ");
-
-    return haystack.includes(normalizedSearch);
-  });
-
-    return (
-      <AdminDashboardShell
-        title="Quotes"
-        description="Recent quotes created from uploads."
-      >
-      {!quotesResult.ok ? (
+  return (
+    <AdminDashboardShell title="Quotes" description="Recent quotes created from uploads.">
+      {!inboxResult.ok ? (
         <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-6 py-4 text-sm text-red-100">
           We had trouble loading quotes. Check logs and try again.
         </div>
       ) : null}
+      {inboxResult.data.degraded ? (
+        <div className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-950/20 px-6 py-4 text-sm text-amber-100">
+          Inbox activity is temporarily unavailable in this environment (schema mismatch). Showing an empty list.
+        </div>
+      ) : null}
         <AdminFiltersBar
           filters={
-            <AdminQuotesViewFilter
-              currentView={viewFilter}
-              basePath="/admin/quotes"
-            />
+            <AdminQuotesInboxControls basePath="/admin/quotes" />
           }
           search={
             <AdminSearchInput
@@ -212,12 +216,33 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
           <div className="inline-block min-w-full align-middle">
             <QuotesTable
               quotes={filteredQuotes}
-              totalCount={baseRows.length}
-              currentView={viewFilter}
+              totalCount={totalCount}
+              currentView={"all" as AdminQuotesView}
               searchTerm={normalizedSearch}
             />
           </div>
         </div>
-      </AdminDashboardShell>
-    );
+    </AdminDashboardShell>
+  );
+}
+
+function buildInboxAggregate(row: {
+  id: string;
+  bid_count: number;
+  latest_bid_at: string | null;
+  has_awarded_bid: boolean;
+}): QuoteBidAggregate {
+  return {
+    quoteId: row.id,
+    bidCount: typeof row.bid_count === "number" ? row.bid_count : 0,
+    lastBidAt: row.latest_bid_at ?? null,
+    latestStatus: null,
+    hasWinningBid: Boolean(row.has_awarded_bid),
+    bestPriceAmount: null,
+    bestPriceCurrency: null,
+    fastestLeadTimeDays: null,
+    winningBidAmount: null,
+    winningBidCurrency: null,
+    winningBidLeadTimeDays: null,
+  };
 }
