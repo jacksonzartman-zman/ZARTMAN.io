@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
+import { dispatchQuoteMessageNotification } from "@/server/quotes/notifications";
 import { getServerAuthUser, requireUser } from "@/server/auth";
 import {
   QUOTE_UPDATE_ERROR,
@@ -382,18 +382,10 @@ export async function submitAdminQuoteProjectAction(
 }
 
 async function dispatchAdminMessageNotification(
-  quoteId: string,
+  _quoteId: string,
   message: QuoteMessageRecord,
 ) {
-  try {
-    await notifyOnNewQuoteMessage(message);
-  } catch (error) {
-    console.error("[admin messages] notification failed", {
-      quoteId,
-      messageId: message.id,
-      error: serializeActionError(error),
-    });
-  }
+  await dispatchQuoteMessageNotification(message);
 }
 
 async function ensureProjectAfterAward({
