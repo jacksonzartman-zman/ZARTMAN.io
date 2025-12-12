@@ -207,14 +207,13 @@ export async function toggleSupplierKickoffTask(
     const {
       data: updatedRows,
       error: updateError,
-      count: updatedCount,
     } = await supabase
       .from(TABLE_NAME)
       .update(updatePayload)
       .eq("quote_id", quoteId)
       .eq("supplier_id", supplierId)
       .eq("task_key", taskKey)
-      .select("id", { count: "exact" });
+      .select("id");
 
     if (updateError) {
       const serialized = serializeSupabaseError(updateError);
@@ -257,14 +256,9 @@ export async function toggleSupplierKickoffTask(
       };
     }
 
-    const normalizedUpdatedCount =
-      typeof updatedCount === "number"
-        ? updatedCount
-        : Array.isArray(updatedRows)
-          ? updatedRows.length
-          : 0;
+    const updatedCount = Array.isArray(updatedRows) ? updatedRows.length : 0;
 
-    if (normalizedUpdatedCount > 0) {
+    if (updatedCount > 0) {
       console.log("[quote kickoff tasks] update success", {
         quoteId,
         supplierId,
