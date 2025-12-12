@@ -55,7 +55,7 @@ export function SupplierQuoteProjectCard({
         </p>
       ) : showEmptyState ? (
         <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-sm text-slate-300">
-          The customer hasn't provided kickoff details yet. We&apos;ll notify you when the PO number and ship
+          The customer hasn&apos;t provided kickoff details yet. We&apos;ll notify you when the PO number and ship
           date are ready.
         </p>
       ) : null}

@@ -463,14 +463,14 @@ export default function UploadBox({
     [handleGeometryStatsUpdate, selectedPart?.id],
   );
 
-  const clearFieldError = (field: FieldErrorKey) => {
+  const clearFieldError = useCallback((field: FieldErrorKey) => {
     setFieldErrors((prev) => {
       if (!prev[field]) return prev;
       const next = { ...prev };
       delete next[field];
       return next;
     });
-  };
+  }, []);
 
   const ingestFiles = useCallback(
     (candidates: File[]) => {

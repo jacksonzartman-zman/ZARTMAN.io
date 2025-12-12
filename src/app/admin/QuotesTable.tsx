@@ -22,6 +22,11 @@ export type QuoteRow = {
   bestPriceLabel: string;
   leadTimeLabel: string;
   hasWinningBid: boolean;
+  bidCount: number;
+  latestBidAt: string | null;
+  hasAwardedBid: boolean;
+  awardedAt: string | null;
+  awardedSupplierName: string | null;
   ctaHref: string;
   bidsHref: string;
 };
@@ -62,6 +67,9 @@ export default function QuotesTable({
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Bids
           </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Award
+          </th>
           <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Actions
           </th>
@@ -71,7 +79,7 @@ export default function QuotesTable({
         showEmptyState ? (
           <tr>
             <td
-              colSpan={6}
+              colSpan={7}
               className="px-6 py-12 text-center text-base text-slate-300"
             >
               <p className="font-medium text-slate-100">{emptyState.title}</p>
@@ -83,6 +91,12 @@ export default function QuotesTable({
             const createdAtLabel = formatDateTime(row.createdAt, {
               includeTime: true,
             });
+            const latestBidLabel = row.latestBidAt
+              ? formatDateTime(row.latestBidAt, { includeTime: true })
+              : null;
+            const awardedAtLabel = row.awardedAt
+              ? formatDateTime(row.awardedAt, { includeTime: true })
+              : null;
 
             return (
               <tr
@@ -141,9 +155,28 @@ export default function QuotesTable({
                   <p className="font-semibold text-slate-100">{row.bidCountLabel}</p>
                   <p className="text-slate-400">{row.bidSummary}</p>
                   <div className="mt-2 flex flex-col gap-1 text-slate-400">
+                    <span>
+                      Latest bid:{" "}
+                      {row.bidCount > 0 ? latestBidLabel ?? "—" : "—"}
+                    </span>
                     <span>Best: {row.bestPriceLabel}</span>
                     <span>Lead: {row.leadTimeLabel}</span>
                   </div>
+                </td>
+                <td className={clsx(adminTableCellClass, "text-xs text-slate-200")}>
+                  {row.hasAwardedBid ? (
+                    <div className="space-y-1">
+                      <p className="font-semibold text-emerald-100">Awarded</p>
+                      <p className="text-slate-300">
+                        {row.awardedSupplierName || "Winning supplier selected"}
+                      </p>
+                      <p className="text-slate-400">
+                        {awardedAtLabel ? `At ${awardedAtLabel}` : "At —"}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-slate-500">Not awarded</p>
+                  )}
                 </td>
                 <td className={clsx(adminTableCellClass, "text-right")}>
                   <div className="flex flex-col items-end gap-2">
