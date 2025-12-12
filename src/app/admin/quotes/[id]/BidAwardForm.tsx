@@ -9,10 +9,16 @@ import { AWARD_BID_FORM_INITIAL_STATE } from "./awardFormState";
 type BidAwardFormProps = {
   quoteId: string;
   bidId: string;
+  supplierName?: string | null;
   className?: string;
 };
 
-export function BidAwardForm({ quoteId, bidId, className }: BidAwardFormProps) {
+export function BidAwardForm({
+  quoteId,
+  bidId,
+  supplierName,
+  className,
+}: BidAwardFormProps) {
   const [state, formAction] = useFormState(
     awardBidFormAction,
     AWARD_BID_FORM_INITIAL_STATE,
@@ -31,6 +37,16 @@ export function BidAwardForm({ quoteId, bidId, className }: BidAwardFormProps) {
   return (
     <form
       action={formAction}
+      onSubmit={(event) => {
+        const label =
+          typeof supplierName === "string" && supplierName.trim().length > 0
+            ? supplierName.trim()
+            : "this supplier";
+        const confirmed = window.confirm(`Award this RFQ to ${label}?`);
+        if (!confirmed) {
+          event.preventDefault();
+        }
+      }}
       className={clsx("flex flex-col items-end gap-1", className)}
     >
       <input type="hidden" name="quoteId" value={quoteId} />

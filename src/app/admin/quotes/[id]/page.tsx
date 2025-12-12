@@ -314,9 +314,19 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const fallbackBestPriceCurrency = fallbackBestPriceBid?.currency ?? null;
     const fallbackFastestLeadTime = findFastestLeadTime(bids);
     const aggregateBidCount = bidAggregate?.bidCount ?? bids.length;
-    const hasWinningBid = bids.some((bid) => isWinningBidStatus(bid?.status));
+    const canonicalAwardedBidId =
+      typeof quote.awarded_bid_id === "string" ? quote.awarded_bid_id.trim() : "";
+    const hasWinningBid =
+      Boolean(canonicalAwardedBidId) ||
+      Boolean(quote.awarded_supplier_id) ||
+      Boolean(quote.awarded_at) ||
+      bids.some((bid) => isWinningBidStatus(bid?.status));
     const winningBidRow =
-      bids.find((bid) => isWinningBidStatus(bid?.status)) ?? null;
+      (canonicalAwardedBidId
+        ? bids.find((bid) => bid.id === canonicalAwardedBidId) ?? null
+        : null) ??
+      bids.find((bid) => isWinningBidStatus(bid?.status)) ??
+      null;
     let supplierKickoffTasksResult: SupplierKickoffTasksResult | null = null;
     if (winningBidRow?.supplier_id) {
       supplierKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
@@ -886,6 +896,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             id="bids-panel"
             quoteId={quote.id}
             quoteStatus={status}
+            awardedBidId={quote.awarded_bid_id ?? null}
+            awardedSupplierId={quote.awarded_supplier_id ?? null}
             bids={bids}
             bidsLoaded={bidsResult.ok}
             errorMessage={bidsResult.ok ? bidsResult.error : null}

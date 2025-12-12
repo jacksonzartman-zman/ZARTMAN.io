@@ -106,6 +106,21 @@ export async function performAwardFlow(
     return { ok: false, reason: "quote_not_found", error: "Quote not found." };
   }
 
+  // Idempotency: awarding the same bid twice should be a no-op success.
+  if (quote.awarded_bid_id && quote.awarded_bid_id === bidId) {
+    console.info("[award] idempotent no-op", {
+      ...logContext,
+      awardedBidId: bidId,
+      winningSupplierId: quote.awarded_supplier_id ?? null,
+    });
+    return {
+      ok: true,
+      awardedBidId: bidId,
+      awardedSupplierId: quote.awarded_supplier_id ?? null,
+      awardedAt: quote.awarded_at ?? null,
+    };
+  }
+
   if (quote.awarded_bid_id) {
     console.warn("[award] validation failed", {
       ...logContext,
