@@ -1,6 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { canUserBid } from "@/lib/permissions";
-import { approvalsEnabled } from "./flags";
+import {
+  approvalsEnabled,
+  isMissingQuoteAwardColumnsError,
+} from "./flags";
 import {
   isSupplierApproved,
   listSupplierCapabilities,
@@ -20,7 +23,10 @@ import {
   type SupplierQuoteRow,
 } from "./types";
 import { QUOTE_OPEN_STATUSES } from "@/server/quotes/status";
-import { toSupplierActivityQueryError } from "./activityLogging";
+import {
+  isSupplierActivityQueryFailure,
+  toSupplierActivityQueryError,
+} from "./activityLogging";
 
 const DEFAULT_LOOKBACK_DAYS = 30;
 const MATCH_HEALTH_QUOTE_LIMIT = 200;
@@ -184,6 +190,13 @@ export async function loadSupplierMatchHealth(
 
     return result;
   } catch (error) {
+    if (isQuoteAwardSchemaError(error)) {
+      console.warn("[supplier match] health skipped: missing award columns", {
+        supplierId: normalizedSupplierId,
+        lookbackDays,
+      });
+      return defaultHealth;
+    }
     console.error("[supplier match] health failed", {
       supplierId: normalizedSupplierId,
       lookbackDays,
@@ -338,4 +351,11 @@ function buildBidMetaMap(
     });
   });
   return map;
+}
+
+function isQuoteAwardSchemaError(error: unknown): boolean {
+  if (isSupplierActivityQueryFailure(error) && error.supabaseError) {
+    return isMissingQuoteAwardColumnsError(error.supabaseError);
+  }
+  return isMissingQuoteAwardColumnsError(error);
 }
