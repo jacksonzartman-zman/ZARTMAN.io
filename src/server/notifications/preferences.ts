@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { serializeSupabaseError } from "@/server/admin/logging";
 import type {
   NotificationPreferenceChannel,
   NotificationPreferenceRole,
@@ -32,6 +33,25 @@ export type ShouldSendNotificationResult =
 
 const DEFAULT_CHANNEL: NotificationPreferenceChannel = "email";
 const complianceModeCache = new Map<string, Promise<ComplianceMode | null>>();
+let warnedMissingComplianceModeColumn = false;
+
+function isMissingComplianceModeColumnError(error: unknown): boolean {
+  const source = error && typeof error === "object" ? (error as any) : null;
+  const code = typeof source?.code === "string" ? (source.code as string) : null;
+  const message =
+    typeof source?.message === "string" ? (source.message as string) : null;
+
+  if (code === "42703") {
+    return true;
+  }
+
+  if (!message) {
+    return false;
+  }
+
+  const normalized = message.toLowerCase();
+  return normalized.includes("compliance_mode") && normalized.includes("does not exist");
+}
 
 export async function shouldSendNotification(
   args: ShouldSendNotificationArgs,
@@ -267,9 +287,20 @@ async function fetchQuoteComplianceMode(quoteId: string): Promise<ComplianceMode
       .maybeSingle<{ compliance_mode: ComplianceMode | null }>();
 
     if (error) {
+      if (isMissingComplianceModeColumnError(error)) {
+        if (!warnedMissingComplianceModeColumn) {
+          warnedMissingComplianceModeColumn = true;
+          console.warn("[notification prefs] compliance_mode missing; defaulting", {
+            quoteId,
+            error: serializeSupabaseError(error),
+          });
+        }
+        return "standard";
+      }
+
       console.error("[notification prefs] compliance lookup failed", {
         quoteId,
-        error,
+        error: serializeSupabaseError(error),
       });
       return null;
     }
@@ -278,7 +309,7 @@ async function fetchQuoteComplianceMode(quoteId: string): Promise<ComplianceMode
   } catch (error) {
     console.error("[notification prefs] compliance lookup crashed", {
       quoteId,
-      error,
+      error: serializeSupabaseError(error),
     });
     return null;
   }
