@@ -24,6 +24,7 @@ import {
 } from "@/app/(portals)/quotes/workspaceData";
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
 import { loadBidsForQuote, type BidRow } from "@/server/bids";
+import { loadCustomerQuoteBidSummaries } from "@/server/customers/bids";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
@@ -34,7 +35,7 @@ import {
   getQuoteStatusHelper,
   normalizeQuoteStatus,
 } from "@/server/quotes/status";
-import { CustomerBidSelectionCard } from "./CustomerBidSelectionCard";
+import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
 import { CustomerQuotePartPanel } from "./CustomerQuotePartPanel";
 import {
@@ -105,6 +106,14 @@ export default async function CustomerQuoteDetailPage({
     filePreviews,
     filesUnavailable,
   } = workspaceResult.data;
+  const customerBidSummariesResult = await loadCustomerQuoteBidSummaries({
+    quoteId: quote.id,
+    customerEmail: customer.email,
+    userEmail: user.email,
+    overrideEmail,
+  });
+  const customerBidSummaries = customerBidSummariesResult.ok ? customerBidSummariesResult.bids : [];
+  const customerBidSummariesUnavailable = !customerBidSummariesResult.ok;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
   const fileCount = quote.fileCount ?? quoteFiles.length;
   const normalizedQuoteEmail = normalizeEmailInput(quote.email);
@@ -165,6 +174,11 @@ export default async function CustomerQuoteDetailPage({
     unavailable: projectUnavailable,
   });
   const bidCount = bids.length;
+  const customerBidSummariesError = customerBidSummariesResult.ok
+    ? null
+    : customerBidSummariesResult.error;
+  const customerAwardBidsReady =
+    !customerBidSummariesUnavailable && customerBidSummaries.length > 0;
   const timelineEvents: QuoteTimelineEvent[] = buildCustomerQuoteTimeline({
     quote,
     bids,
@@ -233,14 +247,14 @@ export default async function CustomerQuoteDetailPage({
   const quoteMessages = messagesResult.messages;
   const messagesUnavailable = !messagesResult.ok;
   const showCustomerSupplierSection = bidCount > 0;
-  const showCustomerAwardButtons =
+  const customerCanAward =
     quoteAllowsCustomerAward &&
     bidCount > 0 &&
     !quoteIsWon &&
     !quoteHasWinner &&
     !readOnly;
   let customerAwardDisabledReason: string | null = null;
-  if (showCustomerSupplierSection && !showCustomerAwardButtons) {
+  if (showCustomerSupplierSection && !customerCanAward) {
     if (readOnly) {
       customerAwardDisabledReason =
         "Selecting a winner is disabled while you are viewing this workspace in read-only mode.";
@@ -619,14 +633,20 @@ export default async function CustomerQuoteDetailPage({
               </div>
             </dl>
             {showCustomerSupplierSection ? (
-              <CustomerBidSelectionCard
-                quoteId={quote.id}
-                bids={bids}
-                showAwardButtons={showCustomerAwardButtons}
-                disableReason={customerAwardDisabledReason}
-                winningBidId={winningBidId}
-                quoteWon={quoteIsWon}
-              />
+              customerAwardBidsReady ? (
+                <CustomerQuoteAwardPanel
+                  quoteId={quote.id}
+                  bids={customerBidSummaries}
+                  canSubmit={customerCanAward}
+                  disableReason={customerAwardDisabledReason}
+                  winningBidId={winningBidId}
+                />
+              ) : (
+                <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-xs text-yellow-100">
+                  {customerBidSummariesError ??
+                    "We couldn’t load supplier bid details. Refresh to try again."}
+                </p>
+              )
             ) : null}
           </>
         )}
