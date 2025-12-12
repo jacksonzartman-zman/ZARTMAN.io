@@ -17,6 +17,7 @@ import {
   secondaryCtaClasses,
 } from "@/lib/ctas";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
+import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 
 export default async function UploadDetailPage(props: any) {
   const { params, searchParams } = props as {
@@ -28,27 +29,29 @@ export default async function UploadDetailPage(props: any) {
 
   if (!uploadResult.ok) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
-        <section className="rounded-2xl border border-red-500/30 bg-red-950/40 p-6 text-center">
-          <h1 className="text-xl font-semibold text-red-50">
-            We had trouble loading this upload.
-          </h1>
-          <p className="mt-2 text-sm text-red-100">
-            Check logs and try again. The upload itself was not modified.
-          </p>
-          <div className="mt-4">
-            <Link
-              href="/admin"
-              className={clsx(
-                secondaryCtaClasses,
-                ctaSizeClasses.sm,
-                "inline-flex",
-              )}
-            >
-              Back to RFQ inbox
-            </Link>
-          </div>
-        </section>
+      <main className="py-10">
+        <PortalContainer>
+          <section className="mx-auto max-w-3xl rounded-2xl border border-red-500/30 bg-red-950/40 p-6 text-center">
+            <h1 className="text-xl font-semibold text-red-50">
+              We had trouble loading this upload.
+            </h1>
+            <p className="mt-2 text-sm text-red-100">
+              Check logs and try again. The upload itself was not modified.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/admin"
+                className={clsx(
+                  secondaryCtaClasses,
+                  ctaSizeClasses.sm,
+                  "inline-flex",
+                )}
+              >
+                Back to RFQ inbox
+              </Link>
+            </div>
+          </section>
+        </PortalContainer>
       </main>
     );
   }
@@ -57,28 +60,30 @@ export default async function UploadDetailPage(props: any) {
 
   if (!upload) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
-        <section className="rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-center">
-          <h1 className="text-xl font-semibold text-slate-50">
-            Upload not found
-          </h1>
-          <p className="mt-2 text-sm text-slate-400">
-            We couldn’t find an upload with ID{" "}
-            <span className="font-mono text-slate-200">{params.id}</span>.
-          </p>
-          <div className="mt-4">
-            <Link
-              href="/admin"
-              className={clsx(
-                secondaryCtaClasses,
-                ctaSizeClasses.sm,
-                "inline-flex",
-              )}
-            >
-              Back to RFQ inbox
-            </Link>
-          </div>
-        </section>
+      <main className="py-10">
+        <PortalContainer>
+          <section className="mx-auto max-w-3xl rounded-2xl border border-slate-800 bg-slate-950/60 p-6 text-center">
+            <h1 className="text-xl font-semibold text-slate-50">
+              Upload not found
+            </h1>
+            <p className="mt-2 text-sm text-slate-400">
+              We couldn’t find an upload with ID{" "}
+              <span className="font-mono text-slate-200">{params.id}</span>.
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/admin"
+                className={clsx(
+                  secondaryCtaClasses,
+                  ctaSizeClasses.sm,
+                  "inline-flex",
+                )}
+              >
+                Back to RFQ inbox
+              </Link>
+            </div>
+          </section>
+        </PortalContainer>
       </main>
     );
   }
@@ -151,40 +156,41 @@ export default async function UploadDetailPage(props: any) {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10 space-y-8">
-      {wasUpdated && (
-        <SuccessBanner message="Changes saved and quote recorded." />
-      )}
+    <main className="py-10">
+      <PortalContainer className="space-y-8">
+        {wasUpdated && (
+          <SuccessBanner message="Changes saved and quote recorded." />
+        )}
 
-      {/* Top card – customer + file details */}
-      <section className="rounded-xl border border-slate-800 bg-slate-950/60 p-6 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold text-slate-50">Upload detail</h1>
-            <p className="mt-1 text-sm text-slate-400">
-              Customer upload and context for this request.
-            </p>
+        {/* Top card – customer + file details */}
+        <section className="rounded-xl border border-slate-800 bg-slate-950/60 p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-semibold text-slate-50">Upload detail</h1>
+              <p className="mt-1 text-sm text-slate-400">
+                Customer upload and context for this request.
+              </p>
+            </div>
+            <div className="w-full min-[420px]:w-auto">
+              {upload.quote_id ? (
+                <Link
+                  href={`/admin/quotes/${upload.quote_id}`}
+                  className={clsx(
+                    secondaryCtaClasses,
+                    "w-full min-[420px]:w-auto",
+                  )}
+                >
+                  Open quote
+                </Link>
+              ) : (
+                <CreateQuoteButton
+                  uploadId={upload.id}
+                  align="end"
+                  className="w-full min-[420px]:w-auto"
+                />
+              )}
+            </div>
           </div>
-          <div className="w-full min-[420px]:w-auto">
-            {upload.quote_id ? (
-              <Link
-                href={`/admin/quotes/${upload.quote_id}`}
-                className={clsx(
-                  secondaryCtaClasses,
-                  "w-full min-[420px]:w-auto",
-                )}
-              >
-                Open quote
-              </Link>
-            ) : (
-              <CreateQuoteButton
-                uploadId={upload.id}
-                align="end"
-                className="w-full min-[420px]:w-auto"
-              />
-            )}
-          </div>
-        </div>
 
         <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           <div className="space-y-6">
@@ -324,7 +330,8 @@ export default async function UploadDetailPage(props: any) {
             Save changes
           </button>
         </form>
-      </section>
+        </section>
+      </PortalContainer>
     </main>
   );
 }

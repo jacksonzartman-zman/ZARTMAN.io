@@ -5,6 +5,7 @@ import {
   PortalNavTabs,
   type PortalNavLink,
 } from "@/app/(portals)/components/PortalNavTabs";
+import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 
 const ADMIN_NAV_LINKS: PortalNavLink[] = [
   { label: "Uploads", href: "/admin" },
@@ -16,9 +17,9 @@ export default function AdminNav() {
 
   return (
     <div className="border-b border-slate-900 bg-slate-950/60">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-start px-6 py-3">
+      <PortalContainer className="flex items-center justify-start py-3">
         <PortalNavTabs links={ADMIN_NAV_LINKS} currentPath={pathname} />
-      </div>
+      </PortalContainer>
     </div>
   );
 }
