@@ -9,7 +9,10 @@ import {
   isMissingTableOrColumnError,
 } from "@/server/admin/logging";
 import { createQuoteMessage } from "@/server/quotes/messages";
-import { notifyAdminOnBidSubmitted } from "@/server/quotes/notifications";
+import {
+  dispatchQuoteMessageNotification,
+  notifyAdminOnBidSubmitted,
+} from "@/server/quotes/notifications";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import {
@@ -360,6 +363,8 @@ export async function postSupplierMessageImpl(
       supplierId,
       messageId: result.message.id,
     });
+
+    void dispatchQuoteMessageNotification(result.message);
 
     revalidatePath(`/supplier/quotes/${trimmedQuoteId}`);
     revalidatePath(`/customer/quotes/${trimmedQuoteId}`);

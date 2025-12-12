@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
+import { dispatchQuoteMessageNotification } from "@/server/quotes/notifications";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
@@ -222,7 +222,7 @@ export async function postQuoteMessage(
     revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
     revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
-    void notifyOnNewQuoteMessage(result.message);
+    void dispatchQuoteMessageNotification(result.message);
 
     console.log("[customer messages] insert success", {
       quoteId: normalizedQuoteId,

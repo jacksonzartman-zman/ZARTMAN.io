@@ -67,6 +67,10 @@ export async function dispatchEmailNotification(
         subject,
         previewText,
         html,
+      },
+      {
+        quoteId: context.quoteId ?? null,
+        eventType: context.eventType ?? null,
       }),
   );
 }

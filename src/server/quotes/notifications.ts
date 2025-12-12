@@ -179,6 +179,25 @@ export async function notifyOnNewQuoteMessage(
   });
 }
 
+export async function dispatchQuoteMessageNotification(
+  message: QuoteMessageRecord,
+): Promise<{ ok: true }> {
+  try {
+    await notifyOnNewQuoteMessage(message);
+  } catch (error) {
+    console.error("[quote notifications] dispatch failed", {
+      quoteId: message.quote_id,
+      messageId: message.id,
+      error:
+        error instanceof Error
+          ? { message: error.message, stack: error.stack }
+          : error,
+    });
+  }
+
+  return { ok: true };
+}
+
 export async function notifyOnWinningBidSelected(
   params: WinningBidParams,
 ): Promise<void> {
