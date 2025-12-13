@@ -21,7 +21,7 @@ import {
   loadSupplierAssignments,
   type SupplierAssignment,
 } from "./supplierAccess";
-import { loadSupplierProfile } from "@/server/suppliers";
+import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import {
   loadBidForSupplierAndQuote,
@@ -86,7 +86,7 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-  const profile = await loadSupplierProfile(supplierEmail);
+  const profile = user.id ? await loadSupplierProfileByUserId(user.id) : null;
   if (!profile?.supplier) {
     return (
       <PortalNoticeCard
@@ -99,6 +99,7 @@ export default async function SupplierQuoteDetailPage({
   const accessResult = await assertSupplierQuoteAccess({
     quoteId,
     supplierId: profile.supplier.id,
+    supplierUserEmail: user.email ?? null,
   });
 
   if (!accessResult.ok) {
@@ -106,6 +107,7 @@ export default async function SupplierQuoteDetailPage({
       quoteId,
       supplierId: profile.supplier.id,
       reason: accessResult.reason,
+      debug: accessResult.debug ?? null,
     });
 
     return (

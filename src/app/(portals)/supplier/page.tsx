@@ -16,7 +16,7 @@ import {
   getSupplierApprovalStatus,
   loadSupplierInboxBidAggregates,
   listSupplierBidsForSupplier,
-  loadSupplierProfile,
+  loadSupplierProfileByUserId,
   loadSupplierMatchHealth,
   matchQuotesToSupplier,
   type SupplierActivityResult,
@@ -108,7 +108,7 @@ async function SupplierDashboardPage({
     );
   }
 
-  const profile = await loadSupplierProfile(supplierEmail);
+  const profile = await loadSupplierProfileByUserId(user.id);
   const supplier = profile?.supplier ?? null;
   const supplierExists = Boolean(supplier);
   const approvalsOn = approvalsEnabled();

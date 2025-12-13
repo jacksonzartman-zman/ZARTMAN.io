@@ -8,7 +8,7 @@ import { primaryCtaClasses } from "@/lib/ctas";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { getServerAuthUser } from "@/server/auth";
 import { resolveUserRoles } from "@/server/users/roles";
-import { loadSupplierProfile } from "@/server/suppliers";
+import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import {
   getSupplierDecisionQueue,
   type SupplierDecision,
@@ -65,7 +65,7 @@ export default async function SupplierDecisionsPage() {
     );
   }
 
-  const profile = await loadSupplierProfile(supplierEmail);
+  const profile = await loadSupplierProfileByUserId(user.id);
   if (!profile?.supplier) {
     return (
       <PortalCard

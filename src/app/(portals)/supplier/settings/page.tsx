@@ -1,11 +1,10 @@
-import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { SUPPLIER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
 import { SupplierNotificationSettingsForm } from "./SupplierNotificationSettingsForm";
 import { requireUser } from "@/server/auth";
 import { loadNotificationPreferencesMap } from "@/server/notifications/preferences";
 import {
   getSupplierApprovalStatus,
-  loadSupplierProfile,
+  loadSupplierProfileByUserId,
 } from "@/server/suppliers";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import { SupplierProfileCard } from "../components/SupplierProfileCard";
@@ -19,8 +18,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SupplierSettingsPage() {
   const user = await requireUser({ redirectTo: "/supplier" });
-  const supplierEmail = normalizeEmailInput(user.email ?? null);
-  const profile = supplierEmail ? await loadSupplierProfile(supplierEmail) : null;
+  const profile = await loadSupplierProfileByUserId(user.id);
   const supplier = profile?.supplier ?? null;
   const capabilities = profile?.capabilities ?? [];
   const documents = profile?.documents ?? [];

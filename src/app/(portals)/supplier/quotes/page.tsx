@@ -9,7 +9,7 @@ import { DataFallbackNotice } from "../../DataFallbackNotice";
 import {
   getSupplierApprovalStatus,
   loadSupplierInboxBidAggregates,
-  loadSupplierProfile,
+  loadSupplierProfileByUserId,
   matchQuotesToSupplier,
   type SupplierQuoteMatch,
   type SupplierActivityResult,
@@ -92,7 +92,7 @@ export default async function SupplierQuotesPage({
     );
   }
 
-  const profile = await loadSupplierProfile(supplierEmail);
+  const profile = await loadSupplierProfileByUserId(user.id);
   const supplier = profile?.supplier ?? null;
   if (!supplier) {
     return (
