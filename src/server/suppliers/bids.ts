@@ -1021,6 +1021,35 @@ async function updateQuoteAssignedSupplier(
         supplierId: supplier.id,
         error,
       });
+      return;
+    }
+
+    // New invitation path: persist invite for supplier access gating.
+    // Keep assigned_supplier_email as a back-compat fallback (legacy access + notifications).
+    try {
+      const { error: inviteError } = await supabaseServer
+        .from("quote_invites")
+        .upsert(
+          {
+            quote_id: quoteId,
+            supplier_id: supplier.id,
+          },
+          { onConflict: "quote_id,supplier_id" },
+        );
+
+      if (inviteError) {
+        console.error("updateQuoteAssignedSupplier: invite upsert failed", {
+          quoteId,
+          supplierId: supplier.id,
+          error: inviteError,
+        });
+      }
+    } catch (error) {
+      console.error("updateQuoteAssignedSupplier: invite upsert crashed", {
+        quoteId,
+        supplierId: supplier.id,
+        error,
+      });
     }
   } catch (error) {
     console.error("updateQuoteAssignedSupplier: unexpected error", {

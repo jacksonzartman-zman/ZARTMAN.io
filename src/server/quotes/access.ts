@@ -8,13 +8,17 @@ export type SupplierQuoteAccessDeniedReason =
   | "no_access"
   | "awarded"
   | "has_bid"
+  | "has_invite"
   | "assigned_email_match"
   | "profile_missing"
   | "schema_error"
   | "unknown";
 
 export type SupplierQuoteAccessResult =
-  | { ok: true; reason: "awarded" | "has_bid" | "assigned_email_match" }
+  | {
+      ok: true;
+      reason: "awarded" | "has_bid" | "has_invite" | "assigned_email_match";
+    }
   | {
       ok: false;
       reason: SupplierQuoteAccessDeniedReason;
@@ -22,6 +26,7 @@ export type SupplierQuoteAccessResult =
       debug?: {
         awarded: boolean;
         has_bid: boolean;
+        has_invite: boolean;
         assigned_email_match: boolean;
       };
     };
@@ -43,7 +48,7 @@ export async function assertSupplierQuoteAccess(args: {
   }
 
   try {
-    const [bidResult, quoteResult] = await Promise.all([
+    const [bidResult, quoteResult, inviteResult] = await Promise.all([
       supabaseServer
         .from("supplier_bids")
         .select("id")
@@ -58,6 +63,12 @@ export async function assertSupplierQuoteAccess(args: {
           awarded_supplier_id: string | null;
           assigned_supplier_email: string | null;
         }>(),
+      supabaseServer
+        .from("quote_invites")
+        .select("id")
+        .eq("quote_id", quoteId)
+        .eq("supplier_id", supplierId)
+        .limit(1),
     ]);
 
     if (bidResult.error) {
@@ -86,6 +97,14 @@ export async function assertSupplierQuoteAccess(args: {
     const awardedSupplierId = normalizeId(quoteResult.data?.awarded_supplier_id);
     const awarded = Boolean(awardedSupplierId && awardedSupplierId === supplierId);
 
+    const inviteSchemaMissing = Boolean(
+      inviteResult.error && isMissingTableOrColumnError(inviteResult.error),
+    );
+    const hasInvite =
+      !inviteResult.error &&
+      Array.isArray(inviteResult.data) &&
+      inviteResult.data.length > 0;
+
     const assignedSupplierEmail = normalizeEmail(
       quoteResult.data?.assigned_supplier_email,
     );
@@ -103,8 +122,27 @@ export async function assertSupplierQuoteAccess(args: {
       return { ok: true, reason: "has_bid" };
     }
 
+    if (hasInvite) {
+      return { ok: true, reason: "has_invite" };
+    }
+
     if (assignedEmailMatch) {
       return { ok: true, reason: "assigned_email_match" };
+    }
+
+    if (inviteResult.error && !inviteSchemaMissing) {
+      const serialized = serializeSupabaseError(inviteResult.error);
+      return {
+        ok: false,
+        reason: "unknown",
+        error: serialized ?? inviteResult.error,
+        debug: {
+          awarded,
+          has_bid: hasBid,
+          has_invite: false,
+          assigned_email_match: assignedEmailMatch,
+        },
+      };
     }
 
     return {
@@ -113,6 +151,7 @@ export async function assertSupplierQuoteAccess(args: {
       debug: {
         awarded,
         has_bid: hasBid,
+        has_invite: false,
         assigned_email_match: assignedEmailMatch,
       },
     };

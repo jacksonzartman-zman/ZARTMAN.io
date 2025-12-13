@@ -196,6 +196,27 @@ async function collectRelevantQuoteIds(
     });
   };
 
+  // New invite table: quote_invites (supplier_id-based).
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_invites")
+      .select("quote_id")
+      .eq("supplier_id", supplierId)
+      .limit(limit);
+    if (error) {
+      console.error("supplier decisions: invite query by id failed", {
+        supplierId,
+        error,
+      });
+    }
+    addRows((data as AssignmentRow[]) ?? []);
+  } catch (error) {
+    console.error("supplier decisions: invite query by id error", {
+      supplierId,
+      error,
+    });
+  }
+
   try {
     const { data, error } = await supabaseServer
       .from("quote_suppliers")

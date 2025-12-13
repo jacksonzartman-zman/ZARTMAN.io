@@ -129,9 +129,10 @@ export async function matchQuotesToSupplier(
       };
     }
 
-    const [capabilities, assignmentRows, bidRows] = await Promise.all([
+    const [capabilities, assignmentRows, inviteRows, bidRows] = await Promise.all([
       listSupplierCapabilities(supplier.id),
       selectQuoteAssignmentsByEmail(supplier.primary_email),
+      selectQuoteInvitesBySupplierId(supplier.id),
       selectBidQuoteRefs(supplier.id),
     ]);
 
@@ -153,6 +154,11 @@ export async function matchQuotesToSupplier(
 
     const authorizedQuoteIds = new Set<string>();
     assignmentRows.forEach((row) => {
+      if (row?.quote_id) {
+        authorizedQuoteIds.add(row.quote_id);
+      }
+    });
+    inviteRows.forEach((row) => {
       if (row?.quote_id) {
         authorizedQuoteIds.add(row.quote_id);
       }
@@ -545,5 +551,34 @@ export async function selectBidQuoteRefs(supplierId: string) {
     return (data as SupplierBidRef[]) ?? [];
   } catch (error) {
     throw toSupplierActivityQueryError("supplier_bids", error);
+  }
+}
+
+export async function selectQuoteInvitesBySupplierId(supplierId: string) {
+  if (!supplierId) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_invites")
+      .select("quote_id")
+      .eq("supplier_id", supplierId);
+
+    if (error) {
+      console.warn("[supplier activity] quote_invites query failed", {
+        supplierId,
+        error,
+      });
+      return [];
+    }
+
+    return (data as QuoteAssignmentRow[]) ?? [];
+  } catch (error) {
+    console.warn("[supplier activity] quote_invites query crashed", {
+      supplierId,
+      error,
+    });
+    return [];
   }
 }
