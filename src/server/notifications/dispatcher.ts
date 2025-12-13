@@ -14,6 +14,7 @@ export type NotificationDispatchContext = {
   recipientEmail?: string | null;
   recipientUserId?: string | null;
   recipientRole?: NotificationPreferenceRole | "internal" | null;
+  actorRole?: NotificationPreferenceRole | "system" | null;
   actorUserId?: string | null;
   audience?: NotificationAudience;
   channel?: NotificationChannel;
@@ -105,6 +106,7 @@ function buildLogContext(context: NotificationDispatchContext) {
     recipientEmail: context.recipientEmail ?? null,
     recipientUserId: context.recipientUserId ?? null,
     recipientRole: context.recipientRole ?? null,
+    actorRole: context.actorRole ?? null,
     actorUserId: context.actorUserId ?? null,
     audience: context.audience ?? null,
     channel: context.channel ?? null,

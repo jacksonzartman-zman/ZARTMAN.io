@@ -1065,7 +1065,6 @@ async function updateQuoteAssignedSupplier(
           quoteId,
           eventType: "supplier_invited",
           actorRole: "system",
-          actorSupplierId: supplier.id,
           metadata: {
             supplier_id: supplier.id,
             supplier_name: supplier.company_name ?? null,
