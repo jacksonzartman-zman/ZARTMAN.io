@@ -22,6 +22,7 @@ import {
   type AwardFailureReason,
 } from "@/server/quotes/award";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
+import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
 
 export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
@@ -47,6 +48,13 @@ export type AwardActionState = {
   message?: string | null;
   selectedBidId?: string | null;
 };
+
+export type QuoteStatusTransitionState =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+const CUSTOMER_STATUS_TRANSITION_ERROR =
+  "We couldn’t update this RFQ right now. Please try again.";
 
 const CUSTOMER_AWARD_BID_ERROR =
   "We couldn’t verify that bid. Refresh and try again.";
@@ -79,6 +87,138 @@ type CustomerMessageQuoteRow = {
   id: string;
   customer_id: string | null;
 };
+
+export async function archiveCustomerQuoteAction(
+  quoteId: string,
+  _prev: QuoteStatusTransitionState,
+  _formData: FormData,
+): Promise<QuoteStatusTransitionState> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return { ok: false, error: "Missing quote reference." };
+  }
+
+  try {
+    const user = await requireUser({
+      redirectTo: `/customer/quotes/${normalizedQuoteId}`,
+    });
+    const customer = await getCustomerByUserId(user.id);
+    if (!customer) {
+      return {
+        ok: false,
+        error: "Complete your profile before updating this RFQ.",
+      };
+    }
+
+    const result = await transitionQuoteStatus({
+      quoteId: normalizedQuoteId,
+      action: "archive",
+      actorRole: "customer",
+      actorUserId: user.id,
+      customerId: customer.id,
+      customerEmail: customer.email,
+    });
+
+    if (!result.ok) {
+      if (result.reason !== "transition_denied" && result.reason !== "access_denied") {
+        console.error("[customer quote status] archive failed", {
+          quoteId: normalizedQuoteId,
+          customerId: customer.id,
+          reason: result.reason,
+          error: result.error,
+        });
+      }
+      return {
+        ok: false,
+        error:
+          result.reason === "transition_denied" || result.reason === "access_denied"
+            ? result.error
+            : CUSTOMER_STATUS_TRANSITION_ERROR,
+      };
+    }
+
+    revalidatePath("/customer/quotes");
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath("/admin/quotes");
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath("/supplier");
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return { ok: true, message: "RFQ archived." };
+  } catch (error) {
+    console.error("[customer quote status] archive crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_STATUS_TRANSITION_ERROR };
+  }
+}
+
+export async function reopenCustomerQuoteAction(
+  quoteId: string,
+  _prev: QuoteStatusTransitionState,
+  _formData: FormData,
+): Promise<QuoteStatusTransitionState> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return { ok: false, error: "Missing quote reference." };
+  }
+
+  try {
+    const user = await requireUser({
+      redirectTo: `/customer/quotes/${normalizedQuoteId}`,
+    });
+    const customer = await getCustomerByUserId(user.id);
+    if (!customer) {
+      return {
+        ok: false,
+        error: "Complete your profile before updating this RFQ.",
+      };
+    }
+
+    const result = await transitionQuoteStatus({
+      quoteId: normalizedQuoteId,
+      action: "reopen",
+      actorRole: "customer",
+      actorUserId: user.id,
+      customerId: customer.id,
+      customerEmail: customer.email,
+    });
+
+    if (!result.ok) {
+      if (result.reason !== "transition_denied" && result.reason !== "access_denied") {
+        console.error("[customer quote status] reopen failed", {
+          quoteId: normalizedQuoteId,
+          customerId: customer.id,
+          reason: result.reason,
+          error: result.error,
+        });
+      }
+      return {
+        ok: false,
+        error:
+          result.reason === "transition_denied" || result.reason === "access_denied"
+            ? result.error
+            : CUSTOMER_STATUS_TRANSITION_ERROR,
+      };
+    }
+
+    revalidatePath("/customer/quotes");
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath("/admin/quotes");
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath("/supplier");
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return { ok: true, message: "RFQ reopened." };
+  } catch (error) {
+    console.error("[customer quote status] reopen crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_STATUS_TRANSITION_ERROR };
+  }
+}
 
 export async function postQuoteMessage(
   quoteId: string,

@@ -73,22 +73,26 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     };
   }
 
-  if (type === "reopened") {
+  if (type === "quote_reopened" || type === "reopened") {
+    const subtitle =
+      formatStatusTransitionSubtitle(metadata) ?? "Returned to reviewing bids.";
     return {
       groupKey: "rfq",
       groupLabel: "RFQ",
       title: "RFQ reopened",
-      subtitle: "Returned to reviewing bids.",
+      subtitle,
       actorLabel,
     };
   }
 
-  if (type === "archived") {
+  if (type === "quote_archived" || type === "archived") {
+    const subtitle =
+      formatStatusTransitionSubtitle(metadata) ?? "Marked as cancelled.";
     return {
       groupKey: "rfq",
       groupLabel: "RFQ",
       title: "RFQ archived",
-      subtitle: "Marked as cancelled.",
+      subtitle,
       actorLabel,
     };
   }
@@ -263,5 +267,14 @@ function humanizeFallback(value: string): string {
   const cleaned = value.replace(/[_-]+/g, " ").trim();
   if (!cleaned) return "Event";
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function formatStatusTransitionSubtitle(
+  metadata: Record<string, unknown>,
+): string | null {
+  const fromStatus = readString(metadata, "fromStatus") ?? readString(metadata, "from_status");
+  const toStatus = readString(metadata, "toStatus") ?? readString(metadata, "to_status");
+  if (!fromStatus || !toStatus) return null;
+  return `From ${humanizeFallback(fromStatus)} \u2192 ${humanizeFallback(toStatus)}.`; // →
 }
 

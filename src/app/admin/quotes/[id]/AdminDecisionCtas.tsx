@@ -10,11 +10,12 @@ import {
   primaryCtaClasses,
 } from "@/lib/ctas";
 import {
-  submitAdminQuoteUpdateAction,
-  type AdminQuoteUpdateState,
+  archiveAdminQuoteAction,
+  reopenAdminQuoteAction,
+  type QuoteStatusTransitionState,
 } from "./actions";
 
-const INITIAL_STATE: AdminQuoteUpdateState = { ok: true, message: "" };
+const INITIAL_STATE: QuoteStatusTransitionState = { ok: true, message: "" };
 
 type AdminDecisionCtasProps = {
   quoteId: string;
@@ -33,20 +34,20 @@ export function AdminDecisionCtas({
   const canArchive = status !== "cancelled";
 
   const reopenAction = useMemo(
-    () => submitAdminQuoteUpdateAction.bind(null, quoteId),
+    () => reopenAdminQuoteAction.bind(null, quoteId),
     [quoteId],
   );
   const [reopenState, reopenFormAction] = useFormState<
-    AdminQuoteUpdateState,
+    QuoteStatusTransitionState,
     FormData
   >(reopenAction, INITIAL_STATE);
 
   const archiveAction = useMemo(
-    () => submitAdminQuoteUpdateAction.bind(null, quoteId),
+    () => archiveAdminQuoteAction.bind(null, quoteId),
     [quoteId],
   );
   const [archiveState, archiveFormAction] = useFormState<
-    AdminQuoteUpdateState,
+    QuoteStatusTransitionState,
     FormData
   >(archiveAction, INITIAL_STATE);
 
@@ -67,7 +68,7 @@ export function AdminDecisionCtas({
             return;
           }
           const confirmed = window.confirm(
-            "Re-open this RFQ? This will move the status back to Reviewing bids.",
+            "Reopen this RFQ?\n\nReopening means invited suppliers can bid again.",
           );
           if (!confirmed) {
             event.preventDefault();
@@ -75,12 +76,11 @@ export function AdminDecisionCtas({
         }}
         className="flex items-center gap-2"
       >
-        <input type="hidden" name="status" value="in_review" />
         <StatusButton
           disabled={!canReopen}
           className={clsx(infoCtaClasses, "whitespace-nowrap")}
         >
-          Re-open
+          Reopen
         </StatusButton>
         <InlineState state={reopenState} />
       </form>
@@ -93,7 +93,7 @@ export function AdminDecisionCtas({
             return;
           }
           const confirmed = window.confirm(
-            "Archive this RFQ? This will set the quote status to Cancelled.",
+            "Archive this RFQ?\n\nArchiving hides it from active lists, but keeps its timeline and files available.",
           );
           if (!confirmed) {
             event.preventDefault();
@@ -101,7 +101,6 @@ export function AdminDecisionCtas({
         }}
         className="flex items-center gap-2"
       >
-        <input type="hidden" name="status" value="cancelled" />
         <StatusButton
           disabled={!canArchive}
           className={clsx(
@@ -142,7 +141,7 @@ function StatusButton({
   );
 }
 
-function InlineState({ state }: { state: AdminQuoteUpdateState }) {
+function InlineState({ state }: { state: QuoteStatusTransitionState }) {
   if (!state.ok && state.error) {
     return (
       <span className="text-[11px] text-amber-300" aria-live="polite">

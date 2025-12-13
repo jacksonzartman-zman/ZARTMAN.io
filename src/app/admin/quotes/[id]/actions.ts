@@ -31,6 +31,7 @@ import {
 } from "@/server/quotes/award";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
+import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
 import type { AwardBidFormState } from "./awardFormState";
 
 export type { AwardBidFormState } from "./awardFormState";
@@ -147,29 +148,6 @@ export async function submitAdminQuoteUpdateAction(
       return { ok: false, error: result.error };
     }
 
-    const nextStatus = normalizeQuoteStatus(payload.status ?? undefined);
-    if (nextStatus === "in_review") {
-      void emitQuoteEvent({
-        quoteId: normalizedQuoteId,
-        eventType: "reopened",
-        actorRole: "admin",
-        actorUserId: user.id,
-        metadata: {
-          status: nextStatus,
-        },
-      });
-    } else if (nextStatus === "cancelled") {
-      void emitQuoteEvent({
-        quoteId: normalizedQuoteId,
-        eventType: "archived",
-        actorRole: "admin",
-        actorUserId: user.id,
-        metadata: {
-          status: nextStatus,
-        },
-      });
-    }
-
     revalidatePath("/admin/quotes");
     revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
 
@@ -183,6 +161,121 @@ export async function submitAdminQuoteUpdateAction(
       error: serializeActionError(error),
     });
     return { ok: false, error: QUOTE_UPDATE_ERROR };
+  }
+}
+
+export type QuoteStatusTransitionState =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+const ADMIN_STATUS_TRANSITION_ERROR =
+  "We couldn't update this RFQ right now. Please try again.";
+
+export async function archiveAdminQuoteAction(
+  quoteId: string,
+  _prev: QuoteStatusTransitionState,
+  _formData: FormData,
+): Promise<QuoteStatusTransitionState> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  if (!normalizedQuoteId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  try {
+    const adminUser = await requireAdminUser();
+
+    const result = await transitionQuoteStatus({
+      quoteId: normalizedQuoteId,
+      action: "archive",
+      actorRole: "admin",
+      actorUserId: adminUser.id,
+    });
+
+    if (!result.ok) {
+      if (result.reason !== "transition_denied") {
+        console.error("[admin quote status] archive failed", {
+          quoteId: normalizedQuoteId,
+          reason: result.reason,
+          error: result.error,
+        });
+      }
+      return {
+        ok: false,
+        error:
+          result.reason === "transition_denied"
+            ? result.error
+            : ADMIN_STATUS_TRANSITION_ERROR,
+      };
+    }
+
+    revalidatePath("/admin/quotes");
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath("/customer/quotes");
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath("/supplier");
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return { ok: true, message: "RFQ archived." };
+  } catch (error) {
+    console.error("[admin quote status] archive crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_STATUS_TRANSITION_ERROR };
+  }
+}
+
+export async function reopenAdminQuoteAction(
+  quoteId: string,
+  _prev: QuoteStatusTransitionState,
+  _formData: FormData,
+): Promise<QuoteStatusTransitionState> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  if (!normalizedQuoteId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  try {
+    const adminUser = await requireAdminUser();
+
+    const result = await transitionQuoteStatus({
+      quoteId: normalizedQuoteId,
+      action: "reopen",
+      actorRole: "admin",
+      actorUserId: adminUser.id,
+    });
+
+    if (!result.ok) {
+      if (result.reason !== "transition_denied") {
+        console.error("[admin quote status] reopen failed", {
+          quoteId: normalizedQuoteId,
+          reason: result.reason,
+          error: result.error,
+        });
+      }
+      return {
+        ok: false,
+        error:
+          result.reason === "transition_denied"
+            ? result.error
+            : ADMIN_STATUS_TRANSITION_ERROR,
+      };
+    }
+
+    revalidatePath("/admin/quotes");
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath("/customer/quotes");
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath("/supplier");
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return { ok: true, message: "RFQ reopened." };
+  } catch (error) {
+    console.error("[admin quote status] reopen crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_STATUS_TRANSITION_ERROR };
   }
 }
 
