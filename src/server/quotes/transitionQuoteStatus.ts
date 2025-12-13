@@ -62,7 +62,10 @@ export async function transitionQuoteStatus(
         quoteId,
         actorRole,
         action,
-        error: quoteError,
+        pg: {
+          code: quoteError.code ?? null,
+          message: quoteError.message ?? null,
+        },
       });
       return {
         ok: false,

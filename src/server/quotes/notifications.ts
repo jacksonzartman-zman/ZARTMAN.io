@@ -177,7 +177,8 @@ export async function notifyOnWinningBidSelected(
   params: WinningBidParams,
 ): Promise<void> {
   const supplierEmail = params.supplier.primary_email ?? null;
-  const customerEmail = params.customer?.email ?? params.quote.email ?? null;
+  const customerEmail =
+    params.customer?.email ?? params.quote.customer_email ?? null;
   const quoteTitle = getQuoteTitle(params.quote);
   const supplierLink = buildPortalLink(`/supplier/quotes/${params.quote.id}`);
   const customerLink = buildPortalLink(`/customer/quotes/${params.quote.id}`);
@@ -418,11 +419,11 @@ function resolveMessageRecipient(
   }
 
   if (authorType === "admin" || authorType === "supplier") {
-    if (!quote.email) {
+    if (!quote.customer_email) {
       return null;
     }
     return {
-      email: quote.email,
+      email: quote.customer_email,
       label: quote.customer_name ?? quote.company ?? "Customer",
       type: "customer" as const,
     };
@@ -552,7 +553,7 @@ export async function notifyCustomerOnQuoteStatusChange(
   const context =
     args.context ?? (await loadQuoteNotificationContext(args.quoteId));
 
-  if (!context?.quote?.email) {
+  if (!context?.quote?.customer_email) {
     console.warn("[quote notifications] status email skipped", {
       quoteId: args.quoteId,
       status: args.status,
@@ -567,7 +568,7 @@ export async function notifyCustomerOnQuoteStatusChange(
   await dispatchEmailNotification({
     eventType: config.eventType,
     quoteId: args.quoteId,
-    recipientEmail: context.quote.email,
+    recipientEmail: context.quote.customer_email,
     recipientUserId: context.customer?.user_id ?? null,
     recipientRole: "customer",
     audience: "customer",
@@ -638,8 +639,8 @@ export async function notifyOnProjectKickoffChange(
     }
 
     const [customer, supplier] = await Promise.all([
-      quoteRow.email
-        ? getCustomerByEmail(quoteRow.email)
+      quoteRow.customer_email
+        ? getCustomerByEmail(quoteRow.customer_email)
         : Promise.resolve<CustomerRow | null>(null),
       quoteRow.assigned_supplier_email
         ? loadSupplierByPrimaryEmail(quoteRow.assigned_supplier_email)
@@ -662,12 +663,12 @@ export async function notifyOnProjectKickoffChange(
 
     const notifications: Promise<boolean>[] = [];
 
-    if (quoteRow.email) {
+    if (quoteRow.customer_email) {
       notifications.push(
         dispatchEmailNotification({
           eventType,
           quoteId: args.quoteId,
-          recipientEmail: quoteRow.email,
+          recipientEmail: quoteRow.customer_email,
           recipientUserId: customer?.user_id ?? null,
           recipientRole: "customer",
           audience: "customer",
@@ -831,7 +832,7 @@ async function loadProjectQuoteContext(
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
       .select(
-        "id,file_name,company,customer_name,email,assigned_supplier_email,assigned_supplier_name",
+        "id,file_name,company,customer_name,customer_email,assigned_supplier_email,assigned_supplier_name",
       )
       .eq("id", quoteId)
       .maybeSingle<ProjectQuoteRow>();

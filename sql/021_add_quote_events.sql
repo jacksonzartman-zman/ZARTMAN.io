@@ -53,9 +53,9 @@ create policy "quote_events_customers_select"
         and (
           (c.user_id is not null and c.user_id = auth.uid())
           or (
-            q.email is not null
-            and trim(q.email) <> ''
-            and lower(q.email) = lower(coalesce(auth.jwt()->> 'email', ''))
+            q.customer_email is not null
+            and trim(q.customer_email) <> ''
+            and lower(q.customer_email) = lower(coalesce(auth.jwt()->> 'email', ''))
           )
         )
     )

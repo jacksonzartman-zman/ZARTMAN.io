@@ -31,10 +31,10 @@ create index if not exists quote_suppliers_supplier_id_idx
 
 -- Backfill customer and supplier references using existing email columns.
 insert into public.customers (email, company_name)
-select distinct lower(email) as email, coalesce(company, 'Customer') as company_name
+select distinct lower(customer_email) as email, coalesce(company, 'Customer') as company_name
 from public.quotes
-where email is not null
-  and trim(email) <> ''
+where customer_email is not null
+  and trim(customer_email) <> ''
 on conflict (email) do update
 set company_name = coalesce(excluded.company_name, public.customers.company_name);
 
@@ -42,7 +42,7 @@ update public.quotes q
 set customer_id = c.id
 from public.customers c
 where q.customer_id is null
-  and c.email = lower(q.email);
+  and c.email = lower(q.customer_email);
 
 update public.quote_suppliers qs
 set supplier_id = s.id

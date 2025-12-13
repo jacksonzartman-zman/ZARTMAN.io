@@ -93,7 +93,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       rfqLabel,
       createdAt: row.created_at,
       customerName: row.customer_name ?? "",
-      customerEmail: row.email ?? "",
+      customerEmail: row.customer_email ?? "",
       company: row.company ?? "",
       fileCountLabel,
       status: listStatus,

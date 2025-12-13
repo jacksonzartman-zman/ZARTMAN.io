@@ -15,7 +15,7 @@ type QuoteContactRow = QuoteContactInfo & {
 };
 
 const QUOTE_NOTIFICATION_COLUMNS =
-  "id,file_name,company,customer_name,email,status,price,currency,file_names,upload_file_names,file_count,upload_file_count";
+  "id,file_name,company,customer_name,customer_email,status,price,currency,file_names,upload_file_names,file_count,upload_file_count";
 
 export type QuoteNotificationContext = {
   quote: QuoteContactInfo;
@@ -45,7 +45,7 @@ export async function loadQuoteWinningContext(
     file_name: row.file_name ?? null,
     company: row.company ?? null,
     customer_name: row.customer_name ?? null,
-    email: row.email ?? null,
+    customer_email: row.customer_email ?? null,
     status: row.status ?? null,
     price: row.price ?? null,
     currency: row.currency ?? null,
@@ -161,11 +161,11 @@ async function selectQuoteRow(
 async function loadCustomerForQuoteContact(
   contact: QuoteContactInfo,
 ): Promise<CustomerRow | null> {
-  if (!contact.email) {
+  if (!contact.customer_email) {
     return null;
   }
   try {
-    const customer = await getCustomerByEmail(contact.email);
+    const customer = await getCustomerByEmail(contact.customer_email);
     return customer ?? null;
   } catch (error) {
     console.warn("[quote notifications] customer enrichment skipped", {

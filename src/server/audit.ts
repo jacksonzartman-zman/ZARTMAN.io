@@ -25,7 +25,7 @@ type AuditLogFilter = {
 
 type QuoteAuditRow = {
   id: string;
-  email: string | null;
+  customer_email: string | null;
   status: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -116,7 +116,7 @@ async function loadQuoteAuditEvents(quoteId: string): Promise<AuditEvent[]> {
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
       .select(
-        "id,email,status,assigned_supplier_email,created_at,updated_at",
+        "id,customer_email,status,assigned_supplier_email,created_at,updated_at",
       )
       .eq("id", quoteId)
       .maybeSingle<QuoteAuditRow>();
@@ -134,7 +134,7 @@ async function loadQuoteAuditEvents(quoteId: string): Promise<AuditEvent[]> {
     quoteEvents.push(
       buildQuoteEvent("quote.created", data, {
         timestamp: data.created_at,
-        actorFallback: data.email,
+        actorFallback: data.customer_email,
       }),
     );
 
@@ -142,7 +142,7 @@ async function loadQuoteAuditEvents(quoteId: string): Promise<AuditEvent[]> {
       quoteEvents.push(
         buildQuoteEvent("quote.status_changed", data, {
           timestamp: data.updated_at,
-          actorFallback: data.assigned_supplier_email ?? data.email,
+          actorFallback: data.assigned_supplier_email ?? data.customer_email,
         }),
       );
     }
@@ -255,7 +255,7 @@ async function loadUserAuditEvents(
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
       .select("id,created_at")
-      .ilike("email", normalizedEmail)
+      .ilike("customer_email", normalizedEmail)
       .order("created_at", { ascending: false })
       .limit(25);
 
@@ -271,7 +271,7 @@ async function loadUserAuditEvents(
       data?.map((quote) =>
         buildQuoteEvent("quote.created", {
           ...quote,
-          email: normalizedEmail,
+          customer_email: normalizedEmail,
           updated_at: quote.created_at ?? null,
           assigned_supplier_email: null,
           status: null,

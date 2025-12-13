@@ -48,7 +48,7 @@ const ADMIN_QUOTES_INBOX_SELECT = [
   "created_at",
   "status",
   "customer_name",
-  "email",
+  "customer_email",
   "company",
   "file_name",
   "file_names",
@@ -70,7 +70,7 @@ export type AdminQuotesInboxRow = {
   created_at: string | null;
   status: string | null;
   customer_name: string | null;
-  email: string | null;
+  customer_email: string | null;
   company: string | null;
   file_name: string | null;
   file_names?: string[] | null;
@@ -201,7 +201,7 @@ export async function getAdminQuotesInbox(
       query = query.or(
         [
           `customer_name.ilike.${pattern}`,
-          `email.ilike.${pattern}`,
+          `customer_email.ilike.${pattern}`,
           `company.ilike.${pattern}`,
           `file_name.ilike.${pattern}`,
         ].join(","),

@@ -89,7 +89,6 @@ export function canUserBid(
 
 function evaluateCustomerAccess(email: string, quote: QuoteLike): boolean {
   const allowedEmails = collectEmails([
-    quote.email,
     quote.customer_email,
     ...(quote.customerEmails ?? []),
     ...(quote.allowedCustomerEmails ?? []),
@@ -133,7 +132,7 @@ function evaluateSupplierAccess(email: string, quote: QuoteLike): boolean {
     return true;
   }
 
-  const fallbackQuoteEmail = normalizeEmailInput(quote.email ?? null);
+  const fallbackQuoteEmail = normalizeEmailInput(quote.customer_email ?? null);
   if (fallbackQuoteEmail && fallbackQuoteEmail === email) {
     return true;
   }

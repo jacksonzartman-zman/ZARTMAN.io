@@ -120,7 +120,7 @@ export default async function CustomerQuoteDetailPage({
   const customerBidSummariesUnavailable = !customerBidSummariesResult.ok;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
   const fileCount = quote.fileCount ?? quoteFiles.length;
-  const normalizedQuoteEmail = normalizeEmailInput(quote.email);
+  const normalizedQuoteEmail = normalizeEmailInput(quote.customer_email);
   const customerEmail = normalizeEmailInput(customer.email);
   const quoteCustomerMatches =
     normalizedQuoteEmail !== null &&
@@ -139,7 +139,7 @@ export default async function CustomerQuoteDetailPage({
       quoteId,
       identityEmail: customerEmail,
       overrideEmail,
-      quoteEmail: quote.email,
+      quoteEmail: quote.customer_email,
       customerId: customer.id,
     });
     return (
@@ -322,7 +322,7 @@ export default async function CustomerQuoteDetailPage({
     "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
   const identityEmailDisplay =
     (usingOverride && overrideEmail) ||
-    quote.email || customer.email || user.email || "customer";
+    quote.customer_email || customer.email || user.email || "customer";
 
   const primaryFileName =
     filePreviews[0]?.fileName ??

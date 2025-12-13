@@ -28,7 +28,7 @@ export async function loadSupplierAssignments(
   }
 }
 
-type QuoteAssignmentSource = Pick<QuoteWithUploadsRow, "id" | "email">;
+type QuoteAssignmentSource = Pick<QuoteWithUploadsRow, "id">;
 
 export function getSupplierDisplayName(
   supplierEmail: string,

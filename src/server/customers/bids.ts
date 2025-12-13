@@ -68,7 +68,7 @@ export type LoadCustomerQuoteBidsResult =
 
 type CustomerQuoteGuardRow = {
   id: string;
-  email: string | null;
+  customer_email: string | null;
 };
 
 type RawCustomerBidRow = {
@@ -114,7 +114,7 @@ export async function loadCustomerQuoteBidSummaries(
   try {
     const { data: quoteRow, error: quoteError } = await supabaseServer
       .from("quotes_with_uploads")
-      .select("id,email")
+      .select("id,customer_email")
       .eq("id", quoteId)
       .maybeSingle<CustomerQuoteGuardRow>();
 
@@ -141,7 +141,7 @@ export async function loadCustomerQuoteBidSummaries(
       };
     }
 
-    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.customer_email ?? null);
     const allowedEmails = [
       normalizedCustomerEmail,
       normalizedUserEmail,

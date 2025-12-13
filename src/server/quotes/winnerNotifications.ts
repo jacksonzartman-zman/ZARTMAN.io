@@ -79,7 +79,7 @@ export async function dispatchWinnerNotification({
 async function loadCustomerForQuoteCustomer(
   quote: QuoteWinningContext,
 ) {
-  const email = normalizeEmail(quote.email);
+  const email = normalizeEmail(quote.customer_email);
   if (!email) {
     console.log("[quote notifications] customer enrichment skipped", {
       quoteId: quote.id,
