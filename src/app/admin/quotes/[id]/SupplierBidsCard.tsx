@@ -12,6 +12,8 @@ export type AdminSupplierBidRow = BidRow & {
 type SupplierBidsCardProps = {
   quoteId: string;
   quoteStatus: QuoteStatus;
+  awardedBidId?: string | null;
+  awardedSupplierId?: string | null;
   bids: AdminSupplierBidRow[];
   bidsLoaded: boolean;
   errorMessage?: string | null;
@@ -23,6 +25,8 @@ const TERMINAL_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
 export function SupplierBidsCard({
   quoteId,
   quoteStatus,
+  awardedBidId,
+  awardedSupplierId,
   bids,
   bidsLoaded,
   errorMessage,
@@ -30,9 +34,12 @@ export function SupplierBidsCard({
 }: SupplierBidsCardProps) {
   const quoteIsInTerminalStatus = TERMINAL_STATUSES.includes(quoteStatus);
   const bidsAvailable = bidsLoaded && bids.length > 0;
+  const normalizedAwardedBidId =
+    typeof awardedBidId === "string" ? awardedBidId.trim() : "";
   const hasWinner =
     bidsAvailable &&
-    bids.some((bid) => (bid.status ?? "").toLowerCase() === "won");
+    (Boolean(normalizedAwardedBidId) ||
+      bids.some((bid) => (bid.status ?? "").toLowerCase() === "won"));
 
   return (
     <section
@@ -79,6 +86,8 @@ export function SupplierBidsCard({
                   quoteId={quoteId}
                   hasWinner={hasWinner}
                   quoteIsLocked={quoteIsInTerminalStatus}
+                  awardedBidId={normalizedAwardedBidId || null}
+                  awardedSupplierId={awardedSupplierId ?? null}
                 />
               ))}
             </tbody>
@@ -94,9 +103,18 @@ type BidRowProps = {
   quoteId: string;
   hasWinner: boolean;
   quoteIsLocked: boolean;
+  awardedBidId: string | null;
+  awardedSupplierId: string | null;
 };
 
-function BidRow({ bid, quoteId, hasWinner, quoteIsLocked }: BidRowProps) {
+function BidRow({
+  bid,
+  quoteId,
+  hasWinner,
+  quoteIsLocked,
+  awardedBidId,
+  awardedSupplierId,
+}: BidRowProps) {
   const formattedAmount =
     typeof bid.amount === "number"
       ? formatCurrency(bid.amount, bid.currency, {
@@ -105,7 +123,13 @@ function BidRow({ bid, quoteId, hasWinner, quoteIsLocked }: BidRowProps) {
       : "—";
   const submittedAt = bid.created_at ? formatDateTime(bid.created_at) : "—";
   const bidStatus = (bid.status ?? "submitted").toString();
-  const isWinner = bidStatus.toLowerCase() === "won";
+  const normalizedBidId = typeof bid.id === "string" ? bid.id.trim() : "";
+  const normalizedSupplierId =
+    typeof bid.supplier_id === "string" ? bid.supplier_id.trim() : "";
+  const isWinner =
+    bidStatus.toLowerCase() === "won" ||
+    (Boolean(awardedBidId) && normalizedBidId === awardedBidId) ||
+    (Boolean(awardedSupplierId) && normalizedSupplierId === awardedSupplierId);
   const supplierName =
     bid.supplier?.company_name ??
     bid.supplier?.primary_email ??
@@ -116,7 +140,12 @@ function BidRow({ bid, quoteId, hasWinner, quoteIsLocked }: BidRowProps) {
       : null;
 
   return (
-    <tr className="border-b border-slate-900/60 last:border-0">
+    <tr
+      className={clsx(
+        "border-b border-slate-900/60 last:border-0",
+        isWinner ? "bg-emerald-500/5" : null,
+      )}
+    >
       <td className="py-2 pr-3">
         <div className="space-y-0.5">
           <p className="text-sm font-semibold text-slate-100">{supplierName}</p>
@@ -159,6 +188,7 @@ function BidRow({ bid, quoteId, hasWinner, quoteIsLocked }: BidRowProps) {
           isWinner={isWinner}
           hasWinner={hasWinner}
           quoteIsLocked={quoteIsLocked}
+          supplierName={supplierName}
         />
       </td>
     </tr>
@@ -171,6 +201,7 @@ type BidActionProps = {
   isWinner: boolean;
   hasWinner: boolean;
   quoteIsLocked: boolean;
+  supplierName: string;
 };
 
 function BidActionCell({
@@ -179,6 +210,7 @@ function BidActionCell({
   isWinner,
   hasWinner,
   quoteIsLocked,
+  supplierName,
 }: BidActionProps) {
   if (isWinner) {
     return (
@@ -204,5 +236,7 @@ function BidActionCell({
     );
   }
 
-  return <BidAwardForm quoteId={quoteId} bidId={bidId} />;
+  return (
+    <BidAwardForm quoteId={quoteId} bidId={bidId} supplierName={supplierName} />
+  );
 }
