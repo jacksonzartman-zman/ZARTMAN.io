@@ -276,7 +276,7 @@ async function fetchCustomerQuotes(args: {
   if (normalizedEmail) {
     filters.push(() =>
       selectQuotesByFilter((query) =>
-        query.ilike("email", normalizedEmail).limit(limit),
+        query.ilike("customer_email", normalizedEmail).limit(limit),
       ),
     );
   }
@@ -285,7 +285,7 @@ async function fetchCustomerQuotes(args: {
   if (normalizedDomain) {
     filters.push(() =>
       selectQuotesByFilter((query) =>
-        query.ilike("email", `%@${normalizedDomain}`).limit(limit),
+        query.ilike("customer_email", `%@${normalizedDomain}`).limit(limit),
       ),
     );
   }
@@ -328,7 +328,7 @@ async function fetchSupplierQuotes(
       query
         .or(
           [
-            `email.ilike.${supplierEmail}`,
+            `customer_email.ilike.${supplierEmail}`,
             ...(assignmentsFeatureEnabled
               ? [`assigned_supplier_email.ilike.${supplierEmail}`]
               : []),
@@ -800,7 +800,7 @@ function buildQuoteDescription(
   const contact =
     quote.company ??
     quote.customer_name ??
-    quote.email ??
+    quote.customer_email ??
     (context === "customer" ? "your team" : "customer");
   if (context === "customer") {
     return `Uploaded by ${contact}`;
@@ -889,7 +889,7 @@ async function selectQuotesByCustomerId(
     const { data, error } = await supabaseServer
       .from("quotes_with_uploads")
       .select(QUOTE_FIELDS.join(","))
-      .ilike("email", normalizedEmail)
+      .ilike("customer_email", normalizedEmail)
       .order("created_at", { ascending: false })
       .limit(limit ?? DEFAULT_ACTIVITY_LIMIT * 2);
 

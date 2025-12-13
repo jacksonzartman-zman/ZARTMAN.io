@@ -31,9 +31,9 @@ create policy "quote_projects_customers_select"
       select 1
       from public.quotes q
       where q.id = quote_projects.quote_id
-        and q.email is not null
-        and trim(q.email) <> ''
-        and lower(q.email) = lower(coalesce(auth.jwt()->> 'email', ''))
+        and q.customer_email is not null
+        and trim(q.customer_email) <> ''
+        and lower(q.customer_email) = lower(coalesce(auth.jwt()->> 'email', ''))
     )
   );
 
@@ -46,9 +46,9 @@ create policy "quote_projects_customers_insert"
       select 1
       from public.quotes q
       where q.id = quote_projects.quote_id
-        and q.email is not null
-        and trim(q.email) <> ''
-        and lower(q.email) = lower(coalesce(auth.jwt()->> 'email', ''))
+        and q.customer_email is not null
+        and trim(q.customer_email) <> ''
+        and lower(q.customer_email) = lower(coalesce(auth.jwt()->> 'email', ''))
     )
   );
 
@@ -61,9 +61,9 @@ create policy "quote_projects_customers_update"
       select 1
       from public.quotes q
       where q.id = quote_projects.quote_id
-        and q.email is not null
-        and trim(q.email) <> ''
-        and lower(q.email) = lower(coalesce(auth.jwt()->> 'email', ''))
+        and q.customer_email is not null
+        and trim(q.customer_email) <> ''
+        and lower(q.customer_email) = lower(coalesce(auth.jwt()->> 'email', ''))
     )
   )
   with check (
@@ -71,8 +71,8 @@ create policy "quote_projects_customers_update"
       select 1
       from public.quotes q
       where q.id = quote_projects.quote_id
-        and q.email is not null
-        and trim(q.email) <> ''
-        and lower(q.email) = lower(coalesce(auth.jwt()->> 'email', ''))
+        and q.customer_email is not null
+        and trim(q.customer_email) <> ''
+        and lower(q.customer_email) = lower(coalesce(auth.jwt()->> 'email', ''))
     )
   );

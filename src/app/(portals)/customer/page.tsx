@@ -655,7 +655,7 @@ function selectQuotesByPattern(pattern: string) {
   return supabaseServer
     .from("quotes_with_uploads")
     .select(QUOTE_FIELDS.join(","))
-    .ilike("email", pattern)
+    .ilike("customer_email", pattern)
     .order("created_at", { ascending: false })
     .limit(QUOTE_LIMIT);
 }
@@ -679,7 +679,7 @@ function mapQuoteRecords(records: RawQuoteRecord[]): PortalQuote[] {
     price: record.price ?? null,
     currency: record.currency ?? null,
     fileName: record.file_name ?? null,
-    customerEmail: record.email ?? null,
+    customerEmail: record.customer_email ?? null,
     customerName: record.customer_name ?? null,
     company: record.company ?? null,
     uploadId: record.upload_id ?? null,

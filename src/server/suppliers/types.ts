@@ -5,7 +5,7 @@ export const SAFE_QUOTE_WITH_UPLOADS_FIELDS = [
   "id",
   "upload_id",
   "customer_name",
-  "email",
+  "customer_email",
   "company",
   "status",
   "price",

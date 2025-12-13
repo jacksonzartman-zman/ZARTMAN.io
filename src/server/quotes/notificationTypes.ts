@@ -6,7 +6,7 @@ export type QuoteContactInfo = Pick<
   | "file_name"
   | "company"
   | "customer_name"
-  | "email"
+  | "customer_email"
   | "file_names"
   | "upload_file_names"
   | "file_count"

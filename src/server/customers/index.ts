@@ -287,7 +287,7 @@ export async function attachQuotesToCustomer(
         updated_at: new Date().toISOString(),
       })
       .is("customer_id", null)
-      .ilike("email", normalizedEmail);
+      .ilike("customer_email", normalizedEmail);
 
     if (error) {
       console.error("attachQuotesToCustomer: update failed", {

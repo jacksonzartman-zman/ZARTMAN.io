@@ -12,14 +12,14 @@ import { formatCurrency } from "@/lib/formatCurrency";
 
 const EVENT_LIMIT = 10;
 const QUOTE_COLUMNS =
-  "id,file_name,company,customer_name,email,status,created_at,updated_at,price,currency,file_names,upload_file_names,file_count,upload_file_count";
+  "id,file_name,company,customer_name,customer_email,status,created_at,updated_at,price,currency,file_names,upload_file_names,file_count,upload_file_count";
 
 type CustomerQuoteRow = {
   id: string;
   file_name: string | null;
   company: string | null;
   customer_name: string | null;
-  email: string | null;
+  customer_email: string | null;
   status: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -151,7 +151,7 @@ export async function fetchQuotesByEmail(
     .select(QUOTE_COLUMNS)
     .order("updated_at", { ascending: false })
     .limit(limit)
-    .ilike("email", normalizedEmail);
+    .ilike("customer_email", normalizedEmail);
   if (error) {
     const message =
       context?.scope === "override"
@@ -257,7 +257,7 @@ export async function loadCustomerQuotesTablePage(
   let query = supabaseServer
     .from("quotes_with_uploads")
     .select(QUOTE_COLUMNS, { count: "exact" })
-    .ilike("email", emailToUse);
+    .ilike("customer_email", emailToUse);
 
   const orFilter = buildCustomerQuotesSearchOr(q);
   if (orFilter) {

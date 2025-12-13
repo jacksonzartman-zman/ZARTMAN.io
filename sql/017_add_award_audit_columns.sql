@@ -44,7 +44,6 @@ select
   q.upload_id,
   q.customer_id,
   q.customer_name,
-  q.email,
   q.customer_email,
   q.company,
   q.status,
