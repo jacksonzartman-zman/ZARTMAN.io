@@ -27,6 +27,7 @@ export type AwardActorRole = "customer" | "admin";
 
 export type AwardFailureReason =
   | "invalid_input"
+  | "quote_lookup_failed"
   | "quote_not_found"
   | "access_denied"
   | "status_not_allowed"
@@ -60,7 +61,8 @@ export type PerformAwardFlowInput = {
 type QuoteAwardRow = {
   id: string;
   status: string | null;
-  email: string | null;
+  customer_email: string | null;
+  assigned_supplier_email: string | null;
   customer_id: string | null;
   awarded_bid_id: string | null;
   awarded_supplier_id: string | null;
@@ -98,7 +100,20 @@ export async function performAwardFlow(
     return { ok: false, reason: "invalid_input", error: "Invalid quote or bid id." };
   }
 
-  const quote = await loadQuoteForAward(quoteId);
+  const quoteLookup = await loadQuoteForAward(quoteId);
+  if (quoteLookup.error) {
+    console.warn("[award] validation failed", {
+      ...logContext,
+      reason: "quote_lookup_failed",
+    });
+    return {
+      ok: false,
+      reason: "quote_lookup_failed",
+      error: "Quote not found.",
+    };
+  }
+
+  const quote = quoteLookup.quote;
   if (!quote) {
     console.warn("[award] validation failed", {
       ...logContext,
@@ -311,12 +326,14 @@ export async function performAwardFlow(
   };
 }
 
-async function loadQuoteForAward(quoteId: string): Promise<QuoteAwardRow | null> {
+async function loadQuoteForAward(
+  quoteId: string,
+): Promise<{ quote: QuoteAwardRow | null; error: unknown | null }> {
   try {
     const { data, error } = await supabaseServer
       .from("quotes")
       .select(
-        "id,status,email,customer_id,awarded_bid_id,awarded_supplier_id,awarded_at,awarded_by_user_id,awarded_by_role",
+        "id,status,customer_email,assigned_supplier_email,customer_id,awarded_bid_id,awarded_supplier_id,awarded_at,awarded_by_user_id,awarded_by_role",
       )
       .eq("id", quoteId)
       .maybeSingle<QuoteAwardRow>();
@@ -324,18 +341,20 @@ async function loadQuoteForAward(quoteId: string): Promise<QuoteAwardRow | null>
     if (error) {
       console.error("[award] quote lookup failed", {
         quoteId,
+        pgCode: (error as { code?: string | null })?.code ?? null,
+        message: (error as { message?: string | null })?.message ?? null,
         error: serializeActionError(error),
       });
-      return null;
+      return { quote: null, error };
     }
 
-    return data ?? null;
+    return { quote: data ?? null, error: null };
   } catch (error) {
     console.error("[award] quote lookup crashed", {
       quoteId,
       error: serializeActionError(error),
     });
-    return null;
+    return { quote: null, error };
   }
 }
 
@@ -437,7 +456,7 @@ async function validateCustomerActor({
     normalizeId(resolvedCustomer.id) &&
     quote.customer_id === resolvedCustomer.id;
 
-  const normalizedQuoteEmail = normalizeEmail(quote.email);
+  const normalizedQuoteEmail = normalizeEmail(quote.customer_email);
   const emailCandidates = [
     normalizeEmail(resolvedCustomer.email),
     normalizeEmail(actorEmail),
