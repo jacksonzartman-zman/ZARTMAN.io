@@ -640,25 +640,27 @@ export async function submitSupplierBidImpl(
         };
       }
 
-      if (!existingBid) {
-        void emitQuoteEvent({
-          quoteId,
-          eventType: "bid_received",
-          actorRole: "supplier",
-          actorUserId: user.id,
-          actorSupplierId: supplier.id,
-          metadata: {
-            bid_id: data?.id ?? null,
-            supplier_id: supplier.id,
-            supplier_name: supplier.company_name ?? supplier.primary_email ?? null,
-            supplier_email: supplier.primary_email ?? supplierEmail,
-            amount: normalizedAmount,
-            currency,
-            lead_time_days: leadTimeDays,
-          },
-          createdAt: data?.updated_at ?? null,
-        });
+      const isUpdate = Boolean(existingBid);
+      void emitQuoteEvent({
+        quoteId,
+        eventType: "bid_received",
+        actorRole: "supplier",
+        actorUserId: user.id,
+        actorSupplierId: supplier.id,
+        metadata: {
+          bid_id: data?.id ?? null,
+          supplier_id: supplier.id,
+          supplier_name: supplier.company_name ?? supplier.primary_email ?? null,
+          supplier_email: supplier.primary_email ?? supplierEmail,
+          amount: normalizedAmount,
+          currency,
+          lead_time_days: leadTimeDays,
+          isUpdate,
+        },
+        createdAt: data?.updated_at ?? null,
+      });
 
+      if (!isUpdate) {
         const quoteTitle =
           quote.file_name ?? quote.company ?? `Quote ${quote.id.slice(0, 6)}`;
         void notifyAdminOnBidSubmitted({
@@ -683,7 +685,7 @@ export async function submitSupplierBidImpl(
 
       return {
         ok: true,
-        message: "Your bid has been submitted.",
+        message: isUpdate ? "Your bid has been updated." : "Your bid has been submitted.",
       };
     } catch (error) {
       const serialized = serializeSupabaseError(error);

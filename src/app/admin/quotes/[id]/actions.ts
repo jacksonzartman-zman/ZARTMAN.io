@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getFormString, serializeActionError } from "@/lib/forms";
+import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { getServerAuthUser, requireAdminUser, requireUser } from "@/server/auth";
 import {
@@ -430,5 +431,140 @@ function mapAdminAwardError(
     default:
       return ADMIN_AWARD_GENERIC_ERROR;
   }
+}
+
+export type AdminInviteSupplierState =
+  | { ok: true; message: string }
+  | { ok: false; error: string; fieldErrors?: { supplierEmail?: string } };
+
+const ADMIN_INVITE_GENERIC_ERROR =
+  "We couldn't invite that supplier right now. Please try again.";
+const ADMIN_INVITE_EMAIL_ERROR = "Enter a valid supplier email.";
+const ADMIN_INVITE_NOT_FOUND_ERROR =
+  "We couldn’t find a supplier with that email.";
+
+export async function inviteSupplierToQuoteAction(
+  quoteId: string,
+  _prev: AdminInviteSupplierState,
+  formData: FormData,
+): Promise<AdminInviteSupplierState> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  const emailInput = getFormString(formData, "supplierEmail");
+  const supplierEmail = normalizeEmail(emailInput);
+
+  if (!normalizedQuoteId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  if (!supplierEmail) {
+    return {
+      ok: false,
+      error: ADMIN_INVITE_EMAIL_ERROR,
+      fieldErrors: { supplierEmail: ADMIN_INVITE_EMAIL_ERROR },
+    };
+  }
+
+  try {
+    const adminUser = await requireAdminUser();
+
+    const { data: supplier, error: supplierError } = await supabaseServer
+      .from("suppliers")
+      .select("id,company_name,primary_email")
+      .eq("primary_email", supplierEmail)
+      .maybeSingle<{
+        id: string;
+        company_name: string | null;
+        primary_email: string | null;
+      }>();
+
+    if (supplierError || !supplier?.id) {
+      return {
+        ok: false,
+        error: ADMIN_INVITE_NOT_FOUND_ERROR,
+        fieldErrors: { supplierEmail: ADMIN_INVITE_NOT_FOUND_ERROR },
+      };
+    }
+
+    const { data: existingInvite } = await supabaseServer
+      .from("quote_invites")
+      .select("id")
+      .eq("quote_id", normalizedQuoteId)
+      .eq("supplier_id", supplier.id)
+      .maybeSingle<{ id: string }>();
+    const isNewInvite = !existingInvite;
+
+    const { error: inviteError } = await supabaseServer
+      .from("quote_invites")
+      .upsert(
+        { quote_id: normalizedQuoteId, supplier_id: supplier.id },
+        { onConflict: "quote_id,supplier_id" },
+      );
+
+    if (inviteError) {
+      console.error("[admin invites] upsert failed", {
+        quoteId: normalizedQuoteId,
+        supplierId: supplier.id,
+        error: inviteError,
+      });
+      return { ok: false, error: ADMIN_INVITE_GENERIC_ERROR };
+    }
+
+    // Back-compat: populate assigned supplier fields so legacy views/notifications still work.
+    const { error: quoteUpdateError } = await supabaseServer
+      .from("quotes")
+      .update({
+        assigned_supplier_email: supplier.primary_email ?? supplierEmail,
+        assigned_supplier_name: supplier.company_name ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", normalizedQuoteId);
+
+    if (quoteUpdateError) {
+      console.error("[admin invites] quote assignment update failed", {
+        quoteId: normalizedQuoteId,
+        supplierId: supplier.id,
+        error: quoteUpdateError,
+      });
+    }
+
+    if (isNewInvite) {
+      void emitQuoteEvent({
+        quoteId: normalizedQuoteId,
+        eventType: "supplier_invited",
+        actorRole: "admin",
+        actorUserId: adminUser.id,
+        metadata: {
+          supplier_id: supplier.id,
+          supplier_name: supplier.company_name ?? supplier.primary_email ?? null,
+          supplier_email: supplier.primary_email ?? supplierEmail,
+        },
+      });
+    }
+
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath("/admin/quotes");
+    revalidatePath("/supplier");
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return {
+      ok: true,
+      message: isNewInvite ? "Supplier invited." : "Supplier invite already exists.",
+    };
+  } catch (error) {
+    console.error("[admin invites] action crashed", {
+      quoteId: normalizedQuoteId,
+      supplierEmail,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_INVITE_GENERIC_ERROR };
+  }
+}
+
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return null;
+  if (!trimmed.includes("@")) return null;
+  return trimmed;
 }
 

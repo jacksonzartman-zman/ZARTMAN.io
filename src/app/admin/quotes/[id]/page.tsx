@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatAwardedByLabel, formatShortId } from "@/lib/awards";
+import { supabaseServer } from "@/lib/supabaseServer";
 import {
   loadQuoteMessages,
   type QuoteMessageRecord,
@@ -54,6 +55,7 @@ import { postQuoteMessage as postAdminQuoteMessage } from "./actions";
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { AdminDecisionCtas } from "./AdminDecisionCtas";
+import { AdminInviteSupplierCard } from "./AdminInviteSupplierCard";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +130,44 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         </PortalContainer>
       </main>
     );
+  }
+
+  let inviteCount = 0;
+  try {
+    const { count, error } = await supabaseServer
+      .from("quote_invites")
+      .select("id", { count: "exact", head: true })
+      .eq("quote_id", quote.id);
+    if (!error && typeof count === "number") {
+      inviteCount = count;
+    }
+  } catch (error) {
+    console.warn("[admin quote] invite count lookup crashed", {
+      quoteId: quote.id,
+      error,
+    });
+  }
+
+  let assignedSupplierEmail: string | null = null;
+  let assignedSupplierName: string | null = null;
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes")
+      .select("assigned_supplier_email,assigned_supplier_name")
+      .eq("id", quote.id)
+      .maybeSingle<{
+        assigned_supplier_email: string | null;
+        assigned_supplier_name: string | null;
+      }>();
+    if (!error && data) {
+      assignedSupplierEmail = data.assigned_supplier_email ?? null;
+      assignedSupplierName = data.assigned_supplier_name ?? null;
+    }
+  } catch (error) {
+    console.warn("[admin quote] assigned supplier lookup crashed", {
+      quoteId: quote.id,
+      error,
+    });
   }
 
   const projectResult = await loadQuoteProjectForQuote(quote.id);
@@ -759,6 +799,14 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       : winningBidExists
         ? "border-emerald-500/30 bg-emerald-500/5"
         : "border-slate-800 bg-slate-950/60";
+    const hasAssignedSupplier = Boolean(
+      (assignedSupplierEmail ?? "").trim() || (assignedSupplierName ?? "").trim(),
+    );
+    const quoteIsAwarded = Boolean(
+      (quote.awarded_supplier_id ?? "").trim() || quote.awarded_at,
+    );
+    const showInviteSupplierCta =
+      !quoteIsAwarded && !hasAssignedSupplier && inviteCount === 0;
 
     return (
       <AdminDashboardShell
@@ -809,6 +857,18 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               </div>
               <div className="flex flex-col items-start gap-2 sm:items-end">
                 <AdminDecisionCtas quoteId={quote.id} status={status} />
+                {showInviteSupplierCta ? (
+                  <Link
+                    href="#suppliers-panel"
+                    className={clsx(
+                      secondaryCtaClasses,
+                      ctaSizeClasses.sm,
+                      "whitespace-nowrap",
+                    )}
+                  >
+                    Invite supplier
+                  </Link>
+                ) : null}
                 <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
                   <a
                     href="#uploads-panel"
@@ -918,6 +978,12 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               </div>
             </div>
           </div>
+
+          {showInviteSupplierCta ? (
+            <div id="suppliers-panel" className="scroll-mt-24">
+              <AdminInviteSupplierCard quoteId={quote.id} />
+            </div>
+          ) : null}
 
           <SupplierBidsCard
             id="bids-panel"
