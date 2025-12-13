@@ -3,15 +3,11 @@ import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
-import {
-  buildCustomerQuoteTimeline,
-  type QuoteTimelineEvent,
-} from "@/lib/quote/tracking";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
-import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
+import { QuoteEventsTimeline } from "@/app/(portals)/components/QuoteEventsTimeline";
 import {
   formatQuoteId,
   getSearchParamValue,
@@ -51,6 +47,7 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
+import { listQuoteEventsForQuote } from "@/server/quotes/events";
 import { postQuoteMessage as postCustomerQuoteMessage } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -148,12 +145,6 @@ export default async function CustomerQuoteDetailPage({
   }
 
   const readOnly = usingOverride;
-  console.log("[customer quote] loaded", {
-    quoteId: quote.id,
-    uploadId: quote.upload_id,
-    customerEmail: quote.email,
-  });
-
   const derived = deriveQuotePresentation(quote, uploadMeta);
   const { customerName, companyName, intakeNotes } = derived;
   const normalizedQuoteStatus = normalizeQuoteStatus(quote.status ?? undefined);
@@ -169,26 +160,14 @@ export default async function CustomerQuoteDetailPage({
   const hasProject = projectResult.ok;
   const project = hasProject ? projectResult.project : null;
   const projectUnavailable = !hasProject && projectResult.reason !== "not_found";
-  console.info("[customer quote] project loaded", {
-    quoteId: quote.id,
-    hasProject,
-    unavailable: projectUnavailable,
-  });
   const bidCount = bids.length;
   const customerBidSummariesError = customerBidSummariesResult.ok
     ? null
     : customerBidSummariesResult.error;
   const customerAwardBidsReady =
     !customerBidSummariesUnavailable && customerBidSummaries.length > 0;
-  const timelineEvents: QuoteTimelineEvent[] = buildCustomerQuoteTimeline({
-    quote,
-    bids,
-    project,
-  });
-  console.log("[customer quote] tracking events built", {
-    quoteId: quote.id,
-    eventCount: timelineEvents.length,
-  });
+  const quoteEventsResult = await listQuoteEventsForQuote(quote.id);
+  const quoteEvents = quoteEventsResult.ok ? quoteEventsResult.events : [];
   const quoteIsWon = normalizedQuoteStatus === "won";
   const quoteAllowsCustomerAward =
     normalizedQuoteStatus === "quoted" || normalizedQuoteStatus === "approved";
@@ -781,13 +760,13 @@ export default async function CustomerQuoteDetailPage({
           </>
         ) : null}
       </div>
-      <QuoteActivityTimeline
+      <QuoteEventsTimeline
         className={cardClasses}
-        events={timelineEvents}
+        events={quoteEvents}
         headingLabel="TIMELINE"
-        title="Production milestones"
-        description="Follow RFQ progress, supplier bids, and status changes for this quote."
-        emptyState="We’ll show your RFQ and bid activity here as things progress."
+        title="Quote events timeline"
+        description="A durable audit trail of bids, awards, messages, and kickoff updates."
+        emptyState="No activity yet."
       />
     </PortalShell>
   );

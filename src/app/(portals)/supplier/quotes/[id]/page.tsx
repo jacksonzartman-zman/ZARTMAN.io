@@ -25,7 +25,6 @@ import { loadSupplierProfile } from "@/server/suppliers";
 import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import {
   loadBidForSupplierAndQuote,
-  loadBidsForQuote,
   type BidRow,
 } from "@/server/bids";
 import { SupplierBidPanel } from "./SupplierBidPanel";
@@ -35,11 +34,7 @@ import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { canUserBid } from "@/lib/permissions";
 import { approvalsEnabled } from "@/server/suppliers/flags";
-import {
-  buildSupplierQuoteTimeline,
-  type QuoteTimelineEvent,
-} from "@/lib/quote/tracking";
-import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
+import { QuoteEventsTimeline } from "@/app/(portals)/components/QuoteEventsTimeline";
 import {
   loadQuoteProjectForQuote,
   type QuoteProjectRecord,
@@ -58,6 +53,7 @@ import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
 import { KickoffChecklist } from "./KickoffChecklist";
 import { postQuoteMessage as postSupplierQuoteMessage } from "./actions";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
+import { listQuoteEventsForQuote, type QuoteEventRecord } from "@/server/quotes/events";
 
 export const dynamic = "force-dynamic";
 
@@ -168,11 +164,6 @@ export default async function SupplierQuoteDetailPage({
     } else {
       projectUnavailable = projectResult.reason !== "not_found";
     }
-    console.info("[supplier quote] project loaded", {
-      quoteId,
-      hasProject: Boolean(project),
-      unavailable: projectUnavailable,
-    });
   }
 
   const kickoffVisibility = deriveSupplierKickoffVisibility(
@@ -192,22 +183,8 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-  const bidsResult = await loadBidsForQuote(quoteId);
-  const bidsArray = bidsResult.ok && Array.isArray(bidsResult.data)
-    ? (bidsResult.data ?? [])
-    : [];
-  const supplierTimelineEvents: QuoteTimelineEvent[] =
-    buildSupplierQuoteTimeline({
-      quote: workspaceData.quote,
-      bids: bidsArray,
-      supplierId: profile.supplier.id,
-      project,
-    });
-  console.log("[supplier quote] tracking events built", {
-    quoteId,
-    supplierId: profile.supplier.id,
-    eventCount: supplierTimelineEvents.length,
-  });
+  const quoteEventsResult = await listQuoteEventsForQuote(quoteId);
+  const quoteEvents = quoteEventsResult.ok ? quoteEventsResult.events : [];
 
   const messagesResult = await loadQuoteMessages(quoteId);
   if (!messagesResult.ok) {
@@ -248,7 +225,7 @@ export default async function SupplierQuoteDetailPage({
       messagesUnavailable={messagesUnavailable}
       postMessageAction={supplierPostMessageAction}
       currentUserId={user.id}
-      timelineEvents={supplierTimelineEvents}
+      quoteEvents={quoteEvents}
       project={project}
       projectUnavailable={projectUnavailable}
       kickoffTasksResult={kickoffTasksResult}
@@ -276,7 +253,7 @@ function SupplierQuoteWorkspace({
   messagesUnavailable,
   postMessageAction,
   currentUserId,
-  timelineEvents,
+  quoteEvents,
   project,
   projectUnavailable,
   kickoffTasksResult,
@@ -303,7 +280,7 @@ function SupplierQuoteWorkspace({
     formData: FormData,
   ) => Promise<QuoteMessageFormState>;
   currentUserId: string;
-  timelineEvents: QuoteTimelineEvent[];
+  quoteEvents: QuoteEventRecord[];
   project: QuoteProjectRecord | null;
   projectUnavailable: boolean;
   kickoffTasksResult: SupplierKickoffTasksResult | null;
@@ -351,16 +328,6 @@ function SupplierQuoteWorkspace({
   const isWinningSupplier = awardedToSupplier || bidSelectedAsWinner;
   const acceptedLock = normalizedBidStatus === "accepted";
   const closedWindowLock = bidLocked && !acceptedLock;
-  console.log("[supplier kickoff] visibility debug", {
-    quoteId: quote.id,
-    bidSelectedAsWinner,
-    normalizedQuoteStatus,
-    quoteReadyForKickoff,
-    hasProject,
-    showKickoffChecklist,
-    tasksOk: kickoffTasksResult?.ok ?? null,
-    taskCount: kickoffTasksResult?.tasks?.length ?? null,
-  });
   const supplierDisplayName =
     supplierNameOverride ??
     getSupplierDisplayName(supplierEmail, quote, assignments);
@@ -680,13 +647,13 @@ function SupplierQuoteWorkspace({
           </p>
         ) : null}
       </div>
-      <QuoteActivityTimeline
+      <QuoteEventsTimeline
         className={cardClasses}
-        events={timelineEvents}
+        events={quoteEvents}
         headingLabel="TIMELINE"
-        title="Quote activity timeline"
-        description="Keep tabs on RFQ milestones, your bid submissions, and final decisions."
-        emptyState="We’ll surface status changes and your bid history once activity begins."
+        title="Quote events timeline"
+        description="A durable audit trail of bids, awards, messages, and kickoff updates."
+        emptyState="No activity yet."
       />
     </PortalShell>
   );

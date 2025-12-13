@@ -28,6 +28,8 @@ import {
   performAwardFlow,
   type AwardFailureReason,
 } from "@/server/quotes/award";
+import { emitQuoteEvent } from "@/server/quotes/events";
+import { normalizeQuoteStatus } from "@/server/quotes/status";
 import type { AwardBidFormState } from "./awardFormState";
 
 export type { AwardBidFormState } from "./awardFormState";
@@ -142,6 +144,29 @@ export async function submitAdminQuoteUpdateAction(
         error: result.error ?? null,
       });
       return { ok: false, error: result.error };
+    }
+
+    const nextStatus = normalizeQuoteStatus(payload.status ?? undefined);
+    if (nextStatus === "in_review") {
+      void emitQuoteEvent({
+        quoteId: normalizedQuoteId,
+        eventType: "reopened",
+        actorRole: "admin",
+        actorUserId: user.id,
+        metadata: {
+          status: nextStatus,
+        },
+      });
+    } else if (nextStatus === "cancelled") {
+      void emitQuoteEvent({
+        quoteId: normalizedQuoteId,
+        eventType: "archived",
+        actorRole: "admin",
+        actorUserId: user.id,
+        metadata: {
+          status: nextStatus,
+        },
+      });
     }
 
     revalidatePath("/admin/quotes");
