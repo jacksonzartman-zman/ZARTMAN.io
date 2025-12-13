@@ -5,6 +5,7 @@ import {
   isRowLevelSecurityDeniedError,
 } from "@/server/admin/logging";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
+import { emitQuoteEvent } from "@/server/quotes/events";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_SUPPLIER_KICKOFF_TASKS,
@@ -69,6 +70,27 @@ type KickoffTaskRowsResult =
       rows: QuoteKickoffTaskRow[];
       error: string;
       reason: "schema-missing" | "load-error" | "seed-error";
+    };
+
+export type EnsureKickoffTasksForQuoteResult =
+  | {
+      ok: true;
+      /**
+       * True when this call created the kickoff checklist rows for the first time.
+       * (Used to drive a single timeline event.)
+       */
+      created: boolean;
+      taskCount: number;
+      supplierId: string | null;
+      error: null;
+    }
+  | {
+      ok: false;
+      created: false;
+      taskCount: 0;
+      supplierId: string | null;
+      error: string;
+      reason: "missing-identifiers" | "not-awarded" | "schema-missing" | "seed-error";
     };
 
 export async function loadQuoteKickoffTasksForSupplier(
@@ -459,6 +481,205 @@ async function seedKickoffTasks(
     return {
       ok: false,
       rows: [],
+      error: "seed-error",
+      reason: "seed-error",
+    };
+  }
+}
+
+/**
+ * Idempotently ensures the default supplier kickoff tasks exist for the awarded quote.
+ *
+ * - Uses the existing unique constraint (quote_id, supplier_id, task_key).
+ * - Inserts missing default tasks without overwriting existing rows.
+ * - Emits a single timeline event ("kickoff_started") only when tasks are first created.
+ *
+ * This is intended to run from server/service-role pathways (e.g. award flow).
+ */
+export async function ensureKickoffTasksForQuote(
+  quoteId: string,
+): Promise<EnsureKickoffTasksForQuoteResult> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return {
+      ok: false,
+      created: false,
+      taskCount: 0,
+      supplierId: null,
+      error: "missing-identifiers",
+      reason: "missing-identifiers",
+    };
+  }
+
+  const awardInfo = await loadQuoteAwardInfoForKickoff(normalizedQuoteId);
+  if (!awardInfo.ok) {
+    return {
+      ok: false,
+      created: false,
+      taskCount: 0,
+      supplierId: null,
+      error: awardInfo.error,
+      reason: awardInfo.reason === "load-error" ? "seed-error" : awardInfo.reason,
+    };
+  }
+
+  const supplierId = normalizeId(awardInfo.awardedSupplierId);
+  if (!supplierId) {
+    return {
+      ok: false,
+      created: false,
+      taskCount: 0,
+      supplierId: null,
+      error: "not-awarded",
+      reason: "not-awarded",
+    };
+  }
+
+  const seedRows = DEFAULT_SUPPLIER_KICKOFF_TASKS.map((definition) => ({
+    quote_id: normalizedQuoteId,
+    supplier_id: supplierId,
+    task_key: definition.taskKey,
+    title: definition.title,
+    description: definition.description ?? null,
+    completed: false,
+    sort_order: definition.sortOrder ?? null,
+  }));
+
+  if (seedRows.length === 0) {
+    return {
+      ok: true,
+      created: false,
+      taskCount: 0,
+      supplierId,
+      error: null,
+    };
+  }
+
+  // Determine if tasks existed before this run (best-effort). We only emit the
+  // kickoff_started event when we are confident this is the first creation.
+  let hadExistingTasks: boolean | null = null;
+  try {
+    const { data: existingRows, error } = await supabaseServer
+      .from(TABLE_NAME)
+      .select("id")
+      .eq("quote_id", normalizedQuoteId)
+      .eq("supplier_id", supplierId)
+      .limit(1);
+    if (!error) {
+      hadExistingTasks = (existingRows ?? []).length > 0;
+    } else if (!isMissingTableOrColumnError(error)) {
+      console.warn("[quote kickoff tasks] preflight lookup failed", {
+        quoteId: normalizedQuoteId,
+        supplierId,
+        error: serializeSupabaseError(error),
+      });
+    }
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error)) {
+      console.warn("[quote kickoff tasks] preflight lookup crashed", {
+        quoteId: normalizedQuoteId,
+        supplierId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  }
+
+  try {
+    const { data: insertedRows, error } = await supabaseServer
+      .from(TABLE_NAME)
+      .upsert(seedRows, {
+        onConflict: "quote_id,supplier_id,task_key",
+        // Critical: don't overwrite existing task state.
+        ignoreDuplicates: true,
+      })
+      .select("id")
+      .returns<{ id: string }[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return {
+          ok: false,
+          created: false,
+          taskCount: 0,
+          supplierId,
+          error: "schema-missing",
+          reason: "schema-missing",
+        };
+      }
+      console.error("[quote kickoff tasks] ensure failed", {
+        quoteId: normalizedQuoteId,
+        supplierId,
+        error: serializeSupabaseError(error),
+      });
+      return {
+        ok: false,
+        created: false,
+        taskCount: 0,
+        supplierId,
+        error: "seed-error",
+        reason: "seed-error",
+      };
+    }
+
+    const createdCount = Array.isArray(insertedRows) ? insertedRows.length : 0;
+
+    const createdForFirstTime = hadExistingTasks === false && createdCount > 0;
+    if (createdForFirstTime) {
+      // Prevent accidental duplicate timeline events in case of retries/races.
+      let kickoffEventAlreadyExists = false;
+      try {
+        const { data: existingEventRows, error: existingEventError } =
+          await supabaseServer
+            .from("quote_events")
+            .select("id")
+            .eq("quote_id", normalizedQuoteId)
+            .eq("event_type", "kickoff_started")
+            .limit(1);
+        if (!existingEventError) {
+          kickoffEventAlreadyExists = (existingEventRows ?? []).length > 0;
+        }
+      } catch {
+        // If this check fails, skip the guard and attempt the emit (best-effort).
+      }
+
+      if (!kickoffEventAlreadyExists) {
+        void emitQuoteEvent({
+          quoteId: normalizedQuoteId,
+          eventType: "kickoff_started",
+          actorRole: "system",
+          metadata: { taskCount: createdCount, source: "award" },
+        });
+      }
+    }
+
+    return {
+      ok: true,
+      created: createdForFirstTime,
+      taskCount: createdCount,
+      supplierId,
+      error: null,
+    };
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      return {
+        ok: false,
+        created: false,
+        taskCount: 0,
+        supplierId,
+        error: "schema-missing",
+        reason: "schema-missing",
+      };
+    }
+    console.error("[quote kickoff tasks] ensure crashed", {
+      quoteId: normalizedQuoteId,
+      supplierId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return {
+      ok: false,
+      created: false,
+      taskCount: 0,
+      supplierId,
       error: "seed-error",
       reason: "seed-error",
     };
