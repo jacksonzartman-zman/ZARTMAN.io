@@ -83,7 +83,11 @@ function mapQuoteEvent(
   event: QuoteEventRecord,
 ): { title: string; description?: string; actorLabel?: string } {
   const type = (event.event_type ?? "").trim().toLowerCase();
-  const metadata = isRecord(event.metadata) ? event.metadata : {};
+  const metadata = isRecord(event.metadata)
+    ? event.metadata
+    : isRecord(event.payload)
+      ? event.payload
+      : {};
   const actorLabel = formatActorLabel(event.actor_role, metadata);
 
   if (type === "submitted") {
