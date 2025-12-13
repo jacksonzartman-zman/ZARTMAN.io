@@ -1,0 +1,214 @@
+import { formatShortId } from "@/lib/awards";
+import type { QuoteEventActorRole, QuoteEventRecord } from "@/server/quotes/events";
+
+export type QuoteEventGroupKey =
+  | "rfq"
+  | "bids"
+  | "award"
+  | "kickoff"
+  | "messages"
+  | "system"
+  | "other";
+
+export type FormattedQuoteEvent = {
+  title: string;
+  subtitle?: string;
+  actorLabel?: string;
+  groupKey: QuoteEventGroupKey;
+  groupLabel: string;
+};
+
+/**
+ * Central mapping from quote_events (event_type + metadata) -> human UI copy.
+ * Keep this logic shared across all portals (admin/customer/supplier).
+ */
+export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
+  const type = normalizeEventType(event.event_type);
+  const metadata = resolveEventMetadata(event);
+  const actorLabel = formatActorLabel(event.actor_role, metadata);
+
+  if (type === "submitted") {
+    return {
+      groupKey: "rfq",
+      groupLabel: "RFQ",
+      title: "RFQ submitted",
+      subtitle: "RFQ received and queued for review.",
+      actorLabel,
+    };
+  }
+
+  if (type === "bid_received") {
+    const supplierName = readString(metadata, "supplier_name");
+    return {
+      groupKey: "bids",
+      groupLabel: "Bids",
+      title: "Bid received",
+      subtitle: supplierName ? `From ${supplierName}.` : undefined,
+      actorLabel,
+    };
+  }
+
+  if (type === "awarded") {
+    const supplierName = readString(metadata, "supplier_name");
+    const bidId = readString(metadata, "bid_id");
+    return {
+      groupKey: "award",
+      groupLabel: "Award",
+      title: supplierName ? `Awarded to ${supplierName}` : "Awarded",
+      subtitle: bidId ? `Winning bid: ${formatShortId(bidId)}` : undefined,
+      actorLabel,
+    };
+  }
+
+  if (type === "reopened") {
+    return {
+      groupKey: "rfq",
+      groupLabel: "RFQ",
+      title: "RFQ reopened",
+      subtitle: "Returned to reviewing bids.",
+      actorLabel,
+    };
+  }
+
+  if (type === "archived") {
+    return {
+      groupKey: "rfq",
+      groupLabel: "RFQ",
+      title: "RFQ archived",
+      subtitle: "Marked as cancelled.",
+      actorLabel,
+    };
+  }
+
+  if (type === "kickoff_updated") {
+    const summary = readString(metadata, "summary_label");
+    const taskTitle = readString(metadata, "task_title");
+    const completed = readBoolean(metadata, "completed");
+    const taskSubtitle = taskTitle
+      ? `${completed ? "Completed" : "Updated"}: ${taskTitle}.`
+      : null;
+    const combinedSubtitle = joinSubtitle(
+      summary,
+      taskSubtitle ? `· ${taskSubtitle}` : null,
+    );
+
+    return {
+      groupKey: "kickoff",
+      groupLabel: "Kickoff",
+      title: "Kickoff updated",
+      subtitle: combinedSubtitle ?? taskSubtitle ?? undefined,
+      actorLabel,
+    };
+  }
+
+  if (type === "message_posted") {
+    const senderName = readString(metadata, "sender_name");
+    return {
+      groupKey: "messages",
+      groupLabel: "Messages",
+      title: "Message posted",
+      subtitle: senderName ? `From ${senderName}.` : undefined,
+      actorLabel,
+    };
+  }
+
+  return {
+    groupKey: inferFallbackGroup(event.actor_role),
+    groupLabel: formatGroupLabel(inferFallbackGroup(event.actor_role)),
+    title: humanizeFallback(type || "event"),
+    actorLabel,
+  };
+}
+
+function normalizeEventType(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim().toLowerCase();
+}
+
+function resolveEventMetadata(event: QuoteEventRecord): Record<string, unknown> {
+  if (isRecord(event.metadata)) return event.metadata;
+  if (isRecord(event.payload)) return event.payload;
+  return {};
+}
+
+function formatActorLabel(
+  role: QuoteEventActorRole,
+  metadata: Record<string, unknown>,
+): string {
+  const normalized = (role ?? "").toString().trim().toLowerCase();
+  if (normalized === "supplier") {
+    const supplierName = readString(metadata, "supplier_name");
+    return supplierName ? `Supplier · ${supplierName}` : "Supplier";
+  }
+  if (normalized === "customer") {
+    return "Customer";
+  }
+  if (normalized === "admin") {
+    return "Admin";
+  }
+  return "System";
+}
+
+function inferFallbackGroup(role: QuoteEventActorRole): QuoteEventGroupKey {
+  const normalized = (role ?? "").toString().trim().toLowerCase();
+  if (normalized === "system") return "system";
+  return "other";
+}
+
+function formatGroupLabel(group: QuoteEventGroupKey): string {
+  switch (group) {
+    case "rfq":
+      return "RFQ";
+    case "bids":
+      return "Bids";
+    case "award":
+      return "Award";
+    case "kickoff":
+      return "Kickoff";
+    case "messages":
+      return "Messages";
+    case "system":
+      return "System";
+    default:
+      return "Other";
+  }
+}
+
+function joinSubtitle(a: string | null, b: string | null): string | null {
+  const first = typeof a === "string" ? a.trim() : "";
+  const second = typeof b === "string" ? b.trim() : "";
+  if (first && second) return `${first} ${second}`;
+  if (first) return first;
+  if (second) return second;
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readString(
+  metadata: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = metadata[key];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readBoolean(
+  metadata: Record<string, unknown>,
+  key: string,
+): boolean | null {
+  const value = metadata[key];
+  if (typeof value === "boolean") return value;
+  return null;
+}
+
+function humanizeFallback(value: string): string {
+  const cleaned = value.replace(/[_-]+/g, " ").trim();
+  if (!cleaned) return "Event";
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
