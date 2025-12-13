@@ -9,6 +9,7 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTask,
 } from "@/lib/quote/kickoffChecklist";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { completeKickoffTask } from "./actions";
 import type { SupplierKickoffFormState } from "@/server/quotes/supplierQuoteServer";
 
@@ -41,6 +42,11 @@ export function SupplierKickoffChecklistCard({
     [localTasks],
   );
   const summaryLabel = formatKickoffSummaryLabel(summary);
+  const lastUpdatedLabel = useMemo(() => {
+    return (
+      formatRelativeTimeFromTimestamp(toTimestamp(summary.lastUpdatedAt)) ?? "—"
+    );
+  }, [summary.lastUpdatedAt]);
 
   const handleToggle = (task: SupplierKickoffTask, nextCompleted: boolean) => {
     if (readOnly) {
@@ -125,6 +131,20 @@ export function SupplierKickoffChecklistCard({
             )}
           >
             {summaryLabel}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
+          <span>
+            Completed{" "}
+            <span className="font-semibold text-slate-200">
+              {summary.completedCount}/{summary.totalCount}
+            </span>
+          </span>
+          <span>
+            Last updated{" "}
+            <span className="font-semibold text-slate-200">
+              {summary.lastUpdatedAt ? lastUpdatedLabel : "—"}
+            </span>
           </span>
         </div>
         <p className="text-sm text-slate-300">

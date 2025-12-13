@@ -48,6 +48,7 @@ import {
 import {
   loadQuoteKickoffTasksForSupplier,
   type SupplierKickoffTasksResult,
+  ensureKickoffTasksForQuote,
 } from "@/server/quotes/kickoffTasks";
 import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
 import { KickoffChecklist } from "./KickoffChecklist";
@@ -178,11 +179,40 @@ export default async function SupplierQuoteDetailPage({
 
   let kickoffTasksResult: SupplierKickoffTasksResult | null = null;
   if (kickoffVisibility.showKickoffChecklist) {
-    kickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
+    const initialKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
       quoteId,
       profile.supplier.id,
-      { seedIfEmpty: awardedToSupplier },
+      { seedIfEmpty: false },
     );
+
+    // Gap 6: best-effort server-side seeding for awarded supplier, only when the
+    // first tasks query returns 0 rows. Never throw if seeding fails.
+    if (
+      awardedToSupplier &&
+      initialKickoffTasksResult.ok &&
+      initialKickoffTasksResult.tasks.length === 0
+    ) {
+      try {
+        await ensureKickoffTasksForQuote(quoteId, {
+          actorRole: "supplier",
+          actorUserId: user.id,
+        });
+      } catch (error) {
+        console.warn("[supplier kickoff tasks] ensure crashed (ignored)", {
+          quoteId,
+          supplierId: profile.supplier.id,
+          error,
+        });
+      }
+
+      kickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
+        quoteId,
+        profile.supplier.id,
+        { seedIfEmpty: false },
+      );
+    } else {
+      kickoffTasksResult = initialKickoffTasksResult;
+    }
   }
 
   const quoteEventsResult = await listQuoteEventsForQuote(quoteId);
@@ -464,16 +494,32 @@ function SupplierQuoteWorkspace({
 
   let kickoffChecklistSection: ReactNode = null;
   if (showKickoffChecklist) {
-    if (kickoffTasksResult && kickoffTasksResult.ok) {
+    const tasksAvailable = Boolean(kickoffTasksResult?.ok);
+    const kickoffTasks = kickoffTasksResult?.ok ? kickoffTasksResult.tasks : [];
+    const tasksReady = tasksAvailable && kickoffTasks.length > 0;
+
+    if (tasksReady) {
       kickoffChecklistSection = (
-        <SupplierKickoffChecklistCard
-          quoteId={quote.id}
-          tasks={kickoffTasksResult.tasks}
-          readOnly={!awardedToSupplier}
-        />
+        <div id="kickoff" className="scroll-mt-24">
+          <SupplierKickoffChecklistCard
+            quoteId={quote.id}
+            tasks={kickoffTasks}
+            readOnly={!awardedToSupplier}
+          />
+        </div>
+      );
+    } else if (awardedToSupplier) {
+      kickoffChecklistSection = (
+        <div id="kickoff" className="scroll-mt-24">
+          <SupplierKickoffNotReadyCard />
+        </div>
       );
     } else {
-      kickoffChecklistSection = <KickoffChecklist />;
+      kickoffChecklistSection = (
+        <div id="kickoff" className="scroll-mt-24">
+          <KickoffChecklist />
+        </div>
+      );
     }
   }
 
@@ -748,6 +794,22 @@ function PortalNoticeCard({
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
       <h1 className="text-xl font-semibold text-white">{title}</h1>
       <p className="mt-2 text-sm text-slate-400">{description}</p>
+    </section>
+  );
+}
+
+function SupplierKickoffNotReadyCard() {
+  return (
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
+      <header className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Kickoff checklist
+        </p>
+        <h2 className="text-lg font-semibold text-white">Kickoff not ready yet</h2>
+        <p className="text-sm text-slate-300">
+          Kickoff not ready yet. Refresh in a moment.
+        </p>
+      </header>
     </section>
   );
 }
