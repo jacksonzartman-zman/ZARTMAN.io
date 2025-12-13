@@ -200,6 +200,9 @@ export async function loadSupplierActivityFeed(
     const assignmentQuoteIds = supplierEmail
       ? await selectSupplierQuoteIds(supplierEmail, logContext)
       : [];
+    const inviteQuoteIds = supplierId
+      ? await selectSupplierInviteQuoteIds(supplierId, logContext)
+      : [];
     const bids = await fetchBids(
       { supplierId },
       limit * 3,
@@ -210,7 +213,9 @@ export async function loadSupplierActivityFeed(
 
     const quotes = await fetchSupplierQuotes(
       {
-        quoteIds: Array.from(new Set([...assignmentQuoteIds, ...bidQuoteIds])),
+        quoteIds: Array.from(
+          new Set([...assignmentQuoteIds, ...inviteQuoteIds, ...bidQuoteIds]),
+        ),
         supplierEmail,
         limit: Math.max(limit * 2, 20),
       },
@@ -628,6 +633,44 @@ async function selectSupplierQuoteIds(
       error,
       context,
       { supplierEmail },
+    );
+    return [];
+  }
+}
+
+async function selectSupplierInviteQuoteIds(
+  supplierId: string | null,
+  context?: ActivityQueryContext,
+): Promise<string[]> {
+  if (!supplierId) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_invites")
+      .select("quote_id")
+      .eq("supplier_id", supplierId);
+
+    if (error) {
+      logSupplierActivityError(
+        "invite query failed",
+        error,
+        context,
+        { supplierId },
+      );
+      return [];
+    }
+
+    return ((data ?? []) as { quote_id: string }[])
+      .map((row) => row.quote_id)
+      .filter((id): id is string => Boolean(id));
+  } catch (error) {
+    logSupplierActivityError(
+      "invite query failed",
+      error,
+      context,
+      { supplierId },
     );
     return [];
   }
