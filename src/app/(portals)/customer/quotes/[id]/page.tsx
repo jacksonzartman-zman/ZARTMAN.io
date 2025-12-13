@@ -54,6 +54,7 @@ import {
 import { listQuoteEventsForQuote } from "@/server/quotes/events";
 import { postQuoteMessage as postCustomerQuoteMessage } from "./actions";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
 
 export const dynamic = "force-dynamic";
 
@@ -368,12 +369,19 @@ export default async function CustomerQuoteDetailPage({
   });
   const headerTitle = `${customerName ?? "RFQ"} · ${formatQuoteId(quote.id)}`;
   const headerActions = (
-    <Link
-      href="/customer/quotes"
-      className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-    >
-      Back to quotes
-    </Link>
+    <div className="flex flex-wrap items-center gap-2">
+      <CustomerQuoteStatusCtas
+        quoteId={quote.id}
+        status={normalizedQuoteStatus}
+        disabled={readOnly}
+      />
+      <Link
+        href="/customer/quotes"
+        className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+      >
+        Back to quotes
+      </Link>
+    </div>
   );
   const createdAtDate = submittedAtRaw ? new Date(submittedAtRaw) : null;
   const quoteAgeInDays =
