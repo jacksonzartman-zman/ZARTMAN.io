@@ -24,7 +24,10 @@ type QuoteRow = {
   id: string;
   status: string | null;
   customer_id: string | null;
-  email: string | null;
+  customer_email: string | null;
+  assigned_supplier_email: string | null;
+  awarded_bid_id: string | null;
+  awarded_supplier_id: string | null;
 };
 
 export async function transitionQuoteStatus(
@@ -48,7 +51,9 @@ export async function transitionQuoteStatus(
   try {
     const { data: quote, error: quoteError } = await supabaseServer
       .from("quotes")
-      .select("id,status,customer_id,email")
+      .select(
+        "id,status,customer_id,customer_email,assigned_supplier_email,awarded_bid_id,awarded_supplier_id",
+      )
       .eq("id", quoteId)
       .maybeSingle<QuoteRow>();
 
@@ -80,11 +85,13 @@ export async function transitionQuoteStatus(
       const customerId = normalizeId(input.customerId ?? null);
       const customerEmail = normalizeEmail(input.customerEmail ?? null);
       const quoteCustomerId = normalizeId(quote.customer_id ?? null);
-      const quoteEmail = normalizeEmail(quote.email ?? null);
+      const quoteCustomerEmail = normalizeEmail(quote.customer_email ?? null);
 
       const customerIdMatches = Boolean(customerId) && customerId === quoteCustomerId;
       const customerEmailMatches =
-        Boolean(customerEmail) && Boolean(quoteEmail) && customerEmail === quoteEmail;
+        Boolean(customerEmail) &&
+        Boolean(quoteCustomerEmail) &&
+        customerEmail === quoteCustomerEmail;
 
       if (!customerIdMatches && !customerEmailMatches) {
         console.warn("[quote status] access denied", {
@@ -94,7 +101,7 @@ export async function transitionQuoteStatus(
           customerId: customerId || null,
           quoteCustomerId: quoteCustomerId || null,
           customerEmail: customerEmail || null,
-          quoteEmail: quoteEmail || null,
+          quoteCustomerEmail: quoteCustomerEmail || null,
         });
         return {
           ok: false,
