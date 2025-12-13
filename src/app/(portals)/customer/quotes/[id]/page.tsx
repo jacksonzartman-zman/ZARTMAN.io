@@ -175,8 +175,10 @@ export default async function CustomerQuoteDetailPage({
   const quoteEventsResult = await listQuoteEventsForQuote(quote.id);
   const quoteEvents = quoteEventsResult.ok ? quoteEventsResult.events : [];
   const quoteIsWon = normalizedQuoteStatus === "won";
-  const quoteAllowsCustomerAward =
-    normalizedQuoteStatus === "quoted" || normalizedQuoteStatus === "approved";
+  const quoteAwardStatusAllowed =
+    normalizedQuoteStatus !== "cancelled" &&
+    normalizedQuoteStatus !== "won" &&
+    normalizedQuoteStatus !== "lost";
   const statusWinningBid =
     bids.find(
       (bid) =>
@@ -205,7 +207,10 @@ export default async function CustomerQuoteDetailPage({
     winningSupplierProfile?.primary_email ||
     winningSupplierId;
   const quoteHasWinner =
-    Boolean(quote.awarded_at) || Boolean(quote.awarded_bid_id) || Boolean(winningBidId);
+    Boolean(quote.awarded_at) ||
+    Boolean(quote.awarded_bid_id) ||
+    Boolean(quote.awarded_supplier_id) ||
+    Boolean(winningBidId);
   let supplierKickoffTasksResult: SupplierKickoffTasksResult | null = null;
   if (winningSupplierId) {
     supplierKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
@@ -242,11 +247,7 @@ export default async function CustomerQuoteDetailPage({
   const messagesUnavailable = !messagesResult.ok;
   const showCustomerSupplierSection = bidCount > 0;
   const customerCanAward =
-    quoteAllowsCustomerAward &&
-    bidCount > 0 &&
-    !quoteIsWon &&
-    !quoteHasWinner &&
-    !readOnly;
+    bidCount > 0 && quoteAwardStatusAllowed && !quoteHasWinner && !readOnly;
   let customerAwardDisabledReason: string | null = null;
   if (showCustomerSupplierSection && !customerCanAward) {
     if (readOnly) {
@@ -255,9 +256,9 @@ export default async function CustomerQuoteDetailPage({
     } else if (quoteIsWon || quoteHasWinner) {
       customerAwardDisabledReason =
         "A winning supplier has already been selected for this quote.";
-    } else if (!quoteAllowsCustomerAward) {
+    } else if (!quoteAwardStatusAllowed) {
       customerAwardDisabledReason =
-        "We’ll unlock supplier selection after your quote is prepared. We’re still collecting bids and preparing the final pricing.";
+        "Selecting a winner is unavailable for closed or archived RFQs.";
     }
   }
   const pricedBids = bids.filter(
@@ -612,7 +613,7 @@ export default async function CustomerQuoteDetailPage({
           </p>
         ) : bidCount === 0 ? (
           <p className="text-xs text-slate-400">
-            No supplier bids yet. We&apos;ll notify you when bids arrive.
+            Supplier selection unlocks after you receive your first bid.
           </p>
         ) : (
           <>
