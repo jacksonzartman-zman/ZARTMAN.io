@@ -29,10 +29,6 @@ import QuoteUpdateForm from "../QuoteUpdateForm";
 import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
 import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
 import { QuoteFilesCard } from "./QuoteFilesCard";
-import {
-  QuoteWorkspaceTabs,
-  type QuoteWorkspaceTab,
-} from "./QuoteWorkspaceTabs";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import {
   deriveAdminQuoteAttentionState,
@@ -56,6 +52,8 @@ import {
 } from "@/server/quotes/kickoffTasks";
 import { postQuoteMessage as postAdminQuoteMessage } from "./actions";
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
+import { CollapsibleCard } from "@/components/CollapsibleCard";
+import { AdminDecisionCtas } from "./AdminDecisionCtas";
 
 export const dynamic = "force-dynamic";
 
@@ -666,25 +664,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       </section>
     );
 
-    const summaryContent = (
+    const uploadsContent = (
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-4 lg:space-y-5">
-          <QuoteFilesCard
-            id={fileCardAnchorId}
-            files={filePreviews}
-            className="scroll-mt-20"
-          />
+          <QuoteFilesCard id={fileCardAnchorId} files={filePreviews} />
           {rfqSummaryCard}
         </div>
-        <div className="space-y-4 lg:space-y-5">
-          {projectNotesCard}
-          <AdminQuoteProjectCard
-            quoteId={quote.id}
-            project={project}
-            projectUnavailable={projectUnavailable}
-            className={cardClasses}
-          />
-        </div>
+        <div className="space-y-4 lg:space-y-5">{projectNotesCard}</div>
       </div>
     );
 
@@ -765,23 +751,22 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       />
     );
 
-    const tabs: {
-      id: QuoteWorkspaceTab;
-      label: string;
-      count?: number;
-      content: ReactNode;
-    }[] = [
-      { id: "summary", label: "Summary", content: summaryContent },
-      {
-        id: "messages",
-        label: "Messages",
-        count: quoteMessages.length,
-        content: messagesContent,
-      },
-      { id: "edit", label: "Edit quote", content: editContent },
-      { id: "viewer", label: "3D viewer", content: viewerContent },
-      { id: "tracking", label: "Tracking", content: trackingContent },
-    ];
+    const decisionAwardedSupplier =
+      winningBidExists && (winningSupplierName ?? "").trim().length > 0
+        ? (winningSupplierName ?? "").trim()
+        : winningBidExists
+          ? "Supplier selected"
+          : "Not awarded";
+    const decisionAwardedAt = awardedAtLabel ?? (winningBidExists ? "Pending" : "—");
+    const decisionAwardedBy =
+      winningBidExists || awardedAtLabel
+        ? awardedByLabel || "—"
+        : "—";
+    const decisionHeaderTone = attentionState.needsDecision
+      ? "border-amber-500/30 bg-amber-500/5"
+      : winningBidExists
+        ? "border-emerald-500/30 bg-emerald-500/5"
+        : "border-slate-800 bg-slate-950/60";
 
     return (
       <AdminDashboardShell
@@ -804,6 +789,58 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         }
       >
         <div className="space-y-6">
+          <section
+            className={clsx(
+              "sticky top-4 z-30 rounded-2xl border px-5 py-4 backdrop-blur",
+              decisionHeaderTone,
+            )}
+          >
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Decision console
+                </p>
+                <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+                  <DecisionField label="RFQ status" value={statusLabel} />
+                  <DecisionField
+                    label="Awarded supplier"
+                    value={decisionAwardedSupplier}
+                    valueClassName={
+                      decisionAwardedSupplier === "Not awarded"
+                        ? "text-slate-300"
+                        : "text-slate-50"
+                    }
+                  />
+                  <DecisionField label="Awarded at" value={decisionAwardedAt} />
+                  <DecisionField label="Awarded by" value={decisionAwardedBy} />
+                </dl>
+              </div>
+              <div className="flex flex-col items-start gap-2 sm:items-end">
+                <AdminDecisionCtas quoteId={quote.id} status={status} />
+                <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
+                  <a
+                    href="#uploads-panel"
+                    className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 hover:border-emerald-400 hover:text-emerald-100"
+                  >
+                    Uploads
+                  </a>
+                  <a
+                    href="#messages-panel"
+                    className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 hover:border-emerald-400 hover:text-emerald-100"
+                  >
+                    Messages
+                  </a>
+                  <a
+                    href="#kickoff-panel"
+                    className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 hover:border-emerald-400 hover:text-emerald-100"
+                  >
+                    Kickoff
+                  </a>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <div className="space-y-3">
             <div className="overflow-x-auto pb-1">
               <div className="flex min-w-max gap-2">
@@ -822,7 +859,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   Target date: {targetDateChipText}
                 </span>
                 <a
-                  href={`#${fileCardAnchorId}`}
+                  href="#uploads-panel"
                   className={clsx(
                     pillBaseClasses,
                     secondaryPillClasses,
@@ -890,8 +927,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </div>
           </div>
 
-          <QuoteWorkspaceTabs tabs={tabs} defaultTab="summary" />
-
           <SupplierBidsCard
             id="bids-panel"
             quoteId={quote.id}
@@ -902,9 +937,99 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             bidsLoaded={bidsResult.ok}
             errorMessage={bidsResult.ok ? bidsResult.error : null}
           />
+
+          <div className="space-y-4">
+            <CollapsibleCard
+              id="uploads-panel"
+              title="Uploads & intake"
+              description="Files, structured intake metadata, and customer notes."
+              defaultOpen={false}
+              summary={
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  {fileCountText}
+                </span>
+              }
+            >
+              {uploadsContent}
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              id="kickoff-panel"
+              title="Kickoff"
+              description="Customer PO, ship date, and handoff notes (visible to winner)."
+              defaultOpen={false}
+              summary={
+                <span className={clsx("rounded-full border px-3 py-1", kickoffSummaryTone)}>
+                  {kickoffSummaryLabel}
+                </span>
+              }
+            >
+              <AdminQuoteProjectCard
+                quoteId={quote.id}
+                project={project}
+                projectUnavailable={projectUnavailable}
+                className={cardClasses}
+              />
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              id="messages-panel"
+              title="Messages"
+              description="Shared customer + supplier thread for this RFQ."
+              defaultOpen={false}
+              summary={
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
+                </span>
+              }
+            >
+              {messagesContent}
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Edit quote"
+              description="Status, pricing, target date, internal and DFM notes."
+              defaultOpen={false}
+            >
+              {editContent}
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="Tracking"
+              description="Status changes, bids, award, and kickoff activity."
+              defaultOpen={false}
+            >
+              {trackingContent}
+            </CollapsibleCard>
+
+            <CollapsibleCard
+              title="3D viewer workspace"
+              description="Open STL previews in the interactive modal."
+              defaultOpen={false}
+            >
+              {viewerContent}
+            </CollapsibleCard>
+          </div>
         </div>
       </AdminDashboardShell>
     );
+}
+
+function DecisionField({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+      <dt className="text-[11px] uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className={clsx("font-medium text-slate-100", valueClassName)}>{value}</dd>
+    </div>
+  );
 }
 
 function SnapshotField({ label, value }: { label: string; value: string }) {

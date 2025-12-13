@@ -12,5 +12,9 @@ export const primaryCtaClasses = `${CTA_BASE_CLASSES} ${CTA_SIZE_VARIANTS.md} bg
 
 export const secondaryCtaClasses = `${CTA_BASE_CLASSES} ${CTA_SIZE_VARIANTS.md} border border-emerald-400/60 bg-transparent text-emerald-200 hover:bg-emerald-400/10 focus-visible:outline-emerald-400`;
 
+export const infoCtaClasses = `${CTA_BASE_CLASSES} ${CTA_SIZE_VARIANTS.md} border border-blue-400/70 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20 focus-visible:outline-blue-300`;
+
+export const dangerCtaClasses = `${CTA_BASE_CLASSES} ${CTA_SIZE_VARIANTS.md} border border-red-400/60 bg-red-500/10 text-red-100 hover:bg-red-500/20 focus-visible:outline-red-300`;
+
 export const ghostCtaClasses =
   "inline-flex items-center justify-center rounded-full border border-ink-soft px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink-soft/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
