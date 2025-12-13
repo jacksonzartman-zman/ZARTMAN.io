@@ -6,7 +6,6 @@ import {
 import {
   isMissingSchemaError,
   logAdminQuotesError,
-  logAdminQuotesInfo,
   logAdminQuotesWarn,
   serializeSupabaseError,
 } from "@/server/admin/logging";
@@ -39,6 +38,8 @@ type InboxExtraField =
   | "has_awarded_bid"
   | "awarded_supplier_name";
 
+const ADMIN_QUOTES_INBOX_TABLE = "admin_quotes_inbox" as const;
+
 // Explicit select list: keep this aligned with what the admin quotes UI reads.
 // Note: `admin_quotes_inbox` is service-role only (see sql/019_gap6_admin_inbox_activity.sql).
 const ADMIN_QUOTES_INBOX_SELECT = [
@@ -63,6 +64,8 @@ const ADMIN_QUOTES_INBOX_SELECT = [
   "has_awarded_bid",
   "awarded_supplier_name",
 ] as const satisfies readonly (InboxBaseField | InboxExtraField | "upload_name")[];
+
+const ADMIN_QUOTES_INBOX_SELECT_STRING = ADMIN_QUOTES_INBOX_SELECT.join(",");
 
 export type AdminQuotesInboxRow = {
   id: string;
@@ -148,6 +151,14 @@ export async function getAdminQuotesInbox(
   // Fetch one extra row so we can answer "hasMore" without relying on total count.
   const rangeTo = rangeFrom + pageSize;
 
+  function buildQueryLogContext(error: unknown) {
+    return {
+      table: ADMIN_QUOTES_INBOX_TABLE,
+      select: ADMIN_QUOTES_INBOX_SELECT_STRING,
+      supabaseError: serializeSupabaseError(error),
+    };
+  }
+
   try {
     const supabase = getServiceRoleSupabaseClient();
 
@@ -180,8 +191,8 @@ export async function getAdminQuotesInbox(
     }
 
     let query = supabase
-      .from("admin_quotes_inbox")
-      .select(ADMIN_QUOTES_INBOX_SELECT.join(","), { count: "exact" })
+      .from(ADMIN_QUOTES_INBOX_TABLE)
+      .select(ADMIN_QUOTES_INBOX_SELECT_STRING, { count: "exact" })
       .range(rangeFrom, rangeTo);
 
     if (filter.status) {
@@ -216,9 +227,10 @@ export async function getAdminQuotesInbox(
       if (isMissingSchemaError(error)) {
         if (!warnedMissingAdminInboxSchema) {
           warnedMissingAdminInboxSchema = true;
-          logAdminQuotesWarn("admin inbox view missing schema; returning empty", {
-            supabaseError: serializeSupabaseError(error),
-          });
+          logAdminQuotesWarn(
+            "admin inbox view missing schema; returning empty",
+            buildQueryLogContext(error),
+          );
         }
         return {
           ok: true,
@@ -235,9 +247,7 @@ export async function getAdminQuotesInbox(
         };
       }
 
-      logAdminQuotesError("admin inbox query failed", {
-        supabaseError: serializeSupabaseError(error),
-      });
+      logAdminQuotesError("admin inbox query failed", buildQueryLogContext(error));
       return {
         ok: false,
         data: { rows: [], count: 0, page, pageSize, hasMore: false },
@@ -248,17 +258,6 @@ export async function getAdminQuotesInbox(
     const fetchedRows = Array.isArray(data) ? data : [];
     const hasMore = fetchedRows.length > pageSize;
     const rows = hasMore ? fetchedRows.slice(0, pageSize) : fetchedRows;
-    logAdminQuotesInfo("admin inbox loaded", {
-      count: rows.length,
-      page,
-      pageSize,
-      sort,
-      hasMore,
-      hasSearch: Boolean(normalizedSearch),
-      status: filter.status ?? null,
-      hasBids: filter.hasBids ?? null,
-      awarded: filter.awarded ?? null,
-    });
 
     return {
       ok: true,
@@ -275,9 +274,10 @@ export async function getAdminQuotesInbox(
     if (isMissingSchemaError(error)) {
       if (!warnedMissingAdminInboxSchema) {
         warnedMissingAdminInboxSchema = true;
-        logAdminQuotesWarn("admin inbox view crashed due to missing schema; returning empty", {
-          supabaseError: serializeSupabaseError(error),
-        });
+        logAdminQuotesWarn(
+          "admin inbox view crashed due to missing schema; returning empty",
+          buildQueryLogContext(error),
+        );
       }
       return {
         ok: true,
@@ -294,9 +294,7 @@ export async function getAdminQuotesInbox(
       };
     }
 
-    logAdminQuotesError("admin inbox crashed", {
-      supabaseError: serializeSupabaseError(error),
-    });
+    logAdminQuotesError("admin inbox crashed", buildQueryLogContext(error));
     return {
       ok: false,
       data: { rows: [], count: 0, page, pageSize, hasMore: false },
