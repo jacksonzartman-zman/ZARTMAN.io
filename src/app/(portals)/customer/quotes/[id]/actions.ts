@@ -410,14 +410,18 @@ export async function awardQuoteToBidAction(
     return { ok: false, error: CUSTOMER_AWARD_BID_ERROR };
   }
 
+  return awardCustomerBid(quoteId, bidId);
+}
+
+export async function awardCustomerBid(
+  quoteId: string,
+  bidId: string,
+): Promise<AwardActionState> {
   try {
     const user = await requireUser({
       redirectTo: `/customer/quotes/${quoteId}`,
     });
     const customer = await getCustomerByUserId(user.id);
-    const overrideEmail = normalizeEmailInput(
-      getFormString(formData, "overrideEmail") ?? null,
-    );
 
     if (!customer) {
       return {
@@ -434,7 +438,6 @@ export async function awardQuoteToBidAction(
       actorEmail: user.email ?? null,
       customerId: customer.id,
       customerEmail: customer.email,
-      overrideEmail,
     });
 
     if (!result.ok) {
@@ -452,13 +455,6 @@ export async function awardQuoteToBidAction(
         error: message ?? CUSTOMER_AWARD_GENERIC_ERROR,
       };
     }
-
-    console.info("[customer award] success", {
-      quoteId,
-      bidId,
-      userId: user.id,
-      customerId: customer.id,
-    });
 
     return {
       ok: true,

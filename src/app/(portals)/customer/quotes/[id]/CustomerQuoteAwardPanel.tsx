@@ -37,6 +37,10 @@ export function CustomerQuoteAwardPanel({
   const resolvedWinnerId = state.selectedBidId ?? winningBidId ?? null;
   const selectionLocked = Boolean(resolvedWinnerId);
   const showDisableNotice = Boolean(disableReason) && (!canSubmit || selectionLocked);
+  const confirmingBid =
+    confirmingBidId && !selectionLocked
+      ? bids.find((bid) => bid.id === confirmingBidId) ?? null
+      : null;
 
   useEffect(() => {
     if (state.ok && state.selectedBidId) {
@@ -81,88 +85,119 @@ export function CustomerQuoteAwardPanel({
         </p>
       ) : null}
 
-      <ol className="space-y-4">
-        {bids.map((bid) => {
-          const isWinner = resolvedWinnerId === bid.id;
-          const showActionButton = canSubmit && !selectionLocked;
-          const priceText = bid.priceDisplay ?? "Price pending";
-          const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
-          const submittedText = formatDateTime(bid.createdAt, { includeTime: true }) ?? "Just now";
-          const statusLabel = formatBidStatusLabel(bid.status);
-          const statusClasses = getStatusClasses(bid.status);
-          const isConfirming = confirmingBidId === bid.id;
-
-          return (
-            <li
-              key={bid.id}
-              className={clsx(
-                "space-y-3 rounded-2xl border px-5 py-4 transition",
+      <div className="overflow-x-auto rounded-2xl border border-slate-900/60 bg-slate-950/40">
+        <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+          <thead className="border-b border-slate-900/60 bg-slate-950/70">
+            <tr className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+              <th className="px-5 py-3">Supplier</th>
+              <th className="px-5 py-3">Price</th>
+              <th className="px-5 py-3">Lead time</th>
+              <th className="px-5 py-3">Notes</th>
+              <th className="px-5 py-3">Status</th>
+              <th className="px-5 py-3 text-right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bids.map((bid) => {
+              const isWinner = resolvedWinnerId === bid.id;
+              const submittedText =
+                formatDateTime(bid.createdAt, { includeTime: true }) ?? "Just now";
+              const statusLabel = formatBidStatusLabel(bid.status);
+              const statusClasses = getStatusClasses(bid.status);
+              const priceText = bid.priceDisplay ?? "Price pending";
+              const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
+              const awardDisabled = !canSubmit || selectionLocked;
+              const rowClasses = clsx(
+                "border-b border-slate-900/60",
                 isWinner
-                  ? "border-emerald-400/60 bg-emerald-500/5"
-                  : "border-slate-900/60 bg-slate-950/40 hover:border-slate-800",
-              )}
-            >
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
-                    Supplier
-                  </p>
-                  <p className="text-xl font-semibold text-white heading-snug">
-                    {bid.supplierName}
-                  </p>
-                  <p className="text-sm text-slate-300">
-                    Submitted {submittedText}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={clsx("pill px-3 py-1 text-[11px]", statusClasses)}>
-                    Status: {statusLabel}
-                  </span>
-                  {isWinner ? (
-                    <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
-                      Winner selected
+                  ? "bg-emerald-500/5"
+                  : "bg-transparent",
+              );
+
+              return (
+                <tr key={bid.id} className={rowClasses}>
+                  <td className="px-5 py-4 align-top">
+                    <p className="text-base font-semibold text-white">{bid.supplierName}</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Submitted {submittedText}
+                    </p>
+                    {isWinner ? (
+                      <div className="mt-2">
+                        <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
+                          Winner selected
+                        </span>
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="px-5 py-4 align-top text-slate-100">
+                    <span className="font-semibold text-white">{priceText}</span>
+                  </td>
+                  <td className="px-5 py-4 align-top text-slate-100">
+                    <span className="font-semibold text-white">{leadTimeText}</span>
+                  </td>
+                  <td className="px-5 py-4 align-top text-slate-200">
+                    <span className="line-clamp-3">{bid.notes ?? "—"}</span>
+                  </td>
+                  <td className="px-5 py-4 align-top">
+                    <span className={clsx("pill px-3 py-1 text-[11px]", statusClasses)}>
+                      {statusLabel}
                     </span>
-                  ) : null}
-                </div>
+                  </td>
+                  <td className="px-5 py-4 align-top text-right">
+                    {awardDisabled ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-400 opacity-70"
+                      >
+                        {isWinner ? "Winner selected" : "Award locked"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingBidId(bid.id)}
+                        className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+                      >
+                        Award to this supplier
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {confirmingBid ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
+          <div className="w-full max-w-lg space-y-4 rounded-2xl border border-slate-800 bg-slate-950 px-6 py-5 shadow-xl">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                Confirm award
+              </p>
+              <h3 className="text-xl font-semibold text-white">
+                Award this RFQ to {confirmingBid.supplierName}?
+              </h3>
+              <p className="text-sm text-slate-300">
+                This marks <span className="font-semibold text-white">{confirmingBid.supplierName}</span>{" "}
+                as the winning selection.
+              </p>
+            </div>
+            <form action={formAction} className="space-y-3">
+              <input type="hidden" name="quoteId" value={quoteId} />
+              <input type="hidden" name="bidId" value={confirmingBid.id} />
+              <p className="text-xs text-slate-400">
+                Selecting a winner notifies the supplier immediately and locks other bids.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <ConfirmAwardButton />
+                <CancelConfirmButton onClick={() => setConfirmingBidId(null)} />
               </div>
-
-              <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">
-                    Price
-                  </dt>
-                  <dd className="text-lg font-semibold text-white heading-snug">{priceText}</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">
-                    Lead time
-                  </dt>
-                  <dd className="text-lg font-semibold text-white heading-snug">{leadTimeText}</dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-500">
-                    Notes
-                  </dt>
-                  <dd className="text-sm text-slate-200">
-                    {bid.notes ?? "No notes shared."}
-                  </dd>
-                </div>
-              </dl>
-
-              {showActionButton ? (
-                <AwardBidControls
-                  formAction={formAction}
-                  bidId={bid.id}
-                  quoteId={quoteId}
-                  isConfirming={isConfirming}
-                  onConfirmRequest={() => setConfirmingBidId(bid.id)}
-                  onCancelConfirm={() => setConfirmingBidId(null)}
-                />
-              ) : null}
-            </li>
-          );
-        })}
-      </ol>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       <div className="space-y-2 rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-4">
         <p className="text-sm font-semibold text-slate-100">What happens when you award?</p>
@@ -173,50 +208,6 @@ export function CustomerQuoteAwardPanel({
         </ul>
       </div>
     </section>
-  );
-}
-
-type AwardBidControlsProps = {
-  formAction: (payload: FormData) => void;
-  bidId: string;
-  quoteId: string;
-  isConfirming: boolean;
-  onConfirmRequest: () => void;
-  onCancelConfirm: () => void;
-};
-
-function AwardBidControls({
-  formAction,
-  bidId,
-  quoteId,
-  isConfirming,
-  onConfirmRequest,
-  onCancelConfirm,
-}: AwardBidControlsProps) {
-  return (
-    <div className="border-t border-slate-900/60 pt-4">
-      {isConfirming ? (
-        <form action={formAction} className="space-y-3">
-          <input type="hidden" name="quoteId" value={quoteId} />
-          <input type="hidden" name="bidId" value={bidId} />
-          <p className="text-xs text-slate-400">
-            Selecting a winner notifies the supplier immediately and locks other bids.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <ConfirmAwardButton />
-            <CancelConfirmButton onClick={onCancelConfirm} />
-          </div>
-        </form>
-      ) : (
-        <button
-          type="button"
-          onClick={onConfirmRequest}
-          className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
-        >
-          Award supplier
-        </button>
-      )}
-    </div>
   );
 }
 

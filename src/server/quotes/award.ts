@@ -95,8 +95,6 @@ export async function performAwardFlow(
     return { ok: false, reason: "invalid_input", error: "Invalid quote or bid id." };
   }
 
-  console.info("[award] start", logContext);
-
   const quote = await loadQuoteForAward(quoteId);
   if (!quote) {
     console.warn("[award] validation failed", {
@@ -108,11 +106,6 @@ export async function performAwardFlow(
 
   // Idempotency: awarding the same bid twice should be a no-op success.
   if (quote.awarded_bid_id && quote.awarded_bid_id === bidId) {
-    console.info("[award] idempotent no-op", {
-      ...logContext,
-      awardedBidId: bidId,
-      winningSupplierId: quote.awarded_supplier_id ?? null,
-    });
     return {
       ok: true,
       awardedBidId: bidId,
@@ -269,12 +262,6 @@ export async function performAwardFlow(
     quoteId,
     bidId,
     caller: actorRole,
-  });
-
-  console.info("[award] success", {
-    ...logContext,
-    awardedBidId: bidId,
-    winningSupplierId,
   });
 
   return {
