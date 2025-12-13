@@ -6,24 +6,34 @@ import {
 
 export type SupplierQuoteAccessDeniedReason =
   | "no_access"
+  | "awarded"
+  | "has_bid"
+  | "assigned_email_match"
   | "profile_missing"
   | "schema_error"
   | "unknown";
 
 export type SupplierQuoteAccessResult =
-  | { ok: true }
+  | { ok: true; reason: "awarded" | "has_bid" | "assigned_email_match" }
   | {
       ok: false;
       reason: SupplierQuoteAccessDeniedReason;
       error?: any;
+      debug?: {
+        awarded: boolean;
+        has_bid: boolean;
+        assigned_email_match: boolean;
+      };
     };
 
 export async function assertSupplierQuoteAccess(args: {
   quoteId: string;
   supplierId: string | null | undefined;
+  supplierUserEmail?: string | null | undefined;
 }): Promise<SupplierQuoteAccessResult> {
   const quoteId = normalizeId(args.quoteId);
   const supplierId = normalizeId(args.supplierId);
+  const supplierUserEmail = normalizeEmail(args.supplierUserEmail);
 
   if (!supplierId) {
     return { ok: false, reason: "profile_missing" };
@@ -33,76 +43,79 @@ export async function assertSupplierQuoteAccess(args: {
   }
 
   try {
-    // (1) Supplier has a bid on the quote
-    {
-      const { data, error } = await supabaseServer
+    const [bidResult, quoteResult] = await Promise.all([
+      supabaseServer
         .from("supplier_bids")
         .select("id")
         .eq("quote_id", quoteId)
         .eq("supplier_id", supplierId)
-        .limit(1);
-
-      if (error) {
-        const serialized = serializeSupabaseError(error);
-        return {
-          ok: false,
-          reason: isMissingTableOrColumnError(error) ? "schema_error" : "unknown",
-          error: serialized ?? error,
-        };
-      }
-
-      if (Array.isArray(data) && data.length > 0) {
-        return { ok: true };
-      }
-    }
-
-    // (2) Supplier is explicitly assigned/invited for the quote
-    {
-      const { data, error } = await supabaseServer
-        .from("quote_suppliers")
-        .select("id")
-        .eq("quote_id", quoteId)
-        .eq("supplier_id", supplierId)
-        .limit(1);
-
-      if (error) {
-        const serialized = serializeSupabaseError(error);
-        return {
-          ok: false,
-          reason: isMissingTableOrColumnError(error) ? "schema_error" : "unknown",
-          error: serialized ?? error,
-        };
-      }
-
-      if (Array.isArray(data) && data.length > 0) {
-        return { ok: true };
-      }
-    }
-
-    // (3) Supplier is the awarded supplier for the quote
-    {
-      const { data, error } = await supabaseServer
+        .limit(1),
+      supabaseServer
         .from("quotes")
-        .select("awarded_supplier_id")
+        .select("awarded_supplier_id,assigned_supplier_email")
         .eq("id", quoteId)
-        .maybeSingle<{ awarded_supplier_id: string | null }>();
+        .maybeSingle<{
+          awarded_supplier_id: string | null;
+          assigned_supplier_email: string | null;
+        }>(),
+    ]);
 
-      if (error) {
-        const serialized = serializeSupabaseError(error);
-        return {
-          ok: false,
-          reason: isMissingTableOrColumnError(error) ? "schema_error" : "unknown",
-          error: serialized ?? error,
-        };
-      }
-
-      const awardedSupplierId = normalizeId(data?.awarded_supplier_id);
-      if (awardedSupplierId && awardedSupplierId === supplierId) {
-        return { ok: true };
-      }
+    if (bidResult.error) {
+      const serialized = serializeSupabaseError(bidResult.error);
+      return {
+        ok: false,
+        reason: isMissingTableOrColumnError(bidResult.error)
+          ? "schema_error"
+          : "unknown",
+        error: serialized ?? bidResult.error,
+      };
     }
 
-    return { ok: false, reason: "no_access" };
+    if (quoteResult.error) {
+      const serialized = serializeSupabaseError(quoteResult.error);
+      return {
+        ok: false,
+        reason: isMissingTableOrColumnError(quoteResult.error)
+          ? "schema_error"
+          : "unknown",
+        error: serialized ?? quoteResult.error,
+      };
+    }
+
+    const hasBid = Array.isArray(bidResult.data) && bidResult.data.length > 0;
+    const awardedSupplierId = normalizeId(quoteResult.data?.awarded_supplier_id);
+    const awarded = Boolean(awardedSupplierId && awardedSupplierId === supplierId);
+
+    const assignedSupplierEmail = normalizeEmail(
+      quoteResult.data?.assigned_supplier_email,
+    );
+    const assignedEmailMatch = Boolean(
+      assignedSupplierEmail &&
+        supplierUserEmail &&
+        assignedSupplierEmail === supplierUserEmail,
+    );
+
+    if (awarded) {
+      return { ok: true, reason: "awarded" };
+    }
+
+    if (hasBid) {
+      return { ok: true, reason: "has_bid" };
+    }
+
+    if (assignedEmailMatch) {
+      return { ok: true, reason: "assigned_email_match" };
+    }
+
+    return {
+      ok: false,
+      reason: "no_access",
+      debug: {
+        awarded,
+        has_bid: hasBid,
+        assigned_email_match: assignedEmailMatch,
+      },
+    };
   } catch (error) {
     return { ok: false, reason: "unknown", error };
   }
@@ -121,6 +134,14 @@ function normalizeId(value: unknown): string {
     return "";
   }
   const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "";
+}
+
+function normalizeEmail(value: unknown): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : "";
 }
 

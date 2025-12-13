@@ -14,7 +14,6 @@ import { notifyAdminOnBidSubmitted } from "@/server/quotes/notifications";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import {
-  loadSupplierProfile,
   loadSupplierProfileByUserId,
   isSupplierApproved,
   type SupplierBidRow,
@@ -291,6 +290,7 @@ export async function postSupplierMessageImpl(
     const access = await assertSupplierQuoteAccess({
       quoteId: trimmedQuoteId,
       supplierId,
+      supplierUserEmail: user.email ?? null,
     });
 
     if (!access.ok) {
@@ -298,6 +298,7 @@ export async function postSupplierMessageImpl(
         quoteId: trimmedQuoteId,
         supplierId,
         reason: access.reason,
+        debug: access.debug ?? null,
       });
       return {
         ok: false,
@@ -432,10 +433,6 @@ export async function submitSupplierBidImpl(
       ? await loadSupplierProfileByUserId(user.id)
       : null;
 
-    if (!supplierProfile && user.email) {
-      supplierProfile = await loadSupplierProfile(user.email);
-    }
-
     if (!supplierProfile?.supplier) {
       return {
         ok: false,
@@ -471,12 +468,14 @@ export async function submitSupplierBidImpl(
     const access = await assertSupplierQuoteAccess({
       quoteId,
       supplierId: supplier.id,
+      supplierUserEmail: user.email ?? null,
     });
     if (!access.ok) {
       console.warn("[supplier access] denied", {
         quoteId,
         supplierId: supplier.id,
         reason: access.reason,
+        debug: access.debug ?? null,
       });
       return {
         ok: false,
@@ -808,6 +807,7 @@ export async function completeKickoffTaskImpl(
     const access = await assertSupplierQuoteAccess({
       quoteId,
       supplierId: resolvedSupplierId,
+      supplierUserEmail: user.email ?? null,
     });
 
     if (!access.ok) {
