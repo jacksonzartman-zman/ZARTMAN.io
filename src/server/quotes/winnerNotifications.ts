@@ -18,14 +18,25 @@ type DispatchInput = {
   quoteId: string;
   bidId: string;
   caller: WinnerNotificationCaller;
+  actorUserId: string;
 };
 
 export async function dispatchWinnerNotification({
   quoteId,
   bidId,
   caller,
+  actorUserId,
 }: DispatchInput) {
   const prefix = CALLER_LOG_PREFIX[caller] ?? "[winner notifications]";
+  const normalizedActorUserId = normalizeId(actorUserId);
+  if (!normalizedActorUserId) {
+    console.warn(`${prefix} winner notification missing actor`, {
+      quoteId,
+      bidId,
+      caller,
+      reason: "missing-actor",
+    });
+  }
 
   try {
     const [quoteContext, winnerContext] = await Promise.all([
@@ -51,6 +62,10 @@ export async function dispatchWinnerNotification({
       winningBid: winnerContext.winningBid,
       supplier: winnerContext.supplier,
       customer,
+      actor: {
+        role: caller,
+        userId: normalizedActorUserId || null,
+      },
     });
   } catch (error) {
     console.error(`${prefix} winner notification failed`, {
@@ -90,4 +105,8 @@ function normalizeEmail(value?: string | null): string | null {
   }
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeId(value?: string | null): string {
+  return typeof value === "string" ? value.trim() : "";
 }

@@ -141,7 +141,10 @@ export async function performAwardFlow(
     // If the quote is already awarded, kickoff tasks should already exist, but
     // we keep this safe and idempotent in case a previous run crashed mid-flow.
     try {
-      await ensureKickoffTasksForQuote(quoteId);
+      await ensureKickoffTasksForQuote(quoteId, {
+        actorRole,
+        actorUserId,
+      });
     } catch (error) {
       console.warn("[award] kickoff ensure failed (no-op award)", {
         ...logContext,
@@ -342,7 +345,10 @@ export async function performAwardFlow(
   // Auto-start supplier kickoff checklist immediately on award (idempotent).
   // Best-effort: kickoff initialization should not block a successful award.
   try {
-    await ensureKickoffTasksForQuote(quoteId);
+    await ensureKickoffTasksForQuote(quoteId, {
+      actorRole,
+      actorUserId,
+    });
   } catch (error) {
     console.warn("[award] kickoff ensure failed", {
       ...logContext,
@@ -360,6 +366,7 @@ export async function performAwardFlow(
     quoteId,
     bidId,
     caller: actorRole,
+    actorUserId,
   });
 
   return {

@@ -22,6 +22,10 @@ type WinningBidParams = {
   winningBid: SupplierBidRow;
   supplier: SupplierRow;
   customer: CustomerRow | null;
+  actor: {
+    role: "admin" | "customer" | "system";
+    userId: string | null;
+  };
 };
 
 type ProjectKickoffDetails = {
@@ -201,10 +205,14 @@ export async function notifyOnWinningBidSelected(
         recipientEmail: supplierEmail,
         recipientUserId: params.supplier.user_id ?? null,
         recipientRole: "supplier",
+        actorRole: params.actor.role,
+        actorUserId: params.actor.userId,
         audience: "supplier",
         payload: {
           bidId: params.winningBid.id,
           supplierId: params.supplier.id,
+          actorRole: params.actor.role,
+          actorUserId: params.actor.userId,
         },
         subject: `Your bid won – RFQ ${quoteTitle}`,
         previewText: `We selected your proposal for ${quoteTitle}.`,
@@ -235,10 +243,14 @@ export async function notifyOnWinningBidSelected(
         recipientEmail: customerEmail,
         recipientUserId: params.customer?.user_id ?? null,
         recipientRole: "customer",
+        actorRole: params.actor.role,
+        actorUserId: params.actor.userId,
         audience: "customer",
         payload: {
           bidId: params.winningBid.id,
           supplierId: params.supplier.id,
+          actorRole: params.actor.role,
+          actorUserId: params.actor.userId,
         },
         subject: `Winning supplier selected for your RFQ`,
         previewText: `We marked a winning supplier for ${quoteTitle}.`,

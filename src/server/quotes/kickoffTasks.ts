@@ -6,6 +6,7 @@ import {
 } from "@/server/admin/logging";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 import { emitQuoteEvent } from "@/server/quotes/events";
+import type { QuoteEventActorRole } from "@/server/quotes/events";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_SUPPLIER_KICKOFF_TASKS,
@@ -498,8 +499,13 @@ async function seedKickoffTasks(
  */
 export async function ensureKickoffTasksForQuote(
   quoteId: string,
+  actor?: {
+    actorRole?: QuoteEventActorRole | null;
+    actorUserId?: string | null;
+  },
 ): Promise<EnsureKickoffTasksForQuoteResult> {
   const normalizedQuoteId = normalizeId(quoteId);
+
   if (!normalizedQuoteId) {
     return {
       ok: false,
@@ -509,6 +515,17 @@ export async function ensureKickoffTasksForQuote(
       error: "missing-identifiers",
       reason: "missing-identifiers",
     };
+  }
+
+  const actorRole = normalizeKickoffActorRole(actor?.actorRole);
+  const actorUserId =
+    actorRole === "system" ? null : normalizeId(actor?.actorUserId) || null;
+
+  if (actorRole !== "system" && !actorUserId) {
+    console.warn("[quote kickoff tasks] missing actor attribution", {
+      quoteId: normalizedQuoteId,
+      actorRole,
+    });
   }
 
   const awardInfo = await loadQuoteAwardInfoForKickoff(normalizedQuoteId);
@@ -659,7 +676,9 @@ export async function ensureKickoffTasksForQuote(
         void emitQuoteEvent({
           quoteId: normalizedQuoteId,
           eventType: "kickoff_started",
-          actorRole: "system",
+          actorRole,
+          actorUserId,
+          actorSupplierId: null,
           metadata: { taskCount: createdCount, source: "award" },
         });
       }
@@ -734,6 +753,19 @@ function mapRowToTask(row: QuoteKickoffTaskRow): SupplierKickoffTask | null {
 
 function normalizeId(value: string | null | undefined): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeKickoffActorRole(value: unknown): QuoteEventActorRole {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (
+    normalized === "admin" ||
+    normalized === "customer" ||
+    normalized === "supplier" ||
+    normalized === "system"
+  ) {
+    return normalized;
+  }
+  return "system";
 }
 
 export function getMergedKickoffTasks(
