@@ -114,6 +114,25 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     };
   }
 
+  if (type === "kickoff_started") {
+    const taskCount =
+      readNumber(metadata, "taskCount") ??
+      readNumber(metadata, "task_count") ??
+      readNumber(metadata, "tasksCreated") ??
+      readNumber(metadata, "tasks_created");
+    const subtitle =
+      typeof taskCount === "number" && Number.isFinite(taskCount) && taskCount > 0
+        ? `${taskCount} tasks created.`
+        : "Tasks created.";
+    return {
+      groupKey: "kickoff",
+      groupLabel: "Kickoff",
+      title: "Kickoff started",
+      subtitle,
+      actorLabel,
+    };
+  }
+
   if (type === "message_posted") {
     const senderName = readString(metadata, "sender_name");
     return {
@@ -216,6 +235,15 @@ function readBoolean(
 ): boolean | null {
   const value = metadata[key];
   if (typeof value === "boolean") return value;
+  return null;
+}
+
+function readNumber(
+  metadata: Record<string, unknown>,
+  key: string,
+): number | null {
+  const value = metadata[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
   return null;
 }
 

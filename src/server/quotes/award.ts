@@ -11,6 +11,7 @@ import { ensureQuoteProjectForWinner } from "@/server/quotes/projects";
 import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
 import { loadSupplierById } from "@/server/suppliers/profile";
 import { emitQuoteEvent } from "@/server/quotes/events";
+import { ensureKickoffTasksForQuote } from "@/server/quotes/kickoffTasks";
 
 const CUSTOMER_AWARD_ALLOWED_STATUSES = new Set([
   "submitted",
@@ -108,6 +109,16 @@ export async function performAwardFlow(
 
   // Idempotency: awarding the same bid twice should be a no-op success.
   if (quote.awarded_bid_id && quote.awarded_bid_id === bidId) {
+    // If the quote is already awarded, kickoff tasks should already exist, but
+    // we keep this safe and idempotent in case a previous run crashed mid-flow.
+    try {
+      await ensureKickoffTasksForQuote(quoteId);
+    } catch (error) {
+      console.warn("[award] kickoff ensure failed (no-op award)", {
+        ...logContext,
+        error: serializeActionError(error),
+      });
+    }
     return {
       ok: true,
       awardedBidId: bidId,
@@ -268,6 +279,17 @@ export async function performAwardFlow(
     },
     createdAt: awardedAt,
   });
+
+  // Auto-start supplier kickoff checklist immediately on award (idempotent).
+  // Best-effort: kickoff initialization should not block a successful award.
+  try {
+    await ensureKickoffTasksForQuote(quoteId);
+  } catch (error) {
+    console.warn("[award] kickoff ensure failed", {
+      ...logContext,
+      error: serializeActionError(error),
+    });
+  }
 
   await ensureQuoteProjectForWinner({
     quoteId,
