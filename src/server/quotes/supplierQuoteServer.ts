@@ -16,7 +16,6 @@ import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMess
 import {
   loadSupplierProfile,
   loadSupplierProfileByUserId,
-  getSupplierApprovalStatus,
   isSupplierApproved,
   type SupplierBidRow,
 } from "@/server/suppliers";
@@ -25,7 +24,13 @@ import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
 } from "@/server/suppliers/types";
-import { toggleSupplierKickoffTask } from "@/server/quotes/kickoffTasks";
+import {
+  loadQuoteKickoffTasksForSupplier,
+  summarizeKickoffTasks,
+  formatKickoffSummaryLabel,
+  toggleSupplierKickoffTask,
+} from "@/server/quotes/kickoffTasks";
+import { emitQuoteEvent } from "@/server/quotes/events";
 
 export type SupplierBidFormState = {
   ok: boolean;
@@ -308,11 +313,6 @@ export async function postSupplierMessageImpl(
     const authorEmail =
       profile.supplier.primary_email ?? user.email ?? "supplier@zartman.io";
 
-    console.log("[supplier messages] create start", {
-      quoteId: trimmedQuoteId,
-      supplierId,
-    });
-
     const supabase = createAuthClient();
     const result = await createQuoteMessage({
       quoteId: trimmedQuoteId,
@@ -345,12 +345,6 @@ export async function postSupplierMessageImpl(
       };
     }
 
-    console.log("[supplier messages] create success", {
-      quoteId: trimmedQuoteId,
-      supplierId,
-      messageId: result.message.id,
-    });
-
     revalidatePath(`/supplier/quotes/${trimmedQuoteId}`);
     revalidatePath(`/customer/quotes/${trimmedQuoteId}`);
     revalidatePath(`/admin/quotes/${trimmedQuoteId}`);
@@ -380,8 +374,6 @@ export async function submitSupplierBidImpl(
 ): Promise<SupplierBidFormState> {
   let quoteId: string | null = null;
   let supplierId: string | null = null;
-
-  console.log("[bids] submit action invoked");
 
   try {
     const { user } = await getServerAuthUser();
@@ -417,15 +409,6 @@ export async function submitSupplierBidImpl(
     } else {
       leadTimeDays = leadTimeParse.value;
     }
-
-    console.log("[bids] submit parsed fields", {
-      quoteId,
-      supplierId,
-      amountInput,
-      normalizedAmount: amount,
-      currency: currencyInput,
-      leadTimeDays,
-    });
 
     if (Object.keys(fieldErrors).length > 0) {
       logBidSubmitFailure({
@@ -475,14 +458,9 @@ export async function submitSupplierBidImpl(
     }
 
     const approvalsOn = approvalsEnabled();
-    const approvalStatus = getSupplierApprovalStatus(supplier);
     const approved = approvalsOn ? isSupplierApproved(supplier) : true;
 
     if (approvalsOn && !approved) {
-      console.log("[bids] submit blocked: approvals pending", {
-        supplierId: supplier.id,
-        approvalStatus,
-      });
       return {
         ok: false,
         error:
@@ -663,16 +641,25 @@ export async function submitSupplierBidImpl(
         };
       }
 
-      console.log("[bids] submit success", {
-        quoteId,
-        supplierId: supplier.id,
-        amount: normalizedAmount,
-        currency,
-        leadTimeDays,
-        bidId: data?.id ?? null,
-      });
-
       if (!existingBid) {
+        void emitQuoteEvent({
+          quoteId,
+          eventType: "bid_received",
+          actorRole: "supplier",
+          actorUserId: user.id,
+          actorSupplierId: supplier.id,
+          metadata: {
+            bid_id: data?.id ?? null,
+            supplier_id: supplier.id,
+            supplier_name: supplier.company_name ?? supplier.primary_email ?? null,
+            supplier_email: supplier.primary_email ?? supplierEmail,
+            amount: normalizedAmount,
+            currency,
+            lead_time_days: leadTimeDays,
+          },
+          createdAt: data?.updated_at ?? null,
+        });
+
         const quoteTitle =
           quote.file_name ?? quote.company ?? `Quote ${quote.id.slice(0, 6)}`;
         void notifyAdminOnBidSubmitted({
@@ -884,6 +871,37 @@ export async function completeKickoffTaskImpl(
         reason: "unknown",
       };
     }
+
+    const kickoffSnapshot = await loadQuoteKickoffTasksForSupplier(
+      quoteId,
+      resolvedSupplierId,
+      { seedIfEmpty: false },
+    );
+    const kickoffSummary = kickoffSnapshot.ok
+      ? summarizeKickoffTasks(kickoffSnapshot.tasks)
+      : null;
+    const kickoffSummaryLabel = kickoffSummary
+      ? formatKickoffSummaryLabel(kickoffSummary)
+      : null;
+
+    void emitQuoteEvent({
+      quoteId,
+      eventType: "kickoff_updated",
+      actorRole: "supplier",
+      actorUserId: user.id,
+      actorSupplierId: resolvedSupplierId,
+      metadata: {
+        supplier_id: resolvedSupplierId,
+        supplier_name: profile?.supplier?.company_name ?? profile?.supplier?.primary_email ?? null,
+        task_key: taskKey,
+        task_title: title,
+        completed,
+        summary_label: kickoffSummaryLabel,
+        summary_status: kickoffSummary?.status ?? null,
+        completed_count: kickoffSummary?.completedCount ?? null,
+        total_count: kickoffSummary?.totalCount ?? null,
+      },
+    });
 
     revalidatePath(`/supplier/quotes/${quoteId}`);
     revalidatePath("/supplier");

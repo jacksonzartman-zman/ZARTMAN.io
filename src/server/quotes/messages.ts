@@ -5,6 +5,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { emitQuoteEvent } from "@/server/quotes/events";
 
 export type QuoteMessageSenderRole =
   | "admin"
@@ -65,8 +66,6 @@ export async function loadQuoteMessages(
     };
   }
 
-  console.log("[quote messages] load start", { quoteId: normalizedQuoteId });
-
   try {
     const { data, error } = await supabaseServer
       .from("quote_messages")
@@ -93,10 +92,6 @@ export async function loadQuoteMessages(
     }
 
     const rows = (data ?? []) as QuoteMessageRecord[];
-    console.log("[quote messages] load result", {
-      quoteId: normalizedQuoteId,
-      count: rows.length,
-    });
 
     return {
       ok: true,
@@ -145,12 +140,6 @@ export async function createQuoteMessage(
       error: "Missing required message fields.",
     };
   }
-
-  console.log("[quote messages] insert start", {
-    quoteId: normalizedQuoteId,
-    senderId: normalizedSenderId,
-    senderRole: normalizedSenderRole,
-  });
 
   try {
     const supabase = params.supabase ?? supabaseServer;
@@ -205,11 +194,18 @@ export async function createQuoteMessage(
       };
     }
 
-    console.log("[quote messages] insert success", {
+    // Durable audit trail (service role write).
+    void emitQuoteEvent({
       quoteId: normalizedQuoteId,
-      senderId: normalizedSenderId,
-      senderRole: normalizedSenderRole,
-      messageId: data.id,
+      eventType: "message_posted",
+      actorRole: coerceActorRole(normalizedSenderRole),
+      actorUserId: normalizedSenderId,
+      metadata: {
+        message_id: data.id,
+        sender_role: normalizedSenderRole,
+        sender_name: data.sender_name ?? null,
+      },
+      createdAt: data.created_at,
     });
 
     return {
@@ -279,6 +275,14 @@ function normalizeRole(
     return trimmed;
   }
   return value.trim();
+}
+
+function coerceActorRole(value: QuoteMessageSenderRole): "admin" | "customer" | "supplier" | "system" {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "admin" || normalized === "customer" || normalized === "supplier") {
+    return normalized;
+  }
+  return "system";
 }
 
 function sanitizeName(value?: string | null): string | null {

@@ -13,6 +13,7 @@ import {
   isMissingTableOrColumnError,
 } from "@/server/admin/logging";
 import { notifyAdminOnQuoteSubmitted } from "@/server/quotes/notifications";
+import { emitQuoteEvent } from "@/server/quotes/events";
 
 const CAD_BUCKET =
   process.env.SUPABASE_CAD_BUCKET ||
@@ -215,7 +216,6 @@ export async function persistQuoteIntake(
     primaryFileName: files[0]?.name ?? null,
     fileCount: files.length,
   };
-  console.log("[quote intake] start", logContext);
 
   try {
     const storedFiles: StoredCadFile[] = [];
@@ -271,12 +271,6 @@ export async function persistQuoteIntake(
         bucket: CAD_BUCKET,
       });
     }
-
-    console.log("[quote intake] server file summary", {
-      payloadFileCount: files.length,
-      storedFileCount: storedFiles.length,
-      storedFileNames: storedFiles.map((file) => file.originalName),
-    });
 
     const primaryStoredFile = storedFiles[0];
     if (!primaryStoredFile) {
@@ -334,7 +328,6 @@ export async function persistQuoteIntake(
     }
 
     const uploadId = uploadResult.data.id;
-    console.log("[quote intake] upload created", { ...logContext, uploadId });
 
     const quoteInsert = await supabaseServer
       .from("quotes")
@@ -366,7 +359,20 @@ export async function persistQuoteIntake(
     }
 
     const quoteId = quoteInsert.data.id;
-    console.log("[quote intake] quote created", { ...logContext, quoteId });
+
+    void emitQuoteEvent({
+      quoteId,
+      eventType: "submitted",
+      actorRole: "customer",
+      actorUserId: user.id,
+      metadata: {
+        upload_id: uploadId,
+        contact_email: contactEmail,
+        contact_name: contactName,
+        company: sanitizeNullable(payload.company),
+        primary_file_name: primaryStoredFile.originalName,
+      },
+    });
 
     void notifyAdminOnQuoteSubmitted({
       quoteId,

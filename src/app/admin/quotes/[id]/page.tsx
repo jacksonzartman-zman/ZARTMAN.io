@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatAwardedByLabel, formatShortId } from "@/lib/awards";
-import { buildCustomerQuoteTimeline } from "@/lib/quote/tracking";
 import {
   loadQuoteMessages,
   type QuoteMessageRecord,
@@ -27,7 +26,7 @@ import {
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
-import { QuoteActivityTimeline } from "@/app/(portals)/components/QuoteActivityTimeline";
+import { QuoteEventsTimeline } from "@/app/(portals)/components/QuoteEventsTimeline";
 import { QuoteFilesCard } from "./QuoteFilesCard";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import {
@@ -50,6 +49,7 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
+import { listQuoteEventsForQuote } from "@/server/quotes/events";
 import { postQuoteMessage as postAdminQuoteMessage } from "./actions";
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
@@ -134,11 +134,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   const hasProject = projectResult.ok;
   const project = hasProject ? projectResult.project : null;
   const projectUnavailable = !hasProject && projectResult.reason !== "not_found";
-  console.info("[admin quote] project loaded", {
-    quoteId: quote.id,
-    hasProject,
-    unavailable: projectUnavailable,
-  });
 
   let uploadMeta: UploadMeta | null = null;
   if (quote.upload_id) {
@@ -356,11 +351,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       hasWinner: hasWinningBid,
       hasProject,
     });
-    const timelineEvents = buildCustomerQuoteTimeline({
-      quote,
-      bids,
-      project,
-    });
+    const quoteEventsResult = await listQuoteEventsForQuote(quote.id);
+    const quoteEvents = quoteEventsResult.ok ? quoteEventsResult.events : [];
 
     const headerTitleSource = companyName || customerName || "Unnamed customer";
     const headerTitle = `Quote for ${headerTitleSource}`;
@@ -741,13 +733,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     );
 
     const trackingContent = (
-      <QuoteActivityTimeline
+      <QuoteEventsTimeline
         className={cardClasses}
-        events={timelineEvents}
+        events={quoteEvents}
         headingLabel="Tracking"
-        title="Review > award > track"
-        description="Surface RFQ creation, bid submissions, award decisions, and kickoff moments without leaving the admin workspace."
-        emptyState="Timeline data will populate as soon as we record bids, status changes, or project kickoff activity for this quote."
+        title="Quote events timeline"
+        description="A durable audit trail of bid submissions, awards, messages, and kickoff updates."
+        emptyState="No activity yet."
       />
     );
 

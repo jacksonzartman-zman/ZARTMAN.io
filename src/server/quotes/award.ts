@@ -9,6 +9,8 @@ import {
 } from "@/lib/bids/status";
 import { ensureQuoteProjectForWinner } from "@/server/quotes/projects";
 import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
+import { loadSupplierById } from "@/server/suppliers/profile";
+import { emitQuoteEvent } from "@/server/quotes/events";
 
 const CUSTOMER_AWARD_ALLOWED_STATUSES = new Set([
   "submitted",
@@ -251,6 +253,21 @@ export async function performAwardFlow(
     awardedSnapshot?.awarded_at ??
     quote.awarded_at ??
     new Date().toISOString();
+
+  const supplier = await loadSupplierById(winningSupplierId);
+  void emitQuoteEvent({
+    quoteId,
+    eventType: "awarded",
+    actorRole,
+    actorUserId,
+    metadata: {
+      bid_id: bidId,
+      supplier_id: winningSupplierId,
+      supplier_name: supplier?.company_name ?? supplier?.primary_email ?? null,
+      awarded_by_role: actorRole,
+    },
+    createdAt: awardedAt,
+  });
 
   await ensureQuoteProjectForWinner({
     quoteId,
