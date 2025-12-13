@@ -47,8 +47,13 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
+import {
+  mergeKickoffTasksWithDefaults,
+  type SupplierKickoffTask,
+} from "@/lib/quote/kickoffChecklist";
 import { listQuoteEventsForQuote } from "@/server/quotes/events";
 import { postQuoteMessage as postCustomerQuoteMessage } from "./actions";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 
 export const dynamic = "force-dynamic";
 
@@ -691,6 +696,14 @@ export default async function CustomerQuoteDetailPage({
     </PortalCard>
   );
 
+  const kickoffPanel = (
+    <CustomerKickoffPanel
+      hasWinner={Boolean(winningSupplierId)}
+      tasksResult={supplierKickoffTasksResult}
+      summary={kickoffSummary}
+    />
+  );
+
   const projectSnapshotCard =
     hasProject && project ? (
       <CustomerProjectSnapshotCard
@@ -726,6 +739,7 @@ export default async function CustomerQuoteDetailPage({
         className="scroll-mt-20"
       />
       {projectSection}
+      {kickoffPanel}
       {messagesUnavailable ? (
         <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
           Messages are temporarily unavailable. Refresh the page to try again.
@@ -898,4 +912,120 @@ function deriveCustomerNextStep(status?: string | null): string {
     default:
       return "Supplier handoff will start once final PO details are ready.";
   }
+}
+
+function CustomerKickoffPanel({
+  hasWinner,
+  tasksResult,
+  summary,
+}: {
+  hasWinner: boolean;
+  tasksResult: SupplierKickoffTasksResult | null;
+  summary: ReturnType<typeof summarizeKickoffTasks> | null;
+}) {
+  const statusValue =
+    summary?.status === "complete"
+      ? "Complete"
+      : summary?.status === "in-progress"
+        ? "In progress"
+        : summary?.status === "not-started"
+          ? "Not started"
+          : "—";
+  const completedValue =
+    summary ? `${summary.completedCount} / ${summary.totalCount}` : "—";
+  const lastUpdatedValue = summary?.lastUpdatedAt
+    ? formatRelativeTimeFromTimestamp(toTimestamp(summary.lastUpdatedAt)) ?? "—"
+    : "—";
+
+  const tasks: SupplierKickoffTask[] | null =
+    hasWinner && tasksResult?.ok
+      ? mergeKickoffTasksWithDefaults(tasksResult.tasks)
+      : null;
+
+  const pillTone =
+    summary?.status === "complete"
+      ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+      : summary?.status === "in-progress"
+        ? "border border-blue-500/40 bg-blue-500/10 text-blue-100"
+        : "border border-slate-800 bg-slate-900/60 text-slate-200";
+
+  return (
+    <section
+      id="kickoff"
+      className="scroll-mt-24 rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-200"
+    >
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Kickoff
+          </p>
+          <h2 className="mt-1 text-lg font-semibold text-white">
+            Kickoff checklist
+          </h2>
+          <p className="mt-1 text-sm text-slate-300">
+            Read-only progress from the awarded supplier.
+          </p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${pillTone}`}>
+          {statusValue}
+        </span>
+      </header>
+
+      <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Status
+          </dt>
+          <dd className="font-medium text-slate-100">{statusValue}</dd>
+        </div>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Completed
+          </dt>
+          <dd className="font-medium text-slate-100">{completedValue}</dd>
+        </div>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+            Last updated
+          </dt>
+          <dd className="font-medium text-slate-100">{lastUpdatedValue}</dd>
+        </div>
+      </dl>
+
+      {!hasWinner ? (
+        <p className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-sm text-slate-300">
+          Kickoff begins after supplier is selected.
+        </p>
+      ) : tasks ? (
+        <ul className="mt-4 space-y-3">
+          {tasks.map((task) => (
+            <li
+              key={task.taskKey}
+              className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"
+            >
+              <div className="pt-0.5">
+                <input
+                  type="checkbox"
+                  checked={Boolean(task.completed)}
+                  disabled
+                  readOnly
+                  className="size-4 rounded border-slate-700 bg-slate-900 text-emerald-400"
+                />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-white">{task.title}</p>
+                {task.description ? (
+                  <p className="text-sm text-slate-300">{task.description}</p>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-sm text-slate-300">
+          Kickoff not ready yet. Refresh in a moment.
+        </p>
+      )}
+    </section>
+  );
 }

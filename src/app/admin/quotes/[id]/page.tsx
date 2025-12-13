@@ -29,7 +29,7 @@ import QuoteUpdateForm from "../QuoteUpdateForm";
 import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
 import { QuoteEventsTimeline } from "@/app/(portals)/components/QuoteEventsTimeline";
 import { QuoteFilesCard } from "./QuoteFilesCard";
-import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import {
   deriveAdminQuoteAttentionState,
   loadAdminQuoteDetail,
@@ -56,6 +56,8 @@ import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { AdminDecisionCtas } from "./AdminDecisionCtas";
 import { AdminInviteSupplierCard } from "./AdminInviteSupplierCard";
+import { HashScrollLink } from "@/app/(portals)/components/hashScroll";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 
 export const dynamic = "force-dynamic";
 
@@ -384,6 +386,20 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         : kickoffSummary?.status === "in-progress"
           ? "text-blue-200"
           : "text-slate-200";
+    const kickoffStatusValue =
+      kickoffSummary?.status === "complete"
+        ? "Complete"
+        : kickoffSummary?.status === "in-progress"
+          ? "In progress"
+          : kickoffSummary?.status === "not-started"
+            ? "Not started"
+            : "—";
+    const kickoffCompletedValue = kickoffSummary
+      ? `${kickoffSummary.completedCount} / ${kickoffSummary.totalCount}`
+      : "—";
+    const kickoffLastUpdatedValue = kickoffSummary?.lastUpdatedAt
+      ? formatRelativeTimeFromTimestamp(toTimestamp(kickoffSummary.lastUpdatedAt)) ?? "—"
+      : "—";
     const attentionState = deriveAdminQuoteAttentionState({
       quoteId: quote.id,
       status,
@@ -547,14 +563,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         <div className="mt-4 space-y-4">
           <div>
             <p className="text-[11px] uppercase tracking-wide text-slate-500">
-              Kickoff status
-            </p>
-            <p className={clsx("mt-1 font-semibold", kickoffSummaryTone)}>
-              {kickoffSummaryLabel}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wide text-slate-500">
               Next action
             </p>
             <p
@@ -569,6 +577,32 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </p>
           </div>
         </div>
+      </section>
+    );
+
+    const kickoffStatusPanel = (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Kickoff status
+            </p>
+            <p className={clsx("mt-1 font-semibold", kickoffSummaryTone)}>
+              {kickoffSummaryLabel}
+            </p>
+          </div>
+          <HashScrollLink
+            hash="kickoff"
+            className={clsx(primaryCtaClasses, ctaSizeClasses.sm, "whitespace-nowrap")}
+          >
+            View kickoff
+          </HashScrollLink>
+        </div>
+        <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-3">
+          <SnapshotField label="Status" value={kickoffStatusValue} />
+          <SnapshotField label="Completed" value={kickoffCompletedValue} />
+          <SnapshotField label="Last updated" value={kickoffLastUpdatedValue} />
+        </dl>
       </section>
     );
     const awardAuditPanel =
@@ -882,12 +916,12 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   >
                     Messages
                   </a>
-                  <a
-                    href="#kickoff-panel"
+                  <HashScrollLink
+                    hash="kickoff"
                     className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 hover:border-emerald-400 hover:text-emerald-100"
                   >
                     Kickoff
-                  </a>
+                  </HashScrollLink>
                 </div>
               </div>
             </div>
@@ -972,6 +1006,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)]">
               {bidSummaryPanel}
               <div className="space-y-4">
+                {kickoffStatusPanel}
                 {workflowPanel}
                 {awardAuditPanel}
                 {projectSnapshotPanel}
@@ -1012,10 +1047,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </CollapsibleCard>
 
             <CollapsibleCard
-              id="kickoff-panel"
+              id="kickoff"
               title="Kickoff"
               description="Customer PO, ship date, and handoff notes (visible to winner)."
               defaultOpen={false}
+              className="scroll-mt-24"
               summary={
                 <span className={clsx("rounded-full border px-3 py-1", kickoffSummaryTone)}>
                   {kickoffSummaryLabel}

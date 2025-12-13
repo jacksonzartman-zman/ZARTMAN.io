@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import type { ReactNode } from "react";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 type CollapsibleCardProps = {
   title: string;
@@ -31,6 +31,26 @@ export function CollapsibleCard({
     [stableId],
   );
   const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    if (!id) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const expectedHash = `#${id}`;
+    const maybeOpenFromHash = () => {
+      if (window.location.hash === expectedHash) {
+        setOpen(true);
+      }
+    };
+
+    maybeOpenFromHash();
+    window.addEventListener("hashchange", maybeOpenFromHash);
+    return () => window.removeEventListener("hashchange", maybeOpenFromHash);
+  }, [id]);
 
   return (
     <section
