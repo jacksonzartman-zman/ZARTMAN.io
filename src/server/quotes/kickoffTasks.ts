@@ -448,7 +448,11 @@ async function seedKickoffTasks(
   try {
     const { error } = await supabaseServer
       .from(TABLE_NAME)
-      .upsert(seedRows, { onConflict: "quote_id,supplier_id,task_key" });
+      .upsert(seedRows, {
+        onConflict: "quote_id,supplier_id,task_key",
+        // Critical: do not overwrite any existing task completion state.
+        ignoreDuplicates: true,
+      });
 
     if (error) {
       const serialized = serializeSupabaseError(error);

@@ -27,6 +27,7 @@ export type KickoffTasksSummary = {
   status: KickoffTasksSummaryStatus;
   completedCount: number;
   totalCount: number;
+  lastUpdatedAt: string | null;
 };
 
 export const DEFAULT_SUPPLIER_KICKOFF_TASKS: KickoffChecklistTaskDefinition[] = [
@@ -126,6 +127,7 @@ export function summarizeKickoffTasks(
   const merged = mergeKickoffTasksWithDefaults(tasks);
   const totalCount = merged.length;
   const completedCount = merged.filter((task) => task.completed).length;
+  const lastUpdatedAt = getLatestUpdatedAt(merged);
 
   let status: KickoffTasksSummaryStatus = "not-started";
 
@@ -141,6 +143,7 @@ export function summarizeKickoffTasks(
     status,
     completedCount,
     totalCount,
+    lastUpdatedAt,
   };
 }
 
@@ -192,4 +195,26 @@ function getSortValue(value?: number | null): number {
     return value;
   }
   return Number.MAX_SAFE_INTEGER;
+}
+
+function getLatestUpdatedAt(tasks: SupplierKickoffTask[]): string | null {
+  let bestTimestamp: number | null = null;
+  let bestIso: string | null = null;
+
+  for (const task of tasks) {
+    const updatedAt = typeof task.updatedAt === "string" ? task.updatedAt.trim() : "";
+    if (!updatedAt) {
+      continue;
+    }
+    const timestamp = Date.parse(updatedAt);
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+    if (bestTimestamp === null || timestamp > bestTimestamp) {
+      bestTimestamp = timestamp;
+      bestIso = updatedAt;
+    }
+  }
+
+  return bestIso;
 }
