@@ -24,6 +24,11 @@ export type QuoteEventRecord = {
   actor_user_id: string | null;
   actor_supplier_id: string | null;
   metadata: Record<string, unknown>;
+  /**
+   * Back-compat shim: some environments historically stored event context in a
+   * `payload` jsonb column. `metadata` is canonical; treat `payload` as optional.
+   */
+  payload?: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -46,15 +51,48 @@ export async function listQuoteEventsForQuote(
   }
 
   try {
-    const { data, error } = await supabaseServer
-      .from("quote_events")
-      .select(
-        "id,quote_id,event_type,actor_role,actor_user_id,actor_supplier_id,metadata,created_at",
-      )
-      .eq("quote_id", normalizedQuoteId)
-      .order("created_at", { ascending: false })
-      .limit(limit)
-      .returns<QuoteEventRecord[]>();
+    type QuoteEventRow = Omit<QuoteEventRecord, "metadata" | "payload"> & {
+      metadata?: unknown;
+      payload?: unknown;
+    };
+
+    const baseColumns =
+      "id,quote_id,event_type,actor_role,actor_user_id,actor_supplier_id,created_at";
+    const runSelect = (columns: string) =>
+      supabaseServer
+        .from("quote_events")
+        .select(columns)
+        .eq("quote_id", normalizedQuoteId)
+        .order("created_at", { ascending: false })
+        .limit(limit)
+        .returns<QuoteEventRow[]>();
+
+    // Prefer selecting both in environments that have the shim.
+    let data: QuoteEventRow[] | null = null;
+    let error: unknown = null;
+
+    const attemptWithPayload = await runSelect(`${baseColumns},metadata,payload`);
+    if (!attemptWithPayload.error) {
+      data = attemptWithPayload.data ?? [];
+    } else if (isMissingTableOrColumnError(attemptWithPayload.error)) {
+      // If `payload` is missing, retry with metadata-only (canonical schema).
+      const attemptMetadataOnly = await runSelect(`${baseColumns},metadata`);
+      if (!attemptMetadataOnly.error) {
+        data = attemptMetadataOnly.data ?? [];
+      } else if (isMissingTableOrColumnError(attemptMetadataOnly.error)) {
+        // If `metadata` is missing (older schema), retry with payload-only.
+        const attemptPayloadOnly = await runSelect(`${baseColumns},payload`);
+        if (!attemptPayloadOnly.error) {
+          data = attemptPayloadOnly.data ?? [];
+        } else {
+          error = attemptPayloadOnly.error;
+        }
+      } else {
+        error = attemptMetadataOnly.error;
+      }
+    } else {
+      error = attemptWithPayload.error;
+    }
 
     if (error) {
       if (!isMissingTableOrColumnError(error)) {
@@ -66,9 +104,34 @@ export async function listQuoteEventsForQuote(
       return { ok: false, events: [], error: "Unable to load quote events." };
     }
 
+    const events: QuoteEventRecord[] = (Array.isArray(data) ? data : []).map(
+      (row) => {
+        const metadata =
+          isRecord(row.metadata)
+            ? (row.metadata as Record<string, unknown>)
+            : isRecord(row.payload)
+              ? (row.payload as Record<string, unknown>)
+              : {};
+        const payload = isRecord(row.payload)
+          ? (row.payload as Record<string, unknown>)
+          : null;
+        return {
+          id: row.id,
+          quote_id: row.quote_id,
+          event_type: row.event_type,
+          actor_role: row.actor_role,
+          actor_user_id: row.actor_user_id,
+          actor_supplier_id: row.actor_supplier_id,
+          metadata,
+          payload,
+          created_at: row.created_at,
+        };
+      },
+    );
+
     return {
       ok: true,
-      events: Array.isArray(data) ? data : [],
+      events,
       error: null,
     };
   } catch (error) {
@@ -103,7 +166,7 @@ export async function emitQuoteEvent(
     return { ok: false, error: "invalid_input" };
   }
 
-  const payload = {
+  const row = {
     quote_id: quoteId,
     event_type: eventType,
     actor_role: actorRole,
@@ -114,7 +177,7 @@ export async function emitQuoteEvent(
   };
 
   try {
-    const { error } = await supabaseServer.from("quote_events").insert(payload);
+    const { error } = await supabaseServer.from("quote_events").insert(row);
     if (error) {
       if (!isMissingTableOrColumnError(error)) {
         console.error("[quote events] insert failed", {
@@ -173,5 +236,9 @@ function sanitizeMetadata(
     return {};
   }
   return value as Record<string, unknown>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
