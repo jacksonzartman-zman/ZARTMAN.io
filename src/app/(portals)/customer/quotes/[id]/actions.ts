@@ -88,6 +88,12 @@ type CustomerMessageQuoteRow = {
   customer_id: string | null;
 };
 
+type CustomerOwnedQuoteRow = {
+  id: string;
+  customer_id: string | null;
+  customer_email: string | null;
+};
+
 export async function archiveCustomerQuoteAction(
   quoteId: string,
   _prev: QuoteStatusTransitionState,
@@ -406,10 +412,10 @@ export async function submitCustomerQuoteProjectAction(
     customerId = customer.id;
 
     const { data: quoteRow, error: quoteError } = await supabaseServer
-      .from("quotes_with_uploads")
-      .select("id,email")
+      .from("quotes")
+      .select("id,customer_id,customer_email")
       .eq("id", normalizedQuoteId)
-      .maybeSingle<{ id: string; email: string | null }>();
+      .maybeSingle<CustomerOwnedQuoteRow>();
 
     if (quoteError) {
       console.error("[customer projects] quote lookup failed", {
@@ -424,18 +430,22 @@ export async function submitCustomerQuoteProjectAction(
       return { ok: false, error: "Quote not found." };
     }
 
-    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.email ?? null);
-    const customerEmail = normalizeEmailInput(customer.email);
-    const emailMatchesQuote =
-      normalizedQuoteEmail !== null &&
-      customerEmail !== null &&
-      normalizedQuoteEmail === customerEmail;
+    const quoteCustomerId = typeof quoteRow.customer_id === "string" ? quoteRow.customer_id.trim() : "";
+    const customerIdMatches = Boolean(customerId) && Boolean(quoteCustomerId) && customerId === quoteCustomerId;
 
-    if (!emailMatchesQuote) {
+    const normalizedQuoteCustomerEmail = normalizeEmailInput(quoteRow.customer_email ?? null);
+    const customerEmail = normalizeEmailInput(customer.email);
+    const customerEmailMatches =
+      normalizedQuoteCustomerEmail !== null &&
+      customerEmail !== null &&
+      normalizedQuoteCustomerEmail === customerEmail;
+
+    if (!customerIdMatches && !customerEmailMatches) {
       console.error("[customer projects] access denied", {
         quoteId: normalizedQuoteId,
         customerId,
-        quoteEmail: quoteRow.email,
+        quoteCustomerId: quoteCustomerId || null,
+        quoteCustomerEmail: quoteRow.customer_email,
         customerEmail,
       });
       return {
@@ -637,10 +647,10 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
     }
 
     const { data: quote, error } = await supabaseServer
-      .from("quotes_with_uploads")
-      .select("id,email")
+      .from("quotes")
+      .select("id,customer_id,customer_email")
       .eq("id", quoteId)
-      .maybeSingle<{ id: string; email: string | null }>();
+      .maybeSingle<CustomerOwnedQuoteRow>();
 
     if (error) {
       console.error("Bid decision action: quote lookup failed", {
@@ -653,17 +663,24 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
       return { success: false, error: "Quote not found." };
     }
 
-    const normalizedQuoteEmail = normalizeEmailInput(quote.email ?? null);
+    const quoteCustomerId = typeof quote.customer_id === "string" ? quote.customer_id.trim() : "";
+    const normalizedCustomerId = typeof customer.id === "string" ? customer.id.trim() : "";
+    const customerIdMatches =
+      Boolean(quoteCustomerId) && Boolean(normalizedCustomerId) && quoteCustomerId === normalizedCustomerId;
+
+    const normalizedQuoteCustomerEmail = normalizeEmailInput(quote.customer_email ?? null);
     const customerEmail = normalizeEmailInput(customer.email);
-    const emailMatchesQuote =
-      normalizedQuoteEmail !== null &&
+    const customerEmailMatches =
+      normalizedQuoteCustomerEmail !== null &&
       customerEmail !== null &&
-      normalizedQuoteEmail === customerEmail;
-    if (!emailMatchesQuote) {
+      normalizedQuoteCustomerEmail === customerEmail;
+
+    if (!customerIdMatches && !customerEmailMatches) {
       console.error("Bid decision action: access denied", {
         quoteId,
         customerId: customer.id,
-        quoteEmail: quote.email,
+        quoteCustomerId: quoteCustomerId || null,
+        quoteCustomerEmail: quote.customer_email,
         mode,
       });
       return {

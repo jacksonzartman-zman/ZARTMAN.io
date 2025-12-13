@@ -182,10 +182,6 @@ export async function performAwardFlow(
     });
 
     if (!allowed.allowed) {
-      console.warn("[award] validation failed", {
-        ...logContext,
-        reason: allowed.reason ?? "access_denied",
-      });
       return {
         ok: false,
         reason: allowed.reason ?? "access_denied",
@@ -495,6 +491,16 @@ async function validateCustomerActor({
   }
 
   if (!resolvedCustomer) {
+    console.warn("[customer award] validation failed", {
+      quoteId: quote.id ?? null,
+      actorUserId: actorUserId || null,
+      actorRole: "customer",
+      resolvedCustomerId: null,
+      quoteCustomerId: quote.customer_id ?? null,
+      quoteCustomerEmail: quote.customer_email ?? null,
+      sessionEmail: actorEmail ?? null,
+      reason: "access_denied",
+    });
     return {
       allowed: false,
       reason: "access_denied",
@@ -519,6 +525,16 @@ async function validateCustomerActor({
     emailCandidates.some((candidate) => candidate === normalizedQuoteEmail);
 
   if (!quoteCustomerMatches && !emailMatches) {
+    console.warn("[customer award] validation failed", {
+      quoteId: quote.id ?? null,
+      actorUserId: actorUserId || null,
+      actorRole: "customer",
+      resolvedCustomerId: resolvedCustomer.id ?? null,
+      quoteCustomerId: quote.customer_id ?? null,
+      quoteCustomerEmail: quote.customer_email ?? null,
+      sessionEmail: actorEmail ?? null,
+      reason: "access_denied",
+    });
     return {
       allowed: false,
       reason: "access_denied",
