@@ -124,6 +124,20 @@ export async function performAwardFlow(
 
   // Idempotency: awarding the same bid twice should be a no-op success.
   if (quote.awarded_bid_id && quote.awarded_bid_id === bidId) {
+    // Backfill audit fields if the award was written by an older RPC signature.
+    try {
+      await ensureAwardAuditFields({
+        quoteId,
+        actorUserId,
+        actorRole,
+      });
+    } catch (error) {
+      console.warn("[award] audit backfill failed (no-op award)", {
+        ...logContext,
+        error: serializeActionError(error),
+      });
+    }
+
     // If the quote is already awarded, kickoff tasks should already exist, but
     // we keep this safe and idempotent in case a previous run crashed mid-flow.
     try {
@@ -253,12 +267,28 @@ export async function performAwardFlow(
     };
   }
 
-  const rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
+  // Prefer the new RPC signature (with actor params) but safely fall back to the
+  // legacy signature on production databases that haven't been migrated yet.
+  let rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
     p_quote_id: quoteId,
     p_bid_id: bidId,
     p_actor_user_id: actorUserId,
     p_actor_role: actorRole,
   });
+
+  if (rpcResult.error && isAwardRpcSignatureMismatch(rpcResult.error)) {
+    console.warn("[award] rpc signature mismatch; falling back to legacy signature", {
+      ...logContext,
+      code: (rpcResult.error as { code?: string | null })?.code ?? null,
+      message: (rpcResult.error as { message?: string | null })?.message ?? null,
+    });
+
+    rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
+      // Legacy signature expects only these named params.
+      p_bid_id: bidId,
+      p_quote_id: quoteId,
+    });
+  }
 
   if (rpcResult.error) {
     const failureReason = mapRpcErrorToReason(rpcResult.error.message);
@@ -272,6 +302,20 @@ export async function performAwardFlow(
       reason: failureReason,
       error: "We couldn't update the award state. Please try again.",
     };
+  }
+
+  // Ensure audit fields are set even if the legacy RPC signature was used.
+  try {
+    await ensureAwardAuditFields({
+      quoteId,
+      actorUserId,
+      actorRole,
+    });
+  } catch (error) {
+    console.warn("[award] audit backfill failed", {
+      ...logContext,
+      error: serializeActionError(error),
+    });
   }
 
   const awardedSnapshot = await loadQuoteAwardSnapshot(quoteId);
@@ -561,4 +605,59 @@ function mapRpcErrorToReason(message?: string | null): AwardFailureReason {
     return "missing_supplier";
   }
   return "write_failed";
+}
+
+function isAwardRpcSignatureMismatch(error: unknown): boolean {
+  const code = (error as { code?: string | null })?.code ?? null;
+  if (code === "PGRST202") {
+    return true;
+  }
+
+  const message = (error as { message?: string | null })?.message ?? "";
+  return (
+    typeof message === "string" &&
+    message.includes("Could not find function public.award_bid_for_quote(")
+  );
+}
+
+async function ensureAwardAuditFields({
+  quoteId,
+  actorUserId,
+  actorRole,
+}: {
+  quoteId: string;
+  actorUserId: string;
+  actorRole: AwardActorRole;
+}): Promise<void> {
+  const { data, error } = await supabaseServer
+    .from("quotes")
+    .select("awarded_by_user_id,awarded_by_role")
+    .eq("id", quoteId)
+    .maybeSingle<Pick<QuoteAwardRow, "awarded_by_user_id" | "awarded_by_role">>();
+
+  if (error) {
+    throw error;
+  }
+
+  const update: Partial<Pick<QuoteAwardRow, "awarded_by_user_id" | "awarded_by_role">> =
+    {};
+  if (!normalizeId(data?.awarded_by_user_id ?? null)) {
+    update.awarded_by_user_id = actorUserId;
+  }
+  if (!normalizeId(data?.awarded_by_role ?? null)) {
+    update.awarded_by_role = actorRole;
+  }
+
+  if (Object.keys(update).length === 0) {
+    return;
+  }
+
+  const updateResult = await supabaseServer
+    .from("quotes")
+    .update(update)
+    .eq("id", quoteId);
+
+  if (updateResult.error) {
+    throw updateResult.error;
+  }
 }
