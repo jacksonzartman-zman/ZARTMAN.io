@@ -513,13 +513,26 @@ export async function ensureKickoffTasksForQuote(
 
   const awardInfo = await loadQuoteAwardInfoForKickoff(normalizedQuoteId);
   if (!awardInfo.ok) {
+    const mapKickoffInitReason = (
+      reason: string,
+    ): Extract<EnsureKickoffTasksForQuoteResult, { ok: false }>["reason"] => {
+      return reason === "load-error"
+        ? "seed-error"
+        : reason === "not-found"
+          ? "missing-identifiers"
+          : reason === "not-awarded"
+            ? "not-awarded"
+            : "seed-error";
+    };
+
+    const mappedReason = mapKickoffInitReason(awardInfo.reason);
     return {
       ok: false,
       created: false,
       taskCount: 0,
       supplierId: null,
       error: awardInfo.error,
-      reason: awardInfo.reason === "load-error" ? "seed-error" : awardInfo.reason,
+      reason: mappedReason,
     };
   }
 
