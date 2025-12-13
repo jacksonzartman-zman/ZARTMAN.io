@@ -37,12 +37,25 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     };
   }
 
+  if (type === "supplier_invited") {
+    const supplierLabel = formatSupplierIdentifier(metadata);
+    return {
+      groupKey: "rfq",
+      groupLabel: "RFQ",
+      title: "Supplier invited",
+      subtitle: supplierLabel ?? undefined,
+      actorLabel,
+    };
+  }
+
   if (type === "bid_received") {
     const supplierName = readString(metadata, "supplier_name");
+    const isUpdate =
+      readBoolean(metadata, "isUpdate") ?? readBoolean(metadata, "is_update");
     return {
       groupKey: "bids",
       groupLabel: "Bids",
-      title: "Bid received",
+      title: isUpdate ? "Bid updated" : "Bid received",
       subtitle: supplierName ? `From ${supplierName}.` : undefined,
       actorLabel,
     };
@@ -203,6 +216,18 @@ function readBoolean(
 ): boolean | null {
   const value = metadata[key];
   if (typeof value === "boolean") return value;
+  return null;
+}
+
+function formatSupplierIdentifier(
+  metadata: Record<string, unknown>,
+): string | null {
+  const supplierName = readString(metadata, "supplier_name");
+  if (supplierName) return supplierName;
+  const supplierEmail = readString(metadata, "supplier_email");
+  if (supplierEmail) return supplierEmail;
+  const supplierId = readString(metadata, "supplier_id");
+  if (supplierId) return supplierId;
   return null;
 }
 

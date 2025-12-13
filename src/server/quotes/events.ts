@@ -8,6 +8,7 @@ export type QuoteEventActorRole = "admin" | "customer" | "supplier" | "system";
 
 export type QuoteEventType =
   | "submitted"
+  | "supplier_invited"
   | "bid_received"
   | "awarded"
   | "reopened"

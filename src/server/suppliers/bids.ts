@@ -26,6 +26,7 @@ import type {
 } from "./types";
 import { approvalsEnabled } from "./flags";
 import { QUOTE_UPDATE_ERROR, updateAdminQuote } from "@/server/admin/quotes";
+import { emitQuoteEvent } from "@/server/quotes/events";
 
 export type BidStatus =
   | "submitted"
@@ -1027,6 +1028,22 @@ async function updateQuoteAssignedSupplier(
     // New invitation path: persist invite for supplier access gating.
     // Keep assigned_supplier_email as a back-compat fallback (legacy access + notifications).
     try {
+      const { data: existingInvite, error: existingInviteError } =
+        await supabaseServer
+          .from("quote_invites")
+          .select("id")
+          .eq("quote_id", quoteId)
+          .eq("supplier_id", supplier.id)
+          .maybeSingle<{ id: string }>();
+      if (existingInviteError && !isMissingTableOrColumnError(existingInviteError)) {
+        console.warn("updateQuoteAssignedSupplier: invite lookup failed", {
+          quoteId,
+          supplierId: supplier.id,
+          error: existingInviteError,
+        });
+      }
+      const shouldEmitInviteEvent = !existingInvite;
+
       const { error: inviteError } = await supabaseServer
         .from("quote_invites")
         .upsert(
@@ -1042,6 +1059,18 @@ async function updateQuoteAssignedSupplier(
           quoteId,
           supplierId: supplier.id,
           error: inviteError,
+        });
+      } else if (shouldEmitInviteEvent) {
+        void emitQuoteEvent({
+          quoteId,
+          eventType: "supplier_invited",
+          actorRole: "system",
+          actorSupplierId: supplier.id,
+          metadata: {
+            supplier_id: supplier.id,
+            supplier_name: supplier.company_name ?? null,
+            supplier_email: supplier.primary_email ?? null,
+          },
         });
       }
     } catch (error) {
