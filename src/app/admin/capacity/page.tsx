@@ -161,9 +161,7 @@ export default async function Page({
   });
 
   const capabilitiesInRange = new Set<string>();
-  const suppliersWithData = new Set<string>();
   for (const snapshot of snapshots) {
-    suppliersWithData.add(snapshot.supplierId);
     const normalized = snapshot.capability.trim().toLowerCase();
     if (normalized) capabilitiesInRange.add(normalized);
   }
@@ -177,13 +175,15 @@ export default async function Page({
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const suppliersToRender: CapacityCalendarSupplier[] = supplierId
-    ? [
-        {
-          id: supplierId,
-          name: supplierNameById.get(supplierId) ?? supplierId,
-        },
-      ]
-    : allSupplierOptions.filter((s) => suppliersWithData.has(s.id));
+    ? allSupplierOptions.filter((s) => s.id === supplierId).length > 0
+      ? allSupplierOptions.filter((s) => s.id === supplierId)
+      : [
+          {
+            id: supplierId,
+            name: supplierNameById.get(supplierId) ?? supplierId,
+          },
+        ]
+    : allSupplierOptions;
 
   const sortedCapabilities = Array.from(capabilitiesInRange).sort((a, b) => a.localeCompare(b));
   const normalizedSelectedCapability = capability?.trim().toLowerCase() ?? null;
@@ -300,6 +300,7 @@ export default async function Page({
         weeks={weeks}
         suppliers={suppliersToRender}
         snapshots={snapshots}
+        capabilities={sortedCapabilities}
         capabilityFilter={capability}
       />
     </AdminDashboardShell>

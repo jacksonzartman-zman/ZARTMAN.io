@@ -80,11 +80,13 @@ export default function CapacityCalendar({
   weeks,
   suppliers,
   snapshots,
+  capabilities,
   capabilityFilter,
 }: {
   weeks: CapacityCalendarWeek[];
   suppliers: CapacityCalendarSupplier[];
   snapshots: CapacityCalendarSnapshot[];
+  capabilities: string[];
   capabilityFilter?: string | null;
 }) {
   const snapshotIndex = buildSnapshotIndex(snapshots);
@@ -93,9 +95,19 @@ export default function CapacityCalendar({
       ? capabilityFilter.trim().toLowerCase()
       : null;
 
+  const capabilitiesToRender =
+    normalizedCapabilityFilter && normalizedCapabilityFilter.length > 0
+      ? [normalizedCapabilityFilter]
+      : capabilities;
+
   return (
     <section className="overflow-x-auto rounded-2xl border border-slate-900/60 bg-slate-950/30">
       <div className="min-w-[980px]">
+        {suppliers.length > 0 && snapshots.length === 0 ? (
+          <div className="border-b border-slate-900/60 px-4 py-4 text-sm text-slate-400">
+            No capacity snapshots yet for this range. Suppliers can add capacity in Settings → Capacity.
+          </div>
+        ) : null}
         <div className="grid grid-cols-[280px_repeat(4,1fr)] border-b border-slate-900/60">
           <div className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
             Supplier
@@ -116,7 +128,7 @@ export default function CapacityCalendar({
         <div className="divide-y divide-slate-900/60">
           {suppliers.length === 0 ? (
             <div className="px-4 py-6 text-sm text-slate-400">
-              No suppliers found for this range.
+              No suppliers found.
             </div>
           ) : null}
 
@@ -137,58 +149,73 @@ export default function CapacityCalendar({
 
                 {weeks.map((week) => {
                   const cellSnapshots = byWeek.get(week.weekStartDate) ?? [];
-                  const filtered =
-                    normalizedCapabilityFilter
-                      ? cellSnapshots.filter(
-                          (s) => s.capability.trim().toLowerCase() === normalizedCapabilityFilter,
-                        )
-                      : cellSnapshots;
 
                   return (
                     <div
                       key={`${supplier.id}:${week.weekStartDate}`}
                       className="px-4 py-4"
                     >
-                      {filtered.length === 0 ? (
-                        <div className="text-xs text-slate-600">—</div>
-                      ) : (
-                        <div className="space-y-2">
-                          {filtered.map((snapshot) => {
-                            const fill = capacityToFill(snapshot.capacityLevel);
-                            const widthPct = Math.round((fill / 3) * 100);
-                            const title = [
-                              `${capabilityLabel(snapshot.capability)}: ${snapshot.capacityLevel}`,
-                              formatLastUpdated(snapshot.createdAt),
-                            ].join("\n");
+                      <div className="space-y-2">
+                        {(capabilitiesToRender.length > 0 ? capabilitiesToRender : [""]).map((capabilityKey) => {
+                          const normalizedKey = capabilityKey.trim().toLowerCase();
+                          const matchingSnapshot =
+                            normalizedKey.length > 0
+                              ? cellSnapshots.find(
+                                  (s) => s.capability.trim().toLowerCase() === normalizedKey,
+                                ) ?? null
+                              : null;
 
-                            return (
+                          const isPlaceholder = matchingSnapshot === null;
+                          const fill = matchingSnapshot ? capacityToFill(matchingSnapshot.capacityLevel) : 0;
+                          const widthPct = matchingSnapshot ? Math.round((fill / 3) * 100) : 100;
+                          const label = capabilityLabel(
+                            matchingSnapshot?.capability ?? (normalizedKey.length > 0 ? normalizedKey : "—"),
+                          );
+                          const title = matchingSnapshot
+                            ? [
+                                `${capabilityLabel(matchingSnapshot.capability)}: ${matchingSnapshot.capacityLevel}`,
+                                formatLastUpdated(matchingSnapshot.createdAt),
+                              ].join("\n")
+                            : `${label}: no snapshot yet`;
+
+                          return (
+                            <div
+                              key={`${week.weekStartDate}:${normalizedKey || "placeholder"}`}
+                              className="flex items-center gap-2"
+                            >
+                              <div className="w-28 truncate text-[11px] font-medium text-slate-400">
+                                {label}
+                              </div>
                               <div
-                                key={`${snapshot.weekStartDate}:${snapshot.capability}`}
-                                className="flex items-center gap-2"
+                                className="flex-1"
+                                title={title}
+                                aria-label={title}
                               >
-                                <div className="w-28 truncate text-[11px] font-medium text-slate-400">
-                                  {capabilityLabel(snapshot.capability)}
-                                </div>
-                                <div
-                                  className="flex-1"
-                                  title={title}
-                                  aria-label={title}
-                                >
-                                  <div className="h-2 w-full overflow-hidden rounded-full border border-slate-800 bg-slate-950/40">
-                                    <div
-                                      className={clsx(
-                                        "h-full rounded-full bg-slate-200",
-                                        fill === 0 ? "opacity-20" : fill === 1 ? "opacity-40" : fill === 2 ? "opacity-70" : "opacity-95",
-                                      )}
-                                      style={{ width: `${widthPct}%` }}
-                                    />
-                                  </div>
+                                <div className="h-2 w-full overflow-hidden rounded-full border border-slate-800 bg-slate-950/40">
+                                  <div
+                                    className={clsx(
+                                      "h-full rounded-full",
+                                      isPlaceholder
+                                        ? "border border-dashed border-slate-700/70 bg-transparent opacity-80"
+                                        : clsx(
+                                            "bg-slate-200",
+                                            fill === 0
+                                              ? "opacity-20"
+                                              : fill === 1
+                                                ? "opacity-40"
+                                                : fill === 2
+                                                  ? "opacity-70"
+                                                  : "opacity-95",
+                                          ),
+                                    )}
+                                    style={{ width: `${isPlaceholder ? 100 : widthPct}%` }}
+                                  />
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
