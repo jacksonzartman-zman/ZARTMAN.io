@@ -36,7 +36,7 @@ import { canUserBid } from "@/lib/permissions";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
-import { SupplierCapacityCard } from "./SupplierCapacityCard";
+import { loadSupplierCapacitySnapshotsForWeek } from "@/server/suppliers/capacity";
 import {
   loadQuoteProjectForQuote,
   type QuoteProjectRecord,
@@ -248,6 +248,11 @@ export default async function SupplierQuoteDetailPage({
   const supplierPostMessageAction =
     postSupplierQuoteMessage.bind(null, quoteId);
 
+  const capacitySnapshotsResult = await loadSupplierCapacitySnapshotsForWeek({
+    supplierId: profile.supplier.id,
+    weekStartDate: nextWeekStartDate,
+  });
+
   return (
     <SupplierQuoteWorkspace
       data={workspaceData}
@@ -278,6 +283,7 @@ export default async function SupplierQuoteDetailPage({
       kickoffVisibility={kickoffVisibility}
       awardedSupplierId={workspaceData.quote.awarded_supplier_id ?? null}
       awardedToSupplier={awardedToSupplier}
+      capacitySnapshotsResult={capacitySnapshotsResult}
     />
   );
 }
@@ -306,6 +312,7 @@ function SupplierQuoteWorkspace({
   kickoffVisibility,
   awardedSupplierId,
   awardedToSupplier,
+  capacitySnapshotsResult,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
@@ -333,6 +340,7 @@ function SupplierQuoteWorkspace({
   kickoffVisibility: SupplierKickoffVisibility;
   awardedSupplierId: string | null;
   awardedToSupplier: boolean;
+  capacitySnapshotsResult: Awaited<ReturnType<typeof loadSupplierCapacitySnapshotsForWeek>>;
 }) {
   const { quote, uploadMeta, filePreviews } = data;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
@@ -705,6 +713,22 @@ function SupplierQuoteWorkspace({
     </CollapsibleCard>
   );
 
+  const capacityLevelsByCapability = new Map<string, string>();
+  if (capacitySnapshotsResult.ok) {
+    for (const row of capacitySnapshotsResult.snapshots) {
+      if (typeof row.capability === "string" && typeof row.capacityLevel === "string") {
+        capacityLevelsByCapability.set(row.capability, row.capacityLevel);
+      }
+    }
+  }
+
+  const capacityCapabilityOptions = [
+    { key: "cnc_mill", label: "CNC Mill" },
+    { key: "cnc_lathe", label: "CNC Lathe" },
+    { key: "mjp", label: "MJP" },
+    { key: "sla", label: "SLA" },
+  ] as const;
+
   return (
     <PortalShell
       workspace="supplier"
@@ -740,12 +764,39 @@ function SupplierQuoteWorkspace({
         <div className="space-y-5">
           <PortalCard
             title="Capacity (Next Week)"
-            description="Advisory-only capacity to help timeline planning."
+            description="Advisory-only snapshot to help timeline planning."
           >
-            <SupplierCapacityCard
-              quoteId={quote.id}
-              weekStartDate={nextWeekStartDate}
-            />
+            <div className="space-y-4">
+              <dl className="grid gap-3">
+                {capacityCapabilityOptions.map((capability) => {
+                  const raw = capacityLevelsByCapability.get(capability.key) ?? "";
+                  const label = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : "Not set";
+                  return (
+                    <div
+                      key={capability.key}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3"
+                    >
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {capability.label}
+                      </dt>
+                      <dd className="text-sm font-semibold text-slate-100">{label}</dd>
+                    </div>
+                  );
+                })}
+              </dl>
+
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-slate-500">
+                  Week starts {nextWeekStartDate}.
+                </p>
+                <Link
+                  href={`/supplier/settings/capacity?week=${encodeURIComponent(nextWeekStartDate)}`}
+                  className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+                >
+                  Update capacity
+                </Link>
+              </div>
+            </div>
           </PortalCard>
           {filesSection}
           {rfqDetailsSection}

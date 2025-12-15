@@ -6,6 +6,12 @@ import {
 
 export type SupplierCapacityLevel = "low" | "medium" | "high" | "overloaded";
 
+export type SupplierCapacitySnapshot = {
+  capability: string;
+  capacityLevel: SupplierCapacityLevel;
+  notes: string | null;
+};
+
 export type UpsertSupplierCapacitySnapshotInput = {
   supplierId: string;
   weekStartDate: string; // YYYY-MM-DD
@@ -41,6 +47,78 @@ function normalizeWeekStartDate(value: unknown): string {
 
 function isCapacityLevel(value: unknown): value is SupplierCapacityLevel {
   return value === "low" || value === "medium" || value === "high" || value === "overloaded";
+}
+
+export async function loadSupplierCapacitySnapshotsForWeek(args: {
+  supplierId: string;
+  weekStartDate: string; // YYYY-MM-DD
+}): Promise<
+  | { ok: true; snapshots: SupplierCapacitySnapshot[] }
+  | { ok: false; error: string; reason?: "invalid_input" | "schema_missing" | "read_failed" }
+> {
+  const supplierId = normalizeId(args?.supplierId);
+  const weekStartDate = normalizeWeekStartDate(args?.weekStartDate);
+
+  if (!supplierId || !weekStartDate) {
+    return { ok: false, error: "invalid_input", reason: "invalid_input" };
+  }
+
+  try {
+    const result = await supabaseServer
+      .from(SNAPSHOTS_TABLE)
+      .select("capability, capacity_level, notes")
+      .eq("supplier_id", supplierId)
+      .eq("week_start_date", weekStartDate)
+      .limit(50)
+      .returns<{ capability: string; capacity_level: SupplierCapacityLevel; notes: string | null }[]>();
+
+    if (result.error) {
+      if (isMissingTableOrColumnError(result.error)) {
+        // Failure-only logging, per spec.
+        console.warn("[supplier capacity] read skipped (missing schema)", {
+          supplierId,
+          weekStartDate,
+          pgCode: (result.error as { code?: string | null })?.code ?? null,
+          message: (result.error as { message?: string | null })?.message ?? null,
+        });
+        return { ok: false, error: "schema_missing", reason: "schema_missing" };
+      }
+
+      console.error("[supplier capacity] read failed", {
+        supplierId,
+        weekStartDate,
+        error: serializeSupabaseError(result.error),
+      });
+      return { ok: false, error: "read_failed", reason: "read_failed" };
+    }
+
+    const rows = Array.isArray(result.data) ? result.data : [];
+    const snapshots: SupplierCapacitySnapshot[] = rows
+      .map((row) => ({
+        capability: normalizeText(row.capability).toLowerCase(),
+        capacityLevel: row.capacity_level,
+        notes: typeof row.notes === "string" ? row.notes : null,
+      }))
+      .filter((row) => Boolean(row.capability) && isCapacityLevel(row.capacityLevel));
+
+    return { ok: true, snapshots };
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[supplier capacity] read crashed (missing schema)", {
+        supplierId,
+        weekStartDate,
+        error: serializeSupabaseError(error),
+      });
+      return { ok: false, error: "schema_missing", reason: "schema_missing" };
+    }
+
+    console.error("[supplier capacity] read crashed", {
+      supplierId,
+      weekStartDate,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return { ok: false, error: "read_failed", reason: "read_failed" };
+  }
 }
 
 export async function upsertSupplierCapacitySnapshot(
