@@ -216,10 +216,11 @@ export default async function CustomerQuoteDetailPage({
     supplierKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
       quote.id,
       winningSupplierId,
+      { seedIfEmpty: false },
     );
   }
   const kickoffSummary =
-    supplierKickoffTasksResult?.ok
+    supplierKickoffTasksResult?.ok && supplierKickoffTasksResult.tasks.length > 0
       ? summarizeKickoffTasks(supplierKickoffTasksResult.tasks)
       : null;
   const kickoffSummaryStatus = kickoffSummary?.status ?? null;
@@ -228,7 +229,7 @@ export default async function CustomerQuoteDetailPage({
       ? formatKickoffSummaryLabel(kickoffSummary)
       : supplierKickoffTasksResult?.reason === "schema-missing"
         ? "Kickoff checklist unavailable in this environment"
-        : "Kickoff checklist unavailable"
+        : "Kickoff not ready yet. Refresh in a moment."
     : "Select a winning supplier to start kickoff";
   const kickoffSummaryTone =
     kickoffSummary?.status === "complete"
@@ -947,7 +948,7 @@ function CustomerKickoffPanel({
     : "—";
 
   const tasks: SupplierKickoffTask[] | null =
-    hasWinner && tasksResult?.ok
+    hasWinner && tasksResult?.ok && tasksResult.tasks.length > 0
       ? mergeKickoffTasksWithDefaults(tasksResult.tasks)
       : null;
 

@@ -4,7 +4,6 @@ import {
   isMissingTableOrColumnError,
   isRowLevelSecurityDeniedError,
 } from "@/server/admin/logging";
-import { normalizeQuoteStatus } from "@/server/quotes/status";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import type { QuoteEventActorRole } from "@/server/quotes/events";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -83,6 +82,29 @@ export type EnsureKickoffTasksForQuoteResult =
       created: boolean;
       taskCount: number;
       supplierId: string | null;
+      error: null;
+    }
+  | {
+      ok: false;
+      created: false;
+      taskCount: 0;
+      supplierId: string | null;
+      error: string;
+      reason: "missing-identifiers" | "not-awarded" | "schema-missing" | "seed-error";
+    };
+
+export type EnsureKickoffTasksForAwardedSupplierInput = {
+  quoteId: string;
+  actorRole?: QuoteEventActorRole | null;
+  actorUserId?: string | null;
+};
+
+export type EnsureKickoffTasksForAwardedSupplierResult =
+  | {
+      ok: true;
+      created: boolean;
+      taskCount: number;
+      supplierId: string;
       error: null;
     }
   | {
@@ -289,40 +311,59 @@ export async function toggleSupplierKickoffTask(
   }
 }
 
+type QuoteAwardFields = {
+  id: string;
+  awarded_bid_id: string | null;
+  awarded_supplier_id: string | null;
+  awarded_at: string | null;
+};
+
+export function isKickoffReadyForSupplier(args: {
+  quote: Pick<QuoteAwardFields, "awarded_supplier_id" | "awarded_at" | "awarded_bid_id">;
+  supplierId: string;
+}): boolean {
+  const quoteSupplierId = normalizeId(args.quote?.awarded_supplier_id);
+  const supplierId = normalizeId(args.supplierId);
+
+  if (!quoteSupplierId || !supplierId || quoteSupplierId !== supplierId) {
+    return false;
+  }
+
+  return Boolean(normalizeId(args.quote?.awarded_at)) && Boolean(normalizeId(args.quote?.awarded_bid_id));
+}
+
 type QuoteAwardInfoLookupResult =
-  | { ok: true; status: string | null; awardedSupplierId: string | null }
+  | { ok: true; quote: QuoteAwardFields }
   | {
       ok: false;
       error: string;
       reason: "schema-missing" | "load-error" | "not-found";
     };
 
-async function loadQuoteAwardInfoForKickoff(
+async function loadQuoteAwardFieldsForKickoff(
   quoteId: string,
 ): Promise<QuoteAwardInfoLookupResult> {
   try {
     const { data, error } = await supabaseServer
       .from("quotes")
-      .select("id,status,awarded_supplier_id")
+      .select("id,awarded_bid_id,awarded_supplier_id,awarded_at")
       .eq("id", quoteId)
-      .maybeSingle<{
-        id: string;
-        status: string | null;
-        awarded_supplier_id: string | null;
-      }>();
+      .maybeSingle<QuoteAwardFields>();
 
     if (error) {
       const serialized = serializeSupabaseError(error);
       if (isMissingTableOrColumnError(error)) {
-        console.warn("[quote kickoff tasks] award info lookup missing schema", {
+        console.warn("[kickoff] award info lookup missing schema", {
           quoteId,
-          error: serialized,
+          pgCode: (error as { code?: string | null })?.code ?? null,
+          message: (error as { message?: string | null })?.message ?? null,
         });
         return { ok: false, error: "schema-missing", reason: "schema-missing" };
       }
-      console.error("[quote kickoff tasks] award info lookup failed", {
+      console.error("[kickoff] award info lookup failed", {
         quoteId,
-        error: serialized ?? error,
+        pgCode: (error as { code?: string | null })?.code ?? null,
+        message: (error as { message?: string | null })?.message ?? null,
       });
       return { ok: false, error: "load-error", reason: "load-error" };
     }
@@ -331,17 +372,16 @@ async function loadQuoteAwardInfoForKickoff(
       return { ok: false, error: "not-found", reason: "not-found" };
     }
 
-    const awardedSupplierId = normalizeId(data.awarded_supplier_id) || null;
-    const status = typeof data.status === "string" ? data.status : null;
-    return { ok: true, status, awardedSupplierId };
+    return { ok: true, quote: data };
   } catch (error) {
     const serialized = serializeSupabaseError(error);
     if (isMissingTableOrColumnError(error)) {
       return { ok: false, error: "schema-missing", reason: "schema-missing" };
     }
-    console.error("[quote kickoff tasks] award info lookup crashed", {
+    console.error("[kickoff] award info lookup crashed", {
       quoteId,
-      error: serialized ?? error,
+      pgCode: (error as { code?: string | null })?.code ?? null,
+      message: (error as { message?: string | null })?.message ?? null,
     });
     return { ok: false, error: "load-error", reason: "load-error" };
   }
@@ -525,40 +565,23 @@ export async function ensureKickoffTasksForQuote(
   const actorUserId =
     actorRole === "system" ? null : normalizeId(actor?.actorUserId) || null;
 
-  if (actorRole !== "system" && !actorUserId) {
-    console.warn("[quote kickoff tasks] missing actor attribution", {
-      quoteId: normalizedQuoteId,
-      actorRole,
-    });
-  }
-
-  const awardInfo = await loadQuoteAwardInfoForKickoff(normalizedQuoteId);
+  const awardInfo = await loadQuoteAwardFieldsForKickoff(normalizedQuoteId);
   if (!awardInfo.ok) {
-    const mapKickoffInitReason = (
-      reason: string,
-    ): Extract<EnsureKickoffTasksForQuoteResult, { ok: false }>["reason"] => {
-      return reason === "load-error"
-        ? "seed-error"
-        : reason === "not-found"
-          ? "missing-identifiers"
-          : reason === "not-awarded"
-            ? "not-awarded"
-            : "seed-error";
-    };
-
-    const mappedReason = mapKickoffInitReason(awardInfo.reason);
     return {
       ok: false,
       created: false,
       taskCount: 0,
       supplierId: null,
       error: awardInfo.error,
-      reason: mappedReason,
+      reason: awardInfo.reason === "schema-missing" ? "schema-missing" : "seed-error",
     };
   }
 
-  const supplierId = normalizeId(awardInfo.awardedSupplierId);
-  if (!supplierId) {
+  const supplierId = normalizeId(awardInfo.quote.awarded_supplier_id) || null;
+  const awardedAt = normalizeId(awardInfo.quote.awarded_at) || null;
+  const awardedBidId = normalizeId(awardInfo.quote.awarded_bid_id) || null;
+
+  if (!supplierId || !awardedAt || !awardedBidId) {
     return {
       ok: false,
       created: false,
@@ -584,7 +607,7 @@ export async function ensureKickoffTasksForQuote(
       ok: true,
       created: false,
       taskCount: 0,
-      supplierId,
+      supplierId: supplierId ?? null,
       error: null,
     };
   }
@@ -601,21 +624,9 @@ export async function ensureKickoffTasksForQuote(
       .limit(1);
     if (!error) {
       hadExistingTasks = (existingRows ?? []).length > 0;
-    } else if (!isMissingTableOrColumnError(error)) {
-      console.warn("[quote kickoff tasks] preflight lookup failed", {
-        quoteId: normalizedQuoteId,
-        supplierId,
-        error: serializeSupabaseError(error),
-      });
     }
   } catch (error) {
-    if (!isMissingTableOrColumnError(error)) {
-      console.warn("[quote kickoff tasks] preflight lookup crashed", {
-        quoteId: normalizedQuoteId,
-        supplierId,
-        error: serializeSupabaseError(error) ?? error,
-      });
-    }
+    // Best-effort only; avoid noisy logs here.
   }
 
   try {
@@ -631,6 +642,12 @@ export async function ensureKickoffTasksForQuote(
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
+        console.warn("[kickoff] ensure failed (missing schema)", {
+          quoteId: normalizedQuoteId,
+          supplierId,
+          pgCode: (error as { code?: string | null })?.code ?? null,
+          message: (error as { message?: string | null })?.message ?? null,
+        });
         return {
           ok: false,
           created: false,
@@ -640,10 +657,11 @@ export async function ensureKickoffTasksForQuote(
           reason: "schema-missing",
         };
       }
-      console.error("[quote kickoff tasks] ensure failed", {
+      console.error("[kickoff] ensure failed", {
         quoteId: normalizedQuoteId,
         supplierId,
-        error: serializeSupabaseError(error),
+        pgCode: (error as { code?: string | null })?.code ?? null,
+        message: (error as { message?: string | null })?.message ?? null,
       });
       return {
         ok: false,
@@ -676,27 +694,41 @@ export async function ensureKickoffTasksForQuote(
         // If this check fails, skip the guard and attempt the emit (best-effort).
       }
 
+      // Emit kickoff_started event only when tasks were first created.
       if (!kickoffEventAlreadyExists) {
+        // Use the post-write task count so the event reflects the full checklist.
+        const seededRows = await fetchKickoffTaskRows(normalizedQuoteId, supplierId);
+        const taskCountForEvent = seededRows.ok ? seededRows.rows.length : DEFAULT_SUPPLIER_KICKOFF_TASKS.length;
+
         void emitQuoteEvent({
           quoteId: normalizedQuoteId,
           eventType: "kickoff_started",
           actorRole,
           actorUserId,
           actorSupplierId: null,
-          metadata: { taskCount: createdCount, source: "award" },
+          metadata: { taskCount: taskCountForEvent, source: "award" },
         });
       }
     }
 
+    const refreshed = await fetchKickoffTaskRows(normalizedQuoteId, supplierId);
+    const taskCount = refreshed.ok ? refreshed.rows.length : 0;
+
     return {
       ok: true,
       created: createdForFirstTime,
-      taskCount: createdCount,
+      taskCount,
       supplierId,
       error: null,
     };
   } catch (error) {
     if (isMissingTableOrColumnError(error)) {
+      console.warn("[kickoff] ensure failed (missing schema)", {
+        quoteId: normalizedQuoteId,
+        supplierId,
+        pgCode: (error as { code?: string | null })?.code ?? null,
+        message: (error as { message?: string | null })?.message ?? null,
+      });
       return {
         ok: false,
         created: false,
@@ -706,10 +738,11 @@ export async function ensureKickoffTasksForQuote(
         reason: "schema-missing",
       };
     }
-    console.error("[quote kickoff tasks] ensure crashed", {
+    console.error("[kickoff] ensure crashed", {
       quoteId: normalizedQuoteId,
       supplierId,
-      error: serializeSupabaseError(error) ?? error,
+      pgCode: (error as { code?: string | null })?.code ?? null,
+      message: (error as { message?: string | null })?.message ?? null,
     });
     return {
       ok: false,
@@ -720,6 +753,84 @@ export async function ensureKickoffTasksForQuote(
       reason: "seed-error",
     };
   }
+}
+
+export async function ensureKickoffTasksForAwardedSupplier(
+  input: EnsureKickoffTasksForAwardedSupplierInput,
+): Promise<EnsureKickoffTasksForAwardedSupplierResult> {
+  const quoteId = normalizeId(input.quoteId);
+  if (!quoteId) {
+    return {
+      ok: false,
+      created: false,
+      taskCount: 0,
+      supplierId: null,
+      error: "missing-identifiers",
+      reason: "missing-identifiers",
+    };
+  }
+
+  const awardInfo = await loadQuoteAwardFieldsForKickoff(quoteId);
+  if (!awardInfo.ok) {
+    return {
+      ok: false,
+      created: false,
+      taskCount: 0,
+      supplierId: null,
+      error: awardInfo.error,
+      reason: awardInfo.reason === "schema-missing" ? "schema-missing" : "seed-error",
+    };
+  }
+
+  const supplierId = normalizeId(awardInfo.quote.awarded_supplier_id) || null;
+  const awardedAt = normalizeId(awardInfo.quote.awarded_at) || null;
+  const awardedBidId = normalizeId(awardInfo.quote.awarded_bid_id) || null;
+
+  if (!supplierId || !awardedAt || !awardedBidId) {
+    return {
+      ok: false,
+      created: false,
+      taskCount: 0,
+      supplierId,
+      error: "not-awarded",
+      reason: "not-awarded",
+    };
+  }
+
+  const ensured = await ensureKickoffTasksForQuote(quoteId, {
+    actorRole: input.actorRole ?? null,
+    actorUserId: input.actorUserId ?? null,
+  });
+
+  if (!ensured.ok) {
+    return {
+      ok: false,
+      created: false,
+      taskCount: 0,
+      supplierId: ensured.supplierId ?? supplierId,
+      error: ensured.error,
+      reason: ensured.reason,
+    };
+  }
+
+  const ensuredSupplierId = normalizeId(ensured.supplierId) || null;
+  if (!ensuredSupplierId || ensuredSupplierId !== supplierId) {
+    console.warn("[kickoff] ensure returned mismatched supplier id", {
+      quoteId,
+      supplierId,
+      ensuredSupplierId,
+      pgCode: null,
+      message: "supplier-id-mismatch",
+    });
+  }
+
+  return {
+    ok: true,
+    created: ensured.created,
+    taskCount: ensured.taskCount,
+    supplierId,
+    error: null,
+  };
 }
 
 function mapRowToTask(row: QuoteKickoffTaskRow): SupplierKickoffTask | null {
