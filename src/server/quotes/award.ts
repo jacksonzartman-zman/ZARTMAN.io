@@ -122,6 +122,11 @@ export async function performAwardFlow(
     return { ok: false, reason: "quote_not_found", error: "Quote not found." };
   }
 
+  // Defensive invariant: older databases may have quotes marked as won without
+  // having quotes.awarded_* populated (legacy award RPC). We only attempt a
+  // best-effort backfill after validating the actor can access this quote.
+  const normalizedQuoteStatus = normalizeQuoteStatus(quote.status ?? undefined);
+
   // Idempotency: awarding the same bid twice should be a no-op success.
   if (quote.awarded_bid_id && quote.awarded_bid_id === bidId) {
     // Backfill audit fields if the award was written by an older RPC signature.
@@ -189,18 +194,68 @@ export async function performAwardFlow(
       };
     }
 
-    const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
-    if (!isCustomerAwardStatusAllowed(normalizedStatus)) {
+    if (!isCustomerAwardStatusAllowed(normalizedQuoteStatus)) {
       console.warn("[award] validation failed", {
         ...logContext,
         reason: "status_not_allowed",
-        status: normalizedStatus,
+        status: normalizedQuoteStatus,
       });
       return {
         ok: false,
         reason: "status_not_allowed",
         error: "This quote isn’t ready to select a winner yet.",
       };
+    }
+  }
+
+  if (
+    normalizedQuoteStatus &&
+    WIN_STATUS_VALUES.includes(normalizedQuoteStatus) &&
+    hasMissingAwardFields(quote)
+  ) {
+    console.warn("[award] invariant violated; quote is won but missing awarded_* fields", {
+      ...logContext,
+      status: normalizedQuoteStatus,
+      awardedBidId: quote.awarded_bid_id ?? null,
+      awardedSupplierId: quote.awarded_supplier_id ?? null,
+      awardedAt: quote.awarded_at ?? null,
+    });
+
+    try {
+      const backfilled = await backfillAwardFieldsFromBid({
+        quoteId,
+        bidId,
+        actorRole,
+        actorUserId,
+        logContext,
+      });
+
+      if (backfilled?.awarded_bid_id && backfilled.awarded_bid_id === bidId) {
+        try {
+          await ensureAwardAuditFields({
+            quoteId,
+            actorUserId,
+            actorRole,
+          });
+        } catch (error) {
+          console.warn("[award] audit backfill failed (invariant backfill)", {
+            ...logContext,
+            error: serializeActionError(error),
+          });
+        }
+
+        return {
+          ok: true,
+          awardedBidId: backfilled.awarded_bid_id ?? bidId,
+          awardedSupplierId: backfilled.awarded_supplier_id ?? null,
+          awardedAt: backfilled.awarded_at ?? null,
+        };
+      }
+    } catch (error) {
+      console.warn("[award] invariant backfill attempt failed", {
+        ...logContext,
+        error: serializeActionError(error),
+      });
     }
   }
 
@@ -268,6 +323,7 @@ export async function performAwardFlow(
 
   // Prefer the new RPC signature (with actor params) but safely fall back to the
   // legacy signature on production databases that haven't been migrated yet.
+  let usedLegacyRpcSignature = false;
   let rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
     p_quote_id: quoteId,
     p_bid_id: bidId,
@@ -282,6 +338,7 @@ export async function performAwardFlow(
       message: (rpcResult.error as { message?: string | null })?.message ?? null,
     });
 
+    usedLegacyRpcSignature = true;
     rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
       // Legacy signature expects only these named params.
       p_bid_id: bidId,
@@ -315,6 +372,23 @@ export async function performAwardFlow(
       ...logContext,
       error: serializeActionError(error),
     });
+  }
+
+  if (usedLegacyRpcSignature) {
+    try {
+      await backfillAwardFieldsFromBid({
+        quoteId,
+        bidId,
+        actorRole,
+        actorUserId,
+        logContext,
+      });
+    } catch (error) {
+      console.warn("[award] award fields backfill failed after legacy rpc", {
+        ...logContext,
+        error: serializeActionError(error),
+      });
+    }
   }
 
   const awardedSnapshot = await loadQuoteAwardSnapshot(quoteId);
@@ -641,6 +715,115 @@ function isAwardRpcSignatureMismatch(error: unknown): boolean {
     typeof message === "string" &&
     message.includes("Could not find function public.award_bid_for_quote(")
   );
+}
+
+function hasMissingAwardFields(quote: QuoteAwardRow): boolean {
+  return (
+    !normalizeId(quote.awarded_bid_id) ||
+    !normalizeId(quote.awarded_supplier_id) ||
+    !normalizeId(quote.awarded_at)
+  );
+}
+
+async function backfillAwardFieldsFromBid({
+  quoteId,
+  bidId,
+  actorRole,
+  actorUserId,
+  logContext,
+}: {
+  quoteId: string;
+  bidId: string;
+  actorRole: AwardActorRole;
+  actorUserId: string;
+  logContext: Record<string, unknown>;
+}): Promise<Pick<QuoteAwardRow, "awarded_bid_id" | "awarded_supplier_id" | "awarded_at"> | null> {
+  const bid = await loadBidForAward(bidId);
+  if (!bid || bid.quote_id !== quoteId) {
+    console.warn("[award] award backfill skipped; bid mismatch", {
+      ...logContext,
+      bidQuoteId: bid?.quote_id ?? null,
+    });
+    return null;
+  }
+
+  const supplierId = normalizeId(bid.supplier_id);
+  if (!supplierId) {
+    console.warn("[award] award backfill skipped; missing supplier id on bid", {
+      ...logContext,
+    });
+    return null;
+  }
+
+  const { data: quoteSnapshot, error: snapshotError } = await supabaseServer
+    .from("quotes")
+    .select("awarded_bid_id,awarded_supplier_id,awarded_at")
+    .eq("id", quoteId)
+    .maybeSingle<Pick<QuoteAwardRow, "awarded_bid_id" | "awarded_supplier_id" | "awarded_at">>();
+
+  if (snapshotError) {
+    console.warn("[award] award backfill snapshot failed", {
+      ...logContext,
+      error: serializeActionError(snapshotError),
+    });
+    return null;
+  }
+
+  const existing = quoteSnapshot ?? null;
+  const existingBidId = normalizeId(existing?.awarded_bid_id ?? null);
+  const existingSupplierId = normalizeId(existing?.awarded_supplier_id ?? null);
+  const existingAwardedAt = normalizeId(existing?.awarded_at ?? null);
+
+  if (existingBidId && existingBidId !== bidId) {
+    console.warn("[award] award backfill aborted; quote already has different awarded_bid_id", {
+      ...logContext,
+      existingBidId,
+    });
+    return existing;
+  }
+
+  if (existingSupplierId && existingSupplierId !== supplierId) {
+    console.warn("[award] award backfill aborted; quote already has different awarded_supplier_id", {
+      ...logContext,
+      existingSupplierId,
+      supplierId,
+    });
+    return existing;
+  }
+
+  const targetBidId = existingBidId || bidId;
+  const targetSupplierId = existingSupplierId || supplierId;
+  const targetAwardedAt = existingAwardedAt || new Date().toISOString();
+
+  const needsUpdate = !existingBidId || !existingSupplierId || !existingAwardedAt;
+  if (!needsUpdate) {
+    return existing;
+  }
+
+  // Keep award integrity trigger compatible: write all awarded_* together, even
+  // when only one field is missing.
+  const { data: updated, error: updateError } = await supabaseServer
+    .from("quotes")
+    .update({
+      awarded_bid_id: targetBidId,
+      awarded_supplier_id: targetSupplierId,
+      awarded_at: targetAwardedAt,
+    })
+    .eq("id", quoteId)
+    .select("awarded_bid_id,awarded_supplier_id,awarded_at")
+    .maybeSingle<Pick<QuoteAwardRow, "awarded_bid_id" | "awarded_supplier_id" | "awarded_at">>();
+
+  if (updateError) {
+    console.warn("[award] award backfill update failed", {
+      ...logContext,
+      actorRole,
+      actorUserId,
+      error: serializeActionError(updateError),
+    });
+    return null;
+  }
+
+  return updated ?? null;
 }
 
 async function ensureAwardAuditFields({
