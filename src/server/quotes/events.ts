@@ -434,7 +434,8 @@ function filterAndSanitizeTimelineEvents(
     return events;
   }
 
-  const allowed = new Set<string>([
+  // Keep customer timeline strictly limited to "safe" quote lifecycle events.
+  const allowedForCustomer = new Set<string>([
     "submitted",
     "supplier_invited",
     "bid_received",
@@ -451,16 +452,26 @@ function filterAndSanitizeTimelineEvents(
   ]);
 
   if (role === "customer") {
-    return events.filter((event) => allowed.has(normalizeEventType(event.event_type)));
+    return events.filter((event) =>
+      allowedForCustomer.has(normalizeEventType(event.event_type)),
+    );
   }
 
   if (role === "supplier") {
+    // Suppliers can see the customer-safe events plus supplier-scoped operational updates
+    // (these must never leak across suppliers).
+    const allowedForSupplier = new Set<string>([
+      ...Array.from(allowedForCustomer),
+      "capacity_updated",
+    ]);
     const supplierId = normalizeId(viewer.supplierId) || null;
     const supplierEmail =
       typeof viewer.supplierEmail === "string" ? viewer.supplierEmail : null;
 
     return events
-      .filter((event) => allowed.has(normalizeEventType(event.event_type)))
+      .filter((event) =>
+        allowedForSupplier.has(normalizeEventType(event.event_type)),
+      )
       .filter((event) => {
         const type = normalizeEventType(event.event_type);
         const metadata = isRecord(event.metadata) ? event.metadata : {};
@@ -472,7 +483,13 @@ function filterAndSanitizeTimelineEvents(
         const actorSupplierId = normalizeId(event.actor_supplier_id) || null;
 
         // Supplier-specific events should not leak other suppliers.
-        if (type === "supplier_invited" || type === "bid_received" || type === "kickoff_updated" || type === "bid_won") {
+        if (
+          type === "supplier_invited" ||
+          type === "bid_received" ||
+          type === "kickoff_updated" ||
+          type === "bid_won" ||
+          type === "capacity_updated"
+        ) {
           if (!supplierId && !supplierEmail) return false;
           return (
             (supplierId && (metaSupplierId === supplierId || actorSupplierId === supplierId)) ||

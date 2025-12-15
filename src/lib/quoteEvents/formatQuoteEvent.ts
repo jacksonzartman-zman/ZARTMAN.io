@@ -27,6 +27,31 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
   const metadata = resolveEventMetadata(event);
   const actorLabel = formatActorLabel(event.actor_role, metadata);
 
+  if (type === "capacity_updated") {
+    const capability = readString(metadata, "capability");
+    const capacityLevel =
+      readString(metadata, "capacityLevel") ?? readString(metadata, "capacity_level");
+    const weekStartDate =
+      readString(metadata, "weekStartDate") ?? readString(metadata, "week_start_date");
+
+    const capabilityLabel = formatCapabilityLabel(capability);
+    const levelLabel = formatCapacityLevelLabel(capacityLevel);
+    const weekLabel = formatWeekOfLabel(weekStartDate);
+
+    const subtitle = joinSubtitle(
+      capabilityLabel && levelLabel ? `${capabilityLabel} \u2192 ${levelLabel}` : null, // →
+      weekLabel ? `(${weekLabel})` : null,
+    );
+
+    return {
+      groupKey: "other",
+      groupLabel: "Other",
+      title: "Supplier updated capacity",
+      subtitle: subtitle ?? undefined,
+      actorLabel,
+    };
+  }
+
   if (type === "submitted") {
     return {
       groupKey: "rfq",
@@ -316,6 +341,45 @@ function humanizeFallback(value: string): string {
   const cleaned = value.replace(/[_-]+/g, " ").trim();
   if (!cleaned) return "Event";
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+function formatCapabilityLabel(value: string | null): string | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!normalized) return null;
+  const map: Record<string, string> = {
+    cnc_mill: "CNC Mill",
+    cnc_lathe: "CNC Lathe",
+    mjp: "MJP",
+    sla: "SLA",
+  };
+  if (map[normalized]) return map[normalized]!;
+
+  // Fallback: title-case the identifier.
+  const words = normalized.replace(/[_-]+/g, " ").split(" ").filter(Boolean);
+  if (words.length === 0) return null;
+  return words
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function formatCapacityLevelLabel(value: string | null): string | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!normalized) return null;
+  if (normalized === "low") return "Low";
+  if (normalized === "medium") return "Medium";
+  if (normalized === "high") return "High";
+  if (normalized === "overloaded") return "Overloaded";
+  return humanizeFallback(normalized);
+}
+
+function formatWeekOfLabel(value: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const date = new Date(`${trimmed}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return null;
+  const label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return label ? `week of ${label}` : null;
 }
 
 function formatStatusTransitionSubtitle(
