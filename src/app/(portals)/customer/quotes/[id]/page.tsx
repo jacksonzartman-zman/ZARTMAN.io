@@ -3,11 +3,11 @@ import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
-import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
 import { QuoteEventsTimeline } from "@/app/(portals)/components/QuoteEventsTimeline";
+import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
 import {
   formatQuoteId,
   getSearchParamValue,
@@ -26,7 +26,6 @@ import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
-import { DataFallbackNotice } from "@/app/(portals)/DataFallbackNotice";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import {
   getQuoteStatusLabel,
@@ -35,7 +34,6 @@ import {
 } from "@/server/quotes/status";
 import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
-import { CustomerQuotePartPanel } from "./CustomerQuotePartPanel";
 import {
   loadQuoteProjectForQuote,
   type QuoteProjectRecord,
@@ -109,7 +107,6 @@ export default async function CustomerQuoteDetailPage({
     quote,
     uploadMeta,
     filePreviews,
-    filesUnavailable,
   } = workspaceResult.data;
   const customerBidSummariesResult = await loadCustomerQuoteBidSummaries({
     quoteId: quote.id,
@@ -802,38 +799,7 @@ export default async function CustomerQuoteDetailPage({
   );
 
   const filesSection = (
-    <CollapsibleCard
-      title="Files & uploads"
-      description="RFQ files, CAD previews, and download links."
-      defaultOpen
-      summary={
-        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
-          {fileCountText}
-        </span>
-      }
-    >
-      <div className="space-y-4">
-        <CustomerQuotePartPanel
-          files={quoteFiles}
-          previews={filePreviews}
-          processHint={uploadMeta?.manufacturing_process}
-          quantityHint={uploadMeta?.quantity}
-          targetDate={quote.target_date ?? null}
-        />
-        <div className="space-y-2">
-          <QuoteFilesCard files={filePreviews} />
-          {filesUnavailable ? (
-            <>
-              <p className="px-1 text-xs text-slate-500">
-                File metadata is temporarily unavailable. Download links fall back to the original upload
-                while we resync.
-              </p>
-              <DataFallbackNotice className="px-1" />
-            </>
-          ) : null}
-        </div>
-      </div>
-    </CollapsibleCard>
+    <QuoteFilesUploadsSection files={filePreviews} fileCountText={fileCountText} />
   );
 
   const notesSection = (
