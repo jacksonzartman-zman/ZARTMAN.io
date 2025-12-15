@@ -19,11 +19,55 @@ export type CapacityCalendarSupplier = {
   name: string;
 };
 
+function parseSnapshotDate(createdAt: string | null): Date | null {
+  if (!createdAt) return null;
+  const date = new Date(createdAt);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function formatLastUpdated(createdAt: string | null): string {
   if (!createdAt) return "Last updated: unknown";
   const date = new Date(createdAt);
   if (Number.isNaN(date.getTime())) return "Last updated: unknown";
   return `Last updated: ${date.toLocaleString()}`;
+}
+
+function formatRelativeTimeFromNow(createdAt: string | null, now: Date = new Date()): string | null {
+  const date = parseSnapshotDate(createdAt);
+  if (!date) return null;
+
+  const diffMs = date.getTime() - now.getTime();
+  const diffSeconds = Math.round(diffMs / 1000);
+  const absSeconds = Math.abs(diffSeconds);
+
+  // Pick the largest sensible unit for display.
+  let value: number;
+  let unit: Intl.RelativeTimeFormatUnit;
+  if (absSeconds < 60) {
+    value = diffSeconds;
+    unit = "second";
+  } else if (absSeconds < 60 * 60) {
+    value = Math.round(diffSeconds / 60);
+    unit = "minute";
+  } else if (absSeconds < 60 * 60 * 24) {
+    value = Math.round(diffSeconds / (60 * 60));
+    unit = "hour";
+  } else if (absSeconds < 60 * 60 * 24 * 14) {
+    value = Math.round(diffSeconds / (60 * 60 * 24));
+    unit = "day";
+  } else if (absSeconds < 60 * 60 * 24 * 60) {
+    value = Math.round(diffSeconds / (60 * 60 * 24 * 7));
+    unit = "week";
+  } else if (absSeconds < 60 * 60 * 24 * 365) {
+    value = Math.round(diffSeconds / (60 * 60 * 24 * 30));
+    unit = "month";
+  } else {
+    value = Math.round(diffSeconds / (60 * 60 * 24 * 365));
+    unit = "year";
+  }
+
+  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+  return rtf.format(value, unit);
 }
 
 function capacityToFill(level: string): 0 | 1 | 2 | 3 {
@@ -90,6 +134,13 @@ export default function CapacityCalendar({
   capabilityFilter?: string | null;
 }) {
   const snapshotIndex = buildSnapshotIndex(snapshots);
+  const now = new Date();
+
+  const normalizedCapabilitiesAll = (capabilities ?? [])
+    .map((cap) => (cap ?? "").toString().trim().toLowerCase())
+    .filter(Boolean);
+  const totalCapabilityCount = normalizedCapabilitiesAll.length;
+  const capabilityUniverse = new Set(normalizedCapabilitiesAll);
   const normalizedCapabilityFilter =
     typeof capabilityFilter === "string" && capabilityFilter.trim().length > 0
       ? capabilityFilter.trim().toLowerCase()
@@ -134,6 +185,22 @@ export default function CapacityCalendar({
 
           {suppliers.map((supplier) => {
             const byWeek = snapshotIndex.get(supplier.id) ?? new Map<string, CapacityCalendarSnapshot[]>();
+            let lastUpdatedDate: Date | null = null;
+            let lastUpdatedAtRaw: string | null = null;
+            for (const list of byWeek.values()) {
+              for (const snapshot of list) {
+                const date = parseSnapshotDate(snapshot.createdAt);
+                if (!date) continue;
+                if (!lastUpdatedDate || date.getTime() > lastUpdatedDate.getTime()) {
+                  lastUpdatedDate = date;
+                  lastUpdatedAtRaw = snapshot.createdAt;
+                }
+              }
+            }
+
+            const lastUpdatedRelative = formatRelativeTimeFromNow(lastUpdatedAtRaw, now);
+            const isStale =
+              lastUpdatedDate ? now.getTime() - lastUpdatedDate.getTime() > 14 * 24 * 60 * 60 * 1000 : false;
 
             return (
               <div
@@ -144,17 +211,36 @@ export default function CapacityCalendar({
                   <div className="text-sm font-semibold text-slate-100">
                     {supplier.name}
                   </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span title={lastUpdatedDate ? lastUpdatedDate.toLocaleString() : "No snapshots in range"}>
+                      {lastUpdatedRelative ? `Updated ${lastUpdatedRelative}` : "No updates in range"}
+                    </span>
+                    {isStale ? (
+                      <span className="rounded-full border border-amber-500/40 bg-amber-950/30 px-2 py-0.5 text-[11px] font-semibold text-amber-200">
+                        Stale
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="mt-1 text-xs text-slate-500">{supplier.id}</div>
                 </div>
 
                 {weeks.map((week) => {
                   const cellSnapshots = byWeek.get(week.weekStartDate) ?? [];
+                  const coveredCapabilities = new Set<string>();
+                  for (const snapshot of cellSnapshots) {
+                    const key = snapshot.capability.trim().toLowerCase();
+                    if (key && capabilityUniverse.has(key)) coveredCapabilities.add(key);
+                  }
+                  const coverageCount = coveredCapabilities.size;
+                  const coverageText =
+                    totalCapabilityCount > 0 ? `${coverageCount}/${totalCapabilityCount} set` : "—";
 
                   return (
                     <div
                       key={`${supplier.id}:${week.weekStartDate}`}
                       className="px-4 py-4"
                     >
+                      <div className="mb-2 text-[11px] font-medium text-slate-500">{coverageText}</div>
                       <div className="space-y-2">
                         {(capabilitiesToRender.length > 0 ? capabilitiesToRender : [""]).map((capabilityKey) => {
                           const normalizedKey = capabilityKey.trim().toLowerCase();
