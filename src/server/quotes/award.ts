@@ -25,8 +25,6 @@ const BID_INELIGIBLE_STATUSES = new Set(["lost", "declined", "withdrawn"]);
 
 export type AwardActorRole = "customer" | "admin";
 
-let hasLoggedAwardRpcLegacyFallback = false;
-
 export type AwardFailureReason =
   | "invalid_input"
   | "quote_lookup_failed"
@@ -323,33 +321,12 @@ export async function performAwardFlow(
     };
   }
 
-  // Prefer the new RPC signature (with actor params) but safely fall back to the
-  // legacy signature on production databases that haven't been migrated yet.
-  let usedLegacyRpcSignature = false;
-  let rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
+  const rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
     p_quote_id: quoteId,
     p_bid_id: bidId,
     p_actor_user_id: actorUserId,
     p_actor_role: actorRole,
   });
-
-  if (rpcResult.error && isAwardRpcSignatureMismatch(rpcResult.error)) {
-    if (!hasLoggedAwardRpcLegacyFallback) {
-      hasLoggedAwardRpcLegacyFallback = true;
-      console.info("[award] rpc signature mismatch; falling back to legacy signature", {
-        ...logContext,
-        code: (rpcResult.error as { code?: string | null })?.code ?? null,
-        message: (rpcResult.error as { message?: string | null })?.message ?? null,
-      });
-    }
-
-    usedLegacyRpcSignature = true;
-    rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
-      // Legacy signature expects only these named params.
-      p_bid_id: bidId,
-      p_quote_id: quoteId,
-    });
-  }
 
   if (rpcResult.error) {
     const failureReason = mapRpcErrorToReason(rpcResult.error.message);
@@ -365,7 +342,7 @@ export async function performAwardFlow(
     };
   }
 
-  // Ensure audit fields are set even if the legacy RPC signature was used.
+  // Ensure audit fields are set (best-effort).
   try {
     await ensureAwardAuditFields({
       quoteId,
@@ -377,23 +354,6 @@ export async function performAwardFlow(
       ...logContext,
       error: serializeActionError(error),
     });
-  }
-
-  if (usedLegacyRpcSignature) {
-    try {
-      await backfillAwardFieldsFromBid({
-        quoteId,
-        bidId,
-        actorRole,
-        actorUserId,
-        logContext,
-      });
-    } catch (error) {
-      console.warn("[award] award fields backfill failed after legacy rpc", {
-        ...logContext,
-        error: serializeActionError(error),
-      });
-    }
   }
 
   // Defense-in-depth: even if the RPC returns success, ensure the quote is
@@ -864,19 +824,6 @@ function mapRpcErrorToReason(message?: string | null): AwardFailureReason {
     return "missing_supplier";
   }
   return "write_failed";
-}
-
-function isAwardRpcSignatureMismatch(error: unknown): boolean {
-  const code = (error as { code?: string | null })?.code ?? null;
-  if (code === "PGRST202") {
-    return true;
-  }
-
-  const message = (error as { message?: string | null })?.message ?? "";
-  return (
-    typeof message === "string" &&
-    message.includes("Could not find function public.award_bid_for_quote(")
-  );
 }
 
 function hasMissingAwardFields(quote: QuoteAwardRow): boolean {
