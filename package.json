@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "npm run check:no-quotes-email",
+    "prebuild": "npm run check:no-quotes-email && npm run check:db-contract",
     "build": "next build",
     "start": "next start",
     "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" \"*.{js,ts}\"",
-    "check:no-quotes-email": "node scripts/check-no-quotes-email.mjs"
+    "check:no-quotes-email": "node scripts/check-no-quotes-email.mjs",
+    "check:db-contract": "node scripts/check-db-view-contract.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.103.0",
