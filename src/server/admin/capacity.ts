@@ -146,6 +146,99 @@ export async function getCapacitySnapshots(args: {
   }
 }
 
+export async function getCapacitySnapshotsForSupplierWeek(args: {
+  supplierId: string;
+  weekStartDate: string; // YYYY-MM-DD (Monday)
+}): Promise<AdminLoaderResult<{ snapshots: AdminCapacitySnapshotRow[] }>> {
+  // Defense-in-depth: this loader uses the service role key.
+  await requireAdminUser();
+
+  const supplierId = normalizeId(args?.supplierId);
+  const weekStartDate = normalizeDate(args?.weekStartDate);
+
+  if (!supplierId || !weekStartDate) {
+    return {
+      ok: false,
+      data: { snapshots: [] },
+      error: "Invalid supplier or week start date.",
+    };
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(SNAPSHOTS_TABLE)
+      .select(CAPACITY_SNAPSHOT_SELECT)
+      .eq("supplier_id", supplierId)
+      .eq("week_start_date", weekStartDate)
+      .order("capability", { ascending: true })
+      .order("created_at", { ascending: false })
+      .limit(250)
+      .returns<AdminCapacitySnapshotRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        console.warn(
+          "[admin capacity] supplier-week snapshots missing schema; returning empty",
+          {
+            table: SNAPSHOTS_TABLE,
+            select: CAPACITY_SNAPSHOT_SELECT,
+            supplierId,
+            weekStartDate,
+            supabaseError: serializeSupabaseError(error),
+          },
+        );
+        return { ok: true, data: { snapshots: [] }, error: null };
+      }
+
+      console.error("[admin capacity] supplier-week snapshots query failed", {
+        table: SNAPSHOTS_TABLE,
+        select: CAPACITY_SNAPSHOT_SELECT,
+        supplierId,
+        weekStartDate,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return {
+        ok: false,
+        data: { snapshots: [] },
+        error: "Unable to load capacity snapshots right now.",
+      };
+    }
+
+    return {
+      ok: true,
+      data: { snapshots: Array.isArray(data) ? data : [] },
+      error: null,
+    };
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      console.warn(
+        "[admin capacity] supplier-week snapshots crashed (missing schema); returning empty",
+        {
+          table: SNAPSHOTS_TABLE,
+          select: CAPACITY_SNAPSHOT_SELECT,
+          supplierId,
+          weekStartDate,
+          supabaseError: serializeSupabaseError(error),
+        },
+      );
+      return { ok: true, data: { snapshots: [] }, error: null };
+    }
+
+    console.error("[admin capacity] supplier-week snapshots crashed", {
+      table: SNAPSHOTS_TABLE,
+      select: CAPACITY_SNAPSHOT_SELECT,
+      supplierId,
+      weekStartDate,
+      supabaseError: serializeSupabaseError(error) ?? error,
+    });
+    return {
+      ok: false,
+      data: { snapshots: [] },
+      error: "Unable to load capacity snapshots right now.",
+    };
+  }
+}
+
 export async function listCapacitySuppliers(): Promise<
   AdminLoaderResult<{ suppliers: AdminCapacitySupplierRow[] }>
 > {
