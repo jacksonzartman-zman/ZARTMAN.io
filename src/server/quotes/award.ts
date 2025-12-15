@@ -396,6 +396,29 @@ export async function performAwardFlow(
     }
   }
 
+  // Defense-in-depth: even if the RPC returns success, ensure the quote is
+  // "won" and has awarded_* fields populated (idempotent; does not overwrite an
+  // existing award). This protects against legacy/overridden DB functions.
+  const finalized = await ensureQuoteWonAndAwarded({
+    quoteId,
+    bidId,
+    winningSupplierId,
+    actorRole,
+    actorUserId,
+    logContext,
+  });
+  if (!finalized) {
+    console.error("[award] finalization failed; refusing to proceed with downstream kickoff", {
+      ...logContext,
+      reason: "write_failed",
+    });
+    return {
+      ok: false,
+      reason: "write_failed",
+      error: "We couldn't finalize the award state. Please try again.",
+    };
+  }
+
   const awardedSnapshot = await loadQuoteAwardSnapshot(quoteId);
   const awardedAt =
     awardedSnapshot?.awarded_at ??
@@ -654,6 +677,140 @@ async function loadQuoteAwardSnapshot(quoteId: string) {
     });
     return null;
   }
+}
+
+type QuoteAwardStateSnapshot = Pick<
+  QuoteAwardRow,
+  "status" | "awarded_bid_id" | "awarded_supplier_id" | "awarded_at"
+>;
+
+async function loadQuoteAwardStateSnapshot(
+  quoteId: string,
+): Promise<QuoteAwardStateSnapshot | null> {
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes")
+      .select("status,awarded_bid_id,awarded_supplier_id,awarded_at")
+      .eq("id", quoteId)
+      .maybeSingle<QuoteAwardStateSnapshot>();
+
+    if (error) {
+      console.error("[award] state snapshot lookup failed", {
+        quoteId,
+        error: serializeActionError(error),
+      });
+      return null;
+    }
+    return data ?? null;
+  } catch (error) {
+    console.error("[award] state snapshot lookup crashed", {
+      quoteId,
+      error: serializeActionError(error),
+    });
+    return null;
+  }
+}
+
+function hasCompleteAward(snapshot: QuoteAwardStateSnapshot | null): boolean {
+  if (!snapshot) return false;
+  return (
+    Boolean(normalizeId(snapshot.awarded_bid_id)) &&
+    Boolean(normalizeId(snapshot.awarded_supplier_id)) &&
+    Boolean(normalizeId(snapshot.awarded_at))
+  );
+}
+
+async function ensureQuoteWonAndAwarded({
+  quoteId,
+  bidId,
+  winningSupplierId,
+  actorRole,
+  actorUserId,
+  logContext,
+}: {
+  quoteId: string;
+  bidId: string;
+  winningSupplierId: string;
+  actorRole: AwardActorRole;
+  actorUserId: string;
+  logContext: Record<string, unknown>;
+}): Promise<boolean> {
+  const before = await loadQuoteAwardStateSnapshot(quoteId);
+  if (!before) {
+    return false;
+  }
+
+  const existingAwardedBidId = normalizeId(before.awarded_bid_id);
+  if (existingAwardedBidId && existingAwardedBidId !== bidId) {
+    console.warn("[award] finalization aborted; quote already awarded to different bid", {
+      ...logContext,
+      existingAwardedBidId,
+    });
+    return false;
+  }
+
+  if (!hasCompleteAward(before)) {
+    try {
+      const backfilled = await backfillAwardFieldsFromBid({
+        quoteId,
+        bidId,
+        actorRole,
+        actorUserId,
+        logContext,
+      });
+      if (!backfilled || !normalizeId(backfilled.awarded_bid_id)) {
+        return false;
+      }
+    } catch (error) {
+      console.warn("[award] finalization backfill failed", {
+        ...logContext,
+        error: serializeActionError(error),
+      });
+      return false;
+    }
+  }
+
+  const after = await loadQuoteAwardStateSnapshot(quoteId);
+  if (!hasCompleteAward(after)) {
+    console.warn("[award] finalization failed; missing award fields after backfill", {
+      ...logContext,
+      awardedBidId: after?.awarded_bid_id ?? null,
+      awardedSupplierId: after?.awarded_supplier_id ?? null,
+      awardedAt: after?.awarded_at ?? null,
+    });
+    return false;
+  }
+
+  const normalizedStatus = normalizeQuoteStatus(after?.status ?? undefined);
+  if (normalizedStatus !== "won") {
+    const { error } = await supabaseServer
+      .from("quotes")
+      .update({
+        status: "won",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", quoteId);
+
+    if (error) {
+      console.warn("[award] finalization failed; unable to set quote to won", {
+        ...logContext,
+        error: serializeActionError(error),
+      });
+      return false;
+    }
+  }
+
+  // Sanity check: ensure the awarded supplier matches the selected bid.
+  if (normalizeId(after?.awarded_supplier_id) !== winningSupplierId) {
+    console.warn("[award] finalization warning; awarded supplier mismatch", {
+      ...logContext,
+      winningSupplierId,
+      awardedSupplierId: after?.awarded_supplier_id ?? null,
+    });
+    return false;
+  }
+
+  return true;
 }
 
 function revalidateAwardedPaths(quoteId: string) {
