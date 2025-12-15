@@ -28,6 +28,7 @@ type QuoteRow = {
   assigned_supplier_email: string | null;
   awarded_bid_id: string | null;
   awarded_supplier_id: string | null;
+  awarded_at: string | null;
 };
 
 export async function transitionQuoteStatus(
@@ -52,7 +53,7 @@ export async function transitionQuoteStatus(
     const { data: quote, error: quoteError } = await supabaseServer
       .from("quotes")
       .select(
-        "id,status,customer_id,customer_email,assigned_supplier_email,awarded_bid_id,awarded_supplier_id",
+        "id,status,customer_id,customer_email,assigned_supplier_email,awarded_bid_id,awarded_supplier_id,awarded_at",
       )
       .eq("id", quoteId)
       .maybeSingle<QuoteRow>();
@@ -127,6 +128,33 @@ export async function transitionQuoteStatus(
         reason: "transition_denied",
         error: "That action isn't available for this RFQ.",
       };
+    }
+
+    // Defense-in-depth: prevent any future code from moving a quote to "won"
+    // without an award. The canonical path for "won" is the award flow.
+    if (targetStatus === "won") {
+      const hasAward =
+        Boolean(normalizeId(quote.awarded_bid_id)) &&
+        Boolean(normalizeId(quote.awarded_supplier_id)) &&
+        Boolean(normalizeId(quote.awarded_at));
+      if (!hasAward) {
+        console.warn("[quote status] blocked transition to won without award", {
+          quoteId,
+          actorRole,
+          action,
+          fromStatus,
+          toStatus: targetStatus,
+          awardedBidId: quote.awarded_bid_id ?? null,
+          awardedSupplierId: quote.awarded_supplier_id ?? null,
+          awardedAt: quote.awarded_at ?? null,
+        });
+        return {
+          ok: false,
+          reason: "transition_denied",
+          error:
+            "This RFQ can’t be marked won until a winning supplier is awarded. Use the award action instead.",
+        };
+      }
     }
 
     const { error: updateError } = await supabaseServer

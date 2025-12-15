@@ -483,6 +483,47 @@ export async function updateAdminQuote(
   });
 
   try {
+    // Defense-in-depth: do not allow marking quotes as "won" via generic admin
+    // status update. Awarding must populate awarded_* fields.
+    if (hasStatusUpdate && normalized.updates.status === "won") {
+      const { data: award, error: awardError } = await supabaseServer
+        .from("quotes")
+        .select("awarded_bid_id,awarded_supplier_id,awarded_at")
+        .eq("id", normalized.quoteId)
+        .maybeSingle<{
+          awarded_bid_id: string | null;
+          awarded_supplier_id: string | null;
+          awarded_at: string | null;
+        }>();
+
+      if (awardError) {
+        logAdminQuotesWarn("update blocked; unable to verify award state", {
+          quoteId: normalized.quoteId,
+          supabaseError: serializeSupabaseError(awardError),
+        });
+        return { ok: false, error: QUOTE_UPDATE_ERROR };
+      }
+
+      const hasAward =
+        Boolean(award?.awarded_bid_id?.trim()) &&
+        Boolean(award?.awarded_supplier_id?.trim()) &&
+        Boolean(award?.awarded_at?.toString().trim());
+
+      if (!hasAward) {
+        logAdminQuotesWarn("update blocked; attempted to set won without award", {
+          quoteId: normalized.quoteId,
+          awardedBidId: award?.awarded_bid_id ?? null,
+          awardedSupplierId: award?.awarded_supplier_id ?? null,
+          awardedAt: award?.awarded_at ?? null,
+        });
+        return {
+          ok: false,
+          error:
+            "This RFQ can’t be marked won until a winner is awarded. Use the Award action instead.",
+        };
+      }
+    }
+
     const { data, error } = await supabaseServer
       .from("quotes")
       .update(updatePayload)
