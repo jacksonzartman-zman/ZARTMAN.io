@@ -24,10 +24,13 @@ export function SupplierKickoffChecklistCard({
   tasks,
   readOnly = false,
 }: SupplierKickoffChecklistCardProps) {
-  const mergedTasks = useMemo(
-    () => mergeKickoffTasksWithDefaults(tasks),
-    [tasks],
-  );
+  const hasTasks = Array.isArray(tasks) && tasks.length > 0;
+  const mergedTasks = useMemo(() => {
+    if (!hasTasks) {
+      return [];
+    }
+    return mergeKickoffTasksWithDefaults(tasks);
+  }, [hasTasks, tasks]);
   const [localTasks, setLocalTasks] = useState(mergedTasks);
   const [pendingTaskKey, setPendingTaskKey] = useState<string | null>(null);
   const [result, setResult] = useState<SupplierKickoffFormState | null>(null);
@@ -37,16 +40,19 @@ export function SupplierKickoffChecklistCard({
     setLocalTasks(mergedTasks);
   }, [mergedTasks]);
 
-  const summary = useMemo(
-    () => summarizeKickoffTasks(localTasks),
-    [localTasks],
-  );
-  const summaryLabel = formatKickoffSummaryLabel(summary);
+  const summary = useMemo(() => {
+    if (!hasTasks) {
+      return null;
+    }
+    return summarizeKickoffTasks(localTasks);
+  }, [hasTasks, localTasks]);
+  const summaryLabel = summary ? formatKickoffSummaryLabel(summary) : null;
   const lastUpdatedLabel = useMemo(() => {
-    return (
-      formatRelativeTimeFromTimestamp(toTimestamp(summary.lastUpdatedAt)) ?? "—"
-    );
-  }, [summary.lastUpdatedAt]);
+    if (!summary?.lastUpdatedAt) {
+      return "—";
+    }
+    return formatRelativeTimeFromTimestamp(toTimestamp(summary.lastUpdatedAt)) ?? "—";
+  }, [summary?.lastUpdatedAt]);
 
   const handleToggle = (task: SupplierKickoffTask, nextCompleted: boolean) => {
     if (readOnly) {
@@ -120,33 +126,37 @@ export function SupplierKickoffChecklistCard({
               Align on the five go-live checks
             </h2>
           </div>
-          <span
-            className={clsx(
-              "rounded-full px-3 py-1 text-xs font-semibold",
-              summary.status === "complete"
-                ? "border border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
-                : summary.status === "in-progress"
-                  ? "border border-blue-400/40 bg-blue-400/10 text-blue-100"
-                  : "border border-slate-800 bg-slate-900/60 text-slate-200",
-            )}
-          >
-            {summaryLabel}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
-          <span>
-            Completed{" "}
-            <span className="font-semibold text-slate-200">
-              {summary.completedCount}/{summary.totalCount}
+          {summary && summaryLabel ? (
+            <span
+              className={clsx(
+                "rounded-full px-3 py-1 text-xs font-semibold",
+                summary.status === "complete"
+                  ? "border border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
+                  : summary.status === "in-progress"
+                    ? "border border-blue-400/40 bg-blue-400/10 text-blue-100"
+                    : "border border-slate-800 bg-slate-900/60 text-slate-200",
+              )}
+            >
+              {summaryLabel}
             </span>
-          </span>
-          <span>
-            Last updated{" "}
-            <span className="font-semibold text-slate-200">
-              {summary.lastUpdatedAt ? lastUpdatedLabel : "—"}
-            </span>
-          </span>
+          ) : null}
         </div>
+        {summary ? (
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
+            <span>
+              Completed{" "}
+              <span className="font-semibold text-slate-200">
+                {summary.completedCount}/{summary.totalCount}
+              </span>
+            </span>
+            <span>
+              Last updated{" "}
+              <span className="font-semibold text-slate-200">
+                {summary.lastUpdatedAt ? lastUpdatedLabel : "—"}
+              </span>
+            </span>
+          </div>
+        ) : null}
         <p className="text-sm text-slate-300">
           We&apos;ll share this progress with the customer and Zartman admin
           team so everyone stays in sync.
@@ -169,46 +179,52 @@ export function SupplierKickoffChecklistCard({
         </p>
       ) : null}
 
-      <ul className="mt-4 space-y-3">
-        {localTasks.map((task) => {
-          const checkboxId = `kickoff-task-${task.taskKey}`;
-          const disabled =
-            readOnly ||
-            isPending ||
-            pendingTaskKey === task.taskKey ||
-            !task.taskKey;
-          return (
-            <li
-              key={task.taskKey}
-              className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"
-            >
-              <div className="pt-0.5">
-                <input
-                  id={checkboxId}
-                  type="checkbox"
-                  className="size-4 rounded border-slate-700 bg-slate-900 text-emerald-400 focus:ring-emerald-500"
-                  checked={task.completed}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    handleToggle(task, event.currentTarget.checked)
-                  }
-                />
-              </div>
-              <div className="space-y-1">
-                <label
-                  htmlFor={checkboxId}
-                  className="text-sm font-semibold text-white"
-                >
-                  {task.title}
-                </label>
-                {task.description ? (
-                  <p className="text-sm text-slate-300">{task.description}</p>
-                ) : null}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+      {!hasTasks ? (
+        <p className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-300">
+          Kickoff not ready yet. Refresh in a moment.
+        </p>
+      ) : (
+        <ul className="mt-4 space-y-3">
+          {localTasks.map((task) => {
+            const checkboxId = `kickoff-task-${task.taskKey}`;
+            const disabled =
+              readOnly ||
+              isPending ||
+              pendingTaskKey === task.taskKey ||
+              !task.taskKey;
+            return (
+              <li
+                key={task.taskKey}
+                className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"
+              >
+                <div className="pt-0.5">
+                  <input
+                    id={checkboxId}
+                    type="checkbox"
+                    className="size-4 rounded border-slate-700 bg-slate-900 text-emerald-400 focus:ring-emerald-500"
+                    checked={task.completed}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      handleToggle(task, event.currentTarget.checked)
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    htmlFor={checkboxId}
+                    className="text-sm font-semibold text-white"
+                  >
+                    {task.title}
+                  </label>
+                  {task.description ? (
+                    <p className="text-sm text-slate-300">{task.description}</p>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

@@ -11,7 +11,7 @@ import { ensureQuoteProjectForWinner } from "@/server/quotes/projects";
 import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
 import { loadSupplierById } from "@/server/suppliers/profile";
 import { emitQuoteEvent } from "@/server/quotes/events";
-import { ensureKickoffTasksForQuote } from "@/server/quotes/kickoffTasks";
+import { ensureKickoffTasksForAwardedSupplier } from "@/server/quotes/kickoffTasks";
 
 const CUSTOMER_AWARD_ALLOWED_STATUSES = new Set([
   "submitted",
@@ -146,7 +146,8 @@ export async function performAwardFlow(
     // If the quote is already awarded, kickoff tasks should already exist, but
     // we keep this safe and idempotent in case a previous run crashed mid-flow.
     try {
-      await ensureKickoffTasksForQuote(quoteId, {
+      await ensureKickoffTasksForAwardedSupplier({
+        quoteId,
         actorRole,
         actorUserId,
       });
@@ -239,6 +240,28 @@ export async function performAwardFlow(
           });
         } catch (error) {
           console.warn("[award] audit backfill failed (invariant backfill)", {
+            ...logContext,
+            error: serializeActionError(error),
+          });
+        }
+
+        // Best-effort kickoff seeding after successful award field backfill.
+        try {
+          const kickoffResult = await ensureKickoffTasksForAwardedSupplier({
+            quoteId,
+            actorRole,
+            actorUserId,
+          });
+          if (!kickoffResult.ok) {
+            console.warn("[award] kickoff ensure failed (invariant backfill)", {
+              ...logContext,
+              supplierId: kickoffResult.supplierId ?? null,
+              reason: kickoffResult.reason,
+              error: kickoffResult.error,
+            });
+          }
+        } catch (error) {
+          console.warn("[award] kickoff ensure failed (invariant backfill)", {
             ...logContext,
             error: serializeActionError(error),
           });
@@ -403,10 +426,20 @@ export async function performAwardFlow(
   // Auto-start supplier kickoff checklist immediately on award (idempotent).
   // Best-effort: kickoff initialization should not block a successful award.
   try {
-    await ensureKickoffTasksForQuote(quoteId, {
+    const kickoffResult = await ensureKickoffTasksForAwardedSupplier({
+      quoteId,
       actorRole,
       actorUserId,
     });
+
+    if (!kickoffResult.ok) {
+      console.warn("[award] kickoff ensure failed", {
+        ...logContext,
+        supplierId: kickoffResult.supplierId ?? null,
+        reason: kickoffResult.reason,
+        error: kickoffResult.error,
+      });
+    }
   } catch (error) {
     console.warn("[award] kickoff ensure failed", {
       ...logContext,

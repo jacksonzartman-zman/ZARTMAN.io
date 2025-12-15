@@ -49,9 +49,9 @@ import {
   loadQuoteKickoffTasksForSupplier,
   type SupplierKickoffTasksResult,
   ensureKickoffTasksForQuote,
+  isKickoffReadyForSupplier,
 } from "@/server/quotes/kickoffTasks";
 import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
-import { KickoffChecklist } from "./KickoffChecklist";
 import { postQuoteMessage as postSupplierQuoteMessage } from "./actions";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { listQuoteEventsForQuote, type QuoteEventRecord } from "@/server/quotes/events";
@@ -150,13 +150,15 @@ export default async function SupplierQuoteDetailPage({
     typeof workspaceData.quote.awarded_supplier_id === "string"
       ? workspaceData.quote.awarded_supplier_id.trim()
       : "";
-  const awardedToSupplier =
-    Boolean(normalizedAwardedSupplierId) &&
-    normalizedAwardedSupplierId === profile.supplier.id;
-  const bidStatus = (existingBid?.status ?? "").toLowerCase();
-  const isWinningBidStatus =
-    bidStatus === "accepted" || bidStatus === "won" || bidStatus === "winner";
-  const isWinningSupplier = awardedToSupplier || isWinningBidStatus;
+  const awardedToSupplier = isKickoffReadyForSupplier({
+    quote: {
+      awarded_supplier_id: workspaceData.quote.awarded_supplier_id ?? null,
+      awarded_at: workspaceData.quote.awarded_at ?? null,
+      awarded_bid_id: workspaceData.quote.awarded_bid_id ?? null,
+    },
+    supplierId: profile.supplier.id,
+  });
+  const isWinningSupplier = awardedToSupplier;
 
   let project: QuoteProjectRecord | null = null;
   let projectUnavailable = false;
@@ -170,15 +172,14 @@ export default async function SupplierQuoteDetailPage({
   }
 
   const kickoffVisibility = deriveSupplierKickoffVisibility(
-    workspaceData.quote.status,
-    existingBid?.status ?? null,
-    Boolean(project),
     workspaceData.quote.awarded_supplier_id ?? null,
+    workspaceData.quote.awarded_at ?? null,
+    workspaceData.quote.awarded_bid_id ?? null,
     profile.supplier.id,
   );
 
   let kickoffTasksResult: SupplierKickoffTasksResult | null = null;
-  if (kickoffVisibility.showKickoffChecklist) {
+  if (awardedToSupplier) {
     const initialKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
       quoteId,
       profile.supplier.id,
@@ -193,15 +194,27 @@ export default async function SupplierQuoteDetailPage({
       initialKickoffTasksResult.tasks.length === 0
     ) {
       try {
-        await ensureKickoffTasksForQuote(quoteId, {
+        const ensureResult = await ensureKickoffTasksForQuote(quoteId, {
           actorRole: "supplier",
           actorUserId: user.id,
         });
+
+        if (!ensureResult.ok) {
+          console.warn("[supplier kickoff] ensure failed", {
+            quoteId,
+            supplierId: profile.supplier.id,
+            reason: ensureResult.reason,
+            pgCode: null,
+            message: ensureResult.error,
+          });
+        }
       } catch (error) {
-        console.warn("[supplier kickoff tasks] ensure crashed (ignored)", {
+        console.warn("[supplier kickoff] ensure failed", {
           quoteId,
           supplierId: profile.supplier.id,
-          error,
+          reason: "seed-error",
+          pgCode: (error as { code?: string | null })?.code ?? null,
+          message: (error as { message?: string | null })?.message ?? null,
         });
       }
 
@@ -340,26 +353,21 @@ function SupplierQuoteWorkspace({
     accessGranted: true,
   });
   const bidLocked = !canSubmitBid;
+  const normalizedBidStatus =
+    typeof existingBid?.status === "string" ? existingBid.status.trim().toLowerCase() : "";
+  const acceptedLock = normalizedBidStatus === "accepted";
+  const closedWindowLock = bidLocked && !acceptedLock;
   const hasProject = Boolean(project);
   const kickoffVisibilityState =
     kickoffVisibility ??
     deriveSupplierKickoffVisibility(
-      quote.status,
-      existingBid?.status ?? null,
-      hasProject,
       awardedSupplierId,
+      quote.awarded_at ?? null,
+      quote.awarded_bid_id ?? null,
       supplierId,
     );
-  const {
-    normalizedQuoteStatus,
-    normalizedBidStatus,
-    bidSelectedAsWinner,
-    quoteReadyForKickoff,
-    showKickoffChecklist,
-  } = kickoffVisibilityState;
-  const isWinningSupplier = awardedToSupplier || bidSelectedAsWinner;
-  const acceptedLock = normalizedBidStatus === "accepted";
-  const closedWindowLock = bidLocked && !acceptedLock;
+  const { showKickoffChecklist } = kickoffVisibilityState;
+  const isWinningSupplier = awardedToSupplier;
   const supplierDisplayName =
     supplierNameOverride ??
     getSupplierDisplayName(supplierEmail, quote, assignments);
@@ -496,31 +504,20 @@ function SupplierQuoteWorkspace({
   if (showKickoffChecklist) {
     const tasksAvailable = Boolean(kickoffTasksResult?.ok);
     const kickoffTasks = kickoffTasksResult?.ok ? kickoffTasksResult.tasks : [];
-    const tasksReady = tasksAvailable && kickoffTasks.length > 0;
 
-    if (tasksReady) {
-      kickoffChecklistSection = (
-        <div id="kickoff" className="scroll-mt-24">
-          <SupplierKickoffChecklistCard
-            quoteId={quote.id}
-            tasks={kickoffTasks}
-            readOnly={!awardedToSupplier}
-          />
-        </div>
-      );
-    } else if (awardedToSupplier) {
-      kickoffChecklistSection = (
-        <div id="kickoff" className="scroll-mt-24">
-          <SupplierKickoffNotReadyCard />
-        </div>
-      );
-    } else {
-      kickoffChecklistSection = (
-        <div id="kickoff" className="scroll-mt-24">
-          <KickoffChecklist />
-        </div>
-      );
-    }
+    kickoffChecklistSection = awardedToSupplier ? (
+      <div id="kickoff" className="scroll-mt-24">
+        <SupplierKickoffChecklistCard
+          quoteId={quote.id}
+          tasks={tasksAvailable ? kickoffTasks : []}
+          readOnly={false}
+        />
+      </div>
+    ) : (
+      <div id="kickoff" className="scroll-mt-24">
+        <SupplierKickoffLockedCard />
+      </div>
+    );
   }
 
   const summaryCard = (
@@ -709,53 +706,33 @@ function SupplierQuoteWorkspace({
 }
 
 type SupplierKickoffVisibility = {
-  normalizedQuoteStatus: string;
-  normalizedBidStatus: string;
-  bidSelectedAsWinner: boolean;
   quoteReadyForKickoff: boolean;
   showKickoffChecklist: boolean;
 };
 
 function deriveSupplierKickoffVisibility(
-  quoteStatus: string | null | undefined,
-  bidStatus: string | null | undefined,
-  hasProject: boolean,
   awardedSupplierId?: string | null,
+  awardedAt?: string | null,
+  awardedBidId?: string | null,
   supplierId?: string,
 ): SupplierKickoffVisibility {
-  const normalizedQuoteStatus = (quoteStatus ?? "").trim().toLowerCase();
-  const normalizedBidStatus =
-    typeof bidStatus === "string" ? bidStatus.trim().toLowerCase() : "";
   const normalizedAwardedSupplierId =
     typeof awardedSupplierId === "string"
       ? awardedSupplierId.trim()
       : "";
+  const normalizedAwardedAt = typeof awardedAt === "string" ? awardedAt.trim() : "";
+  const normalizedAwardedBidId =
+    typeof awardedBidId === "string" ? awardedBidId.trim() : "";
   const normalizedSupplierId =
     typeof supplierId === "string" ? supplierId.trim() : "";
-  const awardMatchesSupplier =
-    normalizedAwardedSupplierId &&
-    normalizedSupplierId &&
-    normalizedAwardedSupplierId === normalizedSupplierId;
-  const bidSelectedAsWinner =
-    awardMatchesSupplier ||
-    ["accepted", "won", "winner"].includes(
-      normalizedBidStatus,
-    );
-  const quoteReadyForKickoff = [
-    "approved",
-    "won",
-    "winner_selected",
-    "winner-selected",
-    "winner",
-  ].includes(normalizedQuoteStatus);
   const quoteHasWinner = Boolean(normalizedAwardedSupplierId);
-  const showKickoffChecklist =
-    quoteHasWinner && (quoteReadyForKickoff || hasProject);
+  const quoteReadyForKickoff =
+    Boolean(normalizedAwardedSupplierId) &&
+    Boolean(normalizedAwardedAt) &&
+    Boolean(normalizedAwardedBidId);
+  const showKickoffChecklist = true;
 
   return {
-    normalizedQuoteStatus,
-    normalizedBidStatus,
-    bidSelectedAsWinner,
     quoteReadyForKickoff,
     showKickoffChecklist,
   };
@@ -798,16 +775,16 @@ function PortalNoticeCard({
   );
 }
 
-function SupplierKickoffNotReadyCard() {
+function SupplierKickoffLockedCard() {
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Kickoff checklist
         </p>
-        <h2 className="text-lg font-semibold text-white">Kickoff not ready yet</h2>
+        <h2 className="text-lg font-semibold text-white">Kickoff checklist</h2>
         <p className="text-sm text-slate-300">
-          Kickoff not ready yet. Refresh in a moment.
+          Kickoff begins after you are selected.
         </p>
       </header>
     </section>
