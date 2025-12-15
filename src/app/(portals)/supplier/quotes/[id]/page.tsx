@@ -35,6 +35,7 @@ import { getNextWorkflowState } from "@/lib/workflow";
 import { canUserBid } from "@/lib/permissions";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import { QuoteEventsTimeline } from "@/app/(portals)/components/QuoteEventsTimeline";
+import { CollapsibleCard } from "@/components/CollapsibleCard";
 import {
   loadQuoteProjectForQuote,
   type QuoteProjectRecord,
@@ -500,28 +501,9 @@ function SupplierQuoteWorkspace({
     )
   ) : null;
 
-  let kickoffChecklistSection: ReactNode = null;
-  if (showKickoffChecklist) {
-    const tasksAvailable = Boolean(kickoffTasksResult?.ok);
-    const kickoffTasks = kickoffTasksResult?.ok ? kickoffTasksResult.tasks : [];
+  // Kickoff + bid + details sections are rendered below.
 
-    kickoffChecklistSection = awardedToSupplier ? (
-      <div id="kickoff" className="scroll-mt-24">
-        <SupplierKickoffChecklistCard
-          quoteId={quote.id}
-          tasks={tasksAvailable ? kickoffTasks : []}
-          readOnly={false}
-        />
-      </div>
-    ) : (
-      <div id="kickoff" className="scroll-mt-24">
-        <SupplierKickoffLockedCard />
-      </div>
-    );
-  }
-
-  const summaryCard = (
-    <section className={clsx(cardClasses, "space-y-5")}>
+  // Summary card removed; content reorganized into CollapsibleCard sections.
       <header className="space-y-1">
         <p className="text-xsenaamde font-semibold uppercase tracking-wide text-slate-500">
           RFQ snapshot
@@ -656,6 +638,192 @@ function SupplierQuoteWorkspace({
     );
   }
 
+  const bidPanelSection = (
+    <section className={clsx(cardClasses, "space-y-4")}>
+      <header className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Bid
+        </p>
+        <h2 className="text-lg font-semibold text-white">
+          Submit pricing and lead time
+        </h2>
+        <p className="text-sm text-slate-300">
+          Only the Zartman team and the requesting customer can see these details.
+        </p>
+        <p className="text-xs text-slate-500">
+          Share a unit price, realistic lead time, and highlight any certifications or notes that help
+          the buyer approve your shop.
+        </p>
+      </header>
+      {acceptedLock ? (
+        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+          This bid is locked because the customer already accepted it.
+        </p>
+      ) : null}
+      {closedWindowLock ? (
+        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
+          Bidding is disabled because this RFQ is no longer accepting new proposals.
+        </p>
+      ) : null}
+      <SupplierBidPanel
+        quoteId={quote.id}
+        initialBid={initialBid}
+        approvalsOn={approvalsOn}
+        approved={approved}
+        bidsUnavailableMessage={bidsUnavailableMessage}
+        bidLocked={acceptedLock || closedWindowLock}
+      />
+    </section>
+  );
+
+  const filesSection = (
+    <CollapsibleCard
+      title="Files & uploads"
+      description="RFQ files and download links."
+      defaultOpen
+      summary={
+        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+          {fileCountText}
+        </span>
+      }
+    >
+      <div className="space-y-2">
+        <QuoteFilesCard files={filePreviews} />
+        {filePreviews.length === 0 ? (
+          <p className="px-1 text-xs text-slate-500">
+            No files to display yet. We&apos;ll attach uploads here automatically once they&apos;re processed.
+          </p>
+        ) : null}
+      </div>
+    </CollapsibleCard>
+  );
+
+  const rfqDetailsSection = (
+    <CollapsibleCard
+      title="RFQ details"
+      description="Customer, process hints, and workflow snapshot."
+      defaultOpen
+      summary={
+        <span className="rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1 text-blue-100">
+          {derived.statusLabel}
+        </span>
+      }
+    >
+      <div className="space-y-5">
+        <dl className="grid gap-4 text-sm text-slate-200 sm:grid-cols-2">
+          <DetailItem label="Customer" value={derived.customerName} />
+          <DetailItem label="Company" value={derived.companyName ?? "Not provided"} />
+          <DetailItem label="Files" value={fileCountText} />
+          <DetailItem
+            label="Process hint"
+            value={
+              uploadMeta?.manufacturing_process
+                ? formatProcessLabel(uploadMeta.manufacturing_process)
+                : "Not provided"
+            }
+          />
+          <DetailItem
+            label="Assigned suppliers"
+            value={assignmentNames.length > 0 ? assignmentNames.join(", ") : "Pending assignment"}
+          />
+          <DetailItem
+            label="Submitted"
+            value={formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
+          />
+        </dl>
+        <WorkflowStatusCallout
+          currentLabel={derived.statusLabel}
+          nextState={nextWorkflowState}
+          variant="blue"
+        />
+      </div>
+    </CollapsibleCard>
+  );
+
+  const notesSection = (
+    <CollapsibleCard
+      title="Notes"
+      description="DFM feedback and intake notes."
+      defaultOpen={false}
+    >
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            DFM notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {derived.dfmNotes ??
+              "No DFM notes have been shared yet. Expect engineering guidance to appear here."}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Intake notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {derived.intakeNotes ?? "No extra intake notes captured."}
+          </p>
+        </div>
+      </div>
+    </CollapsibleCard>
+  );
+
+  let kickoffSection: ReactNode = null;
+  if (showKickoffChecklist) {
+    const tasksAvailable = Boolean(kickoffTasksResult?.ok);
+    const kickoffTasks = kickoffTasksResult?.ok ? kickoffTasksResult.tasks : [];
+    kickoffSection = (
+      <CollapsibleCard
+        id="kickoff"
+        title="Kickoff checklist"
+        description="Prep tasks unlock for the awarded supplier."
+        className="scroll-mt-24"
+        defaultOpen={awardedToSupplier}
+        summary={
+          <span
+            className={clsx(
+              "rounded-full border px-3 py-1",
+              awardedToSupplier
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                : "border-slate-800 bg-slate-950/50 text-slate-200",
+            )}
+          >
+            {awardedToSupplier ? "Awarded" : "Locked"}
+          </span>
+        }
+      >
+        <div className="space-y-4">
+          {projectSection}
+          {awardedToSupplier ? (
+            <SupplierKickoffChecklistCard
+              quoteId={quote.id}
+              tasks={tasksAvailable ? kickoffTasks : []}
+              readOnly={false}
+            />
+          ) : (
+            <SupplierKickoffLockedCard />
+          )}
+        </div>
+      </CollapsibleCard>
+    );
+  }
+
+  const timelineSection = (
+    <CollapsibleCard
+      title="Timeline"
+      description="A durable audit trail of bids, awards, messages, and kickoff updates."
+      defaultOpen
+    >
+      <QuoteEventsTimeline
+        events={quoteEvents}
+        headingLabel="TIMELINE"
+        title="Quote events timeline"
+        description="A durable audit trail of bids, awards, messages, and kickoff updates."
+        emptyState="No activity yet."
+      />
+    </CollapsibleCard>
+  );
+
   return (
     <PortalShell
       workspace="supplier"
@@ -664,43 +832,36 @@ function SupplierQuoteWorkspace({
       headerContent={headerContent}
       actions={headerActions}
     >
-      {winnerCallout}
-      {projectSection}
-      {kickoffChecklistSection}
-      {summaryCard}
-      {messagesUnavailable ? (
-        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
-          Messages are temporarily unavailable. Refresh the page to try again.
-        </p>
-      ) : null}
-      <QuoteMessagesThread
-        quoteId={quote.id}
-        messages={quoteMessages}
-        canPost={messagingUnlocked}
-        postAction={postMessageAction}
-        currentUserId={currentUserId}
-        title="Shared chat"
-        description="Customer, supplier, and admin updates for this RFQ."
-        helperText="Your note pings the Zartman admin team instantly."
-        disabledCopy={messagingDisabledReason ?? undefined}
-        emptyStateCopy="No messages yet. Keep the project moving by posting build updates here."
-      />
-      <div className="space-y-2">
-        <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
-        {filePreviews.length === 0 ? (
-          <p className="px-1 text-xs text-slate-500">
-            No files to display yet. We&apos;ll attach uploads here automatically once they&apos;re processed.
-          </p>
-        ) : null}
+      <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
+        <div className="space-y-5">
+          {winnerCallout}
+          {bidPanelSection}
+          {kickoffSection}
+          {timelineSection}
+          {messagesUnavailable ? (
+            <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
+              Messages are temporarily unavailable. Refresh the page to try again.
+            </p>
+          ) : null}
+          <QuoteMessagesThread
+            quoteId={quote.id}
+            messages={quoteMessages}
+            canPost={messagingUnlocked}
+            postAction={postMessageAction}
+            currentUserId={currentUserId}
+            title="Shared chat"
+            description="Customer, supplier, and admin updates for this RFQ."
+            helperText="Your note pings the Zartman admin team instantly."
+            disabledCopy={messagingDisabledReason ?? undefined}
+            emptyStateCopy="No messages yet. Keep the project moving by posting build updates here."
+          />
+        </div>
+        <div className="space-y-5">
+          {filesSection}
+          {rfqDetailsSection}
+          {notesSection}
+        </div>
       </div>
-      <QuoteEventsTimeline
-        className={cardClasses}
-        events={quoteEvents}
-        headingLabel="TIMELINE"
-        title="Quote events timeline"
-        description="A durable audit trail of bids, awards, messages, and kickoff updates."
-        emptyState="No activity yet."
-      />
     </PortalShell>
   );
 }

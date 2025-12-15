@@ -27,6 +27,7 @@ import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { DataFallbackNotice } from "@/app/(portals)/DataFallbackNotice";
+import { CollapsibleCard } from "@/components/CollapsibleCard";
 import {
   getQuoteStatusLabel,
   getQuoteStatusHelper,
@@ -729,6 +730,260 @@ export default async function CustomerQuoteDetailPage({
 
   const postMessageAction = postCustomerQuoteMessage.bind(null, quote.id);
 
+  const quoteDetailsSection = (
+    <CollapsibleCard
+      title="Quote details"
+      description="Status, key dates, and workflow snapshot."
+      defaultOpen
+      summary={
+        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+          {quoteStatusLabel}
+        </span>
+      }
+    >
+      <div className="space-y-5">
+        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+            Status: {quoteStatusLabel}
+          </span>
+          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+            Target date: {targetDateChipText}
+          </span>
+          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+            Estimate: {priceChipText}
+          </span>
+        </div>
+
+        <WorkflowStatusCallout
+          currentLabel={quoteStatusLabel}
+          nextState={nextWorkflowState}
+        />
+
+        <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+              Customer
+            </dt>
+            <dd className="text-slate-100">{customerName ?? "Not provided"}</dd>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+              Company
+            </dt>
+            <dd className="text-slate-100">{companyName ?? "Not provided"}</dd>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+              Files attached
+            </dt>
+            <dd className="text-slate-100">{fileCountText}</dd>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+              Submitted
+            </dt>
+            <dd className="text-slate-100">{submittedAtText ?? "—"}</dd>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+              Estimate
+            </dt>
+            <dd className="text-slate-100">{priceChipText}</dd>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+              Last updated
+            </dt>
+            <dd className="text-slate-100">{updatedAtText ?? "—"}</dd>
+          </div>
+        </dl>
+      </div>
+    </CollapsibleCard>
+  );
+
+  const filesSection = (
+    <CollapsibleCard
+      title="Files & uploads"
+      description="RFQ files, CAD previews, and download links."
+      defaultOpen
+      summary={
+        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+          {fileCountText}
+        </span>
+      }
+    >
+      <div className="space-y-4">
+        <CustomerQuotePartPanel
+          files={quoteFiles}
+          previews={filePreviews}
+          processHint={uploadMeta?.manufacturing_process}
+          quantityHint={uploadMeta?.quantity}
+          targetDate={quote.target_date ?? null}
+        />
+        <div className="space-y-2">
+          <QuoteFilesCard files={filePreviews} />
+          {filesUnavailable ? (
+            <>
+              <p className="px-1 text-xs text-slate-500">
+                File metadata is temporarily unavailable. Download links fall back to the original upload
+                while we resync.
+              </p>
+              <DataFallbackNotice className="px-1" />
+            </>
+          ) : null}
+        </div>
+      </div>
+    </CollapsibleCard>
+  );
+
+  const notesSection = (
+    <CollapsibleCard
+      title="Notes"
+      description="DFM feedback and any intake notes captured with the upload."
+      defaultOpen={false}
+    >
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            DFM notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {dfmNotes ?? "Engineering feedback will show up here once it’s ready."}
+          </p>
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Intake notes
+          </p>
+          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+            {intakeNotes ?? "No additional notes captured during upload."}
+          </p>
+        </div>
+      </div>
+    </CollapsibleCard>
+  );
+
+  const awardSection = (
+    <section className="space-y-4">
+      {bidSummaryPanel}
+      <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Supplier bids
+            </p>
+            <p className="text-sm text-slate-300">
+              We collect bids from vetted suppliers, then review options before finalizing your quote.
+            </p>
+          </div>
+          {bidCount > 0 ? (
+            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+              {bidCount} bid{bidCount === 1 ? "" : "s"} received
+            </span>
+          ) : null}
+        </div>
+        {bidsUnavailable ? (
+          <p className="text-xs text-slate-400">
+            Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
+          </p>
+        ) : bidCount === 0 ? (
+          <p className="text-xs text-slate-400">
+            Supplier selection unlocks after you receive your first bid.
+          </p>
+        ) : (
+          <>
+            <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Best price
+                </dt>
+                <dd className="mt-1">
+                  {bestPriceValue != null
+                    ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
+                    : "Pending"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Fastest lead time
+                </dt>
+                <dd className="mt-1">
+                  {fastestLeadTime != null ? leadTimeLabel : "Pending"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Total bids
+                </dt>
+                <dd className="mt-1">
+                  {bidCount} bid{bidCount === 1 ? "" : "s"}
+                </dd>
+              </div>
+            </dl>
+            {showCustomerSupplierSection ? (
+              customerAwardBidsReady ? (
+                <CustomerQuoteAwardPanel
+                  quoteId={quote.id}
+                  bids={customerBidSummaries}
+                  canSubmit={customerCanAward}
+                  disableReason={customerAwardDisabledReason}
+                  winningBidId={winningBidId}
+                />
+              ) : (
+                <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-xs text-yellow-100">
+                  {customerBidSummariesError ??
+                    "We couldn’t load supplier bid details. Refresh to try again."}
+                </p>
+              )
+            ) : null}
+          </>
+        )}
+      </div>
+    </section>
+  );
+
+  const kickoffSection = (
+    <CollapsibleCard
+      id="kickoff"
+      title="Kickoff"
+      description="Project kickoff details and supplier checklist updates."
+      className="scroll-mt-24"
+      defaultOpen={quoteHasWinner}
+      summary={
+        <span className={clsx("rounded-full border px-3 py-1", kickoffSummaryTone)}>
+          {kickoffSummaryLabel}
+        </span>
+      }
+    >
+      <div className="space-y-4">
+        {projectSnapshotCard}
+        {projectSection}
+        <CustomerKickoffPanel
+          hasWinner={Boolean(winningSupplierId)}
+          tasksResult={supplierKickoffTasksResult}
+          summary={kickoffSummary}
+          anchorId={null}
+        />
+      </div>
+    </CollapsibleCard>
+  );
+
+  const timelineSection = (
+    <CollapsibleCard
+      title="Timeline"
+      description="A durable audit trail of bids, awards, messages, and kickoff updates."
+      defaultOpen
+    >
+      <QuoteEventsTimeline
+        events={quoteEvents}
+        headingLabel="TIMELINE"
+        title="Quote events timeline"
+        description="A durable audit trail of bids, awards, messages, and kickoff updates."
+        emptyState="No activity yet."
+      />
+    </CollapsibleCard>
+  );
+
   return (
     <PortalShell
       workspace="customer"
@@ -738,60 +993,39 @@ export default async function CustomerQuoteDetailPage({
       actions={headerActions}
     >
       {receiptBanner}
-      {summaryCard}
-      {projectSnapshotCard}
-      <CustomerQuotePartPanel
-        files={quoteFiles}
-        previews={filePreviews}
-        processHint={uploadMeta?.manufacturing_process}
-        quantityHint={uploadMeta?.quantity}
-        targetDate={quote.target_date ?? null}
-        className="scroll-mt-20"
-      />
-      {projectSection}
-      {kickoffPanel}
-      {messagesUnavailable ? (
-        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
-          Messages are temporarily unavailable. Refresh the page to try again.
-        </p>
-      ) : null}
-      <QuoteMessagesThread
-        quoteId={quote.id}
-        messages={quoteMessages}
-        canPost={!readOnly}
-        postAction={postMessageAction}
-        currentUserId={user.id}
-        title="Messages"
-        description="Shared with the Zartman team coordinating this RFQ."
-        helperText="Your updates go directly to the Zartman admin team."
-        disabledCopy={
-          readOnly
-            ? "Messages are read-only while you are impersonating another customer."
-            : undefined
-        }
-        emptyStateCopy="No messages yet. Use this space to coordinate build updates and questions."
-        className="scroll-mt-20"
-      />
-      <div className="space-y-2">
-        <QuoteFilesCard files={filePreviews} className="scroll-mt-20" />
-        {filesUnavailable ? (
-          <>
-            <p className="px-1 text-xs text-slate-500">
-              File metadata is temporarily unavailable. Download links fall back to the original upload
-              while we resync.
+      <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
+        <div className="space-y-5">
+          {awardSection}
+          {kickoffSection}
+          {timelineSection}
+          {messagesUnavailable ? (
+            <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
+              Messages are temporarily unavailable. Refresh the page to try again.
             </p>
-            <DataFallbackNotice className="px-1" />
-          </>
-        ) : null}
+          ) : null}
+          <QuoteMessagesThread
+            quoteId={quote.id}
+            messages={quoteMessages}
+            canPost={!readOnly}
+            postAction={postMessageAction}
+            currentUserId={user.id}
+            title="Messages"
+            description="Shared with the Zartman team coordinating this RFQ."
+            helperText="Your updates go directly to the Zartman admin team."
+            disabledCopy={
+              readOnly
+                ? "Messages are read-only while you are impersonating another customer."
+                : undefined
+            }
+            emptyStateCopy="No messages yet. Use this space to coordinate build updates and questions."
+          />
+        </div>
+        <div className="space-y-5">
+          {filesSection}
+          {quoteDetailsSection}
+          {notesSection}
+        </div>
       </div>
-      <QuoteEventsTimeline
-        className={cardClasses}
-        events={quoteEvents}
-        headingLabel="TIMELINE"
-        title="Quote events timeline"
-        description="A durable audit trail of bids, awards, messages, and kickoff updates."
-        emptyState="No activity yet."
-      />
     </PortalShell>
   );
 }
@@ -928,10 +1162,12 @@ function CustomerKickoffPanel({
   hasWinner,
   tasksResult,
   summary,
+  anchorId,
 }: {
   hasWinner: boolean;
   tasksResult: SupplierKickoffTasksResult | null;
   summary: ReturnType<typeof summarizeKickoffTasks> | null;
+  anchorId?: string | null;
 }) {
   const statusValue =
     summary?.status === "complete"
@@ -961,8 +1197,8 @@ function CustomerKickoffPanel({
 
   return (
     <section
-      id="kickoff"
-      className="scroll-mt-24 rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-200"
+      id={anchorId ?? undefined}
+      className="rounded-2xl border border-slate-900 bg-slate-950/40 p-4 text-sm text-slate-200"
     >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
