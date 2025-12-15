@@ -1,4 +1,3 @@
-import type { ReadonlyURLSearchParams } from "next/navigation";
 import Link from "next/link";
 import AdminDashboardShell from "@/app/admin/AdminDashboardShell";
 import { requireAdminUser } from "@/server/auth";
@@ -15,8 +14,18 @@ import CapacityCalendar, {
 export const dynamic = "force-dynamic";
 
 type CapacityPageProps = {
-  searchParams?: Promise<ReadonlyURLSearchParams>;
+  searchParams?:
+    | Record<string, string | string[] | undefined>
+    | Promise<Record<string, string | string[] | undefined>>;
 };
+
+function sp(
+  searchParams: Record<string, string | string[] | undefined> | undefined,
+  key: string,
+): string | undefined {
+  const v = searchParams?.[key];
+  return Array.isArray(v) ? v[0] : v;
+}
 
 function parseYmd(value: string | null): { y: number; m: number; d: number } | null {
   if (!value) return null;
@@ -36,7 +45,16 @@ function utcDateFromYmd(ymd: string | null): Date | null {
   const parsed = parseYmd(ymd);
   if (!parsed) return null;
   const date = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d, 0, 0, 0, 0));
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (Number.isNaN(date.getTime())) return null;
+  // Reject invalid calendar dates like 2025-02-31 (Date.UTC normalizes instead of failing).
+  if (
+    date.getUTCFullYear() !== parsed.y ||
+    date.getUTCMonth() + 1 !== parsed.m ||
+    date.getUTCDate() !== parsed.d
+  ) {
+    return null;
+  }
+  return date;
 }
 
 function ymdFromUtcDate(date: Date): string {
@@ -88,10 +106,10 @@ function buildHref(
 export default async function AdminCapacityPage({ searchParams }: CapacityPageProps) {
   await requireAdminUser({ redirectTo: "/login" });
 
-  const resolvedSearchParams = await searchParams;
-  const startParam = normalizeQueryText(resolvedSearchParams?.get("start") ?? null);
-  const supplierId = normalizeQueryText(resolvedSearchParams?.get("supplierId") ?? null);
-  const capability = normalizeQueryText(resolvedSearchParams?.get("capability") ?? null);
+  const resolvedSearchParams = await Promise.resolve(searchParams);
+  const startParam = normalizeQueryText(sp(resolvedSearchParams, "start") ?? null);
+  const supplierId = normalizeQueryText(sp(resolvedSearchParams, "supplierId") ?? null);
+  const capability = normalizeQueryText(sp(resolvedSearchParams, "capability") ?? null);
 
   const todayUtc = new Date();
   const defaultStart = startOfUtcWeekMonday(
