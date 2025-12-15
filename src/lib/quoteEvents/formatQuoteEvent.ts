@@ -73,6 +73,26 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     };
   }
 
+  if (type === "bid_won") {
+    return {
+      groupKey: "award",
+      groupLabel: "Award",
+      title: "Bid won",
+      subtitle: formatSupplierIdentifier(metadata) ?? undefined,
+      actorLabel,
+    };
+  }
+
+  if (type === "quote_won") {
+    return {
+      groupKey: "award",
+      groupLabel: "Award",
+      title: "Quote won",
+      subtitle: formatSupplierIdentifier(metadata) ?? undefined,
+      actorLabel,
+    };
+  }
+
   if (type === "quote_reopened" || type === "reopened") {
     const subtitle =
       formatStatusTransitionSubtitle(metadata) ?? "Returned to reviewing bids.";
@@ -137,6 +157,16 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     };
   }
 
+  if (type === "kickoff_completed") {
+    return {
+      groupKey: "kickoff",
+      groupLabel: "Kickoff",
+      title: "Kickoff completed",
+      subtitle: "All kickoff tasks have been completed.",
+      actorLabel,
+    };
+  }
+
   if (type === "message_posted") {
     const senderName = readString(metadata, "sender_name");
     return {
@@ -170,19 +200,38 @@ function resolveEventMetadata(event: QuoteEventRecord): Record<string, unknown> 
 function formatActorLabel(
   role: QuoteEventActorRole,
   metadata: Record<string, unknown>,
-): string {
+): string | undefined {
   const normalized = (role ?? "").toString().trim().toLowerCase();
+  if (normalized === "system" || !normalized) {
+    return undefined;
+  }
+  const actorName =
+    readString(metadata, "sender_name") ??
+    readString(metadata, "actor_name") ??
+    readString(metadata, "name");
+  const actorEmail =
+    readString(metadata, "sender_email") ??
+    readString(metadata, "actor_email") ??
+    readString(metadata, "email");
+
   if (normalized === "supplier") {
     const supplierName = readString(metadata, "supplier_name");
-    return supplierName ? `Supplier · ${supplierName}` : "Supplier";
+    const identifier = supplierName ?? readString(metadata, "supplier_email") ?? actorName ?? actorEmail;
+    return identifier ? `Supplier · ${identifier}` : "Supplier";
   }
   if (normalized === "customer") {
-    return "Customer";
+    const identifier =
+      readString(metadata, "customer_name") ??
+      readString(metadata, "customer_email") ??
+      actorName ??
+      actorEmail;
+    return identifier ? `Customer · ${identifier}` : "Customer";
   }
   if (normalized === "admin") {
-    return "Admin";
+    const identifier = readString(metadata, "admin_email") ?? actorEmail ?? actorName;
+    return identifier ? `Admin · ${identifier}` : "Admin";
   }
-  return "System";
+  return undefined;
 }
 
 function inferFallbackGroup(role: QuoteEventActorRole): QuoteEventGroupKey {

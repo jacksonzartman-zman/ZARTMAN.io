@@ -6,7 +6,7 @@ import { formatAwardedByLabel } from "@/lib/awards";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
-import { QuoteEventsTimeline } from "@/app/(portals)/components/QuoteEventsTimeline";
+import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
 import {
   formatQuoteId,
@@ -50,7 +50,6 @@ import {
   mergeKickoffTasksWithDefaults,
   type SupplierKickoffTask,
 } from "@/lib/quote/kickoffChecklist";
-import { listQuoteEventsForQuote } from "@/server/quotes/events";
 import { postQuoteMessage as postCustomerQuoteMessage } from "./actions";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
@@ -170,8 +169,6 @@ export default async function CustomerQuoteDetailPage({
     : customerBidSummariesResult.error;
   const customerAwardBidsReady =
     !customerBidSummariesUnavailable && customerBidSummaries.length > 0;
-  const quoteEventsResult = await listQuoteEventsForQuote(quote.id);
-  const quoteEvents = quoteEventsResult.ok ? quoteEventsResult.events : [];
   const quoteIsWon = normalizedQuoteStatus === "won";
   const quoteAwardStatusAllowed =
     normalizedQuoteStatus !== "cancelled" &&
@@ -937,15 +934,14 @@ export default async function CustomerQuoteDetailPage({
   const timelineSection = (
     <CollapsibleCard
       title="Timeline"
-      description="A durable audit trail of bids, awards, messages, and kickoff updates."
-      defaultOpen
+      description="Updates and milestones for this RFQ."
+      defaultOpen={false}
     >
-      <QuoteEventsTimeline
-        events={quoteEvents}
-        headingLabel="TIMELINE"
-        title="Quote events timeline"
-        description="A durable audit trail of bids, awards, messages, and kickoff updates."
-        emptyState="No activity yet."
+      <QuoteTimeline
+        quoteId={quote.id}
+        actorRole="customer"
+        actorUserId={user.id}
+        emptyState="No updates yet."
       />
     </CollapsibleCard>
   );

@@ -27,7 +27,7 @@ import {
 import AdminDashboardShell from "../../AdminDashboardShell";
 import QuoteUpdateForm from "../QuoteUpdateForm";
 import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
-import { QuoteEventsTimeline } from "@/app/(portals)/components/QuoteEventsTimeline";
+import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { QuoteFilesCard } from "./QuoteFilesCard";
 import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import {
@@ -50,7 +50,6 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
-import { listQuoteEventsForQuote } from "@/server/quotes/events";
 import { postQuoteMessage as postAdminQuoteMessage } from "./actions";
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
@@ -407,9 +406,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       hasWinner: hasWinningBid,
       hasProject,
     });
-    const quoteEventsResult = await listQuoteEventsForQuote(quote.id);
-    const quoteEvents = quoteEventsResult.ok ? quoteEventsResult.events : [];
-
     const headerTitleSource = companyName || customerName || "Unnamed customer";
     const headerTitle = `Quote for ${headerTitleSource}`;
     const headerDescription =
@@ -807,14 +803,14 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     );
 
     const trackingContent = (
-      <QuoteEventsTimeline
-        className={cardClasses}
-        events={quoteEvents}
-        headingLabel="Tracking"
-        title="Quote events timeline"
-        description="A durable audit trail of bid submissions, awards, messages, and kickoff updates."
-        emptyState="No activity yet."
-      />
+      <div className={cardClasses}>
+        <QuoteTimeline
+          quoteId={quote.id}
+          actorRole="admin"
+          actorUserId={null}
+          emptyState="No activity yet."
+        />
+      </div>
     );
 
     const decisionAwardedSupplier =
@@ -1089,8 +1085,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </CollapsibleCard>
 
             <CollapsibleCard
-              title="Tracking"
-              description="Status changes, bids, award, and kickoff activity."
+              title="Timeline"
+              description="Updates and milestones for this RFQ."
               defaultOpen={false}
             >
               {trackingContent}

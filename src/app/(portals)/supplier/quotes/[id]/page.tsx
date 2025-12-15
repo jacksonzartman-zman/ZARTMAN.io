@@ -34,7 +34,7 @@ import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { canUserBid } from "@/lib/permissions";
 import { approvalsEnabled } from "@/server/suppliers/flags";
-import { QuoteEventsTimeline } from "@/app/(portals)/components/QuoteEventsTimeline";
+import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import {
   loadQuoteProjectForQuote,
@@ -55,7 +55,7 @@ import {
 import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
 import { postQuoteMessage as postSupplierQuoteMessage } from "./actions";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
-import { listQuoteEventsForQuote, type QuoteEventRecord } from "@/server/quotes/events";
+import type { QuoteEventRecord } from "@/server/quotes/events";
 import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
 
 export const dynamic = "force-dynamic";
@@ -230,9 +230,6 @@ export default async function SupplierQuoteDetailPage({
     }
   }
 
-  const quoteEventsResult = await listQuoteEventsForQuote(quoteId);
-  const quoteEvents = quoteEventsResult.ok ? quoteEventsResult.events : [];
-
   const messagesResult = await loadQuoteMessages(quoteId);
   if (!messagesResult.ok) {
     console.error("[supplier quote] messages load failed", {
@@ -272,7 +269,6 @@ export default async function SupplierQuoteDetailPage({
       messagesUnavailable={messagesUnavailable}
       postMessageAction={supplierPostMessageAction}
       currentUserId={user.id}
-      quoteEvents={quoteEvents}
       project={project}
       projectUnavailable={projectUnavailable}
       kickoffTasksResult={kickoffTasksResult}
@@ -300,7 +296,6 @@ function SupplierQuoteWorkspace({
   messagesUnavailable,
   postMessageAction,
   currentUserId,
-  quoteEvents,
   project,
   projectUnavailable,
   kickoffTasksResult,
@@ -327,7 +322,6 @@ function SupplierQuoteWorkspace({
     formData: FormData,
   ) => Promise<QuoteMessageFormState>;
   currentUserId: string;
-  quoteEvents: QuoteEventRecord[];
   project: QuoteProjectRecord | null;
   projectUnavailable: boolean;
   kickoffTasksResult: SupplierKickoffTasksResult | null;
@@ -694,15 +688,14 @@ function SupplierQuoteWorkspace({
   const timelineSection = (
     <CollapsibleCard
       title="Timeline"
-      description="A durable audit trail of bids, awards, messages, and kickoff updates."
-      defaultOpen
+      description="Updates and milestones for this RFQ."
+      defaultOpen={false}
     >
-      <QuoteEventsTimeline
-        events={quoteEvents}
-        headingLabel="TIMELINE"
-        title="Quote events timeline"
-        description="A durable audit trail of bids, awards, messages, and kickoff updates."
-        emptyState="No activity yet."
+      <QuoteTimeline
+        quoteId={quote.id}
+        actorRole="supplier"
+        actorUserId={currentUserId}
+        emptyState="No updates yet."
       />
     </CollapsibleCard>
   );
