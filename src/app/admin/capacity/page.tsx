@@ -13,12 +13,6 @@ import CapacityCalendar, {
 
 export const dynamic = "force-dynamic";
 
-type CapacityPageProps = {
-  searchParams?:
-    | Record<string, string | string[] | undefined>
-    | Promise<Record<string, string | string[] | undefined>>;
-};
-
 function sp(
   searchParams: Record<string, string | string[] | undefined> | undefined,
   key: string,
@@ -103,13 +97,17 @@ function buildHref(
   return qs ? `${basePath}?${qs}` : basePath;
 }
 
-export default async function AdminCapacityPage({ searchParams }: CapacityPageProps) {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   await requireAdminUser({ redirectTo: "/login" });
 
-  const resolvedSearchParams = await Promise.resolve(searchParams);
-  const startParam = normalizeQueryText(sp(resolvedSearchParams, "start") ?? null);
-  const supplierId = normalizeQueryText(sp(resolvedSearchParams, "supplierId") ?? null);
-  const capability = normalizeQueryText(sp(resolvedSearchParams, "capability") ?? null);
+  const spObj = (await searchParams) ?? {};
+  const startParam = normalizeQueryText(sp(spObj, "start") ?? null);
+  const supplierId = normalizeQueryText(sp(spObj, "supplierId") ?? null);
+  const capability = normalizeQueryText(sp(spObj, "capability") ?? null);
 
   const todayUtc = new Date();
   const defaultStart = startOfUtcWeekMonday(
