@@ -56,6 +56,7 @@ import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
 import { postQuoteMessage as postSupplierQuoteMessage } from "./actions";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { listQuoteEventsForQuote, type QuoteEventRecord } from "@/server/quotes/events";
+import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
 
 export const dynamic = "force-dynamic";
 
@@ -577,25 +578,7 @@ function SupplierQuoteWorkspace({
   );
 
   const filesSection = (
-    <CollapsibleCard
-      title="Files & uploads"
-      description="RFQ files and download links."
-      defaultOpen
-      summary={
-        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
-          {fileCountText}
-        </span>
-      }
-    >
-      <div className="space-y-2">
-        <QuoteFilesCard files={filePreviews} />
-        {filePreviews.length === 0 ? (
-          <p className="px-1 text-xs text-slate-500">
-            No files to display yet. We&apos;ll attach uploads here automatically once they&apos;re processed.
-          </p>
-        ) : null}
-      </div>
-    </CollapsibleCard>
+    <QuoteFilesUploadsSection files={filePreviews} fileCountText={fileCountText} />
   );
 
   const rfqDetailsSection = (
