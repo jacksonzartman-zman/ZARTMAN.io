@@ -36,6 +36,7 @@ import { canUserBid } from "@/lib/permissions";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
+import { SupplierCapacityCard } from "./SupplierCapacityCard";
 import {
   loadQuoteProjectForQuote,
   type QuoteProjectRecord,
@@ -147,6 +148,7 @@ export default async function SupplierQuoteDetailPage({
   const initialBid = bidResult.ok ? bidResult.data : null;
   const bidsUnavailableMessage = bidResult.ok ? null : bidResult.error ?? null;
   const existingBid = initialBid;
+  const nextWeekStartDate = getNextWeekStartDateIso();
 
   const normalizedAwardedSupplierId =
     typeof workspaceData.quote.awarded_supplier_id === "string"
@@ -256,6 +258,7 @@ export default async function SupplierQuoteDetailPage({
         "supplier"
       }
       supplierId={profile.supplier.id}
+      nextWeekStartDate={nextWeekStartDate}
       assignments={assignments}
       supplierNameOverride={profile.supplier.company_name}
       existingBid={existingBid}
@@ -283,6 +286,7 @@ function SupplierQuoteWorkspace({
   data,
   supplierEmail,
   supplierId,
+  nextWeekStartDate,
   assignments,
   supplierNameOverride,
   existingBid,
@@ -306,6 +310,7 @@ function SupplierQuoteWorkspace({
   data: QuoteWorkspaceData;
   supplierEmail: string;
   supplierId: string;
+  nextWeekStartDate: string;
   assignments: SupplierAssignment[];
   supplierNameOverride?: string | null;
   existingBid: BidRow | null;
@@ -733,6 +738,15 @@ function SupplierQuoteWorkspace({
           />
         </div>
         <div className="space-y-5">
+          <PortalCard
+            title="Capacity (Next Week)"
+            description="Advisory-only capacity to help timeline planning."
+          >
+            <SupplierCapacityCard
+              quoteId={quote.id}
+              weekStartDate={nextWeekStartDate}
+            />
+          </PortalCard>
           {filesSection}
           {rfqDetailsSection}
           {notesSection}
@@ -740,6 +754,16 @@ function SupplierQuoteWorkspace({
       </div>
     </PortalShell>
   );
+}
+
+function getNextWeekStartDateIso(): string {
+  const now = new Date();
+  const day = now.getUTCDay(); // 0..6 (Sun..Sat)
+  const daysUntilNextMonday = ((8 - day) % 7) || 7;
+  const nextMonday = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilNextMonday),
+  );
+  return nextMonday.toISOString().slice(0, 10);
 }
 
 type SupplierKickoffVisibility = {

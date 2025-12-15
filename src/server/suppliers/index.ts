@@ -4,3 +4,4 @@ export * from "./bids";
 export * from "./matching";
 export * from "./inbox";
 export * from "./matchHealth";
+export * from "./capacity";
