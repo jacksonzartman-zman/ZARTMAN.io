@@ -25,6 +25,8 @@ const BID_INELIGIBLE_STATUSES = new Set(["lost", "declined", "withdrawn"]);
 
 export type AwardActorRole = "customer" | "admin";
 
+let hasLoggedAwardRpcLegacyFallback = false;
+
 export type AwardFailureReason =
   | "invalid_input"
   | "quote_lookup_failed"
@@ -332,11 +334,14 @@ export async function performAwardFlow(
   });
 
   if (rpcResult.error && isAwardRpcSignatureMismatch(rpcResult.error)) {
-    console.warn("[award] rpc signature mismatch; falling back to legacy signature", {
-      ...logContext,
-      code: (rpcResult.error as { code?: string | null })?.code ?? null,
-      message: (rpcResult.error as { message?: string | null })?.message ?? null,
-    });
+    if (!hasLoggedAwardRpcLegacyFallback) {
+      hasLoggedAwardRpcLegacyFallback = true;
+      console.info("[award] rpc signature mismatch; falling back to legacy signature", {
+        ...logContext,
+        code: (rpcResult.error as { code?: string | null })?.code ?? null,
+        message: (rpcResult.error as { message?: string | null })?.message ?? null,
+      });
+    }
 
     usedLegacyRpcSignature = true;
     rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
