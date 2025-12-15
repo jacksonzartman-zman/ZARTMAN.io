@@ -814,7 +814,6 @@ export async function declineSupplierBid(
         .from("quotes")
         .update({
           assigned_supplier_email: null,
-          assigned_supplier_name: null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", quoteId);
@@ -1011,7 +1010,6 @@ async function updateQuoteAssignedSupplier(
       .from("quotes")
       .update({
         assigned_supplier_email: supplier.primary_email,
-        assigned_supplier_name: supplier.company_name,
         updated_at: new Date().toISOString(),
       })
       .eq("id", quoteId);
@@ -1020,7 +1018,8 @@ async function updateQuoteAssignedSupplier(
       console.error("updateQuoteAssignedSupplier: quote update failed", {
         quoteId,
         supplierId: supplier.id,
-        error,
+        pgCode: error.code ?? null,
+        pgMessage: error.message ?? null,
       });
       return;
     }

@@ -154,7 +154,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   let assignedSupplierName: string | null = null;
   try {
     const { data, error } = await supabaseServer
-      .from("quotes")
+      .from("quotes_with_uploads")
       .select("assigned_supplier_email,assigned_supplier_name")
       .eq("id", quote.id)
       .maybeSingle<{
