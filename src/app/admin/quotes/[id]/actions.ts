@@ -607,17 +607,20 @@ export async function inviteSupplierToQuoteAction(
       .from("quotes")
       .update({
         assigned_supplier_email: supplier.primary_email ?? supplierEmail,
-        assigned_supplier_name: supplier.company_name ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", normalizedQuoteId);
 
     if (quoteUpdateError) {
-      console.error("[admin invites] quote assignment update failed", {
-        quoteId: normalizedQuoteId,
-        supplierId: supplier.id,
-        error: quoteUpdateError,
-      });
+      console.error(
+        "[admin invites] quote assignment update failed",
+        {
+          quoteId: normalizedQuoteId,
+          supplierId: supplier.id,
+          pgCode: quoteUpdateError.code ?? null,
+          pgMessage: quoteUpdateError.message ?? null,
+        },
+      );
     }
 
     if (isNewInvite) {
