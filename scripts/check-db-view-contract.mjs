@@ -71,6 +71,8 @@ const CONTRACTS = [
       "upload_file_count",
       "upload_name",
       "awarded_at",
+      "awarded_supplier_id",
+      "awarded_bid_id",
       "bid_count",
       "latest_bid_at",
       "has_awarded_bid",

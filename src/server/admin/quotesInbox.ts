@@ -37,7 +37,8 @@ type InboxExtraField =
   | "latest_bid_at"
   | "has_awarded_bid"
   | "awarded_supplier_name"
-  | "awarded_supplier_id";
+  | "awarded_supplier_id"
+  | "awarded_bid_id";
 
 const ADMIN_QUOTES_INBOX_TABLE = "admin_quotes_inbox" as const;
 
@@ -60,6 +61,7 @@ const ADMIN_QUOTES_INBOX_SELECT = [
   "upload_name",
   "awarded_at",
   "awarded_supplier_id",
+  "awarded_bid_id",
   // View-projected admin activity fields
   "bid_count",
   "latest_bid_at",
@@ -85,6 +87,7 @@ export type AdminQuotesInboxRow = {
   upload_name?: string | null;
   awarded_at?: string | null;
   awarded_supplier_id?: string | null;
+  awarded_bid_id?: string | null;
   bid_count: number;
   latest_bid_at: string | null;
   has_awarded_bid: boolean;
