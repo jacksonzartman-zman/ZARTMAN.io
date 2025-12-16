@@ -6,6 +6,10 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { getServerAuthUser, requireAdminUser, requireUser } from "@/server/auth";
 import {
+  isMissingTableOrColumnError,
+  serializeSupabaseError,
+} from "@/server/admin/logging";
+import {
   QUOTE_UPDATE_ERROR,
   updateAdminQuote,
   type AdminQuoteUpdateInput,
@@ -35,6 +39,8 @@ import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
 import type { AwardBidFormState } from "./awardFormState";
 import {
   requestSupplierCapacityUpdate,
+  loadRecentCapacityUpdateRequest,
+  isCapacityRequestSuppressed,
   type CapacityUpdateRequestReason,
 } from "@/server/admin/capacityRequests";
 
@@ -670,11 +676,80 @@ function normalizeEmail(value: unknown): string | null {
 
 export type AdminCapacityUpdateRequestState =
   | { ok: true; message: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string }
+  | { ok: false; reason: "recent_request_exists" };
 
 const ADMIN_CAPACITY_REQUEST_OK = "Request sent";
 const ADMIN_CAPACITY_REQUEST_ERROR =
   "We couldn't send that request right now.";
+
+let didWarnCapacityRequestSuppressed = false;
+let didWarnMissingCapacitySnapshotsSchemaForSuppression = false;
+
+async function loadSupplierCapacityLastUpdatedAtForWeek(args: {
+  supplierId: string;
+  weekStartDate: string;
+}): Promise<string | null> {
+  const supplierId = typeof args?.supplierId === "string" ? args.supplierId.trim() : "";
+  const weekStartDate =
+    typeof args?.weekStartDate === "string" ? args.weekStartDate.trim() : "";
+  if (!supplierId || !weekStartDate) return null;
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("supplier_capacity_snapshots")
+      .select("created_at")
+      .eq("supplier_id", supplierId)
+      .eq("week_start_date", weekStartDate)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .returns<Array<{ created_at: string }>>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        if (!didWarnMissingCapacitySnapshotsSchemaForSuppression) {
+          didWarnMissingCapacitySnapshotsSchemaForSuppression = true;
+          console.warn("[capacity request] capacity snapshot lookup skipped (missing schema)", {
+            supplierId,
+            weekStartDate,
+            error: serializeSupabaseError(error),
+          });
+        }
+        return null;
+      }
+
+      console.error("[capacity request] capacity snapshot lookup failed", {
+        supplierId,
+        weekStartDate,
+        error: serializeSupabaseError(error),
+      });
+      return null;
+    }
+
+    const createdAt =
+      Array.isArray(data) && typeof data[0]?.created_at === "string" ? data[0].created_at : null;
+    return createdAt;
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      if (!didWarnMissingCapacitySnapshotsSchemaForSuppression) {
+        didWarnMissingCapacitySnapshotsSchemaForSuppression = true;
+        console.warn("[capacity request] capacity snapshot lookup crashed (missing schema)", {
+          supplierId,
+          weekStartDate,
+          error: serializeSupabaseError(error),
+        });
+      }
+      return null;
+    }
+
+    console.error("[capacity request] capacity snapshot lookup crashed", {
+      supplierId,
+      weekStartDate,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return null;
+  }
+}
 
 export async function requestCapacityUpdateAction(
   quoteId: string,
@@ -696,6 +771,37 @@ export async function requestCapacityUpdateAction(
 
   try {
     const adminUser = await requireAdminUser();
+
+    const [recentRequest, supplierCapacityLastUpdatedAt] = await Promise.all([
+      loadRecentCapacityUpdateRequest({
+        supplierId: normalizedSupplierId,
+        weekStartDate: normalizedWeekStartDate,
+        lookbackDays: 7,
+      }),
+      loadSupplierCapacityLastUpdatedAtForWeek({
+        supplierId: normalizedSupplierId,
+        weekStartDate: normalizedWeekStartDate,
+      }),
+    ]);
+
+    const suppressed = isCapacityRequestSuppressed({
+      requestCreatedAt: recentRequest.createdAt,
+      supplierLastUpdatedAt: supplierCapacityLastUpdatedAt,
+    });
+
+    if (suppressed) {
+      if (!didWarnCapacityRequestSuppressed) {
+        didWarnCapacityRequestSuppressed = true;
+        console.warn("[capacity request] suppressed due to recent request", {
+          quoteId: normalizedQuoteId,
+          supplierId: normalizedSupplierId,
+          weekStartDate: normalizedWeekStartDate,
+          requestCreatedAt: recentRequest.createdAt,
+          supplierCapacityLastUpdatedAt,
+        });
+      }
+      return { ok: false, reason: "recent_request_exists" };
+    }
 
     // Fire-and-forget semantics: do not block UI on insert success.
     void requestSupplierCapacityUpdate({
