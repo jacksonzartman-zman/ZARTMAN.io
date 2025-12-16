@@ -48,6 +48,28 @@ export type GetQuoteEventsForTimelineResult =
   | { ok: true; events: QuoteEventRecord[]; error: null }
   | { ok: false; events: QuoteEventRecord[]; error: string };
 
+/**
+ * Customer-visible quote event types for timeline + project "last updated" views.
+ *
+ * IMPORTANT: Keep this list in sync with customer filtering in
+ * `filterAndSanitizeTimelineEvents` below.
+ */
+export const CUSTOMER_VISIBLE_TIMELINE_EVENT_TYPES = [
+  "submitted",
+  "supplier_invited",
+  "bid_received",
+  "awarded",
+  "kickoff_started",
+  "kickoff_completed",
+  "kickoff_updated",
+  "quote_archived",
+  "quote_reopened",
+  "archived",
+  "reopened",
+  "quote_won",
+  "bid_won",
+] as const;
+
 const QUOTE_EVENTS_TABLE = "quote_events";
 const QUOTE_EVENTS_BASE_COLUMNS =
   "id,quote_id,event_type,actor_role,actor_user_id,actor_supplier_id,created_at";
@@ -436,21 +458,7 @@ function filterAndSanitizeTimelineEvents(
   }
 
   // Keep customer timeline strictly limited to "safe" quote lifecycle events.
-  const allowedForCustomer = new Set<string>([
-    "submitted",
-    "supplier_invited",
-    "bid_received",
-    "awarded",
-    "kickoff_started",
-    "kickoff_completed",
-    "kickoff_updated",
-    "quote_archived",
-    "quote_reopened",
-    "archived",
-    "reopened",
-    "quote_won",
-    "bid_won",
-  ]);
+  const allowedForCustomer = new Set<string>(CUSTOMER_VISIBLE_TIMELINE_EVENT_TYPES);
 
   if (role === "customer") {
     return events.filter((event) =>

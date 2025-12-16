@@ -35,3 +35,26 @@ export function formatRelativeTimeFromTimestamp(
   const days = Math.round(delta / DAY_IN_MS);
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
+
+export function formatRelativeTimeCompactFromTimestamp(
+  timestamp: number | null | undefined,
+): string | null {
+  if (typeof timestamp !== "number" || Number.isNaN(timestamp)) {
+    return null;
+  }
+  const now = Date.now();
+  const delta = now - timestamp;
+  if (delta < MINUTE_IN_MS) {
+    return "just now";
+  }
+  if (delta < HOUR_IN_MS) {
+    const minutes = Math.max(1, Math.round(delta / MINUTE_IN_MS));
+    return `${minutes}m ago`;
+  }
+  if (delta < DAY_IN_MS) {
+    const hours = Math.max(1, Math.round(delta / HOUR_IN_MS));
+    return `${hours}h ago`;
+  }
+  const days = Math.max(1, Math.round(delta / DAY_IN_MS));
+  return `${days}d ago`;
+}
