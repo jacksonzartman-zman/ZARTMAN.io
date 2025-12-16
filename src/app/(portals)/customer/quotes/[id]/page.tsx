@@ -34,6 +34,7 @@ import {
 } from "@/server/quotes/status";
 import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
+import { FocusScroll } from "./FocusScroll";
 import {
   loadQuoteProjectForQuote,
   type QuoteProjectRecord,
@@ -67,6 +68,7 @@ export default async function CustomerQuoteDetailPage({
   });
   const emailParam = getSearchParamValue(resolvedSearchParams, "email");
   const overrideEmail = normalizeEmailInput(emailParam);
+  const focusParam = getSearchParamValue(resolvedSearchParams, "focus");
   const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {
@@ -813,7 +815,7 @@ export default async function CustomerQuoteDetailPage({
   );
 
   const awardSection = (
-    <section className="space-y-4">
+    <section id="award" className="space-y-4 scroll-mt-24">
       {bidSummaryPanel}
       <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -941,6 +943,7 @@ export default async function CustomerQuoteDetailPage({
       headerContent={headerContent}
       actions={headerActions}
     >
+      <FocusScroll enabled={focusParam === "award"} targetId="award" />
       {receiptBanner}
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-5">

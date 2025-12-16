@@ -254,6 +254,57 @@ export async function loadSupplierById(
   }
 }
 
+export async function loadSupplierNameMapByIds(
+  supplierIds: readonly (string | null | undefined)[],
+): Promise<Map<string, string>> {
+  const normalizedIds = Array.from(
+    new Set(
+      (supplierIds ?? [])
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter((value) => value.length > 0),
+    ),
+  );
+
+  const map = new Map<string, string>();
+  if (normalizedIds.length === 0) {
+    return map;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("suppliers")
+      .select("id,company_name,primary_email")
+      .in("id", normalizedIds)
+      .returns<{ id: string; company_name: string | null; primary_email: string | null }[]>();
+
+    if (error) {
+      console.error("loadSupplierNameMapByIds: lookup failed", {
+        supplierIdsCount: normalizedIds.length,
+        error,
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const id = typeof row?.id === "string" ? row.id.trim() : "";
+      if (!id) continue;
+      const name =
+        row.company_name?.trim() || row.primary_email?.trim() || null;
+      if (name) {
+        map.set(id, name);
+      }
+    }
+
+    return map;
+  } catch (error) {
+    console.error("loadSupplierNameMapByIds: unexpected error", {
+      supplierIdsCount: normalizedIds.length,
+      error,
+    });
+    return map;
+  }
+}
+
 export async function loadSupplierProfileByUserId(
   userId: string,
 ): Promise<SupplierProfile | null> {

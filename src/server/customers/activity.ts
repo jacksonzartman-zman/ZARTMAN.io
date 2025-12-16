@@ -12,7 +12,7 @@ import { formatCurrency } from "@/lib/formatCurrency";
 
 const EVENT_LIMIT = 10;
 const QUOTE_COLUMNS =
-  "id,file_name,company,customer_name,customer_email,status,created_at,updated_at,price,currency,file_names,upload_file_names,file_count,upload_file_count";
+  "id,file_name,company,customer_name,customer_email,status,created_at,updated_at,price,currency,file_names,upload_file_names,file_count,upload_file_count,awarded_at,awarded_supplier_id,awarded_bid_id";
 
 type CustomerQuoteRow = {
   id: string;
@@ -30,6 +30,9 @@ type CustomerQuoteRow = {
   file_count?: number | null;
   upload_file_count?: number | null;
   upload_name?: string | null;
+  awarded_at?: string | null;
+  awarded_supplier_id?: string | null;
+  awarded_bid_id?: string | null;
 };
 
 type CustomerActivityOptions = {
