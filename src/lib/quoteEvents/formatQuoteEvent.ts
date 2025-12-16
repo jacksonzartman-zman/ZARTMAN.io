@@ -260,6 +260,16 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     };
   }
 
+  if (type === "kickoff_nudged") {
+    return {
+      groupKey: "kickoff",
+      groupLabel: "Kickoff",
+      title: "Kickoff nudged",
+      subtitle: "Customer requested kickoff progress",
+      actorLabel,
+    };
+  }
+
   if (type === "message_posted") {
     const senderName = readString(metadata, "sender_name");
     return {

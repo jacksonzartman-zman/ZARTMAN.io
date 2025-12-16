@@ -69,6 +69,7 @@ import {
 import { postQuoteMessage as postSupplierQuoteMessage } from "./actions";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import type { QuoteEventRecord } from "@/server/quotes/events";
+import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
 import { FocusTabScroll } from "@/app/(portals)/shared/FocusTabScroll";
 
@@ -267,6 +268,11 @@ export default async function SupplierQuoteDetailPage({
   const supplierPostMessageAction =
     postSupplierQuoteMessage.bind(null, quoteId);
 
+  const latestKickoffNudgedAt = await getLatestKickoffNudgedAt({
+    quoteId,
+    supplierId: profile.supplier.id,
+  });
+
   const [capacitySnapshotsResult, latestCapacityRequest] = await Promise.all([
     loadSupplierCapacitySnapshotsForWeek({
       supplierId: profile.supplier.id,
@@ -309,6 +315,7 @@ export default async function SupplierQuoteDetailPage({
       kickoffVisibility={kickoffVisibility}
       awardedSupplierId={workspaceData.quote.awarded_supplier_id ?? null}
       awardedToSupplier={awardedToSupplier}
+      latestKickoffNudgedAt={latestKickoffNudgedAt}
       capacitySnapshotsResult={capacitySnapshotsResult}
       capacityRequestCreatedAt={latestCapacityRequest.createdAt}
     />
@@ -340,6 +347,7 @@ function SupplierQuoteWorkspace({
   kickoffVisibility,
   awardedSupplierId,
   awardedToSupplier,
+  latestKickoffNudgedAt,
   capacitySnapshotsResult,
   capacityRequestCreatedAt,
 }: {
@@ -370,6 +378,7 @@ function SupplierQuoteWorkspace({
   kickoffVisibility: SupplierKickoffVisibility;
   awardedSupplierId: string | null;
   awardedToSupplier: boolean;
+  latestKickoffNudgedAt: string | null;
   capacitySnapshotsResult: Awaited<ReturnType<typeof loadSupplierCapacitySnapshotsForWeek>>;
   capacityRequestCreatedAt: string | null;
 }) {
@@ -706,6 +715,12 @@ function SupplierQuoteWorkspace({
       : kickoffProgressRatio
         ? `Kickoff in progress (${kickoffProgressRatio} tasks)`
         : "Kickoff in progress";
+
+    const nudgedMs = latestKickoffNudgedAt ? Date.parse(latestKickoffNudgedAt) : Number.NaN;
+    const hasRecentNudge =
+      Boolean(latestKickoffNudgedAt) &&
+      Number.isFinite(nudgedMs) &&
+      Date.now() - nudgedMs < 7 * 24 * 60 * 60 * 1000;
     kickoffSection = (
       <CollapsibleCard
         id="kickoff"
@@ -730,6 +745,16 @@ function SupplierQuoteWorkspace({
           {projectSection}
           {awardedToSupplier ? (
             <>
+              {hasRecentNudge && !kickoffProgressBasis.isComplete ? (
+                <section className="rounded-2xl border border-blue-500/20 bg-blue-500/5 px-5 py-3 text-sm text-blue-50">
+                  <p className="font-semibold text-blue-100">
+                    Customer is waiting on kickoff completion.
+                  </p>
+                  <p className="mt-1 text-xs text-blue-100/80">
+                    View tasks below.
+                  </p>
+                </section>
+              ) : null}
               <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4">
                 <header className="flex flex-wrap items-start justify-between gap-3">
                   <div>
