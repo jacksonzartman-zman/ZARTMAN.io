@@ -38,6 +38,7 @@ const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
     { label: "Dashboard", href: "/supplier" },
     { label: "Decisions", href: "/supplier/decisions" },
     { label: "Quotes", href: "/supplier/quotes" },
+    { label: "Projects", href: "/supplier/projects" },
     { label: "Settings", href: "/supplier/settings" },
   ],
 };
