@@ -39,20 +39,12 @@ import {
   type QuoteProjectRecord,
 } from "@/server/quotes/projects";
 import { loadSupplierById } from "@/server/suppliers/profile";
-import { loadQuoteMessages } from "@/server/quotes/messages";
-import {
-  loadQuoteKickoffTasksForSupplier,
-  summarizeKickoffTasks,
-  formatKickoffSummaryLabel,
-  type SupplierKickoffTasksResult,
-} from "@/server/quotes/kickoffTasks";
-import {
-  mergeKickoffTasksWithDefaults,
-  type SupplierKickoffTask,
-} from "@/lib/quote/kickoffChecklist";
 import { postQuoteMessage as postCustomerQuoteMessage } from "./actions";
-import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
+import {
+  getCustomerKickoffSummary,
+  type CustomerKickoffSummary,
+} from "@/server/quotes/kickoffSummary";
 
 export const dynamic = "force-dynamic";
 
@@ -106,14 +98,29 @@ export default async function CustomerQuoteDetailPage({
     quote,
     uploadMeta,
     filePreviews,
+    messages: quoteMessages,
+    messagesError,
   } = workspaceResult.data;
-  const customerBidSummariesResult = await loadCustomerQuoteBidSummaries({
-    quoteId: quote.id,
-    customerEmail: customer.email,
-    userEmail: user.email,
-    overrideEmail,
-  });
-  const customerBidSummaries = customerBidSummariesResult.ok ? customerBidSummariesResult.bids : [];
+  const messagesUnavailable = Boolean(messagesError);
+  const [
+    customerBidSummariesResult,
+    bidsResult,
+    projectResult,
+    customerKickoffSummary,
+  ] = await Promise.all([
+    loadCustomerQuoteBidSummaries({
+      quoteId: quote.id,
+      customerEmail: customer.email,
+      userEmail: user.email,
+      overrideEmail,
+    }),
+    loadBidsForQuote(quote.id),
+    loadQuoteProjectForQuote(quote.id),
+    getCustomerKickoffSummary(quote.id),
+  ]);
+  const customerBidSummaries = customerBidSummariesResult.ok
+    ? customerBidSummariesResult.bids
+    : [];
   const customerBidSummariesUnavailable = !customerBidSummariesResult.ok;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
   const fileCount = quote.fileCount ?? quoteFiles.length;
@@ -154,12 +161,10 @@ export default async function CustomerQuoteDetailPage({
   const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined);
   const quoteStatusHelper = getQuoteStatusHelper(quote.status ?? undefined);
   const nextWorkflowState = getNextWorkflowState(normalizedQuoteStatus);
-  const bidsResult = await loadBidsForQuote(quote.id);
   const bidsUnavailable = !bidsResult.ok;
   const bids = bidsResult.ok && Array.isArray(bidsResult.data)
     ? (bidsResult.data ?? [])
     : [];
-  const projectResult = await loadQuoteProjectForQuote(quote.id);
   const hasProject = projectResult.ok;
   const project = hasProject ? projectResult.project : null;
   const projectUnavailable = !hasProject && projectResult.reason !== "not_found";
@@ -206,41 +211,26 @@ export default async function CustomerQuoteDetailPage({
     Boolean(quote.awarded_bid_id) ||
     Boolean(quote.awarded_supplier_id) ||
     Boolean(winningBidId);
-  let supplierKickoffTasksResult: SupplierKickoffTasksResult | null = null;
-  if (winningSupplierId) {
-    supplierKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
-      quote.id,
-      winningSupplierId,
-      { seedIfEmpty: false },
-    );
-  }
-  const kickoffSummary =
-    supplierKickoffTasksResult?.ok && supplierKickoffTasksResult.tasks.length > 0
-      ? summarizeKickoffTasks(supplierKickoffTasksResult.tasks)
-      : null;
-  const kickoffSummaryStatus = kickoffSummary?.status ?? null;
+  const kickoffSummaryStatus =
+    quoteHasWinner && customerKickoffSummary.isComplete
+      ? "complete"
+      : quoteHasWinner
+        ? "in-progress"
+        : null;
   const kickoffSummaryLabel = quoteHasWinner
-    ? kickoffSummary
-      ? formatKickoffSummaryLabel(kickoffSummary)
-      : supplierKickoffTasksResult?.reason === "schema-missing"
-        ? "Kickoff checklist unavailable in this environment"
-        : "Kickoff begins…"
+    ? customerKickoffSummary.isComplete
+      ? "Kickoff complete"
+      : "Kickoff in progress"
     : "Select a winning supplier to start kickoff";
+  const kickoffChecklistSummaryLabel = quoteHasWinner
+    ? `${customerKickoffSummary.completedTasks} / ${customerKickoffSummary.totalTasks} tasks completed`
+    : "—";
   const kickoffSummaryTone =
-    kickoffSummary?.status === "complete"
+    kickoffSummaryStatus === "complete"
       ? "text-emerald-300"
-      : kickoffSummary?.status === "in-progress"
+      : kickoffSummaryStatus === "in-progress"
         ? "text-blue-200"
         : "text-slate-200";
-  const messagesResult = await loadQuoteMessages(quote.id);
-  if (!messagesResult.ok) {
-    console.error("[customer quote] messages load failed", {
-      quoteId: quote.id,
-      error: messagesResult.error ?? messagesResult.reason,
-    });
-  }
-  const quoteMessages = messagesResult.messages;
-  const messagesUnavailable = !messagesResult.ok;
   const showCustomerSupplierSection = bidCount > 0;
   const customerCanAward =
     bidCount > 0 && quoteAwardStatusAllowed && !quoteHasWinner && !readOnly;
@@ -701,14 +691,6 @@ export default async function CustomerQuoteDetailPage({
     </PortalCard>
   );
 
-  const kickoffPanel = (
-    <CustomerKickoffPanel
-      hasWinner={Boolean(winningSupplierId)}
-      tasksResult={supplierKickoffTasksResult}
-      summary={kickoffSummary}
-    />
-  );
-
   const projectSnapshotCard =
     hasProject && project ? (
       <CustomerProjectSnapshotCard
@@ -923,8 +905,7 @@ export default async function CustomerQuoteDetailPage({
         {projectSection}
         <CustomerKickoffPanel
           hasWinner={Boolean(winningSupplierId)}
-          tasksResult={supplierKickoffTasksResult}
-          summary={kickoffSummary}
+          summary={quoteHasWinner ? customerKickoffSummary : null}
           anchorId={null}
         />
       </div>
@@ -933,6 +914,8 @@ export default async function CustomerQuoteDetailPage({
 
   const timelineSection = (
     <CollapsibleCard
+      id="timeline"
+      className="scroll-mt-24"
       title="Timeline"
       description="Updates and milestones for this RFQ."
       defaultOpen={false}
@@ -983,6 +966,48 @@ export default async function CustomerQuoteDetailPage({
           />
         </div>
         <div className="space-y-5">
+          {quoteIsWon ? (
+            <PortalCard
+              title="Project status"
+              description="This job is now in progress with your supplier."
+            >
+              <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                    Supplier
+                  </dt>
+                  <dd className="text-slate-100">
+                    {winningSupplierId ? (winningSupplierName ?? winningSupplierId) : "Supplier assignment pending."}
+                  </dd>
+                </div>
+                <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                    Awarded on
+                  </dt>
+                  <dd className="text-slate-100">
+                    {quote.awarded_at ? formatDateTime(quote.awarded_at) : "—"}
+                  </dd>
+                </div>
+                <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2 sm:col-span-2">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                    Kickoff status
+                  </dt>
+                  <dd className="mt-1 space-y-1">
+                    <p className="font-medium text-slate-100">{kickoffSummaryLabel}</p>
+                    <p className="text-xs text-slate-400">{kickoffChecklistSummaryLabel}</p>
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-4">
+                <Link
+                  href="#timeline"
+                  className="inline-flex items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+                >
+                  View activity timeline
+                </Link>
+              </div>
+            </PortalCard>
+          ) : null}
           {filesSection}
           {quoteDetailsSection}
           {notesSection}
@@ -1122,38 +1147,22 @@ function deriveCustomerNextStep(status?: string | null): string {
 
 function CustomerKickoffPanel({
   hasWinner,
-  tasksResult,
   summary,
   anchorId,
 }: {
   hasWinner: boolean;
-  tasksResult: SupplierKickoffTasksResult | null;
-  summary: ReturnType<typeof summarizeKickoffTasks> | null;
+  summary: CustomerKickoffSummary | null;
   anchorId?: string | null;
 }) {
-  const statusValue =
-    summary?.status === "complete"
-      ? "Complete"
-      : summary?.status === "in-progress"
-        ? "In progress"
-        : summary?.status === "not-started"
-          ? "Not started"
-          : "—";
-  const completedValue =
-    summary ? `${summary.completedCount} / ${summary.totalCount}` : "—";
-  const lastUpdatedValue = summary?.lastUpdatedAt
-    ? formatRelativeTimeFromTimestamp(toTimestamp(summary.lastUpdatedAt)) ?? "—"
+  const statusValue = summary?.isComplete ? "Complete" : hasWinner ? "In progress" : "—";
+  const completedValue = summary
+    ? `${summary.completedTasks} / ${summary.totalTasks}`
     : "—";
 
-  const tasks: SupplierKickoffTask[] | null =
-    hasWinner && tasksResult?.ok && tasksResult.tasks.length > 0
-      ? mergeKickoffTasksWithDefaults(tasksResult.tasks)
-      : null;
-
   const pillTone =
-    summary?.status === "complete"
+    summary?.isComplete
       ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
-      : summary?.status === "in-progress"
+      : hasWinner
         ? "border border-blue-500/40 bg-blue-500/10 text-blue-100"
         : "border border-slate-800 bg-slate-900/60 text-slate-200";
 
@@ -1192,46 +1201,15 @@ function CustomerKickoffPanel({
           </dt>
           <dd className="font-medium text-slate-100">{completedValue}</dd>
         </div>
-        <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-            Last updated
-          </dt>
-          <dd className="font-medium text-slate-100">{lastUpdatedValue}</dd>
-        </div>
       </dl>
 
       {!hasWinner ? (
         <p className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-sm text-slate-300">
           Kickoff begins after supplier is selected.
         </p>
-      ) : tasks ? (
-        <ul className="mt-4 space-y-3">
-          {tasks.map((task) => (
-            <li
-              key={task.taskKey}
-              className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"
-            >
-              <div className="pt-0.5">
-                <input
-                  type="checkbox"
-                  checked={Boolean(task.completed)}
-                  disabled
-                  readOnly
-                  className="size-4 rounded border-slate-700 bg-slate-900 text-emerald-400"
-                />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-white">{task.title}</p>
-                {task.description ? (
-                  <p className="text-sm text-slate-300">{task.description}</p>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
       ) : (
         <p className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-sm text-slate-300">
-          Kickoff not ready yet. Refresh in a moment.
+          Kickoff progress will update as your supplier completes onboarding tasks.
         </p>
       )}
     </section>
