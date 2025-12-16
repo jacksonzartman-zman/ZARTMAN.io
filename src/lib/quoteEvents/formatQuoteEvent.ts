@@ -27,6 +27,25 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
   const metadata = resolveEventMetadata(event);
   const actorLabel = formatActorLabel(event.actor_role, metadata);
 
+  if (type === "capacity_update_requested") {
+    const weekStartDate =
+      readString(metadata, "weekStartDate") ?? readString(metadata, "week_start_date");
+    const weekLabel = formatWeekOfDateLabel(weekStartDate);
+    const reason = readString(metadata, "reason");
+    const reasonLabel = formatCapacityRequestReason(reason);
+
+    return {
+      groupKey: "other",
+      groupLabel: "Other",
+      title: "Capacity update requested",
+      subtitle: joinSubtitle(
+        weekLabel ? `For week of ${weekLabel}` : null,
+        reasonLabel ? `(${reasonLabel})` : null,
+      ) ?? undefined,
+      actorLabel,
+    };
+  }
+
   if (type === "capacity_updated") {
     const capability = readString(metadata, "capability");
     const capacityLevel =
@@ -380,6 +399,27 @@ function formatWeekOfLabel(value: string | null): string | null {
   if (!Number.isFinite(date.getTime())) return null;
   const label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   return label ? `week of ${label}` : null;
+}
+
+function formatWeekOfDateLabel(value: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const date = new Date(`${trimmed}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date.toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatCapacityRequestReason(value: string | null): string | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!normalized) return null;
+  if (normalized === "stale") return "Stale capacity";
+  if (normalized === "missing") return "Missing capacity";
+  return null;
 }
 
 function formatStatusTransitionSubtitle(

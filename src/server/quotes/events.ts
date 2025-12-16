@@ -15,6 +15,7 @@ export type QuoteEventType =
   | "archived"
   | "kickoff_updated"
   | "message_posted"
+  | "capacity_update_requested"
   | (string & {});
 
 export type QuoteEventRecord = {
@@ -463,6 +464,7 @@ function filterAndSanitizeTimelineEvents(
     const allowedForSupplier = new Set<string>([
       ...Array.from(allowedForCustomer),
       "capacity_updated",
+      "capacity_update_requested",
     ]);
     const supplierId = normalizeId(viewer.supplierId) || null;
     const supplierEmail =
@@ -475,7 +477,10 @@ function filterAndSanitizeTimelineEvents(
       .filter((event) => {
         const type = normalizeEventType(event.event_type);
         const metadata = isRecord(event.metadata) ? event.metadata : {};
-        const metaSupplierId = normalizeId(metadata["supplier_id"]) || null;
+        const metaSupplierId =
+          normalizeId(metadata["supplierId"]) ||
+          normalizeId(metadata["supplier_id"]) ||
+          null;
         const metaSupplierEmail =
           typeof metadata["supplier_email"] === "string"
             ? metadata["supplier_email"].trim().toLowerCase()
@@ -488,9 +493,15 @@ function filterAndSanitizeTimelineEvents(
           type === "bid_received" ||
           type === "kickoff_updated" ||
           type === "bid_won" ||
-          type === "capacity_updated"
+          type === "capacity_updated" ||
+          type === "capacity_update_requested"
         ) {
           if (!supplierId && !supplierEmail) return false;
+          // Capacity update requests must be supplier-scoped via metadata.supplierId.
+          // (Admin/system actor_supplier_id is not sufficient for scoping.)
+          if (type === "capacity_update_requested") {
+            return Boolean(supplierId) && metaSupplierId === supplierId;
+          }
           return (
             (supplierId && (metaSupplierId === supplierId || actorSupplierId === supplierId)) ||
             (supplierEmail && metaSupplierEmail === supplierEmail)
