@@ -1,6 +1,5 @@
 import clsx from "clsx";
 import Link from "next/link";
-import type { ReadonlyURLSearchParams } from "next/navigation";
 
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
@@ -44,18 +43,18 @@ function formatKickoffStatus(summary: {
 }
 
 type CustomerProjectsPageProps = {
-  searchParams?: Promise<ReadonlyURLSearchParams>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
-
-function getParam(searchParams: ReadonlyURLSearchParams | null | undefined, key: string): string {
-  if (!searchParams) return "";
-  const value = searchParams.get(key);
-  return typeof value === "string" ? value : "";
-}
 
 export default async function CustomerProjectsPage({
   searchParams,
 }: CustomerProjectsPageProps) {
+  const spObj = (searchParams ? await searchParams : {}) ?? {};
+  const sp = (key: string) => {
+    const v = spObj[key];
+    return Array.isArray(v) ? v[0] : v;
+  };
+
   const user = await requireUser({ redirectTo: "/customer/projects" });
   const customer = await getCustomerByUserId(user.id);
 
@@ -86,10 +85,17 @@ export default async function CustomerProjectsPage({
     customerId: customer.id,
   });
 
-  const resolvedSearchParams = await searchParams;
-  const status = (getParam(resolvedSearchParams, "status") as CustomerProjectsStatusFilter) || "in_progress";
-  const sort = (getParam(resolvedSearchParams, "sort") as CustomerProjectsSortKey) || "updated";
-  const supplierFilter = getParam(resolvedSearchParams, "supplier");
+  const statusRaw = (sp("status") ?? "").trim();
+  const status: CustomerProjectsStatusFilter =
+    statusRaw === "in_progress" || statusRaw === "complete" || statusRaw === "all"
+      ? statusRaw
+      : "in_progress";
+
+  const sortRaw = (sp("sort") ?? "").trim();
+  const sort: CustomerProjectsSortKey =
+    sortRaw === "updated" || sortRaw === "awarded" || sortRaw === "supplier" ? sortRaw : "updated";
+
+  const supplierFilter = (sp("supplier") ?? "").trim() || undefined;
 
   const suppliers = Array.from(
     new Map(
