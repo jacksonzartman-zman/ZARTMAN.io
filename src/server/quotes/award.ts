@@ -47,6 +47,17 @@ export type AwardResult = {
   awardedAt?: string | null;
 };
 
+export type AwardFinalizationResult =
+  | {
+      ok: true;
+      awardedAt: string;
+    }
+  | {
+      ok: false;
+      reason: AwardFailureReason;
+      error: string;
+    };
+
 export type PerformAwardFlowInput = {
   quoteId: string;
   bidId: string;
@@ -365,12 +376,81 @@ export async function performAwardFlow(
     };
   }
 
-  // Ensure audit fields are set (best-effort).
+  const finalization = await finalizeAwardAfterRpc({
+    quoteId,
+    bidId,
+    winningSupplierId,
+    actorRole,
+    actorUserId,
+    revalidate: true,
+  });
+
+  if (!finalization.ok) {
+    return {
+      ok: false,
+      reason: finalization.reason,
+      error: finalization.error,
+    };
+  }
+
+  return {
+    ok: true,
+    awardedBidId: bidId,
+    awardedSupplierId: winningSupplierId,
+    awardedAt: finalization.awardedAt,
+  };
+}
+
+export async function finalizeAwardAfterRpc({
+  quoteId,
+  bidId,
+  winningSupplierId,
+  actorRole,
+  actorUserId,
+  revalidate,
+}: {
+  quoteId: string;
+  bidId: string;
+  winningSupplierId: string;
+  actorRole: AwardActorRole;
+  actorUserId: string;
+  revalidate: boolean;
+}): Promise<AwardFinalizationResult> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  const normalizedBidId = normalizeId(bidId);
+  const normalizedSupplierId = normalizeId(winningSupplierId);
+  const normalizedActorUserId = normalizeId(actorUserId);
+  const normalizedActorRole =
+    actorRole === "admin" ? "admin" : actorRole === "customer" ? "customer" : null;
+
+  const logContext = {
+    quoteId: normalizedQuoteId || null,
+    bidId: normalizedBidId || null,
+    actorRole: normalizedActorRole,
+    actorUserId: normalizedActorUserId || null,
+  };
+
+  if (
+    !normalizedQuoteId ||
+    !normalizedBidId ||
+    !normalizedSupplierId ||
+    !normalizedActorUserId ||
+    !normalizedActorRole
+  ) {
+    return {
+      ok: false,
+      reason: "invalid_input",
+      error: "Invalid quote, bid, or actor id.",
+    };
+  }
+
+  // Ensure audit fields are set (best-effort). Canonical RPC usually writes these,
+  // but we keep this defensive for older / overridden DB functions.
   try {
     await ensureAwardAuditFields({
-      quoteId,
-      actorUserId,
-      actorRole,
+      quoteId: normalizedQuoteId,
+      actorUserId: normalizedActorUserId,
+      actorRole: normalizedActorRole,
     });
   } catch (error) {
     console.warn("[award] audit backfill failed", {
@@ -383,11 +463,11 @@ export async function performAwardFlow(
   // "won" and has awarded_* fields populated (idempotent; does not overwrite an
   // existing award). This protects against legacy/overridden DB functions.
   const finalized = await ensureQuoteWonAndAwarded({
-    quoteId,
-    bidId,
-    winningSupplierId,
-    actorRole,
-    actorUserId,
+    quoteId: normalizedQuoteId,
+    bidId: normalizedBidId,
+    winningSupplierId: normalizedSupplierId,
+    actorRole: normalizedActorRole,
+    actorUserId: normalizedActorUserId,
     logContext,
   });
   if (!finalized) {
@@ -402,24 +482,16 @@ export async function performAwardFlow(
     };
   }
 
-  const awardedSnapshot = await loadQuoteAwardSnapshot(quoteId);
+  const awardedSnapshot = await loadQuoteAwardSnapshot(normalizedQuoteId);
   const awardedAt =
-    awardedSnapshot?.awarded_at ??
-    quote.awarded_at ??
-    new Date().toISOString();
+    normalizeId(awardedSnapshot?.awarded_at ?? null) || new Date().toISOString();
 
-  const supplier = await loadSupplierById(winningSupplierId);
-  void emitQuoteEvent({
-    quoteId,
-    eventType: "awarded",
-    actorRole,
-    actorUserId,
-    metadata: {
-      bid_id: bidId,
-      supplier_id: winningSupplierId,
-      supplier_name: supplier?.company_name ?? supplier?.primary_email ?? null,
-      awarded_by_role: actorRole,
-    },
+  await emitAwardTimelineEvents({
+    quoteId: normalizedQuoteId,
+    bidId: normalizedBidId,
+    supplierId: normalizedSupplierId,
+    actorRole: normalizedActorRole,
+    actorUserId: normalizedActorUserId,
     createdAt: awardedAt,
   });
 
@@ -427,9 +499,9 @@ export async function performAwardFlow(
   // Best-effort: kickoff initialization should not block a successful award.
   try {
     const kickoffResult = await ensureKickoffTasksForAwardedSupplier({
-      quoteId,
-      actorRole,
-      actorUserId,
+      quoteId: normalizedQuoteId,
+      actorRole: normalizedActorRole,
+      actorUserId: normalizedActorUserId,
     });
 
     if (!kickoffResult.ok) {
@@ -448,24 +520,79 @@ export async function performAwardFlow(
   }
 
   await ensureQuoteProjectForWinner({
-    quoteId,
-    winningSupplierId,
+    quoteId: normalizedQuoteId,
+    winningSupplierId: normalizedSupplierId,
   });
 
-  revalidateAwardedPaths(quoteId);
+  if (revalidate) {
+    revalidateAwardedPaths(normalizedQuoteId);
+  }
+
   void dispatchWinnerNotification({
-    quoteId,
-    bidId,
-    caller: actorRole,
-    actorUserId,
+    quoteId: normalizedQuoteId,
+    bidId: normalizedBidId,
+    caller: normalizedActorRole,
+    actorUserId: normalizedActorUserId,
   });
 
-  return {
-    ok: true,
-    awardedBidId: bidId,
-    awardedSupplierId: winningSupplierId,
-    awardedAt,
+  return { ok: true, awardedAt };
+}
+
+async function emitAwardTimelineEvents({
+  quoteId,
+  bidId,
+  supplierId,
+  actorRole,
+  actorUserId,
+  createdAt,
+}: {
+  quoteId: string;
+  bidId: string;
+  supplierId: string;
+  actorRole: AwardActorRole;
+  actorUserId: string;
+  createdAt: string;
+}) {
+  const supplier = await loadSupplierById(supplierId);
+  const supplierName = supplier?.company_name ?? supplier?.primary_email ?? null;
+  const supplierEmail = supplier?.primary_email ?? null;
+
+  const metadata = {
+    bid_id: bidId,
+    supplier_id: supplierId,
+    supplier_name: supplierName,
+    supplier_email: supplierEmail,
+    awarded_by_role: actorRole,
   };
+
+  // Existing award timeline entry.
+  void emitQuoteEvent({
+    quoteId,
+    eventType: "awarded",
+    actorRole,
+    actorUserId,
+    metadata,
+    createdAt,
+  });
+
+  // Compatibility events used by notifications + some timeline views.
+  void emitQuoteEvent({
+    quoteId,
+    eventType: "quote_won",
+    actorRole,
+    actorUserId,
+    metadata,
+    createdAt,
+  });
+
+  void emitQuoteEvent({
+    quoteId,
+    eventType: "bid_won",
+    actorRole,
+    actorUserId,
+    metadata,
+    createdAt,
+  });
 }
 
 async function loadQuoteForAward(

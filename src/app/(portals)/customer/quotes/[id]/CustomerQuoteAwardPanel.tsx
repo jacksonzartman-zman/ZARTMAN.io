@@ -37,6 +37,10 @@ export function CustomerQuoteAwardPanel({
   const resolvedWinnerId = state.selectedBidId ?? winningBidId ?? null;
   const selectionLocked = Boolean(resolvedWinnerId);
   const showDisableNotice = Boolean(disableReason) && (!canSubmit || selectionLocked);
+  const winnerSupplierName =
+    selectionLocked && resolvedWinnerId
+      ? bids.find((bid) => bid.id === resolvedWinnerId)?.supplierName ?? null
+      : null;
   const confirmingBid =
     confirmingBidId && !selectionLocked
       ? bids.find((bid) => bid.id === confirmingBidId) ?? null
@@ -82,6 +86,12 @@ export function CustomerQuoteAwardPanel({
       {showDisableNotice ? (
         <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-5 py-3 text-xs text-slate-400">
           {disableReason}
+        </p>
+      ) : null}
+
+      {selectionLocked && winnerSupplierName ? (
+        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-3 text-sm text-emerald-100">
+          Winner selected: <span className="font-semibold text-white">{winnerSupplierName}</span>
         </p>
       ) : null}
 
@@ -150,7 +160,7 @@ export function CustomerQuoteAwardPanel({
                         disabled
                         className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-400 opacity-70"
                       >
-                        {isWinner ? "Winner selected" : "Award locked"}
+                        {isWinner ? "Winner selected" : "Locked"}
                       </button>
                     ) : (
                       <button
@@ -158,7 +168,7 @@ export function CustomerQuoteAwardPanel({
                         onClick={() => setConfirmingBidId(bid.id)}
                         className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
                       >
-                        Award to this supplier
+                        Award
                       </button>
                     )}
                   </td>
@@ -177,18 +187,19 @@ export function CustomerQuoteAwardPanel({
                 Confirm award
               </p>
               <h3 className="text-xl font-semibold text-white">
-                Award this RFQ to {confirmingBid.supplierName}?
+                Award to {confirmingBid.supplierName}?
               </h3>
               <p className="text-sm text-slate-300">
-                This marks <span className="font-semibold text-white">{confirmingBid.supplierName}</span>{" "}
-                as the winning selection.
+                This locks the RFQ and starts kickoff.
               </p>
             </div>
             <form action={formAction} className="space-y-3">
               <input type="hidden" name="quoteId" value={quoteId} />
               <input type="hidden" name="bidId" value={confirmingBid.id} />
               <p className="text-xs text-slate-400">
-                Selecting a winner notifies the supplier immediately and locks other bids.
+                You’re awarding to{" "}
+                <span className="font-semibold text-slate-200">{confirmingBid.supplierName}</span>. This can’t be
+                undone from the customer portal.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <ConfirmAwardButton />
