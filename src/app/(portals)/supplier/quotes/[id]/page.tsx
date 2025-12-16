@@ -61,6 +61,11 @@ import {
   isKickoffReadyForSupplier,
 } from "@/server/quotes/kickoffTasks";
 import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
+import {
+  resolveKickoffProgressBasis,
+  formatKickoffTasksRatio,
+  summarizeKickoffTasks,
+} from "@/lib/quote/kickoffChecklist";
 import { postQuoteMessage as postSupplierQuoteMessage } from "./actions";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import type { QuoteEventRecord } from "@/server/quotes/events";
@@ -688,6 +693,19 @@ function SupplierQuoteWorkspace({
   if (showKickoffChecklist) {
     const tasksAvailable = Boolean(kickoffTasksResult?.ok);
     const kickoffTasks = kickoffTasksResult?.ok ? kickoffTasksResult.tasks : [];
+    const kickoffSummary = tasksAvailable ? summarizeKickoffTasks(kickoffTasks) : null;
+    const kickoffProgressBasis = resolveKickoffProgressBasis({
+      kickoffCompletedAt:
+        (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? null,
+      completedCount: kickoffSummary?.completedCount ?? null,
+      totalCount: kickoffSummary?.totalCount ?? null,
+    });
+    const kickoffProgressRatio = formatKickoffTasksRatio(kickoffProgressBasis);
+    const kickoffSecondaryText = kickoffProgressBasis.isComplete
+      ? "Kickoff complete"
+      : kickoffProgressRatio
+        ? `Kickoff in progress (${kickoffProgressRatio} tasks)`
+        : "Kickoff in progress";
     kickoffSection = (
       <CollapsibleCard
         id="kickoff"
@@ -711,11 +729,35 @@ function SupplierQuoteWorkspace({
         <div className="space-y-4">
           {projectSection}
           {awardedToSupplier ? (
-            <SupplierKickoffChecklistCard
-              quoteId={quote.id}
-              tasks={tasksAvailable ? kickoffTasks : []}
-              readOnly={false}
-            />
+            <>
+              <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4">
+                <header className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Project status
+                    </p>
+                    <p className="mt-1 text-sm text-slate-200">
+                      {kickoffSecondaryText}
+                    </p>
+                  </div>
+                  <span
+                    className={clsx(
+                      "rounded-full border px-3 py-1 text-xs font-semibold",
+                      kickoffProgressBasis.isComplete
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                        : "border-blue-500/40 bg-blue-500/10 text-blue-100",
+                    )}
+                  >
+                    {kickoffProgressBasis.isComplete ? "Complete" : "In progress"}
+                  </span>
+                </header>
+              </section>
+              <SupplierKickoffChecklistCard
+                quoteId={quote.id}
+                tasks={tasksAvailable ? kickoffTasks : []}
+                readOnly={false}
+              />
+            </>
           ) : (
             <SupplierKickoffLockedCard />
           )}

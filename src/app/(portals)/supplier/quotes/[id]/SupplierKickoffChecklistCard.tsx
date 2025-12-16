@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import clsx from "clsx";
 
 import {
   mergeKickoffTasksWithDefaults,
   summarizeKickoffTasks,
-  formatKickoffSummaryLabel,
   type SupplierKickoffTask,
 } from "@/lib/quote/kickoffChecklist";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
@@ -46,7 +44,6 @@ export function SupplierKickoffChecklistCard({
     }
     return summarizeKickoffTasks(localTasks);
   }, [hasTasks, localTasks]);
-  const summaryLabel = summary ? formatKickoffSummaryLabel(summary) : null;
   const lastUpdatedLabel = useMemo(() => {
     if (!summary?.lastUpdatedAt) {
       return "—";
@@ -126,18 +123,11 @@ export function SupplierKickoffChecklistCard({
               Align on the five go-live checks
             </h2>
           </div>
-          {summary && summaryLabel ? (
+          {summary ? (
             <span
-              className={clsx(
-                "rounded-full px-3 py-1 text-xs font-semibold",
-                summary.status === "complete"
-                  ? "border border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
-                  : summary.status === "in-progress"
-                    ? "border border-blue-400/40 bg-blue-400/10 text-blue-100"
-                    : "border border-slate-800 bg-slate-900/60 text-slate-200",
-              )}
+              className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200"
             >
-              {summaryLabel}
+              Updated {summary.lastUpdatedAt ? lastUpdatedLabel : "—"}
             </span>
           ) : null}
         </div>
@@ -147,12 +137,6 @@ export function SupplierKickoffChecklistCard({
               Completed{" "}
               <span className="font-semibold text-slate-200">
                 {summary.completedCount}/{summary.totalCount}
-              </span>
-            </span>
-            <span>
-              Last updated{" "}
-              <span className="font-semibold text-slate-200">
-                {summary.lastUpdatedAt ? lastUpdatedLabel : "—"}
               </span>
             </span>
           </div>
