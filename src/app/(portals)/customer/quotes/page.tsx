@@ -251,7 +251,7 @@ export default async function CustomerQuotesPage({
                           <div className="flex flex-col">
                             <Link
                               href={`/customer/quotes/${quote.id}`}
-                              className="font-medium text-slate-100 underline decoration-slate-700/70 underline-offset-4 transition hover:decoration-emerald-400/80"
+                              className="font-medium text-slate-100 underline-offset-4 transition hover:underline"
                             >
                               {primaryLabel}
                             </Link>
@@ -289,22 +289,38 @@ export default async function CustomerQuotesPage({
                           {formatRelativeDate(lastUpdated)}
                         </td>
                         <td className="px-5 py-4 align-middle text-right">
-                          {quoteHasWinner ? (
-                            <span className="inline-flex min-w-[9rem] cursor-not-allowed items-center justify-center rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-400">
-                              Winner selected
-                            </span>
-                          ) : bidCount > 0 ? (
-                            <Link
-                              href={`/customer/quotes/${quote.id}?focus=award`}
-                              className="inline-flex min-w-[9rem] items-center justify-center rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-emerald-400"
-                            >
-                              Review &amp; award
-                            </Link>
-                          ) : (
-                            <span className="inline-flex min-w-[9rem] items-center justify-center rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-300">
-                              Waiting for bids
-                            </span>
-                          )}
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {!quoteHasWinner && bidCount > 0 ? (
+                              <>
+                                <Link
+                                  href={`/customer/quotes/${quote.id}`}
+                                  className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                                >
+                                  Open
+                                </Link>
+                                <Link
+                                  href={`/customer/quotes/${quote.id}?focus=award`}
+                                  className="inline-flex min-w-[9rem] items-center justify-center rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-emerald-400"
+                                >
+                                  Review &amp; award
+                                </Link>
+                              </>
+                            ) : (
+                              <>
+                                {!quoteHasWinner ? (
+                                  <span className="inline-flex min-w-[9rem] items-center justify-center rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-300">
+                                    Waiting for bids
+                                  </span>
+                                ) : null}
+                                <Link
+                                  href={`/customer/quotes/${quote.id}`}
+                                  className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                                >
+                                  Open
+                                </Link>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
