@@ -59,6 +59,12 @@ async function LoginPage({ searchParams }: LoginPageProps) {
     );
   }
 
+  // If caller provided a next path (eg invite acceptance), honor it even if this
+  // user doesn't yet have a role-linked workspace record.
+  if (nextPath && nextPath !== "/login") {
+    redirect(nextPath);
+  }
+
   const [customer, supplier] = await Promise.all([
     getCustomerByUserId(user.id),
     loadSupplierByUserId(user.id),
@@ -134,8 +140,8 @@ function NotLoggedInMessage({ nextPath }: { nextPath?: string | null }) {
         </p>
       </div>
       <div className="grid w-full gap-6 md:grid-cols-2">
-        <PortalLoginPanel role="customer" fallbackRedirect="/customer" />
-        <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" />
+        <PortalLoginPanel role="customer" fallbackRedirect="/customer" nextPath={nextPath} />
+        <PortalLoginPanel role="supplier" fallbackRedirect="/supplier" nextPath={nextPath} />
       </div>
     </main>
   );

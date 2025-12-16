@@ -64,8 +64,11 @@ export default function LoginTokenBridge() {
         console.log(
           "[login bridge] session established on client, cleaning URL and reloading /login",
         );
-        window.history.replaceState({}, "", "/login");
-        router.replace("/login");
+        const next = currentUrl.searchParams.get("next");
+        const nextPath = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : null;
+        const query = nextPath ? `?next=${encodeURIComponent(nextPath)}` : "";
+        window.history.replaceState({}, "", `/login${query}`);
+        router.replace(`/login${query}`);
       } catch (err) {
         console.error("[login bridge] failed to process Supabase login URL", err);
       }

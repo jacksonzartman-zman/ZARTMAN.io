@@ -3,6 +3,22 @@ import { NextResponse } from "next/server";
 import { createAuthClient } from "@/server/auth";
 
 const LOGIN_REDIRECT_PATH = "/login";
+const NEXT_QUERY_KEY = "next";
+
+function resolveSafeNextPath(requestUrl: URL): string | null {
+  const next = requestUrl.searchParams.get(NEXT_QUERY_KEY);
+  if (typeof next !== "string") {
+    return null;
+  }
+  const trimmed = next.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    return null;
+  }
+  if (trimmed === "/login" || trimmed.startsWith("/login?")) {
+    return null;
+  }
+  return trimmed;
+}
 
 /**
  * This route is the target of Supabase magic link redirects.
@@ -12,13 +28,17 @@ const LOGIN_REDIRECT_PATH = "/login";
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
+  const nextPath = resolveSafeNextPath(requestUrl);
+  const redirectTarget = nextPath
+    ? `${LOGIN_REDIRECT_PATH}?next=${encodeURIComponent(nextPath)}`
+    : LOGIN_REDIRECT_PATH;
 
   console.log("[auth/callback] incoming url", request.url);
   console.log("[auth/callback] code present", Boolean(code));
 
   if (!code) {
     console.warn("[auth/callback] invoked without code");
-    return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
+    return NextResponse.redirect(new URL(redirectTarget, requestUrl.origin));
   }
 
   const cookieStoreBefore = await cookies();
@@ -44,8 +64,8 @@ export async function GET(request: Request) {
       message: error.message,
       stack: error.stack,
     });
-    return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
+    return NextResponse.redirect(new URL(redirectTarget, requestUrl.origin));
   }
 
-  return NextResponse.redirect(new URL(LOGIN_REDIRECT_PATH, requestUrl.origin));
+  return NextResponse.redirect(new URL(redirectTarget, requestUrl.origin));
 }
