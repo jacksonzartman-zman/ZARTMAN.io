@@ -8,6 +8,7 @@ import {
   formatRelativeTimeCompactFromTimestamp,
   toTimestamp,
 } from "@/lib/relativeTime";
+import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { getCustomerAwardedQuotesForProjects } from "@/server/customer/projects";
@@ -220,6 +221,8 @@ export default async function CustomerProjectsPage({
                         : kickoff.detail
                           ? `Kickoff in progress (${kickoff.detail})`
                           : "Kickoff in progress";
+                      const canNudge =
+                        Boolean(project.awardedSupplierId) && !project.kickoff.isComplete;
 
                       return (
                         <tr key={project.id} className="hover:bg-slate-900/50">
@@ -250,6 +253,13 @@ export default async function CustomerProjectsPage({
                           </td>
                           <td className="px-5 py-4 align-middle text-right">
                             <div className="flex flex-wrap justify-end gap-2">
+                              {canNudge && project.awardedSupplierId ? (
+                                <KickoffNudgeButton
+                                  quoteId={project.id}
+                                  supplierId={project.awardedSupplierId}
+                                  className="items-stretch"
+                                />
+                              ) : null}
                               <Link
                                 href={`/customer/quotes/${project.id}?tab=activity`}
                                 className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"

@@ -47,6 +47,11 @@ import {
   getCustomerKickoffSummary,
   type CustomerKickoffSummary,
 } from "@/server/quotes/kickoffSummary";
+import {
+  formatKickoffTasksRatio,
+  resolveKickoffProgressBasis,
+} from "@/lib/quote/kickoffChecklist";
+import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -233,6 +238,22 @@ export default async function CustomerQuoteDetailPage({
         ? "All tasks completed"
         : "—"
     : "—";
+
+  const kickoffProgressBasis = resolveKickoffProgressBasis({
+    kickoffCompletedAt:
+      (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ??
+      null,
+    completedCount: customerKickoffSummary.completedTasks ?? null,
+    totalCount: customerKickoffSummary.totalTasks ?? null,
+  });
+  const kickoffTasksRatio = formatKickoffTasksRatio(kickoffProgressBasis);
+  const kickoffTasksRowValue = kickoffProgressBasis.isComplete
+    ? "Complete"
+    : kickoffTasksRatio
+      ? `In progress (${kickoffTasksRatio})`
+      : "In progress";
+  const canNudgeSupplier =
+    quoteHasWinner && Boolean(winningSupplierId) && !kickoffProgressBasis.isComplete;
   const kickoffSummaryTone =
     kickoffSummaryStatus === "complete"
       ? "text-emerald-300"
@@ -1006,6 +1027,24 @@ export default async function CustomerQuoteDetailPage({
                     <p className="font-medium text-slate-100">{kickoffSummaryLabel}</p>
                     <p className="text-xs text-slate-400">{kickoffChecklistSummaryLabel}</p>
                   </dd>
+                </div>
+                <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2 sm:col-span-2">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                        Kickoff tasks
+                      </dt>
+                      <dd className="mt-1 font-medium text-slate-100">
+                        {kickoffTasksRowValue}
+                      </dd>
+                    </div>
+                    {canNudgeSupplier && winningSupplierId ? (
+                      <KickoffNudgeButton
+                        quoteId={quote.id}
+                        supplierId={winningSupplierId}
+                      />
+                    ) : null}
+                  </div>
                 </div>
               </dl>
               <div className="mt-4">

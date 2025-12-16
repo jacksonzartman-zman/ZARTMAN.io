@@ -78,6 +78,7 @@ import {
 import { AwardOutcomeCard } from "./AwardOutcomeCard";
 import { loadLatestAwardFeedbackForQuote } from "@/server/quotes/awardFeedback";
 import { formatAwardFeedbackReasonLabel } from "@/lib/awardFeedback";
+import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 
 export const dynamic = "force-dynamic";
 
@@ -433,6 +434,22 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       totalCount: kickoffSummary?.totalCount ?? null,
     });
     const kickoffProgressRatio = formatKickoffTasksRatio(kickoffProgressBasis);
+
+    const winningSupplierIdForNudge =
+      typeof winningBidRow?.supplier_id === "string" && winningBidRow.supplier_id.trim().length > 0
+        ? winningBidRow.supplier_id.trim()
+        : typeof quote.awarded_supplier_id === "string" && quote.awarded_supplier_id.trim().length > 0
+          ? quote.awarded_supplier_id.trim()
+          : null;
+    const latestKickoffNudgedAt = winningSupplierIdForNudge
+      ? await getLatestKickoffNudgedAt({
+          quoteId: quote.id,
+          supplierId: winningSupplierIdForNudge,
+        })
+      : null;
+    const latestKickoffNudgedRelative = latestKickoffNudgedAt
+      ? formatRelativeTimeFromTimestamp(toTimestamp(latestKickoffNudgedAt)) ?? null
+      : null;
     const attentionState = deriveAdminQuoteAttentionState({
       quoteId: quote.id,
       status,
@@ -599,6 +616,12 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             value={hasWinningBid ? (awardedAtLabel ?? "Pending") : "—"}
           />
           <SnapshotField label="Kickoff" value={projectStatusKickoffLabel} />
+          {latestKickoffNudgedRelative ? (
+            <SnapshotField
+              label="Customer nudged kickoff"
+              value={latestKickoffNudgedRelative}
+            />
+          ) : null}
         </dl>
       </section>
     );

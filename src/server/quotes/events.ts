@@ -14,6 +14,7 @@ export type QuoteEventType =
   | "reopened"
   | "archived"
   | "kickoff_updated"
+  | "kickoff_nudged"
   | "message_posted"
   | "capacity_update_requested"
   | (string & {});
@@ -473,6 +474,7 @@ function filterAndSanitizeTimelineEvents(
       ...Array.from(allowedForCustomer),
       "capacity_updated",
       "capacity_update_requested",
+      "kickoff_nudged",
     ]);
     const supplierId = normalizeId(viewer.supplierId) || null;
     const supplierEmail =
@@ -500,6 +502,7 @@ function filterAndSanitizeTimelineEvents(
           type === "supplier_invited" ||
           type === "bid_received" ||
           type === "kickoff_updated" ||
+          type === "kickoff_nudged" ||
           type === "bid_won" ||
           type === "capacity_updated" ||
           type === "capacity_update_requested"
