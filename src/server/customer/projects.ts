@@ -11,10 +11,13 @@ type AwardedProjectQuoteRow = {
   awarded_supplier_id: string | null;
   upload_id?: string | null;
   created_at?: string | null;
-  title?: string | null;
-  rfq_title?: string | null;
-  upload_filename?: string | null;
+};
+
+type UploadRow = {
+  id: string;
   file_name?: string | null;
+  original_filename?: string | null;
+  created_at?: string | null;
 };
 
 export type CustomerProjectKickoffSummary = {
@@ -42,23 +45,25 @@ function toWonStatusCandidates(): string[] {
   return ["won", "win"];
 }
 
-function deriveProjectName(row: AwardedProjectQuoteRow): string {
-  const title = typeof row.title === "string" ? row.title.trim() : "";
-  if (title) return title;
+function deriveProjectName(
+  row: AwardedProjectQuoteRow,
+  uploadById: Map<string, UploadRow>,
+): string {
+  const uploadId = normalizeId(row.upload_id);
+  const upload = uploadId ? uploadById.get(uploadId) ?? null : null;
+  const fileLabel =
+    (typeof upload?.original_filename === "string"
+      ? upload.original_filename.trim()
+      : "") ||
+    (typeof upload?.file_name === "string" ? upload.file_name.trim() : "") ||
+    "";
 
-  const rfqTitle = typeof row.rfq_title === "string" ? row.rfq_title.trim() : "";
-  if (rfqTitle) return rfqTitle;
-
-  const uploadFilename =
-    typeof row.upload_filename === "string" ? row.upload_filename.trim() : "";
-  if (uploadFilename) return `RFQ: ${uploadFilename}`;
-
-  const legacyFileName =
-    typeof row.file_name === "string" ? row.file_name.trim() : "";
-  if (legacyFileName) return `RFQ: ${legacyFileName}`;
+  if (fileLabel) {
+    return `RFQ: ${fileLabel}`;
+  }
 
   const id = normalizeId(row.id);
-  const shortId = id ? (id.startsWith("Q-") ? id : id.slice(0, 6)) : "—";
+  const shortId = id ? id.slice(0, 6) : "—";
   return `RFQ ${shortId}`;
 }
 
@@ -76,9 +81,9 @@ export async function getCustomerAwardedQuotesForProjects({
     return [];
   }
 
-  const quoteTable = "quotes_with_uploads";
+  const quoteTable = "quotes";
   const quoteSelect =
-    "id,status,awarded_at,awarded_supplier_id,upload_id,created_at,title,rfq_title,upload_filename,file_name";
+    "id,status,awarded_at,awarded_supplier_id,upload_id,created_at";
 
   const { data: rows, error } = await supabaseServer
     .from(quoteTable)
@@ -104,6 +109,11 @@ export async function getCustomerAwardedQuotesForProjects({
   if (quotes.length === 0) {
     return [];
   }
+
+  const uploadIds = Array.from(
+    new Set(quotes.map((q) => normalizeId(q.upload_id)).filter(Boolean)),
+  );
+  const uploadById = await loadUploadMap(uploadIds);
 
   const quoteIds = quotes.map((quote) => quote.id);
   const supplierIds = Array.from(
@@ -136,7 +146,7 @@ export async function getCustomerAwardedQuotesForProjects({
       status: quote.status ?? null,
       awardedAt: quote.awarded_at ?? null,
       awardedSupplierId,
-      projectName: deriveProjectName(quote),
+      projectName: deriveProjectName(quote, uploadById),
       supplierName,
       kickoff,
     };
@@ -270,5 +280,46 @@ async function loadKickoffSummaryMap({
     });
     return map;
   }
+}
+
+async function loadUploadMap(uploadIds: string[]): Promise<Map<string, UploadRow>> {
+  const map = new Map<string, UploadRow>();
+  if (uploadIds.length === 0) {
+    return map;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("uploads")
+      .select("id,file_name,original_filename,created_at")
+      .in("id", uploadIds)
+      .returns<UploadRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return map;
+      }
+      console.error("[customer projects] upload batch query failed", {
+        uploadIdsCount: uploadIds.length,
+        error: serializeSupabaseError(error),
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const id = normalizeId(row.id);
+      if (!id) continue;
+      map.set(id, row);
+    }
+  } catch (err) {
+    if (isMissingTableOrColumnError(err)) {
+      return map;
+    }
+    console.error("[customer projects] upload lookup crashed", {
+      error: serializeSupabaseError(err) ?? err,
+    });
+  }
+
+  return map;
 }
 
