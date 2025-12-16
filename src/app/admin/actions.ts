@@ -79,7 +79,7 @@ export async function updateQuote(formData: FormData) {
     }
   }
 
-  safeRevalidate("/admin");
+  safeRevalidate("/admin/quotes");
   return redirect(`/admin/quotes/${id}?updated=1`);
 }
 
@@ -182,7 +182,8 @@ export async function createQuoteFromUploadAction(
     }
 
     if (upload.quote_id) {
-      safeRevalidate("/admin");
+      safeRevalidate("/admin/uploads");
+      safeRevalidate("/admin/quotes");
       safeRevalidate(`/admin/uploads/${uploadId}`);
       return redirect(`/admin/quotes/${upload.quote_id}`);
     }
@@ -222,7 +223,8 @@ export async function createQuoteFromUploadAction(
             "Found an existing quote, but linking it to the upload failed. Please retry.",
         };
       }
-      safeRevalidate("/admin");
+      safeRevalidate("/admin/uploads");
+      safeRevalidate("/admin/quotes");
       safeRevalidate(`/admin/uploads/${uploadId}`);
       return redirect(`/admin/quotes/${existingQuote.id}`);
     }
@@ -301,7 +303,8 @@ export async function createQuoteFromUploadAction(
       };
     }
 
-    safeRevalidate("/admin");
+    safeRevalidate("/admin/uploads");
+    safeRevalidate("/admin/quotes");
     safeRevalidate(`/admin/uploads/${uploadId}`);
     return redirect(`/admin/quotes/${newQuote.id}`);
   } catch (error) {
