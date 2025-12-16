@@ -3,6 +3,7 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { CUSTOMER_VISIBLE_TIMELINE_EVENT_TYPES } from "@/server/quotes/events";
 
 type AwardedProjectQuoteRow = {
   id: string;
@@ -35,6 +36,8 @@ export type CustomerAwardedProjectQuote = {
   projectName: string;
   supplierName: string | null;
   kickoff: CustomerProjectKickoffSummary;
+  kickoffCompletedAt: string | null;
+  lastUpdatedAt: string | null;
 };
 
 function normalizeId(value: unknown): string {
@@ -134,6 +137,8 @@ export async function getCustomerAwardedQuotesForProjects({
     }),
   ]);
 
+  const lastEventByQuoteId = await loadLastCustomerVisibleEventAtByQuoteId(quoteIds);
+
   return quotes.map((quote) => {
     const awardedSupplierId = normalizeId(quote.awarded_supplier_id) || null;
     const supplierName = awardedSupplierId
@@ -147,6 +152,8 @@ export async function getCustomerAwardedQuotesForProjects({
     const kickoff = kickoffCompleteFromQuote
       ? { ...kickoffBase, isComplete: true }
       : kickoffBase;
+    const lastEventAt = lastEventByQuoteId.get(quote.id) ?? null;
+    const lastUpdatedAt = lastEventAt ?? (quote.awarded_at ?? null);
 
     return {
       id: quote.id,
@@ -156,6 +163,8 @@ export async function getCustomerAwardedQuotesForProjects({
       projectName: deriveProjectName(quote, uploadById),
       supplierName,
       kickoff,
+      kickoffCompletedAt: kickoffCompleteFromQuote ? (quote.kickoff_completed_at ?? null) : null,
+      lastUpdatedAt,
     };
   });
 }
@@ -323,6 +332,55 @@ async function loadUploadMap(uploadIds: string[]): Promise<Map<string, UploadRow
       return map;
     }
     console.error("[customer projects] upload lookup crashed", {
+      error: serializeSupabaseError(err) ?? err,
+    });
+  }
+
+  return map;
+}
+
+async function loadLastCustomerVisibleEventAtByQuoteId(
+  quoteIds: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (quoteIds.length === 0) {
+    return map;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_events")
+      .select("quote_id,event_type,created_at")
+      .in("quote_id", quoteIds)
+      .in("event_type", Array.from(CUSTOMER_VISIBLE_TIMELINE_EVENT_TYPES))
+      .order("created_at", { ascending: false })
+      .returns<{ quote_id: string; event_type: string; created_at: string }[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return map;
+      }
+      console.error("[customer projects] quote events batch query failed", {
+        quoteIdsCount: quoteIds.length,
+        error: serializeSupabaseError(error),
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const quoteId = normalizeId(row.quote_id);
+      const createdAt = typeof row.created_at === "string" ? row.created_at : "";
+      if (!quoteId || !createdAt) continue;
+      // Rows are sorted desc, so first seen is max(created_at).
+      if (!map.has(quoteId)) {
+        map.set(quoteId, createdAt);
+      }
+    }
+  } catch (err) {
+    if (isMissingTableOrColumnError(err)) {
+      return map;
+    }
+    console.error("[customer projects] quote events lookup crashed", {
       error: serializeSupabaseError(err) ?? err,
     });
   }
