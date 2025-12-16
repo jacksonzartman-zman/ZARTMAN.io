@@ -9,7 +9,10 @@ import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import {
   formatQuoteId,
+  getSearchParamValue,
   normalizeEmailInput,
+  resolveMaybePromise,
+  type SearchParamsLike,
 } from "@/app/(portals)/quotes/pageUtils";
 import {
   loadQuoteWorkspaceData,
@@ -62,17 +65,24 @@ import { postQuoteMessage as postSupplierQuoteMessage } from "./actions";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import type { QuoteEventRecord } from "@/server/quotes/events";
 import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
+import { FocusTabScroll } from "@/app/(portals)/shared/FocusTabScroll";
 
 export const dynamic = "force-dynamic";
 
 type SupplierQuotePageProps = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<SearchParamsLike>;
 };
 
 export default async function SupplierQuoteDetailPage({
   params,
+  searchParams,
 }: SupplierQuotePageProps) {
-  const { id: quoteId } = await params;
+  const [{ id: quoteId }, resolvedSearchParams] = await Promise.all([
+    params,
+    resolveMaybePromise(searchParams),
+  ]);
+  const tabParam = getSearchParamValue(resolvedSearchParams, "tab");
 
   const { user } = await getServerAuthUser();
   if (!user) {
@@ -266,6 +276,7 @@ export default async function SupplierQuoteDetailPage({
   return (
     <SupplierQuoteWorkspace
       data={workspaceData}
+      tabParam={tabParam}
       supplierEmail={
         profile.supplier.primary_email ??
         supplierEmail ??
@@ -301,6 +312,7 @@ export default async function SupplierQuoteDetailPage({
 
 function SupplierQuoteWorkspace({
   data,
+  tabParam,
   supplierEmail,
   supplierId,
   nextWeekStartDate,
@@ -327,6 +339,7 @@ function SupplierQuoteWorkspace({
   capacityRequestCreatedAt,
 }: {
   data: QuoteWorkspaceData;
+  tabParam: string | null;
   supplierEmail: string;
   supplierId: string;
   nextWeekStartDate: string;
@@ -713,8 +726,10 @@ function SupplierQuoteWorkspace({
 
   const timelineSection = (
     <CollapsibleCard
+      id="timeline"
       title="Timeline"
       description="Updates and milestones for this RFQ."
+      className="scroll-mt-24"
       defaultOpen={false}
     >
       <QuoteTimeline
@@ -782,6 +797,7 @@ function SupplierQuoteWorkspace({
       headerContent={headerContent}
       actions={headerActions}
     >
+      <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-5">
           {winnerCallout}

@@ -144,12 +144,20 @@ export default async function SupplierProjectsPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4 align-middle text-right">
-                        <Link
-                          href={`/supplier/quotes/${project.id}`}
-                          className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-400"
-                        >
-                          Open
-                        </Link>
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Link
+                            href={`/supplier/quotes/${project.id}?tab=activity`}
+                            className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                          >
+                            Activity
+                          </Link>
+                          <Link
+                            href={`/supplier/quotes/${project.id}`}
+                            className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-400"
+                          >
+                            Open
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
