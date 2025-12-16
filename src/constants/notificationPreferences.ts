@@ -53,6 +53,13 @@ export const SUPPLIER_NOTIFICATION_OPTIONS: NotificationToggleOption[] = [
     description: "Ping me when customers or admins add updates in shared threads.",
   }),
   buildOption({
+    eventType: "capacity_update_requested",
+    role: "supplier",
+    label: "Capacity update requests",
+    description:
+      "Notify me when an admin requests an updated capacity snapshot for an upcoming week.",
+  }),
+  buildOption({
     eventType: "bid_won",
     role: "supplier",
     label: "Bid awarded",
