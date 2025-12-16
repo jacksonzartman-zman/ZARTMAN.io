@@ -3,6 +3,7 @@ import { requireUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers/profile";
 import {
   loadSupplierCapacitySnapshotsForWeek,
+  loadLatestCapacityUpdateRequestForSupplierWeek,
 } from "@/server/suppliers/capacity";
 import {
   SupplierCapacityEditor,
@@ -63,6 +64,56 @@ export default async function SupplierCapacitySettingsPage({
     supplierId: supplier.id,
     weekStartDate: selectedWeekStartDate,
   });
+
+  const nextWeekSnapshotsResult =
+    selectedWeekStartDate === nextWeekStartDate
+      ? snapshotsResult
+      : await loadSupplierCapacitySnapshotsForWeek({
+          supplierId: supplier.id,
+          weekStartDate: nextWeekStartDate,
+        });
+
+  const latestRequest = await loadLatestCapacityUpdateRequestForSupplierWeek({
+    supplierId: supplier.id,
+    weekStartDate: nextWeekStartDate,
+  });
+
+  const capacityUniverse = ["cnc_mill", "cnc_lathe", "mjp", "sla"] as const;
+  const universeSet = new Set<string>(capacityUniverse);
+  const nextWeekSnapshots = nextWeekSnapshotsResult.ok ? nextWeekSnapshotsResult.snapshots : [];
+  const coverage = new Set<string>();
+  let lastUpdatedAt: string | null = null;
+  let lastUpdatedMs = Number.NEGATIVE_INFINITY;
+
+  for (const snapshot of nextWeekSnapshots) {
+    const capability = typeof snapshot.capability === "string" ? snapshot.capability : "";
+    if (universeSet.has(capability)) {
+      coverage.add(capability);
+    }
+    if (typeof snapshot.createdAt === "string") {
+      const ms = Date.parse(snapshot.createdAt);
+      if (Number.isFinite(ms) && ms > lastUpdatedMs) {
+        lastUpdatedMs = ms;
+        lastUpdatedAt = snapshot.createdAt;
+      }
+    }
+  }
+
+  const coverageCount = coverage.size;
+  const requestCreatedAt = typeof latestRequest?.createdAt === "string" ? latestRequest.createdAt : null;
+  const requestMs = requestCreatedAt ? Date.parse(requestCreatedAt) : Number.NaN;
+  const staleMsThreshold = 14 * 24 * 60 * 60 * 1000;
+  const isOlderThan14Days =
+    Boolean(lastUpdatedAt) &&
+    Number.isFinite(lastUpdatedMs) &&
+    Date.now() - lastUpdatedMs > staleMsThreshold;
+  const hasNewerRequest =
+    Boolean(requestCreatedAt) &&
+    (lastUpdatedAt === null ||
+      (Number.isFinite(requestMs) && Number.isFinite(lastUpdatedMs) && requestMs > lastUpdatedMs));
+
+  const showBanner =
+    coverageCount < 2 || lastUpdatedAt === null || isOlderThan14Days || hasNewerRequest;
 
   const initialValues: SupplierCapacityEditorValues = {};
   if (snapshotsResult.ok) {
@@ -134,6 +185,18 @@ export default async function SupplierCapacitySettingsPage({
             Save levels for the selected week. Leave “Not set” to keep a capability unset.
           </p>
         </div>
+        {showBanner ? (
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-100">
+            <p className="font-semibold">
+              Your capacity for next week is missing or stale. Keeping this updated improves quote routing.
+            </p>
+            {hasNewerRequest ? (
+              <p className="mt-1 text-xs text-yellow-100/80">
+                An admin requested a capacity update.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <SupplierCapacityEditor
           weekStartDate={selectedWeekStartDate}
           initialValues={initialValues}

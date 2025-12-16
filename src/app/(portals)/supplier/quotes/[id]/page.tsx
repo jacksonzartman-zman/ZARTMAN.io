@@ -36,7 +36,10 @@ import { canUserBid } from "@/lib/permissions";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
-import { loadSupplierCapacitySnapshotsForWeek } from "@/server/suppliers/capacity";
+import {
+  loadSupplierCapacitySnapshotsForWeek,
+  loadLatestCapacityUpdateRequestForSupplierWeek,
+} from "@/server/suppliers/capacity";
 import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 import {
   loadQuoteProjectForQuote,
@@ -249,10 +252,16 @@ export default async function SupplierQuoteDetailPage({
   const supplierPostMessageAction =
     postSupplierQuoteMessage.bind(null, quoteId);
 
-  const capacitySnapshotsResult = await loadSupplierCapacitySnapshotsForWeek({
-    supplierId: profile.supplier.id,
-    weekStartDate: nextWeekStartDate,
-  });
+  const [capacitySnapshotsResult, latestCapacityRequest] = await Promise.all([
+    loadSupplierCapacitySnapshotsForWeek({
+      supplierId: profile.supplier.id,
+      weekStartDate: nextWeekStartDate,
+    }),
+    loadLatestCapacityUpdateRequestForSupplierWeek({
+      supplierId: profile.supplier.id,
+      weekStartDate: nextWeekStartDate,
+    }),
+  ]);
 
   return (
     <SupplierQuoteWorkspace
@@ -285,6 +294,7 @@ export default async function SupplierQuoteDetailPage({
       awardedSupplierId={workspaceData.quote.awarded_supplier_id ?? null}
       awardedToSupplier={awardedToSupplier}
       capacitySnapshotsResult={capacitySnapshotsResult}
+      capacityRequestCreatedAt={latestCapacityRequest.createdAt}
     />
   );
 }
@@ -314,6 +324,7 @@ function SupplierQuoteWorkspace({
   awardedSupplierId,
   awardedToSupplier,
   capacitySnapshotsResult,
+  capacityRequestCreatedAt,
 }: {
   data: QuoteWorkspaceData;
   supplierEmail: string;
@@ -342,6 +353,7 @@ function SupplierQuoteWorkspace({
   awardedSupplierId: string | null;
   awardedToSupplier: boolean;
   capacitySnapshotsResult: Awaited<ReturnType<typeof loadSupplierCapacitySnapshotsForWeek>>;
+  capacityRequestCreatedAt: string | null;
 }) {
   const { quote, uploadMeta, filePreviews } = data;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
@@ -715,13 +727,45 @@ function SupplierQuoteWorkspace({
   );
 
   const capacityLevelsByCapability = new Map<string, string>();
+  const capacityUniverse = ["cnc_mill", "cnc_lathe", "mjp", "sla"] as const;
+  const universeSet = new Set<string>(capacityUniverse);
+  const coverage = new Set<string>();
+  let lastUpdatedAt: string | null = null;
+  let lastUpdatedMs = Number.NEGATIVE_INFINITY;
+
   if (capacitySnapshotsResult.ok) {
     for (const row of capacitySnapshotsResult.snapshots) {
       if (typeof row.capability === "string" && typeof row.capacityLevel === "string") {
         capacityLevelsByCapability.set(row.capability, row.capacityLevel);
       }
+      if (typeof row.capability === "string" && universeSet.has(row.capability)) {
+        coverage.add(row.capability);
+      }
+      if (typeof row.createdAt === "string") {
+        const ms = Date.parse(row.createdAt);
+        if (Number.isFinite(ms) && ms > lastUpdatedMs) {
+          lastUpdatedMs = ms;
+          lastUpdatedAt = row.createdAt;
+        }
+      }
     }
   }
+
+  const coverageCount = coverage.size;
+  const requestCreatedAt =
+    typeof capacityRequestCreatedAt === "string" ? capacityRequestCreatedAt : null;
+  const requestMs = requestCreatedAt ? Date.parse(requestCreatedAt) : Number.NaN;
+  const staleMsThreshold = 14 * 24 * 60 * 60 * 1000;
+  const isOlderThan14Days =
+    Boolean(lastUpdatedAt) &&
+    Number.isFinite(lastUpdatedMs) &&
+    Date.now() - lastUpdatedMs > staleMsThreshold;
+  const hasNewerRequest =
+    Boolean(requestCreatedAt) &&
+    (lastUpdatedAt === null ||
+      (Number.isFinite(requestMs) && Number.isFinite(lastUpdatedMs) && requestMs > lastUpdatedMs));
+  const shouldRecommendUpdate =
+    coverageCount < 2 || lastUpdatedAt === null || isOlderThan14Days || hasNewerRequest;
 
   const capacityCapabilityOptions = [
     { key: "cnc_mill", label: "CNC Mill" },
@@ -790,12 +834,19 @@ function SupplierQuoteWorkspace({
                 <p className="text-xs text-slate-500">
                   Week starts {nextWeekStartDate}.
                 </p>
-                <Link
-                  href={`/supplier/settings/capacity?week=${encodeURIComponent(nextWeekStartDate)}`}
-                  className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
-                >
-                  Update capacity
-                </Link>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href={`/supplier/settings/capacity?week=${encodeURIComponent(nextWeekStartDate)}`}
+                    className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+                  >
+                    Update capacity
+                  </Link>
+                  {shouldRecommendUpdate ? (
+                    <span className="rounded-full border border-yellow-500/30 bg-yellow-500/5 px-3 py-1 text-[11px] font-semibold text-yellow-100">
+                      Update recommended
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
           </PortalCard>
