@@ -29,8 +29,6 @@ type CustomerQuoteRow = {
   upload_file_names?: string[] | null;
   file_count?: number | null;
   upload_file_count?: number | null;
-  // Optional fields available in some environments but not prod yet.
-  project_label?: string | null;
   upload_name?: string | null;
 };
 

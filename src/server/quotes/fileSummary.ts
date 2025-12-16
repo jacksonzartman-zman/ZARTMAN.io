@@ -6,7 +6,6 @@ type QuoteLabelSource = Pick<
   "id" | "file_name" | "file_names" | "upload_file_names" | "file_count" | "upload_file_count"
 > &
   Partial<Pick<QuoteFileSource, "upload_id">> & {
-  project_label?: string | null;
   upload_name?: string | null;
   upload_label?: string | null;
   rfq_label?: string | null;
@@ -24,7 +23,6 @@ export function deriveQuotePrimaryLabel(
 ): string {
   const files = options?.files ?? buildQuoteFilesFromRow(row);
   const candidates: Array<string | null | undefined> = [
-    row.project_label,
     row.upload_name,
     row.upload_label,
     row.rfq_label,
