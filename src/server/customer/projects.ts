@@ -9,10 +9,11 @@ type AwardedProjectQuoteRow = {
   status: string | null;
   awarded_at: string | null;
   awarded_supplier_id: string | null;
-  project_label?: string | null;
-  rfq_label?: string | null;
-  upload_name?: string | null;
-  upload_label?: string | null;
+  upload_id?: string | null;
+  created_at?: string | null;
+  title?: string | null;
+  rfq_title?: string | null;
+  upload_filename?: string | null;
   file_name?: string | null;
 };
 
@@ -42,19 +43,20 @@ function toWonStatusCandidates(): string[] {
 }
 
 function deriveProjectName(row: AwardedProjectQuoteRow): string {
-  const candidates: Array<string | null | undefined> = [
-    row.project_label,
-    row.rfq_label,
-    row.upload_name,
-    row.upload_label,
-    row.file_name,
-  ];
-  for (const candidate of candidates) {
-    const label = typeof candidate === "string" ? candidate.trim() : "";
-    if (label.length > 0) {
-      return label;
-    }
-  }
+  const title = typeof row.title === "string" ? row.title.trim() : "";
+  if (title) return title;
+
+  const rfqTitle = typeof row.rfq_title === "string" ? row.rfq_title.trim() : "";
+  if (rfqTitle) return rfqTitle;
+
+  const uploadFilename =
+    typeof row.upload_filename === "string" ? row.upload_filename.trim() : "";
+  if (uploadFilename) return `RFQ: ${uploadFilename}`;
+
+  const legacyFileName =
+    typeof row.file_name === "string" ? row.file_name.trim() : "";
+  if (legacyFileName) return `RFQ: ${legacyFileName}`;
+
   const id = normalizeId(row.id);
   const shortId = id ? (id.startsWith("Q-") ? id : id.slice(0, 6)) : "—";
   return `RFQ ${shortId}`;
@@ -74,21 +76,25 @@ export async function getCustomerAwardedQuotesForProjects({
     return [];
   }
 
+  const quoteTable = "quotes_with_uploads";
+  const quoteSelect =
+    "id,status,awarded_at,awarded_supplier_id,upload_id,created_at,title,rfq_title,upload_filename,file_name";
+
   const { data: rows, error } = await supabaseServer
-    .from("quotes_with_uploads")
-    .select(
-      "id,status,awarded_at,awarded_supplier_id,project_label,rfq_label,upload_name,upload_label,file_name,customer_id",
-    )
+    .from(quoteTable)
+    .select(quoteSelect)
     .eq("customer_id", normalizedCustomerId)
     .in("status", toWonStatusCandidates())
     .not("awarded_supplier_id", "is", null)
     .not("awarded_at", "is", null)
     .order("awarded_at", { ascending: false })
-    .returns<(AwardedProjectQuoteRow & { customer_id: string | null })[]>();
+    .returns<AwardedProjectQuoteRow[]>();
 
   if (error) {
     console.error("[customer projects] quote query failed", {
       customerId: normalizedCustomerId,
+      table: quoteTable,
+      select: quoteSelect,
       error: serializeSupabaseError(error),
     });
     return [];
@@ -110,7 +116,11 @@ export async function getCustomerAwardedQuotesForProjects({
 
   const [supplierMap, kickoffMap] = await Promise.all([
     loadSupplierNameMap(supplierIds),
-    loadKickoffSummaryMap({ quoteIds, supplierIds, awardedByQuoteId: buildAwardedSupplierMap(quotes) }),
+    loadKickoffSummaryMap({
+      quoteIds,
+      supplierIds,
+      awardedByQuoteId: buildAwardedSupplierMap(quotes),
+    }),
   ]);
 
   return quotes.map((quote) => {
