@@ -13,15 +13,7 @@ import {
 import { createAuthClient, requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { getFormString, serializeActionError } from "@/lib/forms";
-import {
-  ensureQuoteProjectForWinner,
-  upsertQuoteProject,
-} from "@/server/quotes/projects";
-import {
-  performAwardFlow,
-  type AwardFailureReason,
-} from "@/server/quotes/award";
-import { normalizeQuoteStatus } from "@/server/quotes/status";
+import { upsertQuoteProject } from "@/server/quotes/projects";
 import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
 
 export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
@@ -49,6 +41,10 @@ export type AwardActionState = {
   selectedBidId?: string | null;
 };
 
+export type AwardBidAsCustomerResult =
+  | { ok: true }
+  | { ok: false; errorCode: string; message: string };
+
 export type QuoteStatusTransitionState =
   | { ok: true; message: string }
   | { ok: false; error: string };
@@ -60,8 +56,6 @@ const CUSTOMER_AWARD_BID_ERROR =
   "We couldn’t verify that bid. Refresh and try again.";
 const CUSTOMER_AWARD_ACCESS_ERROR =
   "We couldn’t confirm your access to this quote.";
-const CUSTOMER_AWARD_STATUS_ERROR =
-  "This quote isn’t ready to select a winner yet.";
 const CUSTOMER_AWARD_ALREADY_WON_ERROR =
   "A winning supplier has already been selected for this quote.";
 const CUSTOMER_AWARD_GENERIC_ERROR =
@@ -92,6 +86,17 @@ type CustomerOwnedQuoteRow = {
   id: string;
   customer_id: string | null;
   customer_email: string | null;
+};
+
+type CustomerAwardQuoteRow = {
+  id: string;
+  customer_id: string | null;
+};
+
+type CustomerAwardBidRow = {
+  id: string;
+  quote_id: string;
+  supplier_id: string | null;
 };
 
 export async function archiveCustomerQuoteAction(
@@ -563,62 +568,159 @@ export async function awardQuoteToBidAction(
   return awardCustomerBid(quoteId, bidId);
 }
 
+export async function awardBidAsCustomerAction(
+  quoteId: string,
+  bidId: string,
+): Promise<AwardBidAsCustomerResult> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  const normalizedBidId = normalizeId(bidId);
+  if (!normalizedQuoteId || !normalizedBidId) {
+    return { ok: false, errorCode: "invalid_input", message: CUSTOMER_AWARD_BID_ERROR };
+  }
+
+  try {
+    const user = await requireUser({
+      redirectTo: `/customer/quotes/${normalizedQuoteId}`,
+    });
+    const customer = await getCustomerByUserId(user.id);
+    if (!customer) {
+      return { ok: false, errorCode: "access_denied", message: CUSTOMER_AWARD_ACCESS_ERROR };
+    }
+
+    // Strict ownership: awarding is only allowed when quotes.customer_id matches
+    // the authenticated customer's profile.
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes")
+      .select("id,customer_id")
+      .eq("id", normalizedQuoteId)
+      .maybeSingle<CustomerAwardQuoteRow>();
+
+    if (quoteError) {
+      console.error("[customer award] quote lookup failed", {
+        quoteId: normalizedQuoteId,
+        customerId: customer.id,
+        error: serializeActionError(quoteError),
+      });
+      return { ok: false, errorCode: "quote_lookup_failed", message: CUSTOMER_AWARD_GENERIC_ERROR };
+    }
+
+    if (!quoteRow) {
+      return { ok: false, errorCode: "quote_not_found", message: "Quote not found." };
+    }
+
+    const quoteCustomerId =
+      typeof quoteRow.customer_id === "string" ? quoteRow.customer_id.trim() : "";
+    if (!quoteCustomerId || quoteCustomerId !== customer.id) {
+      console.warn("[customer award] access denied", {
+        quoteId: normalizedQuoteId,
+        userId: user.id,
+        customerId: customer.id,
+        quoteCustomerId: quoteCustomerId || null,
+      });
+      return { ok: false, errorCode: "access_denied", message: CUSTOMER_AWARD_ACCESS_ERROR };
+    }
+
+    const rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
+      p_quote_id: normalizedQuoteId,
+      p_bid_id: normalizedBidId,
+      p_actor_user_id: user.id,
+      p_actor_role: "customer",
+    });
+
+    if (rpcResult.error) {
+      const message = (rpcResult.error.message ?? "").toLowerCase();
+      const errorCode =
+        message.includes("quote_already_awarded")
+          ? "already_awarded"
+          : message.includes("quote_not_found")
+            ? "quote_not_found"
+            : message.includes("bid_mismatch")
+              ? "bid_not_found"
+              : message.includes("missing_supplier")
+                ? "missing_supplier"
+                : "write_failed";
+
+      return {
+        ok: false,
+        errorCode,
+        message:
+          errorCode === "already_awarded"
+            ? CUSTOMER_AWARD_ALREADY_WON_ERROR
+            : CUSTOMER_AWARD_GENERIC_ERROR,
+      };
+    }
+
+    // Best-effort: load bid -> supplier id so we can emit timeline + kickoff
+    // via the canonical server finalization path.
+    const { data: bidRow, error: bidError } = await supabaseServer
+      .from("supplier_bids")
+      .select("id,quote_id,supplier_id")
+      .eq("id", normalizedBidId)
+      .maybeSingle<CustomerAwardBidRow>();
+
+    if (bidError) {
+      console.error("[customer award] bid lookup failed after rpc", {
+        quoteId: normalizedQuoteId,
+        bidId: normalizedBidId,
+        error: serializeActionError(bidError),
+      });
+    }
+
+    const supplierId =
+      bidRow && bidRow.quote_id === normalizedQuoteId && typeof bidRow.supplier_id === "string"
+        ? bidRow.supplier_id.trim()
+        : "";
+
+    if (supplierId) {
+      const { finalizeAwardAfterRpc } = await import("@/server/quotes/award");
+      const finalized = await finalizeAwardAfterRpc({
+        quoteId: normalizedQuoteId,
+        bidId: normalizedBidId,
+        winningSupplierId: supplierId,
+        actorRole: "customer",
+        actorUserId: user.id,
+        revalidate: false,
+      });
+
+      if (!finalized.ok) {
+        return { ok: false, errorCode: finalized.reason, message: finalized.error };
+      }
+    }
+
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    // Supplier portal paths are not supplier-scoped; this is best-effort.
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+    if (!supplierId) {
+      revalidatePath("/supplier/quotes");
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error("[customer award] crashed", {
+      quoteId: normalizedQuoteId,
+      bidId: normalizedBidId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, errorCode: "unknown", message: CUSTOMER_AWARD_GENERIC_ERROR };
+  }
+}
+
 export async function awardCustomerBid(
   quoteId: string,
   bidId: string,
 ): Promise<AwardActionState> {
-  try {
-    const user = await requireUser({
-      redirectTo: `/customer/quotes/${quoteId}`,
-    });
-    const customer = await getCustomerByUserId(user.id);
-
-    if (!customer) {
-      return {
-        ok: false,
-        error: CUSTOMER_AWARD_ACCESS_ERROR,
-      };
-    }
-
-    const result = await performAwardFlow({
-      quoteId,
-      bidId,
-      actorRole: "customer",
-      actorUserId: user.id,
-      actorEmail: user.email ?? null,
-      customerId: customer.id,
-      customerEmail: customer.email,
-    });
-
-    if (!result.ok) {
-      const message = mapCustomerAwardError(result.reason);
-      console.error("[customer award] failed", {
-        quoteId,
-        bidId,
-        userId: user.id,
-        customerId: customer.id,
-        reason: result.reason,
-        error: result.error,
-      });
-      return {
-        ok: false,
-        error: message ?? CUSTOMER_AWARD_GENERIC_ERROR,
-      };
-    }
-
-    return {
-      ok: true,
-      selectedBidId: bidId,
-      message: CUSTOMER_AWARD_SUCCESS_MESSAGE,
-    };
-  } catch (error) {
-    console.error("[customer award] form state crashed", {
-      quoteId,
-      bidId,
-      error: serializeActionError(error),
-    });
-    return { ok: false, error: CUSTOMER_AWARD_GENERIC_ERROR };
+  const normalizedQuoteId = normalizeId(quoteId);
+  const normalizedBidId = normalizeId(bidId);
+  const result = await awardBidAsCustomerAction(normalizedQuoteId, normalizedBidId);
+  if (!result.ok) {
+    return { ok: false, error: result.message };
   }
+  return {
+    ok: true,
+    selectedBidId: normalizedBidId,
+    message: CUSTOMER_AWARD_SUCCESS_MESSAGE,
+  };
 }
 
 async function handleBidDecision(formData: FormData, mode: "accept" | "decline") {
@@ -729,23 +831,4 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
 
 function normalizeId(value?: string | null): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function mapCustomerAwardError(
-  reason?: AwardFailureReason,
-): string {
-  switch (reason) {
-    case "invalid_input":
-    case "bid_not_found":
-    case "bid_ineligible":
-      return CUSTOMER_AWARD_BID_ERROR;
-    case "access_denied":
-      return CUSTOMER_AWARD_ACCESS_ERROR;
-    case "status_not_allowed":
-      return CUSTOMER_AWARD_STATUS_ERROR;
-    case "winner_exists":
-      return CUSTOMER_AWARD_ALREADY_WON_ERROR;
-    default:
-      return CUSTOMER_AWARD_GENERIC_ERROR;
-  }
 }

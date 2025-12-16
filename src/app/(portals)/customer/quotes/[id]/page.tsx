@@ -224,7 +224,7 @@ export default async function CustomerQuoteDetailPage({
       ? formatKickoffSummaryLabel(kickoffSummary)
       : supplierKickoffTasksResult?.reason === "schema-missing"
         ? "Kickoff checklist unavailable in this environment"
-        : "Kickoff not ready yet. Refresh in a moment."
+        : "Kickoff begins…"
     : "Select a winning supplier to start kickoff";
   const kickoffSummaryTone =
     kickoffSummary?.status === "complete"
