@@ -389,21 +389,28 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       supplierKickoffTasksResult?.ok
         ? summarizeKickoffTasks(supplierKickoffTasksResult.tasks)
         : null;
+    const kickoffCompleteFromQuote =
+      typeof (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ===
+        "string" &&
+      ((quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? "").trim()
+        .length > 0;
     const kickoffSummaryLabel = hasWinningBid
-      ? kickoffSummary
-        ? formatKickoffSummaryLabel(kickoffSummary)
+      ? kickoffCompleteFromQuote
+        ? "Kickoff complete"
+        : kickoffSummary
+          ? formatKickoffSummaryLabel(kickoffSummary)
         : supplierKickoffTasksResult?.reason === "schema-missing"
           ? "Checklist unavailable in this environment"
           : "Checklist unavailable"
       : "Waiting for winner";
     const kickoffSummaryTone =
-      kickoffSummary?.status === "complete"
+      kickoffCompleteFromQuote || kickoffSummary?.status === "complete"
         ? "text-emerald-300"
         : kickoffSummary?.status === "in-progress"
           ? "text-blue-200"
           : "text-slate-200";
     const kickoffStatusValue =
-      kickoffSummary?.status === "complete"
+      kickoffCompleteFromQuote || kickoffSummary?.status === "complete"
         ? "Complete"
         : kickoffSummary?.status === "in-progress"
           ? "In progress"

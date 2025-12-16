@@ -31,9 +31,9 @@ export async function getCustomerKickoffSummary(
     // Determine the awarded supplier so we only aggregate the winner’s checklist.
     const { data: quoteRow, error: quoteError } = await supabaseServer
       .from("quotes")
-      .select("awarded_supplier_id")
+      .select("awarded_supplier_id,kickoff_completed_at")
       .eq("id", normalizedQuoteId)
-      .maybeSingle<{ awarded_supplier_id: string | null }>();
+      .maybeSingle<{ awarded_supplier_id: string | null; kickoff_completed_at: string | null }>();
 
     if (quoteError) {
       if (isMissingTableOrColumnError(quoteError)) {
@@ -46,9 +46,20 @@ export async function getCustomerKickoffSummary(
       return { totalTasks: 0, completedTasks: 0, isComplete: false };
     }
 
+    // Authoritative completion bit for back-compat and schema drift.
+    const kickoffCompletedAt =
+      typeof quoteRow?.kickoff_completed_at === "string" &&
+      quoteRow.kickoff_completed_at.trim().length > 0
+        ? quoteRow.kickoff_completed_at
+        : null;
+
     const supplierId = normalizeId(quoteRow?.awarded_supplier_id) || null;
     if (!supplierId) {
-      return { totalTasks: 0, completedTasks: 0, isComplete: false };
+      return {
+        totalTasks: 0,
+        completedTasks: 0,
+        isComplete: Boolean(kickoffCompletedAt),
+      };
     }
 
     const { data: tasks, error: tasksError } = await supabaseServer
@@ -60,21 +71,30 @@ export async function getCustomerKickoffSummary(
 
     if (tasksError) {
       if (isMissingTableOrColumnError(tasksError)) {
-        return { totalTasks: 0, completedTasks: 0, isComplete: false };
+        return {
+          totalTasks: 0,
+          completedTasks: 0,
+          isComplete: Boolean(kickoffCompletedAt),
+        };
       }
       console.error("[customer kickoff summary] kickoff tasks load failed", {
         quoteId: normalizedQuoteId,
         supplierId,
         error: serializeSupabaseError(tasksError),
       });
-      return { totalTasks: 0, completedTasks: 0, isComplete: false };
+      return {
+        totalTasks: 0,
+        completedTasks: 0,
+        isComplete: Boolean(kickoffCompletedAt),
+      };
     }
 
     const totalTasks = Array.isArray(tasks) ? tasks.length : 0;
     const completedTasks = Array.isArray(tasks)
       ? tasks.reduce((count, task) => count + (task?.completed ? 1 : 0), 0)
       : 0;
-    const isComplete = totalTasks > 0 && completedTasks >= totalTasks;
+    const isComplete =
+      Boolean(kickoffCompletedAt) || (totalTasks > 0 && completedTasks >= totalTasks);
 
     return { totalTasks, completedTasks, isComplete };
   } catch (error) {

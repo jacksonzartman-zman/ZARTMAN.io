@@ -22,9 +22,9 @@ function formatKickoffStatus(summary: {
 }): { label: string; detail: string; tone: string } {
   const total = Math.max(0, Math.floor(summary.totalTasks ?? 0));
   const completed = Math.max(0, Math.floor(summary.completedTasks ?? 0));
-  const isComplete = Boolean(summary.isComplete) && total > 0 && completed >= total;
+  const isComplete = Boolean(summary.isComplete);
   const label = isComplete ? "Complete" : "In progress";
-  const detail = `${completed} / ${total}`;
+  const detail = total > 0 ? `${completed} / ${total}` : "—";
   const tone = isComplete ? "text-emerald-300" : "text-blue-200";
   return { label, detail, tone };
 }

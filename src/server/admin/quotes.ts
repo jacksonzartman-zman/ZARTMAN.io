@@ -37,6 +37,7 @@ export type AdminQuoteListRow = Pick<QuoteWithUploadsRow, QuoteListField>;
 export type QuoteNotesRow = {
   dfm_notes: string | null;
   internal_notes: string | null;
+  kickoff_completed_at: string | null;
 };
 export type AdminQuoteDetailRow = AdminQuoteListRow & QuoteNotesRow;
 
@@ -215,12 +216,13 @@ async function loadQuoteNotes(quoteId: string): Promise<QuoteNotesRow> {
   const fallback: QuoteNotesRow = {
     dfm_notes: null,
     internal_notes: null,
+    kickoff_completed_at: null,
   };
 
   try {
     const { data, error } = await supabaseServer
       .from("quotes")
-      .select("dfm_notes,internal_notes")
+      .select("dfm_notes,internal_notes,kickoff_completed_at")
       .eq("id", quoteId)
       .maybeSingle<QuoteNotesRow>();
 
