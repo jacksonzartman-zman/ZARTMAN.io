@@ -17,6 +17,7 @@ export type CapacityCalendarSnapshot = {
 export type CapacityCalendarSupplier = {
   id: string;
   name: string;
+  topWinReason90d?: string | null;
 };
 
 function parseSnapshotDate(createdAt: string | null): Date | null {
@@ -208,7 +209,14 @@ export default function CapacityCalendar({
                 className="grid grid-cols-[280px_repeat(4,1fr)]"
               >
                 <div className="px-4 py-4">
-                  <div className="text-sm font-semibold text-slate-100">
+                  <div
+                    className="text-sm font-semibold text-slate-100"
+                    title={
+                      supplier.topWinReason90d
+                        ? [`${supplier.name}`, `Top win reason (90d): ${supplier.topWinReason90d}`].join("\n")
+                        : supplier.name
+                    }
+                  >
                     {supplier.name}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
