@@ -35,6 +35,7 @@ import {
 import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
 import { FocusScroll } from "./FocusScroll";
+import { FocusTabScroll } from "@/app/(portals)/shared/FocusTabScroll";
 import {
   loadQuoteProjectForQuote,
   type QuoteProjectRecord,
@@ -69,6 +70,7 @@ export default async function CustomerQuoteDetailPage({
   const emailParam = getSearchParamValue(resolvedSearchParams, "email");
   const overrideEmail = normalizeEmailInput(emailParam);
   const focusParam = getSearchParamValue(resolvedSearchParams, "focus");
+  const tabParam = getSearchParamValue(resolvedSearchParams, "tab");
   const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {
@@ -944,6 +946,7 @@ export default async function CustomerQuoteDetailPage({
       actions={headerActions}
     >
       <FocusScroll enabled={focusParam === "award"} targetId="award" />
+      <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       {receiptBanner}
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-5">
