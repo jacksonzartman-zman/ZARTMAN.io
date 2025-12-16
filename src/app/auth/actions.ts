@@ -39,12 +39,19 @@ export async function requestMagicLinkForEmail(
     (process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
       : "http://localhost:3000");
+  const nextPath =
+    typeof input.nextPath === "string" && input.nextPath.startsWith("/")
+      ? input.nextPath
+      : null;
+  const emailRedirectTo = nextPath
+    ? `${baseUrl}/auth/callback?next=${encodeURIComponent(nextPath)}`
+    : `${baseUrl}/auth/callback`;
 
   try {
     await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
-        emailRedirectTo: `${baseUrl}/auth/callback`,
+        emailRedirectTo,
       },
     });
     return {
@@ -56,7 +63,7 @@ export async function requestMagicLinkForEmail(
       role: input.role,
       email: normalizedEmail,
       requestedNextPath: input.nextPath,
-      emailRedirectTo: `${baseUrl}/auth/callback`,
+      emailRedirectTo,
       error,
     });
     return {

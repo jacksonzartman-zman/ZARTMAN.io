@@ -350,7 +350,52 @@ export async function loadSupplierByUserId(
       return null;
     }
 
-    return data ?? null;
+    if (data) {
+      return data;
+    }
+
+    // Team memberships: suppliers can have multiple portal users via supplier_users.
+    // If this user isn't the primary supplier owner, check for a membership row.
+    const membership = await supabaseServer
+      .from("supplier_users")
+      .select("supplier_id,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle<{ supplier_id: string; created_at: string }>();
+
+    if (membership.error) {
+      console.error("loadSupplierByUserId: membership lookup failed", {
+        userId,
+        error: membership.error,
+      });
+      return null;
+    }
+
+    const supplierId =
+      typeof membership.data?.supplier_id === "string"
+        ? membership.data.supplier_id
+        : "";
+    if (!supplierId) {
+      return null;
+    }
+
+    const { data: supplier, error: supplierError } = await supabaseServer
+      .from("suppliers")
+      .select(SUPPLIER_SELECT_COLUMNS)
+      .eq("id", supplierId)
+      .maybeSingle<SupplierRow>();
+
+    if (supplierError) {
+      console.error("loadSupplierByUserId: membership supplier lookup failed", {
+        userId,
+        supplierId,
+        error: supplierError,
+      });
+      return null;
+    }
+
+    return supplier ?? null;
   } catch (error) {
     console.error("loadSupplierByUserId: unexpected error", { userId, error });
     return null;

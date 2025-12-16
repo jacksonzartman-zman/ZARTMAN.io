@@ -85,6 +85,8 @@ async function SupplierDashboardPage({
   const supplierEmail = normalizeEmailInput(user.email ?? null);
   const onboardingJustCompleted =
     getSearchParamValue(searchParams, "onboard") === "1";
+  const inviteJustAccepted =
+    getSearchParamValue(searchParams, "invite") === "accepted";
 
   if (!supplierEmail) {
     return (
@@ -342,6 +344,11 @@ async function SupplierDashboardPage({
         {onboardingJustCompleted ? (
           <p className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
             Profile updated! We’ll start routing matched RFQs to you automatically.
+          </p>
+        ) : null}
+        {inviteJustAccepted ? (
+          <p className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            Invite accepted! You’re now part of this supplier workspace.
           </p>
         ) : null}
       </section>
