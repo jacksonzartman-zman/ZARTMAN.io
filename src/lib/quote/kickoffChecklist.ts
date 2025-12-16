@@ -165,6 +165,61 @@ export function formatKickoffSummaryLabel(
   return "Kickoff not started";
 }
 
+export type KickoffProgressBasis = {
+  /**
+   * True when `quotes.kickoff_completed_at` is set (authoritative), or when counts
+   * indicate all tasks are complete as a fallback.
+   */
+  isComplete: boolean;
+  completedCount: number | null;
+  totalCount: number | null;
+};
+
+export function resolveKickoffProgressBasis(args: {
+  kickoffCompletedAt?: string | null;
+  completedCount?: number | null;
+  totalCount?: number | null;
+}): KickoffProgressBasis {
+  const kickoffCompletedAt =
+    typeof args.kickoffCompletedAt === "string" ? args.kickoffCompletedAt.trim() : "";
+  const completedCount =
+    typeof args.completedCount === "number" && Number.isFinite(args.completedCount)
+      ? args.completedCount
+      : null;
+  const totalCount =
+    typeof args.totalCount === "number" && Number.isFinite(args.totalCount)
+      ? args.totalCount
+      : null;
+
+  const completeFromCounts =
+    totalCount !== null &&
+    totalCount > 0 &&
+    completedCount !== null &&
+    completedCount >= totalCount;
+
+  return {
+    isComplete: kickoffCompletedAt.length > 0 || completeFromCounts,
+    completedCount,
+    totalCount,
+  };
+}
+
+export function formatKickoffTasksRatio(progress: {
+  completedCount: number | null;
+  totalCount: number | null;
+}): string | null {
+  if (
+    typeof progress.completedCount === "number" &&
+    typeof progress.totalCount === "number" &&
+    Number.isFinite(progress.completedCount) &&
+    Number.isFinite(progress.totalCount) &&
+    progress.totalCount > 0
+  ) {
+    return `${progress.completedCount}/${progress.totalCount}`;
+  }
+  return null;
+}
+
 function normalizeTask(task: SupplierKickoffTask): SupplierKickoffTask {
   const taskKey = typeof task.taskKey === "string" ? task.taskKey.trim() : "";
   return {
