@@ -50,6 +50,10 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
+import {
+  resolveKickoffProgressBasis,
+  formatKickoffTasksRatio,
+} from "@/lib/quote/kickoffChecklist";
 import { postQuoteMessage as postAdminQuoteMessage } from "./actions";
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
@@ -423,6 +427,12 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const kickoffLastUpdatedValue = kickoffSummary?.lastUpdatedAt
       ? formatRelativeTimeFromTimestamp(toTimestamp(kickoffSummary.lastUpdatedAt)) ?? "—"
       : "—";
+    const kickoffProgressBasis = resolveKickoffProgressBasis({
+      kickoffCompletedAt: (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? null,
+      completedCount: kickoffSummary?.completedCount ?? null,
+      totalCount: kickoffSummary?.totalCount ?? null,
+    });
+    const kickoffProgressRatio = formatKickoffTasksRatio(kickoffProgressBasis);
     const attentionState = deriveAdminQuoteAttentionState({
       quoteId: quote.id,
       status,
@@ -546,6 +556,52 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         </p>
       </div>
     ) : null;
+
+    const projectStatusKickoffLabel = !hasWinningBid
+      ? "Waiting for winner"
+      : kickoffProgressBasis.isComplete
+        ? "Kickoff complete"
+        : kickoffProgressRatio
+          ? `Kickoff in progress (${kickoffProgressRatio} tasks)`
+          : "Kickoff in progress";
+
+    const projectStatusPanel = (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Project status
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Shared kickoff status across supplier + customer.
+            </p>
+          </div>
+          <span
+            className={clsx(
+              "rounded-full border px-3 py-1 text-[11px] font-semibold",
+              kickoffProgressBasis.isComplete
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                : hasWinningBid
+                  ? "border-blue-500/40 bg-blue-500/10 text-blue-100"
+                  : "border-slate-800 bg-slate-900/60 text-slate-200",
+            )}
+          >
+            {kickoffProgressBasis.isComplete ? "Complete" : hasWinningBid ? "In progress" : "—"}
+          </span>
+        </header>
+        <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-3">
+          <SnapshotField
+            label="Supplier"
+            value={hasWinningBid ? (winningSupplierName ?? "Supplier selected") : "—"}
+          />
+          <SnapshotField
+            label="Awarded on"
+            value={hasWinningBid ? (awardedAtLabel ?? "Pending") : "—"}
+          />
+          <SnapshotField label="Kickoff" value={projectStatusKickoffLabel} />
+        </dl>
+      </section>
+    );
 
     const bidSummaryPanel = (
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
@@ -1264,6 +1320,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)]">
               {bidSummaryPanel}
               <div className="space-y-4">
+                {projectStatusPanel}
                 {kickoffStatusPanel}
                 {workflowPanel}
                 {routingSuggestionPanel}
