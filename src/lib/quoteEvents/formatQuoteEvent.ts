@@ -1,4 +1,9 @@
 import { formatShortId } from "@/lib/awards";
+import {
+  formatAwardFeedbackConfidenceLabel,
+  formatAwardFeedbackReasonLabel,
+  truncateForTimeline,
+} from "@/lib/awardFeedback";
 import type { QuoteEventActorRole, QuoteEventRecord } from "@/server/quotes/events";
 
 export type QuoteEventGroupKey =
@@ -26,6 +31,32 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
   const type = normalizeEventType(event.event_type);
   const metadata = resolveEventMetadata(event);
   const actorLabel = formatActorLabel(event.actor_role, metadata);
+
+  if (type === "award_feedback_recorded") {
+    const reason =
+      formatAwardFeedbackReasonLabel(readString(metadata, "reason")) ??
+      humanizeFallback(readString(metadata, "reason") ?? "reason");
+    const confidence = formatAwardFeedbackConfidenceLabel(
+      readString(metadata, "confidence"),
+    );
+    const notes = truncateForTimeline(readString(metadata, "notes"), 80);
+
+    const subtitle = joinSubtitle(
+      `Reason: ${reason}`,
+      joinSubtitle(
+        confidence ? `Confidence: ${confidence}` : null,
+        notes ? `Notes: ${notes}` : null,
+      ),
+    );
+
+    return {
+      groupKey: "award",
+      groupLabel: "Award",
+      title: "Award feedback recorded",
+      subtitle: subtitle ?? undefined,
+      actorLabel,
+    };
+  }
 
   if (type === "capacity_update_requested") {
     const weekStartDate =

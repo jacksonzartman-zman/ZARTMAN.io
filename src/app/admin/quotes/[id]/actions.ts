@@ -43,6 +43,12 @@ import {
   isCapacityRequestSuppressed,
   type CapacityUpdateRequestReason,
 } from "@/server/admin/capacityRequests";
+import {
+  AWARD_FEEDBACK_MAX_NOTES_LENGTH,
+  isAwardFeedbackConfidence,
+  isAwardFeedbackReason,
+} from "@/lib/awardFeedback";
+import { recordAwardFeedback } from "@/server/quotes/awardFeedback";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -67,6 +73,96 @@ export type AdminProjectFormState = {
     notes?: string;
   };
 };
+
+export type AwardFeedbackFormState =
+  | { status: "idle" }
+  | { status: "success"; message: string }
+  | { status: "error"; error: string; fieldErrors?: { reason?: string; notes?: string } };
+
+const ADMIN_AWARD_FEEDBACK_GENERIC_ERROR =
+  "We couldn't save award feedback. Please try again.";
+const ADMIN_AWARD_FEEDBACK_REASON_ERROR = "Select a reason.";
+const ADMIN_AWARD_FEEDBACK_NOTES_LENGTH_ERROR = `Notes must be ${AWARD_FEEDBACK_MAX_NOTES_LENGTH} characters or fewer.`;
+
+export async function submitAwardFeedbackAction(
+  quoteId: string,
+  _prevState: AwardFeedbackFormState,
+  formData: FormData,
+): Promise<AwardFeedbackFormState> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  const supplierIdRaw = getFormString(formData, "supplierId");
+  const reasonRaw = getFormString(formData, "reason");
+  const confidenceRaw = getFormString(formData, "confidence");
+  const notesRaw = getFormString(formData, "notes");
+
+  const supplierId = typeof supplierIdRaw === "string" ? supplierIdRaw.trim() : "";
+  const reason = typeof reasonRaw === "string" ? reasonRaw.trim() : "";
+  const confidence =
+    typeof confidenceRaw === "string" && confidenceRaw.trim().length > 0
+      ? confidenceRaw.trim()
+      : null;
+  const notes =
+    typeof notesRaw === "string" && notesRaw.trim().length > 0
+      ? notesRaw.trim()
+      : null;
+
+  if (!normalizedQuoteId || !supplierId) {
+    return { status: "error", error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  if (!isAwardFeedbackReason(reason)) {
+    return {
+      status: "error",
+      error: ADMIN_AWARD_FEEDBACK_REASON_ERROR,
+      fieldErrors: { reason: ADMIN_AWARD_FEEDBACK_REASON_ERROR },
+    };
+  }
+
+  if (notes && notes.length > AWARD_FEEDBACK_MAX_NOTES_LENGTH) {
+    return {
+      status: "error",
+      error: ADMIN_AWARD_FEEDBACK_NOTES_LENGTH_ERROR,
+      fieldErrors: { notes: ADMIN_AWARD_FEEDBACK_NOTES_LENGTH_ERROR },
+    };
+  }
+
+  if (confidence && !isAwardFeedbackConfidence(confidence)) {
+    // Treat as empty/invalid optional field; keep UX forgiving.
+    // Server helper will normalize it to null anyway.
+  }
+
+  try {
+    const adminUser = await requireAdminUser();
+
+    const result = await recordAwardFeedback({
+      quoteId: normalizedQuoteId,
+      supplierId,
+      reason,
+      confidence: confidence && isAwardFeedbackConfidence(confidence) ? confidence : null,
+      notes,
+      actorUserId: adminUser.id,
+      actorRole: "admin",
+    });
+
+    if (!result.ok) {
+      return { status: "error", error: ADMIN_AWARD_FEEDBACK_GENERIC_ERROR };
+    }
+
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+
+    return {
+      status: "success",
+      message: result.skipped ? "Feedback already recorded." : "Feedback saved.",
+    };
+  } catch (error) {
+    console.error("[admin award feedback] action crashed", {
+      quoteId: normalizedQuoteId,
+      supplierId,
+      error: serializeActionError(error),
+    });
+    return { status: "error", error: ADMIN_AWARD_FEEDBACK_GENERIC_ERROR };
+  }
+}
 
 export async function awardBidFormAction(
   _prevState: AwardBidFormState,
