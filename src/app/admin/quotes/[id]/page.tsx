@@ -66,7 +66,11 @@ import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 import { getRoutingSuggestionForQuote } from "@/server/admin/routing";
 import { CapacitySummaryPills } from "@/app/admin/components/CapacitySummaryPills";
 import { RequestCapacityUpdateButton } from "./RequestCapacityUpdateButton";
-import type { CapacityUpdateRequestReason } from "@/server/admin/capacityRequests";
+import {
+  isCapacityRequestSuppressed,
+  loadRecentCapacityUpdateRequest,
+  type CapacityUpdateRequestReason,
+} from "@/server/admin/capacityRequests";
 
 export const dynamic = "force-dynamic";
 
@@ -874,6 +878,20 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           })
         : null;
 
+    const supplierCapacityLastUpdatedAt = capacityRequestCandidate?.lastUpdatedAt ?? null;
+    const { createdAt: lastCapacityRequestCreatedAt } =
+      capacityRequestSupplierId && capacityRequestReason
+        ? await loadRecentCapacityUpdateRequest({
+            supplierId: capacityRequestSupplierId,
+            weekStartDate: routingSuggestion.weekStartDate,
+            lookbackDays: 7,
+          })
+        : { createdAt: null };
+    const suppressCapacityRequest = isCapacityRequestSuppressed({
+      requestCreatedAt: lastCapacityRequestCreatedAt,
+      supplierLastUpdatedAt: supplierCapacityLastUpdatedAt,
+    });
+
     let capacitySnapshots: AdminCapacitySnapshotRow[] = [];
     let capacitySnapshotsError: string | null = null;
     if (resolvedCapacitySupplierId) {
@@ -977,6 +995,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 supplierId={capacityRequestSupplierId}
                 weekStartDate={routingSuggestion.weekStartDate}
                 reason={capacityRequestReason}
+                suppressed={suppressCapacityRequest}
+                lastRequestCreatedAt={lastCapacityRequestCreatedAt}
               />
             ) : null}
           </div>
