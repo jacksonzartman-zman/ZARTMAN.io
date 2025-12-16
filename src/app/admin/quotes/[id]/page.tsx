@@ -73,6 +73,7 @@ import {
 } from "@/server/admin/capacityRequests";
 import { AwardOutcomeCard } from "./AwardOutcomeCard";
 import { loadLatestAwardFeedbackForQuote } from "@/server/quotes/awardFeedback";
+import { formatAwardFeedbackReasonLabel } from "@/lib/awardFeedback";
 
 export const dynamic = "force-dynamic";
 
@@ -999,18 +1000,25 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                       routingSuggestion.resolvedSupplierId}
                   </p>
                 </div>
-                <span
-                  className={clsx(
-                    "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
-                    matchHealthPillClasses(
+                <div className="flex flex-col items-end gap-1">
+                  <span
+                    className={clsx(
+                      "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                      matchHealthPillClasses(
+                        routingSuggestion.supplierSummaries[0]?.matchHealth ?? "caution",
+                      ),
+                    )}
+                  >
+                    {formatMatchHealthLabel(
                       routingSuggestion.supplierSummaries[0]?.matchHealth ?? "caution",
-                    ),
-                  )}
-                >
-                  {formatMatchHealthLabel(
-                    routingSuggestion.supplierSummaries[0]?.matchHealth ?? "caution",
-                  )}
-                </span>
+                    )}
+                  </span>
+                  {routingSuggestion.supplierSummaries[0]?.matchHealthAdjustedByFeedback ? (
+                    <span className="text-[11px] font-medium text-slate-400">
+                      Adjusted using award history
+                    </span>
+                  ) : null}
+                </div>
               </div>
 
               <CapacitySummaryPills
@@ -1020,6 +1028,18 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 lastUpdatedAt={routingSuggestion.supplierSummaries[0]?.lastUpdatedAt ?? null}
                 align="start"
               />
+
+              <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Historical win reasons (90d)
+                </p>
+                <p className="mt-1 text-sm text-slate-200">
+                  {formatTopWinReasons(
+                    routingSuggestion.supplierSummaries[0]?.awardFeedbackSummary?.byReason ?? {},
+                    2,
+                  ) ?? "No award feedback yet"}
+                </p>
+              </div>
             </div>
           ) : (
             <p className="mt-4 text-sm text-slate-400">
@@ -1528,4 +1548,25 @@ function formatMatchHealthLabel(health: unknown): string {
   if (normalized === "good") return "Good";
   if (normalized === "poor") return "Poor";
   return "Caution";
+}
+
+function formatTopWinReasons(byReason: Record<string, number>, limit: number): string | null {
+  const entries = Object.entries(byReason ?? {})
+    .filter(([reason, count]) => typeof reason === "string" && reason.trim() && typeof count === "number")
+    .sort((a, b) => {
+      const dc = (b[1] ?? 0) - (a[1] ?? 0);
+      if (dc !== 0) return dc;
+      return a[0].localeCompare(b[0]);
+    })
+    .slice(0, Math.max(0, Math.floor(limit)));
+
+  if (entries.length === 0) return null;
+
+  const parts = entries.map(([reason, count]) => {
+    const label =
+      formatAwardFeedbackReasonLabel(reason) ??
+      reason.replace(/[_-]+/g, " ").trim().replace(/^\w/, (m) => m.toUpperCase());
+    return `${label} (${count})`;
+  });
+  return parts.join(", ");
 }

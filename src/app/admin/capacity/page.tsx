@@ -5,11 +5,13 @@ import {
   getCapacitySnapshots,
   listCapacitySuppliers,
 } from "@/server/admin/capacity";
+import { getAwardFeedbackSummaryForSupplier } from "@/server/admin/awardFeedback";
 import CapacityCalendar, {
   type CapacityCalendarSnapshot,
   type CapacityCalendarSupplier,
   type CapacityCalendarWeek,
 } from "@/app/admin/components/CapacityCalendar";
+import { formatAwardFeedbackReasonLabel } from "@/lib/awardFeedback";
 
 export const dynamic = "force-dynamic";
 
@@ -184,6 +186,28 @@ export default async function Page({
           },
         ]
     : allSupplierOptions;
+
+  // Optional quick win (lazy): only fetch award feedback when filtered to one supplier.
+  if (supplierId && suppliersToRender.length === 1) {
+    const feedback = await getAwardFeedbackSummaryForSupplier({
+      supplierId,
+      lookbackDays: 90,
+    });
+    const entries = Object.entries(feedback.byReason ?? {})
+      .filter(([reason, count]) => typeof reason === "string" && reason.trim() && typeof count === "number")
+      .sort((a, b) => {
+        const dc = (b[1] ?? 0) - (a[1] ?? 0);
+        if (dc !== 0) return dc;
+        return a[0].localeCompare(b[0]);
+      });
+    const top = entries.length > 0 ? entries[0] : null;
+    const topReason = top ? top[0] : null;
+    const topCount = top ? top[1] : 0;
+    const label =
+      topReason ? formatAwardFeedbackReasonLabel(topReason) ?? topReason.replace(/[_-]+/g, " ") : null;
+    const topWinReason90d = label ? `${label} (${topCount})` : null;
+    suppliersToRender[0] = { ...suppliersToRender[0], topWinReason90d };
+  }
 
   const sortedCapabilities = Array.from(capabilitiesInRange).sort((a, b) => a.localeCompare(b));
   const normalizedSelectedCapability = capability?.trim().toLowerCase() ?? null;

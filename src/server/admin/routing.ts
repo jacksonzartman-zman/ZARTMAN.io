@@ -13,8 +13,19 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { emitQuoteEvent } from "@/server/quotes/events";
+import {
+  getAwardFeedbackSummaryForSupplier,
+  type AwardFeedbackSummaryForSupplier,
+} from "@/server/admin/awardFeedback";
 
 export type RoutingMatchHealth = "good" | "caution" | "poor";
+
+export type RoutingFeedbackSignal = {
+  strength: "none" | "weak" | "strong";
+  topReason: string | null;
+  topReasonCount: number;
+  lookbackDays: number;
+};
 
 export type RoutingSupplierSummary = {
   supplierId: string;
@@ -24,8 +35,11 @@ export type RoutingSupplierSummary = {
   levels: Record<CapacityCapability, string | null>;
   hasBlockingCapacity: boolean;
   matchHealth: RoutingMatchHealth;
+  matchHealthAdjustedByFeedback?: boolean;
   blockingReason: string | null;
   lastUpdatedAt: string | null; // ISO timestamp
+  awardFeedbackSummary?: AwardFeedbackSummaryForSupplier;
+  feedbackSignal?: RoutingFeedbackSignal;
 };
 
 export type RoutingSuggestionResult = {
@@ -133,11 +147,14 @@ function summarizeSupplierCapacity(args: {
     return true;
   });
 
+  // Keep this deterministic and explainable: "poor" if blocked or totally missing.
   const matchHealth: RoutingMatchHealth = hasBlockingCapacity
     ? "poor"
     : coverageCount >= 2
       ? "good"
-      : "caution";
+      : coverageCount === 0
+        ? "poor"
+        : "caution";
 
   return {
     supplierId: args.supplierId,
@@ -147,9 +164,60 @@ function summarizeSupplierCapacity(args: {
     levels,
     hasBlockingCapacity,
     matchHealth,
+    matchHealthAdjustedByFeedback: false,
     blockingReason,
     lastUpdatedAt,
   };
+}
+
+function computeTopReason(byReason: Record<string, number>): {
+  topReason: string | null;
+  topReasonCount: number;
+} {
+  const entries = Object.entries(byReason ?? {}).filter(
+    ([reason, count]) => typeof reason === "string" && reason.trim() && typeof count === "number",
+  );
+  if (entries.length === 0) return { topReason: null, topReasonCount: 0 };
+  entries.sort((a, b) => {
+    const dc = (b[1] ?? 0) - (a[1] ?? 0);
+    if (dc !== 0) return dc;
+    return a[0].localeCompare(b[0]);
+  });
+  const [reason, count] = entries[0]!;
+  return { topReason: reason, topReasonCount: typeof count === "number" ? count : 0 };
+}
+
+function computeFeedbackSignal(summary: AwardFeedbackSummaryForSupplier, lookbackDays: number): RoutingFeedbackSignal {
+  const total = typeof summary?.total === "number" && Number.isFinite(summary.total) ? summary.total : 0;
+  const { topReason, topReasonCount } = computeTopReason(summary?.byReason ?? {});
+  const strength: RoutingFeedbackSignal["strength"] =
+    total <= 0 ? "none" : total >= 3 ? "strong" : "weak";
+  return {
+    strength,
+    topReason,
+    topReasonCount,
+    lookbackDays,
+  };
+}
+
+function maybeAdjustMatchHealthUsingFeedback(args: {
+  base: RoutingMatchHealth;
+  hasBlockingCapacity: boolean;
+  feedback: RoutingFeedbackSignal;
+}): { matchHealth: RoutingMatchHealth; adjusted: boolean } {
+  // Never override hard blocks.
+  if (args.hasBlockingCapacity) return { matchHealth: args.base, adjusted: false };
+
+  const top = (args.feedback.topReason ?? "").trim().toLowerCase();
+  const isQualityOrRelationship = top === "best_quality" || top === "existing_relationship";
+
+  // Small, explainable nudge: if capacity is totally missing ("poor") but we have strong
+  // historical evidence for quality/relationship, upgrade to "caution" (never to "good").
+  if (args.base === "poor" && args.feedback.strength === "strong" && isQualityOrRelationship) {
+    return { matchHealth: "caution", adjusted: true };
+  }
+
+  return { matchHealth: args.base, adjusted: false };
 }
 
 async function loadQuoteRoutingContext(
@@ -263,6 +331,24 @@ export async function getRoutingSuggestionForQuote(args: {
         supplierName,
         snapshots: bySupplier[resolvedSupplierId] ?? [],
       });
+
+      const lookbackDays = 90;
+      const awardFeedbackSummary = await getAwardFeedbackSummaryForSupplier({
+        supplierId: resolvedSupplierId,
+        lookbackDays,
+      });
+      const feedbackSignal = computeFeedbackSignal(awardFeedbackSummary, lookbackDays);
+      const adjustment = maybeAdjustMatchHealthUsingFeedback({
+        base: summary.matchHealth,
+        hasBlockingCapacity: summary.hasBlockingCapacity,
+        feedback: feedbackSignal,
+      });
+
+      summary.matchHealth = adjustment.matchHealth;
+      summary.matchHealthAdjustedByFeedback = adjustment.adjusted;
+      summary.awardFeedbackSummary = awardFeedbackSummary;
+      summary.feedbackSignal = feedbackSignal;
+
       supplierSummaries = [summary];
     } else {
       const suppliersResult = await listCapacitySuppliers();
