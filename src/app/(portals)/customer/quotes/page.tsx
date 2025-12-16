@@ -18,6 +18,7 @@ import {
   formatCustomerBidHint,
   getCustomerQuoteStatusMeta,
 } from "@/server/quotes/customerSummary";
+import { loadSupplierNameMapByIds } from "@/server/suppliers/profile";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
 import { parseListState } from "@/app/(portals)/lib/listState";
@@ -112,6 +113,17 @@ export default async function CustomerQuotesPage({
   const quoteIds = quotes.map((quote) => quote.id);
   const bidAggregates =
     quoteIds.length > 0 ? await loadQuoteBidAggregates(quoteIds) : {};
+  const awardedSupplierIds = quotes
+    .map((quote) =>
+      typeof quote.awarded_supplier_id === "string"
+        ? quote.awarded_supplier_id.trim()
+        : "",
+    )
+    .filter(Boolean);
+  const awardedSupplierNameMap =
+    awardedSupplierIds.length > 0
+      ? await loadSupplierNameMapByIds(awardedSupplierIds)
+      : new Map<string, string>();
   const shouldShowFirstTimeCard = totalCount <= 1;
 
   return (
@@ -214,15 +226,35 @@ export default async function CustomerQuotesPage({
                     const statusMeta = getCustomerQuoteStatusMeta(statusKey);
                     const bidHint = formatCustomerBidHint(aggregate);
                     const bidCount = aggregate?.bidCount ?? 0;
-                    const ctaLabel = bidCount > 0 ? "Review bids" : "View RFQ";
                     const fileCount = resolveQuoteFileCount(quote, files.length);
                     const fileCountLabel = formatQuoteFileCountLabel(fileCount);
+                    const awardedSupplierId =
+                      typeof quote.awarded_supplier_id === "string"
+                        ? quote.awarded_supplier_id.trim()
+                        : "";
+                    const awardedSupplierName = awardedSupplierId
+                      ? awardedSupplierNameMap.get(awardedSupplierId) ?? null
+                      : null;
+                    const quoteHasWinner =
+                      Boolean(quote.awarded_at) ||
+                      Boolean(quote.awarded_bid_id) ||
+                      Boolean(quote.awarded_supplier_id) ||
+                      (typeof quote.status === "string" &&
+                        quote.status.trim().toLowerCase() === "won");
+                    const winnerLabel =
+                      awardedSupplierName ??
+                      (awardedSupplierId ? awardedSupplierId : null);
 
                     return (
                       <tr key={quote.id} className="hover:bg-slate-900/50">
                         <td className="px-5 py-4 align-middle">
                           <div className="flex flex-col">
-                            <span className="font-medium text-slate-100">{primaryLabel}</span>
+                            <Link
+                              href={`/customer/quotes/${quote.id}`}
+                              className="font-medium text-slate-100 underline decoration-slate-700/70 underline-offset-4 transition hover:decoration-emerald-400/80"
+                            >
+                              {primaryLabel}
+                            </Link>
                             <span className="text-xs text-slate-500">
                               Submitted {formatRelativeDate(quote.created_at ?? null)}
                             </span>
@@ -235,27 +267,44 @@ export default async function CustomerQuotesPage({
                         </td>
                         <td className="px-5 py-4 align-middle">
                           <div className="space-y-1">
-                            <span className={clsx("pill pill-table", statusMeta.pillClass)}>
-                              {statusMeta.label}
-                            </span>
-                            <p className="text-xs text-slate-400">{bidHint}</p>
+                            {quoteHasWinner ? (
+                              <span className="pill pill-table border-emerald-500/40 bg-emerald-500/10 text-emerald-100">
+                                Winner selected
+                              </span>
+                            ) : (
+                              <span className={clsx("pill pill-table", statusMeta.pillClass)}>
+                                {statusMeta.label}
+                              </span>
+                            )}
+                            {quoteHasWinner ? (
+                              <p className="text-xs text-emerald-200">
+                                {winnerLabel ?? "Supplier selected"}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-400">{bidHint}</p>
+                            )}
                           </div>
                         </td>
                         <td className="px-5 py-4 align-middle text-slate-300">
                           {formatRelativeDate(lastUpdated)}
                         </td>
                         <td className="px-5 py-4 align-middle text-right">
-                          <Link
-                            href={`/customer/quotes/${quote.id}`}
-                            className={clsx(
-                              "inline-flex min-w-[7.5rem] items-center justify-center rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                              bidCount > 0
-                                ? "bg-emerald-500 text-black hover:bg-emerald-400"
-                                : "border border-slate-700 text-slate-100 hover:border-emerald-400 hover:text-emerald-300",
-                            )}
-                          >
-                            {ctaLabel}
-                          </Link>
+                          {quoteHasWinner ? (
+                            <span className="inline-flex min-w-[9rem] cursor-not-allowed items-center justify-center rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-400">
+                              Winner selected
+                            </span>
+                          ) : bidCount > 0 ? (
+                            <Link
+                              href={`/customer/quotes/${quote.id}?focus=award`}
+                              className="inline-flex min-w-[9rem] items-center justify-center rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-emerald-400"
+                            >
+                              Review &amp; award
+                            </Link>
+                          ) : (
+                            <span className="inline-flex min-w-[9rem] items-center justify-center rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-300">
+                              Waiting for bids
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );
