@@ -8,13 +8,13 @@ import {
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 
 const ADMIN_NAV_LINKS: PortalNavLink[] = [
-  { label: "Uploads", href: "/admin" },
+  { label: "Uploads", href: "/admin/uploads" },
   { label: "Quotes", href: "/admin/quotes" },
   { label: "Capacity", href: "/admin/capacity" },
 ];
 
 export default function AdminNav() {
-  const pathname = usePathname() ?? "/admin";
+  const pathname = usePathname() ?? "/admin/quotes";
 
   return (
     <div className="border-b border-slate-900 bg-slate-950/60">

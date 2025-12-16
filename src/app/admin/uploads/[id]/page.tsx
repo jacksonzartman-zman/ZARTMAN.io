@@ -40,7 +40,7 @@ export default async function UploadDetailPage(props: any) {
             </p>
             <div className="mt-4">
               <Link
-                href="/admin"
+                href="/admin/uploads"
                 className={clsx(
                   secondaryCtaClasses,
                   ctaSizeClasses.sm,
@@ -72,7 +72,7 @@ export default async function UploadDetailPage(props: any) {
             </p>
             <div className="mt-4">
               <Link
-                href="/admin"
+                href="/admin/uploads"
                 className={clsx(
                   secondaryCtaClasses,
                   ctaSizeClasses.sm,
