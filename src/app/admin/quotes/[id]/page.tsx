@@ -65,6 +65,8 @@ import {
 import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 import { getRoutingSuggestionForQuote } from "@/server/admin/routing";
 import { CapacitySummaryPills } from "@/app/admin/components/CapacitySummaryPills";
+import { RequestCapacityUpdateButton } from "./RequestCapacityUpdateButton";
+import type { CapacityUpdateRequestReason } from "@/server/admin/capacityRequests";
 
 export const dynamic = "force-dynamic";
 
@@ -858,6 +860,20 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     });
     const routingWeekLabel = formatWeekOfLabel(routingSuggestion.weekStartDate);
 
+    const capacityRequestCandidate =
+      routingSuggestion.supplierSummaries.length > 0
+        ? routingSuggestion.supplierSummaries[0]
+        : null;
+    const capacityRequestSupplierId =
+      routingSuggestion.resolvedSupplierId ?? capacityRequestCandidate?.supplierId ?? null;
+    const capacityRequestReason: CapacityUpdateRequestReason | null =
+      capacityRequestCandidate && capacityRequestSupplierId
+        ? inferCapacityRequestReason({
+            coverageCount: capacityRequestCandidate.coverageCount,
+            lastUpdatedAt: capacityRequestCandidate.lastUpdatedAt,
+          })
+        : null;
+
     let capacitySnapshots: AdminCapacitySnapshotRow[] = [];
     let capacitySnapshotsError: string | null = null;
     if (resolvedCapacitySupplierId) {
@@ -951,9 +967,19 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               Based on supplier capacity for next week.
             </p>
           </div>
-          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200">
-            Week of {routingWeekLabel}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200">
+              Week of {routingWeekLabel}
+            </span>
+            {capacityRequestSupplierId && capacityRequestReason ? (
+              <RequestCapacityUpdateButton
+                quoteId={quote.id}
+                supplierId={capacityRequestSupplierId}
+                weekStartDate={routingSuggestion.weekStartDate}
+                reason={capacityRequestReason}
+              />
+            ) : null}
+          </div>
         </header>
 
         {routingSuggestion.resolvedSupplierId ? (
@@ -1422,6 +1448,26 @@ function formatWeekOfLabel(weekStartDateIso: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function inferCapacityRequestReason(args: {
+  coverageCount: number;
+  lastUpdatedAt: string | null;
+}): CapacityUpdateRequestReason {
+  const coverageCount =
+    typeof args.coverageCount === "number" && Number.isFinite(args.coverageCount)
+      ? args.coverageCount
+      : 0;
+  const lastUpdatedAt =
+    typeof args.lastUpdatedAt === "string" && args.lastUpdatedAt.trim()
+      ? args.lastUpdatedAt.trim()
+      : null;
+  const parsed = lastUpdatedAt ? Date.parse(lastUpdatedAt) : Number.NaN;
+  const isStale =
+    Number.isFinite(parsed) && Date.now() - parsed > 14 * 24 * 60 * 60 * 1000;
+  if (isStale) return "stale";
+  if (coverageCount < 2) return "missing";
+  return "manual";
 }
 
 function formatCapacityLevelLabel(level: unknown): string | null {

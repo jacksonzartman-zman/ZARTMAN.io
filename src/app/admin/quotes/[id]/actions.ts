@@ -33,6 +33,10 @@ import { emitQuoteEvent } from "@/server/quotes/events";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
 import type { AwardBidFormState } from "./awardFormState";
+import {
+  requestSupplierCapacityUpdate,
+  type CapacityUpdateRequestReason,
+} from "@/server/admin/capacityRequests";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -662,5 +666,59 @@ function normalizeEmail(value: unknown): string | null {
   if (!trimmed) return null;
   if (!trimmed.includes("@")) return null;
   return trimmed;
+}
+
+export type AdminCapacityUpdateRequestState =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+const ADMIN_CAPACITY_REQUEST_OK = "Request sent";
+const ADMIN_CAPACITY_REQUEST_ERROR =
+  "We couldn't send that request right now.";
+
+export async function requestCapacityUpdateAction(
+  quoteId: string,
+  supplierId: string,
+  weekStartDate: string,
+  reason: CapacityUpdateRequestReason,
+  _prev: AdminCapacityUpdateRequestState,
+  _formData: FormData,
+): Promise<AdminCapacityUpdateRequestState> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  const normalizedSupplierId =
+    typeof supplierId === "string" ? supplierId.trim() : "";
+  const normalizedWeekStartDate =
+    typeof weekStartDate === "string" ? weekStartDate.trim() : "";
+
+  if (!normalizedQuoteId || !normalizedSupplierId || !normalizedWeekStartDate) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  try {
+    const adminUser = await requireAdminUser();
+
+    // Fire-and-forget semantics: do not block UI on insert success.
+    void requestSupplierCapacityUpdate({
+      quoteId: normalizedQuoteId,
+      supplierId: normalizedSupplierId,
+      weekStartDate: normalizedWeekStartDate,
+      reason,
+      actorUserId: adminUser.id,
+    });
+
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return { ok: true, message: ADMIN_CAPACITY_REQUEST_OK };
+  } catch (error) {
+    console.error("[admin capacity request] action crashed", {
+      quoteId: normalizedQuoteId,
+      supplierId: normalizedSupplierId,
+      weekStartDate: normalizedWeekStartDate,
+      reason,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_CAPACITY_REQUEST_ERROR };
+  }
 }
 
