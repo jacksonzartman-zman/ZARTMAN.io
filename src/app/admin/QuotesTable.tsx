@@ -5,10 +5,10 @@ import type { AdminQuoteListStatus, AdminQuotesView } from "@/types/adminQuotes"
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import {
-  CAPACITY_CAPABILITY_UNIVERSE,
   type CapacityCapability,
   type CapacityLevel,
 } from "@/server/admin/capacity";
+import { CapacitySummaryPills } from "@/app/admin/components/CapacitySummaryPills";
 
 export type QuoteCapacitySummary = {
   supplierId: string;
@@ -233,69 +233,15 @@ function CapacityCell({ summary }: { summary: QuoteCapacitySummary | null }) {
     return <p className="text-xs font-semibold text-slate-500">Capacity: —</p>;
   }
 
-  const coverageLabel = `${summary.coverageCount}/${summary.totalCount} set`;
-  const tooltip =
-    summary.lastUpdatedAt && summary.lastUpdatedAt.trim().length > 0
-      ? `Last updated ${summary.lastUpdatedAt}`
-      : "No capacity snapshots saved yet";
-
   return (
-    <div className="inline-flex flex-col items-end gap-2" title={tooltip}>
-      <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200">
-        {coverageLabel}
-      </span>
-      <div className="flex flex-wrap justify-end gap-1">
-        {CAPACITY_CAPABILITY_UNIVERSE.map((capability) => {
-          const level = summary.levels[capability] ?? null;
-          const label = formatCapacityLevelLabel(level);
-          const isSet = Boolean(label);
-          return (
-            <span
-              key={capability}
-              title={capability}
-              className={clsx(
-                "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
-                isSet
-                  ? capacityLevelPillClasses(level)
-                  : "border-slate-800 bg-slate-950/40 text-slate-500",
-              )}
-            >
-              {label ?? "—"}
-            </span>
-          );
-        })}
-      </div>
-    </div>
+    <CapacitySummaryPills
+      coverageCount={summary.coverageCount}
+      totalCount={summary.totalCount}
+      levels={summary.levels}
+      lastUpdatedAt={summary.lastUpdatedAt}
+      align="end"
+    />
   );
-}
-
-function formatCapacityLevelLabel(level: unknown): string | null {
-  const normalized = typeof level === "string" ? level.trim().toLowerCase() : "";
-  if (!normalized) return null;
-  if (normalized === "high") return "High";
-  if (normalized === "medium") return "Medium";
-  if (normalized === "low") return "Low";
-  if (normalized === "unavailable") return "Unavailable";
-  if (normalized === "overloaded") return "Overloaded";
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-}
-
-function capacityLevelPillClasses(level: unknown): string {
-  const normalized = typeof level === "string" ? level.trim().toLowerCase() : "";
-  switch (normalized) {
-    case "high":
-      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
-    case "medium":
-      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
-    case "low":
-      return "border-blue-500/40 bg-blue-500/10 text-blue-100";
-    case "unavailable":
-      return "border-slate-700 bg-slate-900/40 text-slate-200";
-    case "overloaded":
-      return "border-red-500/40 bg-red-500/10 text-red-100";
-    default:
-      return "border-slate-700 bg-slate-900/40 text-slate-200";
-  }
 }
 
 function getEmptyStateCopy({

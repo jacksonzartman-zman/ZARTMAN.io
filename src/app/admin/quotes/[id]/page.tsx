@@ -63,6 +63,8 @@ import {
   type AdminCapacitySnapshotRow,
 } from "@/server/admin/capacity";
 import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
+import { getRoutingSuggestionForQuote } from "@/server/admin/routing";
+import { CapacitySummaryPills } from "@/app/admin/components/CapacitySummaryPills";
 
 export const dynamic = "force-dynamic";
 
@@ -851,6 +853,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       baseBids,
     });
 
+    const routingSuggestion = await getRoutingSuggestionForQuote({
+      quoteId: quote.id,
+    });
+    const routingWeekLabel = formatWeekOfLabel(routingSuggestion.weekStartDate);
+
     let capacitySnapshots: AdminCapacitySnapshotRow[] = [];
     let capacitySnapshotsError: string | null = null;
     if (resolvedCapacitySupplierId) {
@@ -928,6 +935,109 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 );
               })}
             </dl>
+          </div>
+        )}
+      </section>
+    );
+
+    const routingSuggestionPanel = (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-100">
+              Routing suggestion
+            </h2>
+            <p className="mt-1 text-xs text-slate-400">
+              Based on supplier capacity for next week.
+            </p>
+          </div>
+          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200">
+            Week of {routingWeekLabel}
+          </span>
+        </header>
+
+        {routingSuggestion.resolvedSupplierId ? (
+          routingSuggestion.supplierSummaries.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Selected supplier
+                  </p>
+                  <p className="mt-1 truncate text-sm font-semibold text-slate-100">
+                    {routingSuggestion.supplierSummaries[0]?.supplierName ??
+                      routingSuggestion.resolvedSupplierId}
+                  </p>
+                </div>
+                <span
+                  className={clsx(
+                    "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                    matchHealthPillClasses(
+                      routingSuggestion.supplierSummaries[0]?.matchHealth ?? "caution",
+                    ),
+                  )}
+                >
+                  {formatMatchHealthLabel(
+                    routingSuggestion.supplierSummaries[0]?.matchHealth ?? "caution",
+                  )}
+                </span>
+              </div>
+
+              <CapacitySummaryPills
+                coverageCount={routingSuggestion.supplierSummaries[0]?.coverageCount ?? 0}
+                totalCount={routingSuggestion.supplierSummaries[0]?.totalCount ?? 4}
+                levels={routingSuggestion.supplierSummaries[0]?.levels ?? {}}
+                lastUpdatedAt={routingSuggestion.supplierSummaries[0]?.lastUpdatedAt ?? null}
+                align="start"
+              />
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-400">
+              Capacity signals are temporarily unavailable.
+            </p>
+          )
+        ) : routingSuggestion.supplierSummaries.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-400">
+            No supplier selected yet. Capacity suggestions are temporarily unavailable.
+          </p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {routingSuggestion.supplierSummaries.map((summary) => (
+              <div
+                key={summary.supplierId}
+                className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-100">
+                      {summary.supplierName ?? "Unnamed supplier"}
+                    </p>
+                    {summary.matchHealth === "poor" && summary.blockingReason ? (
+                      <p className="mt-1 text-xs text-red-200">
+                        {summary.blockingReason}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span
+                    className={clsx(
+                      "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                      matchHealthPillClasses(summary.matchHealth),
+                    )}
+                  >
+                    {formatMatchHealthLabel(summary.matchHealth)}
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <CapacitySummaryPills
+                    coverageCount={summary.coverageCount}
+                    totalCount={summary.totalCount}
+                    levels={summary.levels}
+                    lastUpdatedAt={summary.lastUpdatedAt}
+                    align="start"
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </section>
@@ -1099,6 +1209,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               <div className="space-y-4">
                 {kickoffStatusPanel}
                 {workflowPanel}
+                {routingSuggestionPanel}
                 {capacityPanel}
                 {awardAuditPanel}
                 {projectSnapshotPanel}
@@ -1340,4 +1451,24 @@ function capacityLevelPillClasses(level: unknown): string {
     default:
       return "border-slate-700 bg-slate-900/40 text-slate-200";
   }
+}
+
+function matchHealthPillClasses(health: unknown): string {
+  const normalized = typeof health === "string" ? health.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "good":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "poor":
+      return "border-red-500/40 bg-red-500/10 text-red-100";
+    case "caution":
+    default:
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+  }
+}
+
+function formatMatchHealthLabel(health: unknown): string {
+  const normalized = typeof health === "string" ? health.trim().toLowerCase() : "";
+  if (normalized === "good") return "Good";
+  if (normalized === "poor") return "Poor";
+  return "Caution";
 }
