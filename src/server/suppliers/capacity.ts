@@ -10,6 +10,7 @@ export type SupplierCapacitySnapshot = {
   capability: string;
   capacityLevel: SupplierCapacityLevel;
   notes: string | null;
+  createdAt: string | null;
 };
 
 export type UpsertSupplierCapacitySnapshotInput = {
@@ -66,11 +67,18 @@ export async function loadSupplierCapacitySnapshotsForWeek(args: {
   try {
     const result = await supabaseServer
       .from(SNAPSHOTS_TABLE)
-      .select("capability, capacity_level, notes")
+      .select("capability, capacity_level, notes, created_at")
       .eq("supplier_id", supplierId)
       .eq("week_start_date", weekStartDate)
       .limit(50)
-      .returns<{ capability: string; capacity_level: SupplierCapacityLevel; notes: string | null }[]>();
+      .returns<
+        {
+          capability: string;
+          capacity_level: SupplierCapacityLevel;
+          notes: string | null;
+          created_at: string;
+        }[]
+      >();
 
     if (result.error) {
       if (isMissingTableOrColumnError(result.error)) {
@@ -98,6 +106,7 @@ export async function loadSupplierCapacitySnapshotsForWeek(args: {
         capability: normalizeText(row.capability).toLowerCase(),
         capacityLevel: row.capacity_level,
         notes: typeof row.notes === "string" ? row.notes : null,
+        createdAt: typeof row.created_at === "string" ? row.created_at : null,
       }))
       .filter((row) => Boolean(row.capability) && isCapacityLevel(row.capacityLevel));
 
@@ -118,6 +127,115 @@ export async function loadSupplierCapacitySnapshotsForWeek(args: {
       error: serializeSupabaseError(error) ?? error,
     });
     return { ok: false, error: "read_failed", reason: "read_failed" };
+  }
+}
+
+let didWarnMissingQuoteEventsSchemaForCapacityRequests = false;
+
+export async function loadLatestCapacityUpdateRequestForSupplierWeek(args: {
+  supplierId: string;
+  weekStartDate: string; // YYYY-MM-DD
+}): Promise<{ createdAt: string | null }> {
+  const supplierId = normalizeId(args?.supplierId);
+  const weekStartDate = normalizeWeekStartDate(args?.weekStartDate);
+
+  if (!supplierId || !weekStartDate) {
+    return { createdAt: null };
+  }
+
+  type RequestRow = { created_at: string };
+
+  const selectLatest = async (supplierKey: "supplierId" | "supplier_id") => {
+    return await supabaseServer
+      .from("quote_events")
+      .select("created_at")
+      .eq("event_type", "capacity_update_requested")
+      .eq(`metadata->>${supplierKey}`, supplierId)
+      .eq("metadata->>weekStartDate", weekStartDate)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .returns<RequestRow[]>();
+  };
+
+  try {
+    const preferred = await selectLatest("supplierId");
+    if (preferred.error) {
+      if (isMissingTableOrColumnError(preferred.error)) {
+        if (!didWarnMissingQuoteEventsSchemaForCapacityRequests) {
+          didWarnMissingQuoteEventsSchemaForCapacityRequests = true;
+          console.warn("[supplier capacity] request lookup skipped (missing schema)", {
+            supplierId,
+            weekStartDate,
+            pgCode: (preferred.error as { code?: string | null })?.code ?? null,
+            message: (preferred.error as { message?: string | null })?.message ?? null,
+          });
+        }
+        return { createdAt: null };
+      }
+
+      console.error("[supplier capacity] request lookup failed", {
+        supplierId,
+        weekStartDate,
+        error: serializeSupabaseError(preferred.error),
+      });
+      return { createdAt: null };
+    }
+
+    const preferredCreatedAt =
+      Array.isArray(preferred.data) && typeof preferred.data[0]?.created_at === "string"
+        ? preferred.data[0].created_at
+        : null;
+    if (preferredCreatedAt) {
+      return { createdAt: preferredCreatedAt };
+    }
+
+    const legacy = await selectLatest("supplier_id");
+    if (legacy.error) {
+      if (isMissingTableOrColumnError(legacy.error)) {
+        if (!didWarnMissingQuoteEventsSchemaForCapacityRequests) {
+          didWarnMissingQuoteEventsSchemaForCapacityRequests = true;
+          console.warn("[supplier capacity] request lookup skipped (missing schema)", {
+            supplierId,
+            weekStartDate,
+            pgCode: (legacy.error as { code?: string | null })?.code ?? null,
+            message: (legacy.error as { message?: string | null })?.message ?? null,
+          });
+        }
+        return { createdAt: null };
+      }
+
+      console.error("[supplier capacity] request lookup failed", {
+        supplierId,
+        weekStartDate,
+        error: serializeSupabaseError(legacy.error),
+      });
+      return { createdAt: null };
+    }
+
+    const legacyCreatedAt =
+      Array.isArray(legacy.data) && typeof legacy.data[0]?.created_at === "string"
+        ? legacy.data[0].created_at
+        : null;
+    return { createdAt: legacyCreatedAt };
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      if (!didWarnMissingQuoteEventsSchemaForCapacityRequests) {
+        didWarnMissingQuoteEventsSchemaForCapacityRequests = true;
+        console.warn("[supplier capacity] request lookup crashed (missing schema)", {
+          supplierId,
+          weekStartDate,
+          error: serializeSupabaseError(error),
+        });
+      }
+      return { createdAt: null };
+    }
+
+    console.error("[supplier capacity] request lookup crashed", {
+      supplierId,
+      weekStartDate,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return { createdAt: null };
   }
 }
 
