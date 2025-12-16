@@ -37,6 +37,7 @@ import { approvalsEnabled } from "@/server/suppliers/flags";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { loadSupplierCapacitySnapshotsForWeek } from "@/server/suppliers/capacity";
+import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 import {
   loadQuoteProjectForQuote,
   type QuoteProjectRecord,
@@ -805,16 +806,6 @@ function SupplierQuoteWorkspace({
       </div>
     </PortalShell>
   );
-}
-
-function getNextWeekStartDateIso(): string {
-  const now = new Date();
-  const day = now.getUTCDay(); // 0..6 (Sun..Sat)
-  const daysUntilNextMonday = ((8 - day) % 7) || 7;
-  const nextMonday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilNextMonday),
-  );
-  return nextMonday.toISOString().slice(0, 10);
 }
 
 type SupplierKickoffVisibility = {

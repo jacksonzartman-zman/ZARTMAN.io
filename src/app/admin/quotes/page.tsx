@@ -1,8 +1,14 @@
 // src/app/admin/quotes/page.tsx
-import { getAdminQuotesInbox } from "@/server/admin/quotesInbox";
+import {
+  getAdminQuotesInbox,
+  getOnlyBidderSupplierIdsForQuotes,
+} from "@/server/admin/quotesInbox";
 import type { ReadonlyURLSearchParams } from "next/navigation";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
-import QuotesTable, { type QuoteRow } from "../QuotesTable";
+import QuotesTable, {
+  type QuoteCapacitySummary,
+  type QuoteRow,
+} from "../QuotesTable";
 import AdminDashboardShell from "../AdminDashboardShell";
 import AdminFiltersBar from "../AdminFiltersBar";
 import AdminSearchInput from "../AdminSearchInput";
@@ -25,6 +31,13 @@ import type { AdminQuotesView } from "@/types/adminQuotes";
 import AdminQuotesInboxControls from "./AdminQuotesInboxControls";
 import TablePaginationControls from "../components/TablePaginationControls";
 import { ADMIN_QUOTES_LIST_STATE_CONFIG } from "./listState";
+import {
+  CAPACITY_CAPABILITY_UNIVERSE,
+  getCapacitySnapshotsForSuppliersWeek,
+  type CapacityCapability,
+  type CapacityLevel,
+} from "@/server/admin/capacity";
+import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +76,76 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const totalCount = inboxResult.data.count ?? baseRows.length;
   const hasMore = Boolean(inboxResult.data.hasMore);
 
+  const nextWeekStartDateIso = getNextWeekStartDateIso();
+
+  const awardedSupplierByQuoteId = new Map<string, string>();
+  const quoteIdsNeedingOnlyBidderResolution: string[] = [];
+  for (const row of baseRows) {
+    const quoteId = typeof row.id === "string" ? row.id : "";
+    const awardedSupplierId =
+      typeof row.awarded_supplier_id === "string" ? row.awarded_supplier_id.trim() : "";
+    if (quoteId && awardedSupplierId) {
+      awardedSupplierByQuoteId.set(quoteId, awardedSupplierId);
+      continue;
+    }
+    if (quoteId && row.bid_count === 1) {
+      quoteIdsNeedingOnlyBidderResolution.push(quoteId);
+    }
+  }
+
+  const onlyBidderSupplierIdByQuoteId =
+    quoteIdsNeedingOnlyBidderResolution.length > 0
+      ? await getOnlyBidderSupplierIdsForQuotes(quoteIdsNeedingOnlyBidderResolution)
+      : {};
+
+  const deterministicSupplierIdByQuoteId = new Map<string, string | null>();
+  for (const row of baseRows) {
+    const quoteId = typeof row.id === "string" ? row.id : "";
+    if (!quoteId) continue;
+    const awarded = awardedSupplierByQuoteId.get(quoteId) ?? null;
+    if (awarded) {
+      deterministicSupplierIdByQuoteId.set(quoteId, awarded);
+      continue;
+    }
+    if (row.bid_count === 1) {
+      const onlyBidder =
+        typeof onlyBidderSupplierIdByQuoteId[quoteId] === "string"
+          ? onlyBidderSupplierIdByQuoteId[quoteId]!.trim()
+          : "";
+      deterministicSupplierIdByQuoteId.set(quoteId, onlyBidder || null);
+      continue;
+    }
+    deterministicSupplierIdByQuoteId.set(quoteId, null);
+  }
+
+  const supplierIdsToCheck = Array.from(
+    new Set(
+      Array.from(deterministicSupplierIdByQuoteId.values()).filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
+      ),
+    ),
+  );
+
+  const capacityBySupplierId =
+    supplierIdsToCheck.length > 0
+      ? await getCapacitySnapshotsForSuppliersWeek({
+          supplierIds: supplierIdsToCheck,
+          weekStartDate: nextWeekStartDateIso,
+        })
+      : {};
+
+  const capacitySummaryBySupplierId = new Map<string, QuoteCapacitySummary>();
+  for (const supplierId of supplierIdsToCheck) {
+    capacitySummaryBySupplierId.set(
+      supplierId,
+      buildCapacitySummary({
+        supplierId,
+        weekStartDate: nextWeekStartDateIso,
+        snapshots: capacityBySupplierId[supplierId] ?? [],
+      }),
+    );
+  }
+
   const enrichedRows: QuoteRow[] = baseRows.map((row) => {
     const files = buildQuoteFilesFromRow(row);
     const fileCount = resolveQuoteFileCount(row, files.length);
@@ -88,6 +171,12 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       formatAdminLeadTimeLabel(aggregate?.fastestLeadTimeDays ?? null) ??
       "Pending";
 
+    const supplierId = deterministicSupplierIdByQuoteId.get(row.id) ?? null;
+    const capacityNextWeek = supplierId
+      ? (capacitySummaryBySupplierId.get(supplierId) ??
+        buildEmptyCapacitySummary(supplierId, nextWeekStartDateIso))
+      : null;
+
     return {
       id: row.id,
       rfqLabel,
@@ -110,6 +199,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       hasAwardedBid: Boolean(row.has_awarded_bid),
       awardedAt: row.awarded_at ?? null,
       awardedSupplierName: row.awarded_supplier_name ?? null,
+      capacityNextWeek,
       ctaHref: `/admin/quotes/${row.id}`,
       bidsHref: `/admin/quotes/${row.id}#bids-panel`,
     };
@@ -184,4 +274,71 @@ function buildInboxAggregate(row: {
     winningBidCurrency: null,
     winningBidLeadTimeDays: null,
   };
+}
+
+function buildEmptyCapacitySummary(
+  supplierId: string,
+  weekStartDate: string,
+): QuoteCapacitySummary {
+  const levels = Object.fromEntries(
+    CAPACITY_CAPABILITY_UNIVERSE.map((capability) => [capability, null]),
+  ) as Record<CapacityCapability, CapacityLevel | null>;
+  return {
+    supplierId,
+    weekStartDate,
+    coverageCount: 0,
+    totalCount: CAPACITY_CAPABILITY_UNIVERSE.length,
+    levels,
+    lastUpdatedAt: null,
+  };
+}
+
+function buildCapacitySummary(args: {
+  supplierId: string;
+  weekStartDate: string;
+  snapshots: Array<{
+    capability: string;
+    capacity_level: string;
+    created_at: string;
+  }>;
+}): QuoteCapacitySummary {
+  const summary = buildEmptyCapacitySummary(args.supplierId, args.weekStartDate);
+  let lastUpdatedAt: string | null = null;
+
+  for (const snapshot of args.snapshots) {
+    const capability = (snapshot?.capability ?? "").trim().toLowerCase();
+    if (!isCapacityCapability(capability)) continue;
+
+    const createdAt = typeof snapshot?.created_at === "string" ? snapshot.created_at : "";
+    if (createdAt && (!lastUpdatedAt || createdAt > lastUpdatedAt)) {
+      lastUpdatedAt = createdAt;
+    }
+
+    if (summary.levels[capability] !== null) {
+      continue;
+    }
+    const level = (snapshot?.capacity_level ?? "").trim().toLowerCase();
+    summary.levels[capability] = isCapacityLevel(level) ? level : null;
+  }
+
+  summary.lastUpdatedAt = lastUpdatedAt;
+  summary.coverageCount = CAPACITY_CAPABILITY_UNIVERSE.reduce(
+    (count, capability) => count + (summary.levels[capability] ? 1 : 0),
+    0,
+  );
+  return summary;
+}
+
+function isCapacityCapability(value: string): value is CapacityCapability {
+  return (CAPACITY_CAPABILITY_UNIVERSE as readonly string[]).includes(value);
+}
+
+function isCapacityLevel(value: string): value is CapacityLevel {
+  return (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "unavailable" ||
+    value === "overloaded"
+  );
 }

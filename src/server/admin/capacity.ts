@@ -9,7 +9,32 @@ import type { AdminLoaderResult } from "@/server/admin/types";
 const SNAPSHOTS_TABLE = "supplier_capacity_snapshots" as const;
 const SUPPLIERS_TABLE = "suppliers" as const;
 
-export type AdminCapacityLevel = "low" | "medium" | "high" | "overloaded";
+export const CAPACITY_CAPABILITY_UNIVERSE = [
+  "cnc_mill",
+  "cnc_lathe",
+  "mjp",
+  "sla",
+] as const;
+
+export type CapacityCapability = (typeof CAPACITY_CAPABILITY_UNIVERSE)[number];
+
+export type CapacityLevel =
+  | "low"
+  | "medium"
+  | "high"
+  | "unavailable"
+  | "overloaded";
+
+export type CapacitySnapshot = {
+  supplier_id: string;
+  capability: string;
+  capacity_level: CapacityLevel | string;
+  created_at: string;
+};
+
+export type CapacityBySupplierMap = Record<string, CapacitySnapshot[]>;
+
+export type AdminCapacityLevel = CapacityLevel;
 
 export type AdminCapacitySnapshotRow = {
   supplier_id: string;
@@ -37,6 +62,14 @@ function normalizeId(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeIds(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const normalized = values
+    .map((value) => normalizeId(value))
+    .filter((value): value is string => Boolean(value));
+  return Array.from(new Set(normalized));
+}
+
 function normalizeCapability(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
@@ -50,6 +83,13 @@ const CAPACITY_SNAPSHOT_SELECT = [
   "capacity_level",
   "created_at",
   "supplier:suppliers(company_name)",
+].join(",");
+
+const CAPACITY_SNAPSHOT_BATCH_SELECT = [
+  "supplier_id",
+  "capability",
+  "capacity_level",
+  "created_at",
 ].join(",");
 
 export async function getCapacitySnapshots(args: {
@@ -236,6 +276,94 @@ export async function getCapacitySnapshotsForSupplierWeek(args: {
       data: { snapshots: [] },
       error: "Unable to load capacity snapshots right now.",
     };
+  }
+}
+
+export async function getCapacitySnapshotsForSuppliersWeek(args: {
+  supplierIds: string[];
+  weekStartDate: string; // YYYY-MM-DD
+}): Promise<CapacityBySupplierMap> {
+  // Defense-in-depth: this loader uses the service role key.
+  await requireAdminUser();
+
+  const supplierIds = normalizeIds(args?.supplierIds);
+  const weekStartDate = normalizeDate(args?.weekStartDate);
+
+  if (supplierIds.length === 0 || !weekStartDate) {
+    return {};
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(SNAPSHOTS_TABLE)
+      .select(CAPACITY_SNAPSHOT_BATCH_SELECT)
+      .in("supplier_id", supplierIds)
+      .eq("week_start_date", weekStartDate)
+      .order("supplier_id", { ascending: true })
+      .order("capability", { ascending: true })
+      .order("created_at", { ascending: false })
+      .limit(2500)
+      .returns<CapacitySnapshot[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        // Failure-only logging: schema mismatch is common in ephemeral envs.
+        console.warn(
+          "[admin capacity] supplier-week batch snapshots missing schema; returning empty",
+          {
+            table: SNAPSHOTS_TABLE,
+            select: CAPACITY_SNAPSHOT_BATCH_SELECT,
+            weekStartDate,
+            supplierIdsCount: supplierIds.length,
+            supabaseError: serializeSupabaseError(error),
+          },
+        );
+        return {};
+      }
+
+      console.error("[admin capacity] supplier-week batch snapshots query failed", {
+        table: SNAPSHOTS_TABLE,
+        select: CAPACITY_SNAPSHOT_BATCH_SELECT,
+        weekStartDate,
+        supplierIdsCount: supplierIds.length,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return {};
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    const bySupplier: CapacityBySupplierMap = {};
+    for (const row of rows) {
+      const supplierId = typeof row?.supplier_id === "string" ? row.supplier_id : "";
+      if (!supplierId) continue;
+      const list = bySupplier[supplierId] ?? [];
+      list.push(row);
+      bySupplier[supplierId] = list;
+    }
+    return bySupplier;
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      console.warn(
+        "[admin capacity] supplier-week batch snapshots crashed (missing schema); returning empty",
+        {
+          table: SNAPSHOTS_TABLE,
+          select: CAPACITY_SNAPSHOT_BATCH_SELECT,
+          weekStartDate,
+          supplierIdsCount: supplierIds.length,
+          supabaseError: serializeSupabaseError(error),
+        },
+      );
+      return {};
+    }
+
+    console.error("[admin capacity] supplier-week batch snapshots crashed", {
+      table: SNAPSHOTS_TABLE,
+      select: CAPACITY_SNAPSHOT_BATCH_SELECT,
+      weekStartDate,
+      supplierIdsCount: supplierIds.length,
+      supabaseError: serializeSupabaseError(error) ?? error,
+    });
+    return {};
   }
 }
 

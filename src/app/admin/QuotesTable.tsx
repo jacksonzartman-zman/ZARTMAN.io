@@ -4,6 +4,20 @@ import { formatDateTime } from "@/lib/formatDate";
 import type { AdminQuoteListStatus, AdminQuotesView } from "@/types/adminQuotes";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
+import {
+  CAPACITY_CAPABILITY_UNIVERSE,
+  type CapacityCapability,
+  type CapacityLevel,
+} from "@/server/admin/capacity";
+
+export type QuoteCapacitySummary = {
+  supplierId: string;
+  weekStartDate: string; // YYYY-MM-DD
+  coverageCount: number; // 0..4
+  totalCount: number; // 4
+  levels: Record<CapacityCapability, CapacityLevel | null>;
+  lastUpdatedAt: string | null; // ISO
+};
 
 export type QuoteRow = {
   id: string;
@@ -27,6 +41,7 @@ export type QuoteRow = {
   hasAwardedBid: boolean;
   awardedAt: string | null;
   awardedSupplierName: string | null;
+  capacityNextWeek?: QuoteCapacitySummary | null;
   ctaHref: string;
   bidsHref: string;
 };
@@ -49,7 +64,7 @@ export default function QuotesTable({
 
   return (
     <AdminTableShell
-      tableClassName="min-w-[1024px] w-full border-separate border-spacing-0 text-sm"
+      tableClassName="min-w-[1180px] w-full border-separate border-spacing-0 text-sm"
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -71,6 +86,9 @@ export default function QuotesTable({
             Award
           </th>
           <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Capacity (Next Week)
+          </th>
+          <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Actions
           </th>
         </tr>
@@ -79,7 +97,7 @@ export default function QuotesTable({
         showEmptyState ? (
           <tr>
             <td
-              colSpan={7}
+              colSpan={8}
               className="px-6 py-12 text-center text-base text-slate-300"
             >
               <p className="font-medium text-slate-100">{emptyState.title}</p>
@@ -179,6 +197,9 @@ export default function QuotesTable({
                   )}
                 </td>
                 <td className={clsx(adminTableCellClass, "text-right")}>
+                  <CapacityCell summary={row.capacityNextWeek ?? null} />
+                </td>
+                <td className={clsx(adminTableCellClass, "text-right")}>
                   <div className="flex flex-col items-end gap-2">
                     <Link
                       href={row.ctaHref}
@@ -205,6 +226,76 @@ export default function QuotesTable({
       }
     />
   );
+}
+
+function CapacityCell({ summary }: { summary: QuoteCapacitySummary | null }) {
+  if (!summary) {
+    return <p className="text-xs font-semibold text-slate-500">Capacity: —</p>;
+  }
+
+  const coverageLabel = `${summary.coverageCount}/${summary.totalCount} set`;
+  const tooltip =
+    summary.lastUpdatedAt && summary.lastUpdatedAt.trim().length > 0
+      ? `Last updated ${summary.lastUpdatedAt}`
+      : "No capacity snapshots saved yet";
+
+  return (
+    <div className="inline-flex flex-col items-end gap-2" title={tooltip}>
+      <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200">
+        {coverageLabel}
+      </span>
+      <div className="flex flex-wrap justify-end gap-1">
+        {CAPACITY_CAPABILITY_UNIVERSE.map((capability) => {
+          const level = summary.levels[capability] ?? null;
+          const label = formatCapacityLevelLabel(level);
+          const isSet = Boolean(label);
+          return (
+            <span
+              key={capability}
+              title={capability}
+              className={clsx(
+                "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                isSet
+                  ? capacityLevelPillClasses(level)
+                  : "border-slate-800 bg-slate-950/40 text-slate-500",
+              )}
+            >
+              {label ?? "—"}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function formatCapacityLevelLabel(level: unknown): string | null {
+  const normalized = typeof level === "string" ? level.trim().toLowerCase() : "";
+  if (!normalized) return null;
+  if (normalized === "high") return "High";
+  if (normalized === "medium") return "Medium";
+  if (normalized === "low") return "Low";
+  if (normalized === "unavailable") return "Unavailable";
+  if (normalized === "overloaded") return "Overloaded";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function capacityLevelPillClasses(level: unknown): string {
+  const normalized = typeof level === "string" ? level.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "high":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "medium":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    case "low":
+      return "border-blue-500/40 bg-blue-500/10 text-blue-100";
+    case "unavailable":
+      return "border-slate-700 bg-slate-900/40 text-slate-200";
+    case "overloaded":
+      return "border-red-500/40 bg-red-500/10 text-red-100";
+    default:
+      return "border-slate-700 bg-slate-900/40 text-slate-200";
+  }
 }
 
 function getEmptyStateCopy({

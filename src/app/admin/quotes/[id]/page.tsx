@@ -62,6 +62,7 @@ import {
   type AdminCapacityLevel,
   type AdminCapacitySnapshotRow,
 } from "@/server/admin/capacity";
+import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 
 export const dynamic = "force-dynamic";
 
@@ -1300,17 +1301,6 @@ function resolveCapacitySupplierId(args: {
   const bidSupplier =
     typeof args.baseBids[0]?.supplier_id === "string" ? args.baseBids[0].supplier_id.trim() : "";
   return bidSupplier || null;
-}
-
-function getNextWeekStartDateIso(): string {
-  // Keep identical logic to /supplier/settings/capacity for consistency.
-  const now = new Date();
-  const day = now.getUTCDay(); // 0..6 (Sun..Sat)
-  const daysUntilNextMonday = ((8 - day) % 7) || 7;
-  const nextMonday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilNextMonday),
-  );
-  return nextMonday.toISOString().slice(0, 10);
 }
 
 function formatWeekOfLabel(weekStartDateIso: string): string {

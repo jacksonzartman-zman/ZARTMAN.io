@@ -8,6 +8,7 @@ import {
   SupplierCapacityEditor,
   type SupplierCapacityEditorValues,
 } from "@/app/(portals)/supplier/components/SupplierCapacityEditor";
+import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 
 export const dynamic = "force-dynamic";
 
@@ -146,16 +147,6 @@ function normalizeWeekStartDate(value: unknown): string {
   if (typeof value !== "string") return "";
   const trimmed = value.trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : "";
-}
-
-function getNextWeekStartDateIso(): string {
-  const now = new Date();
-  const day = now.getUTCDay(); // 0..6 (Sun..Sat)
-  const daysUntilNextMonday = ((8 - day) % 7) || 7;
-  const nextMonday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilNextMonday),
-  );
-  return nextMonday.toISOString().slice(0, 10);
 }
 
 function buildWeekOptions(nextWeekStartDateIso: string, count: number): string[] {
