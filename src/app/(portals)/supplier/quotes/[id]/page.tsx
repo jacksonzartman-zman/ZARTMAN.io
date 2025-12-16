@@ -82,7 +82,7 @@ export default async function SupplierQuoteDetailPage({
     params,
     resolveMaybePromise(searchParams),
   ]);
-  const tabParam = getSearchParamValue(resolvedSearchParams, "tab");
+  const tabParam = getSearchParamValue(resolvedSearchParams, "tab") ?? null;
 
   const { user } = await getServerAuthUser();
   if (!user) {
