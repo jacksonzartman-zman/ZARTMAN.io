@@ -57,6 +57,11 @@ import { AdminDecisionCtas } from "./AdminDecisionCtas";
 import { AdminInviteSupplierCard } from "./AdminInviteSupplierCard";
 import { HashScrollLink } from "@/app/(portals)/components/hashScroll";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import {
+  getCapacitySnapshotsForSupplierWeek,
+  type AdminCapacityLevel,
+  type AdminCapacitySnapshotRow,
+} from "@/server/admin/capacity";
 
 export const dynamic = "force-dynamic";
 
@@ -838,6 +843,95 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const showInviteSupplierCta =
       !quoteIsAwarded && !hasAssignedSupplier && inviteCount === 0;
 
+    const nextWeekStartDateIso = getNextWeekStartDateIso();
+    const nextWeekLabel = formatWeekOfLabel(nextWeekStartDateIso);
+    const resolvedCapacitySupplierId = resolveCapacitySupplierId({
+      awardedSupplierId: quote.awarded_supplier_id,
+      baseBids,
+    });
+
+    let capacitySnapshots: AdminCapacitySnapshotRow[] = [];
+    let capacitySnapshotsError: string | null = null;
+    if (resolvedCapacitySupplierId) {
+      const capacityResult = await getCapacitySnapshotsForSupplierWeek({
+        supplierId: resolvedCapacitySupplierId,
+        weekStartDate: nextWeekStartDateIso,
+      });
+      capacitySnapshots = capacityResult.data.snapshots ?? [];
+      capacitySnapshotsError = capacityResult.ok ? null : capacityResult.error ?? null;
+    }
+
+    const capacityLevelByCapability = new Map<string, AdminCapacityLevel | string>();
+    for (const snapshot of capacitySnapshots) {
+      const key = (snapshot?.capability ?? "").trim().toLowerCase();
+      if (!key) continue;
+      if (!capacityLevelByCapability.has(key)) {
+        capacityLevelByCapability.set(key, snapshot.capacity_level);
+      }
+    }
+
+    const capacityPanel = (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-100">
+              Capacity (Next Week)
+            </h2>
+            <p className="mt-1 text-xs text-slate-400">Week of {nextWeekLabel}</p>
+          </div>
+          {resolvedCapacitySupplierId ? (
+            <Link
+              href={`/admin/capacity?supplierId=${encodeURIComponent(resolvedCapacitySupplierId)}`}
+              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+            >
+              View capacity calendar
+            </Link>
+          ) : null}
+        </header>
+
+        {!resolvedCapacitySupplierId ? (
+          <p className="mt-4 text-sm text-slate-400">No supplier selected yet.</p>
+        ) : capacitySnapshotsError ? (
+          <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+            {capacitySnapshotsError}
+          </p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {capacitySnapshots.length === 0 ? (
+              <p className="text-sm text-slate-400">No capacity signal for this week.</p>
+            ) : null}
+            <dl className="grid gap-2">
+              {CAPACITY_SNAPSHOT_UNIVERSE.map((capability) => {
+                const level = capacityLevelByCapability.get(capability.key) ?? null;
+                const display = formatCapacityLevelLabel(level);
+                const pill = display ? (
+                  <span className={clsx("rounded-full border px-2.5 py-0.5 text-[11px] font-semibold", capacityLevelPillClasses(level))}>
+                    {display}
+                  </span>
+                ) : (
+                  <span className="text-sm font-semibold text-slate-400">Not set</span>
+                );
+
+                return (
+                  <div
+                    key={capability.key}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3"
+                  >
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      {capability.label}
+                    </dt>
+                    <dd className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+                      {pill}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </div>
+        )}
+      </section>
+    );
+
     return (
       <AdminDashboardShell
         eyebrow="Admin · Quote"
@@ -1004,6 +1098,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               <div className="space-y-4">
                 {kickoffStatusPanel}
                 {workflowPanel}
+                {capacityPanel}
                 {awardAuditPanel}
                 {projectSnapshotPanel}
               </div>
@@ -1185,4 +1280,74 @@ function findFastestLeadTime(bids: AdminSupplierBidRow[]): number | null {
     }
     return currentBest;
   }, null);
+}
+
+const CAPACITY_SNAPSHOT_UNIVERSE: Array<{ key: string; label: string }> = [
+  { key: "cnc_mill", label: "CNC Mill" },
+  { key: "cnc_lathe", label: "CNC Lathe" },
+  { key: "mjp", label: "MJP" },
+  { key: "sla", label: "SLA" },
+];
+
+function resolveCapacitySupplierId(args: {
+  awardedSupplierId?: string | null;
+  baseBids: Array<{ supplier_id?: string | null }>;
+}): string | null {
+  const awarded =
+    typeof args.awardedSupplierId === "string" ? args.awardedSupplierId.trim() : "";
+  if (awarded) return awarded;
+  if (args.baseBids.length !== 1) return null;
+  const bidSupplier =
+    typeof args.baseBids[0]?.supplier_id === "string" ? args.baseBids[0].supplier_id.trim() : "";
+  return bidSupplier || null;
+}
+
+function getNextWeekStartDateIso(): string {
+  // Keep identical logic to /supplier/settings/capacity for consistency.
+  const now = new Date();
+  const day = now.getUTCDay(); // 0..6 (Sun..Sat)
+  const daysUntilNextMonday = ((8 - day) % 7) || 7;
+  const nextMonday = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilNextMonday),
+  );
+  return nextMonday.toISOString().slice(0, 10);
+}
+
+function formatWeekOfLabel(weekStartDateIso: string): string {
+  const parsed = Date.parse(`${weekStartDateIso}T00:00:00.000Z`);
+  if (Number.isNaN(parsed)) return weekStartDateIso;
+  return new Date(parsed).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatCapacityLevelLabel(level: unknown): string | null {
+  const normalized = typeof level === "string" ? level.trim().toLowerCase() : "";
+  if (!normalized) return null;
+  if (normalized === "high") return "High";
+  if (normalized === "medium") return "Medium";
+  if (normalized === "low") return "Low";
+  if (normalized === "unavailable") return "Unavailable";
+  if (normalized === "overloaded") return "Overloaded";
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function capacityLevelPillClasses(level: unknown): string {
+  const normalized = typeof level === "string" ? level.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "high":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "medium":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    case "low":
+      return "border-blue-500/40 bg-blue-500/10 text-blue-100";
+    case "unavailable":
+      return "border-slate-700 bg-slate-900/40 text-slate-200";
+    case "overloaded":
+      return "border-red-500/40 bg-red-500/10 text-red-100";
+    default:
+      return "border-slate-700 bg-slate-900/40 text-slate-200";
+  }
 }
