@@ -36,7 +36,8 @@ type InboxExtraField =
   | "bid_count"
   | "latest_bid_at"
   | "has_awarded_bid"
-  | "awarded_supplier_name";
+  | "awarded_supplier_name"
+  | "awarded_supplier_id";
 
 const ADMIN_QUOTES_INBOX_TABLE = "admin_quotes_inbox" as const;
 
@@ -58,6 +59,7 @@ const ADMIN_QUOTES_INBOX_SELECT = [
   "upload_file_count",
   "upload_name",
   "awarded_at",
+  "awarded_supplier_id",
   // View-projected admin activity fields
   "bid_count",
   "latest_bid_at",
@@ -82,6 +84,7 @@ export type AdminQuotesInboxRow = {
   upload_file_count?: number | null;
   upload_name?: string | null;
   awarded_at?: string | null;
+  awarded_supplier_id?: string | null;
   bid_count: number;
   latest_bid_at: string | null;
   has_awarded_bid: boolean;
@@ -300,6 +303,92 @@ export async function getAdminQuotesInbox(
       data: { rows: [], count: 0, page, pageSize, hasMore: false },
       error: "Unable to load the inbox right now. Please refresh to try again.",
     };
+  }
+}
+
+export async function getOnlyBidderSupplierIdsForQuotes(
+  quoteIds: string[],
+): Promise<Record<string, string>> {
+  // Defense-in-depth: admin routes are already gated in `src/app/admin/layout.tsx`.
+  await requireAdminUser();
+
+  const normalized = Array.from(
+    new Set(
+      quoteIds
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  if (normalized.length === 0) {
+    return {};
+  }
+
+  const supabase = getServiceRoleSupabaseClient();
+  if (!supabase) {
+    return {};
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("supplier_bids")
+      .select("quote_id,supplier_id,created_at")
+      .in("quote_id", normalized)
+      .order("created_at", { ascending: true })
+      .limit(5000)
+      .returns<Array<{ quote_id: string; supplier_id: string; created_at: string | null }>>();
+
+    if (error) {
+      if (isMissingSchemaError(error)) {
+        // Failure-only logging; schema mismatch is common in ephemeral envs.
+        logAdminQuotesWarn("supplier_bids missing schema; skipping only-bidder resolution", {
+          quoteIdsCount: normalized.length,
+          supabaseError: serializeSupabaseError(error),
+        });
+        return {};
+      }
+
+      logAdminQuotesError("only-bidder resolution query failed", {
+        quoteIdsCount: normalized.length,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return {};
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    const supplierIdsByQuote = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const quoteId = typeof row?.quote_id === "string" ? row.quote_id.trim() : "";
+      const supplierId = typeof row?.supplier_id === "string" ? row.supplier_id.trim() : "";
+      if (!quoteId || !supplierId) continue;
+      const set = supplierIdsByQuote.get(quoteId) ?? new Set<string>();
+      set.add(supplierId);
+      supplierIdsByQuote.set(quoteId, set);
+    }
+
+    const result: Record<string, string> = {};
+    for (const [quoteId, supplierSet] of supplierIdsByQuote.entries()) {
+      if (supplierSet.size === 1) {
+        const [supplierId] = Array.from(supplierSet);
+        if (supplierId) result[quoteId] = supplierId;
+      }
+    }
+    return result;
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      logAdminQuotesWarn("supplier_bids crashed (missing schema); skipping only-bidder resolution", {
+        quoteIdsCount: normalized.length,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return {};
+    }
+
+    logAdminQuotesError("only-bidder resolution crashed", {
+      quoteIdsCount: normalized.length,
+      supabaseError: serializeSupabaseError(error) ?? error,
+    });
+    return {};
   }
 }
 
