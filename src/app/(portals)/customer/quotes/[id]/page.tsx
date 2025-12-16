@@ -223,7 +223,11 @@ export default async function CustomerQuoteDetailPage({
       : "Kickoff in progress"
     : "Select a winning supplier to start kickoff";
   const kickoffChecklistSummaryLabel = quoteHasWinner
-    ? `${customerKickoffSummary.completedTasks} / ${customerKickoffSummary.totalTasks} tasks completed`
+    ? customerKickoffSummary.totalTasks > 0
+      ? `${customerKickoffSummary.completedTasks} / ${customerKickoffSummary.totalTasks} tasks completed`
+      : customerKickoffSummary.isComplete
+        ? "All tasks completed"
+        : "—"
     : "—";
   const kickoffSummaryTone =
     kickoffSummaryStatus === "complete"

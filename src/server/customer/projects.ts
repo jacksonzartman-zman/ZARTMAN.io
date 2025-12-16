@@ -9,6 +9,7 @@ type AwardedProjectQuoteRow = {
   status: string | null;
   awarded_at: string | null;
   awarded_supplier_id: string | null;
+  kickoff_completed_at?: string | null;
   upload_id?: string | null;
   created_at?: string | null;
 };
@@ -83,7 +84,7 @@ export async function getCustomerAwardedQuotesForProjects({
 
   const quoteTable = "quotes";
   const quoteSelect =
-    "id,status,awarded_at,awarded_supplier_id,upload_id,created_at";
+    "id,status,awarded_at,awarded_supplier_id,kickoff_completed_at,upload_id,created_at";
 
   const { data: rows, error } = await supabaseServer
     .from(quoteTable)
@@ -139,7 +140,13 @@ export async function getCustomerAwardedQuotesForProjects({
       ? supplierMap.get(awardedSupplierId) ?? awardedSupplierId
       : null;
     const kickoffKey = `${quote.id}:${awardedSupplierId ?? ""}`;
-    const kickoff = kickoffMap.get(kickoffKey) ?? emptyKickoffSummary();
+    const kickoffBase = kickoffMap.get(kickoffKey) ?? emptyKickoffSummary();
+    const kickoffCompleteFromQuote =
+      typeof quote.kickoff_completed_at === "string" &&
+      quote.kickoff_completed_at.trim().length > 0;
+    const kickoff = kickoffCompleteFromQuote
+      ? { ...kickoffBase, isComplete: true }
+      : kickoffBase;
 
     return {
       id: quote.id,

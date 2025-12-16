@@ -233,11 +233,29 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
   }
 
   if (type === "kickoff_completed") {
+    const completedTasks =
+      readNumber(metadata, "completedTasks") ??
+      readNumber(metadata, "completed_tasks") ??
+      readNumber(metadata, "completed_count");
+    const totalTasks =
+      readNumber(metadata, "totalTasks") ??
+      readNumber(metadata, "total_tasks") ??
+      readNumber(metadata, "total_count");
+
+    const subtitle =
+      typeof completedTasks === "number" &&
+      typeof totalTasks === "number" &&
+      Number.isFinite(completedTasks) &&
+      Number.isFinite(totalTasks) &&
+      totalTasks > 0
+        ? `${completedTasks}/${totalTasks} tasks completed.`
+        : "All tasks completed.";
+
     return {
       groupKey: "kickoff",
       groupLabel: "Kickoff",
-      title: "Kickoff completed",
-      subtitle: "All kickoff tasks have been completed.",
+      title: "Kickoff complete",
+      subtitle,
       actorLabel,
     };
   }

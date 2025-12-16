@@ -29,6 +29,7 @@ import {
   formatKickoffSummaryLabel,
   toggleSupplierKickoffTask,
 } from "@/server/quotes/kickoffTasks";
+import { finalizeKickoffCompletionIfComplete } from "@/server/quotes/kickoffCompletion";
 import { emitQuoteEvent } from "@/server/quotes/events";
 
 export type SupplierBidFormState = {
@@ -873,6 +874,15 @@ export async function completeKickoffTaskImpl(
         reason: "unknown",
       };
     }
+
+    // Best-effort: if this update completed the final task, stamp the quote + emit kickoff_completed.
+    // Do not block the supplier action if anything fails here.
+    void finalizeKickoffCompletionIfComplete({
+      quoteId,
+      supplierId: resolvedSupplierId,
+      actorUserId: user.id,
+      actorRole: "supplier",
+    });
 
     const kickoffSnapshot = await loadQuoteKickoffTasksForSupplier(
       quoteId,
