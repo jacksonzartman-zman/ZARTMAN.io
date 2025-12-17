@@ -884,6 +884,7 @@ function SupplierQuoteWorkspace({
               canPost={messagingUnlocked}
               postAction={postMessageAction}
               currentUserId={currentUserId}
+              markRead={tabParam === "messages"}
               title="Messages"
               description="Customer, supplier, and admin updates for this RFQ."
               helperText="Your note notifies the customer and the Zartman team."
