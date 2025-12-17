@@ -30,6 +30,8 @@ import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThr
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { QuoteFilesCard } from "./QuoteFilesCard";
 import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { QuoteAtAGlanceBar } from "@/components/QuoteAtAGlanceBar";
+import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 import {
   deriveAdminQuoteAttentionState,
   loadAdminQuoteDetail,
@@ -469,17 +471,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       "Details, files, pricing, and messages for this RFQ.";
     const cardClasses =
       "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4";
-    const pillBaseClasses =
-      "flex min-w-max items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold";
-    const secondaryPillClasses =
-      "border-slate-800 bg-slate-950/50 text-slate-200 hover:border-emerald-400 hover:text-emerald-100 transition";
-    const priceChipText =
-      typeof priceValue === "number"
-        ? `${(currencyValue ?? "USD").toUpperCase()} ${priceValue.toFixed(2)}`
-        : "Not set";
-    const targetDateChipText = targetDateValue
-      ? formatDateTime(targetDateValue)
-      : "Not set";
     const fileCountText =
       filePreviews.length === 0
         ? "None attached"
@@ -919,6 +910,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         <p className="mt-1 text-sm text-slate-400">
           Adjust status, pricing, currency, target date, and internal/DFM notes.
         </p>
+        <div className="mt-4">
+          <AdminDecisionCtas
+            quoteId={quote.id}
+            status={status}
+            showAwardLink={false}
+          />
+        </div>
         <QuoteUpdateForm
           quote={{
             id: quote.id,
@@ -975,11 +973,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       winningBidExists || awardedAtLabel
         ? awardedByLabel || "—"
         : "—";
-    const decisionHeaderTone = attentionState.needsDecision
-      ? "border-amber-500/30 bg-amber-500/5"
-      : winningBidExists
-        ? "border-emerald-500/30 bg-emerald-500/5"
-        : "border-slate-800 bg-slate-950/60";
     const hasAssignedSupplier = Boolean(
       (assignedSupplierEmail ?? "").trim() || (assignedSupplierName ?? "").trim(),
     );
@@ -1245,6 +1238,51 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       </section>
     );
 
+    const adminPrimaryAction = resolvePrimaryAction({
+      role: "admin",
+      quote: {
+        id: quote.id,
+        status,
+        primaryActionHints: {
+          needsDecision: attentionState.needsDecision,
+          hasWinner: hasWinningBid,
+        },
+      },
+    });
+    const adminWhatsNext = attentionState.needsDecision
+      ? "Needs award decision."
+      : "No pending actions.";
+    const adminPills = [
+      { key: "quote", label: "Quote", value: formatShortId(quote.id) },
+      {
+        key: "bids",
+        label: "Bids",
+        value: bidCountLabel,
+        tone: attentionState.needsDecision ? "warning" : "neutral",
+        href: "#bids-panel",
+      },
+      { key: "bestPrice", label: "Best price", value: bestPriceDisplay },
+      { key: "leadTime", label: "Fastest lead", value: fastestLeadTimeDisplay },
+      {
+        key: "kickoff",
+        label: "Kickoff",
+        value: kickoffSummaryLabel,
+        tone: kickoffProgressBasis.isComplete
+          ? "success"
+          : hasWinningBid
+            ? "info"
+            : "neutral",
+        href: "#kickoff",
+      },
+      {
+        key: "messages",
+        label: "Messages",
+        value: `${quoteMessages.length}`,
+        tone: threadSla?.needsReplyFrom ? "warning" : "neutral",
+        href: "#messages-panel",
+      },
+    ] as const;
+
     return (
       <AdminDashboardShell
         eyebrow="Admin · Quote"
@@ -1266,100 +1304,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         }
       >
         <div className="space-y-6">
-          <section
-            className={clsx(
-              "sticky top-4 z-30 rounded-2xl border px-5 py-4 backdrop-blur",
-              decisionHeaderTone,
-            )}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0 space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Decision console
-                </p>
-                <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-2 lg:grid-cols-4">
-                  <DecisionField label="RFQ status" value={statusLabel} />
-                  <DecisionField
-                    label="Awarded supplier"
-                    value={decisionAwardedSupplier}
-                    valueClassName={
-                      decisionAwardedSupplier === "Not awarded"
-                        ? "text-slate-300"
-                        : "text-slate-50"
-                    }
-                  />
-                  <DecisionField label="Awarded at" value={decisionAwardedAt} />
-                  <DecisionField label="Awarded by" value={decisionAwardedBy} />
-                </dl>
-              </div>
-              <div className="flex flex-col items-start gap-2 sm:items-end">
-                <AdminDecisionCtas quoteId={quote.id} status={status} />
-                {showInviteSupplierCta ? (
-                  <Link
-                    href="#suppliers-panel"
-                    className={clsx(
-                      secondaryCtaClasses,
-                      ctaSizeClasses.sm,
-                      "whitespace-nowrap",
-                    )}
-                  >
-                    Invite supplier
-                  </Link>
-                ) : null}
-                <div className="flex flex-wrap gap-2 text-[11px] text-slate-400">
-                  <a
-                    href="#uploads-panel"
-                    className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 hover:border-emerald-400 hover:text-emerald-100"
-                  >
-                    Uploads
-                  </a>
-                  <a
-                    href="#messages-panel"
-                    className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 hover:border-emerald-400 hover:text-emerald-100"
-                  >
-                    Messages
-                  </a>
-                  <HashScrollLink
-                    hash="kickoff"
-                    className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 hover:border-emerald-400 hover:text-emerald-100"
-                  >
-                    Kickoff
-                  </HashScrollLink>
-                </div>
-              </div>
-            </div>
-          </section>
+          <QuoteAtAGlanceBar
+            role="admin"
+            statusLabel={statusLabel}
+            whatsNext={adminWhatsNext}
+            pills={[...adminPills]}
+            primaryAction={adminPrimaryAction}
+          />
 
           <div className="space-y-3">
-            <div className="overflow-x-auto pb-1">
-              <div className="flex min-w-max gap-2">
-                <span
-                  className={clsx(
-                    pillBaseClasses,
-                    "border-transparent bg-emerald-500/10 text-emerald-200",
-                  )}
-                >
-                  Status: {statusLabel}
-                </span>
-                <span className={clsx(pillBaseClasses, secondaryPillClasses)}>
-                  Price: {priceChipText}
-                </span>
-                <span className={clsx(pillBaseClasses, secondaryPillClasses)}>
-                  Target date: {targetDateChipText}
-                </span>
-                <a
-                  href="#uploads-panel"
-                  className={clsx(
-                    pillBaseClasses,
-                    secondaryPillClasses,
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
-                  )}
-                >
-                  Files: {fileCountText}
-                </a>
-              </div>
-            </div>
-
             <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
               <span>
                 Quote ID:{" "}
@@ -1521,23 +1474,6 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         </div>
       </AdminDashboardShell>
     );
-}
-
-function DecisionField({
-  label,
-  value,
-  valueClassName,
-}: {
-  label: string;
-  value: string;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-      <dt className="text-[11px] uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className={clsx("font-medium text-slate-100", valueClassName)}>{value}</dd>
-    </div>
-  );
 }
 
 function SnapshotField({ label, value }: { label: string; value: string }) {

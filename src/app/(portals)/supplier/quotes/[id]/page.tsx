@@ -72,6 +72,8 @@ import type { QuoteEventRecord } from "@/server/quotes/events";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
 import { FocusTabScroll } from "@/app/(portals)/shared/FocusTabScroll";
+import { QuoteAtAGlanceBar } from "@/components/QuoteAtAGlanceBar";
+import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 
 export const dynamic = "force-dynamic";
 
@@ -457,72 +459,75 @@ function SupplierQuoteWorkspace({
       Back to inbox
     </Link>
   );
+  const supplierPrimaryAction = resolvePrimaryAction({
+    role: "supplier",
+    quote: {
+      id: quote.id,
+      status: quote.status ?? null,
+      awarded_supplier_id: quote.awarded_supplier_id ?? null,
+      awarded_bid_id: quote.awarded_bid_id ?? null,
+      awarded_at: quote.awarded_at ?? null,
+      kickoff_completed_at:
+        (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ??
+        null,
+      primaryActionHints: {
+        canSubmitBid,
+        awardedToSupplier,
+        hasWinner: quoteHasWinner,
+      },
+    },
+  });
+  const supplierWhatsNext = awardedToSupplier
+    ? "Kickoff checklist is unlocked. Complete tasks and keep the thread updated."
+    : canSubmitBid
+      ? "Submit pricing and lead time when you’re ready."
+      : acceptedLock
+        ? "Bid is accepted — bidding is locked."
+        : closedWindowLock
+          ? "Bidding is closed for this RFQ."
+          : "Follow updates in the shared thread below.";
+  const bidPillValue =
+    existingBid?.status && typeof existingBid.status === "string" && existingBid.status.trim()
+      ? existingBid.status.trim()
+      : existingBid
+        ? "Submitted"
+        : "Not submitted";
+  const awardPillValue = awardedToSupplier
+    ? "Awarded to you"
+    : quoteHasWinner
+      ? "Not selected"
+      : "Pending";
+  const supplierAtAGlancePills = [
+    { key: "rfq", label: "RFQ", value: primaryFileName },
+    { key: "files", label: "Files", value: fileCountText },
+    {
+      key: "bid",
+      label: "Bid",
+      value: bidPillValue,
+      tone: existingBid ? "info" : "neutral",
+      href: "#bid",
+    },
+    {
+      key: "award",
+      label: "Award",
+      value: awardPillValue,
+      tone: awardedToSupplier ? "success" : quoteHasWinner ? "neutral" : "info",
+      href: "#kickoff",
+    },
+    {
+      key: "supplier",
+      label: "Working as",
+      value: supplierDisplayName,
+    },
+  ] as const;
   const headerContent = (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-            RFQ file
-          </p>
-          <p className="text-sm text-slate-300">{primaryFileName}</p>
-        </div>
-        <span className="rounded-full border border-blue-400/40 bg-blue-500/10 px-3 py-1 text-xs font-semibold text-blue-100">
-          {derived.statusLabel}
-        </span>
-      </div>
-      <dl className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Customer
-          </dt>
-          <dd className="text-slate-100">{derived.customerName ?? "Customer"}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Company
-          </dt>
-          <dd className="text-slate-100">{derived.companyName ?? "Not provided"}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Target ship date
-          </dt>
-          <dd className="text-slate-100">
-            {derived.targetDateValue
-              ? formatDateTime(derived.targetDateValue)
-              : "Not scheduled"}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Submitted
-          </dt>
-          <dd className="text-slate-100">
-            {formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
-          </dd>
-        </div>
-      </dl>
-      <div className="flex flex-wrap gap-3 text-xs text-slate-400">
-        <span>
-          Working as{" "}
-          <span className="font-semibold text-white">
-            {supplierDisplayName}
-          </span>{" "}
-          (<span className="font-mono text-slate-200">{supplierEmail}</span>)
-        </span>
-        {assignmentNames.length > 0 ? (
-          <span>
-            Assigned with:{" "}
-            <span className="text-slate-200">{assignmentNames.join(", ")}</span>
-          </span>
-        ) : null}
-        {isWinningSupplier ? (
-          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-            Winner selected
-          </span>
-        ) : null}
-      </div>
-    </div>
+    <QuoteAtAGlanceBar
+      role="supplier"
+      statusLabel={derived.statusLabel}
+      whatsNext={supplierWhatsNext}
+      pills={[...supplierAtAGlancePills]}
+      primaryAction={supplierPrimaryAction}
+    />
   );
 
   const winnerCallout = quoteHasWinner ? (
@@ -587,7 +592,7 @@ function SupplierQuoteWorkspace({
   }
 
   const bidPanelSection = (
-    <section className={clsx(cardClasses, "space-y-4")}>
+    <section id="bid" className={clsx(cardClasses, "space-y-4 scroll-mt-24")}>
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Bid

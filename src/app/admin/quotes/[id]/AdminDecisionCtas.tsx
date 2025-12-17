@@ -21,6 +21,7 @@ type AdminDecisionCtasProps = {
   quoteId: string;
   status: QuoteStatus;
   awardAnchorId?: string;
+  showAwardLink?: boolean;
   className?: string;
 };
 
@@ -28,6 +29,7 @@ export function AdminDecisionCtas({
   quoteId,
   status,
   awardAnchorId = "bids-panel",
+  showAwardLink = true,
   className,
 }: AdminDecisionCtasProps) {
   const canReopen = status === "lost" || status === "cancelled";
@@ -53,12 +55,14 @@ export function AdminDecisionCtas({
 
   return (
     <div className={clsx("flex flex-wrap items-center gap-2", className)}>
-      <a
-        href={`#${awardAnchorId}`}
-        className={clsx(primaryCtaClasses, "whitespace-nowrap")}
-      >
-        Award
-      </a>
+      {showAwardLink ? (
+        <a
+          href={`#${awardAnchorId}`}
+          className={clsx(primaryCtaClasses, "whitespace-nowrap")}
+        >
+          Award
+        </a>
+      ) : null}
 
       <form
         action={reopenFormAction}
