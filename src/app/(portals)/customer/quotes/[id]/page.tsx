@@ -52,7 +52,7 @@ import {
   resolveKickoffProgressBasis,
 } from "@/lib/quote/kickoffChecklist";
 import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
-import { QuoteAtAGlanceBar } from "@/components/QuoteAtAGlanceBar";
+import { QuoteAtAGlanceBar, type QuoteAtAGlancePill } from "@/components/QuoteAtAGlanceBar";
 import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 
 export const dynamic = "force-dynamic";
@@ -416,6 +416,9 @@ export default async function CustomerQuoteDetailPage({
       },
     },
   });
+
+  const bidsPillTone: "info" | "neutral" = bidCount > 0 ? "info" : "neutral";
+
   const customerAtAGlancePills = [
     { key: "rfq", label: "RFQ", value: primaryFileName },
     { key: "files", label: "Files", value: fileCountText, href: "#uploads" },
@@ -423,7 +426,7 @@ export default async function CustomerQuoteDetailPage({
       key: "bids",
       label: "Bids",
       value: bidSummaryBadgeLabel,
-      tone: bidCount > 0 ? "info" : "neutral",
+      tone: bidsPillTone,
       href: "#award",
     },
     {
@@ -446,7 +449,7 @@ export default async function CustomerQuoteDetailPage({
     readOnly
       ? { key: "mode", label: "Mode", value: "Read-only preview", tone: "warning" }
       : { key: "mode", label: "Mode", value: "Full access", tone: "neutral" },
-  ] as const;
+  ] satisfies QuoteAtAGlancePill[];
   const createdAtDate = submittedAtRaw ? new Date(submittedAtRaw) : null;
   const quoteAgeInDays =
     createdAtDate && Number.isFinite(createdAtDate.getTime())
