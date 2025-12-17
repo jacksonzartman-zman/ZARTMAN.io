@@ -39,6 +39,7 @@ import { canUserBid } from "@/lib/permissions";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
+import { DisclosureSection } from "@/components/DisclosureSection";
 import {
   loadSupplierCapacitySnapshotsForWeek,
   loadLatestCapacityUpdateRequestForSupplierWeek,
@@ -74,6 +75,8 @@ import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesU
 import { FocusTabScroll } from "@/app/(portals)/shared/FocusTabScroll";
 import { QuoteAtAGlanceBar } from "@/components/QuoteAtAGlanceBar";
 import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
+import { QuoteSectionRail } from "@/components/QuoteSectionRail";
+import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 
 export const dynamic = "force-dynamic";
 
@@ -430,6 +433,17 @@ function SupplierQuoteWorkspace({
       : fileCount === 1
         ? "1 file attached"
         : `${fileCount} files attached`;
+
+  const kickoffTasksAvailable = Boolean(kickoffTasksResult?.ok);
+  const kickoffTasks = kickoffTasksResult?.ok ? kickoffTasksResult.tasks : [];
+  const kickoffSummaryForRail = kickoffTasksAvailable ? summarizeKickoffTasks(kickoffTasks) : null;
+  const kickoffProgressBasisForRail = resolveKickoffProgressBasis({
+    kickoffCompletedAt:
+      (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? null,
+    completedCount: kickoffSummaryForRail?.completedCount ?? null,
+    totalCount: kickoffSummaryForRail?.totalCount ?? null,
+  });
+  const kickoffProgressRatioForRail = formatKickoffTasksRatio(kickoffProgressBasisForRail);
   const assignmentNames = assignments
     .map((assignment) => assignment.supplier_name ?? assignment.supplier_email)
     .filter((value): value is string => Boolean(value && value.trim()));
@@ -527,6 +541,20 @@ function SupplierQuoteWorkspace({
       whatsNext={supplierWhatsNext}
       pills={[...supplierAtAGlancePills]}
       primaryAction={supplierPrimaryAction}
+      below={
+        <QuoteSectionRail
+          sections={buildSupplierQuoteSections({
+            canSubmitBid,
+            existingBidStatus: existingBid?.status ?? null,
+            awardedToSupplier,
+            kickoffRatio: kickoffProgressRatioForRail,
+            kickoffComplete: kickoffProgressBasisForRail.isComplete,
+            messageCount: quoteMessages.length,
+            fileCount,
+            messagesHref: buildQuoteTabHref(tabParam, "messages", "#messages"),
+          })}
+        />
+      }
     />
   );
 
@@ -592,52 +620,77 @@ function SupplierQuoteWorkspace({
   }
 
   const bidPanelSection = (
-    <section id="bid" className={clsx(cardClasses, "space-y-4 scroll-mt-24")}>
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Bid
-        </p>
-        <h2 className="text-lg font-semibold text-white">
-          Submit pricing and lead time
-        </h2>
-        <p className="text-sm text-slate-300">
-          Only the Zartman team and the requesting customer can see these details.
-        </p>
-        <p className="text-xs text-slate-500">
-          Share a unit price, realistic lead time, and highlight any certifications or notes that help
-          the buyer approve your shop.
-        </p>
-      </header>
-      {acceptedLock ? (
-        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-          This bid is locked because the customer already accepted it.
-        </p>
-      ) : null}
-      {closedWindowLock ? (
-        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
-          Bidding is disabled because this RFQ is no longer accepting new proposals.
-        </p>
-      ) : null}
-      <SupplierBidPanel
-        quoteId={quote.id}
-        initialBid={initialBid}
-        approvalsOn={approvalsOn}
-        approved={approved}
-        bidsUnavailableMessage={bidsUnavailableMessage}
-        bidLocked={acceptedLock || closedWindowLock}
-      />
-    </section>
+    <DisclosureSection
+      id="bid"
+      className={clsx(cardClasses, "scroll-mt-24")}
+      title="Bid"
+      description="Submit pricing and lead time."
+      defaultOpen={canSubmitBid}
+      summary={
+        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+          {bidPillValue}
+        </span>
+      }
+    >
+      <div className="space-y-4">
+        <header className="space-y-1">
+          <h2 className="text-lg font-semibold text-white">
+            Submit pricing and lead time
+          </h2>
+          <p className="text-sm text-slate-300">
+            Only the Zartman team and the requesting customer can see these details.
+          </p>
+          <p className="text-xs text-slate-500">
+            Share a unit price, realistic lead time, and highlight any certifications or notes that help
+            the buyer approve your shop.
+          </p>
+        </header>
+        {acceptedLock ? (
+          <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            This bid is locked because the customer already accepted it.
+          </p>
+        ) : null}
+        {closedWindowLock ? (
+          <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
+            Bidding is disabled because this RFQ is no longer accepting new proposals.
+          </p>
+        ) : null}
+        <SupplierBidPanel
+          quoteId={quote.id}
+          initialBid={initialBid}
+          approvalsOn={approvalsOn}
+          approved={approved}
+          bidsUnavailableMessage={bidsUnavailableMessage}
+          bidLocked={acceptedLock || closedWindowLock}
+        />
+      </div>
+    </DisclosureSection>
   );
 
   const filesSection = (
-    <QuoteFilesUploadsSection files={filePreviews} fileCountText={fileCountText} />
+    <DisclosureSection
+      id="uploads"
+      className="scroll-mt-24"
+      title="Uploads"
+      description="Shared RFQ files and previews."
+      defaultOpen={fileCount > 0}
+      summary={
+        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+          {fileCountText}
+        </span>
+      }
+    >
+      <QuoteFilesUploadsSection files={filePreviews} fileCountText={fileCountText} />
+    </DisclosureSection>
   );
 
   const rfqDetailsSection = (
-    <CollapsibleCard
-      title="RFQ details"
+    <DisclosureSection
+      id="details"
+      className="scroll-mt-24"
+      title="Details"
       description="Customer, process hints, and workflow snapshot."
-      defaultOpen
+      defaultOpen={false}
       summary={
         <span className="rounded-full border border-blue-400/30 bg-blue-500/10 px-3 py-1 text-blue-100">
           {derived.statusLabel}
@@ -672,7 +725,7 @@ function SupplierQuoteWorkspace({
           variant="blue"
         />
       </div>
-    </CollapsibleCard>
+    </DisclosureSection>
   );
 
   const notesSection = (
@@ -705,14 +758,11 @@ function SupplierQuoteWorkspace({
 
   let kickoffSection: ReactNode = null;
   if (showKickoffChecklist) {
-    const tasksAvailable = Boolean(kickoffTasksResult?.ok);
-    const kickoffTasks = kickoffTasksResult?.ok ? kickoffTasksResult.tasks : [];
-    const kickoffSummary = tasksAvailable ? summarizeKickoffTasks(kickoffTasks) : null;
     const kickoffProgressBasis = resolveKickoffProgressBasis({
       kickoffCompletedAt:
         (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? null,
-      completedCount: kickoffSummary?.completedCount ?? null,
-      totalCount: kickoffSummary?.totalCount ?? null,
+      completedCount: kickoffSummaryForRail?.completedCount ?? null,
+      totalCount: kickoffSummaryForRail?.totalCount ?? null,
     });
     const kickoffProgressRatio = formatKickoffTasksRatio(kickoffProgressBasis);
     const kickoffSecondaryText = kickoffProgressBasis.isComplete
@@ -727,12 +777,12 @@ function SupplierQuoteWorkspace({
       Number.isFinite(nudgedMs) &&
       Date.now() - nudgedMs < 7 * 24 * 60 * 60 * 1000;
     kickoffSection = (
-      <CollapsibleCard
+      <DisclosureSection
         id="kickoff"
+        className="scroll-mt-24"
         title="Kickoff checklist"
         description="Prep tasks unlock for the awarded supplier."
-        className="scroll-mt-24"
-        defaultOpen={awardedToSupplier}
+        defaultOpen={awardedToSupplier && !kickoffProgressBasis.isComplete}
         summary={
           <span
             className={clsx(
@@ -742,7 +792,7 @@ function SupplierQuoteWorkspace({
                 : "border-slate-800 bg-slate-950/50 text-slate-200",
             )}
           >
-            {awardedToSupplier ? "Awarded" : "Locked"}
+            {awardedToSupplier ? (kickoffProgressBasis.isComplete ? "Complete" : "Awarded") : "Locked"}
           </span>
         }
       >
@@ -784,7 +834,7 @@ function SupplierQuoteWorkspace({
               </section>
               <SupplierKickoffChecklistCard
                 quoteId={quote.id}
-                tasks={tasksAvailable ? kickoffTasks : []}
+                tasks={kickoffTasksAvailable ? kickoffTasks : []}
                 readOnly={false}
               />
             </>
@@ -792,16 +842,16 @@ function SupplierQuoteWorkspace({
             <SupplierKickoffLockedCard />
           )}
         </div>
-      </CollapsibleCard>
+      </DisclosureSection>
     );
   }
 
   const timelineSection = (
-    <CollapsibleCard
+    <DisclosureSection
       id="timeline"
+      className="scroll-mt-24"
       title="Timeline"
       description="Updates and milestones for this RFQ."
-      className="scroll-mt-24"
       defaultOpen={false}
     >
       <QuoteTimeline
@@ -810,7 +860,7 @@ function SupplierQuoteWorkspace({
         actorUserId={currentUserId}
         emptyState="No updates yet."
       />
-    </CollapsibleCard>
+    </DisclosureSection>
   );
 
   const capacityLevelsByCapability = new Map<string, string>();
@@ -882,7 +932,24 @@ function SupplierQuoteWorkspace({
               Messages are temporarily unavailable. Refresh the page to try again.
             </p>
           ) : null}
-          <section id="messages" className="scroll-mt-24">
+          <DisclosureSection
+            id="messages"
+            className="scroll-mt-24"
+            title="Messages"
+            description="Customer, supplier, and admin updates for this RFQ."
+            defaultOpen={tabParam === "messages"}
+            summary={
+              quoteMessages.length > 0 ? (
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
+                </span>
+              ) : (
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  No messages
+                </span>
+              )
+            }
+          >
             <QuoteMessagesThread
               quoteId={quote.id}
               messages={quoteMessages}
@@ -896,7 +963,7 @@ function SupplierQuoteWorkspace({
               disabledCopy={messagingDisabledReason ?? undefined}
               emptyStateCopy="No messages yet."
             />
-          </section>
+          </DisclosureSection>
         </div>
         <div className="space-y-5">
           <PortalCard
@@ -949,6 +1016,71 @@ function SupplierQuoteWorkspace({
       </div>
     </PortalShell>
   );
+}
+
+function buildSupplierQuoteSections(args: {
+  canSubmitBid: boolean;
+  existingBidStatus: string | null;
+  awardedToSupplier: boolean;
+  kickoffRatio: string | null;
+  kickoffComplete: boolean;
+  messageCount: number;
+  fileCount: number;
+  messagesHref: string;
+}): QuoteSectionRailSection[] {
+  const bidBadge = args.canSubmitBid
+    ? "Open"
+    : args.existingBidStatus
+      ? "Submitted"
+      : "Locked";
+  const kickoffBadge = args.awardedToSupplier
+    ? args.kickoffComplete
+      ? "Complete"
+      : args.kickoffRatio
+        ? args.kickoffRatio
+        : "In progress"
+    : "Locked";
+  const uploadsBadge = args.fileCount > 0 ? `${args.fileCount}` : undefined;
+
+  return [
+    {
+      key: "bid",
+      label: "Bid",
+      href: "#bid",
+      badge: bidBadge,
+      tone: args.canSubmitBid ? "info" : "neutral",
+    },
+    {
+      key: "kickoff",
+      label: "Kickoff",
+      href: "#kickoff",
+      badge: kickoffBadge,
+      tone: args.awardedToSupplier ? "info" : "neutral",
+    },
+    {
+      key: "messages",
+      label: "Messages",
+      href: args.messagesHref,
+      badge: args.messageCount > 0 ? `${args.messageCount}` : undefined,
+    },
+    { key: "uploads", label: "Uploads", href: "#uploads", badge: uploadsBadge },
+    { key: "details", label: "Details", href: "#details" },
+    { key: "timeline", label: "Timeline", href: "#timeline" },
+  ];
+}
+
+function buildQuoteTabHref(
+  currentTab: string | null | undefined,
+  tabValue: string,
+  hash: string,
+): string {
+  const params = new URLSearchParams();
+  if (currentTab) {
+    params.set("tab", currentTab);
+  }
+  params.set("tab", tabValue);
+  const qs = params.toString();
+  return qs ? `?${qs}${hash}` : `${hash}`;
 }
 
 type SupplierKickoffVisibility = {
