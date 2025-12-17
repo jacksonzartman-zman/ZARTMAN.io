@@ -61,6 +61,7 @@ import { AdminDecisionCtas } from "./AdminDecisionCtas";
 import { AdminInviteSupplierCard } from "./AdminInviteSupplierCard";
 import { HashScrollLink } from "@/app/(portals)/components/hashScroll";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
 import {
   getCapacitySnapshotsForSupplierWeek,
   type AdminCapacityLevel,
@@ -332,6 +333,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     }
     const quoteMessages: QuoteMessageRecord[] = messagesResult.messages;
     const quoteMessagesError = messagesResult.ok ? null : messagesResult.error;
+
+    const threadSlaByQuoteId = await loadAdminThreadSlaForQuotes({ quoteIds: [quote.id] });
+    const threadSla = threadSlaByQuoteId[quote.id] ?? null;
+    const lastMessage = quoteMessages.length > 0 ? quoteMessages[quoteMessages.length - 1] : null;
+    const lastMessagePreview = lastMessage ? truncateThreadPreview(lastMessage.body, 80) : null;
     const bidsResult = await loadBidsForQuote(quote.id);
     const bidAggregateMap = await loadQuoteBidAggregates([quote.id]);
     const bidAggregate = bidAggregateMap[quote.id];
@@ -688,6 +694,66 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 : "No pending actions"}
             </p>
           </div>
+        </div>
+      </section>
+    );
+
+    const threadStatusPanel = (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Thread status
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Role-based “needs reply” and staleness.
+            </p>
+          </div>
+          {threadSla?.needsReplyFrom ? (
+            <span
+              className={clsx(
+                "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+                threadSla.needsReplyFrom === "supplier"
+                  ? "border-blue-500/40 bg-blue-500/10 text-blue-100"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+              )}
+            >
+              {threadSla.needsReplyFrom === "supplier"
+                ? "Needs supplier reply"
+                : "Needs customer reply"}
+            </span>
+          ) : (
+            <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold text-slate-200">
+              No reply needed
+            </span>
+          )}
+        </header>
+
+        <div className="mt-4 space-y-2">
+          <p className="text-xs text-slate-400">
+            Last message{" "}
+            {threadSla?.lastMessageAt
+              ? formatRelativeTimeFromTimestamp(toTimestamp(threadSla.lastMessageAt)) ?? "—"
+              : "—"}
+            {threadSla?.stalenessBucket === "very_stale" ? (
+              <span className="ml-2 inline-flex rounded-full border border-slate-800 bg-slate-900/60 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-200">
+                Stale
+              </span>
+            ) : null}
+          </p>
+          <p className="text-sm text-slate-100">
+            {lastMessagePreview ? (
+              <span className="text-slate-200">{lastMessagePreview}</span>
+            ) : (
+              <span className="text-slate-500">No messages yet.</span>
+            )}
+          </p>
+          <a
+            href="#messages-panel"
+            className="text-sm font-semibold text-emerald-200 underline-offset-4 hover:underline"
+          >
+            Open messages
+          </a>
         </div>
       </section>
     );
@@ -1345,6 +1411,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               <div className="space-y-4">
                 {projectStatusPanel}
                 {kickoffStatusPanel}
+                {threadStatusPanel}
                 {workflowPanel}
                 {routingSuggestionPanel}
               <AwardOutcomeCard
@@ -1656,4 +1723,12 @@ function formatTopWinReasons(byReason: Record<string, number>, limit: number): s
     return `${label} (${count})`;
   });
   return parts.join(", ");
+}
+
+function truncateThreadPreview(value: unknown, maxLen: number): string | null {
+  const raw = typeof value === "string" ? value : "";
+  const squashed = raw.replace(/\s+/g, " ").trim();
+  if (!squashed) return null;
+  if (squashed.length <= maxLen) return squashed;
+  return `${squashed.slice(0, Math.max(0, maxLen - 1))}…`;
 }

@@ -38,6 +38,7 @@ import {
   type CapacityLevel,
 } from "@/server/admin/capacity";
 import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
+import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,12 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const baseRows = inboxResult.data.rows ?? [];
   const totalCount = inboxResult.data.count ?? baseRows.length;
   const hasMore = Boolean(inboxResult.data.hasMore);
+
+  const quoteIdsOnPage = baseRows
+    .map((row) => (typeof row?.id === "string" ? row.id.trim() : ""))
+    .filter(Boolean);
+  const threadSlaByQuoteId =
+    quoteIdsOnPage.length > 0 ? await loadAdminThreadSlaForQuotes({ quoteIds: quoteIdsOnPage }) : {};
 
   const nextWeekStartDateIso = getNextWeekStartDateIso();
 
@@ -147,6 +154,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   }
 
   const enrichedRows: QuoteRow[] = baseRows.map((row) => {
+    const threadSla = threadSlaByQuoteId[row.id] ?? null;
     const files = buildQuoteFilesFromRow(row);
     const fileCount = resolveQuoteFileCount(row, files.length);
     const fileCountLabel = formatQuoteFileCountLabel(fileCount);
@@ -189,6 +197,10 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       statusLabel: statusMeta.label,
       statusHelper: statusMeta.helper,
       statusClassName: statusMeta.pillClass,
+      threadLastMessageAt: threadSla?.lastMessageAt ?? null,
+      threadNeedsReplyFrom: threadSla?.needsReplyFrom ?? null,
+      threadStalenessBucket: threadSla?.stalenessBucket ?? "none",
+      threadUnreadForAdmin: Boolean(threadSla?.unreadForAdmin),
       bidSummary: formatAdminBidSummary(aggregate),
       bidCountLabel,
       bestPriceLabel,
