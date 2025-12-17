@@ -83,6 +83,7 @@ import { loadLatestAwardFeedbackForQuote } from "@/server/quotes/awardFeedback";
 import { formatAwardFeedbackReasonLabel } from "@/lib/awardFeedback";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type QuoteDetailPageProps = {
