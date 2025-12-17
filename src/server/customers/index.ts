@@ -71,7 +71,52 @@ export async function getCustomerByUserId(
       return null;
     }
 
-    return data ?? null;
+    if (data) {
+      return data;
+    }
+
+    // Team memberships: customers can have multiple portal users via customer_users.
+    // If this user isn't the primary customer owner, check for a membership row.
+    const membership = await supabaseServer
+      .from("customer_users")
+      .select("customer_id,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle<{ customer_id: string; created_at: string }>();
+
+    if (membership.error) {
+      console.error("getCustomerByUserId: membership lookup failed", {
+        userId,
+        error: membership.error,
+      });
+      return null;
+    }
+
+    const customerId =
+      typeof membership.data?.customer_id === "string"
+        ? membership.data.customer_id
+        : "";
+    if (!customerId) {
+      return null;
+    }
+
+    const { data: customer, error: customerError } = await supabaseServer
+      .from("customers")
+      .select(CUSTOMER_SELECT_COLUMNS)
+      .eq("id", customerId)
+      .maybeSingle<CustomerRow>();
+
+    if (customerError) {
+      console.error("getCustomerByUserId: membership customer lookup failed", {
+        userId,
+        customerId,
+        error: customerError,
+      });
+      return null;
+    }
+
+    return customer ?? null;
   } catch (error) {
     console.error("getCustomerByUserId: unexpected error", { userId, error });
     return null;

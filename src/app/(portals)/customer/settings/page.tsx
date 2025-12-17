@@ -112,6 +112,21 @@ export default async function CustomerSettingsPage() {
         </p>
       </section>
 
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
+        <h2 className="text-lg font-semibold text-white">Team</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Invite teammates to collaborate in your customer workspace.
+        </p>
+        <div className="mt-4">
+          <Link
+            href="/customer/settings/team"
+            className="text-sm font-semibold text-emerald-300 underline-offset-4 hover:underline"
+          >
+            Manage team
+          </Link>
+        </div>
+      </section>
+
       <section
         id="notifications"
         className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6 space-y-4"
