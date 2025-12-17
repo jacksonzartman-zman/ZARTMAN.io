@@ -52,6 +52,8 @@ import {
   resolveKickoffProgressBasis,
 } from "@/lib/quote/kickoffChecklist";
 import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
+import { QuoteAtAGlanceBar } from "@/components/QuoteAtAGlanceBar";
+import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 
 export const dynamic = "force-dynamic";
 
@@ -316,10 +318,6 @@ export default async function CustomerQuoteDetailPage({
   const updatedAtText = updatedAtRaw
     ? formatDateTime(updatedAtRaw, { includeTime: true })
     : null;
-  const lifecycleLastUpdatedText =
-    updatedAtRaw && (!submittedAtRaw || updatedAtRaw !== submittedAtRaw)
-      ? updatedAtText
-      : null;
   const fileCountText =
     fileCount === 0
       ? "No files attached"
@@ -399,6 +397,56 @@ export default async function CustomerQuoteDetailPage({
       </Link>
     </div>
   );
+
+  const customerPrimaryAction = resolvePrimaryAction({
+    role: "customer",
+    quote: {
+      id: quote.id,
+      status: quote.status ?? null,
+      awarded_supplier_id: quote.awarded_supplier_id ?? null,
+      awarded_bid_id: quote.awarded_bid_id ?? null,
+      awarded_at: quote.awarded_at ?? null,
+      kickoff_completed_at:
+        (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ??
+        null,
+      primaryActionHints: {
+        canAward: customerCanAward,
+        hasWinner: quoteHasWinner,
+        kickoffComplete: kickoffProgressBasis.isComplete,
+      },
+    },
+  });
+  const customerAtAGlancePills = [
+    { key: "rfq", label: "RFQ", value: primaryFileName },
+    { key: "files", label: "Files", value: fileCountText, href: "#uploads" },
+    {
+      key: "bids",
+      label: "Bids",
+      value: bidSummaryBadgeLabel,
+      tone: bidCount > 0 ? "info" : "neutral",
+      href: "#award",
+    },
+    {
+      key: "kickoff",
+      label: "Kickoff",
+      value: kickoffSummaryLabel,
+      tone: kickoffProgressBasis.isComplete
+        ? "success"
+        : quoteHasWinner
+          ? "info"
+          : "neutral",
+      href: "#kickoff",
+    },
+    {
+      key: "viewingAs",
+      label: "Viewing as",
+      value: identityEmailDisplay,
+      tone: readOnly ? "warning" : "neutral",
+    },
+    readOnly
+      ? { key: "mode", label: "Mode", value: "Read-only preview", tone: "warning" }
+      : { key: "mode", label: "Mode", value: "Full access", tone: "neutral" },
+  ] as const;
   const createdAtDate = submittedAtRaw ? new Date(submittedAtRaw) : null;
   const quoteAgeInDays =
     createdAtDate && Number.isFinite(createdAtDate.getTime())
@@ -412,63 +460,13 @@ export default async function CustomerQuoteDetailPage({
     (quoteAgeInDays === null || quoteAgeInDays <= 14);
 
   const headerContent = (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-            RFQ file
-          </p>
-          <p className="text-sm text-slate-300">{primaryFileName}</p>
-        </div>
-        <div className="flex max-w-xs flex-col items-start text-left sm:items-end sm:text-right">
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-            {quoteStatusLabel}
-          </span>
-          <p className="mt-1 text-xs text-slate-400">{quoteStatusHelper}</p>
-        </div>
-      </div>
-      <dl className="grid gap-4 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Customer
-          </dt>
-          <dd className="text-slate-100">{customerName ?? "Not provided"}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Company
-          </dt>
-          <dd className="text-slate-100">{companyName ?? "Not provided"}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Target ship date
-          </dt>
-          <dd className="text-slate-100">{targetDateChipText}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Fastest lead time
-          </dt>
-          <dd className="text-slate-100">{leadTimeLabel}</dd>
-        </div>
-      </dl>
-      <div className="flex flex-wrap gap-3 text-xs text-slate-400">
-        <span>Submitted {submittedAtText ?? "—"}</span>
-        {lifecycleLastUpdatedText ? (
-          <span>Last update {lifecycleLastUpdatedText}</span>
-        ) : null}
-        <span>
-          Viewing as{" "}
-          <span className="font-mono text-slate-200">{identityEmailDisplay}</span>
-        </span>
-        {readOnly ? (
-          <span className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-slate-300">
-            Read-only preview
-          </span>
-        ) : null}
-      </div>
-    </div>
+    <QuoteAtAGlanceBar
+      role="customer"
+      statusLabel={quoteStatusLabel}
+      whatsNext={quoteStatusHelper}
+      pills={[...customerAtAGlancePills]}
+      primaryAction={customerPrimaryAction}
+    />
   );
 
   const winningBidCallout = quoteHasWinner ? (
@@ -807,7 +805,9 @@ export default async function CustomerQuoteDetailPage({
   );
 
   const filesSection = (
-    <QuoteFilesUploadsSection files={filePreviews} fileCountText={fileCountText} />
+    <section id="uploads" className="scroll-mt-24">
+      <QuoteFilesUploadsSection files={filePreviews} fileCountText={fileCountText} />
+    </section>
   );
 
   const notesSection = (
