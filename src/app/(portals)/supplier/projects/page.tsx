@@ -4,9 +4,15 @@ import Link from "next/link";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { formatDateTime } from "@/lib/formatDate";
+import {
+  formatRelativeTimeCompactFromTimestamp,
+  toTimestamp,
+} from "@/lib/relativeTime";
+import { MessageLinkWithUnread } from "@/app/(portals)/components/MessageLinkWithUnread";
 import { requireUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { getSupplierAwardedQuotesForProjects } from "@/server/supplier/projects";
+import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +33,28 @@ function formatKickoffStatus(summary: {
   const detail = total > 0 ? `${completed} / ${total}` : "—";
   const tone = isComplete ? "text-emerald-300" : "text-blue-200";
   return { label, detail, tone };
+}
+
+function formatMessageSenderLabel(senderRole: string | null | undefined): string {
+  const normalized = (senderRole ?? "").trim().toLowerCase();
+  if (normalized === "supplier") return "Supplier";
+  if (normalized === "customer") return "Customer";
+  return "Admin";
+}
+
+function formatLastMessagePreview(input: {
+  currentUserId: string;
+  senderId: string | null;
+  senderRole: string;
+  body: string;
+}): string {
+  const prefix =
+    input.senderId && input.senderId === input.currentUserId
+      ? "You"
+      : formatMessageSenderLabel(input.senderRole);
+  const body = (input.body ?? "").trim();
+  if (!body) return "—";
+  return `${prefix}: ${body}`;
 }
 
 export default async function SupplierProjectsPage() {
@@ -59,6 +87,11 @@ export default async function SupplierProjectsPage() {
 
   const projects = await getSupplierAwardedQuotesForProjects({
     supplierId: supplier.id,
+  });
+
+  const messageSummary = await loadUnreadMessageSummary({
+    quoteIds: projects.map((project) => project.id),
+    userId: user.id,
   });
 
   return (
@@ -101,6 +134,9 @@ export default async function SupplierProjectsPage() {
                     Awarded
                   </th>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    Last message
+                  </th>
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Kickoff
                   </th>
                   <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -114,6 +150,19 @@ export default async function SupplierProjectsPage() {
                     ? project.customerName
                     : "Customer pending";
                   const kickoff = formatKickoffStatus(project.kickoff);
+                  const summary = messageSummary[project.id];
+                  const hasUnread = Boolean(summary && summary.unreadCount > 0);
+                  const lastMessageAt = summary?.lastMessage?.created_at ?? null;
+                  const lastMessageAtLabel =
+                    formatRelativeTimeCompactFromTimestamp(toTimestamp(lastMessageAt)) ?? "—";
+                  const lastMessagePreview = summary?.lastMessage
+                    ? formatLastMessagePreview({
+                        currentUserId: user.id,
+                        senderId: summary.lastMessage.sender_id,
+                        senderRole: summary.lastMessage.sender_role,
+                        body: summary.lastMessage.body,
+                      })
+                    : "—";
 
                   return (
                     <tr key={project.id} className="hover:bg-slate-900/50">
@@ -135,6 +184,21 @@ export default async function SupplierProjectsPage() {
                       </td>
                       <td className="px-5 py-4 align-middle">
                         <div className="space-y-1">
+                          <p
+                            className={clsx(
+                              "text-xs",
+                              hasUnread ? "text-slate-200" : "text-slate-500",
+                            )}
+                          >
+                            {lastMessagePreview}
+                          </p>
+                          <p className="text-[11px] uppercase tracking-wide text-slate-600">
+                            {lastMessageAtLabel}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <div className="space-y-1">
                           <p className={clsx("font-medium", kickoff.tone)}>
                             {kickoff.label}
                           </p>
@@ -151,12 +215,13 @@ export default async function SupplierProjectsPage() {
                           >
                             Activity
                           </Link>
-                          <Link
+                          <MessageLinkWithUnread
                             href={`/supplier/quotes/${project.id}?tab=messages`}
-                            className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                            unread={hasUnread}
+                            className="min-w-[7.5rem] rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
                           >
                             Messages
-                          </Link>
+                          </MessageLinkWithUnread>
                           <Link
                             href={`/supplier/quotes/${project.id}`}
                             className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-400"

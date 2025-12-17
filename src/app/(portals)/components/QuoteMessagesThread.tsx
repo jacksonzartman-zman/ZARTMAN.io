@@ -19,6 +19,11 @@ export type QuoteMessagesThreadProps = {
     formData: FormData,
   ) => Promise<QuoteMessageFormState>;
   currentUserId: string | null;
+  /**
+   * When true, mark this quote's messages as read for the current user.
+   * Intended for use when the `tab=messages` view is opened.
+   */
+  markRead?: boolean;
   className?: string;
   title?: string;
   description?: string;
@@ -40,6 +45,7 @@ export function QuoteMessagesThread({
   canPost,
   postAction,
   currentUserId,
+  markRead = false,
   className,
   title = "Quote messages",
   description = "Central thread for this RFQ between you and your supplier/buyer.",
@@ -53,6 +59,19 @@ export function QuoteMessagesThread({
     [realtimeMessages],
   );
   const composerEnabled = Boolean(postAction) && canPost;
+
+  useEffect(() => {
+    if (!markRead) return;
+    if (!quoteId) return;
+    if (!currentUserId) return;
+
+    // Best-effort: update read state without blocking UI.
+    void fetch("/api/quote-message-reads", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ quoteId }),
+    }).catch(() => null);
+  }, [markRead, quoteId, currentUserId]);
 
   return (
     <section

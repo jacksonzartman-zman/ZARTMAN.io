@@ -9,9 +9,11 @@ import {
   toTimestamp,
 } from "@/lib/relativeTime";
 import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
+import { MessageLinkWithUnread } from "@/app/(portals)/components/MessageLinkWithUnread";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { getCustomerAwardedQuotesForProjects } from "@/server/customer/projects";
+import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import CustomerProjectsListControls, {
   type CustomerProjectsSortKey,
   type CustomerProjectsStatusFilter,
@@ -27,6 +29,28 @@ function formatAwardedDate(value: string | null): string {
 function formatLastUpdated(value: string | null): string {
   const ts = toTimestamp(value);
   return formatRelativeTimeCompactFromTimestamp(ts) ?? "—";
+}
+
+function formatMessageSenderLabel(senderRole: string | null | undefined): string {
+  const normalized = (senderRole ?? "").trim().toLowerCase();
+  if (normalized === "supplier") return "Supplier";
+  if (normalized === "customer") return "Customer";
+  return "Admin";
+}
+
+function formatLastMessagePreview(input: {
+  currentUserId: string;
+  senderId: string | null;
+  senderRole: string;
+  body: string;
+}): string {
+  const prefix =
+    input.senderId && input.senderId === input.currentUserId
+      ? "You"
+      : formatMessageSenderLabel(input.senderRole);
+  const body = (input.body ?? "").trim();
+  if (!body) return "—";
+  return `${prefix}: ${body}`;
 }
 
 function formatKickoffStatus(summary: {
@@ -145,6 +169,11 @@ export default async function CustomerProjectsPage({
     return bUpdated - aUpdated;
   });
 
+  const messageSummary = await loadUnreadMessageSummary({
+    quoteIds: filteredProjects.map((project) => project.id),
+    userId: user.id,
+  });
+
   return (
     <PortalShell
       workspace="customer"
@@ -203,6 +232,9 @@ export default async function CustomerProjectsPage({
                         Last updated
                       </th>
                       <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                        Last message
+                      </th>
+                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                         Kickoff
                       </th>
                       <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -223,6 +255,19 @@ export default async function CustomerProjectsPage({
                           : "Kickoff in progress";
                       const canNudge =
                         Boolean(project.awardedSupplierId) && !project.kickoff.isComplete;
+                      const summary = messageSummary[project.id];
+                      const hasUnread = Boolean(summary && summary.unreadCount > 0);
+                      const lastMessageAt = summary?.lastMessage?.created_at ?? null;
+                      const lastMessageAtLabel =
+                        formatRelativeTimeCompactFromTimestamp(toTimestamp(lastMessageAt)) ?? "—";
+                      const lastMessagePreview = summary?.lastMessage
+                        ? formatLastMessagePreview({
+                            currentUserId: user.id,
+                            senderId: summary.lastMessage.sender_id,
+                            senderRole: summary.lastMessage.sender_role,
+                            body: summary.lastMessage.body,
+                          })
+                        : "—";
 
                       return (
                         <tr key={project.id} className="hover:bg-slate-900/50">
@@ -247,6 +292,21 @@ export default async function CustomerProjectsPage({
                           </td>
                           <td className="px-5 py-4 align-middle">
                             <div className="space-y-1">
+                              <p
+                                className={clsx(
+                                  "text-xs",
+                                  hasUnread ? "text-slate-200" : "text-slate-500",
+                                )}
+                              >
+                                {lastMessagePreview}
+                              </p>
+                              <p className="text-[11px] uppercase tracking-wide text-slate-600">
+                                {lastMessageAtLabel}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 align-middle">
+                            <div className="space-y-1">
                               <p className={clsx("font-medium", kickoff.tone)}>{kickoff.label}</p>
                               <p className="text-xs text-slate-400">{kickoffSubtext}</p>
                             </div>
@@ -266,12 +326,13 @@ export default async function CustomerProjectsPage({
                               >
                                 Activity
                               </Link>
-                              <Link
+                              <MessageLinkWithUnread
                                 href={`/customer/quotes/${project.id}?tab=messages`}
-                                className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                                unread={hasUnread}
+                                className="min-w-[7.5rem] rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
                               >
                                 Messages
-                              </Link>
+                              </MessageLinkWithUnread>
                               <Link
                                 href={`/customer/quotes/${project.id}`}
                                 className="inline-flex min-w-[9rem] items-center justify-center rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-emerald-400"

@@ -987,6 +987,7 @@ export default async function CustomerQuoteDetailPage({
               canPost={!readOnly}
               postAction={postMessageAction}
               currentUserId={user.id}
+              markRead={tabParam === "messages"}
               title="Messages"
               description="Shared thread with your supplier and the Zartman team."
               helperText="Your note notifies your supplier and the Zartman admin team."
