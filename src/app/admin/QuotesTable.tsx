@@ -1,6 +1,10 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
+import {
+  formatRelativeTimeCompactFromTimestamp,
+  toTimestamp,
+} from "@/lib/relativeTime";
 import type { AdminQuoteListStatus, AdminQuotesView } from "@/types/adminQuotes";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
@@ -9,6 +13,10 @@ import {
   type CapacityLevel,
 } from "@/server/admin/capacity";
 import { CapacitySummaryPills } from "@/app/admin/components/CapacitySummaryPills";
+import type {
+  AdminThreadNeedsReplyFrom,
+  AdminThreadStalenessBucket,
+} from "@/server/admin/messageSla";
 
 export type QuoteCapacitySummary = {
   supplierId: string;
@@ -31,6 +39,10 @@ export type QuoteRow = {
   statusLabel: string;
   statusHelper: string;
   statusClassName: string;
+  threadLastMessageAt: string | null;
+  threadNeedsReplyFrom: AdminThreadNeedsReplyFrom | null;
+  threadStalenessBucket: AdminThreadStalenessBucket;
+  threadUnreadForAdmin: boolean;
   bidSummary: string;
   bidCountLabel: string;
   bestPriceLabel: string;
@@ -64,7 +76,7 @@ export default function QuotesTable({
 
   return (
     <AdminTableShell
-      tableClassName="min-w-[1180px] w-full border-separate border-spacing-0 text-sm"
+      tableClassName="min-w-[1320px] w-full border-separate border-spacing-0 text-sm"
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -78,6 +90,9 @@ export default function QuotesTable({
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Status
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Thread
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Bids
@@ -97,7 +112,7 @@ export default function QuotesTable({
         showEmptyState ? (
           <tr>
             <td
-              colSpan={8}
+              colSpan={9}
               className="px-6 py-12 text-center text-base text-slate-300"
             >
               <p className="font-medium text-slate-100">{emptyState.title}</p>
@@ -114,6 +129,10 @@ export default function QuotesTable({
               : null;
             const awardedAtLabel = row.awardedAt
               ? formatDateTime(row.awardedAt, { includeTime: true })
+              : null;
+            const lastMessageLabel = row.threadLastMessageAt
+              ? formatRelativeTimeCompactFromTimestamp(toTimestamp(row.threadLastMessageAt)) ??
+                "—"
               : null;
 
             return (
@@ -167,6 +186,41 @@ export default function QuotesTable({
                       {row.statusLabel}
                     </span>
                     <p className="text-xs text-slate-400">{row.statusHelper}</p>
+                  </div>
+                </td>
+                <td className={adminTableCellClass}>
+                  <div className="space-y-1">
+                    {row.threadNeedsReplyFrom ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={clsx(
+                            "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold",
+                            row.threadNeedsReplyFrom === "supplier"
+                              ? "border-blue-500/40 bg-blue-500/10 text-blue-100"
+                              : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+                          )}
+                        >
+                          {row.threadUnreadForAdmin ? (
+                            <span className="h-2 w-2 rounded-full bg-emerald-300" />
+                          ) : null}
+                          {row.threadNeedsReplyFrom === "supplier"
+                            ? "Needs supplier reply"
+                            : "Needs customer reply"}
+                        </span>
+                        {row.threadStalenessBucket === "very_stale" ? (
+                          <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/60 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200">
+                            Stale
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {row.threadLastMessageAt ? (
+                      <p className="text-xs text-slate-400">
+                        Last msg {lastMessageLabel ?? "—"}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-500">No messages</p>
+                    )}
                   </div>
                 </td>
                 <td className={clsx(adminTableCellClass, "text-xs text-slate-200")}>
