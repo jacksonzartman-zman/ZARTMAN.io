@@ -37,9 +37,29 @@ export type QuoteWorkspaceData = {
   uploadMeta: UploadMeta | null;
   uploadGroups: QuoteUploadGroup[];
   filePreviews: Awaited<ReturnType<typeof getQuoteFilePreviews>>;
+  parts: QuotePartWithFiles[];
   messages: QuoteMessageRecord[];
   messagesError?: string | null;
   filesUnavailable?: boolean;
+};
+
+export type QuotePartFileRole = "cad" | "drawing" | "other";
+
+export type QuotePartWithFiles = {
+  id: string;
+  partLabel: string;
+  partNumber: string | null;
+  notes: string | null;
+  sortOrder: number | null;
+  files: Array<{
+    quoteUploadFileId: string;
+    path: string;
+    filename: string;
+    extension: string | null;
+    sizeBytes: number | null;
+    isFromArchive: boolean;
+    role: QuotePartFileRole;
+  }>;
 };
 
 type LoaderResult<TData> = {
@@ -196,6 +216,7 @@ export async function loadQuoteWorkspaceData(
 
     const filePreviews = await getQuoteFilePreviews(quote, filePreviewOptions);
     const uploadGroups = await loadQuoteUploadGroups(quoteId);
+    const parts = await loadQuotePartsWithFiles(quoteId);
     const files = buildQuoteFilesFromRow(quote);
     const fileCount = files.length;
     const enrichedQuote: QuoteWorkspaceQuote = {
@@ -221,6 +242,7 @@ export async function loadQuoteWorkspaceData(
         uploadMeta,
         uploadGroups,
         filePreviews,
+        parts,
         messages: messages ?? [],
         messagesError,
         filesUnavailable: filesIssue,
@@ -240,4 +262,222 @@ export async function loadQuoteWorkspaceData(
       error: "Unexpected error loading quote workspace",
     };
   }
+}
+
+type QuotePartRow = {
+  id: string;
+  quote_id: string;
+  part_label: string;
+  part_number: string | null;
+  notes: string | null;
+  sort_order: number | null;
+  created_at: string;
+};
+
+type QuotePartFileRow = {
+  id: string;
+  quote_part_id: string;
+  quote_upload_file_id: string;
+  role: string;
+  created_at: string;
+};
+
+type QuoteUploadFileRow = {
+  id: string;
+  path: string;
+  filename: string;
+  extension: string | null;
+  size_bytes: number | null;
+  is_from_archive: boolean;
+};
+
+function normalizeQuotePartRole(value: unknown): QuotePartFileRole {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "cad") return "cad";
+  if (normalized === "drawing") return "drawing";
+  return "other";
+}
+
+function compareNullableNumberAsc(a: number | null, b: number | null): number {
+  const aIsNumber = typeof a === "number" && Number.isFinite(a);
+  const bIsNumber = typeof b === "number" && Number.isFinite(b);
+  if (aIsNumber && bIsNumber) return (a as number) - (b as number);
+  if (aIsNumber) return -1;
+  if (bIsNumber) return 1;
+  return 0;
+}
+
+async function loadQuotePartsWithFiles(quoteId: string): Promise<QuotePartWithFiles[]> {
+  if (typeof quoteId !== "string" || quoteId.trim().length === 0) {
+    return [];
+  }
+
+  let partRows: QuotePartRow[] = [];
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_parts")
+      .select("id,quote_id,part_label,part_number,notes,sort_order,created_at")
+      .eq("quote_id", quoteId)
+      .returns<QuotePartRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return [];
+      }
+      console.error("[quote parts] failed to load parts", {
+        quoteId,
+        error: serializeSupabaseError(error),
+      });
+      return [];
+    }
+
+    partRows = Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      return [];
+    }
+    console.error("[quote parts] load parts crashed", {
+      quoteId,
+      error: serializeSupabaseError(error),
+    });
+    return [];
+  }
+
+  if (partRows.length === 0) {
+    return [];
+  }
+
+  partRows.sort((a, b) => {
+    const byOrder = compareNullableNumberAsc(a.sort_order ?? null, b.sort_order ?? null);
+    if (byOrder !== 0) return byOrder;
+    const aCreated = Date.parse(a.created_at);
+    const bCreated = Date.parse(b.created_at);
+    if (Number.isFinite(aCreated) && Number.isFinite(bCreated) && aCreated !== bCreated) {
+      return aCreated - bCreated;
+    }
+    return a.id.localeCompare(b.id);
+  });
+
+  const partIds = partRows.map((row) => row.id);
+
+  let partFileRows: QuotePartFileRow[] = [];
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_part_files")
+      .select("id,quote_part_id,quote_upload_file_id,role,created_at")
+      .in("quote_part_id", partIds)
+      .returns<QuotePartFileRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return partRows.map((row) => ({
+          id: row.id,
+          partLabel: row.part_label,
+          partNumber: row.part_number,
+          notes: row.notes,
+          sortOrder: row.sort_order,
+          files: [],
+        }));
+      }
+      console.error("[quote parts] failed to load part files", {
+        quoteId,
+        error: serializeSupabaseError(error),
+      });
+      partFileRows = [];
+    } else {
+      partFileRows = Array.isArray(data) ? data : [];
+    }
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error)) {
+      console.error("[quote parts] load part files crashed", {
+        quoteId,
+        error: serializeSupabaseError(error),
+      });
+    }
+    partFileRows = [];
+  }
+
+  const quoteUploadFileIds = Array.from(
+    new Set(
+      partFileRows
+        .map((row) =>
+          typeof row?.quote_upload_file_id === "string" ? row.quote_upload_file_id : "",
+        )
+        .filter((id) => id.trim().length > 0),
+    ),
+  );
+
+  const uploadFilesById = new Map<string, QuoteUploadFileRow>();
+  if (quoteUploadFileIds.length > 0) {
+    try {
+      const { data, error } = await supabaseServer
+        .from("quote_upload_files")
+        .select("id,path,filename,extension,size_bytes,is_from_archive")
+        .in("id", quoteUploadFileIds)
+        .eq("quote_id", quoteId)
+        .returns<QuoteUploadFileRow[]>();
+
+      if (error) {
+        if (isMissingTableOrColumnError(error)) {
+          // If file enumeration isn't available, parts still exist but won't show entries.
+        } else {
+          console.error("[quote parts] failed to load upload file entries", {
+            quoteId,
+            error: serializeSupabaseError(error),
+          });
+        }
+      } else if (Array.isArray(data)) {
+        for (const row of data) {
+          if (row?.id) {
+            uploadFilesById.set(row.id, row);
+          }
+        }
+      }
+    } catch (error) {
+      if (!isMissingTableOrColumnError(error)) {
+        console.error("[quote parts] load upload files crashed", {
+          quoteId,
+          error: serializeSupabaseError(error),
+        });
+      }
+    }
+  }
+
+  const filesByPartId = new Map<string, QuotePartWithFiles["files"]>();
+  for (const row of partFileRows) {
+    const partId = typeof row.quote_part_id === "string" ? row.quote_part_id.trim() : "";
+    const uploadFileId =
+      typeof row.quote_upload_file_id === "string" ? row.quote_upload_file_id.trim() : "";
+    if (!partId || !uploadFileId) continue;
+    const uploadFile = uploadFilesById.get(uploadFileId);
+    if (!uploadFile) continue;
+
+    if (!filesByPartId.has(partId)) {
+      filesByPartId.set(partId, []);
+    }
+    filesByPartId.get(partId)!.push({
+      quoteUploadFileId: uploadFileId,
+      path: uploadFile.path,
+      filename: uploadFile.filename,
+      extension: uploadFile.extension,
+      sizeBytes: uploadFile.size_bytes,
+      isFromArchive: uploadFile.is_from_archive,
+      role: normalizeQuotePartRole(row.role),
+    });
+  }
+
+  // Stable file ordering inside each part.
+  for (const [partId, files] of filesByPartId.entries()) {
+    files.sort((a, b) => a.filename.localeCompare(b.filename) || a.path.localeCompare(b.path));
+    filesByPartId.set(partId, files);
+  }
+
+  return partRows.map((row) => ({
+    id: row.id,
+    partLabel: row.part_label,
+    partNumber: row.part_number,
+    notes: row.notes,
+    sortOrder: row.sort_order,
+    files: filesByPartId.get(row.id) ?? [],
+  }));
 }
