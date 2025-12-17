@@ -1,6 +1,8 @@
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { QuoteFilesCard, type QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { QuoteUploadsStructuredList } from "@/components/QuoteUploadsStructuredList";
+import type { QuoteUploadGroup } from "@/server/quotes/uploadFiles";
 
 /**
  * Phase 1 Polish checklist
@@ -12,12 +14,14 @@ type QuoteFilesUploadsSectionProps = {
   files: QuoteFileItem[];
   fileCountText: string;
   defaultOpen?: boolean;
+  uploadGroups?: QuoteUploadGroup[];
 };
 
 export function QuoteFilesUploadsSection({
   files,
   fileCountText,
   defaultOpen = true,
+  uploadGroups,
 }: QuoteFilesUploadsSectionProps) {
   return (
     <CollapsibleCard
@@ -31,6 +35,9 @@ export function QuoteFilesUploadsSection({
       }
     >
       <div className="space-y-2">
+        {uploadGroups && uploadGroups.length > 0 ? (
+          <QuoteUploadsStructuredList uploadGroups={uploadGroups} />
+        ) : null}
         <QuoteFilesCard files={files} />
         {files.length === 0 ? (
           <EmptyStateCard

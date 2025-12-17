@@ -121,6 +121,7 @@ export default async function CustomerQuoteDetailPage({
   const {
     quote,
     uploadMeta,
+    uploadGroups,
     filePreviews,
     messages: quoteMessages,
     messagesError,
@@ -857,7 +858,11 @@ export default async function CustomerQuoteDetailPage({
         </span>
       }
     >
-      <QuoteFilesUploadsSection files={filePreviews} fileCountText={fileCountText} />
+      <QuoteFilesUploadsSection
+        files={filePreviews}
+        fileCountText={fileCountText}
+        uploadGroups={uploadGroups}
+      />
     </DisclosureSection>
   );
 
