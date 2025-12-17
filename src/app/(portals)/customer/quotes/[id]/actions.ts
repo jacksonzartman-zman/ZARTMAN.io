@@ -335,6 +335,7 @@ export async function postQuoteMessage(
       body: trimmedBody,
       senderName,
       senderEmail,
+      customerId: customer.id,
       supabase,
     });
 

@@ -32,11 +32,35 @@ export type LoadQuoteMessagesResult = {
   error?: unknown;
 };
 
+export type LoadQuoteMessagesInput =
+  | string
+  | {
+      quoteId: string;
+      /**
+       * Placeholder for v0 viewer-aware loaders. Access is currently enforced
+       * via RLS (for authed clients) or via admin service role.
+       */
+      viewer?: unknown;
+      limit?: number;
+    };
+
 export type CreateQuoteMessageResult = {
   ok: boolean;
   message: QuoteMessageRecord | null;
   reason?: "validation" | "schema_error" | "unauthorized" | "unknown";
   error?: unknown;
+};
+
+export type PostQuoteMessageInput = {
+  quoteId: string;
+  body: string;
+  actorUserId: string;
+  actorRole: QuoteMessageSenderRole;
+  supplierId?: string | null;
+  customerId?: string | null;
+  senderName?: string | null;
+  senderEmail?: string | null;
+  supabase?: SupabaseClient;
 };
 
 type CreateQuoteMessageParams = {
@@ -46,6 +70,8 @@ type CreateQuoteMessageParams = {
   body: string;
   senderName?: string | null;
   senderEmail?: string | null;
+  supplierId?: string | null;
+  customerId?: string | null;
   supabase?: SupabaseClient;
 };
 
@@ -53,9 +79,14 @@ const MESSAGE_COLUMNS =
   "id,quote_id,sender_id,sender_role,sender_name,sender_email,body,created_at,updated_at";
 
 export async function loadQuoteMessages(
-  quoteId: string,
+  input: LoadQuoteMessagesInput,
 ): Promise<LoadQuoteMessagesResult> {
+  const quoteId = typeof input === "string" ? input : input.quoteId;
   const normalizedQuoteId = normalizeId(quoteId);
+  const limit =
+    typeof input === "object" && input !== null && "limit" in input
+      ? normalizeLimit((input as { limit?: number }).limit)
+      : 50;
 
   if (!normalizedQuoteId) {
     return {
@@ -71,7 +102,8 @@ export async function loadQuoteMessages(
       .from("quote_messages")
       .select(MESSAGE_COLUMNS)
       .eq("quote_id", normalizedQuoteId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(limit);
 
     if (error) {
       const serialized = serializeSupabaseError(error);
@@ -120,6 +152,8 @@ export async function createQuoteMessage(
   const trimmedBody = sanitizeBody(params.body);
   const normalizedSenderName = sanitizeName(params.senderName);
   const normalizedSenderEmail = sanitizeEmail(params.senderEmail);
+  const normalizedSupplierId = normalizeId(params.supplierId ?? null) || null;
+  const normalizedCustomerId = normalizeId(params.customerId ?? null) || null;
 
   if (
     !normalizedQuoteId ||
@@ -197,13 +231,25 @@ export async function createQuoteMessage(
     // Durable audit trail (service role write).
     void emitQuoteEvent({
       quoteId: normalizedQuoteId,
-      eventType: "message_posted",
+      eventType: "quote_message_posted",
       actorRole: coerceActorRole(normalizedSenderRole),
       actorUserId: normalizedSenderId,
+      actorSupplierId:
+        normalizedSenderRole === "supplier" ? normalizedSupplierId : null,
       metadata: {
+        // New canonical keys.
+        messageId: data.id,
+        actorRole: normalizedSenderRole,
+        supplierId:
+          normalizedSenderRole === "supplier" ? normalizedSupplierId : null,
+        customerId:
+          normalizedSenderRole === "customer" ? normalizedCustomerId : null,
+
+        // Back-compat keys.
         message_id: data.id,
         sender_role: normalizedSenderRole,
         sender_name: data.sender_name ?? null,
+        sender_email: data.sender_email ?? null,
       },
       createdAt: data.created_at,
     });
@@ -240,6 +286,45 @@ export async function createQuoteMessage(
       error,
     };
   }
+}
+
+/**
+ * v0-friendly API that matches the shared thread semantics:
+ * - trims body
+ * - enforces max length (2,000 chars)
+ * - delegates persistence + audit emission to `createQuoteMessage`
+ */
+export async function postQuoteMessage(
+  input: PostQuoteMessageInput,
+): Promise<CreateQuoteMessageResult> {
+  const body = typeof input.body === "string" ? input.body.trim() : "";
+  if (!body) {
+    return {
+      ok: false,
+      message: null,
+      reason: "validation",
+      error: "Message body is required.",
+    };
+  }
+  if (body.length > 2000) {
+    return {
+      ok: false,
+      message: null,
+      reason: "validation",
+      error: "Message body must be 2000 characters or fewer.",
+    };
+  }
+  return createQuoteMessage({
+    quoteId: input.quoteId,
+    senderId: input.actorUserId,
+    senderRole: input.actorRole,
+    body,
+    senderName: input.senderName,
+    senderEmail: input.senderEmail,
+    supplierId: input.supplierId ?? null,
+    customerId: input.customerId ?? null,
+    supabase: input.supabase,
+  });
 }
 
 function normalizeId(value?: string | null): string {
@@ -310,4 +395,11 @@ function isUniqueConstraintError(error: unknown): boolean {
   }
   const code = (error as { code?: string }).code;
   return code === "23505";
+}
+
+function normalizeLimit(value?: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 50;
+  }
+  return Math.max(1, Math.min(Math.floor(value), 250));
 }

@@ -323,6 +323,7 @@ export async function postSupplierMessageImpl(
       body,
       senderName: authorName,
       senderEmail: authorEmail,
+      supplierId,
       supabase,
     });
 

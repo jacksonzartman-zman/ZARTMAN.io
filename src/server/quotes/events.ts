@@ -16,6 +16,7 @@ export type QuoteEventType =
   | "kickoff_updated"
   | "kickoff_nudged"
   | "message_posted"
+  | "quote_message_posted"
   | "capacity_update_requested"
   | (string & {});
 
