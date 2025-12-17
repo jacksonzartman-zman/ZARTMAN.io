@@ -267,6 +267,12 @@ export default async function CustomerProjectsPage({
                                 Activity
                               </Link>
                               <Link
+                                href={`/customer/quotes/${project.id}?tab=messages`}
+                                className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                              >
+                                Messages
+                              </Link>
+                              <Link
                                 href={`/customer/quotes/${project.id}`}
                                 className="inline-flex min-w-[9rem] items-center justify-center rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-emerald-400"
                               >

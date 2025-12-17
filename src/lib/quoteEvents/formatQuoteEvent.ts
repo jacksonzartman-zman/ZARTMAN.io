@@ -270,7 +270,7 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     };
   }
 
-  if (type === "message_posted") {
+  if (type === "message_posted" || type === "quote_message_posted") {
     const senderName = readString(metadata, "sender_name");
     return {
       groupKey: "messages",

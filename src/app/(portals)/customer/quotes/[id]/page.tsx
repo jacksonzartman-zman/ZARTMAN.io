@@ -5,7 +5,7 @@ import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
-import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
+import { QuoteMessagesThread } from "@/app/(portals)/shared/QuoteMessagesThread";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
 import {
@@ -968,6 +968,7 @@ export default async function CustomerQuoteDetailPage({
     >
       <FocusScroll enabled={focusParam === "award"} targetId="award" />
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
+      <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
       {receiptBanner}
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-5">
@@ -979,22 +980,24 @@ export default async function CustomerQuoteDetailPage({
               Messages are temporarily unavailable. Refresh the page to try again.
             </p>
           ) : null}
-          <QuoteMessagesThread
-            quoteId={quote.id}
-            messages={quoteMessages}
-            canPost={!readOnly}
-            postAction={postMessageAction}
-            currentUserId={user.id}
-            title="Messages"
-            description="Shared with the Zartman team coordinating this RFQ."
-            helperText="Your updates go directly to the Zartman admin team."
-            disabledCopy={
-              readOnly
-                ? "Messages are read-only while you are impersonating another customer."
-                : undefined
-            }
-            emptyStateCopy="No messages yet. Use this space to coordinate build updates and questions."
-          />
+          <section id="messages" className="scroll-mt-24">
+            <QuoteMessagesThread
+              quoteId={quote.id}
+              messages={quoteMessages}
+              canPost={!readOnly}
+              postAction={postMessageAction}
+              currentUserId={user.id}
+              title="Messages"
+              description="Shared thread with your supplier and the Zartman team."
+              helperText="Your note notifies your supplier and the Zartman admin team."
+              disabledCopy={
+                readOnly
+                  ? "Messages are read-only while you are impersonating another customer."
+                  : undefined
+              }
+              emptyStateCopy="No messages yet."
+            />
+          </section>
         </div>
         <div className="space-y-5">
           {quoteIsWon ? (

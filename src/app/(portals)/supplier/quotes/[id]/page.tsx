@@ -49,7 +49,7 @@ import {
   type QuoteProjectRecord,
 } from "@/server/quotes/projects";
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
-import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
+import { QuoteMessagesThread } from "@/app/(portals)/shared/QuoteMessagesThread";
 import {
   loadQuoteMessages,
   type QuoteMessageRecord,
@@ -865,6 +865,7 @@ function SupplierQuoteWorkspace({
       actions={headerActions}
     >
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
+      <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-5">
           {winnerCallout}
@@ -876,18 +877,20 @@ function SupplierQuoteWorkspace({
               Messages are temporarily unavailable. Refresh the page to try again.
             </p>
           ) : null}
-          <QuoteMessagesThread
-            quoteId={quote.id}
-            messages={quoteMessages}
-            canPost={messagingUnlocked}
-            postAction={postMessageAction}
-            currentUserId={currentUserId}
-            title="Shared chat"
-            description="Customer, supplier, and admin updates for this RFQ."
-            helperText="Your note pings the Zartman admin team instantly."
-            disabledCopy={messagingDisabledReason ?? undefined}
-            emptyStateCopy="No messages yet. Keep the project moving by posting build updates here."
-          />
+          <section id="messages" className="scroll-mt-24">
+            <QuoteMessagesThread
+              quoteId={quote.id}
+              messages={quoteMessages}
+              canPost={messagingUnlocked}
+              postAction={postMessageAction}
+              currentUserId={currentUserId}
+              title="Messages"
+              description="Customer, supplier, and admin updates for this RFQ."
+              helperText="Your note notifies the customer and the Zartman team."
+              disabledCopy={messagingDisabledReason ?? undefined}
+              emptyStateCopy="No messages yet."
+            />
+          </section>
         </div>
         <div className="space-y-5">
           <PortalCard

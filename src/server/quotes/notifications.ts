@@ -14,7 +14,10 @@ import type {
 } from "@/server/quotes/notificationTypes";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import { getQuoteStatusLabel, type QuoteStatus } from "@/server/quotes/status";
-import { loadSupplierByPrimaryEmail } from "@/server/suppliers/profile";
+import {
+  loadSupplierById,
+  loadSupplierByPrimaryEmail,
+} from "@/server/suppliers/profile";
 import type { SupplierBidRow, SupplierRow } from "@/server/suppliers/types";
 
 type WinningBidParams = {
@@ -127,8 +130,9 @@ export async function notifyOnNewQuoteMessage(
   }
 
   const { quote, customer } = context;
-  const recipient = resolveMessageRecipient(message.sender_role, quote);
-  if (!recipient) {
+  const recipients = await resolveMessageRecipients(message, quote);
+
+  if (recipients.length === 0) {
     console.log("[quote notifications] message skipped", {
       quoteId: quote.id,
       authorType: message.sender_role,
@@ -137,40 +141,45 @@ export async function notifyOnNewQuoteMessage(
     return;
   }
 
-  const recipientUserId =
-    recipient.type === "customer"
-      ? customer?.user_id ?? null
-      : recipient.type === "supplier"
-        ? recipient.supplier?.user_id ?? null
-        : recipient.userId ?? null;
-  const recipientRole =
-    recipient.type === "customer"
-      ? "customer"
-      : recipient.type === "supplier"
-        ? "supplier"
-        : "admin";
-  await dispatchEmailNotification({
-    eventType: "quote_message_posted",
-    quoteId: quote.id,
-    recipientEmail: recipient.email,
-    recipientUserId,
-    recipientRole,
-    actorUserId: message.sender_id,
-    audience:
-      recipient.type === "customer"
-        ? "customer"
-        : recipient.type === "supplier"
-          ? "supplier"
-          : "admin",
-    payload: {
-      authorType: message.sender_role,
-      recipientType: recipient.type,
-      messageId: message.id,
-    },
-    subject: `New message on RFQ ${getQuoteTitle(quote)}`,
-    previewText: `${recipient.label} received a new message on quote ${quote.id}`,
-    html: buildMessageHtml(message, quote, recipient.label),
-  });
+  await Promise.allSettled(
+    recipients.map((recipient) => {
+      const recipientUserId =
+        recipient.type === "customer"
+          ? customer?.user_id ?? null
+          : recipient.type === "supplier"
+            ? recipient.supplier?.user_id ?? null
+            : recipient.userId ?? null;
+      const recipientRole =
+        recipient.type === "customer"
+          ? "customer"
+          : recipient.type === "supplier"
+            ? "supplier"
+            : "admin";
+
+      return dispatchEmailNotification({
+        eventType: "quote_message_posted",
+        quoteId: quote.id,
+        recipientEmail: recipient.email,
+        recipientUserId,
+        recipientRole,
+        actorUserId: message.sender_id,
+        audience:
+          recipient.type === "customer"
+            ? "customer"
+            : recipient.type === "supplier"
+              ? "supplier"
+              : "admin",
+        payload: {
+          authorType: message.sender_role,
+          recipientType: recipient.type,
+          messageId: message.id,
+        },
+        subject: `New message on RFQ ${getQuoteTitle(quote)}`,
+        previewText: `${recipient.label} received a new message on ${getQuoteTitle(quote)}`,
+        html: buildMessageHtml(message, quote, recipient),
+      });
+    }),
+  );
 }
 
 export async function notifyOnWinningBidSelected(
@@ -406,44 +415,131 @@ async function notifyLosingSuppliers(
   }
 }
 
-function resolveMessageRecipient(
-  authorType: QuoteMessageRecord["sender_role"],
+async function resolveMessageRecipients(
+  message: QuoteMessageRecord,
   quote: QuoteContactInfo,
-): MessageRecipient | null {
-  if (authorType === "customer") {
-    return {
-      email: ADMIN_NOTIFICATION_EMAIL,
-      label: "Zartman admin",
-      type: "admin" as const,
-    };
-  }
+): Promise<MessageRecipient[]> {
+  const authorType = (message.sender_role ?? "").toString().trim().toLowerCase();
 
-  if (authorType === "admin" || authorType === "supplier") {
-    if (!quote.customer_email) {
-      return null;
-    }
-    return {
+  const recipients: MessageRecipient[] = [];
+
+  // v0 behavior:
+  // - Customer posts -> notify supplier (if known) + admin inbox
+  // - Supplier posts -> notify customer (if known)
+  // - Admin posts -> notify customer + supplier (if known)
+  const wantsCustomer = authorType === "supplier" || authorType === "admin";
+  const wantsSupplier = authorType === "customer" || authorType === "admin";
+
+  if (wantsCustomer && quote.customer_email) {
+    recipients.push({
       email: quote.customer_email,
       label: quote.customer_name ?? quote.company ?? "Customer",
       type: "customer" as const,
-    };
+    });
   }
 
-  return null;
+  if (wantsSupplier) {
+    const supplierRecipient = await resolveSupplierRecipientForQuote(quote.id);
+    if (supplierRecipient) {
+      recipients.push(supplierRecipient);
+    }
+  }
+
+  if (authorType === "customer") {
+    recipients.push({
+      email: ADMIN_NOTIFICATION_EMAIL,
+      label: "Zartman admin",
+      type: "admin" as const,
+    });
+  }
+
+  const seen = new Set<string>();
+  return recipients.filter((recipient) => {
+    const email = (recipient.email ?? "").trim().toLowerCase();
+    if (!email) return false;
+    if (seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  });
+}
+
+async function resolveSupplierRecipientForQuote(
+  quoteId: string,
+): Promise<MessageRecipient | null> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  if (!normalizedQuoteId) return null;
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes")
+      .select("awarded_supplier_id,assigned_supplier_email")
+      .eq("id", normalizedQuoteId)
+      .maybeSingle<{
+        awarded_supplier_id: string | null;
+        assigned_supplier_email: string | null;
+      }>();
+
+    if (error) {
+      console.error("[quote notifications] supplier recipient lookup failed", {
+        quoteId: normalizedQuoteId,
+        error,
+      });
+      return null;
+    }
+
+    const awardedSupplierId =
+      typeof data?.awarded_supplier_id === "string"
+        ? data.awarded_supplier_id.trim()
+        : "";
+    const assignedSupplierEmail =
+      typeof data?.assigned_supplier_email === "string"
+        ? data.assigned_supplier_email.trim().toLowerCase()
+        : "";
+
+    const supplier =
+      awardedSupplierId.length > 0
+        ? await loadSupplierById(awardedSupplierId)
+        : assignedSupplierEmail.length > 0
+          ? await loadSupplierByPrimaryEmail(assignedSupplierEmail)
+          : null;
+
+    const recipientEmail =
+      supplier?.primary_email ??
+      (assignedSupplierEmail.length > 0 ? assignedSupplierEmail : null);
+    if (!recipientEmail) {
+      return null;
+    }
+
+    return {
+      type: "supplier" as const,
+      email: recipientEmail,
+      label: supplier?.company_name ?? recipientEmail,
+      supplier: supplier ?? null,
+      userId: supplier?.user_id ?? null,
+    };
+  } catch (error) {
+    console.error("[quote notifications] supplier recipient lookup crashed", {
+      quoteId: normalizedQuoteId,
+      error,
+    });
+    return null;
+  }
 }
 
 function buildMessageHtml(
   message: QuoteMessageRecord,
   quote: QuoteContactInfo,
-  recipientLabel: string,
+  recipient: MessageRecipient,
 ) {
   const href = buildPortalLink(
-    message.sender_role === "customer"
-      ? `/admin/quotes/${quote.id}`
-      : `/customer/quotes/${quote.id}`,
+    recipient.type === "supplier"
+      ? `/supplier/quotes/${quote.id}`
+      : recipient.type === "admin"
+        ? `/admin/quotes/${quote.id}`
+        : `/customer/quotes/${quote.id}`,
   );
   return `
-    <p>${recipientLabel},</p>
+    <p>${recipient.label},</p>
     <p><strong>${message.sender_name ?? "A teammate"}</strong> posted a new message on <strong>${getQuoteTitle(
       quote,
     )}</strong>.</p>

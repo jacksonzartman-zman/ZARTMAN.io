@@ -448,7 +448,7 @@ export async function postQuoteMessage(
   }
 
   try {
-    const user = await requireUser({ redirectTo: redirectPath });
+    const user = await requireAdminUser();
 
     const result = await createQuoteMessage({
       quoteId: normalizedQuoteId,
