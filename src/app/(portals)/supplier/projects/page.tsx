@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { formatDateTime } from "@/lib/formatDate";
 import {
   formatRelativeTimeCompactFromTimestamp,
@@ -15,6 +16,11 @@ import { getSupplierAwardedQuotesForProjects } from "@/server/supplier/projects"
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Phase 1 Polish checklist
+ * - Done: Empty state (no projects) is consistent + role-appropriate
+ */
 
 function formatAwardedDate(value: string | null): string {
   if (!value) return "—";
@@ -105,20 +111,11 @@ export default async function SupplierProjectsPage() {
         description="These are RFQs that have been awarded to your shop and are now tracked as projects."
       >
         {projects.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-800 bg-black/40 px-4 py-6 text-sm text-slate-300">
-            <p className="font-medium text-slate-100">No awarded projects yet.</p>
-            <p className="mt-1 text-slate-400">
-              When a customer awards your bid, it will show up here as a project.
-            </p>
-            <div className="mt-4">
-              <Link
-                href="/supplier/quotes"
-                className="inline-flex items-center rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-400"
-              >
-                View quotes
-              </Link>
-            </div>
-          </div>
+          <EmptyStateCard
+            title="No projects yet"
+            description="When a customer awards your bid, it will show up here as a project."
+            action={{ label: "View RFQs", href: "/supplier/quotes" }}
+          />
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
             <table className="min-w-full divide-y divide-slate-900/70 text-sm">

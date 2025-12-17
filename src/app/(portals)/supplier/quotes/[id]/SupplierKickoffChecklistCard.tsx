@@ -1,6 +1,13 @@
 "use client";
 
+/**
+ * Phase 1 Polish checklist
+ * - Done: Inline confirmations on task toggle + refresh pills/progress
+ * - Done: Error surface includes retry guidance
+ */
+
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   mergeKickoffTasksWithDefaults,
@@ -22,6 +29,7 @@ export function SupplierKickoffChecklistCard({
   tasks,
   readOnly = false,
 }: SupplierKickoffChecklistCardProps) {
+  const router = useRouter();
   const hasTasks = Array.isArray(tasks) && tasks.length > 0;
   const mergedTasks = useMemo(() => {
     if (!hasTasks) {
@@ -84,7 +92,10 @@ export function SupplierKickoffChecklistCard({
                   : entry,
               ),
             );
+            return;
           }
+          // Keep the rail + at-a-glance pills in sync.
+          router.refresh();
         })
         .catch((error) => {
           console.error("[supplier kickoff tasks] action crashed", {
@@ -94,7 +105,7 @@ export function SupplierKickoffChecklistCard({
           });
           setResult({
             ok: false,
-            error: "We couldn’t update that task. Please try again.",
+            error: "We couldn’t update that task. Try again or refresh the page.",
           });
           setLocalTasks((current) =>
             current.map((entry) =>

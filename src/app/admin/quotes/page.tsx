@@ -1,4 +1,10 @@
 // src/app/admin/quotes/page.tsx
+/**
+ * Phase 1 Polish checklist
+ * - Done: Admin inbox view filter is wired (needs attention / awarded / all)
+ * - Done: Empty state is positive when inbox is clear
+ * - Done: Perceived speed: view switches keep scroll stable (scroll:false already in client controls)
+ */
 import {
   getAdminQuotesInbox,
   getOnlyBidderSupplierIdsForQuotes,
@@ -29,6 +35,8 @@ import {
 } from "@/server/quotes/fileSummary";
 import type { AdminQuotesView } from "@/types/adminQuotes";
 import AdminQuotesInboxControls from "./AdminQuotesInboxControls";
+import AdminQuotesViewFilter from "./AdminQuotesViewFilter";
+import { normalizeAdminQuotesView, viewIncludesStatus } from "./viewFilters";
 import TablePaginationControls from "../components/TablePaginationControls";
 import { ADMIN_QUOTES_LIST_STATE_CONFIG } from "./listState";
 import {
@@ -49,6 +57,7 @@ type QuotesPageProps = {
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const resolvedSearchParams = await searchParams;
   const listState = parseListState(resolvedSearchParams, ADMIN_QUOTES_LIST_STATE_CONFIG);
+  const currentView = normalizeAdminQuotesView(resolvedSearchParams?.get("view") ?? null);
 
   const sort = listState.sort ?? null;
   const status = listState.status ?? null;
@@ -217,13 +226,21 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     };
   });
 
-  const filteredQuotes = enrichedRows;
+  const filteredQuotes = enrichedRows.filter((row) =>
+    viewIncludesStatus(currentView, row.status),
+  );
 
   return (
     <AdminDashboardShell title="Quotes" description="Recent quotes created from uploads.">
       {!inboxResult.ok ? (
         <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-6 py-4 text-sm text-red-100">
-          We had trouble loading quotes. Check logs and try again.
+          <p>We couldn’t load quotes. Try refreshing the page.</p>
+          <details className="mt-3 rounded-xl border border-red-500/20 bg-red-950/20 px-4 py-3 text-xs text-red-100">
+            <summary className="cursor-pointer select-none font-semibold text-red-50">
+              Technical details
+            </summary>
+            <div className="mt-2 font-mono">error: {inboxResult.error ?? "unknown"}</div>
+          </details>
         </div>
       ) : null}
       {inboxResult.data.degraded ? (
@@ -233,7 +250,10 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       ) : null}
         <AdminFiltersBar
           filters={
-            <AdminQuotesInboxControls basePath="/admin/quotes" />
+            <div className="flex flex-col gap-3">
+              <AdminQuotesViewFilter currentView={currentView} basePath="/admin/quotes" />
+              <AdminQuotesInboxControls basePath="/admin/quotes" />
+            </div>
           }
           search={
             <AdminSearchInput
@@ -249,7 +269,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
             <QuotesTable
               quotes={filteredQuotes}
               totalCount={totalCount}
-              currentView={"all" as AdminQuotesView}
+              currentView={currentView as AdminQuotesView}
               searchTerm={normalizedSearch}
             />
             <TablePaginationControls

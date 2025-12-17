@@ -1,5 +1,12 @@
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { QuoteFilesCard, type QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
+
+/**
+ * Phase 1 Polish checklist
+ * - Done: Empty state (no files) is consistent + calm guidance
+ * - Done: Copy normalization ("Uploads")
+ */
 
 type QuoteFilesUploadsSectionProps = {
   files: QuoteFileItem[];
@@ -14,7 +21,7 @@ export function QuoteFilesUploadsSection({
 }: QuoteFilesUploadsSectionProps) {
   return (
     <CollapsibleCard
-      title="Files & uploads"
+      title="Uploads"
       description="RFQ files and download links."
       defaultOpen={defaultOpen}
       summary={
@@ -26,9 +33,11 @@ export function QuoteFilesUploadsSection({
       <div className="space-y-2">
         <QuoteFilesCard files={files} />
         {files.length === 0 ? (
-          <p className="px-1 text-xs text-slate-500">
-            No files to display yet. We&apos;ll attach uploads here automatically once they&apos;re processed.
-          </p>
+          <EmptyStateCard
+            title="No files yet"
+            description="We’ll attach uploads here automatically once they’re processed."
+            className="mt-3"
+          />
         ) : null}
       </div>
     </CollapsibleCard>

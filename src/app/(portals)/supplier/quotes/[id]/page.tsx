@@ -1,6 +1,14 @@
 import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
+
+/**
+ * Phase 1 Polish checklist
+ * - Done: Empty states (Kickoff locked / no files / no messages)
+ * - Done: Confirmations (bid saved, kickoff task updated) refresh server data
+ * - Done: Copy normalization (Decision/Kickoff/Messages/Uploads match rail)
+ */
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
@@ -780,7 +788,7 @@ function SupplierQuoteWorkspace({
       <DisclosureSection
         id="kickoff"
         className="scroll-mt-24"
-        title="Kickoff checklist"
+        title="Kickoff"
         description="Prep tasks unlock for the awarded supplier."
         defaultOpen={awardedToSupplier && !kickoffProgressBasis.isComplete}
         summary={
@@ -839,7 +847,7 @@ function SupplierQuoteWorkspace({
               />
             </>
           ) : (
-            <SupplierKickoffLockedCard />
+            <SupplierKickoffLockedCard hasWinner={quoteHasWinner} />
           )}
         </div>
       </DisclosureSection>
@@ -961,7 +969,7 @@ function SupplierQuoteWorkspace({
               description="Customer, supplier, and admin updates for this RFQ."
               helperText="Your note notifies the customer and the Zartman team."
               disabledCopy={messagingDisabledReason ?? undefined}
-              emptyStateCopy="No messages yet."
+              emptyStateCopy="Send the first message to align on scope and timing."
             />
           </DisclosureSection>
         </div>
@@ -1153,18 +1161,18 @@ function PortalNoticeCard({
   );
 }
 
-function SupplierKickoffLockedCard() {
+function SupplierKickoffLockedCard({ hasWinner }: { hasWinner: boolean }) {
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Kickoff checklist
-        </p>
-        <h2 className="text-lg font-semibold text-white">Kickoff checklist</h2>
-        <p className="text-sm text-slate-300">
-          Kickoff begins after you are selected.
-        </p>
-      </header>
+      <EmptyStateCard
+        title={hasWinner ? "Not awarded" : "Kickoff locked"}
+        description={
+          hasWinner
+            ? "This RFQ was awarded to another supplier. Kickoff tasks remain locked."
+            : "Kickoff unlocks after you’re selected as the winning supplier."
+        }
+        secondaryAction={{ label: "Go to bid", href: "#bid" }}
+      />
     </section>
   );
 }

@@ -1,4 +1,11 @@
 // src/app/admin/quotes/[id]/page.tsx
+/**
+ * Phase 1 Polish checklist
+ * - Done: Empty states (no bids, no messages) with calm guidance
+ * - Done: Signals note when thread SLA falls back (non-blocking)
+ * - Done: Error surface copy is actionable (refresh / back)
+ * - Done: Copy normalization (Decision/Kickoff/Messages/Uploads match rail)
+ */
 
 import clsx from "clsx";
 import Link from "next/link";
@@ -85,6 +92,7 @@ import { AwardOutcomeCard } from "./AwardOutcomeCard";
 import { loadLatestAwardFeedbackForQuote } from "@/server/quotes/awardFeedback";
 import { formatAwardFeedbackReasonLabel } from "@/lib/awardFeedback";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,12 +112,31 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         <PortalContainer>
           <section className="mx-auto max-w-3xl rounded-2xl border border-red-500/30 bg-red-950/40 p-6 text-center">
             <h1 className="text-xl font-semibold text-red-50">
-              We had trouble loading this quote.
+              We couldn’t load this quote.
             </h1>
             <p className="mt-2 text-sm text-red-100">
-              Check logs and try again. The quote data stayed untouched.
+              Try refreshing the page. If this keeps happening, contact support.
             </p>
+            <details className="mt-4 rounded-xl border border-red-500/20 bg-red-950/20 px-4 py-3 text-left text-xs text-red-100">
+              <summary className="cursor-pointer select-none font-semibold text-red-50">
+                Technical details
+              </summary>
+              <div className="mt-2 space-y-1 font-mono">
+                <div>quoteId: {resolvedParams.id}</div>
+                <div>error: {quoteResult.error ?? "unknown"}</div>
+              </div>
+            </details>
             <div className="mt-4">
+              <Link
+                href={`/admin/quotes/${resolvedParams.id}`}
+                className={clsx(
+                  primaryCtaClasses,
+                  ctaSizeClasses.sm,
+                  "inline-flex mr-2",
+                )}
+              >
+                Refresh
+              </Link>
               <Link
                 href="/admin/quotes"
                 className={clsx(
@@ -900,7 +927,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           title="Customer & supplier messages"
           description="One shared conversation across portals."
           helperText="Replies notify the customer inbox immediately."
-          emptyStateCopy="No messages yet. Use this thread to keep the customer and suppliers aligned."
+          emptyStateCopy="Send the first update to keep the customer and suppliers aligned."
         />
       </div>
     );
@@ -1332,7 +1359,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           <DisclosureSection
             id="details"
             className="scroll-mt-24"
-            title="Technical details"
+            title="Details"
             description="IDs and metadata for troubleshooting."
             defaultOpen={false}
             summary={
@@ -1409,6 +1436,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 }
               >
                 <div className="space-y-4">
+                  {threadSla?.usingFallback ? (
+                    <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
+                      SLA signal unavailable; using basic staleness.
+                    </p>
+                  ) : null}
                   {threadStatusPanel}
                   {kickoffStatusPanel}
                   {routingSuggestionPanel}
@@ -1422,7 +1454,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             id="decision"
             className="scroll-mt-24"
             hashAliases={["bids-panel", "suppliers-panel"]}
-            title="Suppliers & bids"
+            title="Decision"
             description="Invite suppliers, review bids, and award a winner."
             defaultOpen={!hasWinningBid && aggregateBidCount > 0}
             summary={
@@ -1438,6 +1470,20 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             }
           >
             <div className="space-y-4">
+              {aggregateBidCount === 0 && !hasWinningBid ? (
+                <EmptyStateCard
+                  title="No bids yet"
+                  description="Invite a supplier to start bidding, or check back later."
+                  action={
+                    showInviteSupplierCta
+                      ? { label: "Invite a supplier", href: "#suppliers-panel" }
+                      : { label: "Open messages", href: "#messages" }
+                  }
+                  secondaryAction={
+                    showInviteSupplierCta ? { label: "Open messages", href: "#messages" } : null
+                  }
+                />
+              ) : null}
               {showInviteSupplierCta ? (
                 <div id="suppliers-panel" className="scroll-mt-24">
                   <AdminInviteSupplierCard quoteId={quote.id} />
@@ -1452,7 +1498,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 awardedSupplierId={quote.awarded_supplier_id ?? null}
                 bids={bids}
                 bidsLoaded={bidsResult.ok}
-                errorMessage={bidsResult.ok ? bidsResult.error : null}
+                errorMessage={bidsResult.error ?? null}
               />
             </div>
           </DisclosureSection>
@@ -1462,7 +1508,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               id="uploads"
               className="scroll-mt-24"
               hashAliases={["uploads-panel"]}
-              title="Uploads & intake"
+              title="Uploads"
               description="Files, structured intake metadata, and customer notes."
               defaultOpen={false}
               summary={

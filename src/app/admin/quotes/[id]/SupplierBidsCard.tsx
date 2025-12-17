@@ -6,6 +6,12 @@ import type { SupplierRow } from "@/server/suppliers/types";
 import clsx from "clsx";
 import { BidAwardForm } from "./BidAwardForm";
 
+/**
+ * Phase 1 Polish checklist
+ * - Done: Empty state (no bids) stays calm + actionable
+ * - Done: Error surface (failed bid fetch) includes refresh + technical details (collapsed)
+ */
+
 export type AdminSupplierBidRow = BidRow & {
   supplier?: SupplierRow | null;
 };
@@ -51,12 +57,24 @@ export function SupplierBidsCard({
         <h2 className="text-sm font-semibold text-slate-100">Supplier bids</h2>
         {!bidsLoaded ? (
           <span className="text-xs text-slate-400">
-            We had trouble loading bids. Check logs and try again.
+            Bids are temporarily unavailable.
           </span>
         ) : null}
       </div>
 
-      {errorMessage && bidsLoaded ? (
+      {!bidsLoaded ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          <p>We couldn’t load bids. Refresh the page to try again.</p>
+          {errorMessage ? (
+            <details className="mt-3 rounded-lg border border-amber-500/20 bg-black/20 px-3 py-2 text-xs">
+              <summary className="cursor-pointer select-none font-semibold">
+                Technical details
+              </summary>
+              <div className="mt-2 font-mono">{errorMessage}</div>
+            </details>
+          ) : null}
+        </div>
+      ) : errorMessage ? (
         <p className="text-xs text-slate-400">{errorMessage}</p>
       ) : null}
 

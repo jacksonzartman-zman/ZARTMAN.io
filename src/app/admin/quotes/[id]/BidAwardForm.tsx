@@ -1,10 +1,16 @@
 "use client";
 
 import clsx from "clsx";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useFormState, useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { awardBidFormAction } from "./actions";
 import { AWARD_BID_FORM_INITIAL_STATE } from "./awardFormState";
+
+/**
+ * Phase 1 Polish checklist
+ * - Done: Award confirmation feedback (inline + refresh + scroll to kickoff)
+ */
 
 type BidAwardFormProps = {
   quoteId: string;
@@ -19,6 +25,7 @@ export function BidAwardForm({
   supplierName,
   className,
 }: BidAwardFormProps) {
+  const router = useRouter();
   const [state, formAction] = useFormState(
     awardBidFormAction,
     AWARD_BID_FORM_INITIAL_STATE,
@@ -33,6 +40,14 @@ export function BidAwardForm({
     }
     return null;
   }, [state]);
+
+  useEffect(() => {
+    if (state.status !== "success") return;
+    // Keep the admin at-a-glance pills + status in sync.
+    router.refresh();
+    const kickoff = document.getElementById("kickoff");
+    kickoff?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [router, state.status]);
 
   return (
     <form
