@@ -21,9 +21,10 @@ export type AdminThreadSla = {
   unreadForAdmin: boolean;
 };
 
-const ROLE_PRIORITY: AdminThreadMessageAuthorRole[] = ["admin", "supplier", "customer"];
 const STALE_AFTER_MS = 48 * 60 * 60 * 1000;
 const VERY_STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+
+let didWarnMissingAdminThreadSlaRpc = false;
 
 export async function loadAdminThreadSlaForQuotes(input: {
   quoteIds: string[];
@@ -55,79 +56,19 @@ export async function loadAdminThreadSlaForQuotes(input: {
     return result;
   }
 
-  type RoleMaxRow = {
-    quote_id: string;
-    sender_role: string | null;
-    last_at: string | null;
-  };
-
-  const roleMaxByQuoteId = new Map<
-    string,
-    Partial<Record<AdminThreadMessageAuthorRole, string | null>>
-  >();
-
-  // Query 1: grouped max(created_at) by quote + role.
-  try {
-    const { data, error } = await supabaseServer
-      .from("quote_messages")
-      .select("quote_id,sender_role,last_at:created_at.max()")
-      .in("quote_id", normalizedQuoteIds)
-      .in("sender_role", ROLE_PRIORITY)
-      .returns<RoleMaxRow[]>();
-
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        // Failure-safe: missing `quote_messages` in older environments.
-        return result;
-      }
-      logAdminQuotesWarn("thread SLA query failed (role max)", {
-        quoteIdsCount: normalizedQuoteIds.length,
-        supabaseError: serializeSupabaseError(error),
-      });
-      return result;
-    }
-
-    const rows = Array.isArray(data) ? data : [];
-    for (const row of rows) {
-      const quoteId = typeof row?.quote_id === "string" ? row.quote_id.trim() : "";
-      const role = normalizeRole(row?.sender_role);
-      if (!quoteId || !role) continue;
-      const existing = roleMaxByQuoteId.get(quoteId) ?? {};
-      existing[role] = typeof row?.last_at === "string" ? row.last_at : null;
-      roleMaxByQuoteId.set(quoteId, existing);
-    }
-  } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      return result;
-    }
-    logAdminQuotesWarn("thread SLA query crashed (role max)", {
-      quoteIdsCount: normalizedQuoteIds.length,
-      error: serializeSupabaseError(error) ?? error,
-    });
-    return result;
-  }
-
-  // Derive last message role + timestamp, needs-reply role, and staleness.
   const nowMs = Date.now();
-  for (const quoteId of normalizedQuoteIds) {
-    const roleMax = roleMaxByQuoteId.get(quoteId) ?? {};
-    const lastAt = resolveLatestTimestamp(roleMax);
-    const lastRole = lastAt ? resolveRoleForTimestamp(roleMax, lastAt) : null;
+  const appliedFromRpc = await applyAdminThreadSlaFromRpc({
+    quoteIds: normalizedQuoteIds,
+    result,
+    nowMs,
+  });
 
-    const stalenessBucket = resolveStalenessBucket(lastAt, nowMs);
-    const needsReplyFrom = resolveNeedsReplyFrom({
-      lastRole,
-      lastAt,
-      customerLastAt: roleMax.customer ?? null,
-      supplierLastAt: roleMax.supplier ?? null,
+  if (!appliedFromRpc) {
+    await applyAdminThreadSlaFromLatestMessagesFallback({
+      quoteIds: normalizedQuoteIds,
+      result,
+      nowMs,
     });
-
-    const row = result[quoteId];
-    if (!row) continue;
-    row.lastMessageAt = lastAt;
-    row.lastMessageAuthorRole = lastRole;
-    row.needsReplyFrom = needsReplyFrom;
-    row.stalenessBucket = stalenessBucket;
   }
 
   // Query 2 (best-effort): reads for the admin user to flag unread threads.
@@ -194,52 +135,28 @@ function normalizeRole(value: unknown): AdminThreadMessageAuthorRole | null {
   return null;
 }
 
-function resolveLatestTimestamp(
-  roleMax: Partial<Record<AdminThreadMessageAuthorRole, string | null>>,
-): string | null {
-  const candidates = ROLE_PRIORITY.map((role) => roleMax[role]).filter(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
-  );
-  if (candidates.length === 0) return null;
-
-  let latest = candidates[0]!;
-  for (const value of candidates.slice(1)) {
-    if (value > latest) {
-      latest = value;
-    }
-  }
-  return latest;
-}
-
-function resolveRoleForTimestamp(
-  roleMax: Partial<Record<AdminThreadMessageAuthorRole, string | null>>,
-  lastAt: string,
-): AdminThreadMessageAuthorRole | null {
-  for (const role of ROLE_PRIORITY) {
-    if (roleMax[role] === lastAt) {
-      return role;
-    }
-  }
-  return null;
-}
-
 function resolveNeedsReplyFrom(args: {
   lastRole: AdminThreadMessageAuthorRole | null;
-  lastAt: string | null;
-  customerLastAt: string | null;
-  supplierLastAt: string | null;
+  lastCustomerMessageAt: string | null;
+  lastSupplierMessageAt: string | null;
 }): AdminThreadNeedsReplyFrom | null {
-  if (!args.lastRole || !args.lastAt) return null;
+  if (!args.lastRole) return null;
   if (args.lastRole === "admin") return null;
 
   if (args.lastRole === "customer") {
-    // Needs supplier reply if supplier has NOT posted since that customer message.
-    return args.supplierLastAt && args.supplierLastAt >= args.lastAt ? null : "supplier";
+    // Needs supplier reply if supplier has NOT posted since the last customer message.
+    if (!args.lastSupplierMessageAt) return "supplier";
+    if (!args.lastCustomerMessageAt) return "supplier";
+    return args.lastSupplierMessageAt < args.lastCustomerMessageAt ? "supplier" : null;
   }
+
   if (args.lastRole === "supplier") {
-    // Needs customer reply if customer has NOT posted since that supplier message.
-    return args.customerLastAt && args.customerLastAt >= args.lastAt ? null : "customer";
+    // Needs customer reply if customer has NOT posted since the last supplier message.
+    if (!args.lastCustomerMessageAt) return "customer";
+    if (!args.lastSupplierMessageAt) return "customer";
+    return args.lastCustomerMessageAt < args.lastSupplierMessageAt ? "customer" : null;
   }
+
   return null;
 }
 
@@ -254,5 +171,185 @@ function resolveStalenessBucket(
   if (ageMs >= VERY_STALE_AFTER_MS) return "very_stale";
   if (ageMs >= STALE_AFTER_MS) return "stale";
   return "fresh";
+}
+
+function getSupabaseErrorCode(error: unknown): string | null {
+  const serialized = serializeSupabaseError(error);
+  if (!serialized || typeof serialized !== "object") return null;
+  const code = "code" in serialized ? (serialized as { code?: unknown }).code : null;
+  return typeof code === "string" ? code : null;
+}
+
+function isMissingRpcOrSchemaError(error: unknown): boolean {
+  const code = getSupabaseErrorCode(error);
+  if (code === "PGRST202") return true; // missing function / RPC
+  return isMissingTableOrColumnError(error);
+}
+
+async function applyAdminThreadSlaFromRpc(args: {
+  quoteIds: string[];
+  result: Record<string, AdminThreadSla>;
+  nowMs: number;
+}): Promise<boolean> {
+  type RpcRow = {
+    quote_id: string;
+    last_message_at: string | null;
+    last_message_author_role: string | null;
+    last_customer_message_at: string | null;
+    last_supplier_message_at: string | null;
+    last_admin_message_at: string | null;
+  };
+
+  try {
+    const { data, error } = await supabaseServer
+      .rpc("admin_message_sla_for_quotes", {
+        p_quote_ids: args.quoteIds,
+      })
+      .returns<RpcRow[]>();
+
+    if (error) {
+      if (isMissingRpcOrSchemaError(error)) {
+        if (!didWarnMissingAdminThreadSlaRpc) {
+          didWarnMissingAdminThreadSlaRpc = true;
+          logAdminQuotesWarn("thread SLA RPC missing; using fallback", {
+            quoteIdsCount: args.quoteIds.length,
+            supabaseError: serializeSupabaseError(error),
+          });
+        }
+        return false;
+      }
+
+      logAdminQuotesWarn("thread SLA RPC failed", {
+        quoteIdsCount: args.quoteIds.length,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return false;
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    const byQuoteId = new Map<string, RpcRow>();
+    for (const row of rows) {
+      const quoteId = typeof row?.quote_id === "string" ? row.quote_id.trim() : "";
+      if (!quoteId) continue;
+      byQuoteId.set(quoteId, row);
+    }
+
+    for (const quoteId of args.quoteIds) {
+      const row = args.result[quoteId];
+      if (!row) continue;
+      const rpc = byQuoteId.get(quoteId);
+      const lastMessageAt =
+        rpc && typeof rpc.last_message_at === "string" ? rpc.last_message_at : null;
+      const lastRole = normalizeRole(rpc?.last_message_author_role ?? null);
+
+      const lastCustomerMessageAt =
+        rpc && typeof rpc.last_customer_message_at === "string"
+          ? rpc.last_customer_message_at
+          : null;
+      const lastSupplierMessageAt =
+        rpc && typeof rpc.last_supplier_message_at === "string"
+          ? rpc.last_supplier_message_at
+          : null;
+
+      row.lastMessageAt = lastMessageAt;
+      row.lastMessageAuthorRole = lastRole;
+      row.needsReplyFrom = resolveNeedsReplyFrom({
+        lastRole,
+        lastCustomerMessageAt,
+        lastSupplierMessageAt,
+      });
+      row.stalenessBucket = resolveStalenessBucket(lastMessageAt, args.nowMs);
+    }
+
+    return true;
+  } catch (error) {
+    if (isMissingRpcOrSchemaError(error)) {
+      if (!didWarnMissingAdminThreadSlaRpc) {
+        didWarnMissingAdminThreadSlaRpc = true;
+        logAdminQuotesWarn("thread SLA RPC missing; using fallback", {
+          quoteIdsCount: args.quoteIds.length,
+          supabaseError: serializeSupabaseError(error) ?? error,
+        });
+      }
+      return false;
+    }
+
+    logAdminQuotesWarn("thread SLA RPC crashed", {
+      quoteIdsCount: args.quoteIds.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return false;
+  }
+}
+
+async function applyAdminThreadSlaFromLatestMessagesFallback(args: {
+  quoteIds: string[];
+  result: Record<string, AdminThreadSla>;
+  nowMs: number;
+}): Promise<void> {
+  // Failure-safe fallback that avoids aggregates entirely: fetch newest messages globally,
+  // then take the first-per-quote in memory.
+  const limit = Math.min(10000, Math.max(100, args.quoteIds.length * 10));
+
+  try {
+    type MsgRow = {
+      id: string;
+      quote_id: string;
+      created_at: string;
+      sender_role: string | null;
+    };
+
+    const { data, error } = await supabaseServer
+      .from("quote_messages")
+      .select("id,quote_id,created_at,sender_role")
+      .in("quote_id", args.quoteIds)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(limit)
+      .returns<MsgRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        // Older environments: `quote_messages` might not exist.
+        return;
+      }
+      logAdminQuotesWarn("thread SLA fallback query failed (latest messages)", {
+        quoteIdsCount: args.quoteIds.length,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return;
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    const latestByQuoteId = new Map<string, MsgRow>();
+    for (const msg of rows) {
+      const quoteId = typeof msg?.quote_id === "string" ? msg.quote_id.trim() : "";
+      if (!quoteId || latestByQuoteId.has(quoteId)) continue;
+      latestByQuoteId.set(quoteId, msg);
+      if (latestByQuoteId.size >= args.quoteIds.length) break;
+    }
+
+    for (const quoteId of args.quoteIds) {
+      const sla = args.result[quoteId];
+      if (!sla) continue;
+      const latest = latestByQuoteId.get(quoteId);
+      const lastMessageAt =
+        latest && typeof latest.created_at === "string" ? latest.created_at : null;
+      const lastRole = normalizeRole(latest?.sender_role ?? null);
+
+      sla.lastMessageAt = lastMessageAt;
+      sla.lastMessageAuthorRole = lastRole;
+      // Safe defaults: we do not attempt per-role aggregates in fallback mode.
+      sla.needsReplyFrom = null;
+      sla.stalenessBucket = resolveStalenessBucket(lastMessageAt, args.nowMs);
+    }
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error)) {
+      logAdminQuotesWarn("thread SLA fallback query crashed (latest messages)", {
+        quoteIdsCount: args.quoteIds.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  }
 }
 
