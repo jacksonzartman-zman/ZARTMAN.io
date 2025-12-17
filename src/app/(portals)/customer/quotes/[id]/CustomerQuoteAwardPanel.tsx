@@ -1,8 +1,15 @@
 "use client";
 
+/**
+ * Phase 1 Polish checklist
+ * - Done: Confirmation feedback for award (success banner + refresh + scroll to Kickoff)
+ * - Done: Error copy is calm + actionable
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
+import { useRouter } from "next/navigation";
 import { formatDateTime } from "@/lib/formatDate";
 import type { CustomerQuoteBidSummary } from "@/server/customers/bids";
 import {
@@ -27,6 +34,7 @@ export function CustomerQuoteAwardPanel({
   disableReason,
   winningBidId,
 }: CustomerQuoteAwardPanelProps) {
+  const router = useRouter();
   const action = useMemo(() => awardQuoteToBidAction, []);
   const [state, formAction] = useFormState<AwardActionState, FormData>(
     action,
@@ -52,6 +60,14 @@ export function CustomerQuoteAwardPanel({
     }
   }, [state.ok, state.selectedBidId]);
 
+  useEffect(() => {
+    if (!state.ok || !state.selectedBidId) return;
+    // Re-fetch server-rendered status + pills, then guide attention to Kickoff.
+    router.refresh();
+    const kickoff = document.getElementById("kickoff");
+    kickoff?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [router, state.ok, state.selectedBidId]);
+
   return (
     <section className="space-y-5 rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5">
       <header className="space-y-2">
@@ -72,9 +88,12 @@ export function CustomerQuoteAwardPanel({
       </header>
 
       {state.ok && state.message ? (
-        <p className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          {state.message}
-        </p>
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          <p>{state.message}</p>
+          <a href="#kickoff" className="mt-2 inline-flex text-xs font-semibold text-emerald-200 hover:underline">
+            Jump to kickoff
+          </a>
+        </div>
       ) : null}
 
       {!state.ok && state.error ? (

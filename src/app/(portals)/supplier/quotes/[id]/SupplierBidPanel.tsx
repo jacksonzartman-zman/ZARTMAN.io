@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Phase 1 Polish checklist
+ * - Done: Confirmation feedback on submit/update (banner + refresh header data)
+ * - Done: Error surfaces stay actionable (no scary copy)
+ */
+
 import {
   useEffect,
   useMemo,
@@ -8,6 +14,7 @@ import {
   type ComponentProps,
 } from "react";
 import { useFormState, useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import type { BidRow } from "@/server/bids";
 import { submitSupplierBid } from "./actions";
 import type { SupplierBidFormState } from "@/server/quotes/supplierQuoteServer";
@@ -40,6 +47,7 @@ export function SupplierBidPanel({
   bidsUnavailableMessage,
   bidLocked = false,
 }: SupplierBidPanelProps) {
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [optimisticBid, setOptimisticBid] = useState<{
@@ -97,8 +105,10 @@ export function SupplierBidPanel({
   useEffect(() => {
     if (showLiveSuccess) {
       formRef.current?.reset();
+      // Re-fetch server-rendered pills/status so the workspace feels "done".
+      router.refresh();
     }
-  }, [showLiveSuccess]);
+  }, [router, showLiveSuccess]);
 
   const baseDisabled =
     (approvalsOn && !approved) || Boolean(bidsUnavailableMessage);
@@ -247,7 +257,10 @@ export function SupplierBidPanel({
         ) : null}
 
         {(showLiveSuccess || showPersistedSuccess) && successMessage ? (
-          <p className="text-sm text-emerald-300" role="status">
+          <p
+            className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100"
+            role="status"
+          >
             {successMessage}
           </p>
         ) : null}

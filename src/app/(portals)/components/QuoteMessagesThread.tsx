@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * Phase 1 Polish checklist
+ * - Done: Empty state card (role-agnostic, calm guidance)
+ * - Done: Success/error surfaces keep copy actionable
+ * - Done: Sending state keeps perceived speed (no scary spinners)
+ */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
@@ -9,6 +16,7 @@ import { formatDateTime } from "@/lib/formatDate";
 import { sbBrowser } from "@/lib/supabase";
 import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 export type QuoteMessagesThreadProps = {
   quoteId: string;
@@ -123,9 +131,11 @@ function QuoteMessageList({
 }) {
   if (messages.length === 0) {
     return (
-      <p className="rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-6 py-5 text-sm text-slate-400">
-        {emptyStateCopy}
-      </p>
+      <EmptyStateCard
+        title="No messages yet"
+        description={emptyStateCopy}
+        className="px-6 py-5"
+      />
     );
   }
 

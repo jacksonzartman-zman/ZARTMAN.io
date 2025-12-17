@@ -1,3 +1,10 @@
+/**
+ * Phase 1 Polish checklist
+ * - Done: Empty states (no bids / no files / no messages)
+ * - Done: Confirmations (award + nudge + message sent) feel immediate
+ * - Done: Copy normalization (Decision/Kickoff/Messages/Uploads match rail)
+ */
+
 import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
@@ -57,6 +64,8 @@ import { QuoteAtAGlanceBar, type QuoteAtAGlancePill } from "@/components/QuoteAt
 import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +90,7 @@ export default async function CustomerQuoteDetailPage({
   const overrideEmail = normalizeEmailInput(emailParam);
   const focusParam = getSearchParamValue(resolvedSearchParams, "focus");
   const tabParam = getSearchParamValue(resolvedSearchParams, "tab");
+  const messagesHref = buildQuoteTabHref(resolvedSearchParams, "messages", "#messages");
   const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {
@@ -225,6 +235,13 @@ export default async function CustomerQuoteDetailPage({
     Boolean(quote.awarded_bid_id) ||
     Boolean(quote.awarded_supplier_id) ||
     Boolean(winningBidId);
+  const latestKickoffNudgedAt =
+    quoteHasWinner && winningSupplierId
+      ? await getLatestKickoffNudgedAt({
+          quoteId: quote.id,
+          supplierId: winningSupplierId,
+        })
+      : null;
   const kickoffSummaryStatus =
     quoteHasWinner && customerKickoffSummary.isComplete
       ? "complete"
@@ -481,7 +498,7 @@ export default async function CustomerQuoteDetailPage({
             kickoffComplete: kickoffProgressBasis.isComplete,
             messageCount: quoteMessages.length,
             fileCount,
-            messagesHref: buildQuoteTabHref(resolvedSearchParams, "messages", "#messages"),
+            messagesHref,
           })}
         />
       }
@@ -644,9 +661,11 @@ export default async function CustomerQuoteDetailPage({
             Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
           </p>
         ) : bidCount === 0 ? (
-          <p className="text-xs text-slate-400">
-            Supplier selection unlocks after you receive your first bid.
-          </p>
+          <EmptyStateCard
+            title="No bids yet"
+            description="We’re reaching out to suppliers now. Check Messages for updates."
+            action={{ label: "Open messages", href: messagesHref }}
+          />
         ) : (
           <>
             <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
@@ -916,9 +935,11 @@ export default async function CustomerQuoteDetailPage({
               Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
             </p>
           ) : bidCount === 0 ? (
-            <p className="text-xs text-slate-400">
-              Supplier selection unlocks after you receive your first bid.
-            </p>
+            <EmptyStateCard
+              title="No bids yet"
+              description="We’re reaching out to suppliers now. Check Messages for updates."
+              action={{ label: "Open messages", href: messagesHref }}
+            />
           ) : (
             <>
               <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
@@ -1069,7 +1090,7 @@ export default async function CustomerQuoteDetailPage({
                   ? "Messages are read-only while you are impersonating another customer."
                   : undefined
               }
-              emptyStateCopy="No messages yet."
+              emptyStateCopy="Send the first message to align on next steps."
             />
           </DisclosureSection>
         </div>
@@ -1119,6 +1140,7 @@ export default async function CustomerQuoteDetailPage({
                       <KickoffNudgeButton
                         quoteId={quote.id}
                         supplierId={winningSupplierId}
+                        latestNudgedAt={latestKickoffNudgedAt}
                       />
                     ) : null}
                   </div>

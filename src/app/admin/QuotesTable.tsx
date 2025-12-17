@@ -1,3 +1,9 @@
+/**
+ * Phase 1 Polish checklist
+ * - Done: Admin inbox empty state is positive + calm
+ * - Done: Copy normalization ("RFQ" consistently in table)
+ */
+
 import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
@@ -323,9 +329,9 @@ function getEmptyStateCopy({
 
   if (currentView === "needs_attention") {
     return {
-      title: "No RFQs need attention right now.",
+      title: "No items need a reply right now.",
       description:
-        "Fresh uploads or in-flight bids will bubble back up here automatically.",
+        "New messages, uploads, and bid activity will show up here automatically.",
     };
   }
 

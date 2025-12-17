@@ -1,7 +1,14 @@
+/**
+ * Phase 1 Polish checklist
+ * - Done: Missing SLA RPC falls back quietly (no warn in prod)
+ * - Done: UI can surface fallback via `usingFallback`
+ */
+
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import {
   isMissingTableOrColumnError,
+  logAdminQuotesInfo,
   logAdminQuotesWarn,
   serializeSupabaseError,
 } from "@/server/admin/logging";
@@ -19,6 +26,11 @@ export type AdminThreadSla = {
   needsReplyFrom: AdminThreadNeedsReplyFrom | null;
   stalenessBucket: AdminThreadStalenessBucket;
   unreadForAdmin: boolean;
+  /**
+   * True when the SLA RPC was unavailable and we fell back to a basic staleness signal.
+   * (Non-blocking, expected in older/dev environments.)
+   */
+  usingFallback: boolean;
 };
 
 const STALE_AFTER_MS = 48 * 60 * 60 * 1000;
@@ -49,6 +61,7 @@ export async function loadAdminThreadSlaForQuotes(input: {
       needsReplyFrom: null,
       stalenessBucket: "none",
       unreadForAdmin: false,
+      usingFallback: false,
     };
   }
 
@@ -69,6 +82,11 @@ export async function loadAdminThreadSlaForQuotes(input: {
       result,
       nowMs,
     });
+    for (const quoteId of normalizedQuoteIds) {
+      if (result[quoteId]) {
+        result[quoteId].usingFallback = true;
+      }
+    }
   }
 
   // Query 2 (best-effort): reads for the admin user to flag unread threads.
@@ -211,10 +229,14 @@ async function applyAdminThreadSlaFromRpc(args: {
       if (isMissingRpcOrSchemaError(error)) {
         if (!didWarnMissingAdminThreadSlaRpc) {
           didWarnMissingAdminThreadSlaRpc = true;
-          logAdminQuotesWarn("thread SLA RPC missing; using fallback", {
+          const isProd = process.env.NODE_ENV === "production";
+          (isProd ? logAdminQuotesInfo : logAdminQuotesWarn)(
+            "thread SLA signal unavailable; using fallback",
+            {
             quoteIdsCount: args.quoteIds.length,
             supabaseError: serializeSupabaseError(error),
-          });
+            },
+          );
         }
         return false;
       }
@@ -259,6 +281,7 @@ async function applyAdminThreadSlaFromRpc(args: {
         lastSupplierMessageAt,
       });
       row.stalenessBucket = resolveStalenessBucket(lastMessageAt, args.nowMs);
+      row.usingFallback = false;
     }
 
     return true;
@@ -266,10 +289,14 @@ async function applyAdminThreadSlaFromRpc(args: {
     if (isMissingRpcOrSchemaError(error)) {
       if (!didWarnMissingAdminThreadSlaRpc) {
         didWarnMissingAdminThreadSlaRpc = true;
-        logAdminQuotesWarn("thread SLA RPC missing; using fallback", {
+        const isProd = process.env.NODE_ENV === "production";
+        (isProd ? logAdminQuotesInfo : logAdminQuotesWarn)(
+          "thread SLA signal unavailable; using fallback",
+          {
           quoteIdsCount: args.quoteIds.length,
           supabaseError: serializeSupabaseError(error) ?? error,
-        });
+          },
+        );
       }
       return false;
     }

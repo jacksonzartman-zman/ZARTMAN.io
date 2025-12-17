@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { formatDateTime } from "@/lib/formatDate";
 import {
   formatRelativeTimeCompactFromTimestamp,
@@ -20,6 +21,12 @@ import CustomerProjectsListControls, {
 } from "./CustomerProjectsListControls";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Phase 1 Polish checklist
+ * - Done: Empty state (no projects) is consistent + role-appropriate
+ * - Done: Empty state (filters) stays calm + actionable
+ */
 
 function formatAwardedDate(value: string | null): string {
   if (!value) return "—";
@@ -185,20 +192,11 @@ export default async function CustomerProjectsPage({
         description="Track what’s happening now across awarded jobs, kickoff progress, and history."
       >
         {projects.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-800 bg-black/40 px-4 py-6 text-sm text-slate-300">
-            <p className="font-medium text-slate-100">No awarded projects yet.</p>
-            <p className="mt-1 text-slate-400">
-              When you award a winning supplier on a quote, it will show up here as a project.
-            </p>
-            <div className="mt-4">
-              <Link
-                href="/customer/quotes"
-                className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
-              >
-                View quotes
-              </Link>
-            </div>
-          </div>
+          <EmptyStateCard
+            title="No projects yet"
+            description="When you award a winning supplier on an RFQ, it will show up here as a project."
+            action={{ label: "View RFQs", href: "/customer/quotes" }}
+          />
         ) : (
           <>
             <CustomerProjectsListControls
@@ -208,12 +206,10 @@ export default async function CustomerProjectsPage({
             />
 
             {filteredProjects.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-800 bg-black/40 px-4 py-6 text-sm text-slate-300">
-                <p className="font-medium text-slate-100">No projects match these filters.</p>
-                <p className="mt-1 text-slate-400">
-                  Try switching status tabs or clearing the supplier filter.
-                </p>
-              </div>
+              <EmptyStateCard
+                title="No projects match these filters"
+                description="Try switching status tabs or clearing the supplier filter."
+              />
             ) : (
               <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
                 <table className="min-w-full divide-y divide-slate-900/70 text-sm">
