@@ -36,6 +36,7 @@ import QuoteUpdateForm from "../QuoteUpdateForm";
 import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { QuoteFilesCard } from "./QuoteFilesCard";
+import { QuoteUploadsStructuredList } from "@/components/QuoteUploadsStructuredList";
 import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { QuoteAtAGlanceBar } from "@/components/QuoteAtAGlanceBar";
 import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
@@ -93,6 +94,7 @@ import { loadLatestAwardFeedbackForQuote } from "@/server/quotes/awardFeedback";
 import { formatAwardFeedbackReasonLabel } from "@/lib/awardFeedback";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { loadQuoteUploadGroups } from "@/server/quotes/uploadFiles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -348,6 +350,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         : null;
     const statusLabel = QUOTE_STATUS_LABELS[status] ?? "Unknown";
     const filePreviews = await getQuoteFilePreviews(quote);
+    const uploadGroups = await loadQuoteUploadGroups(quote.id);
     const dfmNotes =
       typeof quote.dfm_notes === "string" && quote.dfm_notes.trim().length > 0
         ? quote.dfm_notes
@@ -902,6 +905,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const uploadsContent = (
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-4 lg:space-y-5">
+          <QuoteUploadsStructuredList uploadGroups={uploadGroups} />
           <QuoteFilesCard id={fileCardAnchorId} files={filePreviews} />
           {rfqSummaryCard}
         </div>

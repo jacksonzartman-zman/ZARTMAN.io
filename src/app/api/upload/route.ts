@@ -10,6 +10,7 @@ import {
   bytesToMegabytes,
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
+import { recordQuoteUploadFiles } from "@/server/quotes/uploadFiles";
 
 export const runtime = "nodejs";
 
@@ -148,6 +149,7 @@ export async function POST(req: NextRequest) {
     const contactEmail = normalizedSessionEmail;
     const extension = getFileExtension(file.name);
     const isStlUpload = extension === "stl";
+    const isZipUpload = extension === "zip";
     logContext.extension = extension;
     logContext.isStlUpload = isStlUpload;
 
@@ -481,6 +483,23 @@ export async function POST(req: NextRequest) {
           missingTable,
         },
       );
+    }
+
+    // Record per-file entries (including ZIP member enumeration) for quote detail UI.
+    // Best-effort: do not fail the upload if this optional table is missing.
+    if (quoteId) {
+      void recordQuoteUploadFiles({
+        quoteId,
+        uploadId: uploadRow.id,
+        storedFiles: [
+          {
+            originalName: file.name,
+            sizeBytes: file.size,
+            mimeType,
+            buffer: isZipUpload ? buffer : undefined,
+          },
+        ],
+      });
     }
 
     logUploadDebug("Upload finished successfully", {

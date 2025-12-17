@@ -16,6 +16,8 @@
     "@react-three/fiber": "^8.15.16",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.81.1",
+    "@types/adm-zip": "^0.5.7",
+    "adm-zip": "^0.5.16",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "next": "15.5.7",

@@ -14,6 +14,7 @@ import {
 } from "@/server/admin/logging";
 import { notifyAdminOnQuoteSubmitted } from "@/server/quotes/notifications";
 import { emitQuoteEvent } from "@/server/quotes/events";
+import { recordQuoteUploadFiles } from "@/server/quotes/uploadFiles";
 
 const CAD_BUCKET =
   process.env.SUPABASE_CAD_BUCKET ||
@@ -76,6 +77,7 @@ type StoredCadFile = {
   mimeType: string;
   sizeBytes: number;
   bucket: string;
+  buffer?: Buffer; // retained only for ZIP enumeration
 };
 
 export type QuoteIntakePersistResult =
@@ -238,6 +240,9 @@ export async function persistQuoteIntake(
       const safeFileName = sanitizeFileName(file.name, extension);
       const storageKey = buildStorageKey(safeFileName);
       const storagePath = `${CAD_BUCKET}/${storageKey}`;
+      const isZip =
+        extension === "zip" ||
+        (typeof mimeType === "string" && mimeType.toLowerCase().includes("zip"));
 
       const { error: storageError } = await supabaseServer.storage
         .from(CAD_BUCKET)
@@ -269,6 +274,7 @@ export async function persistQuoteIntake(
         mimeType,
         sizeBytes: file.size,
         bucket: CAD_BUCKET,
+        buffer: isZip ? buffer : undefined,
       });
     }
 
@@ -456,6 +462,19 @@ export async function persistQuoteIntake(
         };
       }
     }
+
+    // Record per-file entries (including ZIP member enumeration) for quote detail UI.
+    // Best-effort: do not fail intake if this optional table is missing.
+    void recordQuoteUploadFiles({
+      quoteId,
+      uploadId,
+      storedFiles: storedFiles.map((file) => ({
+        originalName: file.originalName,
+        sizeBytes: file.sizeBytes,
+        mimeType: file.mimeType,
+        buffer: file.buffer,
+      })),
+    });
 
     return {
       ok: true,

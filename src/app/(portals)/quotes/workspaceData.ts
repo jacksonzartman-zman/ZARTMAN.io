@@ -11,6 +11,10 @@ import type {
   UploadMeta,
 } from "@/server/quotes/types";
 import {
+  loadQuoteUploadGroups,
+  type QuoteUploadGroup,
+} from "@/server/quotes/uploadFiles";
+import {
   loadQuoteMessages,
   type QuoteMessageRecord,
 } from "@/server/quotes/messages";
@@ -31,6 +35,7 @@ export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
 export type QuoteWorkspaceData = {
   quote: QuoteWorkspaceQuote;
   uploadMeta: UploadMeta | null;
+  uploadGroups: QuoteUploadGroup[];
   filePreviews: Awaited<ReturnType<typeof getQuoteFilePreviews>>;
   messages: QuoteMessageRecord[];
   messagesError?: string | null;
@@ -190,6 +195,7 @@ export async function loadQuoteWorkspaceData(
     };
 
     const filePreviews = await getQuoteFilePreviews(quote, filePreviewOptions);
+    const uploadGroups = await loadQuoteUploadGroups(quoteId);
     const files = buildQuoteFilesFromRow(quote);
     const fileCount = files.length;
     const enrichedQuote: QuoteWorkspaceQuote = {
@@ -213,6 +219,7 @@ export async function loadQuoteWorkspaceData(
       data: {
         quote: enrichedQuote,
         uploadMeta,
+        uploadGroups,
         filePreviews,
         messages: messages ?? [],
         messagesError,
