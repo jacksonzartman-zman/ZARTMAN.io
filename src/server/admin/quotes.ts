@@ -6,6 +6,7 @@ import {
   type QuoteStatus,
 } from "@/server/quotes/status";
 import { notifyCustomerOnQuoteStatusChange } from "@/server/quotes/notifications";
+import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
@@ -165,13 +166,16 @@ export async function loadAdminQuoteDetail(
   }
 
   try {
-    const { data, error } = await withRetry(() =>
-      supabaseServer
+    const result = await withRetry<
+      PostgrestSingleResponse<AdminQuoteListRow | null>
+    >(async () => {
+      return await supabaseServer
         .from("quotes_with_uploads")
         .select(ADMIN_QUOTE_DETAIL_FIELDS.join(","))
         .eq("id", quoteId)
-        .maybeSingle<AdminQuoteListRow>(),
-    );
+        .maybeSingle<AdminQuoteListRow>();
+    });
+    const { data, error } = result;
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
