@@ -27,6 +27,7 @@ import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
+import { DisclosureSection } from "@/components/DisclosureSection";
 import {
   getQuoteStatusLabel,
   getQuoteStatusHelper,
@@ -54,6 +55,8 @@ import {
 import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
 import { QuoteAtAGlanceBar, type QuoteAtAGlancePill } from "@/components/QuoteAtAGlanceBar";
 import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
+import { QuoteSectionRail } from "@/components/QuoteSectionRail";
+import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 
 export const dynamic = "force-dynamic";
 
@@ -427,7 +430,7 @@ export default async function CustomerQuoteDetailPage({
       label: "Bids",
       value: bidSummaryBadgeLabel,
       tone: bidsPillTone,
-      href: "#award",
+      href: "#decision",
     },
     {
       key: "kickoff",
@@ -469,6 +472,19 @@ export default async function CustomerQuoteDetailPage({
       whatsNext={quoteStatusHelper}
       pills={[...customerAtAGlancePills]}
       primaryAction={customerPrimaryAction}
+      below={
+        <QuoteSectionRail
+          sections={buildCustomerQuoteSections({
+            bidCount,
+            hasWinner: quoteHasWinner,
+            kickoffRatio: kickoffTasksRatio,
+            kickoffComplete: kickoffProgressBasis.isComplete,
+            messageCount: quoteMessages.length,
+            fileCount,
+            messagesHref: buildQuoteTabHref(resolvedSearchParams, "messages", "#messages"),
+          })}
+        />
+      }
     />
   );
 
@@ -737,10 +753,12 @@ export default async function CustomerQuoteDetailPage({
   const postMessageAction = postCustomerQuoteMessage.bind(null, quote.id);
 
   const quoteDetailsSection = (
-    <CollapsibleCard
-      title="Quote details"
+    <DisclosureSection
+      id="details"
+      className="scroll-mt-24"
+      title="Details"
       description="Status, key dates, and workflow snapshot."
-      defaultOpen
+      defaultOpen={false}
       summary={
         <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
           {quoteStatusLabel}
@@ -804,13 +822,24 @@ export default async function CustomerQuoteDetailPage({
           </div>
         </dl>
       </div>
-    </CollapsibleCard>
+    </DisclosureSection>
   );
 
   const filesSection = (
-    <section id="uploads" className="scroll-mt-24">
+    <DisclosureSection
+      id="uploads"
+      className="scroll-mt-24"
+      title="Uploads"
+      description="Shared RFQ files and previews."
+      defaultOpen={fileCount > 0}
+      summary={
+        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+          {fileCountText}
+        </span>
+      }
+    >
       <QuoteFilesUploadsSection files={filePreviews} fileCountText={fileCountText} />
-    </section>
+    </DisclosureSection>
   );
 
   const notesSection = (
@@ -840,92 +869,116 @@ export default async function CustomerQuoteDetailPage({
     </CollapsibleCard>
   );
 
-  const awardSection = (
-    <section id="award" className="space-y-4 scroll-mt-24">
-      {bidSummaryPanel}
-      <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Supplier bids
-            </p>
-            <p className="text-sm text-slate-300">
-              We collect bids from vetted suppliers, then review options before finalizing your quote.
-            </p>
-          </div>
-          {bidCount > 0 ? (
-            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-              {bidCount} bid{bidCount === 1 ? "" : "s"} received
-            </span>
-          ) : null}
-        </div>
-        {bidsUnavailable ? (
-          <p className="text-xs text-slate-400">
-            Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
-          </p>
-        ) : bidCount === 0 ? (
-          <p className="text-xs text-slate-400">
-            Supplier selection unlocks after you receive your first bid.
-          </p>
+  const decisionSection = (
+    <DisclosureSection
+      id="decision"
+      hashAliases={["award"]}
+      className="scroll-mt-24"
+      title="Decision"
+      description="Review supplier bids and select a winner."
+      defaultOpen={bidCount > 0 && !quoteHasWinner}
+      summary={
+        quoteHasWinner ? (
+          <span className="pill pill-success px-3 py-0.5 text-[11px] font-semibold">
+            Winner
+          </span>
+        ) : bidCount > 0 ? (
+          <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+            {bidCount} bid{bidCount === 1 ? "" : "s"}
+          </span>
         ) : (
-          <>
-            <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
-              <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Best price
-                </dt>
-                <dd className="mt-1">
-                  {bestPriceValue != null
-                    ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
-                    : "Pending"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Fastest lead time
-                </dt>
-                <dd className="mt-1">
-                  {fastestLeadTime != null ? leadTimeLabel : "Pending"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Total bids
-                </dt>
-                <dd className="mt-1">
-                  {bidCount} bid{bidCount === 1 ? "" : "s"}
-                </dd>
-              </div>
-            </dl>
-            {showCustomerSupplierSection ? (
-              customerAwardBidsReady ? (
-                <CustomerQuoteAwardPanel
-                  quoteId={quote.id}
-                  bids={customerBidSummaries}
-                  canSubmit={customerCanAward}
-                  disableReason={customerAwardDisabledReason}
-                  winningBidId={winningBidId}
-                />
-              ) : (
-                <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-xs text-yellow-100">
-                  {customerBidSummariesError ??
-                    "We couldn’t load supplier bid details. Refresh to try again."}
-                </p>
-              )
+          <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+            No bids
+          </span>
+        )
+      }
+    >
+      <div className="space-y-4">
+        {bidSummaryPanel}
+        <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Supplier bids
+              </p>
+              <p className="text-sm text-slate-300">
+                We collect bids from vetted suppliers, then review options before finalizing your quote.
+              </p>
+            </div>
+            {bidCount > 0 ? (
+              <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+                {bidCount} bid{bidCount === 1 ? "" : "s"} received
+              </span>
             ) : null}
-          </>
-        )}
+          </div>
+          {bidsUnavailable ? (
+            <p className="text-xs text-slate-400">
+              Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
+            </p>
+          ) : bidCount === 0 ? (
+            <p className="text-xs text-slate-400">
+              Supplier selection unlocks after you receive your first bid.
+            </p>
+          ) : (
+            <>
+              <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Best price
+                  </dt>
+                  <dd className="mt-1">
+                    {bestPriceValue != null
+                      ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
+                      : "Pending"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Fastest lead time
+                  </dt>
+                  <dd className="mt-1">
+                    {fastestLeadTime != null ? leadTimeLabel : "Pending"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Total bids
+                  </dt>
+                  <dd className="mt-1">
+                    {bidCount} bid{bidCount === 1 ? "" : "s"}
+                  </dd>
+                </div>
+              </dl>
+              {showCustomerSupplierSection ? (
+                customerAwardBidsReady ? (
+                  <CustomerQuoteAwardPanel
+                    quoteId={quote.id}
+                    bids={customerBidSummaries}
+                    canSubmit={customerCanAward}
+                    disableReason={customerAwardDisabledReason}
+                    winningBidId={winningBidId}
+                  />
+                ) : (
+                  <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-xs text-yellow-100">
+                    {customerBidSummariesError ??
+                      "We couldn’t load supplier bid details. Refresh to try again."}
+                  </p>
+                )
+              ) : null}
+            </>
+          )}
+        </div>
       </div>
-    </section>
+    </DisclosureSection>
   );
 
   const kickoffSection = (
-    <CollapsibleCard
+    <DisclosureSection
       id="kickoff"
+      className="scroll-mt-24"
       title="Kickoff"
       description="Project kickoff details and supplier checklist updates."
-      className="scroll-mt-24"
-      defaultOpen={quoteHasWinner}
+      defaultOpen={quoteHasWinner && !kickoffProgressBasis.isComplete}
       summary={
         <span className={clsx("rounded-full border px-3 py-1", kickoffSummaryTone)}>
           {kickoffSummaryLabel}
@@ -941,16 +994,16 @@ export default async function CustomerQuoteDetailPage({
           anchorId={null}
         />
       </div>
-    </CollapsibleCard>
+    </DisclosureSection>
   );
 
   const timelineSection = (
-    <CollapsibleCard
+    <DisclosureSection
       id="timeline"
       className="scroll-mt-24"
       title="Timeline"
       description="Updates and milestones for this RFQ."
-      defaultOpen={false}
+      defaultOpen={tabParam === "activity"}
     >
       <QuoteTimeline
         quoteId={quote.id}
@@ -958,7 +1011,7 @@ export default async function CustomerQuoteDetailPage({
         actorUserId={user.id}
         emptyState="No updates yet."
       />
-    </CollapsibleCard>
+    </DisclosureSection>
   );
 
   return (
@@ -975,7 +1028,7 @@ export default async function CustomerQuoteDetailPage({
       {receiptBanner}
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-5">
-          {awardSection}
+          {decisionSection}
           {kickoffSection}
           {timelineSection}
           {messagesUnavailable ? (
@@ -983,7 +1036,24 @@ export default async function CustomerQuoteDetailPage({
               Messages are temporarily unavailable. Refresh the page to try again.
             </p>
           ) : null}
-          <section id="messages" className="scroll-mt-24">
+          <DisclosureSection
+            id="messages"
+            className="scroll-mt-24"
+            title="Messages"
+            description="Shared thread with your supplier and the Zartman team."
+            defaultOpen={tabParam === "messages"}
+            summary={
+              quoteMessages.length > 0 ? (
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
+                </span>
+              ) : (
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  No messages
+                </span>
+              )
+            }
+          >
             <QuoteMessagesThread
               quoteId={quote.id}
               messages={quoteMessages}
@@ -992,7 +1062,7 @@ export default async function CustomerQuoteDetailPage({
               currentUserId={user.id}
               markRead={tabParam === "messages"}
               title="Messages"
-              description="Shared thread with your supplier and the Zartman team."
+              description="Shared thread with your supplier and the Zartman admin team."
               helperText="Your note notifies your supplier and the Zartman admin team."
               disabledCopy={
                 readOnly
@@ -1001,7 +1071,7 @@ export default async function CustomerQuoteDetailPage({
               }
               emptyStateCopy="No messages yet."
             />
-          </section>
+          </DisclosureSection>
         </div>
         <div className="space-y-5">
           {quoteIsWon ? (
@@ -1071,6 +1141,75 @@ export default async function CustomerQuoteDetailPage({
       </div>
     </PortalShell>
   );
+}
+
+function buildCustomerQuoteSections(args: {
+  bidCount: number;
+  hasWinner: boolean;
+  kickoffRatio: string | null;
+  kickoffComplete: boolean;
+  messageCount: number;
+  fileCount: number;
+  messagesHref: string;
+}): QuoteSectionRailSection[] {
+  const decisionBadge = args.hasWinner
+    ? "Winner"
+    : args.bidCount > 0
+      ? `${args.bidCount}`
+      : undefined;
+  const kickoffBadge = args.kickoffComplete
+    ? "Complete"
+    : args.kickoffRatio
+      ? args.kickoffRatio
+      : args.hasWinner
+        ? "In progress"
+        : "Locked";
+  const uploadsBadge = args.fileCount > 0 ? `${args.fileCount}` : undefined;
+
+  return [
+    {
+      key: "decision",
+      label: "Decision",
+      href: "#decision",
+      badge: decisionBadge,
+      tone: args.hasWinner ? "neutral" : args.bidCount > 0 ? "info" : "neutral",
+    },
+    {
+      key: "kickoff",
+      label: "Kickoff",
+      href: "#kickoff",
+      badge: kickoffBadge,
+      tone: args.kickoffComplete ? "neutral" : args.hasWinner ? "info" : "neutral",
+    },
+    {
+      key: "messages",
+      label: "Messages",
+      href: args.messagesHref,
+      badge: args.messageCount > 0 ? `${args.messageCount}` : undefined,
+    },
+    { key: "uploads", label: "Uploads", href: "#uploads", badge: uploadsBadge },
+    { key: "details", label: "Details", href: "#details" },
+    { key: "timeline", label: "Timeline", href: "#timeline" },
+  ];
+}
+
+function buildQuoteTabHref(
+  resolvedSearchParams: SearchParamsLike | undefined,
+  tabValue: string,
+  hash: string,
+): string {
+  const params = new URLSearchParams();
+  const source = resolvedSearchParams ?? {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === "string") {
+      params.set(key, value);
+    } else if (Array.isArray(value) && typeof value[0] === "string") {
+      params.set(key, value[0]);
+    }
+  }
+  params.set("tab", tabValue);
+  const qs = params.toString();
+  return qs ? `?${qs}${hash}` : `${hash}`;
 }
 
 function PortalNoticeCard({

@@ -25,6 +25,7 @@ export function QuoteAtAGlanceBar({
   whatsNext,
   pills,
   primaryAction,
+  below,
   className,
 }: {
   role: QuoteActorRole;
@@ -32,6 +33,7 @@ export function QuoteAtAGlanceBar({
   whatsNext: ReactNode;
   pills: QuoteAtAGlancePill[];
   primaryAction: PrimaryAction;
+  below?: ReactNode;
   className?: string;
 }) {
   const statusBadgeClasses =
@@ -80,6 +82,8 @@ export function QuoteAtAGlanceBar({
           </PrimaryLink>
         </div>
       </div>
+
+      {below ? <div className="mt-3 border-t border-slate-900/60 pt-3">{below}</div> : null}
     </section>
   );
 }

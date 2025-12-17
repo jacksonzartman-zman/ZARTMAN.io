@@ -59,6 +59,9 @@ import {
 import { postQuoteMessage as postAdminQuoteMessage } from "./actions";
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
+import { DisclosureSection } from "@/components/DisclosureSection";
+import { QuoteSectionRail } from "@/components/QuoteSectionRail";
+import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { AdminDecisionCtas } from "./AdminDecisionCtas";
 import { AdminInviteSupplierCard } from "./AdminInviteSupplierCard";
 import { HashScrollLink } from "@/app/(portals)/components/hashScroll";
@@ -741,7 +744,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             )}
           </p>
           <a
-            href="#messages-panel"
+            href="#messages"
             className="text-sm font-semibold text-emerald-200 underline-offset-4 hover:underline"
           >
             Open messages
@@ -1260,7 +1263,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         label: "Bids",
         value: bidCountLabel,
         tone: attentionState.needsDecision ? "warning" : "neutral",
-        href: "#bids-panel",
+        href: "#decision",
       },
       { key: "bestPrice", label: "Best price", value: bestPriceDisplay },
       { key: "leadTime", label: "Fastest lead", value: fastestLeadTimeDisplay },
@@ -1280,7 +1283,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         label: "Messages",
         value: `${quoteMessages.length}`,
         tone: threadSla?.needsReplyFrom ? "warning" : "neutral",
-        href: "#messages-panel",
+        href: "#messages",
       },
     ] as const;
 
@@ -1311,9 +1314,33 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             whatsNext={adminWhatsNext}
             pills={[...adminPills]}
             primaryAction={adminPrimaryAction}
+            below={
+              <QuoteSectionRail
+                sections={buildAdminQuoteSections({
+                  bidCount: aggregateBidCount,
+                  hasWinner: hasWinningBid,
+                  kickoffRatio: kickoffProgressRatio,
+                  kickoffComplete: kickoffProgressBasis.isComplete,
+                  messageCount: quoteMessages.length,
+                  needsReply: Boolean(threadSla?.needsReplyFrom),
+                  fileCount: filePreviews.length,
+                })}
+              />
+            }
           />
 
-          <div className="space-y-3">
+          <DisclosureSection
+            id="details"
+            className="scroll-mt-24"
+            title="Technical details"
+            description="IDs and metadata for troubleshooting."
+            defaultOpen={false}
+            summary={
+              <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                {formatShortId(quote.id)}
+              </span>
+            }
+          >
             <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
               <span>
                 Quote ID:{" "}
@@ -1336,7 +1363,9 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 {formatDateTime(quote.updated_at, { includeTime: true }) ?? "—"}
               </span>
             </div>
+          </DisclosureSection>
 
+          <div className="space-y-3">
             <div className="flex flex-wrap gap-3 text-sm text-slate-300">
               <span className="font-medium text-slate-50">{customerName}</span>
               {customerEmail && (
@@ -1362,46 +1391,77 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)]">
               {bidSummaryPanel}
-              <div className="space-y-4">
-                {projectStatusPanel}
-                {kickoffStatusPanel}
-                {threadStatusPanel}
-                {workflowPanel}
-                {routingSuggestionPanel}
-              <AwardOutcomeCard
-                quoteId={quote.id}
-                awardedSupplierId={awardedSupplierId}
-                awardedSupplierLabel={winningSupplierName ?? "Supplier selected"}
-                awardedAtLabel={awardedAtLabel ?? (winningBidExists ? "Pending" : "—")}
-                awardedByLabel={awardedByLabel || "—"}
-                feedback={awardFeedback}
-              />
-                {capacityPanel}
-                {projectSnapshotPanel}
-              </div>
+              <DisclosureSection
+                id="signals"
+                title="Signals"
+                description="Thread SLA, kickoff status, routing health, and capacity."
+                defaultOpen
+                summary={
+                  threadSla?.needsReplyFrom ? (
+                    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                      Needs reply
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold text-slate-200">
+                      No reply needed
+                    </span>
+                  )
+                }
+              >
+                <div className="space-y-4">
+                  {threadStatusPanel}
+                  {kickoffStatusPanel}
+                  {routingSuggestionPanel}
+                  {capacityPanel}
+                </div>
+              </DisclosureSection>
             </div>
           </div>
 
-          {showInviteSupplierCta ? (
-            <div id="suppliers-panel" className="scroll-mt-24">
-              <AdminInviteSupplierCard quoteId={quote.id} />
-            </div>
-          ) : null}
+          <DisclosureSection
+            id="decision"
+            className="scroll-mt-24"
+            hashAliases={["bids-panel", "suppliers-panel"]}
+            title="Suppliers & bids"
+            description="Invite suppliers, review bids, and award a winner."
+            defaultOpen={!hasWinningBid && aggregateBidCount > 0}
+            summary={
+              hasWinningBid ? (
+                <span className="pill pill-success px-3 py-0.5 text-[11px] font-semibold">
+                  Winner
+                </span>
+              ) : (
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+                  {bidCountLabel}
+                </span>
+              )
+            }
+          >
+            <div className="space-y-4">
+              {showInviteSupplierCta ? (
+                <div id="suppliers-panel" className="scroll-mt-24">
+                  <AdminInviteSupplierCard quoteId={quote.id} />
+                </div>
+              ) : null}
 
-          <SupplierBidsCard
-            id="bids-panel"
-            quoteId={quote.id}
-            quoteStatus={status}
-            awardedBidId={quote.awarded_bid_id ?? null}
-            awardedSupplierId={quote.awarded_supplier_id ?? null}
-            bids={bids}
-            bidsLoaded={bidsResult.ok}
-            errorMessage={bidsResult.ok ? bidsResult.error : null}
-          />
+              <SupplierBidsCard
+                id="bids-panel"
+                quoteId={quote.id}
+                quoteStatus={status}
+                awardedBidId={quote.awarded_bid_id ?? null}
+                awardedSupplierId={quote.awarded_supplier_id ?? null}
+                bids={bids}
+                bidsLoaded={bidsResult.ok}
+                errorMessage={bidsResult.ok ? bidsResult.error : null}
+              />
+            </div>
+          </DisclosureSection>
 
           <div className="space-y-4">
-            <CollapsibleCard
-              id="uploads-panel"
+            <DisclosureSection
+              id="uploads"
+              className="scroll-mt-24"
+              hashAliases={["uploads-panel"]}
               title="Uploads & intake"
               description="Files, structured intake metadata, and customer notes."
               defaultOpen={false}
@@ -1412,14 +1472,14 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               }
             >
               {uploadsContent}
-            </CollapsibleCard>
+            </DisclosureSection>
 
-            <CollapsibleCard
+            <DisclosureSection
               id="kickoff"
+              className="scroll-mt-24"
               title="Kickoff"
               description="Customer PO, ship date, and handoff notes (visible to winner)."
               defaultOpen={false}
-              className="scroll-mt-24"
               summary={
                 <span className={clsx("rounded-full border px-3 py-1", kickoffSummaryTone)}>
                   {kickoffSummaryLabel}
@@ -1432,13 +1492,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 projectUnavailable={projectUnavailable}
                 className={cardClasses}
               />
-            </CollapsibleCard>
+            </DisclosureSection>
 
-            <CollapsibleCard
-              id="messages-panel"
+            <DisclosureSection
+              id="messages"
+              className="scroll-mt-24"
+              hashAliases={["messages-panel"]}
               title="Messages"
               description="Shared customer + supplier thread for this RFQ."
-              defaultOpen={false}
+              defaultOpen={Boolean(threadSla?.needsReplyFrom)}
               summary={
                 <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
                   {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
@@ -1446,7 +1508,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               }
             >
               {messagesContent}
-            </CollapsibleCard>
+            </DisclosureSection>
 
             <CollapsibleCard
               title="Edit quote"
@@ -1456,13 +1518,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               {editContent}
             </CollapsibleCard>
 
-            <CollapsibleCard
+            <DisclosureSection
+              id="timeline"
+              className="scroll-mt-24"
               title="Timeline"
               description="Updates and milestones for this RFQ."
               defaultOpen={false}
             >
               {trackingContent}
-            </CollapsibleCard>
+            </DisclosureSection>
 
             <CollapsibleCard
               title="3D viewer workspace"
@@ -1475,6 +1539,58 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         </div>
       </AdminDashboardShell>
     );
+}
+
+function buildAdminQuoteSections(args: {
+  bidCount: number;
+  hasWinner: boolean;
+  kickoffRatio: string | null;
+  kickoffComplete: boolean;
+  messageCount: number;
+  needsReply: boolean;
+  fileCount: number;
+}): QuoteSectionRailSection[] {
+  const decisionBadge = args.hasWinner
+    ? "Winner"
+    : args.bidCount > 0
+      ? `${args.bidCount}`
+      : undefined;
+  const kickoffBadge = args.kickoffComplete
+    ? "Complete"
+    : args.kickoffRatio
+      ? args.kickoffRatio
+      : args.hasWinner
+        ? "In progress"
+        : "Locked";
+  const uploadsBadge = args.fileCount > 0 ? `${args.fileCount}` : undefined;
+  const messagesBadge = args.needsReply ? "Reply" : args.messageCount > 0 ? `${args.messageCount}` : undefined;
+
+  return [
+    {
+      key: "decision",
+      label: "Decision",
+      href: "#decision",
+      badge: decisionBadge,
+      tone: args.hasWinner ? "neutral" : args.bidCount > 0 ? "warning" : "neutral",
+    },
+    {
+      key: "kickoff",
+      label: "Kickoff",
+      href: "#kickoff",
+      badge: kickoffBadge,
+      tone: args.kickoffComplete ? "neutral" : args.hasWinner ? "info" : "neutral",
+    },
+    {
+      key: "messages",
+      label: "Messages",
+      href: "#messages",
+      badge: messagesBadge,
+      tone: args.needsReply ? "warning" : "neutral",
+    },
+    { key: "uploads", label: "Uploads", href: "#uploads", badge: uploadsBadge },
+    { key: "details", label: "Details", href: "#details" },
+    { key: "timeline", label: "Timeline", href: "#timeline" },
+  ];
 }
 
 function SnapshotField({ label, value }: { label: string; value: string }) {
