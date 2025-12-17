@@ -82,7 +82,10 @@ const QUOTE_DETAIL_ERROR = "Unable to load this quote right now.";
 export const QUOTE_UPDATE_ERROR =
   "Unable to update this quote right now. Please try again.";
 
-async function withRetry<T>(fn: () => Promise<T>, attempts = 2): Promise<T> {
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  attempts = 2,
+): Promise<T> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -165,13 +168,13 @@ export async function loadAdminQuoteDetail(
   }
 
   try {
-    const { data, error } = await withRetry(() =>
-      supabaseServer
+    const { data, error } = await withRetry(async () => {
+      return await supabaseServer
         .from("quotes_with_uploads")
         .select(ADMIN_QUOTE_DETAIL_FIELDS.join(","))
         .eq("id", quoteId)
-        .maybeSingle<AdminQuoteListRow>(),
-    );
+        .maybeSingle<AdminQuoteListRow>();
+    });
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
