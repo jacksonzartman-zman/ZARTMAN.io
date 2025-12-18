@@ -52,7 +52,9 @@ import { recordAwardFeedback } from "@/server/quotes/awardFeedback";
 import {
   adminCreateQuotePart,
   adminUpdateQuotePartFiles,
+  assertPartBelongsToQuote,
 } from "@/server/admin/quoteParts";
+import { appendFilesToQuoteUpload } from "@/server/quotes/uploadFiles";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -96,6 +98,8 @@ const ADMIN_PART_GENERIC_ERROR = "We couldn't update parts right now. Please try
 const ADMIN_PART_LABEL_ERROR = "Enter a part name.";
 const ADMIN_PART_FILES_GENERIC_ERROR =
   "We couldn't update part files right now. Please try again.";
+const ADMIN_PART_DRAWING_UPLOAD_ERROR =
+  "Couldn’t upload drawings; please try again.";
 
 export async function submitAwardFeedbackAction(
   quoteId: string,
@@ -310,6 +314,70 @@ export async function updateQuotePartFilesForQuoteAction(
   const partIdRaw = getFormString(formData, "quotePartId");
   const partId = typeof partIdRaw === "string" ? partIdRaw.trim() : "";
   return updateQuotePartFilesAction(quoteId, partId, prev, formData);
+}
+
+export async function adminUploadPartDrawingsAction(
+  quoteId: string,
+  partId: string,
+  _prev: AdminQuotePartActionState,
+  formData: FormData,
+): Promise<AdminQuotePartActionState> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  const normalizedPartId = typeof partId === "string" ? partId.trim() : "";
+  if (!normalizedQuoteId || !normalizedPartId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+
+    // Validate association up-front so we don't create orphaned uploads/files.
+    await assertPartBelongsToQuote({
+      quoteId: normalizedQuoteId,
+      quotePartId: normalizedPartId,
+    });
+
+    const raw = formData.getAll("files");
+    const files: File[] = [];
+    for (const value of raw) {
+      if (value instanceof File) {
+        files.push(value);
+      }
+    }
+
+    if (files.length === 0) {
+      return {
+        ok: false,
+        error: "Select at least one drawing file to upload.",
+        fieldErrors: { files: "Select at least one drawing file." },
+      };
+    }
+
+    const { uploadFileIds } = await appendFilesToQuoteUpload({
+      quoteId: normalizedQuoteId,
+      files,
+    });
+
+    await adminUpdateQuotePartFiles({
+      quoteId: normalizedQuoteId,
+      quotePartId: normalizedPartId,
+      addFileIds: uploadFileIds,
+      role: "drawing",
+    });
+
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return { ok: true, message: "Drawings uploaded and attached." };
+  } catch (error) {
+    console.error("[admin quote parts] drawing upload action crashed", {
+      quoteId: normalizedQuoteId,
+      quotePartId: normalizedPartId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_PART_DRAWING_UPLOAD_ERROR };
+  }
 }
 
 export async function awardBidFormAction(
