@@ -66,6 +66,7 @@ import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
+import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 
 export const dynamic = "force-dynamic";
 
@@ -123,6 +124,7 @@ export default async function CustomerQuoteDetailPage({
     uploadMeta,
     uploadGroups,
     filePreviews,
+    parts,
     messages: quoteMessages,
     messagesError,
   } = workspaceResult.data;
@@ -261,6 +263,20 @@ export default async function CustomerQuoteDetailPage({
         ? "All tasks completed"
         : "—"
     : "—";
+
+  const { summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
+  const partsCoverageDetailLabel = partsCoverageSummary.anyParts
+    ? partsCoverageSummary.partsNeedingCad > 0 && partsCoverageSummary.partsNeedingDrawing > 0
+      ? `${partsCoverageSummary.partsNeedingCad} need CAD • ${partsCoverageSummary.partsNeedingDrawing} need drawings`
+      : partsCoverageSummary.partsNeedingCad > 0
+        ? `${partsCoverageSummary.partsNeedingCad} need CAD`
+        : partsCoverageSummary.partsNeedingDrawing > 0
+          ? `${partsCoverageSummary.partsNeedingDrawing} need drawings`
+          : "All covered"
+    : null;
+  const partsCoverageSummaryLine = partsCoverageSummary.anyParts
+    ? `${partsCoverageSummary.totalParts} part${partsCoverageSummary.totalParts === 1 ? "" : "s"} • ${partsCoverageSummary.fullyCoveredParts} fully covered • ${partsCoverageDetailLabel}`
+    : null;
 
   const kickoffProgressBasis = resolveKickoffProgressBasis({
     kickoffCompletedAt:
@@ -699,13 +715,20 @@ export default async function CustomerQuoteDetailPage({
             </dl>
             {showCustomerSupplierSection ? (
               customerAwardBidsReady ? (
-                <CustomerQuoteAwardPanel
-                  quoteId={quote.id}
-                  bids={customerBidSummaries}
-                  canSubmit={customerCanAward}
-                  disableReason={customerAwardDisabledReason}
-                  winningBidId={winningBidId}
-                />
+                <>
+                  {partsCoverageSummary.anyParts && !partsCoverageSummary.allCovered ? (
+                    <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-5 py-3 text-xs text-slate-300">
+                      Note: Some parts are missing CAD or drawings. You can still award, but clarify scope in kickoff.
+                    </p>
+                  ) : null}
+                  <CustomerQuoteAwardPanel
+                    quoteId={quote.id}
+                    bids={customerBidSummaries}
+                    canSubmit={customerCanAward}
+                    disableReason={customerAwardDisabledReason}
+                    winningBidId={winningBidId}
+                  />
+                </>
               ) : (
                 <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-xs text-yellow-100">
                   {customerBidSummariesError ??
@@ -977,13 +1000,20 @@ export default async function CustomerQuoteDetailPage({
               </dl>
               {showCustomerSupplierSection ? (
                 customerAwardBidsReady ? (
-                  <CustomerQuoteAwardPanel
-                    quoteId={quote.id}
-                    bids={customerBidSummaries}
-                    canSubmit={customerCanAward}
-                    disableReason={customerAwardDisabledReason}
-                    winningBidId={winningBidId}
-                  />
+                  <>
+                    {partsCoverageSummary.anyParts && !partsCoverageSummary.allCovered ? (
+                      <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-5 py-3 text-xs text-slate-300">
+                        Note: Some parts are missing CAD or drawings. You can still award, but clarify scope in kickoff.
+                      </p>
+                    ) : null}
+                    <CustomerQuoteAwardPanel
+                      quoteId={quote.id}
+                      bids={customerBidSummaries}
+                      canSubmit={customerCanAward}
+                      disableReason={customerAwardDisabledReason}
+                      winningBidId={winningBidId}
+                    />
+                  </>
                 ) : (
                   <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-xs text-yellow-100">
                     {customerBidSummariesError ??
@@ -1012,6 +1042,37 @@ export default async function CustomerQuoteDetailPage({
       }
     >
       <div className="space-y-4">
+        {partsCoverageSummary.anyParts ? (
+          <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Parts overview
+                </p>
+                <p className="mt-1 text-sm text-slate-200">{partsCoverageSummaryLine}</p>
+              </div>
+              <span
+                className={clsx(
+                  "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                  partsCoverageSummary.allCovered
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                    : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+                )}
+              >
+                Coverage: {partsCoverageSummary.allCovered ? "Good" : "Needs attention"}
+              </span>
+            </div>
+            {!partsCoverageSummary.allCovered ? (
+              <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-100">
+                Some parts are missing CAD or drawings. You can still proceed, but this may slow down quoting or production.
+              </p>
+            ) : null}
+          </section>
+        ) : (
+          <p className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-300">
+            No parts defined yet. Your Zartman team may add parts later.
+          </p>
+        )}
         {projectSnapshotCard}
         {projectSection}
         <CustomerKickoffPanel
