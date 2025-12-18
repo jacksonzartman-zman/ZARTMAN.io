@@ -10,7 +10,6 @@ import {
   useMemo,
   useCallback,
 } from "react";
-import { useFormState, useFormStatus } from "react-dom";
 import dynamic from "next/dynamic";
 import clsx from "clsx";
 import {
@@ -21,13 +20,16 @@ import {
 } from "@/lib/cadFileTypes";
 import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
 import { primaryCtaClasses } from "@/lib/ctas";
-import { submitQuoteIntakeAction } from "@/app/quote/actions";
-import type { QuoteIntakeActionState } from "@/app/quote/actions";
-import { initialQuoteIntakeState } from "@/lib/quote/intakeState";
+import {
+  finalizeQuoteIntakeDirectUploadAction,
+  prepareQuoteIntakeDirectUploadAction,
+  type QuoteIntakeDirectPrepareState,
+} from "@/app/quote/actions";
 import { QUOTE_INTAKE_FALLBACK_ERROR } from "@/lib/quote/messages";
 import type { CadViewerPanelProps } from "@/app/(portals)/components/CadViewerPanel";
 import { PartDfMPanel } from "@/app/(portals)/components/PartDfMPanel";
 import type { GeometryStats } from "@/lib/dfm/basicPartChecks";
+import { supabaseBrowser } from "@/lib/supabase.client";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
@@ -162,7 +164,6 @@ const FIELD_ERROR_KEYS = [
 ] as const;
 
 type FieldErrorKey = (typeof FIELD_ERROR_KEYS)[number];
-const FIELD_ERROR_KEY_SET = new Set<FieldErrorKey>(FIELD_ERROR_KEYS);
 
 type FieldErrors = Partial<Record<FieldErrorKey, string>>;
 
@@ -282,43 +283,12 @@ export default function UploadBox({
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [geometryStatsMap, setGeometryStatsMap] = useState<
     Record<string, GeometryStats | null>
   >({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [rawFormState, formAction] = useFormState<
-    QuoteIntakeActionState,
-    FormData
-  >(submitQuoteIntakeAction, initialQuoteIntakeState);
-  const enhancedFormAction = useCallback(
-    (formData: FormData) => {
-      formData.delete("files");
-
-      for (const entry of state.files) {
-        if (entry.file) {
-          formData.append("files", entry.file);
-        }
-      }
-
-      const outgoingFiles = formData.getAll("files");
-      console.log("[quote intake] client submitting files", {
-        count: outgoingFiles.length,
-        names: outgoingFiles.map((f) =>
-          f instanceof File ? f.name : String(f),
-        ),
-      });
-
-      return formAction(formData);
-    },
-    [formAction, state.files],
-  );
-  const formState = useMemo<NormalizedActionState | null>(() => {
-    if (rawFormState === initialQuoteIntakeState) {
-      return null;
-    }
-    return normalizeActionState(rawFormState);
-  }, [rawFormState]);
+  const lastPrepareResultRef = useRef<QuoteIntakeDirectPrepareState | null>(null);
   const contactFieldsLocked = Boolean(prefillContact);
   const contactFieldLockSet = contactFieldsLocked
     ? new Set<InputFieldKey>(["email"])
@@ -390,25 +360,6 @@ export default function UploadBox({
   useEffect(() => {
     syncFileInputWithFiles(state.files.map((entry) => entry.file));
   }, [state.files, syncFileInputWithFiles]);
-
-  useEffect(() => {
-    if (!hasSubmitted || !formState) {
-      return;
-    }
-
-    if (formState.ok) {
-      setError(null);
-      setSuccessMessage(formState.message || "RFQ received.");
-      setFieldErrors({});
-      resetUploadState();
-    } else {
-      setError(formState.error);
-      setSuccessMessage(null);
-      setFieldErrors(formState.fieldErrors);
-    }
-
-    setHasSubmitted(false);
-  }, [formState, hasSubmitted, resetUploadState]);
 
   const hasFilesAttached = state.files.length > 0;
   const canSubmit = Boolean(
@@ -683,21 +634,23 @@ export default function UploadBox({
       setSuccessMessage(null);
     };
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     try {
+      e.preventDefault();
+      if (isSubmitting) {
+        return;
+      }
       setError(null);
       setSuccessMessage(null);
 
       const validationErrors = validateFormFields(state);
       if (hasErrors(validationErrors)) {
-        e.preventDefault();
         setFieldErrors(validationErrors);
         setError("Please fix the highlighted fields before submitting.");
         return;
       }
 
       if (!hasFilesAttached) {
-        e.preventDefault();
         setFieldErrors((prev) => ({
           ...prev,
           file: "Attach at least one CAD file before submitting.",
@@ -709,7 +662,6 @@ export default function UploadBox({
       for (const entry of state.files) {
         const fileValidationError = validateCadFile(entry.file);
         if (fileValidationError) {
-          e.preventDefault();
           setFieldErrors((prev) => ({
             ...prev,
             file: `${entry.file.name}: ${fileValidationError}`,
@@ -719,7 +671,6 @@ export default function UploadBox({
         }
 
         if (isFileTooLarge(entry.file)) {
-          e.preventDefault();
           const message = `Each file must be smaller than ${MAX_UPLOAD_SIZE_LABEL}. Try splitting your ZIP or compressing large drawings.`;
           setFieldErrors((prev) => ({ ...prev, file: message }));
           setError(message);
@@ -728,13 +679,78 @@ export default function UploadBox({
       }
 
       setFieldErrors({});
-      setHasSubmitted(true);
+
+      setIsSubmitting(true);
+      const form = e.currentTarget;
+      const formData = new FormData(form);
+      // Never send file bytes through Next server actions.
+      formData.delete("files");
+      formData.set(
+        "filesMeta",
+        JSON.stringify(
+          state.files.map((entry) => ({
+            fileName: entry.file.name,
+            sizeBytes: entry.file.size,
+            mimeType: entry.file.type || null,
+          })),
+        ),
+      );
+
+      const prepare = await prepareQuoteIntakeDirectUploadAction(formData);
+      lastPrepareResultRef.current = prepare;
+      if (!prepare.ok) {
+        setError(prepare.error || QUOTE_INTAKE_FALLBACK_ERROR);
+        setSuccessMessage(null);
+        setFieldErrors((prepare.fieldErrors ?? {}) as FieldErrors);
+        return;
+      }
+
+      if (prepare.targets.length !== state.files.length) {
+        setError(QUOTE_INTAKE_FALLBACK_ERROR);
+        setSuccessMessage(null);
+        return;
+      }
+
+      const sb = supabaseBrowser();
+      for (let i = 0; i < prepare.targets.length; i += 1) {
+        const target = prepare.targets[i]!;
+        const file = state.files[i]!.file;
+        const { error: uploadError } = await sb.storage
+          .from(target.bucketId)
+          .upload(target.storagePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: target.mimeType || file.type || "application/octet-stream",
+          });
+        if (uploadError) {
+          console.error("[quote intake direct] storage upload failed", uploadError);
+          setError(`Uploading "${file.name}" failed. Please retry.`);
+          setSuccessMessage(null);
+          return;
+        }
+      }
+
+      const finalizeData = new FormData();
+      finalizeData.set("quoteId", prepare.quoteId);
+      finalizeData.set("uploadId", prepare.uploadId);
+      finalizeData.set("targets", JSON.stringify(prepare.targets));
+      const finalized = await finalizeQuoteIntakeDirectUploadAction(finalizeData);
+      if (!finalized.ok) {
+        setError(finalized.error || QUOTE_INTAKE_FALLBACK_ERROR);
+        setSuccessMessage(null);
+        return;
+      }
+
+      setError(null);
+      setSuccessMessage(finalized.message || "RFQ received.");
+      setFieldErrors({});
+      resetUploadState();
     } catch (submitError) {
       console.error("[quote intake] submit handler failed", submitError);
-      e.preventDefault();
       setError(QUOTE_INTAKE_FALLBACK_ERROR);
       setSuccessMessage(null);
-      setHasSubmitted(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -745,9 +761,7 @@ export default function UploadBox({
     >
       <form
         onSubmit={handleSubmit}
-        action={enhancedFormAction}
         className="flex flex-col"
-        encType="multipart/form-data"
         noValidate
       >
         {successMessage && (
@@ -1331,7 +1345,7 @@ export default function UploadBox({
         </div>
 
         <div className="pt-2">
-          <SubmitButton disabled={!canSubmit} />
+          <SubmitButton disabled={!canSubmit} pending={isSubmitting} />
         </div>
       </div>
     </form>
@@ -1339,8 +1353,7 @@ export default function UploadBox({
   );
 }
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
-  const { pending } = useFormStatus();
+function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boolean }) {
   return (
     <button
       type="submit"
@@ -1355,65 +1368,4 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
       {pending ? "Submitting…" : "Submit RFQ"}
     </button>
   );
-}
-
-type NormalizedActionState =
-  | {
-      ok: true;
-      quoteId: string | null;
-      uploadId: string;
-      message: string;
-    }
-  | {
-      ok: false;
-      error: string;
-      fieldErrors: FieldErrors;
-    };
-
-function normalizeActionState(
-  state: QuoteIntakeActionState | null | undefined,
-): NormalizedActionState {
-  if (!state || typeof state !== "object" || typeof state.ok !== "boolean") {
-    return {
-      ok: false,
-      error: QUOTE_INTAKE_FALLBACK_ERROR,
-      fieldErrors: {},
-    };
-  }
-
-  if (state.ok) {
-    return {
-      ok: true,
-      quoteId: state.quoteId ?? null,
-      uploadId: state.uploadId ?? "",
-      message: state.message ?? "RFQ received.",
-    };
-  }
-
-  return {
-    ok: false,
-    error: state.error || QUOTE_INTAKE_FALLBACK_ERROR,
-    fieldErrors: normalizeActionFieldErrors(
-      state.fieldErrors as Record<string, unknown> | undefined,
-    ),
-  };
-}
-
-function normalizeActionFieldErrors(
-  rawErrors?: Record<string, unknown>,
-): FieldErrors {
-  if (!rawErrors) {
-    return {};
-  }
-
-  return Object.entries(rawErrors).reduce<FieldErrors>((acc, [key, value]) => {
-    if (
-      FIELD_ERROR_KEY_SET.has(key as FieldErrorKey) &&
-      typeof value === "string" &&
-      value.length > 0
-    ) {
-      acc[key as FieldErrorKey] = value;
-    }
-    return acc;
-  }, {});
 }
