@@ -213,14 +213,14 @@ export default async function CustomerQuotesPage({
               <>
                 <p className="text-sm font-semibold text-slate-100">No RFQs yet</p>
                 <p className="mt-2 text-sm text-slate-400">
-                  Start by creating a new RFQ to get quotes from suppliers.
+                  You haven&apos;t submitted any RFQs yet. Start your first RFQ to get quotes from suppliers.
                 </p>
                 <div className="mt-4">
                   <Link
                     href="/quote"
                     className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
                   >
-                    Start a new RFQ
+                    Create an RFQ
                   </Link>
                 </div>
               </>

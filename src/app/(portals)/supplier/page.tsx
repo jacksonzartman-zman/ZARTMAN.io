@@ -41,6 +41,7 @@ import { approvalsEnabled } from "@/server/suppliers/flags";
 import { PortalShell } from "../components/PortalShell";
 import { PortalStatPills } from "../components/PortalStatPills";
 import { resolveSupplierActivityEmptyState } from "./activityEmptyState";
+import { loadSupplierOnboardingState } from "@/server/suppliers/onboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +128,13 @@ async function SupplierDashboardPage({
         }
       : undefined;
   const activityHoldCopy = getApprovalHoldCopy(approvalGate?.status);
+
+  const onboardingState = supplierExists
+    ? await loadSupplierOnboardingState(user.id)
+    : { hasAnyBids: false, hasAnyAwards: false, hasRecentCapacitySnapshot: false };
+  const hasCapabilities = (profile?.capabilities ?? []).length > 0;
+  const showGettingSetUp =
+    supplierExists && (!onboardingState.hasAnyBids || !onboardingState.hasRecentCapacitySnapshot);
 
   let matchesResult: SupplierActivityResult<SupplierQuoteMatch[]> = {
     ok: true,
@@ -300,6 +308,84 @@ async function SupplierDashboardPage({
         metrics={supplierMetrics}
         lastUpdatedLabel={lastUpdatedLabel}
       />
+      {showGettingSetUp ? (
+        <PortalCard
+          title="Getting set up"
+          description="A few quick steps help us route the right work to you."
+        >
+          <ul className="space-y-3 text-sm">
+            <li className="flex items-start gap-3">
+              <span
+                className={clsx(
+                  "mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold",
+                  hasCapabilities
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                    : "border-slate-800 bg-slate-950/40 text-slate-300",
+                )}
+              >
+                {hasCapabilities ? "✓" : "○"}
+              </span>
+              <div className="flex-1">
+                <Link
+                  href="/supplier/onboarding"
+                  className="font-semibold text-blue-200 underline-offset-4 hover:underline"
+                >
+                  Complete your profile &amp; capabilities
+                </Link>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Add processes and details so we can match RFQs accurately.
+                </p>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span
+                className={clsx(
+                  "mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold",
+                  onboardingState.hasRecentCapacitySnapshot
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                    : "border-slate-800 bg-slate-950/40 text-slate-300",
+                )}
+              >
+                {onboardingState.hasRecentCapacitySnapshot ? "✓" : "○"}
+              </span>
+              <div className="flex-1">
+                <Link
+                  href="/supplier/settings/capacity"
+                  className="font-semibold text-blue-200 underline-offset-4 hover:underline"
+                >
+                  Set your capacity for the upcoming weeks
+                </Link>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Keep availability current so we don’t over-route work.
+                </p>
+              </div>
+            </li>
+            <li className="flex items-start gap-3">
+              <span
+                className={clsx(
+                  "mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold",
+                  onboardingState.hasAnyBids
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                    : "border-slate-800 bg-slate-950/40 text-slate-300",
+                )}
+              >
+                {onboardingState.hasAnyBids ? "✓" : "○"}
+              </span>
+              <div className="flex-1">
+                <Link
+                  href="/supplier/rfqs"
+                  className="font-semibold text-blue-200 underline-offset-4 hover:underline"
+                >
+                  Bid on your first RFQ
+                </Link>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Open a matched RFQ and submit pricing to start building history.
+                </p>
+              </div>
+            </li>
+          </ul>
+        </PortalCard>
+      ) : null}
       <MatchHealthCard
         supplierExists={supplierExists}
         benchHealth={benchHealth}
