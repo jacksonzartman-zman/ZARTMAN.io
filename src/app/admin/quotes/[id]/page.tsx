@@ -95,6 +95,8 @@ import { formatAwardFeedbackReasonLabel } from "@/lib/awardFeedback";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { loadQuoteUploadGroups } from "@/server/quotes/uploadFiles";
+import { computePartsCoverage } from "@/lib/quote/partsCoverage";
+import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -351,6 +353,16 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const statusLabel = QUOTE_STATUS_LABELS[status] ?? "Unknown";
     const filePreviews = await getQuoteFilePreviews(quote);
     const uploadGroups = await loadQuoteUploadGroups(quote.id);
+    const workspaceResult = await loadQuoteWorkspaceData(quote.id, { safeOnly: true });
+    const parts = workspaceResult.ok && workspaceResult.data ? workspaceResult.data.parts : [];
+    const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
+    const partsCoverageSummaryLine = partsCoverageSummary.anyParts
+      ? `${partsCoverageSummary.totalParts} part${
+          partsCoverageSummary.totalParts === 1 ? "" : "s"
+        } • ${partsCoverageSummary.fullyCoveredParts} fully covered • ${
+          partsCoverageSummary.partsNeedingCad
+        } need CAD • ${partsCoverageSummary.partsNeedingDrawing} need drawings`
+      : null;
     const dfmNotes =
       typeof quote.dfm_notes === "string" && quote.dfm_notes.trim().length > 0
         ? quote.dfm_notes
@@ -806,6 +818,84 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           <SnapshotField label="Completed" value={kickoffCompletedValue} />
           <SnapshotField label="Last updated" value={kickoffLastUpdatedValue} />
         </dl>
+      </section>
+    );
+
+    const partsCoveragePanel = (
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Parts coverage
+            </p>
+            <h2 className="mt-1 text-base font-semibold text-slate-100">Parts coverage</h2>
+          </div>
+          {partsCoverageSummary.anyParts ? (
+            <span
+              className={clsx(
+                "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                partsCoverageSummary.allCovered
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+              )}
+            >
+              Coverage: {partsCoverageSummary.allCovered ? "Good" : "Needs attention"}
+            </span>
+          ) : null}
+        </header>
+
+        {!partsCoverageSummary.anyParts ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-300">
+              No parts have been defined for this RFQ yet.
+            </p>
+            <HashScrollLink
+              hash="uploads"
+              className={clsx(secondaryCtaClasses, ctaSizeClasses.sm, "whitespace-nowrap")}
+            >
+              Go to uploads
+            </HashScrollLink>
+          </div>
+        ) : (
+          <>
+            <p className="mt-3 text-sm text-slate-300">{partsCoverageSummaryLine}</p>
+            <div className="mt-4 overflow-hidden rounded-xl border border-slate-900/60 bg-slate-950/30">
+              <div className="grid grid-cols-[minmax(0,1.5fr)_90px_105px_minmax(0,1fr)] gap-3 border-b border-slate-900/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                <div>Part</div>
+                <div className="text-right">CAD</div>
+                <div className="text-right">Drawings</div>
+                <div>Status</div>
+              </div>
+              <div className="divide-y divide-slate-900/60">
+                {perPart.map((part) => {
+                  const statusLabel = part.hasCad
+                    ? part.hasDrawing
+                      ? "Covered"
+                      : "Needs drawing"
+                    : part.hasDrawing
+                      ? "Needs CAD"
+                      : "Needs CAD + drawing";
+                  const partDisplay = part.partNumber
+                    ? `${part.partLabel} (${part.partNumber})`
+                    : part.partLabel;
+                  return (
+                    <div
+                      key={part.partId}
+                      className="grid grid-cols-[minmax(0,1.5fr)_90px_105px_minmax(0,1fr)] gap-3 px-4 py-2 text-sm text-slate-200"
+                    >
+                      <div className="min-w-0 truncate font-medium text-slate-100">
+                        {partDisplay}
+                      </div>
+                      <div className="text-right tabular-nums">{part.cadCount}</div>
+                      <div className="text-right tabular-nums">{part.drawingCount}</div>
+                      <div className="text-slate-300">{statusLabel}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
       </section>
     );
     const projectSnapshotPanel =
@@ -1480,6 +1570,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   ) : null}
                   {threadStatusPanel}
                   {kickoffStatusPanel}
+                  {partsCoveragePanel}
                   {routingSuggestionPanel}
                   {capacityPanel}
                 </div>
@@ -1525,6 +1616,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 <div id="suppliers-panel" className="scroll-mt-24">
                   <AdminInviteSupplierCard quoteId={quote.id} />
                 </div>
+              ) : null}
+              {partsCoverageSummary.anyParts && !partsCoverageSummary.allCovered ? (
+                <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-5 py-3 text-xs text-slate-300">
+                  Note: Some parts are missing CAD or drawings. You can still award, but clarify scope during kickoff.
+                </p>
               ) : null}
 
               <SupplierBidsCard
