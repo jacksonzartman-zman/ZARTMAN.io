@@ -9,6 +9,7 @@ import type {
 import type { QuoteUploadGroup } from "@/server/quotes/uploadFiles";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
 import type { AdminQuotePartActionState } from "./actions";
+import { adminUploadPartDrawingsAction } from "./actions";
 import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 type PartsSectionProps = {
@@ -28,6 +29,7 @@ type PartsSectionProps = {
 const initialState: AdminQuotePartActionState = { ok: true, message: "" };
 
 export function AdminPartsFilesSection({
+  quoteId,
   parts,
   uploadGroups,
   createPartAction,
@@ -59,6 +61,7 @@ export function AdminPartsFilesSection({
           parts.map((part) => (
             <PartCard
               key={part.id}
+              quoteId={quoteId}
               part={part}
               uploadGroups={uploadGroups}
               updateAction={updatePartFilesAction}
@@ -129,10 +132,12 @@ export function AdminPartsFilesSection({
 }
 
 function PartCard({
+  quoteId,
   part,
   uploadGroups,
   updateAction,
 }: {
+  quoteId: string;
   part: QuotePartWithFiles;
   uploadGroups: QuoteUploadGroup[];
   updateAction?: (
@@ -141,6 +146,7 @@ function PartCard({
   ) => Promise<AdminQuotePartActionState>;
 }) {
   const [open, setOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const assigned = useMemo(() => new Set(part.files.map((f) => f.quoteUploadFileId)), [part.files]);
 
   const cadCount = part.files.filter((f) => f.role === "cad").length;
@@ -148,8 +154,15 @@ function PartCard({
   const otherCount = part.files.filter((f) => f.role === "other").length;
 
   const [state, action, pending] = useActionState(updateAction ?? (async () => initialState), initialState);
+  const [uploadState, uploadAction, uploadPending] = useActionState(
+    (prev: AdminQuotePartActionState, formData: FormData) =>
+      adminUploadPartDrawingsAction(quoteId, part.id, prev, formData),
+    initialState,
+  );
 
   const uploadGroupsSafe = Array.isArray(uploadGroups) ? uploadGroups : [];
+  const drawingAccept =
+    ".pdf,.dwg,.dxf,.step,.stp,.igs,.iges,.sldprt,.prt,.stl,.zip";
 
   return (
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5">
@@ -166,6 +179,13 @@ function PartCard({
           <CountPill label="CAD" count={cadCount} tone="blue" />
           <CountPill label="Drawing" count={drawingCount} tone="purple" />
           <CountPill label="Other" count={otherCount} tone="slate" />
+          <button
+            type="button"
+            className={clsx(secondaryCtaClasses, ctaSizeClasses.sm, "inline-flex")}
+            onClick={() => setUploadOpen((v) => !v)}
+          >
+            {uploadOpen ? "Hide upload" : "Add drawing"}
+          </button>
         </div>
       </div>
 
@@ -177,6 +197,47 @@ function PartCard({
         <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-100">
           {state.error}
         </p>
+      ) : null}
+
+      {uploadOpen ? (
+        <form action={uploadAction} className="mt-4 space-y-3">
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Add drawing(s) to this part
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Upload new drawings and attach them immediately to this part.
+            </p>
+            <input
+              type="file"
+              name="files"
+              multiple
+              accept={drawingAccept}
+              className="mt-3 block w-full text-sm text-slate-200 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-100 hover:file:bg-slate-700"
+            />
+            {!uploadState.ok && uploadState.fieldErrors?.files ? (
+              <p className="mt-2 text-xs text-red-200">{uploadState.fieldErrors.files}</p>
+            ) : null}
+          </div>
+
+          {uploadState.ok && uploadState.message ? (
+            <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100">
+              {uploadState.message}
+            </p>
+          ) : !uploadState.ok ? (
+            <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-100">
+              {uploadState.error}
+            </p>
+          ) : null}
+
+          <button
+            type="submit"
+            disabled={uploadPending}
+            className={clsx(primaryCtaClasses, ctaSizeClasses.sm, "inline-flex")}
+          >
+            {uploadPending ? "Uploading…" : "Upload drawings"}
+          </button>
+        </form>
       ) : null}
 
       <div className="mt-4">
@@ -229,6 +290,23 @@ function UploadGroupChecklist({
   assigned: Set<string>;
 }) {
   const entries = Array.isArray(group.entries) ? group.entries : [];
+  const sortedEntries = useMemo(() => {
+    const weight = (kind: QuotePartFileRole) =>
+      kind === "drawing" ? 0 : kind === "cad" ? 1 : 2;
+    return [...entries].sort((a, b) => {
+      const kindA = classifyUploadFileType({
+        filename: a.filename,
+        extension: a.extension ?? null,
+      });
+      const kindB = classifyUploadFileType({
+        filename: b.filename,
+        extension: b.extension ?? null,
+      });
+      const dw = weight(kindA) - weight(kindB);
+      if (dw !== 0) return dw;
+      return (a.filename ?? "").localeCompare(b.filename ?? "");
+    });
+  }, [entries]);
   const hasAny = entries.length > 0;
   const title = group.uploadFileName ?? "Upload";
 
@@ -245,7 +323,7 @@ function UploadGroupChecklist({
 
       {hasAny ? (
         <ul className="space-y-2 px-4 pb-4">
-          {entries.map((entry, idx) => {
+          {sortedEntries.map((entry, idx) => {
             const kind = classifyUploadFileType({
               filename: entry.filename,
               extension: entry.extension ?? null,

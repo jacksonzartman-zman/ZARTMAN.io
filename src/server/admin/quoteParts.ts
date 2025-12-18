@@ -34,7 +34,7 @@ function normalizeIdList(value: unknown): string[] {
   return out;
 }
 
-async function assertPartBelongsToQuote(args: {
+export async function assertPartBelongsToQuote(args: {
   quoteId: string;
   quotePartId: string;
 }): Promise<void> {
