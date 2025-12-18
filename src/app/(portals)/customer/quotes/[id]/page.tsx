@@ -68,6 +68,7 @@ import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
+import { CustomerPartsSection } from "./CustomerPartsSection";
 
 export const dynamic = "force-dynamic";
 
@@ -894,6 +895,15 @@ export default async function CustomerQuoteDetailPage({
         fileCountText={fileCountText}
         uploadGroups={uploadGroups}
         parts={parts ?? []}
+        partsSection={
+          readOnly ? undefined : (
+            <CustomerPartsSection
+              quoteId={quote.id}
+              parts={parts ?? []}
+              uploadGroups={uploadGroups ?? []}
+            />
+          )
+        }
       />
     </DisclosureSection>
   );

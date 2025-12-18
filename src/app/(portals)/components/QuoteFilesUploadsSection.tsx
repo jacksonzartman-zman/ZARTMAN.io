@@ -5,6 +5,7 @@ import { QuoteUploadsStructuredList } from "@/components/QuoteUploadsStructuredL
 import type { QuoteUploadGroup } from "@/server/quotes/uploadFiles";
 import type { QuotePartWithFiles } from "@/app/(portals)/quotes/workspaceData";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
+import type { ReactNode } from "react";
 
 /**
  * Phase 1 Polish checklist
@@ -18,6 +19,7 @@ type QuoteFilesUploadsSectionProps = {
   defaultOpen?: boolean;
   uploadGroups?: QuoteUploadGroup[];
   parts?: QuotePartWithFiles[];
+  partsSection?: ReactNode;
 };
 
 export function QuoteFilesUploadsSection({
@@ -26,6 +28,7 @@ export function QuoteFilesUploadsSection({
   defaultOpen = true,
   uploadGroups,
   parts,
+  partsSection,
 }: QuoteFilesUploadsSectionProps) {
   const partsList = Array.isArray(parts) ? parts : [];
   const { perPart, summary } = computePartsCoverage(partsList);
@@ -42,7 +45,9 @@ export function QuoteFilesUploadsSection({
       }
     >
       <div className="space-y-2">
-        {summary.anyParts ? (
+        {partsSection ? (
+          partsSection
+        ) : summary.anyParts ? (
           <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
