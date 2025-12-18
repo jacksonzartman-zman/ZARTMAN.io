@@ -6,8 +6,12 @@ import type {
   QuotePartWithFiles,
   QuotePartFileRole,
 } from "@/app/(portals)/quotes/workspaceData";
-import type { QuoteUploadGroup } from "@/server/quotes/uploadFiles";
+import type { QuoteUploadFileEntry, QuoteUploadGroup } from "@/server/quotes/uploadFiles";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
+import {
+  scoreFilesForPart,
+  sortFilesByPartSuggestion,
+} from "@/lib/uploads/suggestPartFiles";
 import type { AdminQuotePartActionState } from "./actions";
 import { adminUploadPartDrawingsAction } from "./actions";
 import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
@@ -58,11 +62,12 @@ export function AdminPartsFilesSection({
             No parts yet. Add a part, then attach CAD and drawing files.
           </p>
         ) : (
-          parts.map((part) => (
+          parts.map((part, index) => (
             <PartCard
               key={part.id}
               quoteId={quoteId}
               part={part}
+              partIndex={index}
               uploadGroups={uploadGroups}
               updateAction={updatePartFilesAction}
             />
@@ -134,11 +139,13 @@ export function AdminPartsFilesSection({
 function PartCard({
   quoteId,
   part,
+  partIndex,
   uploadGroups,
   updateAction,
 }: {
   quoteId: string;
   part: QuotePartWithFiles;
+  partIndex: number;
   uploadGroups: QuoteUploadGroup[];
   updateAction?: (
     prev: AdminQuotePartActionState,
@@ -163,6 +170,31 @@ function PartCard({
   const uploadGroupsSafe = Array.isArray(uploadGroups) ? uploadGroups : [];
   const drawingAccept =
     ".pdf,.dwg,.dxf,.step,.stp,.igs,.iges,.sldprt,.prt,.stl,.zip";
+
+  const uploadFiles = useMemo(() => {
+    const out: QuoteUploadFileEntry[] = [];
+    const seen = new Set<string>();
+    for (const group of uploadGroupsSafe) {
+      for (const entry of group.entries ?? []) {
+        const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push(entry);
+      }
+    }
+    return out;
+  }, [uploadGroupsSafe]);
+
+  const { sortedFiles, suggestionScoreById } = useMemo(() => {
+    const suggestions = scoreFilesForPart({
+      partLabel: part.partLabel ?? "",
+      partIndex,
+      files: uploadFiles,
+    });
+    const sortedFiles = sortFilesByPartSuggestion(uploadFiles, suggestions);
+    const suggestionScoreById = new Map(suggestions.map((s) => [s.fileId, s.score] as const));
+    return { sortedFiles, suggestionScoreById };
+  }, [part.partLabel, partIndex, uploadFiles]);
 
   return (
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5">
@@ -259,13 +291,53 @@ function PartCard({
                 No enumerated upload files found for this quote yet.
               </div>
             ) : (
-              uploadGroupsSafe.map((group) => (
-                <UploadGroupChecklist
-                  key={group.uploadId}
-                  group={group}
-                  assigned={assigned}
-                />
-              ))
+              <div className="px-4 py-3">
+                <p className="text-xs text-slate-400">
+                  Most likely matches appear first. You can adjust selections as needed.
+                </p>
+
+                <ul className="mt-3 space-y-2">
+                  {sortedFiles.map((entry, idx) => {
+                    const kind = classifyUploadFileType({
+                      filename: entry.filename,
+                      extension: entry.extension ?? null,
+                    });
+                    const suggestionScore = suggestionScoreById.get(entry.id) ?? 0;
+                    return (
+                      <li key={`${entry.id}-${idx}`} className="flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          name="fileIds"
+                          value={entry.id}
+                          defaultChecked={assigned.has(entry.id)}
+                          className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-950/30"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate text-sm text-slate-100">{entry.filename}</span>
+                            {suggestionScore > 0 ? (
+                              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
+                                Suggested
+                              </span>
+                            ) : null}
+                            <FileKindPill kind={kind} />
+                            {entry.is_from_archive ? (
+                              <span className="rounded-full border border-slate-800 bg-slate-950/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                                ZIP
+                              </span>
+                            ) : null}
+                          </div>
+                          {entry.path && entry.path !== entry.filename ? (
+                            <p className="mt-0.5 truncate font-mono text-[11px] text-slate-600">
+                              {entry.path}
+                            </p>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             )}
           </div>
 
@@ -279,86 +351,6 @@ function PartCard({
         </form>
       ) : null}
     </section>
-  );
-}
-
-function UploadGroupChecklist({
-  group,
-  assigned,
-}: {
-  group: QuoteUploadGroup;
-  assigned: Set<string>;
-}) {
-  const entries = Array.isArray(group.entries) ? group.entries : [];
-  const sortedEntries = useMemo(() => {
-    const weight = (kind: QuotePartFileRole) =>
-      kind === "drawing" ? 0 : kind === "cad" ? 1 : 2;
-    return [...entries].sort((a, b) => {
-      const kindA = classifyUploadFileType({
-        filename: a.filename,
-        extension: a.extension ?? null,
-      });
-      const kindB = classifyUploadFileType({
-        filename: b.filename,
-        extension: b.extension ?? null,
-      });
-      const dw = weight(kindA) - weight(kindB);
-      if (dw !== 0) return dw;
-      return (a.filename ?? "").localeCompare(b.filename ?? "");
-    });
-  }, [entries]);
-  const hasAny = entries.length > 0;
-  const title = group.uploadFileName ?? "Upload";
-
-  return (
-    <div className="border-b border-slate-900/60 last:border-b-0">
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-100">{title}</p>
-          <p className="text-xs text-slate-500">
-            {hasAny ? `${entries.length} file${entries.length === 1 ? "" : "s"}` : "No files"}
-          </p>
-        </div>
-      </div>
-
-      {hasAny ? (
-        <ul className="space-y-2 px-4 pb-4">
-          {sortedEntries.map((entry, idx) => {
-            const kind = classifyUploadFileType({
-              filename: entry.filename,
-              extension: entry.extension ?? null,
-            });
-            return (
-              <li key={`${entry.id}-${idx}`} className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  name="fileIds"
-                  value={entry.id}
-                  defaultChecked={assigned.has(entry.id)}
-                  className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-950/30"
-                />
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate text-sm text-slate-100">{entry.filename}</span>
-                    <FileKindPill kind={kind} />
-                    {entry.is_from_archive ? (
-                      <span className="rounded-full border border-slate-800 bg-slate-950/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
-                        ZIP
-                      </span>
-                    ) : null}
-                  </div>
-                  {entry.path && entry.path !== entry.filename ? (
-                    <p className="mt-0.5 truncate font-mono text-[11px] text-slate-600">
-                      {entry.path}
-                    </p>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-    </div>
   );
 }
 
