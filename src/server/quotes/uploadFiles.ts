@@ -6,6 +6,7 @@ import {
 } from "@/server/admin/logging";
 
 export type QuoteUploadFileEntry = {
+  id: string;
   upload_id: string;
   path: string;
   filename: string;
@@ -92,7 +93,7 @@ export async function loadQuoteUploadGroups(
     const { data, error } = await supabaseServer
       .from("quote_upload_files")
       .select(
-        "upload_id,path,filename,extension,size_bytes,is_from_archive,created_at",
+        "id,upload_id,path,filename,extension,size_bytes,is_from_archive,created_at",
       )
       .eq("quote_id", quoteId)
       .order("created_at", { ascending: true })

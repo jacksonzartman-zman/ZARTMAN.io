@@ -719,6 +719,7 @@ function SupplierQuoteWorkspace({
         files={filePreviews}
         fileCountText={fileCountText}
         uploadGroups={uploadGroups}
+        parts={parts ?? []}
       />
     </DisclosureSection>
   );

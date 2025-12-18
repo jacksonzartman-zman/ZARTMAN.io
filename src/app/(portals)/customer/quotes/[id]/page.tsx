@@ -893,6 +893,7 @@ export default async function CustomerQuoteDetailPage({
         files={filePreviews}
         fileCountText={fileCountText}
         uploadGroups={uploadGroups}
+        parts={parts ?? []}
       />
     </DisclosureSection>
   );

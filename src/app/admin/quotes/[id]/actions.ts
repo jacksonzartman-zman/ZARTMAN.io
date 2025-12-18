@@ -49,6 +49,10 @@ import {
   isAwardFeedbackReason,
 } from "@/lib/awardFeedback";
 import { recordAwardFeedback } from "@/server/quotes/awardFeedback";
+import {
+  adminCreateQuotePart,
+  adminUpdateQuotePartFiles,
+} from "@/server/admin/quoteParts";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -83,6 +87,15 @@ const ADMIN_AWARD_FEEDBACK_GENERIC_ERROR =
   "We couldn't save award feedback. Please try again.";
 const ADMIN_AWARD_FEEDBACK_REASON_ERROR = "Select a reason.";
 const ADMIN_AWARD_FEEDBACK_NOTES_LENGTH_ERROR = `Notes must be ${AWARD_FEEDBACK_MAX_NOTES_LENGTH} characters or fewer.`;
+
+export type AdminQuotePartActionState =
+  | { ok: true; message: string }
+  | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+const ADMIN_PART_GENERIC_ERROR = "We couldn't update parts right now. Please try again.";
+const ADMIN_PART_LABEL_ERROR = "Enter a part name.";
+const ADMIN_PART_FILES_GENERIC_ERROR =
+  "We couldn't update part files right now. Please try again.";
 
 export async function submitAwardFeedbackAction(
   quoteId: string,
@@ -162,6 +175,141 @@ export async function submitAwardFeedbackAction(
     });
     return { status: "error", error: ADMIN_AWARD_FEEDBACK_GENERIC_ERROR };
   }
+}
+
+export async function createQuotePartAction(
+  quoteId: string,
+  _prev: AdminQuotePartActionState,
+  formData: FormData,
+): Promise<AdminQuotePartActionState> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  if (!normalizedQuoteId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  const labelRaw = getFormString(formData, "label");
+  const notesRaw = getFormString(formData, "notes");
+  const label = typeof labelRaw === "string" ? labelRaw.trim() : "";
+  const notes =
+    typeof notesRaw === "string" && notesRaw.trim().length > 0
+      ? notesRaw.trim()
+      : null;
+
+  if (!label) {
+    return {
+      ok: false,
+      error: ADMIN_PART_LABEL_ERROR,
+      fieldErrors: { label: ADMIN_PART_LABEL_ERROR },
+    };
+  }
+
+  try {
+    await requireAdminUser();
+    await adminCreateQuotePart(normalizedQuoteId, { label, notes });
+
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return { ok: true, message: "Part added." };
+  } catch (error) {
+    console.error("[admin quote parts] create action crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_PART_GENERIC_ERROR };
+  }
+}
+
+export async function updateQuotePartFilesAction(
+  quoteId: string,
+  quotePartId: string,
+  _prev: AdminQuotePartActionState,
+  formData: FormData,
+): Promise<AdminQuotePartActionState> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  const normalizedPartId =
+    typeof quotePartId === "string" ? quotePartId.trim() : "";
+  if (!normalizedQuoteId || !normalizedPartId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+
+    const selectedRaw = formData.getAll("fileIds");
+    const selected = new Set<string>();
+    for (const value of selectedRaw) {
+      if (typeof value === "string" && value.trim()) {
+        selected.add(value.trim());
+      }
+    }
+
+    const { data: existingRows, error: existingError } = await supabaseServer
+      .from("quote_part_files")
+      .select("quote_upload_file_id")
+      .eq("quote_part_id", normalizedPartId)
+      .returns<Array<{ quote_upload_file_id: string }>>();
+
+    if (existingError) {
+      if (!isMissingTableOrColumnError(existingError)) {
+        console.error("[admin quote parts] load existing part files failed", {
+          quoteId: normalizedQuoteId,
+          quotePartId: normalizedPartId,
+          error: serializeSupabaseError(existingError),
+        });
+      }
+      return { ok: false, error: ADMIN_PART_FILES_GENERIC_ERROR };
+    }
+
+    const existing = new Set<string>();
+    for (const row of existingRows ?? []) {
+      if (typeof row?.quote_upload_file_id === "string" && row.quote_upload_file_id.trim()) {
+        existing.add(row.quote_upload_file_id.trim());
+      }
+    }
+
+    const addFileIds: string[] = [];
+    for (const id of selected) {
+      if (!existing.has(id)) addFileIds.push(id);
+    }
+
+    const removeFileIds: string[] = [];
+    for (const id of existing) {
+      if (!selected.has(id)) removeFileIds.push(id);
+    }
+
+    await adminUpdateQuotePartFiles({
+      quoteId: normalizedQuoteId,
+      quotePartId: normalizedPartId,
+      addFileIds,
+      removeFileIds,
+      role: null,
+    });
+
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return { ok: true, message: "Part files updated." };
+  } catch (error) {
+    console.error("[admin quote parts] update files action crashed", {
+      quoteId: normalizedQuoteId,
+      quotePartId: normalizedPartId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_PART_FILES_GENERIC_ERROR };
+  }
+}
+
+export async function updateQuotePartFilesForQuoteAction(
+  quoteId: string,
+  prev: AdminQuotePartActionState,
+  formData: FormData,
+): Promise<AdminQuotePartActionState> {
+  const partIdRaw = getFormString(formData, "quotePartId");
+  const partId = typeof partIdRaw === "string" ? partIdRaw.trim() : "";
+  return updateQuotePartFilesAction(quoteId, partId, prev, formData);
 }
 
 export async function awardBidFormAction(
