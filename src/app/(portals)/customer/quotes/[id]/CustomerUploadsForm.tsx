@@ -1,12 +1,14 @@
 "use client";
 
 import clsx from "clsx";
+import { useRef, useState, type ChangeEvent } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import {
   customerUploadQuoteFilesAction,
   type CustomerUploadsFormState,
 } from "./actions";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
+import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
 
 const initialState: CustomerUploadsFormState = { status: "idle" };
 
@@ -18,6 +20,21 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
       customerUploadQuoteFilesAction(quoteId, prevState, formData),
     initialState,
   );
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const maxLabel = formatMaxUploadSize();
+
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    const tooLarge = files.filter((f) => isFileTooLarge(f));
+    if (tooLarge.length > 0) {
+      setLocalError(
+        `One or more files exceed the ${maxLabel} limit. Please upload smaller files or split large ZIPs.`,
+      );
+    } else {
+      setLocalError(null);
+    }
+  }
 
   return (
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5">
@@ -32,14 +49,36 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
         </div>
       </div>
 
-      <form action={formAction} className="mt-4 space-y-3" encType="multipart/form-data">
+      <form
+        action={formAction}
+        className="mt-4 space-y-3"
+        encType="multipart/form-data"
+        onSubmit={(e) => {
+          const files = Array.from(inputRef.current?.files ?? []);
+          const tooLarge = files.filter((f) => isFileTooLarge(f));
+          if (tooLarge.length > 0) {
+            e.preventDefault();
+            setLocalError(
+              `One or more files exceed the ${maxLabel} limit. Please upload smaller files or split large ZIPs.`,
+            );
+          }
+        }}
+      >
         <input
           type="file"
           name="files"
           multiple
           accept={UPLOAD_ACCEPT}
+          ref={inputRef}
+          onChange={handleFileChange}
           className="block w-full text-sm text-slate-200 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-100 hover:file:bg-slate-700"
         />
+
+        {localError ? (
+          <p className="text-sm text-red-200" role="alert">
+            {localError}
+          </p>
+        ) : null}
 
         {state.status === "error" ? (
           <p className="text-sm text-red-200" role="alert">
@@ -52,6 +91,10 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
             {state.message ?? "Files uploaded."}
           </p>
         ) : null}
+
+        <p className="text-[11px] text-slate-500">
+          Max {maxLabel} per file. For larger packages, upload multiple ZIPs.
+        </p>
 
         <SubmitButton />
       </form>

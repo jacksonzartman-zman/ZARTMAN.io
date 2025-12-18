@@ -21,6 +21,7 @@ import {
 } from "@/server/customer/quoteParts";
 import { customerAppendFilesToQuote } from "@/server/quotes/uploadFiles";
 import { generateAiPartSuggestionsForQuote } from "@/server/quotes/aiPartsSuggestions";
+import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 
 export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
@@ -1028,6 +1029,14 @@ export async function customerUploadQuoteFilesAction(
 
   if (files.length === 0) {
     return { status: "error", message: "Please choose at least one file to upload." };
+  }
+
+  const tooLarge = files.filter((f) => f.size > MAX_UPLOAD_BYTES);
+  if (tooLarge.length > 0) {
+    return {
+      status: "error",
+      message: `Each file must be smaller than ${formatMaxUploadSize()}. Try splitting large ZIPs or compressing drawings.`,
+    };
   }
 
   try {

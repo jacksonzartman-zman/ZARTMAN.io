@@ -68,6 +68,7 @@ export default async function QuotePage() {
             <p className="font-semibold text-white">Upload tips</p>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-300">
               <li>Have multiple parts? Upload a single ZIP.</li>
+              <li>Max 25 MB per file (including ZIPs). For larger packages, upload multiple ZIPs or share only the most critical drawings.</li>
               <li>We’ll enumerate files and help your Zartman team organize them by part.</li>
               <li>Drawings (PDF/DWG/DXF) speed up quoting and reduce back-and-forth.</li>
             </ul>

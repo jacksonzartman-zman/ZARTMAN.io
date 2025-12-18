@@ -16,10 +16,10 @@ import clsx from "clsx";
 import {
   CAD_ACCEPT_STRING,
   CAD_FILE_TYPE_DESCRIPTION,
-  MAX_UPLOAD_SIZE_BYTES,
   bytesToMegabytes,
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
+import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
 import { primaryCtaClasses } from "@/lib/ctas";
 import { submitQuoteIntakeAction } from "@/app/quote/actions";
 import type { QuoteIntakeActionState } from "@/app/quote/actions";
@@ -67,6 +67,7 @@ const UPLOAD_EXPLAINER_POINTS = [
 ];
 
 const MAX_FILES_PER_RFQ = 20;
+const MAX_UPLOAD_SIZE_LABEL = formatMaxUploadSize();
 
 /**
  * Minimal, easily testable iOS/iPadOS detector. Modern iPadOS (13+) reports
@@ -197,7 +198,6 @@ function buildInitialUploadState(prefill?: PrefillContact | null): UploadState {
   };
 }
 
-const MAX_UPLOAD_SIZE_LABEL = `${bytesToMegabytes(MAX_UPLOAD_SIZE_BYTES)} MB`;
 const FILE_TYPE_ERROR_MESSAGE = `Unsupported file type. Please upload ${CAD_FILE_TYPE_DESCRIPTION}.`;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -211,10 +211,6 @@ const formatReadableBytes = (bytes: number): string => {
 const validateCadFile = (file: File): string | null => {
   if (!isAllowedCadFileName(file.name)) {
     return FILE_TYPE_ERROR_MESSAGE;
-  }
-
-  if (file.size > MAX_UPLOAD_SIZE_BYTES) {
-    return `File is ${formatReadableBytes(file.size)}. Limit is ${MAX_UPLOAD_SIZE_LABEL}.`;
   }
 
   if (file.size === 0) {
@@ -478,10 +474,18 @@ export default function UploadBox({
         return;
       }
 
+      const tooLarge = candidates.filter((file) => isFileTooLarge(file));
+      const sizeWarning =
+        tooLarge.length > 0
+          ? `Some files are too large to upload (max ${MAX_UPLOAD_SIZE_LABEL} per file). Try splitting your ZIP or compressing large drawings.`
+          : null;
+
       const accepted: File[] = [];
       const rejectionMessages: string[] = [];
 
-      candidates.forEach((file) => {
+      candidates
+        .filter((file) => !isFileTooLarge(file))
+        .forEach((file) => {
         const validationError = validateCadFile(file);
         if (validationError) {
           rejectionMessages.push(`${file.name}: ${validationError}`);
@@ -490,10 +494,15 @@ export default function UploadBox({
         accepted.push(file);
       });
 
-      if (accepted.length === 0 && rejectionMessages.length > 0) {
-        const combined = rejectionMessages.join(" ");
-        setError(combined);
-        setFieldErrors((prev) => ({ ...prev, file: combined }));
+      if (accepted.length === 0 && (sizeWarning || rejectionMessages.length > 0)) {
+        const combined = [sizeWarning, rejectionMessages.join(" ")]
+          .filter(Boolean)
+          .join(" ");
+        setError(combined || QUOTE_INTAKE_FALLBACK_ERROR);
+        setFieldErrors((prev) => ({
+          ...prev,
+          file: combined || "Some selected files could not be uploaded.",
+        }));
         return;
       }
 
@@ -529,10 +538,11 @@ export default function UploadBox({
         };
       });
 
-      if (rejectionMessages.length > 0) {
-        const combined = rejectionMessages.join(" ");
-        setError(combined);
-        setFieldErrors((prev) => ({ ...prev, file: combined }));
+      const combinedBanner = [sizeWarning, rejectionMessages.join(" ")]
+        .filter(Boolean)
+        .join(" ");
+      if (combinedBanner.length > 0) {
+        setError(combinedBanner);
       } else {
         setError(null);
         clearFieldError("file");
@@ -707,6 +717,14 @@ export default function UploadBox({
           setError(`${entry.file.name}: ${fileValidationError}`);
           return;
         }
+
+        if (isFileTooLarge(entry.file)) {
+          e.preventDefault();
+          const message = `Each file must be smaller than ${MAX_UPLOAD_SIZE_LABEL}. Try splitting your ZIP or compressing large drawings.`;
+          setFieldErrors((prev) => ({ ...prev, file: message }));
+          setError(message);
+          return;
+        }
       }
 
       setFieldErrors({});
@@ -772,7 +790,10 @@ export default function UploadBox({
           onDrop={handleDrop}
         >
           <p className="text-xs text-muted">
-            {CAD_FILE_TYPE_DESCRIPTION}. Drag in up to {MAX_FILES_PER_RFQ} files. Max {MAX_UPLOAD_SIZE_LABEL} each.
+            {CAD_FILE_TYPE_DESCRIPTION}. Drag in up to {MAX_FILES_PER_RFQ} files.
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            Max {MAX_UPLOAD_SIZE_LABEL} per file (including ZIPs). For larger packages, split into multiple ZIPs.
           </p>
           <div className="mt-4 flex flex-col items-center gap-2">
             <button
