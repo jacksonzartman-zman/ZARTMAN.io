@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import AdmZip from "adm-zip";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
 
@@ -24,6 +23,15 @@ type AiFileDescriptor = {
   sampleText?: string;
 };
 
+type EdgeFileDescriptor = {
+  id: string; // quote_upload_files.id
+  fileName: string;
+  path: string;
+  mimeType: string | null;
+  classification: "CAD" | "Drawing" | "Other";
+  sampleText?: string;
+};
+
 type QuoteUploadFileRow = {
   id: string;
   upload_id: string;
@@ -34,68 +42,21 @@ type QuoteUploadFileRow = {
   size_bytes: number | null;
 };
 
-type UploadRow = {
-  id: string;
-  file_path: string | null;
-  mime_type: string | null;
-};
-
-type FilesRow = {
-  filename: string;
-  storage_path: string;
-  bucket_id: string | null;
-  mime: string | null;
-};
-
 type CachedRow = {
   suggestions: unknown;
   model_version: string;
 };
 
 const DEFAULT_MODEL = "gpt-4.1-mini";
-const MAX_PDF_SAMPLE_CHARS = 3500;
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function parseStoragePath(storagePath: string): { bucket: string; key: string } | null {
-  const trimmed = storagePath.trim().replace(/^\/+/, "");
-  if (!trimmed) return null;
-  const idx = trimmed.indexOf("/");
-  if (idx <= 0) return null;
-  const bucket = trimmed.slice(0, idx).trim();
-  const key = trimmed.slice(idx + 1).trim();
-  if (!bucket || !key) return null;
-  return { bucket, key };
 }
 
 function toDescriptorClassification(kind: ReturnType<typeof classifyUploadFileType>): AiFileDescriptor["classification"] {
   if (kind === "cad") return "CAD";
   if (kind === "drawing") return "Drawing";
   return "Other";
-}
-
-async function extractPdfFirstPageText(pdfBuffer: Buffer, maxChars: number): Promise<string> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  // Ensure Node runs without trying to spawn a worker.
-  try {
-    (pdfjs as any).GlobalWorkerOptions.workerSrc = "";
-  } catch {
-    // ignore
-  }
-
-  const doc = await (pdfjs as any).getDocument({ data: pdfBuffer }).promise;
-  const page = await doc.getPage(1);
-  const content = await page.getTextContent();
-  const items = Array.isArray(content?.items) ? content.items : [];
-  const raw = items
-    .map((it: any) => (typeof it?.str === "string" ? it.str : ""))
-    .filter(Boolean)
-    .join(" ");
-  const normalized = raw.replace(/\s+/g, " ").trim();
-  if (!normalized) return "";
-  return normalized.slice(0, Math.max(0, maxChars));
 }
 
 function safeJsonStringify(value: unknown, maxChars: number): string {
@@ -155,6 +116,58 @@ function getOpenAiClient(): OpenAI | null {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
   return new OpenAI({ apiKey, timeout: 25_000 });
+}
+
+async function fetchEdgeFileDescriptors(quoteId: string): Promise<EdgeFileDescriptor[]> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) return [];
+
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!baseUrl || typeof baseUrl !== "string" || baseUrl.trim().length === 0) {
+    console.error("[ai parts suggestions] missing NEXT_PUBLIC_SUPABASE_URL");
+    return [];
+  }
+
+  const url = `${baseUrl.replace(/\/+$/, "")}/functions/v1/parts-file-descriptors`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.SUPABASE_SERVICE_ROLE_KEY
+          ? { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` }
+          : {}),
+      },
+      body: JSON.stringify({ quoteId: normalizedQuoteId }),
+    });
+
+    if (!res.ok) {
+      console.error("[ai parts suggestions] edge function failed", {
+        quoteId: normalizedQuoteId,
+        status: res.status,
+      });
+      return [];
+    }
+
+    const json = (await res.json()) as {
+      quoteId: string;
+      files: EdgeFileDescriptor[];
+      error?: string;
+    };
+
+    if (json?.error) {
+      console.error("[ai parts suggestions] edge function reported error", json);
+    }
+
+    return Array.isArray(json?.files) ? json.files : [];
+  } catch (error) {
+    console.error("[ai parts suggestions] edge function request crashed", {
+      quoteId: normalizedQuoteId,
+      error,
+    });
+    return [];
+  }
 }
 
 export async function loadCachedAiPartSuggestions(
@@ -258,141 +271,41 @@ export async function generateAiPartSuggestionsForQuote(
     }
 
     const allowedFileIds = new Set(filesList.map((f) => normalizeId(f.id)).filter(Boolean));
-    const uploadIds = Array.from(
-      new Set(filesList.map((f) => normalizeId(f.upload_id)).filter(Boolean)),
-    );
 
-    const uploadsById = new Map<string, UploadRow>();
-    if (uploadIds.length > 0) {
-      const { data: uploads, error: uploadsError } = await supabaseServer
-        .from("uploads")
-        .select("id,file_path,mime_type")
-        .in("id", uploadIds)
-        .returns<UploadRow[]>();
+    // Prefer Edge-produced descriptors (includes sampleText for drawing PDFs).
+    const edgeFiles = await fetchEdgeFileDescriptors(normalizedQuoteId);
+    const edgeDescriptors: AiFileDescriptor[] = (edgeFiles ?? [])
+      .map((f) => ({
+        id: normalizeId(f?.id),
+        name: typeof f?.fileName === "string" ? f.fileName.trim() : "",
+        path: typeof f?.path === "string" ? f.path.trim() : "",
+        classification: f?.classification ?? "Other",
+        sampleText: typeof f?.sampleText === "string" && f.sampleText.trim().length > 0 ? f.sampleText : undefined,
+      }))
+      .filter((f) => Boolean(f.id) && allowedFileIds.has(f.id));
 
-      if (!uploadsError && Array.isArray(uploads)) {
-        for (const row of uploads) {
-          const id = normalizeId(row?.id);
-          if (id) uploadsById.set(id, row);
-        }
-      }
-    }
-
-    // For non-archive uploads, we can often map original filenames -> storage_path via public.files.
-    const nonArchiveNames = Array.from(
-      new Set(
-        filesList
-          .filter((f) => !f.is_from_archive)
-          .map((f) => (typeof f.path === "string" ? f.path.trim() : ""))
-          .filter(Boolean),
-      ),
-    );
-    const filesMetaByName = new Map<string, FilesRow>();
-    if (nonArchiveNames.length > 0) {
-      const { data: filesMeta, error: filesMetaError } = await supabaseServer
-        .from("files")
-        .select("filename,storage_path,bucket_id,mime")
-        .eq("quote_id", normalizedQuoteId)
-        .in("filename", nonArchiveNames)
-        .returns<FilesRow[]>();
-
-      if (!filesMetaError && Array.isArray(filesMeta)) {
-        for (const row of filesMeta) {
-          const name = typeof row?.filename === "string" ? row.filename.trim() : "";
-          const storagePath = typeof row?.storage_path === "string" ? row.storage_path.trim() : "";
-          if (!name || !storagePath) continue;
-          filesMetaByName.set(name, row);
-        }
-      }
-    }
-
-    // Best-effort: extract title-block/notes text from 1st page of drawing PDFs.
-    const zipBufferByUploadId = new Map<string, Buffer>();
-    const sampleTextByFileId = new Map<string, string>();
-
-    for (const f of filesList) {
-      const fileId = normalizeId(f.id);
-      if (!fileId) continue;
-
-      const ext = typeof f.extension === "string" ? f.extension.trim().toLowerCase() : "";
-      const kind = classifyUploadFileType({ filename: f.filename, extension: f.extension ?? null });
-      const classification = toDescriptorClassification(kind);
-      if (classification !== "Drawing") continue;
-      if (ext !== "pdf") continue;
-
-      try {
-        let pdfBuffer: Buffer | null = null;
-
-        if (f.is_from_archive) {
-          const uploadId = normalizeId(f.upload_id);
-          const upload = uploadId ? uploadsById.get(uploadId) ?? null : null;
-          const uploadFilePath = typeof upload?.file_path === "string" ? upload.file_path.trim() : "";
-          if (!uploadId || !uploadFilePath) continue;
-
-          let zipBuffer = zipBufferByUploadId.get(uploadId) ?? null;
-          if (!zipBuffer) {
-            const parsed = parseStoragePath(uploadFilePath);
-            if (!parsed) continue;
-            const { data: downloaded, error: downloadError } = await supabaseServer.storage
-              .from(parsed.bucket)
-              .download(parsed.key);
-            if (downloadError || !downloaded) continue;
-            zipBuffer = Buffer.from(await downloaded.arrayBuffer());
-            zipBufferByUploadId.set(uploadId, zipBuffer);
-          }
-
-          const zip = new AdmZip(zipBuffer);
-          const entryPath = typeof f.path === "string" ? f.path.replace(/^\/+/, "").trim() : "";
-          if (!entryPath) continue;
-          const entry =
-            zip.getEntry(entryPath) ??
-            zip.getEntry(entryPath.replace(/\\/g, "/")) ??
-            null;
-          if (!entry) continue;
-          pdfBuffer = entry.getData();
-        } else {
-          const originalName = typeof f.path === "string" ? f.path.trim() : "";
-          const meta = originalName ? filesMetaByName.get(originalName) ?? null : null;
-          const storagePath = typeof meta?.storage_path === "string" ? meta.storage_path.trim() : "";
-          if (!storagePath) continue;
-          const parsed = parseStoragePath(storagePath);
-          if (!parsed) continue;
-          const { data: downloaded, error: downloadError } = await supabaseServer.storage
-            .from(parsed.bucket)
-            .download(parsed.key);
-          if (downloadError || !downloaded) continue;
-          pdfBuffer = Buffer.from(await downloaded.arrayBuffer());
-        }
-
-        if (!pdfBuffer || pdfBuffer.byteLength === 0) continue;
-        const text = await extractPdfFirstPageText(pdfBuffer, MAX_PDF_SAMPLE_CHARS);
-        if (text) {
-          sampleTextByFileId.set(fileId, text);
-        }
-      } catch (error) {
-        console.warn("[ai parts suggestions] pdf text extract failed", {
-          quoteId: normalizedQuoteId,
-          fileId,
-          error,
-        });
-      }
-    }
-
-    const descriptors: AiFileDescriptor[] = filesList.map((f) => {
+    // Fallback (no heavy processing): filenames + paths only.
+    const fallbackDescriptors: AiFileDescriptor[] = filesList.map((f) => {
       const id = normalizeId(f.id);
       const name = typeof f.filename === "string" ? f.filename.trim() : "";
       const path = typeof f.path === "string" ? f.path.trim() : "";
       const kind = classifyUploadFileType({ filename: name, extension: f.extension ?? null });
       const classification = toDescriptorClassification(kind);
-      const sampleText = sampleTextByFileId.get(id) ?? undefined;
       return {
         id,
         name: name || path || id,
         path: path || name || id,
         classification,
-        sampleText,
       };
     });
+
+    const descriptors: AiFileDescriptor[] =
+      edgeDescriptors.length > 0
+        ? edgeDescriptors
+        : (console.info("[ai parts suggestions] edge descriptors unavailable; continuing without sampleText", {
+            quoteId: normalizedQuoteId,
+          }),
+          fallbackDescriptors);
 
     const systemPrompt = [
       "You are assisting a manufacturing RFQ intake system.",
