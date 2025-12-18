@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useFormState } from "react-dom";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
@@ -59,6 +60,7 @@ export function CustomerPartsSection({
 }) {
   const partsList = Array.isArray(parts) ? parts : [];
   const uploadFiles = flattenUploadGroups(Array.isArray(uploadGroups) ? uploadGroups : []);
+  const hasAnyFiles = uploadFiles.length > 0;
   const { perPart, summary } = computePartsCoverage(partsList);
   const perPartById = new Map(perPart.map((row) => [row.partId, row]));
 
@@ -70,6 +72,16 @@ export function CustomerPartsSection({
     customerUpdateQuotePartFilesAction.bind(null, quoteId),
     DEFAULT_STATE,
   );
+
+  const [showAddPartForm, setShowAddPartForm] = useState(partsList.length === 0);
+  const addPartRef = useRef<HTMLDivElement | null>(null);
+  const addPartLabelRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!showAddPartForm) return;
+    // Best-effort focus once visible.
+    addPartLabelRef.current?.focus();
+  }, [showAddPartForm]);
 
   const toneClasses =
     summary.anyParts && summary.allCovered
@@ -85,15 +97,48 @@ export function CustomerPartsSection({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Parts (optional)
           </p>
-          <p className="mt-1 text-sm text-slate-300">
-            You can define parts and link CAD/drawings to make kickoff smoother. This is optional.
+          {hasAnyFiles ? (
+            <p className="mt-1 text-sm text-slate-300">
+              Define parts and link CAD/drawings to make kickoff and quoting clearer. Upload new files in
+              the Uploads section above.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-slate-300">
+              Upload CAD and drawings in the Uploads section above, then come back here to link them to
+              parts.
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-slate-700 hover:text-white"
+            onClick={() => {
+              setShowAddPartForm(true);
+              // Best-effort scroll + focus.
+              requestAnimationFrame(() => {
+                addPartRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                addPartLabelRef.current?.focus();
+              });
+            }}
+          >
+            Add part
+          </button>
+          <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${toneClasses}`}>
+            Coverage:{" "}
+            {summary.anyParts ? (summary.allCovered ? "Good" : "Needs attention") : "Not started"}
+          </span>
+        </div>
+      </header>
+
+      {!hasAnyFiles ? (
+        <div className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-3">
+          <p className="text-sm text-slate-300">
+            Once files are uploaded, you’ll be able to assign them to parts for clearer kickoff and
+            quoting.
           </p>
         </div>
-        <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${toneClasses}`}>
-          Coverage:{" "}
-          {summary.anyParts ? (summary.allCovered ? "Good" : "Needs attention") : "Not started"}
-        </span>
-      </header>
+      ) : null}
 
       {filesState.status !== "idle" ? (
         <p
@@ -147,16 +192,15 @@ export function CustomerPartsSection({
                 </div>
               </div>
 
-              <details className="border-t border-slate-900/60 px-4 py-3">
-                <summary className="cursor-pointer select-none text-sm font-medium text-slate-200">
-                  Assign files
-                </summary>
+              {hasAnyFiles ? (
+                <details className="border-t border-slate-900/60 px-4 py-3">
+                  <summary className="cursor-pointer select-none text-xs font-semibold text-slate-300">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="text-slate-400">Assign files</span>
+                      <span className="text-slate-600">▾</span>
+                    </span>
+                  </summary>
 
-                {uploadFiles.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-400">
-                    No uploaded files available yet.
-                  </p>
-                ) : (
                   <form action={filesAction} className="mt-3 space-y-3">
                     <input type="hidden" name="quotePartId" value={part.id} />
 
@@ -199,14 +243,14 @@ export function CustomerPartsSection({
                       </button>
                     </div>
                   </form>
-                )}
-              </details>
+                </details>
+              ) : null}
             </div>
           );
         })}
       </div>
 
-      <div className="mt-5 border-t border-slate-900/60 pt-4">
+      <div ref={addPartRef} className="mt-5 border-t border-slate-900/60 pt-4">
         {createState.status !== "idle" ? (
           <p
             className={`mb-3 rounded-xl border px-4 py-3 text-xs ${
@@ -220,40 +264,65 @@ export function CustomerPartsSection({
           </p>
         ) : null}
 
-        <form action={createAction} className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="block">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Part name
-              </span>
-              <input
-                name="label"
-                required
-                className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600"
-                placeholder="e.g. Bracket, Housing, Panel"
-              />
-            </label>
-            <label className="block">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Notes (optional)
-              </span>
-              <input
-                name="notes"
-                className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600"
-                placeholder="Any context to help kickoff"
-              />
-            </label>
-          </div>
+        {showAddPartForm ? (
+          <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Add part
+                </p>
+                <p className="mt-1 text-sm text-slate-300">
+                  Create a part label, then assign files once uploads are available.
+                </p>
+              </div>
+              {partsList.length > 0 ? (
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-slate-700 hover:text-white"
+                  onClick={() => setShowAddPartForm(false)}
+                >
+                  Hide
+                </button>
+              ) : null}
+            </div>
 
-          <div className="flex items-center justify-end">
-            <button
-              type="submit"
-              className="inline-flex items-center rounded-full border border-slate-800 bg-slate-900/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-700 hover:text-white"
-            >
-              Add part
-            </button>
+            <form action={createAction} className="mt-4 space-y-3">
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Part name
+                  </span>
+                  <input
+                    ref={addPartLabelRef}
+                    name="label"
+                    required
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600"
+                    placeholder="e.g. Bracket, Housing, Panel"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Notes (optional)
+                  </span>
+                  <input
+                    name="notes"
+                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600"
+                    placeholder="Any context to help kickoff"
+                  />
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end">
+                <button
+                  type="submit"
+                  className="inline-flex items-center rounded-full border border-slate-800 bg-slate-900/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-700 hover:text-white"
+                >
+                  Add part
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
+        ) : null}
       </div>
     </section>
   );
