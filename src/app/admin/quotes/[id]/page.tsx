@@ -98,6 +98,11 @@ import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { loadQuoteUploadGroups } from "@/server/quotes/uploadFiles";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
+import {
+  createQuotePartAction,
+  updateQuotePartFilesForQuoteAction,
+} from "./actions";
+import { AdminPartsFilesSection } from "./AdminPartsFilesSection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1008,6 +1013,16 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       </div>
     );
 
+    const partsWorkArea = (
+      <AdminPartsFilesSection
+        quoteId={quote.id}
+        parts={parts ?? []}
+        uploadGroups={uploadGroups}
+        createPartAction={createQuotePartAction.bind(null, quote.id)}
+        updatePartFilesAction={updateQuotePartFilesForQuoteAction.bind(null, quote.id)}
+      />
+    );
+
     const messagesUnavailable = Boolean(quoteMessagesError);
     const postMessageAction = postAdminQuoteMessage.bind(null, quote.id);
     const messagesContent = (
@@ -1656,6 +1671,22 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               }
             >
               {uploadsContent}
+            </DisclosureSection>
+
+            <DisclosureSection
+              id="parts"
+              className="scroll-mt-24"
+              hashAliases={["components"]}
+              title="Parts & files"
+              description="Define parts and attach CAD/drawings from uploads."
+              defaultOpen={parts.length === 0}
+              summary={
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  {parts.length} part{parts.length === 1 ? "" : "s"}
+                </span>
+              }
+            >
+              {partsWorkArea}
             </DisclosureSection>
 
             <DisclosureSection
