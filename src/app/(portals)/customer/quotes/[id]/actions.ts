@@ -22,6 +22,12 @@ import {
 import { customerAppendFilesToQuote } from "@/server/quotes/uploadFiles";
 import { generateAiPartSuggestionsForQuote } from "@/server/quotes/aiPartsSuggestions";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
+import {
+  buildUploadTargetForQuote,
+  isAllowedQuoteUploadFileName,
+  registerUploadedObjectsForQuote,
+  type UploadTarget,
+} from "@/server/quotes/uploadFiles";
 
 export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
@@ -1007,6 +1013,196 @@ export type CustomerUploadsFormState = {
   status: "idle" | "success" | "error";
   message?: string;
 };
+
+export type CustomerUploadTarget = {
+  storagePath: string;
+  bucketId: string;
+  fileName: string;
+  mimeType: string | null;
+  sizeBytes: number;
+};
+
+type CustomerFileMeta = {
+  fileName: string;
+  sizeBytes: number;
+  mimeType: string | null;
+};
+
+function parseCustomerFilesMeta(formData: FormData): CustomerFileMeta[] {
+  const json = formData.get("filesMeta");
+  if (typeof json !== "string" || json.trim().length === 0) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => {
+        if (!row || typeof row !== "object") return null;
+        const fileName =
+          "fileName" in row && typeof (row as any).fileName === "string"
+            ? (row as any).fileName
+            : "";
+        const sizeBytes =
+          "sizeBytes" in row && typeof (row as any).sizeBytes === "number"
+            ? (row as any).sizeBytes
+            : NaN;
+        const mimeType =
+          "mimeType" in row && typeof (row as any).mimeType === "string"
+            ? ((row as any).mimeType as string)
+            : null;
+        const trimmed = fileName.trim();
+        if (!trimmed) return null;
+        if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return null;
+        return { fileName: trimmed, sizeBytes, mimeType };
+      })
+      .filter((v): v is CustomerFileMeta => Boolean(v));
+  } catch {
+    return [];
+  }
+}
+
+export async function getUploadTargetsForCustomerQuote(
+  quoteId: string,
+  _prevState: CustomerUploadsFormState,
+  formData: FormData,
+): Promise<
+  | { status: "success"; targets: CustomerUploadTarget[] }
+  | CustomerUploadsFormState
+> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return { status: "error", message: "Missing quote reference." };
+  }
+
+  const { user, error } = await getServerAuthUser();
+  if (error || !user) {
+    return { status: "error", message: "You must be signed in to upload files." };
+  }
+
+  // Reuse the same access check as the existing customer upload pipeline.
+  const supabase = createAuthClient();
+  const customer = await getCustomerByUserId(user.id);
+  if (!customer) {
+    return { status: "error", message: "Complete your profile before uploading files." };
+  }
+
+  const { data: quoteRow, error: quoteError } = await supabase
+    .from("quotes")
+    .select("id,customer_id,customer_email")
+    .eq("id", normalizedQuoteId)
+    .maybeSingle<{ id: string; customer_id: string | null; customer_email: string | null }>();
+
+  if (quoteError || !quoteRow?.id) {
+    return { status: "error", message: "Quote not found." };
+  }
+
+  const quoteCustomerId = normalizeId(quoteRow.customer_id ?? null);
+  const customerIdMatches = Boolean(quoteCustomerId && quoteCustomerId === customer.id);
+  const quoteCustomerEmail = normalizeEmailInput(quoteRow.customer_email ?? null);
+  const customerEmail = normalizeEmailInput(customer.email);
+  const customerEmailMatches = Boolean(
+    quoteCustomerEmail && customerEmail && quoteCustomerEmail === customerEmail,
+  );
+  if (!customerIdMatches && !customerEmailMatches) {
+    return { status: "error", message: "You do not have access to this quote." };
+  }
+
+  const filesMeta = parseCustomerFilesMeta(formData);
+  if (filesMeta.length === 0) {
+    return { status: "error", message: "No files selected." };
+  }
+
+  const tooLarge = filesMeta.filter((f) => f.sizeBytes > MAX_UPLOAD_BYTES);
+  if (tooLarge.length > 0) {
+    return {
+      status: "error",
+      message: `Each file must be smaller than ${formatMaxUploadSize()}.`,
+    };
+  }
+
+  const unsupported = filesMeta.filter((f) => !isAllowedQuoteUploadFileName(f.fileName));
+  if (unsupported.length > 0) {
+    return {
+      status: "error",
+      message: "One or more files are not a supported type.",
+    };
+  }
+
+  const targets = filesMeta.map((file) =>
+    buildUploadTargetForQuote({
+      quoteId: normalizedQuoteId,
+      fileName: file.fileName,
+      sizeBytes: file.sizeBytes,
+      mimeType: file.mimeType,
+    }),
+  );
+
+  return {
+    status: "success",
+    targets: targets.map((t) => ({
+      storagePath: t.storagePath,
+      bucketId: t.bucketId,
+      fileName: t.originalFileName,
+      mimeType: t.mimeType,
+      sizeBytes: t.sizeBytes,
+    })),
+  };
+}
+
+export async function registerUploadedFilesForCustomerQuote(
+  quoteId: string,
+  _prevState: CustomerUploadsFormState,
+  formData: FormData,
+): Promise<CustomerUploadsFormState> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return { status: "error", message: "Missing quote reference." };
+  }
+
+  const { user, error } = await getServerAuthUser();
+  if (error || !user) {
+    return { status: "error", message: "You must be signed in to upload files." };
+  }
+
+  try {
+    const json = formData.get("targets");
+    if (typeof json !== "string" || json.trim().length === 0) {
+      return { status: "error", message: "Missing upload targets." };
+    }
+
+    const parsed = JSON.parse(json) as CustomerUploadTarget[];
+    const targets: UploadTarget[] = Array.isArray(parsed)
+      ? parsed.map((t) => ({
+          storagePath: t.storagePath,
+          bucketId: t.bucketId,
+          originalFileName: t.fileName,
+          mimeType: t.mimeType,
+          sizeBytes: t.sizeBytes,
+        }))
+      : [];
+
+    if (targets.length === 0) {
+      return { status: "error", message: "Missing upload targets." };
+    }
+
+    await registerUploadedObjectsForQuote({
+      quoteId: normalizedQuoteId,
+      targets,
+    });
+
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+    return { status: "success", message: "Files uploaded." };
+  } catch (e) {
+    console.error("[customer uploads] registerUploadedFilesForCustomerQuote failed", e);
+    return {
+      status: "error",
+      message: "We could not register these files. Please try again.",
+    };
+  }
+}
 
 export async function customerUploadQuoteFilesAction(
   quoteId: string,

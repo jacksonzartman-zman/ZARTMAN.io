@@ -9,6 +9,7 @@ import {
 } from "@/server/customer/quoteParts";
 import {
   persistQuoteIntake,
+  persistQuoteIntakeDirectUpload,
   validateQuoteIntakeFields,
   type QuoteIntakeFieldErrors,
   type QuoteIntakePayload,
@@ -18,6 +19,10 @@ import {
   QUOTE_INTAKE_SUCCESS_MESSAGE,
 } from "@/lib/quote/messages";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
+import {
+  registerUploadedObjectsForExistingUpload,
+  type UploadTarget,
+} from "@/server/quotes/uploadFiles";
 
 export type QuoteIntakeActionState =
   | {
@@ -31,6 +36,32 @@ export type QuoteIntakeActionState =
       error: string;
       fieldErrors?: QuoteIntakeFieldErrors;
     };
+
+export type QuoteIntakeDirectUploadTarget = {
+  storagePath: string;
+  bucketId: string;
+  fileName: string;
+  mimeType: string | null;
+  sizeBytes: number;
+};
+
+export type QuoteIntakeDirectPrepareState =
+  | {
+      ok: true;
+      quoteId: string;
+      uploadId: string;
+      message: string;
+      targets: QuoteIntakeDirectUploadTarget[];
+    }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: QuoteIntakeFieldErrors;
+    };
+
+export type QuoteIntakeDirectFinalizeState =
+  | { ok: true; message: string; quoteId: string; uploadId: string }
+  | { ok: false; error: string };
 
 export type CreatePartFromSuggestionState =
   | { ok: true; quoteId: string; quotePartId: string; suggestionKey: string }
@@ -135,6 +166,202 @@ export async function submitQuoteIntakeAction(
       error: serializeUnknownError(error),
     });
     return buildFailureState(QUOTE_INTAKE_FALLBACK_ERROR);
+  }
+}
+
+type QuoteIntakeFileMeta = {
+  fileName: string;
+  sizeBytes: number;
+  mimeType: string | null;
+};
+
+function parseFilesMeta(formData: FormData): QuoteIntakeFileMeta[] {
+  const json = formData.get("filesMeta");
+  if (typeof json !== "string" || json.trim().length === 0) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => {
+        if (!row || typeof row !== "object") return null;
+        const fileName =
+          "fileName" in row && typeof (row as any).fileName === "string"
+            ? String((row as any).fileName)
+            : "";
+        const sizeBytes =
+          "sizeBytes" in row && typeof (row as any).sizeBytes === "number"
+            ? Number((row as any).sizeBytes)
+            : NaN;
+        const mimeType =
+          "mimeType" in row && typeof (row as any).mimeType === "string"
+            ? String((row as any).mimeType)
+            : null;
+        const trimmed = fileName.trim();
+        if (!trimmed) return null;
+        if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return null;
+        return { fileName: trimmed, sizeBytes, mimeType };
+      })
+      .filter((v): v is QuoteIntakeFileMeta => Boolean(v));
+  } catch {
+    return [];
+  }
+}
+
+export async function prepareQuoteIntakeDirectUploadAction(
+  formData: FormData,
+): Promise<QuoteIntakeDirectPrepareState> {
+  try {
+    const user = await requireUser({
+      message: "Sign in to submit RFQs.",
+    });
+
+    const filesMeta = parseFilesMeta(formData);
+    if (filesMeta.length === 0) {
+      return {
+        ok: false,
+        error: "Attach at least one CAD file before submitting.",
+        fieldErrors: { file: "Attach at least one CAD file before submitting." },
+      };
+    }
+
+    const tooLarge = filesMeta.filter((f) => f.sizeBytes > MAX_UPLOAD_BYTES);
+    if (tooLarge.length > 0) {
+      const message = `Each file must be smaller than ${formatMaxUploadSize()}. Try splitting large ZIPs or compressing drawings.`;
+      return { ok: false, error: message, fieldErrors: { file: message } };
+    }
+
+    const pseudoFiles = filesMeta.map(
+      (f) =>
+        ({
+          name: f.fileName,
+          size: f.sizeBytes,
+          type: f.mimeType ?? "",
+        }) as unknown as File,
+    );
+
+    const payload: QuoteIntakePayload = {
+      files: pseudoFiles,
+      firstName: getString(formData, "firstName"),
+      lastName: getString(formData, "lastName"),
+      email: getString(formData, "email"),
+      company: getString(formData, "company"),
+      phone: getString(formData, "phone"),
+      manufacturingProcess: getString(formData, "manufacturingProcess"),
+      quantity: getString(formData, "quantity"),
+      shippingPostalCode: getString(formData, "shippingPostalCode"),
+      exportRestriction: getString(formData, "exportRestriction"),
+      rfqReason: getString(formData, "rfqReason"),
+      notes: getString(formData, "notes"),
+      itarAcknowledged: parseBoolean(formData.get("itarAcknowledged")),
+      termsAccepted: parseBoolean(formData.get("termsAccepted")),
+    };
+
+    const fieldErrors = validateQuoteIntakeFields(payload);
+    if (Object.keys(fieldErrors).length > 0) {
+      return {
+        ok: false,
+        error: "Please fix the highlighted fields before submitting.",
+        fieldErrors,
+      };
+    }
+
+    const result = await persistQuoteIntakeDirectUpload({
+      payload: {
+        ...payload,
+        files: filesMeta,
+      },
+      user,
+    });
+
+    if (!result.ok) {
+      return {
+        ok: false,
+        error: result.error || QUOTE_INTAKE_FALLBACK_ERROR,
+        fieldErrors: result.fieldErrors,
+      };
+    }
+
+    return {
+      ok: true,
+      quoteId: result.quoteId,
+      uploadId: result.uploadId,
+      message: QUOTE_INTAKE_SUCCESS_MESSAGE,
+      targets: result.targets.map((t) => ({
+        storagePath: t.storagePath,
+        bucketId: t.bucketId,
+        fileName: t.originalFileName,
+        mimeType: t.mimeType,
+        sizeBytes: t.sizeBytes,
+      })),
+    };
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+    console.error("[quote intake direct] prepare failed", {
+      error: serializeUnknownError(error),
+    });
+    return { ok: false, error: QUOTE_INTAKE_FALLBACK_ERROR };
+  }
+}
+
+export async function finalizeQuoteIntakeDirectUploadAction(
+  formData: FormData,
+): Promise<QuoteIntakeDirectFinalizeState> {
+  try {
+    await requireUser({
+      message: "Sign in to submit RFQs.",
+    });
+
+    const quoteId = String(formData.get("quoteId") ?? "").trim();
+    const uploadId = String(formData.get("uploadId") ?? "").trim();
+    const targetsJson = formData.get("targets");
+    if (!quoteId || !uploadId || typeof targetsJson !== "string") {
+      return { ok: false, error: "Missing upload references." };
+    }
+
+    const parsed = JSON.parse(targetsJson) as QuoteIntakeDirectUploadTarget[];
+    const targets: UploadTarget[] = Array.isArray(parsed)
+      ? parsed.map((t) => ({
+          storagePath: t.storagePath,
+          bucketId: t.bucketId,
+          originalFileName: t.fileName,
+          mimeType: t.mimeType,
+          sizeBytes: t.sizeBytes,
+        }))
+      : [];
+
+    if (targets.length === 0) {
+      return { ok: false, error: "Missing upload targets." };
+    }
+
+    const result = await registerUploadedObjectsForExistingUpload({
+      quoteId,
+      uploadId,
+      targets,
+    });
+
+    if (!result.ok) {
+      return { ok: false, error: "We couldn’t register your files. Please retry." };
+    }
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/quotes");
+    revalidatePath("/admin/uploads");
+    revalidatePath(`/admin/uploads/${uploadId}`);
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    revalidatePath(`/customer/quotes/${quoteId}`);
+    revalidatePath(`/supplier/quotes/${quoteId}`);
+
+    return { ok: true, message: QUOTE_INTAKE_SUCCESS_MESSAGE, quoteId, uploadId };
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+    console.error("[quote intake direct] finalize failed", serializeUnknownError(error));
+    return { ok: false, error: QUOTE_INTAKE_FALLBACK_ERROR };
   }
 }
 

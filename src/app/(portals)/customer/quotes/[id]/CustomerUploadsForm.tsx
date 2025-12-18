@@ -2,24 +2,23 @@
 
 import clsx from "clsx";
 import { useRef, useState, type ChangeEvent } from "react";
-import { useFormState, useFormStatus } from "react-dom";
 import {
-  customerUploadQuoteFilesAction,
+  getUploadTargetsForCustomerQuote,
+  registerUploadedFilesForCustomerQuote,
+  type CustomerUploadTarget,
   type CustomerUploadsFormState,
 } from "./actions";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
+import { supabaseBrowser } from "@/lib/supabase.client";
 
 const initialState: CustomerUploadsFormState = { status: "idle" };
 
 const UPLOAD_ACCEPT = ".pdf,.dwg,.dxf,.step,.stp,.igs,.iges,.sldprt,.prt,.stl,.zip";
 
 export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
-  const [state, formAction] = useFormState<CustomerUploadsFormState, FormData>(
-    (prevState, formData) =>
-      customerUploadQuoteFilesAction(quoteId, prevState, formData),
-    initialState,
-  );
+  const [state, setState] = useState<CustomerUploadsFormState>(initialState);
+  const [pending, setPending] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const maxLabel = formatMaxUploadSize();
@@ -50,10 +49,8 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
       </div>
 
       <form
-        action={formAction}
         className="mt-4 space-y-3"
-        encType="multipart/form-data"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           const files = Array.from(inputRef.current?.files ?? []);
           const tooLarge = files.filter((f) => isFileTooLarge(f));
           if (tooLarge.length > 0) {
@@ -61,6 +58,89 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
             setLocalError(
               `One or more files exceed the ${maxLabel} limit. Please upload smaller files or split large ZIPs.`,
             );
+            return;
+          }
+          e.preventDefault();
+          setLocalError(null);
+          setState({ status: "idle" });
+
+          if (files.length === 0) {
+            setState({
+              status: "error",
+              message: "Please choose at least one file to upload.",
+            });
+            return;
+          }
+
+          setPending(true);
+          try {
+            const filesMeta = files.map((file) => ({
+              fileName: file.name,
+              sizeBytes: file.size,
+              mimeType: file.type || null,
+            }));
+
+            const prepareData = new FormData();
+            prepareData.set("filesMeta", JSON.stringify(filesMeta));
+
+            const prepare = await getUploadTargetsForCustomerQuote(
+              quoteId,
+              { status: "idle" },
+              prepareData,
+            );
+
+            if (!("targets" in prepare)) {
+              setState(prepare);
+              return;
+            }
+
+            const targets = prepare.targets;
+            if (targets.length !== files.length) {
+              setState({
+                status: "error",
+                message: "Upload preparation failed. Please try again.",
+              });
+              return;
+            }
+
+            const sb = supabaseBrowser();
+            for (let i = 0; i < targets.length; i += 1) {
+              const target = targets[i] as CustomerUploadTarget;
+              const file = files[i]!;
+
+              const { error: storageError } = await sb.storage
+                .from(target.bucketId)
+                .upload(target.storagePath, file, {
+                  cacheControl: "3600",
+                  upsert: false,
+                  contentType: target.mimeType || file.type || "application/octet-stream",
+                });
+
+              if (storageError) {
+                console.error("[customer uploads] storage upload failed", storageError);
+                setState({
+                  status: "error",
+                  message: "Could not upload files. Please try again.",
+                });
+                return;
+              }
+            }
+
+            const registerData = new FormData();
+            registerData.set("targets", JSON.stringify(targets));
+
+            const registered = await registerUploadedFilesForCustomerQuote(
+              quoteId,
+              { status: "idle" },
+              registerData,
+            );
+            setState(registered);
+
+            if (registered.status === "success" && inputRef.current) {
+              inputRef.current.value = "";
+            }
+          } finally {
+            setPending(false);
           }
         }}
       >
@@ -96,14 +176,13 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
           Max {maxLabel} per file. For larger packages, upload multiple ZIPs.
         </p>
 
-        <SubmitButton />
+        <SubmitButton pending={pending} />
       </form>
     </section>
   );
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
+function SubmitButton({ pending }: { pending: boolean }) {
   return (
     <button
       type="submit"

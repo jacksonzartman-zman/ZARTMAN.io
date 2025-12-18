@@ -14,7 +14,11 @@ import {
 } from "@/server/admin/logging";
 import { notifyAdminOnQuoteSubmitted } from "@/server/quotes/notifications";
 import { emitQuoteEvent } from "@/server/quotes/events";
-import { recordQuoteUploadFiles } from "@/server/quotes/uploadFiles";
+import {
+  buildUploadTargetForQuote,
+  recordQuoteUploadFiles,
+  type UploadTarget,
+} from "@/server/quotes/uploadFiles";
 
 const CAD_BUCKET =
   process.env.SUPABASE_CAD_BUCKET ||
@@ -93,6 +97,246 @@ export type QuoteIntakePersistResult =
       fieldErrors?: QuoteIntakeFieldErrors;
       reason?: string;
     };
+
+export type QuoteIntakeDirectUploadPersistResult =
+  | {
+      ok: true;
+      uploadId: string;
+      quoteId: string;
+      targets: UploadTarget[];
+    }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: QuoteIntakeFieldErrors;
+      reason?: string;
+    };
+
+type QuoteIntakeFileMeta = {
+  fileName: string;
+  sizeBytes: number;
+  mimeType: string | null;
+};
+
+export async function persistQuoteIntakeDirectUpload(params: {
+  payload: Omit<QuoteIntakePayload, "files"> & { files: QuoteIntakeFileMeta[] };
+  user: User;
+  options?: { contactEmailOverride?: string | null };
+}): Promise<QuoteIntakeDirectUploadPersistResult> {
+  const { user } = params;
+  const sessionEmail = normalizeEmailInput(user.email ?? null);
+  const formEmail = normalizeEmailInput(params.payload.email);
+  const contactEmail =
+    normalizeEmailInput(params.options?.contactEmailOverride ?? null) ??
+    formEmail ??
+    sessionEmail;
+
+  if (!contactEmail) {
+    return {
+      ok: false,
+      error: "A valid email address is required.",
+      fieldErrors: { email: "Enter a valid email address." },
+      reason: "missing-email",
+    };
+  }
+
+  const filesMeta = Array.isArray(params.payload.files)
+    ? params.payload.files.filter(Boolean)
+    : [];
+  if (filesMeta.length === 0) {
+    return {
+      ok: false,
+      error: "Attach at least one CAD file before submitting.",
+      fieldErrors: { file: "Attach at least one CAD file before submitting." },
+      reason: "file-missing",
+    };
+  }
+
+  const pseudoFiles = filesMeta.map(
+    (f) =>
+      ({
+        name: f.fileName,
+        size: f.sizeBytes,
+        type: f.mimeType ?? "",
+      }) as unknown as File,
+  );
+
+  const payloadForValidation: QuoteIntakePayload = {
+    ...(params.payload as Omit<QuoteIntakePayload, "files">),
+    files: pseudoFiles,
+  };
+  const fieldErrors = validateQuoteIntakeFields(payloadForValidation);
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      error: "Please fix the highlighted fields before submitting.",
+      fieldErrors,
+      reason: "field-validation",
+    };
+  }
+
+  const contactName =
+    buildContactName(params.payload.firstName, params.payload.lastName) ||
+    sanitizeNullable(params.payload.company) ||
+    contactEmail;
+
+  const logContext = {
+    userId: user.id,
+    contactEmail,
+    sessionEmail,
+    primaryFileName: filesMeta[0]?.fileName ?? null,
+    fileCount: filesMeta.length,
+  };
+
+  try {
+    const customerId = await upsertCustomerRecord({
+      contactEmail,
+      contactName,
+      company: sanitizeNullable(params.payload.company),
+      user,
+      sessionEmail,
+    });
+
+    const primary = filesMeta[0]!;
+
+    // Create the quote first so we can allocate quote-scoped storage paths.
+    const quoteInsert = await supabaseServer
+      .from("quotes")
+      .insert({
+        upload_id: null,
+        customer_name: contactName,
+        customer_email: contactEmail,
+        company: sanitizeNullable(params.payload.company),
+        file_name: primary.fileName,
+        status: DEFAULT_QUOTE_STATUS,
+        currency: "USD",
+        price: null,
+        customer_id: customerId,
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (quoteInsert.error || !quoteInsert.data?.id) {
+      console.error("[quote intake direct] quote insert failed", {
+        ...logContext,
+        error: serializeSupabaseError(quoteInsert.error),
+      });
+      return {
+        ok: false,
+        error: "We couldn’t create your quote record. Please retry.",
+        reason: "db-insert-quote",
+      };
+    }
+
+    const quoteId = quoteInsert.data.id;
+    const targets = filesMeta.map((f) =>
+      buildUploadTargetForQuote({
+        quoteId,
+        fileName: f.fileName,
+        sizeBytes: f.sizeBytes,
+        mimeType: f.mimeType,
+      }),
+    );
+
+    const primaryTarget = targets[0];
+    if (!primaryTarget) {
+      return {
+        ok: false,
+        error: "We couldn’t allocate storage targets. Please retry.",
+        reason: "targets-missing",
+      };
+    }
+
+    const { data: uploadRow, error: uploadError } = await supabaseServer
+      .from("uploads")
+      .insert({
+        quote_id: quoteId,
+        file_name: primary.fileName,
+        file_path: primaryTarget.storagePath,
+        mime_type: primary.mimeType,
+        name: contactName,
+        email: contactEmail,
+        company: sanitizeNullable(params.payload.company),
+        notes: sanitizeNullable(params.payload.notes),
+        customer_id: customerId,
+        status: DEFAULT_QUOTE_STATUS,
+        first_name: sanitizeNullable(params.payload.firstName),
+        last_name: sanitizeNullable(params.payload.lastName),
+        phone: sanitizeNullable(params.payload.phone),
+        manufacturing_process: sanitizeNullable(params.payload.manufacturingProcess),
+        quantity: sanitizeNullable(params.payload.quantity),
+        shipping_postal_code: sanitizeNullable(params.payload.shippingPostalCode),
+        export_restriction: sanitizeNullable(params.payload.exportRestriction),
+        rfq_reason: sanitizeNullable(params.payload.rfqReason),
+        itar_acknowledged: params.payload.itarAcknowledged,
+        terms_accepted: params.payload.termsAccepted,
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (uploadError || !uploadRow?.id) {
+      console.error("[quote intake direct] upload insert failed", {
+        ...logContext,
+        quoteId,
+        error: serializeSupabaseError(uploadError),
+      });
+      return {
+        ok: false,
+        error: "We couldn’t save your upload metadata. Please retry.",
+        reason: "db-insert-upload",
+      };
+    }
+
+    const uploadId = uploadRow.id;
+
+    const { error: quoteUpdateError } = await supabaseServer
+      .from("quotes")
+      .update({ upload_id: uploadId })
+      .eq("id", quoteId);
+    if (quoteUpdateError) {
+      console.error("[quote intake direct] quote upload link failed", {
+        ...logContext,
+        quoteId,
+        uploadId,
+        error: serializeSupabaseError(quoteUpdateError),
+      });
+    }
+
+    void emitQuoteEvent({
+      quoteId,
+      eventType: "submitted",
+      actorRole: "customer",
+      actorUserId: user.id,
+      metadata: {
+        upload_id: uploadId,
+        contact_email: contactEmail,
+        contact_name: contactName,
+        company: sanitizeNullable(params.payload.company),
+        primary_file_name: primary.fileName,
+      },
+    });
+
+    void notifyAdminOnQuoteSubmitted({
+      quoteId,
+      contactName,
+      contactEmail,
+      company: sanitizeNullable(params.payload.company),
+      fileName: primary.fileName,
+    });
+
+    return { ok: true, uploadId, quoteId, targets };
+  } catch (error) {
+    console.error("[quote intake direct] failed", {
+      ...logContext,
+      error: serializeSupabaseError(error),
+    });
+    return {
+      ok: false,
+      error: "Unexpected server error while submitting your RFQ.",
+      reason: "unexpected-error",
+    };
+  }
+}
 
 export function validateQuoteIntakeFields(
   payload: QuoteIntakePayload,
