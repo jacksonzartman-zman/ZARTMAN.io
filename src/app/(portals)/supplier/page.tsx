@@ -373,7 +373,7 @@ async function SupplierDashboardPage({
               </span>
               <div className="flex-1">
                 <Link
-                  href="/supplier/rfqs"
+                  href="/supplier/quotes?status=open"
                   className="font-semibold text-blue-200 underline-offset-4 hover:underline"
                 >
                   Bid on your first RFQ
@@ -714,6 +714,16 @@ function MatchesCard({
           ? "RFQs that match your verified processes, certifications, and compliance documents."
           : "Complete onboarding to start receiving filtered RFQs."
       }
+      action={
+        supplierExists ? (
+          <Link
+            href="/supplier/quotes?status=open"
+            className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+          >
+            View all
+          </Link>
+        ) : null
+      }
     >
       {supplierExists && matches.length > 0 ? (
         <SupplierInboxTable rows={matches} />
@@ -765,6 +775,16 @@ function BidsCard({
     <PortalCard
       title="Submitted bids"
       description="Track the quotes you’ve priced and see where each bid stands."
+      action={
+        bids.length > 0 ? (
+          <Link
+            href="/supplier/quotes"
+            className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+          >
+            View all
+          </Link>
+        ) : null
+      }
     >
       {bids.length > 0 ? (
         <ul className="space-y-3">
