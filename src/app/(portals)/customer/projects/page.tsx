@@ -272,9 +272,20 @@ export default async function CustomerProjectsPage({
                               <span className="font-medium text-slate-100">
                                 {project.projectName}
                               </span>
-                              <span className="text-xs text-slate-500">
-                                Quote {project.id.startsWith("Q-") ? project.id : `#${project.id.slice(0, 6)}`}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                <span>
+                                  Quote{" "}
+                                  {project.id.startsWith("Q-")
+                                    ? project.id
+                                    : `#${project.id.slice(0, 6)}`}
+                                </span>
+                                <Link
+                                  href={`/customer/quotes/${project.id}#decision`}
+                                  className="font-semibold text-emerald-200 hover:underline"
+                                >
+                                  View RFQ
+                                </Link>
+                              </div>
                             </div>
                           </td>
                           <td className="px-5 py-4 align-middle text-slate-200">
