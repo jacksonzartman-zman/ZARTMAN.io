@@ -47,6 +47,7 @@ import {
 } from "@/server/admin/capacity";
 import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
+import { loadPartsCoverageSignalsForQuotes } from "@/server/quotes/partsCoverageHealth";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,7 @@ export default async function AdminQuotesPage({
   const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
   const listState = parseListState(usp, ADMIN_QUOTES_LIST_STATE_CONFIG);
   const currentView = normalizeAdminQuotesView(usp.get("view") ?? null);
+  const partsCoverageFilter = normalizePartsCoverageFilter(usp.get("partsCoverage"));
 
   const sort = listState.sort ?? null;
   const status = listState.status ?? null;
@@ -91,6 +93,8 @@ export default async function AdminQuotesPage({
     .filter(Boolean);
   const threadSlaByQuoteId =
     quoteIdsOnPage.length > 0 ? await loadAdminThreadSlaForQuotes({ quoteIds: quoteIdsOnPage }) : {};
+  const partsCoverageByQuoteId =
+    quoteIdsOnPage.length > 0 ? await loadPartsCoverageSignalsForQuotes(quoteIdsOnPage) : new Map();
 
   const nextWeekStartDateIso = getNextWeekStartDateIso();
 
@@ -164,6 +168,10 @@ export default async function AdminQuotesPage({
 
   const enrichedRows: QuoteRow[] = baseRows.map((row) => {
     const threadSla = threadSlaByQuoteId[row.id] ?? null;
+    const partsSignal = partsCoverageByQuoteId.get(row.id) ?? {
+      partsCoverageHealth: "none" as const,
+      partsCount: 0,
+    };
     const files = buildQuoteFilesFromRow(row);
     const fileCount = resolveQuoteFileCount(row, files.length);
     const fileCountLabel = formatQuoteFileCountLabel(fileCount);
@@ -221,14 +229,19 @@ export default async function AdminQuotesPage({
       awardedAt: row.awarded_at ?? null,
       awardedSupplierName: row.awarded_supplier_name ?? null,
       capacityNextWeek,
+      partsCoverageHealth: partsSignal.partsCoverageHealth,
+      partsCount: partsSignal.partsCount,
       ctaHref: `/admin/quotes/${row.id}`,
       bidsHref: `/admin/quotes/${row.id}#bids-panel`,
     };
   });
 
-  const filteredQuotes = enrichedRows.filter((row) =>
-    viewIncludesStatus(currentView, row.status),
-  );
+  const filteredQuotes = enrichedRows
+    .filter((row) => viewIncludesStatus(currentView, row.status))
+    .filter((row) => {
+      if (partsCoverageFilter === "all") return true;
+      return row.partsCoverageHealth === partsCoverageFilter;
+    });
 
   return (
     <AdminDashboardShell title="Quotes" description="Recent quotes created from uploads.">
@@ -306,6 +319,20 @@ function buildInboxAggregate(row: {
     winningBidCurrency: null,
     winningBidLeadTimeDays: null,
   };
+}
+
+type PartsCoverageFilter = "all" | "good" | "needs_attention" | "none";
+
+function normalizePartsCoverageFilter(value: unknown): PartsCoverageFilter {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "good":
+    case "needs_attention":
+    case "none":
+      return normalized;
+    default:
+      return "all";
+  }
 }
 
 function buildEmptyCapacitySummary(

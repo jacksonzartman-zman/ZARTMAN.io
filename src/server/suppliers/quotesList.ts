@@ -9,6 +9,10 @@ import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import { deriveQuotePrimaryLabel } from "@/server/quotes/fileSummary";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 import {
+  loadPartsCoverageSignalsForQuotes,
+} from "@/server/quotes/partsCoverageHealth";
+import type { PartsCoverageHealth } from "@/lib/quote/partsCoverage";
+import {
   loadSupplierInboxBidAggregates,
   type SupplierInboxBidAggregate,
 } from "@/server/suppliers/inbox";
@@ -28,6 +32,8 @@ export type SupplierQuoteListRow = {
   lastActivityAt: string | null;
   matchHealth: "good" | "caution" | "poor" | "unknown";
   benchStatus: "underused" | "balanced" | "overused" | "unknown";
+  partsCoverageHealth: PartsCoverageHealth;
+  partsCount: number | null;
 };
 
 type QuoteRow = {
@@ -230,7 +236,14 @@ export async function loadSupplierQuotesList(
 
   const quoteIdsList = quotes.map((q) => q.id).filter(Boolean);
 
-  const [bidAggregates, unreadSummary, kickoffCompletedAtByQuoteId, kickoffTotalsByQuoteId, bench] =
+  const [
+    bidAggregates,
+    unreadSummary,
+    kickoffCompletedAtByQuoteId,
+    kickoffTotalsByQuoteId,
+    bench,
+    partsCoverageByQuoteId,
+  ] =
     await Promise.all([
       loadSupplierInboxBidAggregates(supplierId, quoteIdsList),
       loadUnreadMessageSummary({ quoteIds: quoteIdsList, userId }),
@@ -243,6 +256,7 @@ export async function loadSupplierQuotesList(
         });
         return null;
       }),
+      loadPartsCoverageSignalsForQuotes(quoteIdsList),
     ]);
 
   const matchHealth: SupplierQuoteListRow["matchHealth"] =
@@ -282,6 +296,11 @@ export async function loadSupplierQuotesList(
       quote.created_at,
     ]);
 
+    const partsSignal = partsCoverageByQuoteId.get(quoteId) ?? {
+      partsCoverageHealth: "none" as const,
+      partsCount: 0,
+    };
+
     return {
       quoteId,
       rfqLabel,
@@ -294,6 +313,8 @@ export async function loadSupplierQuotesList(
       lastActivityAt,
       matchHealth,
       benchStatus,
+      partsCoverageHealth: partsSignal.partsCoverageHealth,
+      partsCount: partsSignal.partsCount,
     };
   });
 

@@ -24,6 +24,7 @@ import type {
   AdminThreadNeedsReplyFrom,
   AdminThreadStalenessBucket,
 } from "@/server/admin/messageSla";
+import type { PartsCoverageHealth } from "@/lib/quote/partsCoverage";
 
 export type QuoteCapacitySummary = {
   supplierId: string;
@@ -61,6 +62,8 @@ export type QuoteRow = {
   awardedAt: string | null;
   awardedSupplierName: string | null;
   capacityNextWeek?: QuoteCapacitySummary | null;
+  partsCoverageHealth: PartsCoverageHealth;
+  partsCount: number | null;
   ctaHref: string;
   bidsHref: string;
 };
@@ -83,7 +86,7 @@ export default function QuotesTable({
 
   return (
     <AdminTableShell
-      tableClassName="min-w-[1320px] w-full border-separate border-spacing-0 text-sm"
+      tableClassName="min-w-[1460px] w-full border-separate border-spacing-0 text-sm"
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -94,6 +97,9 @@ export default function QuotesTable({
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Files
+          </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Parts
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Status
@@ -119,7 +125,7 @@ export default function QuotesTable({
         showEmptyState ? (
           <tr>
             <td
-              colSpan={9}
+              colSpan={10}
               className="px-6 py-12 text-center text-base text-slate-300"
             >
               <p className="font-medium text-slate-100">{emptyState.title}</p>
@@ -196,6 +202,33 @@ export default function QuotesTable({
                   <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
                     {row.fileCountLabel}
                   </span>
+                </td>
+                <td className={adminTableCellClass}>
+                  <Link
+                    href={`/admin/quotes/${row.id}#parts`}
+                    className="group inline-flex flex-col items-start gap-1 underline-offset-4 hover:underline"
+                  >
+                    <span
+                      className={clsx(
+                        "inline-flex w-fit items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+                        row.partsCoverageHealth === "needs_attention"
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+                          : row.partsCoverageHealth === "good"
+                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                            : "border-slate-800 bg-slate-950/50 text-slate-300",
+                      )}
+                    >
+                      {row.partsCoverageHealth === "none"
+                        ? "No parts"
+                        : row.partsCoverageHealth === "good"
+                          ? "Parts: Good"
+                          : "Parts: Needs attention"}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {(typeof row.partsCount === "number" ? row.partsCount : 0).toLocaleString()}{" "}
+                      part{(row.partsCount ?? 0) === 1 ? "" : "s"}
+                    </span>
+                  </Link>
                 </td>
                 <td className={adminTableCellClass}>
                   <div className="space-y-1">
