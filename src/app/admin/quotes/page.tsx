@@ -9,7 +9,6 @@ import {
   getAdminQuotesInbox,
   getOnlyBidderSupplierIdsForQuotes,
 } from "@/server/admin/quotesInbox";
-import type { ReadonlyURLSearchParams } from "next/navigation";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import QuotesTable, {
   type QuoteCapacitySummary,
@@ -39,6 +38,7 @@ import AdminQuotesViewFilter from "./AdminQuotesViewFilter";
 import { normalizeAdminQuotesView, viewIncludesStatus } from "./viewFilters";
 import TablePaginationControls from "../components/TablePaginationControls";
 import { ADMIN_QUOTES_LIST_STATE_CONFIG } from "./listState";
+import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import {
   CAPACITY_CAPABILITY_UNIVERSE,
   getCapacitySnapshotsForSuppliersWeek,
@@ -50,14 +50,14 @@ import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
 
 export const dynamic = "force-dynamic";
 
-type QuotesPageProps = {
-  searchParams?: Promise<ReadonlyURLSearchParams>;
-};
-
-export default async function QuotesPage({ searchParams }: QuotesPageProps) {
-  const resolvedSearchParams = await searchParams;
-  const listState = parseListState(resolvedSearchParams, ADMIN_QUOTES_LIST_STATE_CONFIG);
-  const currentView = normalizeAdminQuotesView(resolvedSearchParams?.get("view") ?? null);
+export default async function AdminQuotesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+  const listState = parseListState(usp, ADMIN_QUOTES_LIST_STATE_CONFIG);
+  const currentView = normalizeAdminQuotesView(usp.get("view") ?? null);
 
   const sort = listState.sort ?? null;
   const status = listState.status ?? null;

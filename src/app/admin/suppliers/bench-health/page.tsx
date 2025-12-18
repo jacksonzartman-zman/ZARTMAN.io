@@ -7,19 +7,12 @@ import {
   type SupplierBenchHealthRow,
 } from "@/server/suppliers/benchHealth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 
 export const dynamic = "force-dynamic";
 
 type FilterMatchHealth = SupplierBenchHealthRow["matchHealth"] | "all";
 type FilterBenchStatus = SupplierBenchHealthRow["benchStatus"] | "all";
-
-function sp(
-  searchParams: Record<string, string | string[] | undefined> | undefined,
-  key: string,
-): string | undefined {
-  const v = searchParams?.[key];
-  return Array.isArray(v) ? v[0] : v;
-}
 
 function parseMatchHealthFilter(value: unknown): FilterMatchHealth {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -128,9 +121,9 @@ export default async function AdminSupplierBenchHealthPage({
 }) {
   await requireAdminUser({ redirectTo: "/login" });
 
-  const spObj = (await searchParams) ?? {};
-  const matchHealthFilter = parseMatchHealthFilter(sp(spObj, "matchHealth"));
-  const benchStatusFilter = parseBenchStatusFilter(sp(spObj, "benchStatus"));
+  const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+  const matchHealthFilter = parseMatchHealthFilter(usp.get("matchHealth"));
+  const benchStatusFilter = parseBenchStatusFilter(usp.get("benchStatus"));
 
   const allRows = await loadAdminSupplierBenchHealth();
   const filtered = allRows.filter((row) => {
