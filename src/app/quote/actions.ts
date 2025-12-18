@@ -17,6 +17,7 @@ import {
   QUOTE_INTAKE_FALLBACK_ERROR,
   QUOTE_INTAKE_SUCCESS_MESSAGE,
 } from "@/lib/quote/messages";
+import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 
 export type QuoteIntakeActionState =
   | {
@@ -60,9 +61,15 @@ export async function submitQuoteIntakeAction(
       return parsed;
     }
 
+    const files = parsed.payload.files ?? [];
+    const tooLarge = files.filter((f) => f.size > MAX_UPLOAD_BYTES);
+    if (tooLarge.length > 0) {
+      const message = `Each file must be smaller than ${formatMaxUploadSize()}. Try splitting large ZIPs or compressing drawings.`;
+      return buildFailureState(message, { file: message } as QuoteIntakeFieldErrors);
+    }
+
     const fieldErrors = validateQuoteIntakeFields(parsed.payload);
     const fieldErrorKeys = Object.keys(fieldErrors);
-    const files = parsed.payload.files ?? [];
     const fileCount = Array.isArray(files) ? files.length : 0;
     const hasFiles = fileCount > 0;
     console.log("[quote intake] parsed payload", {

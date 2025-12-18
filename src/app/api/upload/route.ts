@@ -6,10 +6,10 @@ import { requireUser, UnauthorizedError } from "@/server/auth";
 import {
   CAD_EXTENSIONS,
   CAD_FILE_TYPE_DESCRIPTION,
-  MAX_UPLOAD_SIZE_BYTES,
   bytesToMegabytes,
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
+import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { recordQuoteUploadFiles } from "@/server/quotes/uploadFiles";
 
 export const runtime = "nodejs";
@@ -32,7 +32,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   pdf: "application/pdf",
 };
 
-const FILE_SIZE_LIMIT_LABEL = `${bytesToMegabytes(MAX_UPLOAD_SIZE_BYTES)} MB`;
+const FILE_SIZE_LIMIT_LABEL = formatMaxUploadSize();
 
 type UploadFileMetadata = {
   bucket: string;
@@ -193,21 +193,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    if (file.size > MAX_UPLOAD_BYTES) {
       logUploadDebug("Rejecting upload: exceeds size limit", {
         ...logContext,
-        maxBytes: MAX_UPLOAD_SIZE_BYTES,
+        maxBytes: MAX_UPLOAD_BYTES,
       });
-      return buildError(
-        `File is ${formatFileSizeLabel(
-          file.size,
-        )}. Maximum allowed size is ${FILE_SIZE_LIMIT_LABEL}.`,
-        413,
+      return NextResponse.json(
         {
-          step: "validate-size",
-          maxBytes: MAX_UPLOAD_SIZE_BYTES,
-          fileBytes: file.size,
+          error: "file_too_large",
+          message: `Max allowed file size is ${FILE_SIZE_LIMIT_LABEL}.`,
         },
+        { status: 400 },
       );
     }
 

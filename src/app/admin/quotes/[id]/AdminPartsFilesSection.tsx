@@ -1,13 +1,14 @@
 "use client";
 
 import clsx from "clsx";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useRef, useState, type ChangeEvent } from "react";
 import type {
   QuotePartWithFiles,
   QuotePartFileRole,
 } from "@/app/(portals)/quotes/workspaceData";
 import type { QuoteUploadFileEntry, QuoteUploadGroup } from "@/server/quotes/uploadFiles";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
+import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
 import {
   scoreFilesForPart,
   sortFilesByPartSuggestion,
@@ -166,10 +167,25 @@ function PartCard({
       adminUploadPartDrawingsAction(quoteId, part.id, prev, formData),
     initialState,
   );
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const maxLabel = formatMaxUploadSize();
 
   const uploadGroupsSafe = Array.isArray(uploadGroups) ? uploadGroups : [];
   const drawingAccept =
     ".pdf,.dwg,.dxf,.step,.stp,.igs,.iges,.sldprt,.prt,.stl,.zip";
+
+  function handleAdminFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    const tooLarge = files.filter((f) => isFileTooLarge(f));
+    if (tooLarge.length > 0) {
+      setUploadError(
+        `One or more files exceed the ${maxLabel} limit. Try splitting large PDFs or ZIPs.`,
+      );
+    } else {
+      setUploadError(null);
+    }
+  }
 
   const uploadFiles = useMemo(() => {
     const out: QuoteUploadFileEntry[] = [];
@@ -232,7 +248,20 @@ function PartCard({
       ) : null}
 
       {uploadOpen ? (
-        <form action={uploadAction} className="mt-4 space-y-3">
+        <form
+          action={uploadAction}
+          className="mt-4 space-y-3"
+          onSubmit={(e) => {
+            const files = Array.from(uploadInputRef.current?.files ?? []);
+            const tooLarge = files.filter((f) => isFileTooLarge(f));
+            if (tooLarge.length > 0) {
+              e.preventDefault();
+              setUploadError(
+                `One or more files exceed the ${maxLabel} limit. Try splitting large PDFs or ZIPs.`,
+              );
+            }
+          }}
+        >
           <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               Add drawing(s) to this part
@@ -240,13 +269,23 @@ function PartCard({
             <p className="mt-1 text-xs text-slate-400">
               Upload new drawings and attach them immediately to this part.
             </p>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Max {maxLabel} per file. For very large drawings, consider splitting or providing a compressed version.
+            </p>
             <input
               type="file"
               name="files"
               multiple
               accept={drawingAccept}
+              ref={uploadInputRef}
+              onChange={handleAdminFileChange}
               className="mt-3 block w-full text-sm text-slate-200 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-100 hover:file:bg-slate-700"
             />
+            {uploadError ? (
+              <p className="mt-2 text-xs text-red-200" role="alert">
+                {uploadError}
+              </p>
+            ) : null}
             {!uploadState.ok && uploadState.fieldErrors?.files ? (
               <p className="mt-2 text-xs text-red-200">{uploadState.fieldErrors.files}</p>
             ) : null}

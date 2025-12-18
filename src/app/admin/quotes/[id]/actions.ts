@@ -55,6 +55,7 @@ import {
   assertPartBelongsToQuote,
 } from "@/server/admin/quoteParts";
 import { appendFilesToQuoteUpload } from "@/server/quotes/uploadFiles";
+import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -350,6 +351,16 @@ export async function adminUploadPartDrawingsAction(
         ok: false,
         error: "Select at least one drawing file to upload.",
         fieldErrors: { files: "Select at least one drawing file." },
+      };
+    }
+
+    const tooLarge = files.filter((f) => f.size > MAX_UPLOAD_BYTES);
+    if (tooLarge.length > 0) {
+      const message = `Each file must be smaller than ${formatMaxUploadSize()}. Try splitting large ZIPs or compressing drawings.`;
+      return {
+        ok: false,
+        error: message,
+        fieldErrors: { files: message },
       };
     }
 
