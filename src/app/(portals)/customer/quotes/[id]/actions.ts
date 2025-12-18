@@ -10,11 +10,15 @@ import {
   acceptSupplierBidForQuote,
   declineSupplierBid,
 } from "@/server/suppliers";
-import { createAuthClient, requireUser } from "@/server/auth";
+import { createAuthClient, getServerAuthUser, requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import { upsertQuoteProject } from "@/server/quotes/projects";
 import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
+import {
+  customerCreateQuotePart,
+  customerUpdateQuotePartFiles,
+} from "@/server/customer/quoteParts";
 
 export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
@@ -832,4 +836,130 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
 
 function normalizeId(value?: string | null): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export type CustomerPartFormState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+};
+
+export async function customerCreateQuotePartAction(
+  quoteId: string,
+  _prevState: CustomerPartFormState,
+  formData: FormData,
+): Promise<CustomerPartFormState> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return { status: "error", message: "Missing quote reference." };
+  }
+
+  const { user, error } = await getServerAuthUser();
+  if (error || !user) {
+    return { status: "error", message: "You must be signed in to edit parts." };
+  }
+
+  const label = String(formData.get("label") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+
+  if (!label) {
+    return { status: "error", message: "Part name is required." };
+  }
+
+  try {
+    await customerCreateQuotePart(
+      normalizedQuoteId,
+      { label, notes },
+      { userId: user.id, email: user.email ?? null },
+    );
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    return { status: "success", message: "Part added." };
+  } catch (e) {
+    console.error("[customer parts] create failed", e);
+    return {
+      status: "error",
+      message: "Could not add part. Please try again.",
+    };
+  }
+}
+
+export async function customerUpdateQuotePartFilesAction(
+  quoteId: string,
+  _prevState: CustomerPartFormState,
+  formData: FormData,
+): Promise<CustomerPartFormState> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return { status: "error", message: "Missing quote reference." };
+  }
+
+  const { user, error } = await getServerAuthUser();
+  if (error || !user) {
+    return { status: "error", message: "You must be signed in to edit parts." };
+  }
+
+  const quotePartId = String(formData.get("quotePartId") ?? "").trim();
+  if (!quotePartId) {
+    return { status: "error", message: "Missing part ID." };
+  }
+
+  // Expect form inputs like file-[id]=on for checked files
+  const selectedFileIds = Array.from(formData.keys())
+    .filter((k) => k.startsWith("file-"))
+    .map((k) => k.replace("file-", ""))
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  try {
+    // Compute a diff server-side so customers can detach files too.
+    const supabase = createAuthClient();
+    const { data: existingRows, error: existingError } = await supabase
+      .from("quote_part_files")
+      .select("quote_upload_file_id")
+      .eq("quote_part_id", quotePartId)
+      .returns<Array<{ quote_upload_file_id: string }>>();
+
+    const selected = new Set(selectedFileIds);
+    const existing = new Set<string>();
+    if (!existingError) {
+      for (const row of existingRows ?? []) {
+        const id = normalizeId(row?.quote_upload_file_id);
+        if (id) existing.add(id);
+      }
+    } else {
+      console.warn("[customer parts] existing links lookup failed; will only add", {
+        quoteId: normalizedQuoteId,
+        quotePartId,
+        error: serializeActionError(existingError),
+      });
+    }
+
+    const addFileIds: string[] = [];
+    const removeFileIds: string[] = [];
+    if (!existingError) {
+      for (const id of selected) {
+        if (!existing.has(id)) addFileIds.push(id);
+      }
+      for (const id of existing) {
+        if (!selected.has(id)) removeFileIds.push(id);
+      }
+    } else {
+      addFileIds.push(...selectedFileIds);
+    }
+
+    await customerUpdateQuotePartFiles({
+      quoteId: normalizedQuoteId,
+      quotePartId,
+      addFileIds,
+      removeFileIds,
+    });
+
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    return { status: "success", message: "Part files updated." };
+  } catch (e) {
+    console.error("[customer parts] update files failed", e);
+    return {
+      status: "error",
+      message: "Could not update part files. Please try again.",
+    };
+  }
 }
