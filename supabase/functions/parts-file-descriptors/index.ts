@@ -55,6 +55,8 @@ type FilesRow = {
 };
 
 const MAX_PDF_SAMPLE_CHARS = 3500;
+// Safe upper bound for PDF text extraction to avoid timeouts/OOM.
+const MAX_PDF_TEXT_EXTRACTION_BYTES = 30 * 1024 * 1024; // 30 MB
 
 const CAD_EXTENSIONS = new Set([
   "step",
@@ -318,9 +320,33 @@ Deno.serve(async (req: Request) => {
         mimeType = guessMimeTypeFromExtension(ext);
       }
 
+      const sizeBytes =
+        typeof f.size_bytes === "number" && Number.isFinite(f.size_bytes)
+          ? f.size_bytes
+          : 0;
+      const isPdfDrawing =
+        classification === "Drawing" &&
+        (mimeType === "application/pdf" ||
+          (fileName || path).toLowerCase().endsWith(".pdf") ||
+          ext === "pdf");
+
+      const baseDescriptor: EdgeFileDescriptor = {
+        id,
+        fileName: fileName || path || id,
+        path: path || fileName || id,
+        mimeType,
+        classification,
+      };
+
+      // Skip heavy PDF parsing for large drawings (still return descriptor, but no sampleText).
+      if (isPdfDrawing && sizeBytes > MAX_PDF_TEXT_EXTRACTION_BYTES) {
+        descriptors.push(baseDescriptor);
+        continue;
+      }
+
       let sampleText: string | undefined;
 
-      if (classification === "Drawing" && ext === "pdf") {
+      if (isPdfDrawing) {
         try {
           let pdfBytes: Uint8Array | null = null;
 
@@ -378,22 +404,18 @@ Deno.serve(async (req: Request) => {
             }
           }
         } catch (error) {
-          console.warn("[parts-file-descriptors] pdf extract failed", {
+          console.warn("[parts-file-descriptors] pdf extraction failed", {
             quoteId,
             fileId: id,
+            fileName: fileName || path || id,
+            sizeBytes,
+            isFromArchive: Boolean(f.is_from_archive),
             error,
           });
         }
       }
 
-      descriptors.push({
-        id,
-        fileName: fileName || path || id,
-        path: path || fileName || id,
-        mimeType,
-        classification,
-        sampleText,
-      });
+      descriptors.push({ ...baseDescriptor, sampleText });
     }
 
     const resp: EdgeFileDescriptorResponse = {

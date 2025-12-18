@@ -1,3 +1,5 @@
+import { MAX_UPLOAD_BYTES } from "@/lib/uploads/uploadLimits";
+
 const CAD_EXTENSIONS = [
   "stl",
   "step",
@@ -22,7 +24,8 @@ const CAD_ACCEPT_STRING = CAD_EXTENSIONS.map((ext) => `.${ext}`).join(",");
 const CAD_FILE_TYPE_DESCRIPTION =
   "STEP, IGES, STL, SolidWorks (SLDPRT / SLDASM), PDF, or zipped assemblies";
 
-const MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
+// Re-exported for legacy callers (aligns with MAX_UPLOAD_BYTES).
+const MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_BYTES;
 
 const isAllowedCadFileName = (fileName: string): boolean => {
   const parts = fileName.toLowerCase().split(".");
