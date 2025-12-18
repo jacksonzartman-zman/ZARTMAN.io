@@ -8,6 +8,7 @@ import {
   loadAdminActivityFeed,
   type AdminActivityRow,
 } from "@/server/admin/activityFeed";
+import { loadSystemHealth, type SystemHealthStatus } from "@/server/admin/systemHealth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +44,10 @@ export default async function AdminActivityPage({
   const windowMs = WINDOW_OPTIONS.find((w) => w.key === windowKey)?.ms ?? 7 * 864e5;
   const since = new Date(Date.now() - windowMs).toISOString();
 
-  const rows = await loadAdminActivityFeed({ limit: 200, since });
+  const [rows, health] = await Promise.all([
+    loadAdminActivityFeed({ limit: 200, since }),
+    loadSystemHealth().catch(() => null),
+  ]);
   const filtered = rows.filter((row) => matchesKind(row, kindKey));
 
   return (
@@ -53,6 +57,8 @@ export default async function AdminActivityPage({
       description="Recent quote events across the system."
     >
       <div className="space-y-4">
+        <SystemHealthCard summaryStatus={health?.status ?? null} />
+
         <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
@@ -106,6 +112,62 @@ export default async function AdminActivityPage({
         )}
       </div>
     </AdminDashboardShell>
+  );
+}
+
+function SystemHealthCard({ summaryStatus }: { summaryStatus: SystemHealthStatus | null }) {
+  const summary =
+    summaryStatus === "ok"
+      ? "All systems nominal"
+      : summaryStatus === "degraded"
+        ? "Some signals degraded"
+        : summaryStatus === "error"
+          ? "Issues detected – review details"
+          : "Unable to check health right now";
+
+  const pillClass =
+    summaryStatus === "ok"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+      : summaryStatus === "degraded"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
+        : summaryStatus === "error"
+          ? "border-rose-500/30 bg-rose-500/10 text-rose-100"
+          : "border-slate-800 bg-slate-950/40 text-slate-300";
+
+  const pillText =
+    summaryStatus === "ok"
+      ? "ok"
+      : summaryStatus === "degraded"
+        ? "degraded"
+        : summaryStatus === "error"
+          ? "error"
+          : "unknown";
+
+  return (
+    <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-100">System health</h2>
+            <span
+              className={clsx(
+                "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
+                pillClass,
+              )}
+            >
+              {pillText}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-400">{summary}</p>
+        </div>
+        <Link
+          href="/admin/system-health"
+          className="inline-flex items-center justify-center rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-slate-700 hover:bg-slate-900/30"
+        >
+          View details
+        </Link>
+      </div>
+    </section>
   );
 }
 
