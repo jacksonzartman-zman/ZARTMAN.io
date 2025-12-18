@@ -4,19 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import { useFormState } from "react-dom";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
+import {
+  scoreFilesForPart,
+  sortFilesByPartSuggestion,
+} from "@/lib/uploads/suggestPartFiles";
 import type { QuotePartWithFiles } from "@/app/(portals)/quotes/workspaceData";
-import type { QuoteUploadGroup } from "@/server/quotes/uploadFiles";
+import type { QuoteUploadFileEntry, QuoteUploadGroup } from "@/server/quotes/uploadFiles";
 import {
   customerCreateQuotePartAction,
   customerUpdateQuotePartFilesAction,
   type CustomerPartFormState,
 } from "./actions";
-
-type FlatUploadFile = {
-  id: string;
-  filename: string;
-  extension: string | null;
-};
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -28,22 +26,17 @@ function getKindLabel(kind: ReturnType<typeof classifyUploadFileType>): string {
   return "Other";
 }
 
-function flattenUploadGroups(uploadGroups: QuoteUploadGroup[]): FlatUploadFile[] {
-  const out: FlatUploadFile[] = [];
+function flattenUploadGroups(uploadGroups: QuoteUploadGroup[]): QuoteUploadFileEntry[] {
+  const out: QuoteUploadFileEntry[] = [];
   const seen = new Set<string>();
   for (const group of uploadGroups ?? []) {
     for (const entry of group.entries ?? []) {
       const id = normalizeId(entry?.id);
       if (!id || seen.has(id)) continue;
       seen.add(id);
-      out.push({
-        id,
-        filename: entry.filename,
-        extension: entry.extension ?? null,
-      });
+      out.push(entry);
     }
   }
-  out.sort((a, b) => a.filename.localeCompare(b.filename));
   return out;
 }
 
@@ -162,10 +155,19 @@ export function CustomerPartsSection({
           </p>
         ) : null}
 
-        {partsList.map((part) => {
+        {partsList.map((part, index) => {
           const coverage = perPartById.get(part.id) ?? null;
           const attached = new Set(
             (part.files ?? []).map((f) => normalizeId(f.quoteUploadFileId)).filter(Boolean),
+          );
+          const suggestions = scoreFilesForPart({
+            partLabel: part.partLabel ?? "",
+            partIndex: index,
+            files: uploadFiles,
+          });
+          const sortedFiles = sortFilesByPartSuggestion(uploadFiles, suggestions);
+          const suggestionScoreById = new Map(
+            suggestions.map((s) => [s.fileId, s.score] as const),
           );
 
           return (
@@ -204,15 +206,20 @@ export function CustomerPartsSection({
                   <form action={filesAction} className="mt-3 space-y-3">
                     <input type="hidden" name="quotePartId" value={part.id} />
 
+                    <p className="text-xs text-slate-400">
+                      Most likely matches appear first. You can adjust selections as needed.
+                    </p>
+
                     <div className="max-h-64 overflow-auto rounded-xl border border-slate-900/60 bg-slate-950/40">
                       <ul className="divide-y divide-slate-900/60">
-                        {uploadFiles.map((file) => {
+                        {sortedFiles.map((file) => {
                           const kind = classifyUploadFileType({
                             filename: file.filename,
                             extension: file.extension,
                           });
                           const checked = attached.has(file.id);
                           const label = getKindLabel(kind);
+                          const suggestionScore = suggestionScoreById.get(file.id) ?? 0;
 
                           return (
                             <li key={file.id} className="flex items-center gap-3 px-4 py-2">
@@ -223,7 +230,14 @@ export function CustomerPartsSection({
                                 className="h-4 w-4"
                               />
                               <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm text-slate-100">{file.filename}</p>
+                                <p className="flex flex-wrap items-center gap-2 truncate text-sm text-slate-100">
+                                  <span className="truncate">{file.filename}</span>
+                                  {suggestionScore > 0 ? (
+                                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
+                                      Suggested
+                                    </span>
+                                  ) : null}
+                                </p>
                                 <p className="text-[11px] uppercase tracking-wide text-slate-500">
                                   {label}
                                 </p>
