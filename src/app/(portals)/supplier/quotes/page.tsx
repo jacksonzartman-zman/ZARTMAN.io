@@ -112,6 +112,29 @@ function benchChip(value: SupplierQuoteListRow["benchStatus"]) {
   }
 }
 
+function partsCoverageChip(value: SupplierQuoteListRow["partsCoverageHealth"]) {
+  switch (value) {
+    case "good":
+      return {
+        label: "Parts: Good",
+        helper: null as string | null,
+        className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+      };
+    case "needs_attention":
+      return {
+        label: "Parts: Needs attention",
+        helper: "Clarify missing drawings/CAD during kickoff.",
+        className: "border-amber-500/40 bg-amber-500/10 text-amber-100",
+      };
+    default:
+      return {
+        label: "No parts defined",
+        helper: null as string | null,
+        className: "border-slate-800 bg-slate-950/50 text-slate-300",
+      };
+  }
+}
+
 export default async function SupplierQuotesPage({
   searchParams,
 }: SupplierQuotesPageProps) {
@@ -185,6 +208,7 @@ export default async function SupplierQuotesPage({
   const statusFilter = normalizeText(sp.get("status"));
   const kickoffFilter = normalizeText(sp.get("kickoff"));
   const messagesFilter = normalizeText(sp.get("messages"));
+  const partsCoverageFilter = normalizeText(sp.get("partsCoverage"));
 
   const allRows = approvalGateActive ? [] : await loadSupplierQuotesList(user.id);
 
@@ -217,9 +241,22 @@ export default async function SupplierQuotesPage({
         return row.unreadMessagesCount > 0;
       }
       return true;
+    })
+    .filter((row) => {
+      if (!partsCoverageFilter) return true;
+      if (
+        partsCoverageFilter === "good" ||
+        partsCoverageFilter === "needs_attention" ||
+        partsCoverageFilter === "none"
+      ) {
+        return row.partsCoverageHealth === partsCoverageFilter;
+      }
+      return true;
     });
 
-  const hasFilters = Boolean(statusFilter || kickoffFilter || messagesFilter);
+  const hasFilters = Boolean(
+    statusFilter || kickoffFilter || messagesFilter || partsCoverageFilter,
+  );
 
   return (
     <PortalShell
@@ -285,6 +322,19 @@ export default async function SupplierQuotesPage({
               <option value="needs_reply">Needs reply</option>
               <option value="unread">Unread only</option>
               <option value="up_to_date">Up to date</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+            Parts
+            <select
+              name="partsCoverage"
+              defaultValue={partsCoverageFilter}
+              className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+            >
+              <option value="">All</option>
+              <option value="needs_attention">Needs attention</option>
+              <option value="good">Good</option>
+              <option value="none">No parts</option>
             </select>
           </label>
           <button
@@ -358,6 +408,9 @@ export default async function SupplierQuotesPage({
                     Status
                   </th>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                    Parts
+                  </th>
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Kickoff
                   </th>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -384,6 +437,8 @@ export default async function SupplierQuotesPage({
                   const unread = Math.max(0, Math.floor(row.unreadMessagesCount ?? 0));
                   const matchChip = matchHealthChip(row.matchHealth);
                   const bench = benchChip(row.benchStatus);
+                  const partsChip = partsCoverageChip(row.partsCoverageHealth);
+                  const partsCount = typeof row.partsCount === "number" ? row.partsCount : 0;
 
                   return (
                     <tr key={row.quoteId} className="hover:bg-slate-900/50">
@@ -405,6 +460,24 @@ export default async function SupplierQuotesPage({
                             Awarded to you
                           </p>
                         ) : null}
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <Link
+                          href={`/supplier/quotes/${row.quoteId}#uploads`}
+                          className="group inline-flex flex-col items-start gap-1 underline-offset-4 hover:underline"
+                        >
+                          <span
+                            className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${partsChip.className}`}
+                          >
+                            {partsChip.label}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {partsCount.toLocaleString()} part{partsCount === 1 ? "" : "s"}
+                          </span>
+                          {partsChip.helper ? (
+                            <span className="text-xs text-slate-500">{partsChip.helper}</span>
+                          ) : null}
+                        </Link>
                       </td>
                       <td className="px-5 py-4 align-middle">
                         {row.isAwardedToSupplier ? (

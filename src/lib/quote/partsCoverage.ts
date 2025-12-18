@@ -20,6 +20,16 @@ export type PartsCoverageSummary = {
   anyParts: boolean;
 };
 
+export type PartsCoverageHealth = "none" | "good" | "needs_attention";
+
+export function summarizePartsCoverageHealth(
+  summary: PartsCoverageSummary,
+): PartsCoverageHealth {
+  if (summary.totalParts === 0) return "none";
+  const hasGaps = summary.partsNeedingCad > 0 || summary.partsNeedingDrawing > 0;
+  return hasGaps ? "needs_attention" : "good";
+}
+
 export function computePartsCoverage(
   parts: QuotePartWithFiles[],
 ): { perPart: PartCoverage[]; summary: PartsCoverageSummary } {

@@ -46,8 +46,28 @@ export default function AdminQuotesInboxControls({
   const awarded = Boolean(listState.awarded);
   const status = listState.status ?? "";
 
+  const partsCoverage = (() => {
+    const raw = (searchParams.get("partsCoverage") ?? "").trim().toLowerCase();
+    switch (raw) {
+      case "good":
+      case "needs_attention":
+      case "none":
+        return raw;
+      default:
+        return "all";
+    }
+  })();
+
   const navigate = (query: string) => {
     const nextUrl = query ? `${basePath}?${query}` : basePath;
+    startTransition(() => {
+      router.push(nextUrl, { scroll: false });
+    });
+  };
+
+  const navigateRawParams = (nextParams: URLSearchParams) => {
+    nextParams.delete("page"); // reset paging when changing filters
+    const nextUrl = nextParams.size > 0 ? `${basePath}?${nextParams.toString()}` : basePath;
     startTransition(() => {
       router.push(nextUrl, { scroll: false });
     });
@@ -116,6 +136,30 @@ export default function AdminQuotesInboxControls({
             className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
           />
           Awarded
+        </label>
+
+        <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+          Parts
+          <select
+            value={partsCoverage}
+            onChange={(event) => {
+              const next = (event.target.value ?? "").trim().toLowerCase();
+              const nextParams = new URLSearchParams(searchParams.toString());
+              if (!next || next === "all") {
+                nextParams.delete("partsCoverage");
+              } else {
+                nextParams.set("partsCoverage", next);
+              }
+              navigateRawParams(nextParams);
+            }}
+            className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-1 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
+            disabled={pending}
+          >
+            <option value="all">All</option>
+            <option value="needs_attention">Needs attention</option>
+            <option value="good">Good</option>
+            <option value="none">No parts</option>
+          </select>
         </label>
       </div>
 
