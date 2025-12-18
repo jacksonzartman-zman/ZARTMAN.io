@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormState } from "react-dom";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
+import { inferProtoParts, type ProtoPart } from "@/lib/quote/partsInference";
 import {
   scoreFilesForPart,
   sortFilesByPartSuggestion,
@@ -15,6 +16,10 @@ import {
   customerUpdateQuotePartFilesAction,
   type CustomerPartFormState,
 } from "./actions";
+import {
+  createPartFromSuggestionAction,
+  type CreatePartFromSuggestionState,
+} from "@/app/quote/actions";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -41,6 +46,11 @@ function flattenUploadGroups(uploadGroups: QuoteUploadGroup[]): QuoteUploadFileE
 }
 
 const DEFAULT_STATE: CustomerPartFormState = { status: "idle" };
+const DEFAULT_SUGGESTION_STATE: CreatePartFromSuggestionState = {
+  ok: false,
+  error: "",
+  suggestionKey: "",
+};
 
 export function CustomerPartsSection({
   quoteId,
@@ -69,6 +79,43 @@ export function CustomerPartsSection({
   const [showAddPartForm, setShowAddPartForm] = useState(partsList.length === 0);
   const addPartRef = useRef<HTMLDivElement | null>(null);
   const addPartLabelRef = useRef<HTMLInputElement | null>(null);
+  const partsTopRef = useRef<HTMLDivElement | null>(null);
+  const [dismissedSuggestionKeys, setDismissedSuggestionKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  const assignedFileIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const part of partsList) {
+      for (const f of part.files ?? []) {
+        const id = normalizeId(f?.quoteUploadFileId);
+        if (id) ids.add(id);
+      }
+    }
+    return ids;
+  }, [partsList]);
+
+  const filesById = useMemo(() => {
+    const map = new Map<string, QuoteUploadFileEntry>();
+    for (const file of uploadFiles) {
+      const id = normalizeId(file?.id);
+      if (!id) continue;
+      map.set(id, file);
+    }
+    return map;
+  }, [uploadFiles]);
+
+  const protoParts = useMemo(() => {
+    const inferred = inferProtoParts(uploadFiles);
+    return inferred.filter((p) => {
+      if (!p.fileIds || p.fileIds.length === 0) return false;
+      // If any file is already attached to an existing part, suppress this suggestion.
+      if (p.fileIds.some((id) => assignedFileIds.has(id))) return false;
+      const key = buildSuggestionKey(p);
+      if (dismissedSuggestionKeys.has(key)) return false;
+      return true;
+    });
+  }, [uploadFiles, assignedFileIds, dismissedSuggestionKeys]);
 
   useEffect(() => {
     if (!showAddPartForm) return;
@@ -85,6 +132,7 @@ export function CustomerPartsSection({
 
   return (
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-5 py-4">
+      <div ref={partsTopRef} />
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -146,6 +194,47 @@ export function CustomerPartsSection({
               ? "Part files updated."
               : "Could not update part files.")}
         </p>
+      ) : null}
+
+      {hasAnyFiles && protoParts.length > 0 ? (
+        <div className="mt-4 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Suggested parts
+              </p>
+              <p className="mt-1 text-sm text-slate-300">
+                We grouped your files into likely components. You can add these as parts or adjust them
+                as needed.
+              </p>
+            </div>
+            <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+              Suggested
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {protoParts.map((proto) => (
+              <SuggestedProtoPartRow
+                key={buildSuggestionKey(proto)}
+                quoteId={quoteId}
+                proto={proto}
+                filesById={filesById}
+                onAdded={(key) => {
+                  setDismissedSuggestionKeys((prev) => {
+                    const next = new Set(prev);
+                    next.add(key);
+                    return next;
+                  });
+                  // Best-effort: keep user in the Parts section.
+                  requestAnimationFrame(() => {
+                    partsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  });
+                }}
+              />
+            ))}
+          </div>
+        </div>
       ) : null}
 
       <div className="mt-4 space-y-3">
@@ -339,6 +428,129 @@ export function CustomerPartsSection({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function buildSuggestionKey(proto: ProtoPart): string {
+  const ids = Array.isArray(proto.fileIds) ? [...proto.fileIds] : [];
+  ids.sort();
+  return ids.join(",");
+}
+
+function countKinds(fileIds: string[], filesById: Map<string, QuoteUploadFileEntry>) {
+  let cad = 0;
+  let drawing = 0;
+  let other = 0;
+
+  for (const id of fileIds) {
+    const file = filesById.get(id);
+    if (!file) continue;
+    const kind = classifyUploadFileType({
+      filename: file.filename,
+      extension: file.extension,
+    });
+    if (kind === "cad") cad += 1;
+    else if (kind === "drawing") drawing += 1;
+    else other += 1;
+  }
+
+  return { cad, drawing, other };
+}
+
+function SuggestedProtoPartRow({
+  quoteId,
+  proto,
+  filesById,
+  onAdded,
+}: {
+  quoteId: string;
+  proto: ProtoPart;
+  filesById: Map<string, QuoteUploadFileEntry>;
+  onAdded: (suggestionKey: string) => void;
+}) {
+  const suggestionKey = buildSuggestionKey(proto);
+  const [label, setLabel] = useState(proto.label);
+  const [state, action] = useFormState<CreatePartFromSuggestionState, FormData>(
+    createPartFromSuggestionAction,
+    DEFAULT_SUGGESTION_STATE,
+  );
+
+  const counts = useMemo(
+    () => countKinds(proto.fileIds ?? [], filesById),
+    [proto.fileIds, filesById],
+  );
+
+  useEffect(() => {
+    if (state.ok && state.suggestionKey === suggestionKey) {
+      onAdded(suggestionKey);
+    }
+  }, [onAdded, state, suggestionKey]);
+
+  const confidence = typeof proto.confidence === "number" ? proto.confidence : 0;
+  const confidenceLabel =
+    confidence < 30 ? "Low confidence" : confidence > 70 ? "High confidence match" : null;
+  const confidenceClasses =
+    confidence < 30
+      ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
+      : confidence > 70
+        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+        : "border-slate-800 bg-slate-950/50 text-slate-300";
+
+  return (
+    <div className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Part name
+            </span>
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600"
+            />
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-200">
+            <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+              CAD: {counts.cad}
+            </span>
+            <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+              Drawings: {counts.drawing}
+            </span>
+            {confidenceLabel ? (
+              <span
+                className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${confidenceClasses}`}
+              >
+                {confidenceLabel}
+              </span>
+            ) : null}
+          </div>
+          {!state.ok && state.suggestionKey === suggestionKey && state.error ? (
+            <p className="mt-2 text-xs text-amber-200" role="alert">
+              {state.error}
+            </p>
+          ) : null}
+        </div>
+
+        <form
+          action={(formData) => {
+            formData.set("quoteId", quoteId);
+            formData.set("label", label);
+            formData.set("fileIds", (proto.fileIds ?? []).join(","));
+            formData.set("suggestionKey", suggestionKey);
+            return action(formData);
+          }}
+          className="flex items-center gap-2"
+        >
+          <button
+            type="submit"
+            className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+          >
+            Add part
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
 
