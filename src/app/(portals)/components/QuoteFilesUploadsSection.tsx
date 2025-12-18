@@ -36,7 +36,7 @@ export function QuoteFilesUploadsSection({
   return (
     <CollapsibleCard
       title="Uploads"
-      description="RFQ files and download links."
+      description="RFQ files and download links. Link files to parts below."
       defaultOpen={defaultOpen}
       summary={
         <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
@@ -45,6 +45,18 @@ export function QuoteFilesUploadsSection({
       }
     >
       <div className="space-y-2">
+        {uploadGroups && uploadGroups.length > 0 ? (
+          <QuoteUploadsStructuredList uploadGroups={uploadGroups} />
+        ) : null}
+        <QuoteFilesCard files={files} />
+        {files.length === 0 ? (
+          <EmptyStateCard
+            title="No files yet"
+            description="We’ll attach uploads here automatically once they’re processed."
+            className="mt-3"
+          />
+        ) : null}
+
         {partsSection ? (
           partsSection
         ) : summary.anyParts ? (
@@ -85,17 +97,6 @@ export function QuoteFilesUploadsSection({
               </div>
             </div>
           </section>
-        ) : null}
-        {uploadGroups && uploadGroups.length > 0 ? (
-          <QuoteUploadsStructuredList uploadGroups={uploadGroups} />
-        ) : null}
-        <QuoteFilesCard files={files} />
-        {files.length === 0 ? (
-          <EmptyStateCard
-            title="No files yet"
-            description="We’ll attach uploads here automatically once they’re processed."
-            className="mt-3"
-          />
         ) : null}
       </div>
     </CollapsibleCard>

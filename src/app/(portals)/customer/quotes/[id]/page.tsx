@@ -882,7 +882,7 @@ export default async function CustomerQuoteDetailPage({
       id="uploads"
       className="scroll-mt-24"
       title="Uploads"
-      description="Shared RFQ files and previews."
+      description="CAD and drawings are collected here. You can then link them to parts in the Parts section below."
       defaultOpen={fileCount > 0}
       summary={
         <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
