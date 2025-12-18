@@ -921,7 +921,7 @@ function SupplierQuoteWorkspace({
         quoteId={quote.id}
         actorRole="supplier"
         actorUserId={currentUserId}
-        emptyState="No updates yet."
+        emptyState="No events yet. Activity will appear here as your RFQ progresses."
       />
     </DisclosureSection>
   );

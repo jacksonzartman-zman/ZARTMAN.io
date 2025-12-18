@@ -1087,7 +1087,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           quoteId={quote.id}
           actorRole="admin"
           actorUserId={null}
-          emptyState="No activity yet."
+          emptyState="No events yet. Activity will appear here as your RFQ progresses."
         />
       </div>
     );
