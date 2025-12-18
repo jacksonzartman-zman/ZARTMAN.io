@@ -194,8 +194,8 @@ export default async function CustomerProjectsPage({
         {projects.length === 0 ? (
           <EmptyStateCard
             title="No projects yet"
-            description="When you award a winning supplier on an RFQ, it will show up here as a project."
-            action={{ label: "View RFQs", href: "/customer/quotes" }}
+            description="You don&apos;t have any awarded work yet. Once you award a supplier on a quote, projects will show up here."
+            action={{ label: "View Quotes", href: "/customer/quotes" }}
           />
         ) : (
           <>

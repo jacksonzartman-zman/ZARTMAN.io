@@ -35,7 +35,43 @@ export default async function QuotePage() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4 sm:p-6 shadow-lift-sm">
+        <section className="max-w-3xl">
+          <div className="rounded-2xl border border-line-subtle bg-surface/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              Your first RFQ in 3 steps
+            </div>
+            <ol className="mt-3 grid gap-3 sm:grid-cols-3">
+              <li className="surface-card p-4">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Step 1
+                </div>
+                <p className="text-sm text-ink-soft">Tell us about your project</p>
+              </li>
+              <li className="surface-card p-4">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Step 2
+                </div>
+                <p className="text-sm text-ink-soft">Upload CAD / ZIP / drawings</p>
+              </li>
+              <li className="surface-card p-4">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Step 3
+                </div>
+                <p className="text-sm text-ink-soft">Review &amp; submit RFQ</p>
+              </li>
+            </ol>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4 sm:p-6 shadow-lift-sm space-y-4">
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-4 text-sm text-slate-200">
+            <p className="font-semibold text-white">Upload tips</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-300">
+              <li>Have multiple parts? Upload a single ZIP.</li>
+              <li>We’ll enumerate files and help your Zartman team organize them by part.</li>
+              <li>Drawings (PDF/DWG/DXF) speed up quoting and reduce back-and-forth.</li>
+            </ul>
+          </div>
           <UploadBox prefillContact={prefillContact} showExplainer />
         </section>
 

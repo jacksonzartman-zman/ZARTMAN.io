@@ -24,6 +24,7 @@ import { PortalShell } from "../components/PortalShell";
 import { PortalStatPills } from "../components/PortalStatPills";
 import { QuoteStatusBadge } from "../components/QuoteStatusBadge";
 import { loadRecentCustomerActivity } from "@/server/customers/activity";
+import { loadCustomerOnboardingState } from "@/server/customer/onboarding";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
@@ -257,6 +258,13 @@ async function CustomerDashboardPage({
       ? "All systems operational"
       : "Standing by for your first upload";
 
+  const onboardingState = await loadCustomerOnboardingState({
+    userId: usingOverride ? null : user.id,
+    email: viewerEmail ?? user.email ?? null,
+  });
+  const showFirstRfqCard =
+    !onboardingState.hasAnyQuotes && !onboardingState.hasAnyProjects;
+
   console.info("[customer dashboard] loaded (post-website-fix)", {
     userEmail: user.email ?? null,
     customerId: customer?.id ?? null,
@@ -303,6 +311,22 @@ async function CustomerDashboardPage({
       headerContent={headerContent}
       actions={headerActions}
     >
+      {showFirstRfqCard ? (
+        <PortalCard
+          title="Start your first RFQ"
+          description="Upload your CAD or a ZIP, tell us what you need, and we’ll route it to the right suppliers."
+          action={
+            <Link href="/quote" className={primaryCtaClasses}>
+              Create an RFQ
+            </Link>
+          }
+        >
+          <ul className="list-disc space-y-2 pl-5 text-sm text-slate-300">
+            <li>Bundle multiple parts into a single ZIP so we can keep them organized.</li>
+            <li>Include technical drawings (PDF/DWG/DXF) for manufacturing clarity.</li>
+          </ul>
+        </PortalCard>
+      ) : null}
       <PortalStatPills
         role="customer"
         metrics={customerMetrics}
@@ -435,25 +459,27 @@ async function CustomerDashboardPage({
         )}
       </PortalCard>
 
-      <PortalCard
-        title="Next steps"
-        description="Keep momentum with a lightweight checklist."
-        action={
-          <Link href="/quote" className={primaryCtaClasses}>
-            Submit a new RFQ
-          </Link>
-        }
-      >
-        <ul className="list-disc space-y-2 pl-5 text-slate-300">
-          <li>Share this link with teammates — the portal is read-only today.</li>
-          <li>
-            {openQuotes.length > 0
-              ? `Track ${openQuotes.length} open quote${openQuotes.length === 1 ? "" : "s"} to keep reviews moving.`
-              : "Watch for new quotes here as soon as uploads are processed."}
-          </li>
-          <li>Uploads from /quote will sync back into this workspace automatically.</li>
-        </ul>
-      </PortalCard>
+      {!showFirstRfqCard ? (
+        <PortalCard
+          title="Next steps"
+          description="Keep momentum with a lightweight checklist."
+          action={
+            <Link href="/quote" className={primaryCtaClasses}>
+              Submit a new RFQ
+            </Link>
+          }
+        >
+          <ul className="list-disc space-y-2 pl-5 text-slate-300">
+            <li>Share this link with teammates — the portal is read-only today.</li>
+            <li>
+              {openQuotes.length > 0
+                ? `Track ${openQuotes.length} open quote${openQuotes.length === 1 ? "" : "s"} to keep reviews moving.`
+                : "Watch for new quotes here as soon as uploads are processed."}
+            </li>
+            <li>Uploads from /quote will sync back into this workspace automatically.</li>
+          </ul>
+        </PortalCard>
+      ) : null}
 
       <PortalCard
         title="Workspace scope"
