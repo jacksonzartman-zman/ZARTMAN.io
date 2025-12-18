@@ -1,11 +1,10 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import { requireAdminUser } from "@/server/auth";
+import { getServerAuthUser, requireAdminUser } from "@/server/auth";
 import {
   isMissingTableOrColumnError,
   isRowLevelSecurityDeniedError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
-import { cookies } from "next/headers";
 
 export type SystemHealthStatus = "ok" | "degraded" | "error";
 
@@ -113,40 +112,65 @@ async function safeProbe(
   }
 }
 
-function getSupabaseProjectRefFromUrl(url: string): string | null {
-  // Typical: https://<ref>.supabase.co
-  try {
-    const parsed = new URL(url);
-    const host = parsed.host ?? "";
-    const match = host.match(/^([a-z0-9-]+)\.supabase\.co$/i);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
+function getErrorMessage(error: unknown): string | null {
+  if (!error) return null;
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message || null;
+  const candidate = error as { message?: unknown };
+  if (typeof candidate?.message === "string" && candidate.message) {
+    return candidate.message;
   }
+  return formatErrorDetails(error);
 }
 
-function base64UrlDecode(input: string): string | null {
-  try {
-    const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    return Buffer.from(padded, "base64").toString("utf8");
-  } catch {
-    return null;
-  }
-}
+async function checkAuthJwt(): Promise<HealthCheckResult> {
+  const id: HealthCheckId = "auth_jwt";
+  const label = "Auth JWT sanity";
 
-function tryDecodeJwtPayload(token: string): Record<string, unknown> | null {
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-  const payloadRaw = base64UrlDecode(parts[1] ?? "");
-  if (!payloadRaw) return null;
   try {
-    const parsed = JSON.parse(payloadRaw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
+    const { user, error } = await getServerAuthUser();
+
+    if (error) {
+      // Auth SDK could not validate a user; this usually means SSR auth config issues.
+      const msg = getErrorMessage(error) ?? "unknown";
+      return {
+        id,
+        label,
+        status: "degraded",
+        details: `Auth error: ${msg}`,
+        suggestion:
+          "Verify Supabase URL/keys and auth cookie configuration for SSR.",
+      };
+    }
+
+    if (!user) {
+      // No active session for this request. That’s fine from a system-health standpoint.
+      return {
+        id,
+        label,
+        status: "ok",
+        details: "No active auth session on this request.",
+      };
+    }
+
+    // User resolved successfully via Supabase auth SDK.
+    return {
+      id,
+      label,
+      status: "ok",
+      details: "Supabase auth user resolved successfully on server.",
+    };
+  } catch (error) {
+    // Only treat unexpected runtime failures as degraded.
+    logOnce("warn", "[system-health] auth_jwt unexpected error", error);
+    return {
+      id,
+      label,
+      status: "degraded",
+      details: "Unexpected error while checking auth.",
+      suggestion:
+        "Verify Supabase auth environment variables and SSR configuration.",
+    };
   }
 }
 
@@ -408,100 +432,7 @@ export async function loadSystemHealth(): Promise<SystemHealthSummary> {
       }
     })(),
 
-    (async (): Promise<HealthCheckResult> => {
-      const id: HealthCheckId = "auth_jwt";
-      const label = "Auth JWT sanity";
-
-      const supabaseUrl =
-        process.env.NEXT_PUBLIC_SUPABASE_URL ??
-        process.env.SUPABASE_URL ??
-        null;
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? null;
-
-      if (!supabaseUrl || !anonKey) {
-        return {
-          id,
-          label,
-          status: "degraded",
-          details: "Missing Supabase auth environment variables.",
-          suggestion: "Verify NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
-        };
-      }
-
-      try {
-        const cookieStore = await cookies();
-        const projectRef = getSupabaseProjectRefFromUrl(supabaseUrl) ?? null;
-        const cookieName = projectRef ? `sb-${projectRef}-auth-token` : null;
-        const cookieValue = cookieName ? cookieStore.get(cookieName)?.value ?? null : null;
-
-        if (!cookieName || !cookieValue) {
-          // If the session cookie is missing we can’t validate JWT parsing, but this
-          // doesn’t necessarily mean auth is broken (e.g. no session yet).
-          return {
-            id,
-            label,
-            status: "degraded",
-            details: "Auth session cookie not found.",
-            suggestion: "Verify Supabase auth cookies are present for signed-in admins.",
-          };
-        }
-
-        const parsed = (() => {
-          try {
-            return JSON.parse(cookieValue) as unknown;
-          } catch {
-            return null;
-          }
-        })();
-
-        const accessToken =
-          parsed &&
-          typeof parsed === "object" &&
-          !Array.isArray(parsed) &&
-          typeof (parsed as any).access_token === "string"
-            ? ((parsed as any).access_token as string)
-            : null;
-
-        if (!accessToken) {
-          return {
-            id,
-            label,
-            status: "degraded",
-            details: "Unable to read access_token from auth cookie payload.",
-            suggestion: "Verify Supabase auth cookie format and SSR configuration.",
-          };
-        }
-
-        const claims = tryDecodeJwtPayload(accessToken);
-        const sub = typeof claims?.sub === "string" ? claims.sub : null;
-        const email = typeof claims?.email === "string" ? claims.email : null;
-
-        if (!sub && !email) {
-          return {
-            id,
-            label,
-            status: "degraded",
-            details: "JWT parsed but missing expected claims (sub/email).",
-            suggestion: "Verify Supabase auth JWT configuration.",
-          };
-        }
-
-        return { id, label, status: "ok" };
-      } catch (error) {
-        logOnce(
-          "warn",
-          "[system-health] auth_jwt check failed",
-          serializeSupabaseError(error) ?? error,
-        );
-        return {
-          id,
-          label,
-          status: "degraded",
-          details: formatErrorDetails(error) ?? "Unable to access cookies/auth in this environment.",
-          suggestion: "Verify NEXT_PUBLIC_SUPABASE_URL and SUPABASE_ANON_KEY.",
-        };
-      }
-    })(),
+    checkAuthJwt(),
 
     (async (): Promise<HealthCheckResult> => {
       const id: HealthCheckId = "events_stream";
