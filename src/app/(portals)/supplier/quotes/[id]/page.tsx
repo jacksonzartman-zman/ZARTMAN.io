@@ -328,6 +328,7 @@ export default async function SupplierQuoteDetailPage({
       messagingDisabledReason={messagingDisabledReason}
       quoteMessages={quoteMessages}
       messagesUnavailable={messagesUnavailable}
+      messagesUnreadCount={messagesUnreadCount}
       postMessageAction={supplierPostMessageAction}
       currentUserId={user.id}
       project={project}
@@ -360,6 +361,7 @@ function SupplierQuoteWorkspace({
   messagingDisabledReason,
   quoteMessages,
   messagesUnavailable,
+  messagesUnreadCount,
   postMessageAction,
   currentUserId,
   project,
@@ -388,6 +390,7 @@ function SupplierQuoteWorkspace({
   messagingDisabledReason?: string | null;
   quoteMessages: QuoteMessageRecord[];
   messagesUnavailable: boolean;
+  messagesUnreadCount: number;
   postMessageAction: (
     prevState: QuoteMessageFormState,
     formData: FormData,
