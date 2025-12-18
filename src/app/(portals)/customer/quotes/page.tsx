@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReadonlyURLSearchParams } from "next/navigation";
 
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
@@ -12,6 +11,7 @@ import {
   type CustomerQuoteListStatus,
 } from "@/server/quotes/customerSummary";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
 
@@ -61,7 +61,7 @@ function formatKickoffPill(status: "not_started" | "in_progress" | "complete" | 
 }
 
 type CustomerQuotesPageProps = {
-  searchParams?: Promise<ReadonlyURLSearchParams>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export default async function CustomerQuotesPage({
@@ -101,12 +101,10 @@ export default async function CustomerQuotesPage({
     );
   }
 
-  const resolvedSearchParams = await searchParams;
-  const sp = resolvedSearchParams;
-  const get = (key: string) => sp?.get(key) ?? "";
-  const status = normalizeText(get("status"));
-  const kickoff = normalizeText(get("kickoff"));
-  const hasWinner = normalizeText(get("hasWinner"));
+  const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+  const status = normalizeText(usp.get("status"));
+  const kickoff = normalizeText(usp.get("kickoff"));
+  const hasWinner = normalizeText(usp.get("hasWinner"));
 
   const filters: CustomerQuotesListFilters = {
     status: status || undefined,
