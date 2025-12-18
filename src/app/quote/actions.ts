@@ -1,7 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser } from "@/server/auth";
+import { createAuthClient, requireUser } from "@/server/auth";
+import { getCustomerByUserId } from "@/server/customers";
+import { supabaseServer } from "@/lib/supabaseServer";
+import {
+  customerUpdateQuotePartFiles,
+} from "@/server/customer/quoteParts";
 import {
   persistQuoteIntake,
   validateQuoteIntakeFields,
@@ -25,6 +30,16 @@ export type QuoteIntakeActionState =
       error: string;
       fieldErrors?: QuoteIntakeFieldErrors;
     };
+
+export type CreatePartFromSuggestionState =
+  | { ok: true; quoteId: string; quotePartId: string; suggestionKey: string }
+  | { ok: false; error: string; suggestionKey: string };
+
+type QuoteRowForSuggestion = {
+  id: string;
+  customer_id: string | null;
+  customer_email: string | null;
+};
 
 export async function submitQuoteIntakeAction(
   _prevState: QuoteIntakeActionState,
@@ -113,6 +128,100 @@ export async function submitQuoteIntakeAction(
       error: serializeUnknownError(error),
     });
     return buildFailureState(QUOTE_INTAKE_FALLBACK_ERROR);
+  }
+}
+
+export async function createPartFromSuggestionAction(
+  _prev: CreatePartFromSuggestionState,
+  formData: FormData,
+): Promise<CreatePartFromSuggestionState> {
+  const suggestionKey = String(formData.get("suggestionKey") ?? "").trim();
+  const quoteId = String(formData.get("quoteId") ?? "").trim();
+  const label = String(formData.get("label") ?? "").trim();
+  const fileIds = String(formData.get("fileIds") ?? "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+  if (!suggestionKey) {
+    return { ok: false, error: "Missing suggestion reference.", suggestionKey: "" };
+  }
+
+  if (!quoteId) {
+    return { ok: false, error: "Missing quote reference.", suggestionKey };
+  }
+
+  if (!label) {
+    return { ok: false, error: "Part name is required.", suggestionKey };
+  }
+
+  if (fileIds.length === 0) {
+    return { ok: false, error: "Select at least one file for this part.", suggestionKey };
+  }
+
+  try {
+    const user = await requireUser({
+      message: "Sign in to add parts.",
+    });
+
+    const customer = await getCustomerByUserId(user.id);
+    if (!customer) {
+      return {
+        ok: false,
+        error: "Complete your customer profile before adding parts.",
+        suggestionKey,
+      };
+    }
+
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes")
+      .select("id,customer_id,customer_email")
+      .eq("id", quoteId)
+      .maybeSingle<QuoteRowForSuggestion>();
+
+    if (quoteError || !quoteRow?.id) {
+      return { ok: false, error: "Quote not found.", suggestionKey };
+    }
+
+    const quoteCustomerId =
+      typeof quoteRow.customer_id === "string" ? quoteRow.customer_id.trim() : "";
+    const quoteCustomerEmail =
+      typeof quoteRow.customer_email === "string"
+        ? quoteRow.customer_email.trim().toLowerCase()
+        : "";
+    const customerEmail =
+      typeof customer.email === "string" ? customer.email.trim().toLowerCase() : "";
+
+    if (!quoteCustomerId || quoteCustomerId !== customer.id) {
+      if (!quoteCustomerEmail || !customerEmail || quoteCustomerEmail !== customerEmail) {
+        return { ok: false, error: "You don’t have access to this quote.", suggestionKey };
+      }
+    }
+
+    // Insert part and return id (needs id so we can attach files immediately).
+    const supabase = createAuthClient();
+    const { data: partRow, error: partError } = await supabase
+      .from("quote_parts")
+      .insert({ quote_id: quoteId, part_label: label, notes: null })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (partError || !partRow?.id) {
+      return { ok: false, error: "Could not create part. Please try again.", suggestionKey };
+    }
+
+    await customerUpdateQuotePartFiles({
+      quoteId,
+      quotePartId: partRow.id,
+      addFileIds: fileIds,
+      removeFileIds: [],
+    });
+
+    revalidatePath(`/customer/quotes/${quoteId}`);
+    return { ok: true, quoteId, quotePartId: partRow.id, suggestionKey };
+  } catch (error) {
+    console.error("[suggested parts] create part failed", error);
+    return { ok: false, error: "Could not add suggested part. Please try again.", suggestionKey };
   }
 }
 
