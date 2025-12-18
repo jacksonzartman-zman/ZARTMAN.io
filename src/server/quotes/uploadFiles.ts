@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { createAuthClient } from "@/server/auth";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import { MAX_UPLOAD_BYTES } from "@/lib/uploads/uploadLimits";
 import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -56,8 +57,6 @@ const CAD_BUCKET =
   "cad";
 
 const DEFAULT_UPLOAD_STATUS = "submitted";
-
-const MAX_UPLOAD_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB (align with intake)
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   stl: "model/stl",
@@ -351,7 +350,7 @@ async function appendFilesToQuoteUploadWithClient(args: {
     if (typeof file.size !== "number" || !Number.isFinite(file.size) || file.size <= 0) {
       throw new Error("empty_file");
     }
-    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+    if (file.size > MAX_UPLOAD_BYTES) {
       throw new Error("file_too_large");
     }
 

@@ -1,8 +1,7 @@
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
 
 export function formatMaxUploadSize(): string {
-  // Keep it simple for now
-  return "25 MB";
+  return "50 MB";
 }
 
 export function isFileTooLarge(file: File | { size: number }): boolean {

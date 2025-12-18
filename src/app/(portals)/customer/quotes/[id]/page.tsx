@@ -71,6 +71,7 @@ import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import { CustomerPartsSection } from "./CustomerPartsSection";
 import { CustomerUploadsForm } from "./CustomerUploadsForm";
 import { loadCachedAiPartSuggestions } from "@/server/quotes/aiPartsSuggestions";
+import { formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 
 export const dynamic = "force-dynamic";
 
@@ -886,7 +887,7 @@ export default async function CustomerQuoteDetailPage({
       id="uploads"
       className="scroll-mt-24"
       title="Uploads"
-      description="CAD and drawings are collected here. You can then link them to parts in the Parts section below. Max 25 MB per file. Very large packages may need to be split into multiple uploads."
+      description={`CAD and drawings are collected here. You can then link them to parts in the Parts section below. Max ${formatMaxUploadSize()} per file. Very large packages may need to be split into multiple uploads.`}
       defaultOpen={fileCount > 0}
       summary={
         <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
