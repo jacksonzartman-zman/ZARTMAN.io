@@ -7,5 +7,5 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminEntryPage() {
   await requireAdminUser({ redirectTo: "/login" });
-  redirect("/admin/quotes");
+  redirect("/admin/overview");
 }

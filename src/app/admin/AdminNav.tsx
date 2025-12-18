@@ -8,8 +8,10 @@ import {
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
 
 const ADMIN_NAV_LINKS: PortalNavLink[] = [
+  { label: "Overview", href: "/admin/overview" },
   { label: "Uploads", href: "/admin/uploads" },
   { label: "Quotes", href: "/admin/quotes" },
+  { label: "Messages", href: "/admin/messages" },
   { label: "Activity", href: "/admin/activity" },
   { label: "Capacity", href: "/admin/capacity" },
   { label: "Bench health", href: "/admin/suppliers/bench-health" },
