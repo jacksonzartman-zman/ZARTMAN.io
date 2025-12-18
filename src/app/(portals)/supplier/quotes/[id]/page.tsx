@@ -85,6 +85,7 @@ import { QuoteAtAGlanceBar } from "@/components/QuoteAtAGlanceBar";
 import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
+import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 
 export const dynamic = "force-dynamic";
 
@@ -395,11 +396,26 @@ function SupplierQuoteWorkspace({
   capacitySnapshotsResult: Awaited<ReturnType<typeof loadSupplierCapacitySnapshotsForWeek>>;
   capacityRequestCreatedAt: string | null;
 }) {
-  const { quote, uploadMeta, filePreviews, uploadGroups } = data;
+  const { quote, uploadMeta, filePreviews, uploadGroups, parts } = data;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
   const fileCount =
     typeof quote.fileCount === "number" ? quote.fileCount : quoteFiles.length;
   const derived = deriveQuotePresentation(quote, uploadMeta);
+  const { summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
+  const partsCoverageSummaryLine = partsCoverageSummary.anyParts
+    ? [
+        `${partsCoverageSummary.totalParts} part${
+          partsCoverageSummary.totalParts === 1 ? "" : "s"
+        }`,
+        `${partsCoverageSummary.fullyCoveredParts} fully covered`,
+        ...(partsCoverageSummary.partsNeedingCad > 0
+          ? [`${partsCoverageSummary.partsNeedingCad} need CAD`]
+          : []),
+        ...(partsCoverageSummary.partsNeedingDrawing > 0
+          ? [`${partsCoverageSummary.partsNeedingDrawing} need drawings`]
+          : []),
+      ].join(" • ")
+    : null;
   const normalizedAwardedSupplierId =
     typeof awardedSupplierId === "string" ? awardedSupplierId.trim() : "";
   const quoteHasWinner =
@@ -809,6 +825,30 @@ function SupplierQuoteWorkspace({
         }
       >
         <div className="space-y-4">
+          {partsCoverageSummary.anyParts ? (
+            <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Parts overview
+                  </p>
+                  <p className="mt-1 text-sm text-slate-200">
+                    {partsCoverageSummaryLine}
+                  </p>
+                </div>
+                <span
+                  className={clsx(
+                    "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                    partsCoverageSummary.allCovered
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                      : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+                  )}
+                >
+                  Coverage: {partsCoverageSummary.allCovered ? "Good" : "Needs attention"}
+                </span>
+              </div>
+            </section>
+          ) : null}
           {projectSection}
           {awardedToSupplier ? (
             <>
