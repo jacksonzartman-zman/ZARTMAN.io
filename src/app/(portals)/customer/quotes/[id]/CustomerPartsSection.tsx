@@ -4,16 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormState } from "react-dom";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
-import { inferProtoParts, type ProtoPart } from "@/lib/quote/partsInference";
+import { inferProtoParts } from "@/lib/quote/partsInference";
 import {
   scoreFilesForPart,
   sortFilesByPartSuggestion,
 } from "@/lib/uploads/suggestPartFiles";
 import type { QuotePartWithFiles } from "@/app/(portals)/quotes/workspaceData";
 import type { QuoteUploadFileEntry, QuoteUploadGroup } from "@/server/quotes/uploadFiles";
+import type { AiPartSuggestion } from "@/server/quotes/aiPartsSuggestions";
 import {
   customerCreateQuotePartAction,
   customerUpdateQuotePartFilesAction,
+  generateAiPartSuggestionsAction,
   type CustomerPartFormState,
 } from "./actions";
 import {
@@ -56,10 +58,14 @@ export function CustomerPartsSection({
   quoteId,
   parts,
   uploadGroups,
+  aiSuggestions,
+  aiModelVersion,
 }: {
   quoteId: string;
   parts: QuotePartWithFiles[];
   uploadGroups: QuoteUploadGroup[];
+  aiSuggestions?: AiPartSuggestion[] | null;
+  aiModelVersion?: string | null;
 }) {
   const partsList = Array.isArray(parts) ? parts : [];
   const uploadFiles = flattenUploadGroups(Array.isArray(uploadGroups) ? uploadGroups : []);
@@ -73,6 +79,10 @@ export function CustomerPartsSection({
   );
   const [filesState, filesAction] = useFormState(
     customerUpdateQuotePartFilesAction.bind(null, quoteId),
+    DEFAULT_STATE,
+  );
+  const [aiState, aiAction] = useFormState(
+    generateAiPartSuggestionsAction.bind(null, quoteId),
     DEFAULT_STATE,
   );
 
@@ -105,17 +115,57 @@ export function CustomerPartsSection({
     return map;
   }, [uploadFiles]);
 
-  const protoParts = useMemo(() => {
+  type SuggestedPart = {
+    source: "ai" | "heuristic";
+    label: string;
+    partNumber?: string | null;
+    fileIds: string[];
+    confidence: number;
+    rationale?: string;
+  };
+
+  const heuristicSuggestions = useMemo<SuggestedPart[]>(() => {
     const inferred = inferProtoParts(uploadFiles);
-    return inferred.filter((p) => {
-      if (!p.fileIds || p.fileIds.length === 0) return false;
-      // If any file is already attached to an existing part, suppress this suggestion.
-      if (p.fileIds.some((id) => assignedFileIds.has(id))) return false;
-      const key = buildSuggestionKey(p);
-      if (dismissedSuggestionKeys.has(key)) return false;
-      return true;
-    });
+    return inferred
+      .filter((p) => {
+        if (!p.fileIds || p.fileIds.length === 0) return false;
+        // If any file is already attached to an existing part, suppress this suggestion.
+        if (p.fileIds.some((id) => assignedFileIds.has(id))) return false;
+        const key = buildSuggestionKey(p.fileIds ?? []);
+        if (dismissedSuggestionKeys.has(key)) return false;
+        return true;
+      })
+      .map((p) => ({
+        source: "heuristic" as const,
+        label: p.label,
+        fileIds: p.fileIds ?? [],
+        confidence: typeof p.confidence === "number" ? p.confidence : 0,
+      }));
   }, [uploadFiles, assignedFileIds, dismissedSuggestionKeys]);
+
+  const aiSuggestionsNormalized = useMemo<SuggestedPart[]>(() => {
+    const incoming = Array.isArray(aiSuggestions) ? aiSuggestions : [];
+    return incoming
+      .filter((s) => {
+        const fileIds = Array.isArray(s?.fileIds) ? s.fileIds : [];
+        if (fileIds.length === 0) return false;
+        if (fileIds.some((id) => assignedFileIds.has(id))) return false;
+        const key = buildSuggestionKey(fileIds);
+        if (dismissedSuggestionKeys.has(key)) return false;
+        return true;
+      })
+      .map((s) => ({
+        source: "ai" as const,
+        label: s.label,
+        partNumber: typeof s.partNumber === "string" ? s.partNumber : s.partNumber ?? null,
+        fileIds: Array.isArray(s.fileIds) ? s.fileIds : [],
+        confidence: typeof s.confidence === "number" ? s.confidence : 0,
+        rationale: typeof s.rationale === "string" ? s.rationale : undefined,
+      }));
+  }, [aiSuggestions, assignedFileIds, dismissedSuggestionKeys]);
+
+  const usingAiSuggestions = aiSuggestionsNormalized.length > 0;
+  const suggestedParts = usingAiSuggestions ? aiSuggestionsNormalized : heuristicSuggestions;
 
   useEffect(() => {
     if (!showAddPartForm) return;
@@ -196,7 +246,7 @@ export function CustomerPartsSection({
         </p>
       ) : null}
 
-      {hasAnyFiles && protoParts.length > 0 ? (
+      {hasAnyFiles ? (
         <div className="mt-4 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -204,36 +254,76 @@ export function CustomerPartsSection({
                 Suggested parts
               </p>
               <p className="mt-1 text-sm text-slate-300">
-                We grouped your files into likely components. You can add these as parts or adjust them
-                as needed.
+                {usingAiSuggestions
+                  ? "These part groupings were suggested using AI based on filenames and drawing text. Review before adding."
+                  : "These part groupings are based on filenames and folders. Review before adding."}
               </p>
             </div>
-            <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-              Suggested
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <form action={aiAction}>
+                <button
+                  type="submit"
+                  className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-slate-700 hover:text-white"
+                >
+                  {usingAiSuggestions ? "Refresh AI suggestions" : "Use AI to suggest parts"}
+                </button>
+              </form>
+              <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                {usingAiSuggestions ? "AI-suggested" : "Suggested"}
+              </span>
+            </div>
           </div>
 
-          <div className="mt-4 space-y-3">
-            {protoParts.map((proto) => (
-              <SuggestedProtoPartRow
-                key={buildSuggestionKey(proto)}
-                quoteId={quoteId}
-                proto={proto}
-                filesById={filesById}
-                onAdded={(key) => {
-                  setDismissedSuggestionKeys((prev) => {
-                    const next = new Set(prev);
-                    next.add(key);
-                    return next;
-                  });
-                  // Best-effort: keep user in the Parts section.
-                  requestAnimationFrame(() => {
-                    partsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  });
-                }}
-              />
-            ))}
-          </div>
+          {aiState.status !== "idle" ? (
+            <p
+              className={`mt-3 rounded-xl border px-4 py-3 text-xs ${
+                aiState.status === "success"
+                  ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-100"
+                  : "border-amber-500/30 bg-amber-500/5 text-amber-100"
+              }`}
+            >
+              {aiState.message ??
+                (aiState.status === "success"
+                  ? "AI suggestions updated."
+                  : "Could not generate AI suggestions.")}
+              {usingAiSuggestions && aiModelVersion ? (
+                <span className="ml-2 text-slate-300">Model: {aiModelVersion}</span>
+              ) : null}
+            </p>
+          ) : usingAiSuggestions && aiModelVersion ? (
+            <p className="mt-3 text-xs text-slate-500">Model: {aiModelVersion}</p>
+          ) : null}
+
+          {suggestedParts.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {suggestedParts.map((suggestion) => (
+                <SuggestedPartRow
+                  key={buildSuggestionKey(suggestion.fileIds)}
+                  quoteId={quoteId}
+                  suggestion={suggestion}
+                  filesById={filesById}
+                  onAdded={(key) => {
+                    setDismissedSuggestionKeys((prev) => {
+                      const next = new Set(prev);
+                      next.add(key);
+                      return next;
+                    });
+                    // Best-effort: keep user in the Parts section.
+                    requestAnimationFrame(() => {
+                      partsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    });
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-3">
+              <p className="text-sm text-slate-300">
+                No suggested parts yet. You can still add parts manually, or click{" "}
+                <span className="font-semibold text-slate-100">Use AI to suggest parts</span>.
+              </p>
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -431,8 +521,8 @@ export function CustomerPartsSection({
   );
 }
 
-function buildSuggestionKey(proto: ProtoPart): string {
-  const ids = Array.isArray(proto.fileIds) ? [...proto.fileIds] : [];
+function buildSuggestionKey(fileIds: string[]): string {
+  const ids = Array.isArray(fileIds) ? [...fileIds] : [];
   ids.sort();
   return ids.join(",");
 }
@@ -457,27 +547,34 @@ function countKinds(fileIds: string[], filesById: Map<string, QuoteUploadFileEnt
   return { cad, drawing, other };
 }
 
-function SuggestedProtoPartRow({
+function SuggestedPartRow({
   quoteId,
-  proto,
+  suggestion,
   filesById,
   onAdded,
 }: {
   quoteId: string;
-  proto: ProtoPart;
+  suggestion: {
+    source: "ai" | "heuristic";
+    label: string;
+    partNumber?: string | null;
+    fileIds: string[];
+    confidence: number;
+    rationale?: string;
+  };
   filesById: Map<string, QuoteUploadFileEntry>;
   onAdded: (suggestionKey: string) => void;
 }) {
-  const suggestionKey = buildSuggestionKey(proto);
-  const [label, setLabel] = useState(proto.label);
+  const suggestionKey = buildSuggestionKey(suggestion.fileIds ?? []);
+  const [label, setLabel] = useState(suggestion.label);
   const [state, action] = useFormState<CreatePartFromSuggestionState, FormData>(
     createPartFromSuggestionAction,
     DEFAULT_SUGGESTION_STATE,
   );
 
   const counts = useMemo(
-    () => countKinds(proto.fileIds ?? [], filesById),
-    [proto.fileIds, filesById],
+    () => countKinds(suggestion.fileIds ?? [], filesById),
+    [suggestion.fileIds, filesById],
   );
 
   useEffect(() => {
@@ -486,7 +583,7 @@ function SuggestedProtoPartRow({
     }
   }, [onAdded, state, suggestionKey]);
 
-  const confidence = typeof proto.confidence === "number" ? proto.confidence : 0;
+  const confidence = typeof suggestion.confidence === "number" ? suggestion.confidence : 0;
   const confidenceLabel =
     confidence < 30 ? "Low confidence" : confidence > 70 ? "High confidence match" : null;
   const confidenceClasses =
@@ -510,6 +607,11 @@ function SuggestedProtoPartRow({
               className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600"
             />
           </label>
+          {suggestion.partNumber ? (
+            <p className="mt-2 text-xs text-slate-400">
+              Part #: <span className="font-semibold text-slate-200">{suggestion.partNumber}</span>
+            </p>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-200">
             <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
               CAD: {counts.cad}
@@ -517,6 +619,11 @@ function SuggestedProtoPartRow({
             <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
               Drawings: {counts.drawing}
             </span>
+            {suggestion.source === "ai" ? (
+              <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-100">
+                AI-suggested
+              </span>
+            ) : null}
             {confidenceLabel ? (
               <span
                 className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${confidenceClasses}`}
@@ -525,6 +632,9 @@ function SuggestedProtoPartRow({
               </span>
             ) : null}
           </div>
+          {suggestion.source === "ai" && suggestion.rationale ? (
+            <p className="mt-2 text-xs text-slate-400">{suggestion.rationale}</p>
+          ) : null}
           {!state.ok && state.suggestionKey === suggestionKey && state.error ? (
             <p className="mt-2 text-xs text-amber-200" role="alert">
               {state.error}
@@ -536,7 +646,10 @@ function SuggestedProtoPartRow({
           action={(formData) => {
             formData.set("quoteId", quoteId);
             formData.set("label", label);
-            formData.set("fileIds", (proto.fileIds ?? []).join(","));
+            if (suggestion.partNumber) {
+              formData.set("partNumber", suggestion.partNumber);
+            }
+            formData.set("fileIds", (suggestion.fileIds ?? []).join(","));
             formData.set("suggestionKey", suggestionKey);
             return action(formData);
           }}

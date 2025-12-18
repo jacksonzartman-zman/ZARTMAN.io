@@ -20,6 +20,7 @@ import {
   customerUpdateQuotePartFiles,
 } from "@/server/customer/quoteParts";
 import { customerAppendFilesToQuote } from "@/server/quotes/uploadFiles";
+import { generateAiPartSuggestionsForQuote } from "@/server/quotes/aiPartsSuggestions";
 
 export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
@@ -843,6 +844,42 @@ export type CustomerPartFormState = {
   status: "idle" | "success" | "error";
   message?: string;
 };
+
+export async function generateAiPartSuggestionsAction(
+  quoteId: string,
+  prevState: CustomerPartFormState,
+  _formData: FormData,
+): Promise<CustomerPartFormState> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return { status: "error", message: "Missing quote reference." };
+  }
+
+  const { user, error } = await getServerAuthUser();
+  if (error || !user) {
+    return { status: "error", message: "You must be signed in to use AI suggestions." };
+  }
+
+  try {
+    const result = await generateAiPartSuggestionsForQuote(normalizedQuoteId);
+    if (result.modelVersion === "error") {
+      return {
+        status: "error",
+        message:
+          "Could not generate AI suggestions right now. You can still use manual grouping.",
+      };
+    }
+
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    return { status: "success", message: "AI suggestions updated." };
+  } catch (e) {
+    console.error("[customer parts] AI suggestions failed", e);
+    return {
+      status: "error",
+      message: "Could not generate AI suggestions. You can still use manual grouping.",
+    };
+  }
+}
 
 export async function customerCreateQuotePartAction(
   quoteId: string,

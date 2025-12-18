@@ -70,6 +70,7 @@ import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import { CustomerPartsSection } from "./CustomerPartsSection";
 import { CustomerUploadsForm } from "./CustomerUploadsForm";
+import { loadCachedAiPartSuggestions } from "@/server/quotes/aiPartsSuggestions";
 
 export const dynamic = "force-dynamic";
 
@@ -508,6 +509,8 @@ export default async function CustomerQuoteDetailPage({
   });
   const messagesUnreadCount = unreadSummary[quote.id]?.unreadCount ?? 0;
 
+  const cachedAiSuggestions = await loadCachedAiPartSuggestions(quote.id);
+
   const headerContent = (
     <QuoteAtAGlanceBar
       role="customer"
@@ -903,6 +906,8 @@ export default async function CustomerQuoteDetailPage({
               quoteId={quote.id}
               parts={parts ?? []}
               uploadGroups={uploadGroups ?? []}
+              aiSuggestions={cachedAiSuggestions?.suggestions ?? null}
+              aiModelVersion={cachedAiSuggestions?.modelVersion ?? null}
             />
           )
         }

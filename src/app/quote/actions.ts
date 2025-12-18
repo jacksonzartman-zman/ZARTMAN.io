@@ -138,6 +138,7 @@ export async function createPartFromSuggestionAction(
   const suggestionKey = String(formData.get("suggestionKey") ?? "").trim();
   const quoteId = String(formData.get("quoteId") ?? "").trim();
   const label = String(formData.get("label") ?? "").trim();
+  const partNumber = String(formData.get("partNumber") ?? "").trim() || null;
   const fileIds = String(formData.get("fileIds") ?? "")
     .split(",")
     .map((v) => v.trim())
@@ -202,7 +203,7 @@ export async function createPartFromSuggestionAction(
     const supabase = createAuthClient();
     const { data: partRow, error: partError } = await supabase
       .from("quote_parts")
-      .insert({ quote_id: quoteId, part_label: label, notes: null })
+      .insert({ quote_id: quoteId, part_label: label, part_number: partNumber, notes: null })
       .select("id")
       .single<{ id: string }>();
 
