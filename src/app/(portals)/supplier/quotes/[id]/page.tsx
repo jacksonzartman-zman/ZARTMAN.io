@@ -86,6 +86,7 @@ import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
+import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 
 export const dynamic = "force-dynamic";
 
@@ -275,6 +276,12 @@ export default async function SupplierQuoteDetailPage({
   }
   const quoteMessages = messagesResult.messages;
   const messagesUnavailable = !messagesResult.ok;
+
+  const unreadSummary = await loadUnreadMessageSummary({
+    quoteIds: [quoteId],
+    userId: user.id,
+  });
+  const messagesUnreadCount = unreadSummary[quoteId]?.unreadCount ?? 0;
 
   const messagingUnlocked = true;
   const messagingDisabledReason = null;
@@ -574,6 +581,7 @@ function SupplierQuoteWorkspace({
             kickoffRatio: kickoffProgressRatioForRail,
             kickoffComplete: kickoffProgressBasisForRail.isComplete,
             messageCount: quoteMessages.length,
+            unreadCount: messagesUnreadCount,
             fileCount,
             messagesHref: buildQuoteTabHref(tabParam, "messages", "#messages"),
           })}
@@ -1077,6 +1085,7 @@ function buildSupplierQuoteSections(args: {
   kickoffRatio: string | null;
   kickoffComplete: boolean;
   messageCount: number;
+  unreadCount: number;
   fileCount: number;
   messagesHref: string;
 }): QuoteSectionRailSection[] {
@@ -1113,7 +1122,13 @@ function buildSupplierQuoteSections(args: {
       key: "messages",
       label: "Messages",
       href: args.messagesHref,
-      badge: args.messageCount > 0 ? `${args.messageCount}` : undefined,
+      badge:
+        args.unreadCount > 0
+          ? `${args.unreadCount > 99 ? "99+" : args.unreadCount}`
+          : args.messageCount > 0
+            ? `${args.messageCount}`
+            : undefined,
+      tone: args.unreadCount > 0 ? "info" : "neutral",
     },
     { key: "uploads", label: "Uploads", href: "#uploads", badge: uploadsBadge },
     { key: "details", label: "Details", href: "#details" },

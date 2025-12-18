@@ -67,6 +67,7 @@ import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
+import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 
 export const dynamic = "force-dynamic";
 
@@ -499,6 +500,12 @@ export default async function CustomerQuoteDetailPage({
       normalizedQuoteStatus === "in_review") &&
     (quoteAgeInDays === null || quoteAgeInDays <= 14);
 
+  const unreadSummary = await loadUnreadMessageSummary({
+    quoteIds: [quote.id],
+    userId: user.id,
+  });
+  const messagesUnreadCount = unreadSummary[quote.id]?.unreadCount ?? 0;
+
   const headerContent = (
     <QuoteAtAGlanceBar
       role="customer"
@@ -514,6 +521,7 @@ export default async function CustomerQuoteDetailPage({
             kickoffRatio: kickoffTasksRatio,
             kickoffComplete: kickoffProgressBasis.isComplete,
             messageCount: quoteMessages.length,
+            unreadCount: messagesUnreadCount,
             fileCount,
             messagesHref,
           })}
@@ -1237,6 +1245,7 @@ function buildCustomerQuoteSections(args: {
   kickoffRatio: string | null;
   kickoffComplete: boolean;
   messageCount: number;
+  unreadCount: number;
   fileCount: number;
   messagesHref: string;
 }): QuoteSectionRailSection[] {
@@ -1273,7 +1282,13 @@ function buildCustomerQuoteSections(args: {
       key: "messages",
       label: "Messages",
       href: args.messagesHref,
-      badge: args.messageCount > 0 ? `${args.messageCount}` : undefined,
+      badge:
+        args.unreadCount > 0
+          ? `${args.unreadCount > 99 ? "99+" : args.unreadCount}`
+          : args.messageCount > 0
+            ? `${args.messageCount}`
+            : undefined,
+      tone: args.unreadCount > 0 ? "info" : "neutral",
     },
     { key: "uploads", label: "Uploads", href: "#uploads", badge: uploadsBadge },
     { key: "details", label: "Details", href: "#details" },

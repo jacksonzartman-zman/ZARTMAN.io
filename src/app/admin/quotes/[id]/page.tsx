@@ -74,6 +74,7 @@ import { AdminDecisionCtas } from "./AdminDecisionCtas";
 import { AdminInviteSupplierCard } from "./AdminInviteSupplierCard";
 import { HashScrollLink } from "@/app/(portals)/components/hashScroll";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
 import {
   getCapacitySnapshotsForSupplierWeek,
@@ -746,24 +747,28 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               Role-based “needs reply” and staleness.
             </p>
           </div>
-          {threadSla?.needsReplyFrom ? (
-            <span
-              className={clsx(
-                "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
-                threadSla.needsReplyFrom === "supplier"
-                  ? "border-blue-500/40 bg-blue-500/10 text-blue-100"
-                  : "border-amber-500/40 bg-amber-500/10 text-amber-100",
-              )}
-            >
-              {threadSla.needsReplyFrom === "supplier"
-                ? "Needs supplier reply"
-                : "Needs customer reply"}
-            </span>
-          ) : (
-            <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold text-slate-200">
-              No reply needed
-            </span>
-          )}
+          {(() => {
+            const needsReplyFrom = threadSla?.needsReplyFrom ?? "none";
+            const label = resolveThreadStatusLabel("admin", needsReplyFrom);
+            const pillClasses =
+              label === "Needs your reply"
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+                : label === "Up to date"
+                  ? "border-slate-800 bg-slate-950/50 text-slate-300"
+                  : label === "Status unknown"
+                    ? "border-slate-800 bg-slate-950/50 text-slate-400"
+                    : "border-slate-800 bg-slate-900/40 text-slate-200";
+            return (
+              <span
+                className={clsx(
+                  "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+                  pillClasses,
+                )}
+              >
+                {label}
+              </span>
+            );
+          })()}
         </header>
 
         <div className="mt-4 space-y-2">
