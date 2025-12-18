@@ -19,6 +19,7 @@ import {
   customerCreateQuotePart,
   customerUpdateQuotePartFiles,
 } from "@/server/customer/quoteParts";
+import { customerAppendFilesToQuote } from "@/server/quotes/uploadFiles";
 
 export type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 
@@ -960,6 +961,55 @@ export async function customerUpdateQuotePartFilesAction(
     return {
       status: "error",
       message: "Could not update part files. Please try again.",
+    };
+  }
+}
+
+export type CustomerUploadsFormState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+};
+
+export async function customerUploadQuoteFilesAction(
+  quoteId: string,
+  _prevState: CustomerUploadsFormState,
+  formData: FormData,
+): Promise<CustomerUploadsFormState> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return { status: "error", message: "Missing quote reference." };
+  }
+
+  const { user, error } = await getServerAuthUser();
+  if (error || !user) {
+    return { status: "error", message: "You must be signed in to upload files." };
+  }
+
+  const files = formData.getAll("files").filter(
+    (v): v is File => v instanceof File && v.size > 0,
+  );
+
+  if (files.length === 0) {
+    return { status: "error", message: "Please choose at least one file to upload." };
+  }
+
+  try {
+    await customerAppendFilesToQuote({
+      quoteId: normalizedQuoteId,
+      files,
+      customerUserId: user.id,
+      customerEmail: user.email ?? null,
+    });
+
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+    return { status: "success", message: "Files uploaded." };
+  } catch (e) {
+    console.error("[customer uploads] append files failed", e);
+    return {
+      status: "error",
+      message: "Could not upload files. Please try again.",
     };
   }
 }

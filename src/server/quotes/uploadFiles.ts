@@ -1,6 +1,9 @@
 import AdmZip from "adm-zip";
 import { randomBytes } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { createAuthClient } from "@/server/auth";
+import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -70,6 +73,8 @@ const ADMIN_APPEND_ALLOWED_EXTENSIONS = new Set([
   "zip",
 ]);
 
+type SupabaseWriteClient = ReturnType<typeof createAuthClient> | typeof supabaseServer;
+
 type StoredCadFile = {
   originalName: string;
   sanitizedFileName: string;
@@ -94,27 +99,97 @@ export async function appendFilesToQuoteUpload(args: {
     throw new Error("missing_files");
   }
 
-  // Load quote metadata for the uploads row (keeps admin inbox + uploads UI consistent).
-  const { data: quote, error: quoteError } = await supabaseServer
-    .from("quotes")
-    .select("id,customer_name,customer_email,company,status")
-    .eq("id", quoteId)
-    .maybeSingle<{
-      id: string;
-      customer_name: string | null;
-      customer_email: string | null;
-      company: string | null;
-      status: string | null;
-    }>();
+  const quote = await loadQuoteForUpload(supabaseServer, quoteId);
 
-  if (quoteError || !quote?.id) {
-    if (!isMissingTableOrColumnError(quoteError)) {
-      console.error("[quote upload files] quote lookup failed", {
-        quoteId,
-        error: serializeSupabaseError(quoteError),
-      });
-    }
+  return appendFilesToQuoteUploadWithClient({
+    supabase: supabaseServer,
+    quoteId,
+    quote,
+    files,
+  });
+}
+
+export async function customerAppendFilesToQuote(args: {
+  quoteId: string;
+  files: File[];
+  customerUserId: string;
+  customerEmail: string | null;
+}): Promise<{ uploadId: string; uploadFileIds: string[] }> {
+  const quoteId = typeof args.quoteId === "string" ? args.quoteId.trim() : "";
+  const customerUserId =
+    typeof args.customerUserId === "string" ? args.customerUserId.trim() : "";
+  const customerEmail = normalizeEmailInput(args.customerEmail ?? null);
+  const files = Array.isArray(args.files) ? args.files.filter(Boolean) : [];
+
+  if (!quoteId) {
+    throw new Error("invalid_quote_id");
+  }
+  if (!customerUserId) {
+    throw new Error("invalid_customer_user");
+  }
+  if (files.length === 0) {
+    throw new Error("missing_files");
+  }
+
+  const supabase = createAuthClient();
+
+  // 1) Verify the customer can see this quote (customer_id or customer_email match).
+  const quote = await loadQuoteForUpload(supabase, quoteId);
+
+  const quoteCustomerEmail = normalizeEmailInput(quote.customer_email);
+  const customerIdFromProfile = await loadCustomerIdForUser(supabase, customerUserId);
+  const quoteCustomerId = normalizeId((quote as { customer_id?: string | null }).customer_id ?? null);
+  const customerIdMatches = Boolean(customerIdFromProfile && quoteCustomerId && customerIdFromProfile === quoteCustomerId);
+  const customerEmailMatches = Boolean(
+    customerEmail && quoteCustomerEmail && customerEmail === quoteCustomerEmail,
+  );
+
+  if (!customerIdMatches && !customerEmailMatches) {
+    console.warn("[customer quote upload files] access denied", {
+      quoteId,
+      customerUserId,
+      customerEmail,
+      quoteCustomerEmail: quote.customer_email ?? null,
+      quoteCustomerId: quoteCustomerId || null,
+    });
+    throw new Error("access_denied");
+  }
+
+  // 2) Use the cookie-based client bound to the user session, and delegate to the shared helper.
+  return appendFilesToQuoteUploadWithClient({
+    supabase,
+    quoteId,
+    quote,
+    files,
+  });
+}
+
+async function appendFilesToQuoteUploadWithClient(args: {
+  supabase: SupabaseWriteClient;
+  quoteId: string;
+  quote: {
+    id: string;
+    customer_name: string | null;
+    customer_email: string | null;
+    company: string | null;
+    status: string | null;
+    customer_id?: string | null;
+  };
+  files: File[];
+}): Promise<{ uploadId: string; uploadFileIds: string[] }> {
+  const { supabase } = args;
+  const quoteId = typeof args.quoteId === "string" ? args.quoteId.trim() : "";
+  const files = Array.isArray(args.files) ? args.files.filter(Boolean) : [];
+  const quote = args.quote;
+
+  if (!quoteId) {
+    throw new Error("invalid_quote_id");
+  }
+  if (!quote?.id) {
     throw new Error("quote_not_found");
+  }
+  if (files.length === 0) {
+    throw new Error("missing_files");
   }
 
   const storedFiles: StoredCadFile[] = [];
@@ -157,7 +232,7 @@ export async function appendFilesToQuoteUpload(args: {
       extension === "zip" ||
       (typeof mimeType === "string" && mimeType.toLowerCase().includes("zip"));
 
-    const { error: storageError } = await supabaseServer.storage
+    const { error: storageError } = await supabase.storage
       .from(CAD_BUCKET)
       .upload(storageKey, buffer, {
         cacheControl: "3600",
@@ -207,7 +282,7 @@ export async function appendFilesToQuoteUpload(args: {
   const uploadCompany =
     typeof quote.company === "string" && quote.company.trim().length > 0 ? quote.company.trim() : null;
 
-  const { data: uploadRow, error: uploadError } = await supabaseServer
+  const { data: uploadRow, error: uploadError } = await supabase
     .from("uploads")
     .insert({
       quote_id: quoteId,
@@ -242,7 +317,7 @@ export async function appendFilesToQuoteUpload(args: {
       bucket_id: storedFile.bucket,
       quote_id: quoteId,
     }));
-    const { error: filesError } = await supabaseServer.from("files").insert(rows);
+    const { error: filesError } = await supabase.from("files").insert(rows);
     if (filesError) {
       if (isMissingTableOrColumnError(filesError)) {
         console.warn("[quote upload files] files schema missing; skipping file metadata", {
@@ -278,6 +353,7 @@ export async function appendFilesToQuoteUpload(args: {
     quoteId,
     uploadId,
     storedFiles: storedForEnumeration,
+    supabase,
   });
 
   if (!recordResult.ok) {
@@ -298,7 +374,7 @@ export async function appendFilesToQuoteUpload(args: {
     throw new Error("quote_upload_files_missing_paths");
   }
 
-  const { data: uploadedEntries, error: uploadedEntriesError } = await supabaseServer
+  const { data: uploadedEntries, error: uploadedEntriesError } = await supabase
     .from("quote_upload_files")
     .select("id,path")
     .eq("quote_id", quoteId)
@@ -333,8 +409,10 @@ export async function recordQuoteUploadFiles(args: {
   quoteId: string;
   uploadId: string;
   storedFiles: StoredUploadFileForEnumeration[];
+  supabase?: SupabaseClient;
 }): Promise<{ ok: boolean; recorded: boolean }> {
   const { quoteId, uploadId, storedFiles } = args;
+  const supabase = args.supabase ?? supabaseServer;
 
   if (!quoteId || !uploadId) {
     return { ok: false, recorded: false };
@@ -346,7 +424,7 @@ export async function recordQuoteUploadFiles(args: {
   }
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabase
       .from("quote_upload_files")
       .upsert(rows, { onConflict: "upload_id,path" });
 
@@ -648,5 +726,78 @@ function detectMimeType(file: File, extension?: string): string {
   }
   const normalizedExtension = extension || getFileExtension(file.name);
   return MIME_BY_EXTENSION[normalizedExtension] || "application/octet-stream";
+}
+
+async function loadQuoteForUpload(
+  supabase: SupabaseWriteClient,
+  quoteId: string,
+): Promise<{
+  id: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  company: string | null;
+  status: string | null;
+  customer_id?: string | null;
+}> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  if (!normalizedQuoteId) {
+    throw new Error("invalid_quote_id");
+  }
+
+  const { data: quote, error: quoteError } = await supabase
+    .from("quotes")
+    .select("id,customer_id,customer_name,customer_email,company,status")
+    .eq("id", normalizedQuoteId)
+    .maybeSingle<{
+      id: string;
+      customer_id: string | null;
+      customer_name: string | null;
+      customer_email: string | null;
+      company: string | null;
+      status: string | null;
+    }>();
+
+  if (quoteError || !quote?.id) {
+    if (!isMissingTableOrColumnError(quoteError)) {
+      console.error("[quote upload files] quote lookup failed", {
+        quoteId: normalizedQuoteId,
+        error: serializeSupabaseError(quoteError),
+      });
+    }
+    throw new Error("quote_not_found");
+  }
+
+  return quote;
+}
+
+async function loadCustomerIdForUser(
+  supabase: SupabaseWriteClient,
+  userId: string,
+): Promise<string | null> {
+  const normalizedUserId = normalizeId(userId);
+  if (!normalizedUserId) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("user_id", normalizedUserId)
+      .maybeSingle<{ id: string }>();
+
+    if (error) {
+      return null;
+    }
+
+    const id = normalizeId(data?.id);
+    return id || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeId(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "";
 }
 

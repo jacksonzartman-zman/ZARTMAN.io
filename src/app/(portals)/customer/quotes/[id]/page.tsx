@@ -69,6 +69,7 @@ import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import { CustomerPartsSection } from "./CustomerPartsSection";
+import { CustomerUploadsForm } from "./CustomerUploadsForm";
 
 export const dynamic = "force-dynamic";
 
@@ -890,6 +891,7 @@ export default async function CustomerQuoteDetailPage({
         </span>
       }
     >
+      {!readOnly ? <CustomerUploadsForm quoteId={quote.id} /> : null}
       <QuoteFilesUploadsSection
         files={filePreviews}
         fileCountText={fileCountText}
