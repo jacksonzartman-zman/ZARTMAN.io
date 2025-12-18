@@ -1180,24 +1180,37 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                       routingSuggestion.resolvedSupplierId}
                   </p>
                 </div>
-                <div className="flex flex-col items-end gap-1">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <span
                     className={clsx(
                       "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
-                      matchHealthPillClasses(
-                        routingSuggestion.supplierSummaries[0]?.matchHealth ?? "caution",
+                      insightMatchHealthPillClasses(
+                        routingSuggestion.supplierSummaries[0]?.benchHealth?.matchHealth ??
+                          "unknown",
                       ),
                     )}
                   >
-                    {formatMatchHealthLabel(
-                      routingSuggestion.supplierSummaries[0]?.matchHealth ?? "caution",
+                    Match:{" "}
+                    {formatInsightMatchHealthLabel(
+                      routingSuggestion.supplierSummaries[0]?.benchHealth?.matchHealth ??
+                        "unknown",
                     )}
                   </span>
-                  {routingSuggestion.supplierSummaries[0]?.matchHealthAdjustedByFeedback ? (
-                    <span className="text-[11px] font-medium text-slate-400">
-                      Adjusted using award history
-                    </span>
-                  ) : null}
+                  <span
+                    className={clsx(
+                      "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                      insightBenchStatusPillClasses(
+                        routingSuggestion.supplierSummaries[0]?.benchHealth?.benchStatus ??
+                          "unknown",
+                      ),
+                    )}
+                  >
+                    Bench:{" "}
+                    {formatInsightBenchStatusLabel(
+                      routingSuggestion.supplierSummaries[0]?.benchHealth?.benchStatus ??
+                        "unknown",
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -1248,14 +1261,34 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                       </p>
                     ) : null}
                   </div>
-                  <span
-                    className={clsx(
-                      "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
-                      matchHealthPillClasses(summary.matchHealth),
-                    )}
-                  >
-                    {formatMatchHealthLabel(summary.matchHealth)}
-                  </span>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span
+                      className={clsx(
+                        "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                        insightMatchHealthPillClasses(
+                          summary.benchHealth?.matchHealth ?? "unknown",
+                        ),
+                      )}
+                    >
+                      Match:{" "}
+                      {formatInsightMatchHealthLabel(
+                        summary.benchHealth?.matchHealth ?? "unknown",
+                      )}
+                    </span>
+                    <span
+                      className={clsx(
+                        "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                        insightBenchStatusPillClasses(
+                          summary.benchHealth?.benchStatus ?? "unknown",
+                        ),
+                      )}
+                    >
+                      Bench:{" "}
+                      {formatInsightBenchStatusLabel(
+                        summary.benchHealth?.benchStatus ?? "unknown",
+                      )}
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-2">
                   <CapacitySummaryPills
@@ -1805,6 +1838,50 @@ function formatMatchHealthLabel(health: unknown): string {
   if (normalized === "good") return "Good";
   if (normalized === "poor") return "Poor";
   return "Caution";
+}
+
+function formatInsightMatchHealthLabel(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "good") return "Good";
+  if (normalized === "caution") return "Caution";
+  if (normalized === "poor") return "Poor";
+  return "Unknown";
+}
+
+function insightMatchHealthPillClasses(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "good":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "caution":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    case "poor":
+      return "border-red-500/40 bg-red-500/10 text-red-100";
+    default:
+      return "border-slate-800 bg-slate-950/50 text-slate-200";
+  }
+}
+
+function formatInsightBenchStatusLabel(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "underused") return "Underused";
+  if (normalized === "balanced") return "Balanced";
+  if (normalized === "overused") return "Overused";
+  return "Unknown";
+}
+
+function insightBenchStatusPillClasses(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "underused":
+      return "border-blue-500/40 bg-blue-500/10 text-blue-100";
+    case "balanced":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "overused":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    default:
+      return "border-slate-800 bg-slate-950/50 text-slate-200";
+  }
 }
 
 function formatTopWinReasons(byReason: Record<string, number>, limit: number): string | null {
