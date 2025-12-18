@@ -359,7 +359,8 @@ async function loadThreadRoleTimestampsForAdminViaRpc(
     }
 
     const map = new Map<string, ThreadRoleTimestamps>();
-    for (const row of data ?? []) {
+    const rows: RpcRow[] = Array.isArray(data) ? data : [];
+    for (const row of rows) {
       const quoteId = normalizeId(row.quote_id);
       if (!quoteId) continue;
       map.set(quoteId, {
