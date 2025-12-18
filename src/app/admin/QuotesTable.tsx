@@ -11,6 +11,7 @@ import {
   formatRelativeTimeCompactFromTimestamp,
   toTimestamp,
 } from "@/lib/relativeTime";
+import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import type { AdminQuoteListStatus, AdminQuotesView } from "@/types/adminQuotes";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
@@ -140,6 +141,18 @@ export default function QuotesTable({
               ? formatRelativeTimeCompactFromTimestamp(toTimestamp(row.threadLastMessageAt)) ??
                 "—"
               : null;
+            const threadLabel = resolveThreadStatusLabel(
+              "admin",
+              row.threadNeedsReplyFrom ? row.threadNeedsReplyFrom : "none",
+            );
+            const threadPillClasses =
+              threadLabel === "Needs your reply"
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+                : threadLabel === "Up to date"
+                  ? "border-slate-800 bg-slate-950/50 text-slate-300"
+                  : threadLabel === "Status unknown"
+                    ? "border-slate-800 bg-slate-950/50 text-slate-400"
+                    : "border-slate-800 bg-slate-900/40 text-slate-200";
 
             return (
               <tr
@@ -196,22 +209,18 @@ export default function QuotesTable({
                 </td>
                 <td className={adminTableCellClass}>
                   <div className="space-y-1">
-                    {row.threadNeedsReplyFrom ? (
+                    {row.threadLastMessageAt ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <span
                           className={clsx(
                             "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold",
-                            row.threadNeedsReplyFrom === "supplier"
-                              ? "border-blue-500/40 bg-blue-500/10 text-blue-100"
-                              : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+                            threadPillClasses,
                           )}
                         >
                           {row.threadUnreadForAdmin ? (
                             <span className="h-2 w-2 rounded-full bg-emerald-300" />
                           ) : null}
-                          {row.threadNeedsReplyFrom === "supplier"
-                            ? "Needs supplier reply"
-                            : "Needs customer reply"}
+                          {threadLabel}
                         </span>
                         {row.threadStalenessBucket === "very_stale" ? (
                           <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/60 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200">

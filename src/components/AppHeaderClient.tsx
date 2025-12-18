@@ -32,6 +32,7 @@ const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
     { label: "Dashboard", href: "/customer" },
     { label: "Quotes", href: "/customer/quotes" },
     { label: "Projects", href: "/customer/projects" },
+    { label: "Messages", href: "/customer/messages" },
     { label: "Settings", href: "/customer/settings" },
   ],
   supplier: [
@@ -39,6 +40,7 @@ const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
     { label: "Decisions", href: "/supplier/decisions" },
     { label: "Quotes", href: "/supplier/quotes" },
     { label: "Projects", href: "/supplier/projects" },
+    { label: "Messages", href: "/supplier/messages" },
     { label: "Settings", href: "/supplier/settings" },
   ],
 };
