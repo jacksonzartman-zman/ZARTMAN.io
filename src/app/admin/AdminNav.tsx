@@ -11,6 +11,7 @@ const ADMIN_NAV_LINKS: PortalNavLink[] = [
   { label: "Uploads", href: "/admin/uploads" },
   { label: "Quotes", href: "/admin/quotes" },
   { label: "Capacity", href: "/admin/capacity" },
+  { label: "Bench health", href: "/admin/suppliers/bench-health" },
 ];
 
 export default function AdminNav() {

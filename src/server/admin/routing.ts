@@ -17,6 +17,10 @@ import {
   getAwardFeedbackSummaryForSupplier,
   type AwardFeedbackSummaryForSupplier,
 } from "@/server/admin/awardFeedback";
+import {
+  loadBenchHealthBySupplierIds,
+  type SupplierBenchHealthRow,
+} from "@/server/suppliers/benchHealth";
 
 export type RoutingMatchHealth = "good" | "caution" | "poor";
 
@@ -40,6 +44,7 @@ export type RoutingSupplierSummary = {
   lastUpdatedAt: string | null; // ISO timestamp
   awardFeedbackSummary?: AwardFeedbackSummaryForSupplier;
   feedbackSignal?: RoutingFeedbackSignal;
+  benchHealth?: Pick<SupplierBenchHealthRow, "matchHealth" | "benchStatus">;
 };
 
 export type RoutingSuggestionResult = {
@@ -379,6 +384,18 @@ export async function getRoutingSuggestionForQuote(args: {
       });
 
       supplierSummaries = allSummaries.slice(0, 5);
+    }
+
+    if (supplierSummaries.length > 0) {
+      const supplierIds = supplierSummaries.map((summary) => summary.supplierId);
+      const bySupplierId = await loadBenchHealthBySupplierIds(supplierIds);
+      supplierSummaries = supplierSummaries.map((summary) => ({
+        ...summary,
+        benchHealth: bySupplierId[summary.supplierId] ?? {
+          matchHealth: "unknown",
+          benchStatus: "unknown",
+        },
+      }));
     }
 
     // Nice-to-have: best-effort admin-only event emission.

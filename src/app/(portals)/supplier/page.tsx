@@ -17,15 +17,17 @@ import {
   loadSupplierInboxBidAggregates,
   listSupplierBidsForSupplier,
   loadSupplierProfileByUserId,
-  loadSupplierMatchHealth,
   matchQuotesToSupplier,
   type SupplierActivityResult,
   type SupplierApprovalGate,
   type SupplierApprovalStatus,
   type SupplierBidWithContext,
   type SupplierQuoteMatch,
-  type SupplierMatchHealth,
 } from "@/server/suppliers";
+import {
+  loadSupplierSelfBenchHealth,
+  type SupplierSelfBenchHealth,
+} from "@/server/suppliers/benchHealth";
 import { getServerAuthUser } from "@/server/auth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
@@ -41,8 +43,6 @@ import { PortalStatPills } from "../components/PortalStatPills";
 import { resolveSupplierActivityEmptyState } from "./activityEmptyState";
 
 export const dynamic = "force-dynamic";
-
-const MATCH_HEALTH_LOOKBACK_DAYS = 30;
 
 type SupplierDashboardPageProps = {
   searchParams?: SearchParamsLike;
@@ -136,7 +136,7 @@ async function SupplierDashboardPage({
     ok: true,
     data: [],
   };
-  let matchHealth: SupplierMatchHealth | null = null;
+  let benchHealth: SupplierSelfBenchHealth | null = null;
 
   if (supplier) {
     try {
@@ -149,10 +149,8 @@ async function SupplierDashboardPage({
           supplierId: supplier.id,
           supplierEmail: supplier.primary_email ?? supplierEmail,
         }),
-        loadSupplierMatchHealth(supplier.id, {
-          lookbackDays: MATCH_HEALTH_LOOKBACK_DAYS,
-        }).catch((error) => {
-          console.error("[supplier dashboard] match health failed", {
+        loadSupplierSelfBenchHealth(supplier.id).catch((error) => {
+          console.error("[supplier dashboard] bench health failed", {
             supplierId: supplier.id,
             error,
           });
@@ -161,7 +159,7 @@ async function SupplierDashboardPage({
       ]);
       matchesResult = resolvedMatches;
       bidsResult = resolvedBids;
-      matchHealth = resolvedHealth;
+      benchHealth = resolvedHealth;
     } catch (error) {
       console.error("[supplier dashboard] supplier loaders failed", {
         supplierId: supplier.id,
@@ -304,8 +302,7 @@ async function SupplierDashboardPage({
       />
       <MatchHealthCard
         supplierExists={supplierExists}
-        lookbackDays={MATCH_HEALTH_LOOKBACK_DAYS}
-        matchHealth={matchHealth}
+        benchHealth={benchHealth}
       />
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
@@ -455,12 +452,10 @@ function getApprovalHoldCopy(status?: SupplierApprovalStatus) {
 
 function MatchHealthCard({
   supplierExists,
-  matchHealth,
-  lookbackDays,
+  benchHealth,
 }: {
   supplierExists: boolean;
-  matchHealth: SupplierMatchHealth | null;
-  lookbackDays: number;
+  benchHealth: SupplierSelfBenchHealth | null;
 }) {
   if (!supplierExists) {
     return (
@@ -484,85 +479,122 @@ function MatchHealthCard({
     );
   }
 
-  if (!matchHealth) {
+  if (!benchHealth) {
     return (
       <PortalCard
         title="Match health"
-        description="How often our matcher can route RFQs based on your capabilities."
+        description="Your recent match + utilization signals across routed RFQs."
       >
         <EmptyStateNotice
-          title="No data yet"
-          description="We couldn’t load match health right now. Refresh the page to try again."
+          title="We’ll show match health here once you start bidding"
+          description="As you bid on more RFQs, we’ll start to show how well you’re matched to the work coming through."
         />
       </PortalCard>
     );
   }
 
-  const evaluatedCount = matchHealth.evaluatedCount ?? 0;
-  const matchedCount = matchHealth.matchedCount ?? 0;
-  const skippedCapabilityCount = matchHealth.skippedCapabilityCount ?? 0;
-  const hasEvaluations = evaluatedCount > 0;
-  const percent = evaluatedCount > 0 ? Math.round((matchedCount / evaluatedCount) * 100) : 0;
-  const recentExamples = matchHealth.recentExamples.slice(0, 3);
-  const showExamples = hasEvaluations && recentExamples.length > 0;
+  const matchHealth = benchHealth.matchHealth;
+  const rfqsBid = benchHealth.rfqsBid ?? 0;
+  const rfqsWon = benchHealth.rfqsWon ?? 0;
+  const benchStatus = benchHealth.benchStatus;
 
   return (
     <PortalCard
       title="Match health"
-      description="How often our matcher can route RFQs based on your capabilities."
+      description="Your recent match + utilization signals across routed RFQs."
     >
-      {hasEvaluations ? (
-        <div className="space-y-4">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-              Matched RFQs
+              Match health
             </p>
-            <p className="mt-1 text-2xl font-semibold text-white">
-              {matchedCount} of {evaluatedCount} ({percent}%)
+            <p className="mt-1 text-sm text-slate-300">
+              You’ve bid on <span className="font-semibold text-white">{rfqsBid}</span>{" "}
+              RFQs and won <span className="font-semibold text-white">{rfqsWon}</span> in
+              the last 90 days.
             </p>
           </div>
-          <p className="text-xs text-slate-500">
-            Skipped for capability mismatch: {skippedCapabilityCount} in last {lookbackDays} days.
-          </p>
-          {showExamples ? (
-            <ul className="list-disc space-y-2 pl-4 text-xs text-slate-400">
-              {recentExamples.map((example) => (
-                <li key={`${example.quoteId}-${example.outcome}`}>
-                  {formatMatchHealthExample(example)}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <span
+            className={clsx(
+              "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+              supplierMatchHealthPillClasses(matchHealth),
+            )}
+          >
+            {formatSupplierMatchHealthLabel(matchHealth)}
+          </span>
         </div>
-      ) : (
-        <EmptyStateNotice
-          title="We haven’t evaluated any RFQs yet"
-          description="As new RFQs arrive, we’ll show how often we can match you against capability requirements."
-        />
-      )}
+
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Bench status
+          </p>
+          <p className="mt-1 text-sm text-slate-200">
+            We currently see you as{" "}
+            <span className="font-semibold text-white">
+              {formatSupplierBenchStatusLabel(benchStatus)}
+            </span>{" "}
+            based on your recent capacity and awards.
+          </p>
+          <p className="mt-2 text-xs text-slate-400">
+            {formatBenchStatusNudge(benchStatus)}
+          </p>
+        </div>
+      </div>
     </PortalCard>
   );
 }
 
-function formatMatchHealthExample(
-  example: SupplierMatchHealth["recentExamples"][number],
-): string {
-  const processLabel = formatProcessLabel(example.processHint);
-  if (example.outcome === "matched") {
-    return `Matched on ${processLabel} RFQ – eligible for quote.`;
+function formatSupplierMatchHealthLabel(value: SupplierSelfBenchHealth["matchHealth"]): string {
+  switch (value) {
+    case "good":
+      return "Good";
+    case "caution":
+      return "Caution";
+    case "poor":
+      return "Poor";
+    default:
+      return "Unknown";
   }
-  return `Skipped ${processLabel} RFQ – no matching capability set.`;
 }
 
-function formatProcessLabel(processHint: string | null): string {
-  if (typeof processHint !== "string") {
-    return "this";
+function supplierMatchHealthPillClasses(value: SupplierSelfBenchHealth["matchHealth"]): string {
+  switch (value) {
+    case "good":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "caution":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    case "poor":
+      return "border-red-500/40 bg-red-500/10 text-red-100";
+    default:
+      return "border-slate-900/60 bg-slate-950/40 text-slate-200";
   }
-  const trimmed = processHint.trim();
-  if (!trimmed) {
-    return "this";
+}
+
+function formatSupplierBenchStatusLabel(value: SupplierSelfBenchHealth["benchStatus"]): string {
+  switch (value) {
+    case "underused":
+      return "Underused";
+    case "balanced":
+      return "Balanced";
+    case "overused":
+      return "Overused";
+    default:
+      return "Unknown";
   }
-  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+function formatBenchStatusNudge(value: SupplierSelfBenchHealth["benchStatus"]): string {
+  switch (value) {
+    case "underused":
+      return "Stay responsive and keep your capacity updated; we’ll route more work when you’re a strong fit.";
+    case "overused":
+      return "You’re winning a lot of work; consider tightening your availability so you don’t overcommit.";
+    case "balanced":
+      return "You’re in a good spot; keep your capacity updated to maintain a healthy mix of work.";
+    default:
+      return "As you bid on more RFQs, we’ll start to show how well you’re matched to the work coming through.";
+  }
 }
 
 function MatchesCard({
