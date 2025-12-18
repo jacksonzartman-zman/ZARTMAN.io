@@ -1104,7 +1104,7 @@ export default async function CustomerQuoteDetailPage({
         quoteId={quote.id}
         actorRole="customer"
         actorUserId={user.id}
-        emptyState="No updates yet."
+        emptyState="No events yet. Activity will appear here as your RFQ progresses."
       />
     </DisclosureSection>
   );
