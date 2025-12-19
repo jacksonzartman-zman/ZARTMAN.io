@@ -72,7 +72,9 @@ import { CustomerPartsSection } from "./CustomerPartsSection";
 import { CustomerUploadsForm } from "./CustomerUploadsForm";
 import { loadCachedAiPartSuggestions } from "@/server/quotes/aiPartsSuggestions";
 import { formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
-import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
+import { computeRfqQualitySummary, type SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 
 export const dynamic = "force-dynamic";
 
@@ -290,6 +292,72 @@ export default async function CustomerQuoteDetailPage({
     rfqQualitySummary.missingCad ||
     rfqQualitySummary.missingDrawings ||
     rfqQualitySummary.score < 80;
+
+  const customerFeedbackCounts: Partial<Record<SupplierFeedbackCategory, number>> = {};
+  const customerFeedbackCategoriesToShow: SupplierFeedbackCategory[] = [
+    "missing_cad",
+    "missing_drawings",
+    "scope_unclear",
+    "timeline_unrealistic",
+  ];
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_rfq_feedback")
+      .select("categories,created_at")
+      .eq("quote_id", quote.id)
+      .order("created_at", { ascending: false })
+      .limit(50)
+      .returns<Array<{ categories: string[] | null; created_at: string | null }>>();
+
+    if (error) {
+      if (!isMissingTableOrColumnError(error)) {
+        console.warn("[customer quote] quote_rfq_feedback load failed", {
+          quoteId: quote.id,
+          error: serializeSupabaseError(error) ?? error,
+        });
+      }
+    } else {
+      for (const row of data ?? []) {
+        const cats = new Set(
+          (Array.isArray(row?.categories) ? row.categories : [])
+            .map((value) => (typeof value === "string" ? value.trim() : ""))
+            .filter(Boolean) as SupplierFeedbackCategory[],
+        );
+        for (const cat of cats) {
+          if (!customerFeedbackCategoriesToShow.includes(cat)) continue;
+          customerFeedbackCounts[cat] = (customerFeedbackCounts[cat] ?? 0) + 1;
+        }
+      }
+    }
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error)) {
+      console.warn("[customer quote] quote_rfq_feedback load crashed", {
+        quoteId: quote.id,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  }
+
+  const customerFeedbackAdvisories = customerFeedbackCategoriesToShow
+    .map((cat) => {
+      const count = customerFeedbackCounts[cat] ?? 0;
+      if (!count) return null;
+      const label =
+        cat === "missing_cad"
+          ? "Missing CAD"
+          : cat === "missing_drawings"
+            ? "Missing drawings"
+            : cat === "scope_unclear"
+              ? "Unclear scope"
+              : cat === "timeline_unrealistic"
+                ? "Timeline unrealistic"
+                : cat.replace(/[_-]+/g, " ").replace(/^\w/, (m) => m.toUpperCase());
+      return { cat, label, count };
+    })
+    .filter(
+      (entry): entry is { cat: SupplierFeedbackCategory; label: string; count: number } =>
+        Boolean(entry),
+    );
 
   const kickoffProgressBasis = resolveKickoffProgressBasis({
     kickoffCompletedAt:
@@ -976,6 +1044,23 @@ export default async function CustomerQuoteDetailPage({
       }
     >
       <div className="space-y-4">
+        {customerFeedbackAdvisories.length > 0 ? (
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4">
+            <p className="text-sm font-semibold text-slate-100">
+              Suppliers flagged the following issues on previous RFQs like this one:
+            </p>
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
+              {customerFeedbackAdvisories.map((entry) => (
+                <li key={entry.cat}>
+                  {entry.label} ({entry.count})
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-slate-500">
+              This is advisory only — you can still proceed, but adding missing details may increase supplier response.
+            </p>
+          </div>
+        ) : null}
         {showRfqQualityHint ? (
           <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">

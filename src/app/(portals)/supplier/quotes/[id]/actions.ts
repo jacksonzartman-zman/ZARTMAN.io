@@ -10,10 +10,14 @@ import {
   type ToggleSupplierKickoffTaskInput,
 } from "@/server/quotes/supplierQuoteServer";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
-import { getServerAuthUser } from "@/server/auth";
+import { createAuthClient, getServerAuthUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import type { SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
+import {
+  isMissingTableOrColumnError,
+  serializeSupabaseError,
+} from "@/server/admin/logging";
 
 export type {
   SupplierBidFormState,
@@ -111,6 +115,46 @@ export async function supplierDeclineRfqWithFeedbackAction(
     categories,
     note,
   });
+
+  try {
+    const supabase = createAuthClient();
+    const { error } = await supabase.from("quote_rfq_feedback").insert({
+      quote_id: normalizedQuoteId,
+      supplier_id: supplierId,
+      categories,
+      note: note || null,
+    });
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[rfq feedback] schema missing; skipping persist", {
+          quoteId: normalizedQuoteId,
+          supplierId,
+          error: serializeSupabaseError(error) ?? error,
+        });
+      } else {
+        console.error("[rfq feedback] insert failed", {
+          quoteId: normalizedQuoteId,
+          supplierId,
+          error: serializeSupabaseError(error) ?? error,
+        });
+      }
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[rfq feedback] schema missing; skipping persist", {
+        quoteId: normalizedQuoteId,
+        supplierId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    } else {
+      console.error("[rfq feedback] insert crashed", {
+        quoteId: normalizedQuoteId,
+        supplierId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  }
 
   revalidatePath("/supplier/rfqs");
   revalidatePath("/supplier/quotes");

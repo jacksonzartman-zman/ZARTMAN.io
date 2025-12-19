@@ -99,6 +99,7 @@ import { loadQuoteUploadGroups } from "@/server/quotes/uploadFiles";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
+import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import {
   createQuotePartAction,
   updateQuotePartFilesForQuoteAction,
@@ -110,6 +111,19 @@ export const dynamic = "force-dynamic";
 
 type QuoteDetailPageProps = {
   params: Promise<{ id: string }>;
+};
+
+type QuoteRfqFeedbackAdminRow = {
+  supplier_id: string | null;
+  categories: string[] | null;
+  note: string | null;
+  created_at: string | null;
+};
+
+type SupplierLiteRow = {
+  id: string;
+  company_name: string | null;
+  primary_email: string | null;
 };
 
 export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) {
@@ -364,6 +378,86 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const parts = workspaceResult.ok && workspaceResult.data ? workspaceResult.data.parts : [];
     const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
     const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
+
+    let rfqFeedbackRows: QuoteRfqFeedbackAdminRow[] = [];
+    let rfqFeedbackSchemaMissing = false;
+    const supplierNameById = new Map<string, string>();
+    try {
+      const { data, error } = await supabaseServer
+        .from("quote_rfq_feedback")
+        .select("supplier_id,categories,note,created_at")
+        .eq("quote_id", quote.id)
+        .order("created_at", { ascending: false })
+        .limit(50)
+        .returns<QuoteRfqFeedbackAdminRow[]>();
+
+      if (error) {
+        if (isMissingTableOrColumnError(error)) {
+          rfqFeedbackSchemaMissing = true;
+        } else {
+          console.error("[admin quote] failed to load rfq feedback", {
+            quoteId: quote.id,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      } else {
+        rfqFeedbackRows = Array.isArray(data) ? data : [];
+      }
+    } catch (error) {
+      if (isMissingTableOrColumnError(error)) {
+        rfqFeedbackSchemaMissing = true;
+      } else {
+        console.error("[admin quote] rfq feedback load crashed", {
+          quoteId: quote.id,
+          error: serializeSupabaseError(error) ?? error,
+        });
+      }
+    }
+
+    const supplierIdsForFeedback = Array.from(
+      new Set(
+        rfqFeedbackRows
+          .map((row) => (typeof row?.supplier_id === "string" ? row.supplier_id.trim() : ""))
+          .filter(Boolean),
+      ),
+    );
+    if (supplierIdsForFeedback.length > 0) {
+      try {
+        const { data, error } = await supabaseServer
+          .from("suppliers")
+          .select("id,company_name,primary_email")
+          .in("id", supplierIdsForFeedback)
+          .returns<SupplierLiteRow[]>();
+
+        if (error) {
+          console.warn("[admin quote] supplier lookup for rfq feedback failed", {
+            quoteId: quote.id,
+            supplierCount: supplierIdsForFeedback.length,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        } else {
+          for (const row of data ?? []) {
+            const supplierId = typeof row?.id === "string" ? row.id.trim() : "";
+            if (!supplierId) continue;
+            const name =
+              (typeof row?.company_name === "string" && row.company_name.trim()
+                ? row.company_name.trim()
+                : null) ??
+              (typeof row?.primary_email === "string" && row.primary_email.trim()
+                ? row.primary_email.trim()
+                : null) ??
+              supplierId;
+            supplierNameById.set(supplierId, name);
+          }
+        }
+      } catch (error) {
+        console.warn("[admin quote] supplier lookup for rfq feedback crashed", {
+          quoteId: quote.id,
+          supplierCount: supplierIdsForFeedback.length,
+          error: serializeSupabaseError(error) ?? error,
+        });
+      }
+    }
     const partsCoverageSummaryLine = partsCoverageSummary.anyParts
       ? `${partsCoverageSummary.totalParts} part${
           partsCoverageSummary.totalParts === 1 ? "" : "s"
@@ -1493,8 +1587,85 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </div>
           </dl>
           <p className="mt-2 text-xs text-slate-500">
-            Declines aren’t persisted yet; clarification is inferred from pre-bid supplier messages.
+            Declines are persisted from supplier portal feedback; clarification is inferred from pre-bid supplier messages.
           </p>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-900/60 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Supplier feedback (declines)
+            </p>
+            <span className="text-xs text-slate-400">
+              {rfqFeedbackSchemaMissing
+                ? "Unavailable"
+                : `${rfqFeedbackRows.length} item${rfqFeedbackRows.length === 1 ? "" : "s"}`}
+            </span>
+          </div>
+          {rfqFeedbackSchemaMissing ? (
+            <div className="px-4 py-4 text-sm text-slate-400">
+              Feedback table unavailable (schema not deployed in this environment yet).
+            </div>
+          ) : rfqFeedbackRows.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-slate-400">
+              No supplier decline feedback captured yet.
+            </div>
+          ) : (
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-950/40">
+                <tr>
+                  <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Supplier
+                  </th>
+                  <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Categories
+                  </th>
+                  <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Note
+                  </th>
+                  <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Timestamp
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-900/60">
+                {rfqFeedbackRows.map((row, idx) => {
+                  const supplierId =
+                    typeof row?.supplier_id === "string" ? row.supplier_id.trim() : "";
+                  const supplierName = supplierId
+                    ? supplierNameById.get(supplierId) ?? supplierId
+                    : "Unknown supplier";
+                  const categories = Array.isArray(row?.categories)
+                    ? row.categories.filter((value): value is string => typeof value === "string")
+                    : [];
+                  const categoriesDisplay =
+                    categories.length > 0
+                      ? categories.map(formatRfqSignalCategory).join(", ")
+                      : "—";
+                  const note =
+                    typeof row?.note === "string" && row.note.trim().length > 0
+                      ? row.note.trim()
+                      : "—";
+                  const timestamp =
+                    typeof row?.created_at === "string" && row.created_at.trim().length > 0
+                      ? formatDateTime(row.created_at, { includeTime: true }) ?? row.created_at
+                      : "—";
+                  return (
+                    <tr key={`${supplierId}-${idx}`}>
+                      <td className="px-4 py-2 align-top font-medium text-slate-100">
+                        {supplierName}
+                      </td>
+                      <td className="px-4 py-2 align-top text-slate-300">
+                        {categoriesDisplay}
+                      </td>
+                      <td className="px-4 py-2 align-top text-slate-300">{note}</td>
+                      <td className="px-4 py-2 align-top text-slate-400">{timestamp}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
