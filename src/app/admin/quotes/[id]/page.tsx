@@ -101,6 +101,7 @@ import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
+import { loadSupplierReputationForSuppliers } from "@/server/suppliers/reputation";
 import {
   createQuotePartAction,
   updateQuotePartFilesForQuoteAction,
@@ -548,6 +549,60 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       )
       .slice(0, 2)
       .map((row) => row.supplierId);
+
+    const supplierIdsForReputation = Array.from(
+      new Set(bidCompareRows.map((row) => row.supplierId).filter(Boolean)),
+    );
+    const reputationBySupplierId =
+      supplierIdsForReputation.length > 0
+        ? await loadSupplierReputationForSuppliers(supplierIdsForReputation)
+        : {};
+    const reputationLiteBySupplierId = Object.fromEntries(
+      supplierIdsForReputation.map((supplierId) => {
+        const rep = reputationBySupplierId[supplierId] ?? null;
+        return [supplierId, { score: rep?.score ?? null, label: rep?.label ?? "unknown" }];
+      }),
+    );
+
+    const decisionAssistantReputationNote = (() => {
+      const topTwo = compareRowsByScore
+        .filter((row) => typeof row.compositeScore === "number")
+        .slice(0, 2);
+      if (topTwo.length < 2) return null;
+      const [first, second] = topTwo;
+      if (!first || !second) return null;
+      const r1 = reputationLiteBySupplierId[first.supplierId] ?? null;
+      const r2 = reputationLiteBySupplierId[second.supplierId] ?? null;
+      if (!r1 || !r2) return null;
+
+      const rank = (label: string) => {
+        switch ((label ?? "").toLowerCase()) {
+          case "excellent":
+            return 4;
+          case "good":
+            return 3;
+          case "fair":
+            return 2;
+          case "limited":
+            return 1;
+          default:
+            return 0;
+        }
+      };
+      const repGapNote =
+        rank(r1.label) - rank(r2.label) >= 2
+          ? `${first.supplierName} has a much higher reputation.`
+          : rank(r2.label) - rank(r1.label) >= 2
+            ? `${second.supplierName} has a much higher reputation.`
+            : null;
+      if (!repGapNote) return null;
+
+      const s1 = typeof first.compositeScore === "number" ? first.compositeScore : null;
+      const s2 = typeof second.compositeScore === "number" ? second.compositeScore : null;
+      if (s1 === null || s2 === null) return null;
+      const close = Math.abs(s1 - s2) <= 5;
+      return close ? repGapNote : null;
+    })();
 
     const fallbackBestPriceBid = findBestPriceBid(bids);
     const fallbackBestPriceAmount =
@@ -1971,7 +2026,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                       if (candidates.length === 1) {
                         return `Based on price, lead time, and supplier fit, ${candidates[0]} looks like the best candidate.`;
                       }
-                      return `Based on price, lead time, and supplier fit, ${candidates[0]} and ${candidates[1]} look like the best candidates.`;
+                      const base = `Based on price, lead time, and supplier fit, ${candidates[0]} and ${candidates[1]} look like the best candidates.`;
+                      return decisionAssistantReputationNote
+                        ? `${base} ${decisionAssistantReputationNote}`
+                        : base;
                     })()}
                   </p>
                 </div>
@@ -2009,6 +2067,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 awardedSupplierId={quote.awarded_supplier_id ?? null}
                 bids={bids}
                 bidComparisonBySupplierId={comparisonBySupplierId}
+                reputationBySupplierId={reputationLiteBySupplierId}
                 recommendedSupplierIds={recommendedSupplierIds}
                 bidsLoaded={bidsResult.ok}
                 errorMessage={bidsResult.error ?? null}

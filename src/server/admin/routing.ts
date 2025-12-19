@@ -39,6 +39,10 @@ import {
   loadBenchHealthBySupplierIds,
   type SupplierBenchHealthRow,
 } from "@/server/suppliers/benchHealth";
+import {
+  loadSupplierReputationForSuppliers,
+  type SupplierReputationLabel,
+} from "@/server/suppliers/reputation";
 
 export type RoutingMatchHealth = "good" | "caution" | "poor";
 
@@ -63,6 +67,8 @@ export type RoutingSupplierSummary = {
   awardFeedbackSummary?: AwardFeedbackSummaryForSupplier;
   feedbackSignal?: RoutingFeedbackSignal;
   benchHealth?: Pick<SupplierBenchHealthRow, "matchHealth" | "benchStatus">;
+  reputationScore?: number | null;
+  reputationLabel?: SupplierReputationLabel;
 };
 
 export type RoutingSuggestionResult = {
@@ -81,6 +87,8 @@ const QUOTES_TABLE = "quotes";
 const SUPPLIER_BIDS_TABLE = "supplier_bids";
 const SUPPLIERS_TABLE = "suppliers";
 
+let didWarnMissingReputationForRouting = false;
+
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -89,6 +97,37 @@ function normalizeMatchHealth(value: RoutingMatchHealth): number {
   if (value === "good") return 3;
   if (value === "caution") return 2;
   return 1;
+}
+
+function normalizeReputationLabel(value: unknown): SupplierReputationLabel {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (
+    normalized === "excellent" ||
+    normalized === "good" ||
+    normalized === "fair" ||
+    normalized === "limited"
+  ) {
+    return normalized;
+  }
+  return "unknown";
+}
+
+function normalizeReputationRank(label: SupplierReputationLabel | null | undefined): number {
+  // Higher is better.
+  const value = normalizeReputationLabel(label ?? "unknown");
+  switch (value) {
+    case "excellent":
+      return 4;
+    case "good":
+      return 3;
+    case "fair":
+      return 2;
+    case "limited":
+      return 1;
+    case "unknown":
+    default:
+      return 0;
+  }
 }
 
 function capabilityLabel(capability: string): string {
@@ -401,7 +440,54 @@ export async function getRoutingSuggestionForQuote(args: {
         return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
       });
 
-      supplierSummaries = allSummaries.slice(0, 5);
+      // Phase 10: reputation is a *soft* influence. To keep routing fast, only compute
+      // reputation for the top shortlist based on capacity/match.
+      let shortlist = allSummaries.slice(0, 25);
+      if (shortlist.length > 0) {
+        try {
+          const reputationBySupplierId = await loadSupplierReputationForSuppliers(
+            shortlist.map((s) => s.supplierId),
+          );
+          shortlist = shortlist
+            .map((summary) => {
+              const rep = reputationBySupplierId[summary.supplierId] ?? null;
+              return {
+                ...summary,
+                reputationScore: rep?.score ?? null,
+                reputationLabel: rep?.label ?? "unknown",
+              };
+            })
+            .sort((a, b) => {
+              // Keep capacity/match as primary.
+              const health =
+                normalizeMatchHealth(b.matchHealth) - normalizeMatchHealth(a.matchHealth);
+              if (health !== 0) return health;
+              const coverage = (b.coverageCount ?? 0) - (a.coverageCount ?? 0);
+              if (coverage !== 0) return coverage;
+
+              // Small reputation nudge.
+              const rep =
+                normalizeReputationRank(b.reputationLabel) -
+                normalizeReputationRank(a.reputationLabel);
+              if (rep !== 0) return rep;
+
+              // Finally, most recently updated capacity first.
+              const ta = a.lastUpdatedAt ? Date.parse(a.lastUpdatedAt) : 0;
+              const tb = b.lastUpdatedAt ? Date.parse(b.lastUpdatedAt) : 0;
+              return (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+            });
+        } catch (error) {
+          if (!didWarnMissingReputationForRouting) {
+            didWarnMissingReputationForRouting = true;
+            console.warn("[routing] reputation unavailable; continuing without it", {
+              supplierCount: shortlist.length,
+              error: serializeSupabaseError(error) ?? error,
+            });
+          }
+        }
+      }
+
+      supplierSummaries = shortlist.slice(0, 5);
     }
 
     if (supplierSummaries.length > 0) {
@@ -414,6 +500,30 @@ export async function getRoutingSuggestionForQuote(args: {
           benchStatus: "unknown",
         },
       }));
+    }
+
+    // Attach reputation on the final output list as well (covers resolvedSupplierId path).
+    if (supplierSummaries.length > 0 && supplierSummaries.some((s) => s.reputationLabel == null)) {
+      try {
+        const supplierIds = supplierSummaries.map((summary) => summary.supplierId);
+        const reputationBySupplierId = await loadSupplierReputationForSuppliers(supplierIds);
+        supplierSummaries = supplierSummaries.map((summary) => {
+          const rep = reputationBySupplierId[summary.supplierId] ?? null;
+          return {
+            ...summary,
+            reputationScore: rep?.score ?? null,
+            reputationLabel: rep?.label ?? "unknown",
+          };
+        });
+      } catch (error) {
+        if (!didWarnMissingReputationForRouting) {
+          didWarnMissingReputationForRouting = true;
+          console.warn("[routing] reputation unavailable; continuing without it", {
+            supplierCount: supplierSummaries.length,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      }
     }
 
     // Nice-to-have: best-effort admin-only event emission.

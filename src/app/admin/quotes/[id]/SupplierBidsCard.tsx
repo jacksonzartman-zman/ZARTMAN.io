@@ -4,6 +4,7 @@ import type { BidRow } from "@/server/bids";
 import type { BidComparisonRow } from "@/server/quotes/bidCompare";
 import type { QuoteStatus } from "@/server/quotes/status";
 import type { SupplierRow } from "@/server/suppliers/types";
+import type { SupplierReputationLabel } from "@/server/suppliers/reputation";
 import clsx from "clsx";
 import { BidAwardForm } from "./BidAwardForm";
 
@@ -22,6 +23,11 @@ type BidComparisonLite = Pick<
   "matchHealth" | "benchStatus" | "partsCoverage" | "compositeScore"
 >;
 
+type SupplierReputationLite = {
+  score: number | null;
+  label: SupplierReputationLabel;
+};
+
 type SupplierBidsCardProps = {
   quoteId: string;
   quoteStatus: QuoteStatus;
@@ -29,6 +35,7 @@ type SupplierBidsCardProps = {
   awardedSupplierId?: string | null;
   bids: AdminSupplierBidRow[];
   bidComparisonBySupplierId?: Record<string, BidComparisonLite>;
+  reputationBySupplierId?: Record<string, SupplierReputationLite>;
   recommendedSupplierIds?: string[];
   bidsLoaded: boolean;
   errorMessage?: string | null;
@@ -44,6 +51,7 @@ export function SupplierBidsCard({
   awardedSupplierId,
   bids,
   bidComparisonBySupplierId,
+  reputationBySupplierId,
   recommendedSupplierIds,
   bidsLoaded,
   errorMessage,
@@ -100,6 +108,7 @@ export function SupplierBidsCard({
             <thead className="border-b border-slate-800 text-[11px] uppercase tracking-wide text-slate-400">
               <tr>
                 <th className="py-2 pr-3">Supplier</th>
+                <th className="py-2 pr-3">Reputation</th>
                 <th className="py-2 pr-3">Amount</th>
                 <th className="py-2 pr-3">Lead time</th>
                 <th className="py-2 pr-3">Match</th>
@@ -123,6 +132,11 @@ export function SupplierBidsCard({
                   awardedSupplierId={awardedSupplierId ?? null}
                   comparison={
                     bidComparisonBySupplierId?.[
+                      typeof bid.supplier_id === "string" ? bid.supplier_id.trim() : ""
+                    ] ?? null
+                  }
+                  reputation={
+                    reputationBySupplierId?.[
                       typeof bid.supplier_id === "string" ? bid.supplier_id.trim() : ""
                     ] ?? null
                   }
@@ -151,6 +165,7 @@ type BidRowProps = {
   awardedBidId: string | null;
   awardedSupplierId: string | null;
   comparison: BidComparisonLite | null;
+  reputation: SupplierReputationLite | null;
   isRecommended: boolean;
 };
 
@@ -162,6 +177,7 @@ function BidRow({
   awardedBidId,
   awardedSupplierId,
   comparison,
+  reputation,
   isRecommended,
 }: BidRowProps) {
   const formattedAmount =
@@ -220,6 +236,9 @@ function BidRow({
             {bid.supplier_id}
           </p>
         </div>
+      </td>
+      <td className="py-2 pr-3">
+        <ReputationCell reputation={reputation} />
       </td>
       <td className="py-2 pr-3">
         {formattedAmount}
@@ -282,6 +301,56 @@ function BidRow({
         />
       </td>
     </tr>
+  );
+}
+
+function formatReputationLabel(value: SupplierReputationLabel): string {
+  switch (value) {
+    case "excellent":
+      return "Excellent";
+    case "good":
+      return "Good";
+    case "fair":
+      return "Fair";
+    case "limited":
+      return "Limited";
+    default:
+      return "Unknown";
+  }
+}
+
+function reputationPillClasses(value: SupplierReputationLabel): string {
+  switch (value) {
+    case "excellent":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "good":
+      return "border-blue-500/40 bg-blue-500/10 text-blue-100";
+    case "fair":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    case "limited":
+      return "border-red-500/40 bg-red-500/10 text-red-100";
+    default:
+      return "border-slate-800 bg-slate-950/50 text-slate-200";
+  }
+}
+
+function ReputationCell({ reputation }: { reputation: SupplierReputationLite | null }) {
+  const label = reputation?.label ?? "unknown";
+  const score = reputation?.score ?? null;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span
+        className={clsx(
+          "inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+          reputationPillClasses(label),
+        )}
+      >
+        {formatReputationLabel(label)}
+      </span>
+      <span className="text-[11px] text-slate-300 tabular-nums">
+        {typeof score === "number" ? `${score}/100` : "—"}
+      </span>
+    </div>
   );
 }
 
