@@ -110,7 +110,7 @@ export function CustomerQuotePartPanel({
               const previewStatus = preview?.signedUrl
                 ? "STL preview ready"
                 : preview?.fallbackMessage ??
-                  "Only STL files are supported for preview today.";
+                  "3D preview is coming soon; your file is still included with the RFQ.";
               return (
                 <button
                   key={preview?.id ?? `${file.filename}-${index}`}
@@ -144,7 +144,7 @@ export function CustomerQuotePartPanel({
               selectedFileMeta?.filename ??
               null
             }
-            fallbackMessage="Select a CAD file or ask the admin team to attach an STL."
+            fallbackMessage="Select a CAD file (3D preview may be unavailable for some formats)."
             onGeometryStats={handleGeometryStats}
           />
           <PartDfMPanel
