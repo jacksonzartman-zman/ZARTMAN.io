@@ -89,6 +89,7 @@ import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import { loadSupplierBidDraft, type SupplierBidDraft } from "@/server/suppliers";
+import { loadCadFeaturesForQuote, type CadFeatureSummary } from "@/server/quotes/cadFeatures";
 
 export const dynamic = "force-dynamic";
 
@@ -176,6 +177,7 @@ export default async function SupplierQuoteDetailPage({
     );
   }
   const workspaceData = workspaceResult.data;
+  const cadFeaturesByFileId = await loadCadFeaturesForQuote(quoteId);
 
   const assignments = await loadSupplierAssignments(quoteId);
 
@@ -313,6 +315,7 @@ export default async function SupplierQuoteDetailPage({
   return (
     <SupplierQuoteWorkspace
       data={workspaceData}
+      cadFeaturesByFileId={cadFeaturesByFileId}
       tabParam={tabParam}
       supplierEmail={
         profile.supplier.primary_email ??
@@ -352,6 +355,7 @@ export default async function SupplierQuoteDetailPage({
 
 function SupplierQuoteWorkspace({
   data,
+  cadFeaturesByFileId,
   tabParam,
   supplierEmail,
   supplierId,
@@ -382,6 +386,7 @@ function SupplierQuoteWorkspace({
   capacityRequestCreatedAt,
 }: {
   data: QuoteWorkspaceData;
+  cadFeaturesByFileId: Record<string, CadFeatureSummary>;
   tabParam: string | null;
   supplierEmail: string;
   supplierId: string;
@@ -704,6 +709,7 @@ function SupplierQuoteWorkspace({
             parts={parts ?? []}
             initialDraft={initialDraft}
             uploadTargets={{ accept: UPLOAD_ACCEPT }}
+            cadFeaturesByFileId={cadFeaturesByFileId}
           />
         ) : (
           <SupplierBidPanel

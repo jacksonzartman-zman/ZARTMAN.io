@@ -29,6 +29,7 @@ import {
   upsertSupplierBidDraft,
   type SupplierBidDraft,
 } from "@/server/suppliers/bidLines";
+import { ensureCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 
 export type {
   SupplierBidFormState,
@@ -153,6 +154,43 @@ export async function saveSupplierBidDraftAction(
     });
     return { ok: false, error: "Could not save draft. Please try again." };
   }
+}
+
+export type EnsureCadMetricsResult = { ok: true } | { ok: false; error: string };
+
+export async function ensureCadMetricsForSupplierQuoteAction(
+  quoteId: string,
+): Promise<EnsureCadMetricsResult> {
+  const normalizedQuoteId = normalizeText(quoteId);
+  if (!normalizedQuoteId) return { ok: false, error: "Missing quote reference." };
+
+  const { user } = await getServerAuthUser();
+  if (!user?.id) return { ok: false, error: "You must be signed in." };
+
+  const profile = await loadSupplierProfileByUserId(user.id);
+  const supplierId = profile?.supplier?.id ?? null;
+  if (!supplierId) return { ok: false, error: "Supplier profile not found." };
+
+  const access = await assertSupplierQuoteAccess({
+    quoteId: normalizedQuoteId,
+    supplierId,
+    supplierUserEmail: user.email ?? null,
+  });
+  if (!access.ok) return { ok: false, error: "Not invited to this RFQ." };
+
+  try {
+    await ensureCadFeaturesForQuote(normalizedQuoteId, { maxNew: 10 });
+  } catch (error) {
+    console.warn("[supplier cad metrics] ensure crashed", {
+      quoteId: normalizedQuoteId,
+      supplierId,
+      error: serializeSupabaseError(error),
+    });
+    return { ok: false, error: "Could not analyze CAD right now." };
+  }
+
+  revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+  return { ok: true };
 }
 
 export type SupplierUploadsFormState =

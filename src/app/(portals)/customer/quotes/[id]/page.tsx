@@ -76,6 +76,7 @@ import { computeRfqQualitySummary, type SupplierFeedbackCategory } from "@/serve
 import { supabaseServer } from "@/lib/supabaseServer";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
+import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 
 export const dynamic = "force-dynamic";
 
@@ -636,6 +637,11 @@ export default async function CustomerQuoteDetailPage({
   const messagesUnreadCount = unreadSummary[quote.id]?.unreadCount ?? 0;
 
   const cachedAiSuggestions = await loadCachedAiPartSuggestions(quote.id);
+  const cadFeaturesByFileId = await loadCadFeaturesForQuote(quote.id);
+  const showCadDfMHint = Object.values(cadFeaturesByFileId).some((f) => {
+    const flags = Array.isArray(f?.dfmFlags) ? f.dfmFlags : [];
+    return flags.includes("very_large") || flags.includes("very_complex");
+  });
 
   const headerContent = (
     <QuoteAtAGlanceBar
@@ -1022,6 +1028,11 @@ export default async function CustomerQuoteDetailPage({
         </span>
       }
     >
+      {showCadDfMHint ? (
+        <p className="mb-4 rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200">
+          Some CAD files look <span className="font-semibold text-slate-100">very large or complex</span>. You may see higher prices or longer lead times on these parts.
+        </p>
+      ) : null}
       {!readOnly ? <CustomerUploadsForm quoteId={quote.id} /> : null}
       <QuoteFilesUploadsSection
         files={filePreviews}
