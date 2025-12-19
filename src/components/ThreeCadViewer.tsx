@@ -154,6 +154,11 @@ export type ThreeCadViewerProps = {
    */
   filenameHint?: string | null;
   /**
+   * Optional explicit CAD kind (preferred over filename inference).
+   * Useful when the caller already classified the file.
+   */
+  cadKind?: CadKind | null;
+  /**
    * Optional callback for higher-level UX (e.g. STEP-specific fallback copy).
    */
   onStatusChange?: (report: ThreeCadViewerReport) => void;
@@ -163,6 +168,7 @@ export function ThreeCadViewer({
   fileId,
   className,
   filenameHint,
+  cadKind,
   onStatusChange,
 }: ThreeCadViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -170,7 +176,7 @@ export function ThreeCadViewer({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorReason, setErrorReason] = useState<string | null>(null);
   const [resolvedFilename, setResolvedFilename] = useState<string | null>(null);
-  const [cadKind, setCadKind] = useState<CadKind>("unknown");
+  const [resolvedCadKind, setResolvedCadKind] = useState<CadKind>("unknown");
 
   const safeFileId = safeTrim(fileId);
 
@@ -187,6 +193,16 @@ export function ThreeCadViewer({
   const classification = useMemo(() => {
     return classifyCadFileType({ filename: filenameHint ?? resolvedFilename, extension: null });
   }, [filenameHint, resolvedFilename]);
+
+  const detectedCadKindForUi = useMemo(() => {
+    if (cadKind && cadKind !== "unknown") {
+      return cadKind;
+    }
+    if (resolvedCadKind && resolvedCadKind !== "unknown") {
+      return resolvedCadKind;
+    }
+    return classification.ok ? classification.type : null;
+  }, [cadKind, resolvedCadKind, classification]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -239,7 +255,7 @@ export function ThreeCadViewer({
         const nextReason = typeof next.errorReason === "undefined" ? null : next.errorReason;
 
         setStatus(next.status);
-        setCadKind(nextCadKind);
+        setResolvedCadKind(nextCadKind);
         setErrorMessage(nextMessage);
         setErrorReason(nextReason);
         onStatusChange?.({
@@ -294,8 +310,15 @@ export function ThreeCadViewer({
         }
 
         const fileNameForType = filenameHint ?? inferred ?? null;
-        const typeInfo = classifyCadFileType({ filename: fileNameForType, extension: null });
-        if (!typeInfo.ok) {
+        const resolvedKind: CadKind | null =
+          cadKind && cadKind !== "unknown"
+            ? cadKind
+            : (() => {
+                const typeInfo = classifyCadFileType({ filename: fileNameForType, extension: null });
+                return typeInfo.ok ? typeInfo.type : null;
+              })();
+
+        if (!resolvedKind) {
           setViewerState({
             status: "error",
             cadKind: "unknown",
@@ -306,7 +329,7 @@ export function ThreeCadViewer({
           return;
         }
 
-        detectedCadKind = typeInfo.type;
+        detectedCadKind = resolvedKind;
         setViewerState({ status: "loading", cadKind: detectedCadKind, message: null, errorReason: null });
 
         ({ renderer, scene, camera, controls, resizeObserver } = initializeThree(container));
@@ -314,7 +337,7 @@ export function ThreeCadViewer({
         const buffer = await blob.arrayBuffer();
         if (disposed) return;
 
-        if (typeInfo.type === "stl") {
+        if (resolvedKind === "stl") {
           const loader = new STLLoader();
           const geometry = loader.parse(buffer);
           geometry.computeVertexNormals();
@@ -327,7 +350,7 @@ export function ThreeCadViewer({
           // Match existing STL orientation convention.
           mesh.rotation.set(-Math.PI / 2, 0, 0);
           objectRoot = mesh;
-        } else if (typeInfo.type === "obj") {
+        } else if (resolvedKind === "obj") {
           const text = new TextDecoder().decode(new Uint8Array(buffer));
           const loader = new OBJLoader();
           const obj = loader.parse(text);
@@ -344,11 +367,11 @@ export function ThreeCadViewer({
             }
           });
           objectRoot = obj;
-        } else if (typeInfo.type === "glb") {
+        } else if (resolvedKind === "glb") {
           const loader = new GLTFLoader();
           const gltf = await loader.parseAsync(buffer, "");
           objectRoot = gltf.scene ?? new THREE.Group();
-        } else if (typeInfo.type === "step") {
+        } else if (resolvedKind === "step") {
           const stepBytes = new Uint8Array(buffer);
           const fileNameForLogs = fileNameForType ?? inferred ?? filenameHint ?? null;
           const logStepFailure = (reason: string, err?: unknown) => {
@@ -557,7 +580,7 @@ export function ThreeCadViewer({
       disposed = true;
       cleanup();
     };
-  }, [inlineUrl, filenameHint, onStatusChange]);
+  }, [inlineUrl, filenameHint, cadKind, onStatusChange]);
 
   return (
     <div className={clsx("w-full", className)}>
@@ -587,8 +610,10 @@ export function ThreeCadViewer({
                   Download
                 </a>
               ) : null}
-              {classification.ok ? (
-                <p className="text-[11px] text-slate-500">Detected: {classification.type.toUpperCase()}</p>
+              {detectedCadKindForUi ? (
+                <p className="text-[11px] text-slate-500">
+                  Detected: {detectedCadKindForUi.toUpperCase()}
+                </p>
               ) : null}
             </div>
           </div>

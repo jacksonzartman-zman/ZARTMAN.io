@@ -77,6 +77,7 @@ export function CustomerPartsSection({
   const [cadPreview, setCadPreview] = useState<{
     fileId: string;
     filename: string;
+    cadKind: "stl" | "obj" | "glb" | "step";
   } | null>(null);
 
   const [createState, createAction] = useFormState(
@@ -430,7 +431,11 @@ export function CustomerPartsSection({
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        setCadPreview({ fileId: file.id, filename: file.filename })
+                                        setCadPreview({
+                                          fileId: file.id,
+                                          filename: file.filename,
+                                          cadKind: cadType.type,
+                                        })
                                       }
                                       className="text-xs font-semibold text-blue-200 underline-offset-4 hover:underline"
                                     >
@@ -468,6 +473,7 @@ export function CustomerPartsSection({
         <CadPreviewModal
           fileId={cadPreview.fileId}
           filename={cadPreview.filename}
+          cadKind={cadPreview.cadKind}
           title="3D Preview"
           onClose={() => setCadPreview(null)}
         />

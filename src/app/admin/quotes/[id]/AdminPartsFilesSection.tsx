@@ -168,6 +168,7 @@ function PartCard({
   const [cadPreview, setCadPreview] = useState<{
     fileId: string;
     filename: string;
+    cadKind: "stl" | "obj" | "glb" | "step";
   } | null>(null);
   const assigned = useMemo(() => new Set(part.files.map((f) => f.quoteUploadFileId)), [part.files]);
 
@@ -381,7 +382,13 @@ function PartCard({
                             {cadType.ok ? (
                               <button
                                 type="button"
-                                onClick={() => setCadPreview({ fileId: entry.id, filename: entry.filename })}
+                                onClick={() =>
+                                  setCadPreview({
+                                    fileId: entry.id,
+                                    filename: entry.filename,
+                                    cadKind: cadType.type,
+                                  })
+                                }
                                 className="text-xs font-semibold text-blue-200 underline-offset-4 hover:underline"
                               >
                                 Preview 3D
@@ -420,6 +427,7 @@ function PartCard({
         <CadPreviewModal
           fileId={cadPreview.fileId}
           filename={cadPreview.filename}
+          cadKind={cadPreview.cadKind}
           title={`3D Preview · ${part.partLabel}`}
           onClose={() => setCadPreview(null)}
         />
