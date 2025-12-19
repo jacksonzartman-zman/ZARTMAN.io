@@ -15,6 +15,7 @@ const ADMIN_NAV_LINKS: PortalNavLink[] = [
   { label: "Messages", href: "/admin/messages" },
   { label: "Activity", href: "/admin/activity" },
   { label: "Capacity", href: "/admin/capacity" },
+  { label: "Supplier discovery", href: "/admin/suppliers/discover" },
   { label: "Bench health", href: "/admin/suppliers/bench-health" },
   { label: "System health", href: "/admin/system-health" },
 ];

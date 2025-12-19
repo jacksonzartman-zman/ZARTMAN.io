@@ -28,6 +28,11 @@ import {
   loadSupplierSelfBenchHealth,
   type SupplierSelfBenchHealth,
 } from "@/server/suppliers/benchHealth";
+import {
+  loadSupplierReputationForSupplier,
+  type SupplierReputationLabel,
+  type SupplierReputationScore,
+} from "@/server/suppliers/reputation";
 import { getServerAuthUser } from "@/server/auth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
@@ -145,10 +150,11 @@ async function SupplierDashboardPage({
     data: [],
   };
   let benchHealth: SupplierSelfBenchHealth | null = null;
+  let reputation: SupplierReputationScore | null = null;
 
   if (supplier) {
     try {
-      const [resolvedMatches, resolvedBids, resolvedHealth] = await Promise.all([
+      const [resolvedMatches, resolvedBids, resolvedHealth, resolvedReputation] = await Promise.all([
         matchQuotesToSupplier({
           supplierId: supplier.id,
           supplierEmail: supplier.primary_email ?? supplierEmail,
@@ -164,10 +170,18 @@ async function SupplierDashboardPage({
           });
           return null;
         }),
+        loadSupplierReputationForSupplier(supplier.id).catch((error) => {
+          console.error("[supplier dashboard] reputation load failed", {
+            supplierId: supplier.id,
+            error,
+          });
+          return null;
+        }),
       ]);
       matchesResult = resolvedMatches;
       bidsResult = resolvedBids;
       benchHealth = resolvedHealth;
+      reputation = resolvedReputation;
     } catch (error) {
       console.error("[supplier dashboard] supplier loaders failed", {
         supplierId: supplier.id,
@@ -390,6 +404,7 @@ async function SupplierDashboardPage({
         supplierExists={supplierExists}
         benchHealth={benchHealth}
       />
+      <SupplierReputationCard supplierExists={supplierExists} reputation={reputation} />
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
           Supplier workspace
@@ -516,6 +531,186 @@ async function SupplierDashboardPage({
         </pre>
       ) : null}
     </PortalShell>
+  );
+}
+
+function formatReputationLabel(value: SupplierReputationLabel): string {
+  switch (value) {
+    case "excellent":
+      return "Excellent";
+    case "good":
+      return "Good";
+    case "fair":
+      return "Fair";
+    case "limited":
+      return "Limited";
+    default:
+      return "Unknown";
+  }
+}
+
+function reputationPillClasses(value: SupplierReputationLabel): string {
+  switch (value) {
+    case "excellent":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "good":
+      return "border-blue-500/40 bg-blue-500/10 text-blue-100";
+    case "fair":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    case "limited":
+      return "border-red-500/40 bg-red-500/10 text-red-100";
+    default:
+      return "border-slate-900/60 bg-slate-950/40 text-slate-200";
+  }
+}
+
+function formatComponentHint(label: string, delta: number | null | undefined): string | null {
+  if (typeof delta !== "number" || !Number.isFinite(delta)) return null;
+  const sign = delta > 0 ? "+" : "";
+  return `${label}: ${sign}${delta} pts`;
+}
+
+function winRateHint(delta: number | null | undefined): string | null {
+  if (typeof delta !== "number" || !Number.isFinite(delta)) return null;
+  if (delta >= 25) return "Recent win rate: ≥50%";
+  if (delta >= 15) return "Recent win rate: 20–49%";
+  if (delta >= 5) return "Recent win rate: 5–19%";
+  if (delta >= 2) return "Recent win rate: 1–4%";
+  return "Recent win rate: 0% (recent)";
+}
+
+function kickoffHint(delta: number | null | undefined): string | null {
+  if (typeof delta !== "number" || !Number.isFinite(delta)) return null;
+  if (delta >= 10) return "Kickoff follow-through: very reliable";
+  if (delta >= 5) return "Kickoff follow-through: mostly on time";
+  if (delta <= -10) return "Kickoff follow-through: often late";
+  return "Kickoff follow-through: mixed";
+}
+
+function responsivenessHint(delta: number | null | undefined): string | null {
+  if (typeof delta !== "number" || !Number.isFinite(delta)) return null;
+  if (delta >= 10) return "Responsiveness: very responsive";
+  if (delta >= 5) return "Responsiveness: normal";
+  if (delta <= -10) return "Responsiveness: often slow";
+  return "Responsiveness: mixed";
+}
+
+function SupplierReputationCard({
+  supplierExists,
+  reputation,
+}: {
+  supplierExists: boolean;
+  reputation: SupplierReputationScore | null;
+}) {
+  if (!supplierExists) {
+    return (
+      <PortalCard
+        title="Your Zartman reputation"
+        description="We’ll show this once your supplier profile is active."
+      >
+        <EmptyStateNotice
+          title="Reputation unlocks after onboarding"
+          description="Finish onboarding and start bidding to build your reputation score over time."
+          action={
+            <Link
+              href="/supplier/onboarding"
+              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+            >
+              Complete onboarding
+            </Link>
+          }
+        />
+      </PortalCard>
+    );
+  }
+
+  if (!reputation || reputation.score === null) {
+    return (
+      <PortalCard
+        title="Your Zartman reputation"
+        description="A read-only score derived from wins, follow-through, and responsiveness."
+      >
+        <EmptyStateNotice
+          title="We’ll show your reputation here soon"
+          description="We’ll show your reputation here once you’ve bid on a few RFQs and completed work."
+        />
+      </PortalCard>
+    );
+  }
+
+  const label = reputation.label ?? "unknown";
+  const score = reputation.score;
+
+  const bullets = [
+    winRateHint(reputation.winRateScore ?? null),
+    kickoffHint(reputation.kickoffScore ?? null),
+    responsivenessHint(reputation.responsivenessScore ?? null),
+    formatComponentHint("Participation", reputation.participationScore ?? null),
+  ].filter((value): value is string => typeof value === "string" && value.length > 0);
+
+  const improvementHints: string[] = [];
+  if ((reputation.participationScore ?? 0) < 0) {
+    improvementHints.push("Bid on more matched RFQs to build recent participation.");
+  }
+  if ((reputation.kickoffScore ?? 0) < 0) {
+    improvementHints.push("Tighten kickoff completion so projects move to production faster.");
+  }
+  if ((reputation.responsivenessScore ?? 0) < 0) {
+    improvementHints.push("Reply faster in quote threads—aim for <48 hours when a customer messages.");
+  }
+
+  return (
+    <PortalCard
+      title="Your Zartman reputation"
+      description="A read-only score derived from wins, follow-through, and responsiveness."
+    >
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+              Reputation
+            </p>
+            <p className="mt-1 text-sm text-slate-300">
+              {formatReputationLabel(label)}{" "}
+              <span className="text-slate-400">({score}/100)</span>
+            </p>
+          </div>
+          <span
+            className={clsx(
+              "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+              reputationPillClasses(label),
+            )}
+          >
+            {formatReputationLabel(label)}
+          </span>
+        </div>
+
+        {bullets.length > 0 ? (
+          <ul className="list-disc space-y-1 pl-5 text-sm text-slate-300">
+            {bullets.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : null}
+
+        {improvementHints.length > 0 ? (
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              How to improve
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-300">
+              {improvementHints.map((hint) => (
+                <li key={hint}>{hint}</li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">
+            Keep bidding and completing kickoff tasks to maintain a strong reputation.
+          </p>
+        )}
+      </div>
+    </PortalCard>
   );
 }
 
