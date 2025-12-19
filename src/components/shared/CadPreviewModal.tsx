@@ -16,6 +16,14 @@ export type CadPreviewModalProps = {
   cadKind: CadKind;
 };
 
+function augmentPartsFilePreviewUrl(baseUrl: string, cadKind: CadKind): string {
+  if (!baseUrl.startsWith("/api/parts-file-preview")) return baseUrl;
+  if (cadKind !== "step") return baseUrl;
+  const hasQuery = baseUrl.includes("?");
+  const sep = hasQuery ? "&" : "?";
+  return `${baseUrl}${sep}previewAs=stl_preview`;
+}
+
 export function CadPreviewModal({
   fileId,
   onClose,
@@ -32,9 +40,12 @@ export function CadPreviewModal({
     setErrorReason(null);
   }, [fileId]);
 
-  const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(
-    fileId,
-  )}&disposition=attachment`;
+  const safeFilename = typeof filename === "string" && filename.trim() ? filename.trim() : null;
+  const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(fileId)}&disposition=attachment`;
+  const baseInlineUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(fileId)}${
+    safeFilename ? `&fileName=${encodeURIComponent(safeFilename)}` : ""
+  }&disposition=inline`;
+  const previewUrl = augmentPartsFilePreviewUrl(baseInlineUrl, cadKind);
 
   const isSupportedCadKind =
     cadKind === "stl" || cadKind === "step" || cadKind === "obj" || cadKind === "glb";
@@ -99,23 +110,29 @@ export function CadPreviewModal({
               </div>
             </div>
           ) : (
-            <div>
-            <ThreeCadViewer
-              fileId={fileId}
-              filenameHint={filename ?? null}
-              cadKind={cadKind}
-              onStatusChange={(report) => {
-                setViewerStatus(report.status);
-                setErrorReason(report.errorReason ?? null);
-              }}
-            />
-            {cadKind === "step" ? (
-              <div className="mt-4 text-xs text-muted-foreground border border-dashed rounded-md p-2">
-                <div>STEP debug</div>
-                <div>Status: {viewerStatus}</div>
-                <div>Reason: {errorReason ?? "none"}</div>
-              </div>
-            ) : null}
+            <div className="space-y-4">
+              <ThreeCadViewer
+                fileName={safeFilename ?? "file"}
+                url={previewUrl}
+                cadKind={cadKind}
+                onStatusChange={(report) => {
+                  setViewerStatus(report.status);
+                  setErrorReason(report.errorReason ?? null);
+                }}
+              />
+              {cadKind === "step" && (viewerStatus === "error" || viewerStatus === "unsupported") ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">
+                  <p className="font-semibold text-slate-100">
+                    STEP preview is not available for this file yet.
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Reason: {errorReason ?? "Preview conversion failed."}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-400">
+                    You can still download the original file above.
+                  </p>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

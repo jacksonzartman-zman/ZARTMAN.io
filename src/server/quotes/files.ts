@@ -240,7 +240,7 @@ async function getPreviewForCandidate(
         candidate.fileName ??
         extractFileNameFromPath(candidate.storagePath) ??
         undefined,
-      reason: "Only STL files are supported for preview today.",
+      reason: "3D preview is coming soon; your file is still included with the RFQ.",
     };
     cache.set(cacheKey, result);
     return result;
