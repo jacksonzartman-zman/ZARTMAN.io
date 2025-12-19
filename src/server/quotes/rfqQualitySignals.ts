@@ -53,6 +53,13 @@ type SupplierMatchHealthRowLite = {
   match_health: string | null;
 };
 
+type QuoteRfqFeedbackRowLite = {
+  supplier_id: string | null;
+  categories: string[] | null;
+  note: string | null;
+  created_at: string | null;
+};
+
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -204,6 +211,34 @@ async function safeLoadMatchHealthBySupplierIds(
   }
 }
 
+async function safeLoadQuoteRfqFeedback(quoteId: string): Promise<QuoteRfqFeedbackRowLite[]> {
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_rfq_feedback")
+      .select("supplier_id,categories,note,created_at")
+      .eq("quote_id", quoteId)
+      .returns<QuoteRfqFeedbackRowLite[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return [];
+      console.error("[rfq quality] quote_rfq_feedback load failed", {
+        quoteId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return [];
+    }
+
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return [];
+    console.error("[rfq quality] quote_rfq_feedback load crashed", {
+      quoteId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return [];
+  }
+}
+
 export async function computeRfqQualitySummary(
   quoteId: string,
 ): Promise<RfqQualitySummary> {
@@ -278,10 +313,11 @@ export async function computeRfqQualitySummary(
   }
 
   // Invites + bids timing / engagement.
-  const [invites, bids, messagesResult] = await Promise.all([
+  const [invites, bids, messagesResult, feedbackRows] = await Promise.all([
     safeLoadQuoteInvites(normalizedQuoteId),
     safeLoadSupplierBids(normalizedQuoteId),
     loadQuoteMessages({ quoteId: normalizedQuoteId, limit: 250 }),
+    safeLoadQuoteRfqFeedback(normalizedQuoteId),
   ]);
 
   const invitedSupplierIds = Array.from(
@@ -407,8 +443,57 @@ export async function computeRfqQualitySummary(
     }
   }
 
-  // “Declines” are not persisted yet (next pass). Keep 0 for now.
-  base.suppliersDeclined = 0;
+  // Persisted supplier declines (explicit feedback).
+  base.suppliersDeclined = feedbackRows.length;
+  if (feedbackRows.length > 0) {
+    const penaltyByCategory: Record<SupplierFeedbackCategory, number> = {
+      scope_unclear: 10,
+      missing_drawings: 10,
+      missing_cad: 10,
+      materials_unclear: 5,
+      timeline_unrealistic: 10,
+      outside_capability: 5,
+      pricing_risk: 5,
+      other: 0,
+    };
+
+    const categoryCounts = new Map<SupplierFeedbackCategory, number>();
+
+    for (const row of feedbackRows) {
+      const raw = Array.isArray(row?.categories) ? row.categories : [];
+      const cats = new Set(
+        raw
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter(Boolean) as SupplierFeedbackCategory[],
+      );
+      for (const cat of cats) {
+        if (!Object.prototype.hasOwnProperty.call(penaltyByCategory, cat)) continue;
+        categoryCounts.set(cat, (categoryCounts.get(cat) ?? 0) + 1);
+        score -= penaltyByCategory[cat] ?? 0;
+      }
+    }
+
+    for (const [category, count] of categoryCounts.entries()) {
+      if (count <= 0) continue;
+      const reason = `${count} supplier decline(s) cited ${category.replace(/_/g, " ")}.`;
+      const relevance =
+        category === "missing_cad" || category === "missing_drawings"
+          ? 90
+          : category === "timeline_unrealistic"
+            ? 80
+            : category === "scope_unclear" || category === "materials_unclear"
+              ? 70
+              : 55;
+
+      signals.push({
+        quoteId: normalizedQuoteId,
+        supplierId: "aggregate",
+        relevance,
+        category,
+        reason,
+      });
+    }
+  }
 
   // Sort by relevance (high → low) for stable UI.
   signals.sort((a, b) => {

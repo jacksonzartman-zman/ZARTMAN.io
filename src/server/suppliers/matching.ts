@@ -25,6 +25,8 @@ import { canUserBid } from "@/lib/permissions";
 import { computeFairnessBoost } from "@/lib/fairness";
 import { approvalsEnabled } from "./flags";
 import { QUOTE_OPEN_STATUSES, isOpenQuoteStatus } from "@/server/quotes/status";
+import type { SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
+import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 
 const DEFAULT_MATCH_LIMIT = 20;
 const DEFAULT_OPEN_QUOTE_FETCH_LIMIT = 50;
@@ -44,6 +46,16 @@ type UploadMatchingRow = Pick<
   "manufacturing_process" | "quantity" | "rfq_reason" | "notes"
 > & {
   id: string;
+};
+
+type QuoteRfqFeedbackSummary = {
+  totalDeclines: number;
+  byCategory: Partial<Record<SupplierFeedbackCategory, number>>;
+};
+
+type QuoteRfqFeedbackRowLite = {
+  quote_id: string | null;
+  categories: string[] | null;
 };
 
 export async function matchQuotesToSupplier(
@@ -184,6 +196,9 @@ export async function matchQuotesToSupplier(
     }
 
     const uploadMetaMap = await selectUploadMeta(quotes);
+    const feedbackSummaryByQuoteId = await safeLoadQuoteRfqFeedbackSummaryByQuoteId(
+      quotes.map((q) => q.id),
+    );
 
     const fairness = computeFairnessBoost({
       assignmentCount: assignmentRows.length,
@@ -266,7 +281,10 @@ export async function matchQuotesToSupplier(
         createdAt: quote.created_at,
         materialMatches,
       });
-      const score = baseScore + fairness.modifier;
+      const feedbackPenalty = computeFeedbackPenalty(
+        feedbackSummaryByQuoteId.get(quoteId) ?? null,
+      );
+      const score = baseScore + fairness.modifier - feedbackPenalty;
 
       matches.push({
         quoteId,
@@ -313,6 +331,92 @@ export async function matchQuotesToSupplier(
       error: "Unable to load matches right now",
     };
   }
+}
+
+async function safeLoadQuoteRfqFeedbackSummaryByQuoteId(
+  quoteIds: string[],
+): Promise<Map<string, QuoteRfqFeedbackSummary>> {
+  const ids = Array.from(
+    new Set(
+      (quoteIds ?? [])
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+  const map = new Map<string, QuoteRfqFeedbackSummary>();
+  for (const id of ids) {
+    map.set(id, { totalDeclines: 0, byCategory: {} });
+  }
+  if (ids.length === 0) return map;
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_rfq_feedback")
+      .select("quote_id,categories")
+      .in("quote_id", ids)
+      .returns<QuoteRfqFeedbackRowLite[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return map;
+      console.error("[supplier activity] quote_rfq_feedback load failed", {
+        quoteCount: ids.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const quoteId = typeof row?.quote_id === "string" ? row.quote_id.trim() : "";
+      if (!quoteId) continue;
+      const summary = map.get(quoteId) ?? { totalDeclines: 0, byCategory: {} };
+      summary.totalDeclines += 1;
+
+      const cats = new Set(
+        (Array.isArray(row?.categories) ? row.categories : [])
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter(Boolean) as SupplierFeedbackCategory[],
+      );
+      for (const cat of cats) {
+        summary.byCategory[cat] = (summary.byCategory[cat] ?? 0) + 1;
+      }
+      map.set(quoteId, summary);
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return map;
+    console.error("[supplier activity] quote_rfq_feedback load crashed", {
+      quoteCount: ids.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
+}
+
+function computeFeedbackPenalty(summary: QuoteRfqFeedbackSummary | null): number {
+  if (!summary || summary.totalDeclines <= 0) return 0;
+
+  const by = summary.byCategory ?? {};
+  const missingCad = by.missing_cad ?? 0;
+  const missingDrawings = by.missing_drawings ?? 0;
+  const scopeUnclear = by.scope_unclear ?? 0;
+  const timeline = by.timeline_unrealistic ?? 0;
+
+  let penalty = 0;
+
+  // Gentle global penalty when multiple suppliers already declined this RFQ.
+  if (summary.totalDeclines >= 2) penalty += 0.5;
+
+  // “Same reasons” penalty: 2+ declines in the same category.
+  if (missingCad >= 2) penalty += 1.0;
+  if (missingDrawings >= 2) penalty += 1.0;
+  if (scopeUnclear >= 2) penalty += 1.0;
+  if (timeline >= 2) penalty += 1.0;
+
+  // Persistent single-hit signals (still soft).
+  if (missingCad >= 1 || missingDrawings >= 1) penalty += 0.75;
+  if (timeline >= 1) penalty += 0.75;
+
+  return penalty;
 }
 
 type MatchDecisionEvent =
