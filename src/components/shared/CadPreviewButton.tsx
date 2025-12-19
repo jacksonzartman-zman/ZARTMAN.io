@@ -27,12 +27,18 @@ export function CadPreviewButton({
     return null;
   }
 
+  const tooltip =
+    classification.type === "step"
+      ? "STEP previews are experimental; if they fail, use Download."
+      : undefined;
+
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
         className={className}
+        title={tooltip}
       >
         {label}
       </button>
