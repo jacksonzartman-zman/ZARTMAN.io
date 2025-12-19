@@ -1,7 +1,9 @@
 "use client";
 
 import clsx from "clsx";
-import { ThreeCadViewer } from "@/components/ThreeCadViewer";
+import { useEffect, useMemo, useState } from "react";
+import { ThreeCadViewer, type ThreeCadViewerReport } from "@/components/ThreeCadViewer";
+import { classifyCadFileType } from "@/lib/cadRendering";
 
 export type CadPreviewModalProps = {
   fileId: string;
@@ -13,9 +15,22 @@ export type CadPreviewModalProps = {
 export function CadPreviewModal({ fileId, onClose, title, filename }: CadPreviewModalProps) {
   const safeTitle = typeof title === "string" && title.trim() ? title.trim() : "3D Preview";
 
+  const [viewerReport, setViewerReport] = useState<ThreeCadViewerReport | null>(null);
+  useEffect(() => {
+    setViewerReport(null);
+  }, [fileId]);
+
   const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(
     fileId,
   )}&disposition=attachment`;
+
+  const isStep = useMemo(() => {
+    const classification = classifyCadFileType({ filename: filename ?? null, extension: null });
+    return classification.ok && classification.type === "step";
+  }, [filename]);
+
+  const showStepFallback =
+    isStep && (viewerReport?.status === "error" || viewerReport?.status === "unsupported");
 
   return (
     <div
@@ -57,7 +72,30 @@ export function CadPreviewModal({ fileId, onClose, title, filename }: CadPreview
         </div>
 
         <div className="p-6">
-          <ThreeCadViewer fileId={fileId} filenameHint={filename ?? null} />
+          {showStepFallback ? (
+            <div className="flex h-[70vh] min-h-[380px] items-center justify-center rounded-xl border border-slate-800 bg-black px-6 text-center">
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-slate-100">STEP preview</p>
+                <p className="max-w-lg text-sm text-slate-300">
+                  STEP preview is not available for this file in the browser yet.
+                </p>
+                <a
+                  href={downloadUrl}
+                  className={clsx(
+                    "inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-900/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600",
+                  )}
+                >
+                  Download file
+                </a>
+              </div>
+            </div>
+          ) : (
+            <ThreeCadViewer
+              fileId={fileId}
+              filenameHint={filename ?? null}
+              onStatusChange={(report) => setViewerReport(report)}
+            />
+          )}
         </div>
       </div>
     </div>
