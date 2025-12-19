@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { classifyCadFileType } from "@/lib/cadRendering";
 import { CadPreviewModal } from "@/components/shared/CadPreviewModal";
+import type { CadKind } from "@/components/ThreeCadViewer";
 
 export function CadPreviewButton({
   fileId,
@@ -27,6 +28,7 @@ export function CadPreviewButton({
     return null;
   }
 
+  const cadKind: CadKind = classification.type;
   const tooltip =
     classification.type === "step"
       ? "STEP previews are experimental; if they fail, we’ll show you the reason and you can still download the file."
@@ -46,6 +48,7 @@ export function CadPreviewButton({
         <CadPreviewModal
           fileId={fileId}
           filename={filename}
+          cadKind={cadKind}
           title="3D Preview"
           onClose={() => setOpen(false)}
         />
