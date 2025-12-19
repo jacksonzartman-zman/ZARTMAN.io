@@ -4,11 +4,17 @@ import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getCustomerByEmail, getCustomerByUserId } from "@/server/customers";
+import { ensureStepPreviewForFile } from "@/server/quotes/stepPreview";
 
 export const dynamic = "force-dynamic";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizePreviewAs(value: unknown): "original" | "stl_preview" {
+  const raw = typeof value === "string" ? value.trim() : "";
+  return raw === "stl_preview" ? "stl_preview" : "original";
 }
 
 function normalizeEmail(value: unknown): string | null {
@@ -24,6 +30,7 @@ export async function GET(req: NextRequest) {
   const quoteIdParam = normalizeId(req.nextUrl.searchParams.get("quoteId"));
   const dispositionRaw = normalizeId(req.nextUrl.searchParams.get("disposition"));
   const disposition = dispositionRaw === "attachment" ? "attachment" : "inline";
+  const previewAs = normalizePreviewAs(req.nextUrl.searchParams.get("previewAs"));
 
   if (!fileId) {
     return new NextResponse("missing_identifiers", { status: 400 });
@@ -113,6 +120,34 @@ export async function GET(req: NextRequest) {
         return new NextResponse("forbidden", { status: 403 });
       }
     }
+  }
+
+  const ext = normalizeId(fileRow?.extension ?? "").toLowerCase().replace(/^\./, "");
+  const isStep = ext === "step" || ext === "stp" || (fileRow?.filename ?? "").toLowerCase().endsWith(".step") || (fileRow?.filename ?? "").toLowerCase().endsWith(".stp");
+
+  // STEP STL preview path (generated on demand server-side).
+  if (isStep && previewAs === "stl_preview") {
+    const preview = await ensureStepPreviewForFile(fileId);
+    if (!preview) {
+      return NextResponse.json({ error: "step_preview_unavailable" }, { status: 502 });
+    }
+
+    const { data: blob, error: downloadError } = await supabaseServer.storage
+      .from(preview.bucket)
+      .download(preview.path);
+
+    if (downloadError || !blob) {
+      return NextResponse.json({ error: "step_preview_unavailable" }, { status: 502 });
+    }
+
+    return new NextResponse(blob.stream(), {
+      status: 200,
+      headers: {
+        "Content-Type": "model/stl",
+        "Content-Disposition": "inline",
+        "Cache-Control": "no-store",
+      },
+    });
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
