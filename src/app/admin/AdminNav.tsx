@@ -6,9 +6,11 @@ import {
   type PortalNavLink,
 } from "@/app/(portals)/components/PortalNavTabs";
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
+import { NotificationsTray } from "@/components/notifications/NotificationsTray";
 
 const ADMIN_NAV_LINKS: PortalNavLink[] = [
   { label: "Overview", href: "/admin/overview" },
+  { label: "Notifications", href: "/admin/notifications" },
   { label: "Analytics", href: "/admin/analytics" },
   { label: "Uploads", href: "/admin/uploads" },
   { label: "Quotes", href: "/admin/quotes" },
@@ -25,8 +27,9 @@ export default function AdminNav() {
 
   return (
     <div className="border-b border-slate-900 bg-slate-950/60">
-      <PortalContainer className="flex items-center justify-start py-3">
+      <PortalContainer className="flex items-center justify-between gap-3 py-3">
         <PortalNavTabs links={ADMIN_NAV_LINKS} currentPath={pathname} />
+        <NotificationsTray viewAllHref="/admin/notifications" />
       </PortalContainer>
     </div>
   );

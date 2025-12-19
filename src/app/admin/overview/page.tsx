@@ -2,13 +2,19 @@ import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import AdminDashboardShell from "@/app/admin/AdminDashboardShell";
+import { requireAdminUser } from "@/server/auth";
 import { loadAdminOverview } from "@/server/admin/overview";
 import type { SystemHealthStatus } from "@/server/admin/systemHealth";
+import { refreshNotificationsForUser } from "@/server/notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function AdminOverviewPage() {
+  const admin = await requireAdminUser();
+  void refreshNotificationsForUser(admin.id, "admin").catch((error) => {
+    console.error("[notifications] refresh failed (admin)", { userId: admin.id, error });
+  });
   const summary = await loadAdminOverview();
 
   return (

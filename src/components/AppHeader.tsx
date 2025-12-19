@@ -1,7 +1,6 @@
 import AppHeaderClient from "./AppHeaderClient";
 import { createAuthClient, getServerAuthUser } from "@/server/auth";
 import { redirect } from "next/navigation";
-import { loadNotificationsForUser } from "@/server/notifications";
 import { resolveUserRoles } from "@/server/users/roles";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { loadSupplierProfile } from "@/server/suppliers";
@@ -14,12 +13,6 @@ export type HeaderUser = {
 
 export default async function AppHeader() {
   const { user } = await getServerAuthUser();
-  const notifications = user
-    ? await loadNotificationsForUser({
-        userId: user.id,
-        email: user.email ?? null,
-      })
-    : [];
   const roles = user ? await resolveUserRoles(user.id) : null;
   const supplierDecisionCount =
     user && roles?.isSupplier
@@ -41,7 +34,6 @@ export default async function AppHeader() {
     <AppHeaderClient
       user={headerUser}
       signOutAction={user ? handleSignOut : undefined}
-      notifications={notifications}
       supplierDecisionCount={supplierDecisionCount}
     />
   );
