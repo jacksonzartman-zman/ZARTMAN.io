@@ -29,7 +29,7 @@ export function CadPreviewButton({
 
   const tooltip =
     classification.type === "step"
-      ? "STEP previews are experimental; if they fail, use Download."
+      ? "STEP previews are experimental; if they fail, we’ll show you the reason and you can still download the file."
       : undefined;
 
   return (
