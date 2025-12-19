@@ -27,20 +27,14 @@ export function CadPreviewModal({
 
   const [viewerStatus, setViewerStatus] = useState<ViewerStatus>("idle");
   const [errorReason, setErrorReason] = useState<string | null>(null);
-  const [viewerCadKind, setViewerCadKind] = useState<CadKind | null>(null);
   useEffect(() => {
     setViewerStatus("idle");
     setErrorReason(null);
-    setViewerCadKind(null);
   }, [fileId]);
 
   const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(
     fileId,
   )}&disposition=attachment`;
-
-  const isStep = cadKind === "step" || viewerCadKind === "step";
-  const showStepFallback =
-    isStep && (viewerStatus === "error" || viewerStatus === "unsupported");
 
   const isSupportedCadKind =
     cadKind === "stl" || cadKind === "step" || cadKind === "obj" || cadKind === "glb";
@@ -105,31 +99,7 @@ export function CadPreviewModal({
               </div>
             </div>
           ) : (
-            <div className="relative">
-              {showStepFallback ? (
-                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border border-slate-800 bg-black/70 px-6 text-center">
-                  <div className="space-y-3">
-                    <p className="text-sm font-semibold text-slate-100">
-                      STEP preview is not available for this file yet
-                    </p>
-                    {errorReason ? (
-                      <p className="max-w-lg text-sm text-slate-300">Reason: {errorReason}</p>
-                    ) : (
-                      <p className="max-w-lg text-sm text-slate-300">
-                        STEP preview is not available for this file in the browser yet.
-                      </p>
-                    )}
-                    <a
-                      href={downloadUrl}
-                      className={clsx(
-                        "inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-900/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600",
-                      )}
-                    >
-                      Download file
-                    </a>
-                  </div>
-                </div>
-              ) : null}
+            <div>
             <ThreeCadViewer
               fileId={fileId}
               filenameHint={filename ?? null}
@@ -137,9 +107,15 @@ export function CadPreviewModal({
               onStatusChange={(report) => {
                 setViewerStatus(report.status);
                 setErrorReason(report.errorReason ?? null);
-                setViewerCadKind(report.cadKind ?? null);
               }}
             />
+            {cadKind === "step" ? (
+              <div className="mt-4 text-xs text-muted-foreground border border-dashed rounded-md p-2">
+                <div>STEP debug</div>
+                <div>Status: {viewerStatus}</div>
+                <div>Reason: {errorReason ?? "none"}</div>
+              </div>
+            ) : null}
             </div>
           )}
         </div>

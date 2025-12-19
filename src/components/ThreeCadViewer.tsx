@@ -9,11 +9,12 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { classifyCadFileType } from "@/lib/cadRendering";
 
-export type CadKind = "stl" | "obj" | "glb" | "step" | "unknown";
+export type CadKind = "stl" | "obj" | "glb" | "step";
+type CadKindOrUnknown = CadKind | "unknown";
 export type ViewerStatus = "idle" | "loading" | "ready" | "error" | "unsupported";
 export type ThreeCadViewerReport = {
   status: ViewerStatus;
-  cadKind: CadKind;
+  cadKind: CadKindOrUnknown;
   message: string | null;
   /**
    * Human-readable diagnostic reason (primarily for STEP failures).
@@ -171,12 +172,18 @@ export function ThreeCadViewer({
   cadKind,
   onStatusChange,
 }: ThreeCadViewerProps) {
+  console.log("[three-step-debug] mount", {
+    quoteUploadFileId: fileId,
+    fileName: filenameHint ?? null,
+    cadKindProp: cadKind ?? null,
+  });
+
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<ViewerStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [errorReason, setErrorReason] = useState<string | null>(null);
   const [resolvedFilename, setResolvedFilename] = useState<string | null>(null);
-  const [resolvedCadKind, setResolvedCadKind] = useState<CadKind>("unknown");
+  const [resolvedCadKind, setResolvedCadKind] = useState<CadKindOrUnknown>("unknown");
 
   const safeFileId = safeTrim(fileId);
 
@@ -195,7 +202,7 @@ export function ThreeCadViewer({
   }, [filenameHint, resolvedFilename]);
 
   const detectedCadKindForUi = useMemo(() => {
-    if (cadKind && cadKind !== "unknown") {
+    if (cadKind) {
       return cadKind;
     }
     if (resolvedCadKind && resolvedCadKind !== "unknown") {
@@ -242,11 +249,13 @@ export function ThreeCadViewer({
     };
 
     const start = async () => {
-      let detectedCadKind: CadKind = "unknown";
+      let detectedCadKind: CadKindOrUnknown = "unknown";
+      let detectedCadKindForLogs: CadKind | null = null;
+      let fileNameForLogs: string | null = filenameHint ?? resolvedFilename ?? null;
 
       const setViewerState = (next: {
         status: ViewerStatus;
-        cadKind?: CadKind;
+        cadKind?: CadKindOrUnknown;
         message?: string | null;
         errorReason?: string | null;
       }) => {
@@ -294,6 +303,7 @@ export function ThreeCadViewer({
 
         const inferred = parseFilenameFromContentDisposition(res.headers.get("content-disposition"));
         if (!disposed) setResolvedFilename(inferred ?? null);
+        fileNameForLogs = filenameHint ?? inferred ?? resolvedFilename ?? null;
 
         const blob = await res.blob();
         if (disposed) return;
@@ -310,15 +320,20 @@ export function ThreeCadViewer({
         }
 
         const fileNameForType = filenameHint ?? inferred ?? null;
-        const resolvedKind: CadKind | null =
-          cadKind && cadKind !== "unknown"
-            ? cadKind
-            : (() => {
-                const typeInfo = classifyCadFileType({ filename: fileNameForType, extension: null });
-                return typeInfo.ok ? typeInfo.type : null;
-              })();
+        const resolvedCadKind: CadKind | null =
+          cadKind ??
+          (() => {
+            const typeInfo = classifyCadFileType({ filename: fileNameForType, extension: null });
+            return typeInfo.ok ? typeInfo.type : null;
+          })();
 
-        if (!resolvedKind) {
+        console.log("[three-step-debug] resolvedCadKind", {
+          quoteUploadFileId: safeFileId,
+          fileName: fileNameForType ?? null,
+          cadKind: resolvedCadKind,
+        });
+
+        if (!resolvedCadKind) {
           setViewerState({
             status: "error",
             cadKind: "unknown",
@@ -329,15 +344,28 @@ export function ThreeCadViewer({
           return;
         }
 
-        detectedCadKind = resolvedKind;
-        setViewerState({ status: "loading", cadKind: detectedCadKind, message: null, errorReason: null });
+        detectedCadKind = resolvedCadKind;
+        detectedCadKindForLogs = resolvedCadKind;
+        setViewerState({
+          status: "loading",
+          cadKind: detectedCadKind,
+          message: null,
+          errorReason: null,
+        });
+
+        if (resolvedCadKind !== "step") {
+          console.log("[three-step-debug] non-step-load", {
+            cadKind: resolvedCadKind,
+            fileName: fileNameForType ?? null,
+          });
+        }
 
         ({ renderer, scene, camera, controls, resizeObserver } = initializeThree(container));
 
         const buffer = await blob.arrayBuffer();
         if (disposed) return;
 
-        if (resolvedKind === "stl") {
+        if (resolvedCadKind === "stl") {
           const loader = new STLLoader();
           const geometry = loader.parse(buffer);
           geometry.computeVertexNormals();
@@ -350,7 +378,7 @@ export function ThreeCadViewer({
           // Match existing STL orientation convention.
           mesh.rotation.set(-Math.PI / 2, 0, 0);
           objectRoot = mesh;
-        } else if (resolvedKind === "obj") {
+        } else if (resolvedCadKind === "obj") {
           const text = new TextDecoder().decode(new Uint8Array(buffer));
           const loader = new OBJLoader();
           const obj = loader.parse(text);
@@ -367,61 +395,69 @@ export function ThreeCadViewer({
             }
           });
           objectRoot = obj;
-        } else if (resolvedKind === "glb") {
+        } else if (resolvedCadKind === "glb") {
           const loader = new GLTFLoader();
           const gltf = await loader.parseAsync(buffer, "");
           objectRoot = gltf.scene ?? new THREE.Group();
-        } else if (resolvedKind === "step") {
+        } else if (resolvedCadKind === "step") {
           const stepBytes = new Uint8Array(buffer);
-          const fileNameForLogs = fileNameForType ?? inferred ?? filenameHint ?? null;
-          const logStepFailure = (reason: string, err?: unknown) => {
-            console.error("[three-step-preview]", {
-              quoteUploadFileId: safeFileId,
-              fileName: fileNameForLogs,
-              reason,
-              err: err ?? null,
-            });
-          };
+          const resolvedLogFileName = fileNameForType ?? inferred ?? filenameHint ?? null;
 
-          const failUnsupported = (message: string, reason: string, err?: unknown) => {
-            logStepFailure(reason, err);
-            setViewerState({ status: "unsupported", cadKind: "step", message, errorReason: reason });
+          console.log("[three-step-debug] step-start", {
+            quoteUploadFileId: safeFileId,
+            fileName: resolvedLogFileName,
+          });
+          console.log("[three-step-debug] step-webassembly", {
+            hasWebAssembly: typeof WebAssembly !== "undefined",
+          });
+
+          const failUnsupported = (reason: string) => {
+            setViewerState({
+              status: "unsupported",
+              cadKind: "step",
+              message: "STEP preview is not available for this file. You can still download it.",
+              errorReason: reason,
+            });
             cleanup();
           };
 
-          const failStep = (message: string, reason: string, err?: unknown) => {
-            logStepFailure(reason, err);
-            setViewerState({ status: "error", cadKind: "step", message, errorReason: reason });
+          const failError = (reason: string) => {
+            setViewerState({
+              status: "error",
+              cadKind: "step",
+              message: "STEP preview failed for this file. You can still download it.",
+              errorReason: reason,
+            });
             cleanup();
           };
 
           try {
             if (typeof WebAssembly === "undefined") {
-              failUnsupported(
-                "STEP preview is not available in this browser. You can still download the file.",
-                "WebAssembly not available in this environment",
-              );
+              failUnsupported("WebAssembly missing");
               return;
             }
 
             let mod: any;
             try {
+              console.log("[three-step-debug] step-import-occt");
               mod = (await import("occt-import-js")) as any;
             } catch (err) {
-              failStep(
-                "STEP preview failed for this file. You can still download it.",
-                "Failed to load occt-import-js bundle",
+              console.error("[three-step-debug] step-error", {
+                quoteUploadFileId: safeFileId,
+                fileName: resolvedLogFileName,
                 err,
-              );
+              });
+              failError("occt import failed");
               return;
             }
 
+            console.log("[three-step-debug] step-import-occt-success", {
+              keys: Object.keys(mod ?? {}),
+            });
+
             const occtFactory = mod?.default ?? mod;
             if (typeof occtFactory !== "function") {
-              failUnsupported(
-                "STEP preview is not available for this file in the browser yet. You can still download it.",
-                "occt-import-js did not expose an initializer function",
-              );
+              failUnsupported("occt initializer missing");
               return;
             }
 
@@ -435,39 +471,29 @@ export function ThreeCadViewer({
                 },
               });
             } catch (err) {
-              const message = String((err as any)?.message ?? "");
-              const reason = message.includes(".wasm") || message.toLowerCase().includes("wasm")
-                ? "occt-import-js missing WASM assets at runtime"
-                : "Failed to initialize occt-import-js";
-              failStep("STEP preview failed for this file. You can still download it.", reason, err);
+              console.error("[three-step-debug] step-error", {
+                quoteUploadFileId: safeFileId,
+                fileName: resolvedLogFileName,
+                err,
+              });
+              failError("occt init failed");
               return;
             }
 
             if (!occt || typeof occt.ReadStepFile !== "function") {
-              failStep(
-                "STEP preview failed for this file. You can still download it.",
-                "occt-import-js initialized but missing ReadStepFile()",
-              );
+              failError("occt missing ReadStepFile");
               return;
             }
 
             const result = occt.ReadStepFile(stepBytes, null);
             if (!result?.success) {
-              failStep(
-                "STEP preview failed for this file. You can still download it.",
-                "occt-import-js failed to parse STEP file",
-                new Error("step_import_failed"),
-              );
+              failError("step parse failed");
               return;
             }
 
             const meshes = Array.isArray(result.meshes) ? result.meshes : [];
             if (meshes.length === 0) {
-              failStep(
-                "STEP preview failed for this file. You can still download it.",
-                "STEP tessellation produced no triangles",
-                new Error("step_no_meshes"),
-              );
+              failError("no triangles");
               return;
             }
 
@@ -524,30 +550,38 @@ export function ThreeCadViewer({
             }
 
             if (group.children.length === 0) {
-              failStep(
-                "STEP preview failed for this file. You can still download it.",
-                "STEP tessellation produced no triangles",
-                new Error("step_mesh_build_failed"),
-              );
+              failError("no triangles");
               return;
             }
 
             if (totalTriangles <= 0) {
-              failStep(
-                "STEP preview failed for this file. You can still download it.",
-                "STEP tessellation produced no triangles",
-                new Error("step_no_triangles"),
-              );
+              failError("no triangles");
               return;
             }
 
+            const stepBbox = new THREE.Box3().setFromObject(group);
+            console.log("[three-step-debug] step-parse-success", {
+              triangleCount: totalTriangles,
+              bbox: {
+                min: [stepBbox.min.x, stepBbox.min.y, stepBbox.min.z],
+                max: [stepBbox.max.x, stepBbox.max.y, stepBbox.max.z],
+              },
+            });
+
             objectRoot = group;
           } catch (error) {
-            failStep(
-              "STEP preview failed for this file. You can still download it.",
-              "Unexpected STEP preview error",
-              error,
-            );
+            console.error("[three-step-debug] step-error", {
+              quoteUploadFileId: safeFileId,
+              fileName: resolvedLogFileName,
+              err: error,
+            });
+            setViewerState({
+              status: "error",
+              cadKind: "step",
+              message: "STEP preview failed for this file. You can still download it.",
+              errorReason: "unexpected STEP error",
+            });
+            cleanup();
             return;
           }
         }

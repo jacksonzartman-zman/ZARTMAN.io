@@ -791,7 +791,11 @@ function CadDrawingPreviewModal({
                   ) : null}
                 </div>
 
-                <ThreeCadViewer fileId={active?.fileId ?? ""} filenameHint={active?.filename ?? null} />
+                <ThreeCadViewer
+                  fileId={active?.fileId ?? ""}
+                  filenameHint={active?.filename ?? null}
+                  cadKind={cadType.ok ? cadType.type : null}
+                />
               </div>
             ) : (
               <div className="p-6">
