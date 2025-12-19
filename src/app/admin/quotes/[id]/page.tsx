@@ -100,6 +100,7 @@ import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
+import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import {
   createQuotePartAction,
   updateQuotePartFilesForQuoteAction,
@@ -516,6 +517,37 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         });
       }
     }
+
+    const bidComparisonSummary = await loadBidComparisonSummary(quote.id);
+    const bidCompareRows = bidComparisonSummary.rows ?? [];
+    const comparisonBySupplierId = Object.fromEntries(
+      bidCompareRows.map((row) => [
+        row.supplierId,
+        {
+          matchHealth: row.matchHealth,
+          benchStatus: row.benchStatus,
+          partsCoverage: row.partsCoverage,
+          compositeScore: row.compositeScore,
+        },
+      ]),
+    );
+    const compareRowsByScore = [...bidCompareRows].sort((a, b) => {
+      const sa = typeof a.compositeScore === "number" ? a.compositeScore : -1;
+      const sb = typeof b.compositeScore === "number" ? b.compositeScore : -1;
+      if (sb !== sa) return sb - sa;
+      return a.supplierName.localeCompare(b.supplierName);
+    });
+    const bestCompositeScore =
+      compareRowsByScore.length > 0 && typeof compareRowsByScore[0]?.compositeScore === "number"
+        ? compareRowsByScore[0]!.compositeScore
+        : null;
+    const recommendedSupplierIds = compareRowsByScore
+      .filter((row) => typeof row.compositeScore === "number")
+      .filter((row) =>
+        bestCompositeScore === null ? false : (row.compositeScore ?? -1) >= bestCompositeScore - 5,
+      )
+      .slice(0, 2)
+      .map((row) => row.supplierId);
 
     const fallbackBestPriceBid = findBestPriceBid(bids);
     const fallbackBestPriceAmount =
@@ -1913,6 +1945,37 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             }
           >
             <div className="space-y-4">
+              {bidCompareRows.length === 1 ? (
+                <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4 text-sm text-slate-200">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Decision assistant
+                  </p>
+                  <p className="mt-1 text-sm text-slate-300">
+                    Only one supplier has bid on this RFQ so far.
+                  </p>
+                </div>
+              ) : bidCompareRows.length > 1 ? (
+                <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4 text-sm text-slate-200">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Decision assistant
+                  </p>
+                  <p className="mt-1 text-sm text-slate-300">
+                    {(() => {
+                      const candidates = compareRowsByScore
+                        .filter((row) => typeof row.compositeScore === "number")
+                        .slice(0, 2)
+                        .map((row) => row.supplierName);
+                      if (candidates.length === 0) {
+                        return "Review bids below to make an award decision.";
+                      }
+                      if (candidates.length === 1) {
+                        return `Based on price, lead time, and supplier fit, ${candidates[0]} looks like the best candidate.`;
+                      }
+                      return `Based on price, lead time, and supplier fit, ${candidates[0]} and ${candidates[1]} look like the best candidates.`;
+                    })()}
+                  </p>
+                </div>
+              ) : null}
               {aggregateBidCount === 0 && !hasWinningBid ? (
                 <EmptyStateCard
                   title="No bids yet"
@@ -1945,6 +2008,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 awardedBidId={quote.awarded_bid_id ?? null}
                 awardedSupplierId={quote.awarded_supplier_id ?? null}
                 bids={bids}
+                bidComparisonBySupplierId={comparisonBySupplierId}
+                recommendedSupplierIds={recommendedSupplierIds}
                 bidsLoaded={bidsResult.ok}
                 errorMessage={bidsResult.error ?? null}
               />

@@ -6,7 +6,7 @@
  * - Done: Error copy is calm + actionable
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
@@ -25,6 +25,8 @@ export type CustomerQuoteAwardPanelProps = {
   canSubmit: boolean;
   disableReason?: string | null;
   winningBidId?: string | null;
+  anchorId?: string;
+  preselectBidId?: string | null;
 };
 
 export function CustomerQuoteAwardPanel({
@@ -33,6 +35,8 @@ export function CustomerQuoteAwardPanel({
   canSubmit,
   disableReason,
   winningBidId,
+  anchorId,
+  preselectBidId,
 }: CustomerQuoteAwardPanelProps) {
   const router = useRouter();
   const action = useMemo(() => awardQuoteToBidAction, []);
@@ -41,6 +45,7 @@ export function CustomerQuoteAwardPanel({
     INITIAL_AWARD_STATE,
   );
   const [confirmingBidId, setConfirmingBidId] = useState<string | null>(null);
+  const didAutoPreselect = useRef(false);
 
   const resolvedWinnerId = state.selectedBidId ?? winningBidId ?? null;
   const selectionLocked = Boolean(resolvedWinnerId);
@@ -61,6 +66,15 @@ export function CustomerQuoteAwardPanel({
   }, [state.ok, state.selectedBidId]);
 
   useEffect(() => {
+    if (didAutoPreselect.current) return;
+    if (!preselectBidId) return;
+    if (!canSubmit) return;
+    if (selectionLocked) return;
+    didAutoPreselect.current = true;
+    setConfirmingBidId(preselectBidId);
+  }, [preselectBidId, selectionLocked, canSubmit]);
+
+  useEffect(() => {
     if (!state.ok || !state.selectedBidId) return;
     // Re-fetch server-rendered status + pills, then guide attention to Kickoff.
     router.refresh();
@@ -69,7 +83,10 @@ export function CustomerQuoteAwardPanel({
   }, [router, state.ok, state.selectedBidId]);
 
   return (
-    <section className="space-y-5 rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5">
+    <section
+      id={anchorId ?? undefined}
+      className="space-y-5 rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5"
+    >
       <header className="space-y-2">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
