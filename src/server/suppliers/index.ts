@@ -1,6 +1,7 @@
 export * from "./types";
 export * from "./profile";
 export * from "./bids";
+export * from "./bidLines";
 export * from "./matching";
 export * from "./inbox";
 export * from "./matchHealth";

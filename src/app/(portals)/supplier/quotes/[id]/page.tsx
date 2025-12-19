@@ -39,6 +39,7 @@ import {
   type BidRow,
 } from "@/server/bids";
 import { SupplierBidPanel } from "./SupplierBidPanel";
+import { BidWorkspace } from "./BidWorkspace";
 import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
 import { getServerAuthUser } from "@/server/auth";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
@@ -87,8 +88,12 @@ import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
+import { loadSupplierBidDraft, type SupplierBidDraft } from "@/server/suppliers";
 
 export const dynamic = "force-dynamic";
+
+const UPLOAD_ACCEPT =
+  ".pdf,.dwg,.dxf,.step,.stp,.igs,.iges,.sldprt,.prt,.stl,.zip";
 
 type SupplierQuotePageProps = {
   params: Promise<{ id: string }>;
@@ -176,10 +181,10 @@ export default async function SupplierQuoteDetailPage({
 
   const approvalsOn = approvalsEnabled();
   const approved = approvalsOn ? profile.approved : true;
-  const bidResult = await loadBidForSupplierAndQuote(
-    profile.supplier.id,
-    quoteId,
-  );
+  const [bidResult, draft] = await Promise.all([
+    loadBidForSupplierAndQuote(profile.supplier.id, quoteId),
+    loadSupplierBidDraft(quoteId, profile.supplier.id),
+  ]);
   const initialBid = bidResult.ok ? bidResult.data : null;
   const bidsUnavailableMessage = bidResult.ok ? null : bidResult.error ?? null;
   const existingBid = initialBid;
@@ -321,6 +326,7 @@ export default async function SupplierQuoteDetailPage({
       supplierNameOverride={profile.supplier.company_name}
       existingBid={existingBid}
       initialBid={initialBid}
+      initialDraft={draft}
       bidsUnavailableMessage={bidsUnavailableMessage}
       approvalsOn={approvalsOn}
       approved={approved}
@@ -354,6 +360,7 @@ function SupplierQuoteWorkspace({
   supplierNameOverride,
   existingBid,
   initialBid,
+  initialDraft,
   bidsUnavailableMessage,
   approvalsOn,
   approved,
@@ -383,6 +390,7 @@ function SupplierQuoteWorkspace({
   supplierNameOverride?: string | null;
   existingBid: BidRow | null;
   initialBid: BidRow | null;
+  initialDraft: SupplierBidDraft | null;
   bidsUnavailableMessage: string | null;
   approvalsOn: boolean;
   approved: boolean;
@@ -690,15 +698,24 @@ function SupplierQuoteWorkspace({
             Bidding is disabled because this RFQ is no longer accepting new proposals.
           </p>
         ) : null}
-        <SupplierBidPanel
-          quoteId={quote.id}
-          initialBid={initialBid}
-          approvalsOn={approvalsOn}
-          approved={approved}
-          bidsUnavailableMessage={bidsUnavailableMessage}
-          bidLocked={acceptedLock || closedWindowLock}
-          showDecline={canSubmitBid && !acceptedLock && !closedWindowLock}
-        />
+        {canSubmitBid && !acceptedLock && !closedWindowLock ? (
+          <BidWorkspace
+            quote={quote}
+            parts={parts ?? []}
+            initialDraft={initialDraft}
+            uploadTargets={{ accept: UPLOAD_ACCEPT }}
+          />
+        ) : (
+          <SupplierBidPanel
+            quoteId={quote.id}
+            initialBid={initialBid}
+            approvalsOn={approvalsOn}
+            approved={approved}
+            bidsUnavailableMessage={bidsUnavailableMessage}
+            bidLocked={true}
+            showDecline={false}
+          />
+        )}
       </div>
     </DisclosureSection>
   );
