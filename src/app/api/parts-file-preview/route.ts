@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getServerAuthUser } from "@/server/auth";
+import { getServerAuthUser, requireAdminUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { assertSupplierQuoteAccess } from "@/server/quotes/access";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { getCustomerByEmail, getCustomerByUserId } from "@/server/customers";
 
 export const dynamic = "force-dynamic";
 
@@ -9,34 +11,108 @@ function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export async function GET(req: NextRequest) {
-  const quoteId = normalizeId(req.nextUrl.searchParams.get("quoteId"));
   const fileId = normalizeId(req.nextUrl.searchParams.get("fileId"));
+  const quoteIdParam = normalizeId(req.nextUrl.searchParams.get("quoteId"));
   const dispositionRaw = normalizeId(req.nextUrl.searchParams.get("disposition"));
   const disposition = dispositionRaw === "attachment" ? "attachment" : "inline";
 
-  if (!quoteId || !fileId) {
+  if (!fileId) {
     return new NextResponse("missing_identifiers", { status: 400 });
   }
 
+  // Resolve quote id from file id (preferred), to support callers that only know `fileId`.
+  const { data: fileRow, error: fileRowError } = await supabaseServer
+    .from("quote_upload_files")
+    .select("id,quote_id,filename,extension")
+    .eq("id", fileId)
+    .maybeSingle<{
+      id: string;
+      quote_id: string;
+      filename: string;
+      extension: string | null;
+    }>();
+
+  const quoteId = normalizeId(fileRow?.quote_id);
+  if (fileRowError || !quoteId) {
+    // Avoid leaking whether an id exists; treat as not found.
+    return new NextResponse("not_found", { status: 404 });
+  }
+
+  // If a quoteId was supplied, ensure it matches the resolved quote id to avoid surprising cross-quote requests.
+  if (quoteIdParam && quoteIdParam !== quoteId) {
+    return new NextResponse("not_found", { status: 404 });
+  }
+
+  // Access control:
+  // - Admin users: allowed via server-set httpOnly cookie gate.
+  // - Suppliers: must satisfy supplier quote access rules.
+  // - Customers: must match quote.customer_id or quote.customer_email.
   const { user } = await getServerAuthUser();
   if (!user?.id) {
     return new NextResponse("unauthorized", { status: 401 });
   }
 
-  const profile = await loadSupplierProfileByUserId(user.id);
-  const supplierId = profile?.supplier?.id ?? null;
-  if (!supplierId) {
-    return new NextResponse("supplier_profile_missing", { status: 403 });
+  let isAdmin = false;
+  try {
+    await requireAdminUser();
+    isAdmin = true;
+  } catch {
+    isAdmin = false;
   }
 
-  const access = await assertSupplierQuoteAccess({
-    quoteId,
-    supplierId,
-    supplierUserEmail: user.email ?? null,
-  });
-  if (!access.ok) {
-    return new NextResponse("forbidden", { status: 403 });
+  if (!isAdmin) {
+    const profile = await loadSupplierProfileByUserId(user.id);
+    const supplierId = profile?.supplier?.id ?? null;
+
+    if (supplierId) {
+      const access = await assertSupplierQuoteAccess({
+        quoteId,
+        supplierId,
+        supplierUserEmail: user.email ?? null,
+      });
+      if (!access.ok) {
+        return new NextResponse("forbidden", { status: 403 });
+      }
+    } else {
+      const userEmail = normalizeEmail(user.email ?? null);
+      const customer = await getCustomerByUserId(user.id);
+      const customerFallback = !customer && userEmail ? await getCustomerByEmail(userEmail) : null;
+      const customerId = normalizeId(customer?.id ?? customerFallback?.id ?? null) || null;
+      const customerEmail = normalizeEmail(
+        customer?.email ?? customerFallback?.email ?? userEmail,
+      );
+
+      const { data: quoteRow } = await supabaseServer
+        .from("quotes")
+        .select("id,customer_id,customer_email")
+        .eq("id", quoteId)
+        .maybeSingle<{ id: string; customer_id: string | null; customer_email: string | null }>();
+
+      const quoteCustomerId = normalizeId(quoteRow?.customer_id);
+      const quoteCustomerEmail = normalizeEmail(quoteRow?.customer_email ?? null);
+
+      const customerIdMatches =
+        Boolean(customerId) && Boolean(quoteCustomerId) && customerId === quoteCustomerId;
+      const customerEmailMatches =
+        Boolean(customerEmail) &&
+        Boolean(quoteCustomerEmail) &&
+        customerEmail === quoteCustomerEmail;
+      const userEmailMatches =
+        Boolean(userEmail) && Boolean(quoteCustomerEmail) && userEmail === quoteCustomerEmail;
+
+      if (!customerIdMatches && !customerEmailMatches && !userEmailMatches) {
+        return new NextResponse("forbidden", { status: 403 });
+      }
+    }
   }
 
   const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

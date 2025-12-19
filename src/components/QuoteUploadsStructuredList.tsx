@@ -1,6 +1,7 @@
 import { formatDateTime } from "@/lib/formatDate";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
 import type { QuoteUploadGroup } from "@/server/quotes/uploadFiles";
+import { CadPreviewButton } from "@/components/shared/CadPreviewButton";
 
 type QuoteUploadsStructuredListProps = {
   uploadGroups: QuoteUploadGroup[];
@@ -119,9 +120,17 @@ function FileList({
                 </p>
               ) : null}
             </div>
-            <span className="whitespace-nowrap text-[11px] text-slate-500">
-              {formatBytes(entry.size_bytes)}
-            </span>
+            <div className="flex flex-col items-end gap-1">
+              <CadPreviewButton
+                fileId={entry.id}
+                filename={entry.filename}
+                extension={entry.extension}
+                className="text-xs font-semibold text-blue-200 underline-offset-4 hover:underline"
+              />
+              <span className="whitespace-nowrap text-[11px] text-slate-500">
+                {formatBytes(entry.size_bytes)}
+              </span>
+            </div>
           </li>
         ))}
       </ul>

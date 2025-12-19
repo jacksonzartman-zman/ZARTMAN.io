@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormState } from "react-dom";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
+import { classifyCadFileType } from "@/lib/cadRendering";
 import { inferProtoParts } from "@/lib/quote/partsInference";
 import {
   scoreFilesForPart,
@@ -22,6 +23,7 @@ import {
   createPartFromSuggestionAction,
   type CreatePartFromSuggestionState,
 } from "@/app/quote/actions";
+import { CadPreviewModal } from "@/components/shared/CadPreviewModal";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -72,6 +74,10 @@ export function CustomerPartsSection({
   const hasAnyFiles = uploadFiles.length > 0;
   const { perPart, summary } = computePartsCoverage(partsList);
   const perPartById = new Map(perPart.map((row) => [row.partId, row]));
+  const [cadPreview, setCadPreview] = useState<{
+    fileId: string;
+    filename: string;
+  } | null>(null);
 
   const [createState, createAction] = useFormState(
     customerCreateQuotePartAction.bind(null, quoteId),
@@ -396,6 +402,10 @@ export function CustomerPartsSection({
                             filename: file.filename,
                             extension: file.extension,
                           });
+                          const cadType = classifyCadFileType({
+                            filename: file.filename,
+                            extension: file.extension,
+                          });
                           const checked = attached.has(file.id);
                           const label = getKindLabel(kind);
                           const suggestionScore = suggestionScoreById.get(file.id) ?? 0;
@@ -415,6 +425,17 @@ export function CustomerPartsSection({
                                     <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
                                       Suggested
                                     </span>
+                                  ) : null}
+                                  {cadType.ok ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setCadPreview({ fileId: file.id, filename: file.filename })
+                                      }
+                                      className="text-xs font-semibold text-blue-200 underline-offset-4 hover:underline"
+                                    >
+                                      Preview 3D
+                                    </button>
                                   ) : null}
                                 </p>
                                 <p className="text-[11px] uppercase tracking-wide text-slate-500">
@@ -442,6 +463,15 @@ export function CustomerPartsSection({
           );
         })}
       </div>
+
+      {cadPreview ? (
+        <CadPreviewModal
+          fileId={cadPreview.fileId}
+          filename={cadPreview.filename}
+          title="3D Preview"
+          onClose={() => setCadPreview(null)}
+        />
+      ) : null}
 
       <div ref={addPartRef} className="mt-5 border-t border-slate-900/60 pt-4">
         {createState.status !== "idle" ? (
