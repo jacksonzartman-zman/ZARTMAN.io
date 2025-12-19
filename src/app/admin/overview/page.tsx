@@ -29,6 +29,8 @@ export default async function AdminOverviewPage() {
             <TextLink href="/admin/quotes?hasBids=1">Needs decision</TextLink>
             <span className="text-slate-700">·</span>
             <TextLink href="/admin/quotes?view=needs_attention">Needs attention</TextLink>
+            <span className="text-slate-700">·</span>
+            <TextLink href="/admin/analytics?range=30d">View full analytics</TextLink>
           </div>
         </Card>
 
@@ -101,6 +103,10 @@ export default async function AdminOverviewPage() {
               <MiniStat label="Balanced" value={summary.benchHealth.balanced} />
               <MiniStat label="Overused" value={summary.benchHealth.overused} />
             </div>
+          </div>
+
+          <div className="mt-4 text-sm">
+            <TextLink href="/admin/analytics?range=90d">View full analytics</TextLink>
           </div>
         </Card>
 
