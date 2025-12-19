@@ -75,6 +75,7 @@ import { formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { computeRfqQualitySummary, type SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
+import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,7 @@ export default async function CustomerQuoteDetailPage({
   const overrideEmail = normalizeEmailInput(emailParam);
   const focusParam = getSearchParamValue(resolvedSearchParams, "focus");
   const tabParam = getSearchParamValue(resolvedSearchParams, "tab");
+  const awardSupplierIdParam = getSearchParamValue(resolvedSearchParams, "awardSupplierId");
   const messagesHref = buildQuoteTabHref(resolvedSearchParams, "messages", "#messages");
   const customer = await getCustomerByUserId(user.id);
 
@@ -142,6 +144,7 @@ export default async function CustomerQuoteDetailPage({
     bidsResult,
     projectResult,
     customerKickoffSummary,
+    bidComparisonSummary,
   ] = await Promise.all([
     loadCustomerQuoteBidSummaries({
       quoteId: quote.id,
@@ -152,6 +155,7 @@ export default async function CustomerQuoteDetailPage({
     loadBidsForQuote(quote.id),
     loadQuoteProjectForQuote(quote.id),
     getCustomerKickoffSummary(quote.id),
+    loadBidComparisonSummary(quote.id),
   ]);
   const customerBidSummaries = customerBidSummariesResult.ok
     ? customerBidSummariesResult.bids
@@ -204,6 +208,10 @@ export default async function CustomerQuoteDetailPage({
   const project = hasProject ? projectResult.project : null;
   const projectUnavailable = !hasProject && projectResult.reason !== "not_found";
   const bidCount = bids.length;
+  const preselectAwardBidId =
+    typeof awardSupplierIdParam === "string" && awardSupplierIdParam.trim().length > 0
+      ? customerBidSummaries.find((bid) => bid.supplierId === awardSupplierIdParam)?.id ?? null
+      : null;
   const customerBidSummariesError = customerBidSummariesResult.ok
     ? null
     : customerBidSummariesResult.error;
@@ -470,6 +478,47 @@ export default async function CustomerQuoteDetailPage({
     bestPriceValue != null
       ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
       : "Pending";
+
+  const bidCompareRows = bidComparisonSummary?.rows ?? [];
+  const compareBestPriceSupplierId = (() => {
+    let best: { supplierId: string; amount: number } | null = null;
+    for (const row of bidCompareRows) {
+      if (typeof row.totalAmount !== "number") continue;
+      if (!best || row.totalAmount < best.amount) {
+        best = { supplierId: row.supplierId, amount: row.totalAmount };
+      }
+    }
+    return best?.supplierId ?? null;
+  })();
+  const compareFastestLeadSupplierId = (() => {
+    let best: { supplierId: string; lead: number } | null = null;
+    for (const row of bidCompareRows) {
+      if (typeof row.leadTimeDays !== "number") continue;
+      if (!best || row.leadTimeDays < best.lead) {
+        best = { supplierId: row.supplierId, lead: row.leadTimeDays };
+      }
+    }
+    return best?.supplierId ?? null;
+  })();
+  const compareRowsByScore = [...bidCompareRows].sort((a, b) => {
+    const sa = typeof a.compositeScore === "number" ? a.compositeScore : -1;
+    const sb = typeof b.compositeScore === "number" ? b.compositeScore : -1;
+    if (sb !== sa) return sb - sa;
+    return a.supplierName.localeCompare(b.supplierName);
+  });
+  const bestCompositeScore =
+    compareRowsByScore.length > 0 && typeof compareRowsByScore[0]?.compositeScore === "number"
+      ? compareRowsByScore[0]!.compositeScore
+      : null;
+  const recommendedSupplierIds = new Set(
+    compareRowsByScore
+      .filter((row) => typeof row.compositeScore === "number")
+      .filter((row) =>
+        bestCompositeScore === null ? false : (row.compositeScore ?? -1) >= bestCompositeScore - 5,
+      )
+      .slice(0, 2)
+      .map((row) => row.supplierId),
+  );
   const bidSummaryBadgeLabel = bidsUnavailable
     ? "Bids unavailable"
     : bidCount === 0
@@ -817,6 +866,8 @@ export default async function CustomerQuoteDetailPage({
                     canSubmit={customerCanAward}
                     disableReason={customerAwardDisabledReason}
                     winningBidId={winningBidId}
+                    anchorId="award"
+                    preselectBidId={preselectAwardBidId}
                   />
                 </>
               ) : (
@@ -1101,6 +1152,121 @@ export default async function CustomerQuoteDetailPage({
           </div>
         ) : null}
         {bidSummaryPanel}
+        {bidCompareRows.length > 0 ? (
+          <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
+            <div className="border-b border-slate-900/60 px-5 py-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Compare bids
+              </p>
+              <p className="mt-1 text-sm text-slate-300">
+                We’ve summarized each supplier’s bid, lead time, and fit. Use this to choose who to award.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+                <thead className="border-b border-slate-900/60 bg-slate-950/70">
+                  <tr className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    <th className="px-5 py-3">Supplier</th>
+                    <th className="px-5 py-3">Total price</th>
+                    <th className="px-5 py-3">Lead time</th>
+                    <th className="px-5 py-3">Match</th>
+                    <th className="px-5 py-3">Bench</th>
+                    <th className="px-5 py-3">Parts coverage</th>
+                    <th className="px-5 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-900/60">
+                  {bidCompareRows.map((row) => {
+                    const isBestPrice = row.supplierId === compareBestPriceSupplierId;
+                    const isFastest = row.supplierId === compareFastestLeadSupplierId;
+                    const isRecommended = recommendedSupplierIds.has(row.supplierId);
+
+                    const rowClasses = clsx(
+                      isRecommended
+                        ? "bg-emerald-500/5"
+                        : isBestPrice || isFastest
+                          ? "bg-slate-900/30"
+                          : "bg-transparent",
+                    );
+
+                    const priceLabel =
+                      typeof row.totalAmount === "number"
+                        ? formatCurrency(row.totalAmount, row.currency ?? undefined)
+                        : "Pending";
+                    const leadLabel =
+                      typeof row.leadTimeDays === "number"
+                        ? `${row.leadTimeDays} day${row.leadTimeDays === 1 ? "" : "s"}`
+                        : "Pending";
+                    const awardHref = buildAwardCompareHref(resolvedSearchParams, row.supplierId);
+
+                    return (
+                      <tr key={row.supplierId} className={rowClasses}>
+                        <td className="px-5 py-4 align-top">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-base font-semibold text-white">{row.supplierName}</span>
+                            {isRecommended ? (
+                              <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
+                                Recommended
+                              </span>
+                            ) : null}
+                            {isBestPrice ? (
+                              <span className="pill pill-info px-3 py-1 text-[11px] uppercase tracking-wide">
+                                Best price
+                              </span>
+                            ) : null}
+                            {isFastest ? (
+                              <span className="pill pill-info px-3 py-1 text-[11px] uppercase tracking-wide">
+                                Fastest lead
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 align-top text-slate-100">
+                          <span className="font-semibold text-white">{priceLabel}</span>
+                        </td>
+                        <td className="px-5 py-4 align-top text-slate-100">
+                          <span className="font-semibold text-white">{leadLabel}</span>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <span className={clsx("pill px-3 py-1 text-[11px]", matchHealthPillClasses(row.matchHealth))}>
+                            {formatMatchHealthLabel(row.matchHealth)}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <span className={clsx("pill px-3 py-1 text-[11px]", benchStatusPillClasses(row.benchStatus))}>
+                            {formatBenchStatusLabel(row.benchStatus)}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <span className={clsx("pill px-3 py-1 text-[11px]", partsCoveragePillClasses(row.partsCoverage))}>
+                            {row.partsCoverage === "good"
+                              ? "Good"
+                              : row.partsCoverage === "needs_attention"
+                                ? "Needs attention"
+                                : "None"}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 align-top text-right">
+                          <Link
+                            href={awardHref}
+                            className={clsx(
+                              "inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2",
+                              customerCanAward
+                                ? "border-emerald-400/50 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20 focus-visible:outline-emerald-400"
+                                : "border-slate-800/80 text-slate-400 opacity-70 pointer-events-none",
+                            )}
+                          >
+                            Award
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
         <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1171,6 +1337,8 @@ export default async function CustomerQuoteDetailPage({
                       canSubmit={customerCanAward}
                       disableReason={customerAwardDisabledReason}
                       winningBidId={winningBidId}
+                      anchorId="award"
+                      preselectBidId={preselectAwardBidId}
                     />
                   </>
                 ) : (
@@ -1464,6 +1632,81 @@ function buildQuoteTabHref(
   params.set("tab", tabValue);
   const qs = params.toString();
   return qs ? `?${qs}${hash}` : `${hash}`;
+}
+
+function buildAwardCompareHref(
+  resolvedSearchParams: SearchParamsLike | undefined,
+  supplierId: string,
+): string {
+  const params = new URLSearchParams();
+  const source = resolvedSearchParams ?? {};
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === "string") {
+      params.set(key, value);
+    } else if (Array.isArray(value) && typeof value[0] === "string") {
+      params.set(key, value[0]);
+    }
+  }
+  params.set("focus", "award");
+  params.set("awardSupplierId", supplierId);
+  const qs = params.toString();
+  return qs ? `?${qs}#award` : "#award";
+}
+
+function formatMatchHealthLabel(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "good") return "Good";
+  if (normalized === "caution") return "Caution";
+  if (normalized === "poor") return "Poor";
+  return "Unknown";
+}
+
+function matchHealthPillClasses(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "good":
+      return "pill-success";
+    case "caution":
+      return "pill-warning";
+    case "poor":
+      return "pill-danger";
+    default:
+      return "pill-muted";
+  }
+}
+
+function formatBenchStatusLabel(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "underused") return "Underused";
+  if (normalized === "balanced") return "Balanced";
+  if (normalized === "overused") return "Overused";
+  return "Unknown";
+}
+
+function benchStatusPillClasses(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "underused":
+      return "pill-info";
+    case "balanced":
+      return "pill-success";
+    case "overused":
+      return "pill-warning";
+    default:
+      return "pill-muted";
+  }
+}
+
+function partsCoveragePillClasses(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "good":
+      return "pill-success";
+    case "needs_attention":
+      return "pill-warning";
+    default:
+      return "pill-muted";
+  }
 }
 
 function PortalNoticeCard({

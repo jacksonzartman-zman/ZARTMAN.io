@@ -1,6 +1,7 @@
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatDateTime } from "@/lib/formatDate";
 import type { BidRow } from "@/server/bids";
+import type { BidComparisonRow } from "@/server/quotes/bidCompare";
 import type { QuoteStatus } from "@/server/quotes/status";
 import type { SupplierRow } from "@/server/suppliers/types";
 import clsx from "clsx";
@@ -16,12 +17,19 @@ export type AdminSupplierBidRow = BidRow & {
   supplier?: SupplierRow | null;
 };
 
+type BidComparisonLite = Pick<
+  BidComparisonRow,
+  "matchHealth" | "benchStatus" | "partsCoverage" | "compositeScore"
+>;
+
 type SupplierBidsCardProps = {
   quoteId: string;
   quoteStatus: QuoteStatus;
   awardedBidId?: string | null;
   awardedSupplierId?: string | null;
   bids: AdminSupplierBidRow[];
+  bidComparisonBySupplierId?: Record<string, BidComparisonLite>;
+  recommendedSupplierIds?: string[];
   bidsLoaded: boolean;
   errorMessage?: string | null;
   id?: string;
@@ -35,6 +43,8 @@ export function SupplierBidsCard({
   awardedBidId,
   awardedSupplierId,
   bids,
+  bidComparisonBySupplierId,
+  recommendedSupplierIds,
   bidsLoaded,
   errorMessage,
   id,
@@ -92,6 +102,10 @@ export function SupplierBidsCard({
                 <th className="py-2 pr-3">Supplier</th>
                 <th className="py-2 pr-3">Amount</th>
                 <th className="py-2 pr-3">Lead time</th>
+                <th className="py-2 pr-3">Match</th>
+                <th className="py-2 pr-3">Bench</th>
+                <th className="py-2 pr-3">Parts</th>
+                <th className="py-2 pr-3">Score</th>
                 <th className="py-2 pr-3">Status</th>
                 <th className="py-2 pr-3">Submitted</th>
                 <th className="py-2 pr-3 text-right">Action</th>
@@ -107,6 +121,18 @@ export function SupplierBidsCard({
                   quoteIsLocked={quoteIsInTerminalStatus}
                   awardedBidId={normalizedAwardedBidId || null}
                   awardedSupplierId={awardedSupplierId ?? null}
+                  comparison={
+                    bidComparisonBySupplierId?.[
+                      typeof bid.supplier_id === "string" ? bid.supplier_id.trim() : ""
+                    ] ?? null
+                  }
+                  isRecommended={
+                    Boolean(
+                      recommendedSupplierIds?.includes(
+                        typeof bid.supplier_id === "string" ? bid.supplier_id.trim() : "",
+                      ),
+                    )
+                  }
                 />
               ))}
             </tbody>
@@ -124,6 +150,8 @@ type BidRowProps = {
   quoteIsLocked: boolean;
   awardedBidId: string | null;
   awardedSupplierId: string | null;
+  comparison: BidComparisonLite | null;
+  isRecommended: boolean;
 };
 
 function BidRow({
@@ -133,6 +161,8 @@ function BidRow({
   quoteIsLocked,
   awardedBidId,
   awardedSupplierId,
+  comparison,
+  isRecommended,
 }: BidRowProps) {
   const formattedAmount =
     typeof bid.amount === "number"
@@ -163,11 +193,19 @@ function BidRow({
       className={clsx(
         "border-b border-slate-900/60 last:border-0",
         isWinner ? "bg-emerald-500/5" : null,
+        !isWinner && isRecommended ? "bg-emerald-500/5" : null,
       )}
     >
       <td className="py-2 pr-3">
         <div className="space-y-0.5">
-          <p className="text-sm font-semibold text-slate-100">{supplierName}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-slate-100">{supplierName}</p>
+            {isRecommended ? (
+              <span className="inline-flex rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-100">
+                Recommended
+              </span>
+            ) : null}
+          </div>
           {supplierEmail ? (
             <a
               href={`mailto:${supplierEmail}`}
@@ -195,6 +233,39 @@ function BidRow({
           : "—"}
       </td>
       <td className="py-2 pr-3">
+        <span
+          className={clsx(
+            "inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+            matchHealthPillClasses(comparison?.matchHealth),
+          )}
+        >
+          {formatMatchHealthLabel(comparison?.matchHealth)}
+        </span>
+      </td>
+      <td className="py-2 pr-3">
+        <span
+          className={clsx(
+            "inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+            benchStatusPillClasses(comparison?.benchStatus),
+          )}
+        >
+          {formatBenchStatusLabel(comparison?.benchStatus)}
+        </span>
+      </td>
+      <td className="py-2 pr-3">
+        <span
+          className={clsx(
+            "inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+            partsCoveragePillClasses(comparison?.partsCoverage),
+          )}
+        >
+          {formatPartsCoverageLabel(comparison?.partsCoverage)}
+        </span>
+      </td>
+      <td className="py-2 pr-3 tabular-nums">
+        {typeof comparison?.compositeScore === "number" ? comparison.compositeScore : "—"}
+      </td>
+      <td className="py-2 pr-3">
         <span className="inline-flex rounded-full bg-slate-800/60 px-2 py-0.5 text-[11px] capitalize">
           {bidStatus}
         </span>
@@ -212,6 +283,69 @@ function BidRow({
       </td>
     </tr>
   );
+}
+
+function formatMatchHealthLabel(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "good") return "Good";
+  if (normalized === "caution") return "Caution";
+  if (normalized === "poor") return "Poor";
+  return "Unknown";
+}
+
+function matchHealthPillClasses(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "good":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "caution":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    case "poor":
+      return "border-red-500/40 bg-red-500/10 text-red-100";
+    default:
+      return "border-slate-800 bg-slate-950/50 text-slate-200";
+  }
+}
+
+function formatBenchStatusLabel(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "underused") return "Underused";
+  if (normalized === "balanced") return "Balanced";
+  if (normalized === "overused") return "Overused";
+  return "Unknown";
+}
+
+function benchStatusPillClasses(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "underused":
+      return "border-blue-500/40 bg-blue-500/10 text-blue-100";
+    case "balanced":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "overused":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    default:
+      return "border-slate-800 bg-slate-950/50 text-slate-200";
+  }
+}
+
+function formatPartsCoverageLabel(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "good") return "Good";
+  if (normalized === "needs_attention") return "Needs attention";
+  return "None";
+}
+
+function partsCoveragePillClasses(value: unknown): string {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "good":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+    case "needs_attention":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    default:
+      return "border-slate-800 bg-slate-950/50 text-slate-200";
+  }
 }
 
 type BidActionProps = {
