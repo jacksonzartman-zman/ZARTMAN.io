@@ -1139,6 +1139,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     });
     const routingWeekLabel = formatWeekOfLabel(routingSuggestion.weekStartDate);
 
+    const showFindMoreSuppliersLink =
+      routingSuggestion.supplierSummaries.length <= 1 ||
+      routingSuggestion.supplierSummaries.every(
+        (summary) => (summary.benchHealth?.matchHealth ?? "unknown") !== "good",
+      ) ||
+      (partsCoverageSummary.anyParts && !partsCoverageSummary.allCovered);
+
     const capacityRequestCandidate =
       routingSuggestion.supplierSummaries.length > 0
         ? routingSuggestion.supplierSummaries[0]
@@ -1587,6 +1594,26 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                     <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
                       SLA signal unavailable; using basic staleness.
                     </p>
+                  ) : null}
+                  {showFindMoreSuppliersLink ? (
+                    <div className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-200">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Supplier discovery
+                          </p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            Browse underused, well-matched suppliers for this RFQ.
+                          </p>
+                        </div>
+                        <Link
+                          href={`/admin/suppliers/discover?quoteId=${encodeURIComponent(quote.id)}`}
+                          className={clsx(secondaryCtaClasses, ctaSizeClasses.sm, "whitespace-nowrap")}
+                        >
+                          Find more suppliers for this RFQ
+                        </Link>
+                      </div>
+                    </div>
                   ) : null}
                   {threadStatusPanel}
                   {kickoffStatusPanel}
