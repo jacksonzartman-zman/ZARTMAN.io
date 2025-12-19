@@ -21,6 +21,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "next": "15.5.7",
+    "occt-import-js": "^0.0.23",
     "openai": "^6.14.0",
     "pdfjs-dist": "^5.4.449",
     "react": "18.3.1",

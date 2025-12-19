@@ -8,6 +8,7 @@ import type {
 } from "@/app/(portals)/quotes/workspaceData";
 import type { QuoteUploadFileEntry, QuoteUploadGroup } from "@/server/quotes/uploadFiles";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
+import { classifyCadFileType } from "@/lib/cadRendering";
 import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
 import {
   scoreFilesForPart,
@@ -16,6 +17,7 @@ import {
 import type { AdminQuotePartActionState } from "./actions";
 import { adminUploadPartDrawingsAction } from "./actions";
 import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { CadPreviewModal } from "@/components/shared/CadPreviewModal";
 
 type PartsSectionProps = {
   quoteId: string;
@@ -155,6 +157,10 @@ function PartCard({
 }) {
   const [open, setOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [cadPreview, setCadPreview] = useState<{
+    fileId: string;
+    filename: string;
+  } | null>(null);
   const assigned = useMemo(() => new Set(part.files.map((f) => f.quoteUploadFileId)), [part.files]);
 
   const cadCount = part.files.filter((f) => f.role === "cad").length;
@@ -341,6 +347,10 @@ function PartCard({
                       filename: entry.filename,
                       extension: entry.extension ?? null,
                     });
+                    const cadType = classifyCadFileType({
+                      filename: entry.filename,
+                      extension: entry.extension ?? null,
+                    });
                     const suggestionScore = suggestionScoreById.get(entry.id) ?? 0;
                     return (
                       <li key={`${entry.id}-${idx}`} className="flex items-start gap-3">
@@ -360,6 +370,15 @@ function PartCard({
                               </span>
                             ) : null}
                             <FileKindPill kind={kind} />
+                            {cadType.ok ? (
+                              <button
+                                type="button"
+                                onClick={() => setCadPreview({ fileId: entry.id, filename: entry.filename })}
+                                className="text-xs font-semibold text-blue-200 underline-offset-4 hover:underline"
+                              >
+                                Preview 3D
+                              </button>
+                            ) : null}
                             {entry.is_from_archive ? (
                               <span className="rounded-full border border-slate-800 bg-slate-950/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                                 ZIP
@@ -388,6 +407,14 @@ function PartCard({
             {pending ? "Saving…" : "Save file assignments"}
           </button>
         </form>
+      ) : null}
+      {cadPreview ? (
+        <CadPreviewModal
+          fileId={cadPreview.fileId}
+          filename={cadPreview.filename}
+          title={`3D Preview · ${part.partLabel}`}
+          onClose={() => setCadPreview(null)}
+        />
       ) : null}
     </section>
   );

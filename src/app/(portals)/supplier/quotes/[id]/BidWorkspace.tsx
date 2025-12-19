@@ -17,6 +17,8 @@ import { suggestLeadTimeDays, suggestUnitPriceRange } from "@/lib/quote/partPric
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
 import { supabaseBrowser } from "@/lib/supabase.client";
+import { classifyCadFileType } from "@/lib/cadRendering";
+import { ThreeCadViewer } from "@/components/ThreeCadViewer";
 
 const UPLOAD_ACCEPT = ".pdf,.dwg,.dxf,.step,.stp,.igs,.iges,.sldprt,.prt,.stl,.zip";
 
@@ -420,7 +422,6 @@ export function BidWorkspace({ quote, parts, initialDraft, uploadTargets }: BidW
       </section>
 
       <CadDrawingPreviewModal
-        quoteId={quote.id}
         state={previewModal}
         onClose={() => setPreviewModal({ open: false })}
         onSwitchFile={(fileId) => {
@@ -601,12 +602,10 @@ function PartBidTable({
 }
 
 function CadDrawingPreviewModal({
-  quoteId,
   state,
   onClose,
   onSwitchFile,
 }: {
-  quoteId: string;
   state: PreviewModalState;
   onClose: () => void;
   onSwitchFile: (fileId: string) => void;
@@ -616,13 +615,13 @@ function CadDrawingPreviewModal({
   const active = state.files.find((f) => f.fileId === state.activeFileId) ?? state.files[0];
   const extension = (active?.extension ?? "").toLowerCase();
   const isPdf = extension === "pdf";
+  const cadType = classifyCadFileType({
+    filename: active?.filename ?? "",
+    extension: active?.extension ?? null,
+  });
 
-  const inlineUrl = `/api/parts-file-preview?quoteId=${encodeURIComponent(quoteId)}&fileId=${encodeURIComponent(
-    active?.fileId ?? "",
-  )}&disposition=inline`;
-  const downloadUrl = `/api/parts-file-preview?quoteId=${encodeURIComponent(quoteId)}&fileId=${encodeURIComponent(
-    active?.fileId ?? "",
-  )}&disposition=attachment`;
+  const inlineUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(active?.fileId ?? "")}&disposition=inline`;
+  const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(active?.fileId ?? "")}&disposition=attachment`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
@@ -680,10 +679,14 @@ function CadDrawingPreviewModal({
                 src={inlineUrl}
                 className="h-[70vh] w-full"
               />
+            ) : cadType.ok ? (
+              <div className="p-4">
+                <ThreeCadViewer fileId={active?.fileId ?? ""} filenameHint={active?.filename ?? null} />
+              </div>
             ) : (
               <div className="p-6">
                 <p className="text-sm text-slate-200">
-                  Preview is available for PDFs. For CAD and other file types, please download.
+                  Unable to render this file here. You can still download it.
                 </p>
               </div>
             )}
