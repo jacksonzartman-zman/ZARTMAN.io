@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import {
   submitSupplierBidImpl,
   postSupplierMessageImpl,
@@ -9,6 +10,10 @@ import {
   type ToggleSupplierKickoffTaskInput,
 } from "@/server/quotes/supplierQuoteServer";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
+import { getServerAuthUser } from "@/server/auth";
+import { loadSupplierProfileByUserId } from "@/server/suppliers";
+import { assertSupplierQuoteAccess } from "@/server/quotes/access";
+import type { SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
 
 export type {
   SupplierBidFormState,
@@ -35,4 +40,80 @@ export async function completeKickoffTask(
   input: ToggleSupplierKickoffTaskInput,
 ): Promise<SupplierKickoffFormState> {
   return completeKickoffTaskImpl(input);
+}
+
+export type SupplierDeclineFeedbackFormState =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+const SUPPLIER_FEEDBACK_CATEGORIES = new Set<SupplierFeedbackCategory>([
+  "scope_unclear",
+  "missing_drawings",
+  "missing_cad",
+  "timeline_unrealistic",
+  "materials_unclear",
+  "pricing_risk",
+  "outside_capability",
+  "other",
+]);
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export async function supplierDeclineRfqWithFeedbackAction(
+  quoteId: string,
+  _prevState: SupplierDeclineFeedbackFormState,
+  formData: FormData,
+): Promise<SupplierDeclineFeedbackFormState> {
+  const normalizedQuoteId = normalizeText(quoteId);
+  if (!normalizedQuoteId) {
+    return { ok: false, error: "Missing quote ID." };
+  }
+
+  const { user } = await getServerAuthUser();
+  if (!user?.id) {
+    return { ok: false, error: "You must be signed in to submit feedback." };
+  }
+
+  const profile = await loadSupplierProfileByUserId(user.id);
+  const supplierId = profile?.supplier?.id ?? null;
+  if (!supplierId) {
+    return { ok: false, error: "Supplier profile not found." };
+  }
+
+  const access = await assertSupplierQuoteAccess({
+    quoteId: normalizedQuoteId,
+    supplierId,
+    supplierUserEmail: user.email ?? null,
+  });
+  if (!access.ok) {
+    return { ok: false, error: "Not invited to this RFQ." };
+  }
+
+  const rawCategories = formData.getAll("categories");
+  const categories = Array.from(
+    new Set(
+      rawCategories
+        .map((value) => normalizeText(value))
+        .filter((value): value is SupplierFeedbackCategory =>
+          SUPPLIER_FEEDBACK_CATEGORIES.has(value as SupplierFeedbackCategory),
+        ),
+    ),
+  );
+  const noteRaw = normalizeText(formData.get("note"));
+  const note = noteRaw ? noteRaw.slice(0, 1000) : "";
+
+  console.log("[rfq feedback] supplier declined with", {
+    quoteId: normalizedQuoteId,
+    supplierId,
+    supplierUserId: user.id,
+    categories,
+    note,
+  });
+
+  revalidatePath("/supplier/rfqs");
+  revalidatePath("/supplier/quotes");
+
+  return { ok: true, message: "Thanks — feedback sent." };
 }

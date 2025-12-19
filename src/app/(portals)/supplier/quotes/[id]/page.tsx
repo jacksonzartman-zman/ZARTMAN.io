@@ -697,6 +697,7 @@ function SupplierQuoteWorkspace({
           approved={approved}
           bidsUnavailableMessage={bidsUnavailableMessage}
           bidLocked={acceptedLock || closedWindowLock}
+          showDecline={canSubmitBid && !acceptedLock && !closedWindowLock}
         />
       </div>
     </DisclosureSection>

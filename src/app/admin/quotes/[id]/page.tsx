@@ -98,6 +98,7 @@ import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { loadQuoteUploadGroups } from "@/server/quotes/uploadFiles";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
+import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import {
   createQuotePartAction,
   updateQuotePartFilesForQuoteAction,
@@ -362,6 +363,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const workspaceResult = await loadQuoteWorkspaceData(quote.id, { safeOnly: true });
     const parts = workspaceResult.ok && workspaceResult.data ? workspaceResult.data.parts : [];
     const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
+    const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
     const partsCoverageSummaryLine = partsCoverageSummary.anyParts
       ? `${partsCoverageSummary.totalParts} part${
           partsCoverageSummary.totalParts === 1 ? "" : "s"
@@ -1416,6 +1418,128 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       </section>
     );
 
+    const rfqInsightsPanel = (
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              RFQ quality
+            </p>
+            <p className="mt-1 text-sm text-slate-300">
+              Read-only signals derived from parts, invites, bids, and messages.
+            </p>
+          </div>
+          <span
+            className={clsx(
+              "rounded-full border px-3 py-1 text-[11px] font-semibold",
+              rfqQualitySummary.score >= 85
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                : rfqQualitySummary.score >= 70
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+                  : rfqQualitySummary.score >= 50
+                    ? "border-red-500/40 bg-red-500/10 text-red-100"
+                    : "border-red-500/60 bg-red-950/30 text-red-50",
+            )}
+          >
+            Score: {rfqQualitySummary.score}
+          </span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">Missing CAD</p>
+            <p className="mt-1 font-semibold text-slate-100">
+              {rfqQualitySummary.missingCad ? "Yes" : "No"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">Missing drawings</p>
+            <p className="mt-1 font-semibold text-slate-100">
+              {rfqQualitySummary.missingDrawings ? "Yes" : "No"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wide text-slate-500">Parts coverage</p>
+            <p className="mt-1 font-semibold text-slate-100">
+              {rfqQualitySummary.partsCoverage === "good"
+                ? "Good"
+                : rfqQualitySummary.partsCoverage === "needs_attention"
+                  ? "Needs attention"
+                  : "None"}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Supplier behavior
+          </p>
+          <dl className="mt-2 grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                Suppliers declined
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-100">
+                {rfqQualitySummary.suppliersDeclined}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                Suppliers requested clarification
+              </dt>
+              <dd className="mt-1 font-semibold text-slate-100">
+                {rfqQualitySummary.suppliersRequestedClarification}
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-2 text-xs text-slate-500">
+            Declines aren’t persisted yet; clarification is inferred from pre-bid supplier messages.
+          </p>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
+          <div className="flex items-center justify-between gap-3 border-b border-slate-900/60 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Signals
+            </p>
+            <span className="text-xs text-slate-400">
+              {rfqQualitySummary.signals.length} item{rfqQualitySummary.signals.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          {rfqQualitySummary.signals.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-slate-400">
+              No RFQ quality signals detected yet.
+            </div>
+          ) : (
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-950/40">
+                <tr>
+                  <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Category
+                  </th>
+                  <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Reason
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-900/60">
+                {rfqQualitySummary.signals.map((signal, idx) => (
+                  <tr key={`${signal.category}-${signal.supplierId}-${idx}`}>
+                    <td className="px-4 py-2 align-top font-medium text-slate-100">
+                      {formatRfqSignalCategory(signal.category)}
+                    </td>
+                    <td className="px-4 py-2 align-top text-slate-300">
+                      {signal.reason ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </section>
+    );
+
     const adminPrimaryAction = resolvePrimaryAction({
       role: "admin",
       quote: {
@@ -1734,6 +1858,30 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </CollapsibleCard>
 
             <DisclosureSection
+              id="rfq-insights"
+              className="scroll-mt-24"
+              title="RFQ Insights"
+              description="Quality and competitiveness signals for this RFQ."
+              defaultOpen={rfqQualitySummary.score < 80}
+              summary={
+                <span
+                  className={clsx(
+                    "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                    rfqQualitySummary.score >= 85
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                      : rfqQualitySummary.score >= 70
+                        ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+                        : "border-red-500/40 bg-red-500/10 text-red-100",
+                  )}
+                >
+                  Score {rfqQualitySummary.score}
+                </span>
+              }
+            >
+              {rfqInsightsPanel}
+            </DisclosureSection>
+
+            <DisclosureSection
               id="timeline"
               className="scroll-mt-24"
               title="Timeline"
@@ -2043,4 +2191,13 @@ function truncateThreadPreview(value: unknown, maxLen: number): string | null {
   if (!squashed) return null;
   if (squashed.length <= maxLen) return squashed;
   return `${squashed.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+function formatRfqSignalCategory(value: string): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return "Other";
+  return normalized
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/^\w/, (m) => m.toUpperCase());
 }

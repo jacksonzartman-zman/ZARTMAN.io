@@ -1,6 +1,24 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 import { requireAdminUser } from "@/server/auth";
+/**
+ * Supplier RFQ “signals” we already have (read-only inventory)
+ *
+ * This file currently focuses on *capacity-driven routing suggestions* for a quote, but we already
+ * have multiple useful signals elsewhere in the system that can be composed into RFQ quality +
+ * supplier-fit scoring (see `src/server/quotes/rfqQualitySignals.ts`).
+ *
+ * - supplier_bids: who bid, bid $ amounts / lead times, and bid timing (`created_at` / `updated_at`)
+ * - quote_suppliers / quote_invites: who was invited / assigned (legacy email + canonical supplier_id)
+ * - suppliers + supplier_capabilities: supplier process/material/cert capability signals
+ * - supplier_match_health_summary: supplier win/bid history + match health (90d rollups)
+ * - supplier_bench_utilization_summary: bench utilization / capacity pressure (recent rollups)
+ * - kickoff behavior: kickoff tasks + completion timestamps (winners only; RLS backstops)
+ * - message history: shared quote thread activity (questions asked, staleness, SLA signals)
+ * - parts coverage: parts + attached CAD/drawings completeness (`computePartsCoverage` summary)
+ *
+ * NOTE: Do not modify routing logic yet—this is purely documenting available signals.
+ */
 import {
   CAPACITY_CAPABILITY_UNIVERSE,
   getCapacitySnapshotsForSuppliersWeek,
