@@ -72,6 +72,7 @@ import { CustomerPartsSection } from "./CustomerPartsSection";
 import { CustomerUploadsForm } from "./CustomerUploadsForm";
 import { loadCachedAiPartSuggestions } from "@/server/quotes/aiPartsSuggestions";
 import { formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
+import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 
 export const dynamic = "force-dynamic";
 
@@ -282,6 +283,13 @@ export default async function CustomerQuoteDetailPage({
   const partsCoverageSummaryLine = partsCoverageSummary.anyParts
     ? `${partsCoverageSummary.totalParts} part${partsCoverageSummary.totalParts === 1 ? "" : "s"} • ${partsCoverageSummary.fullyCoveredParts} fully covered • ${partsCoverageDetailLabel}`
     : null;
+
+  const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
+  const showRfqQualityHint =
+    rfqQualitySummary.partsCoverage === "needs_attention" ||
+    rfqQualitySummary.missingCad ||
+    rfqQualitySummary.missingDrawings ||
+    rfqQualitySummary.score < 80;
 
   const kickoffProgressBasis = resolveKickoffProgressBasis({
     kickoffCompletedAt:
@@ -968,6 +976,45 @@ export default async function CustomerQuoteDetailPage({
       }
     >
       <div className="space-y-4">
+        {showRfqQualityHint ? (
+          <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 px-5 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-amber-100">
+                  Your RFQ may get fewer bids.
+                </p>
+                <p className="mt-1 text-xs text-amber-100/80">
+                  Improving completeness can increase supplier response rate.
+                </p>
+              </div>
+              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                Quality score {rfqQualitySummary.score}
+              </span>
+            </div>
+            <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
+              {rfqQualitySummary.missingCad || rfqQualitySummary.partsCoverage === "none" ? (
+                <li>Add CAD models</li>
+              ) : null}
+              {rfqQualitySummary.missingDrawings || rfqQualitySummary.partsCoverage === "none" ? (
+                <li>Add technical drawings</li>
+              ) : null}
+              {rfqQualitySummary.suppliersRequestedClarification > 0 ||
+              rfqQualitySummary.signals.some((s) => s.category === "scope_unclear") ? (
+                <li>Clarify scope in messages</li>
+              ) : null}
+              {rfqQualitySummary.partsCoverage === "needs_attention" ? (
+                <li>Link files to parts so suppliers know what’s complete</li>
+              ) : null}
+              {rfqQualitySummary.score < 80 &&
+              rfqQualitySummary.partsCoverage === "good" &&
+              !rfqQualitySummary.missingCad &&
+              !rfqQualitySummary.missingDrawings &&
+              rfqQualitySummary.suppliersRequestedClarification === 0 ? (
+                <li>Clarify scope in messages</li>
+              ) : null}
+            </ul>
+          </div>
+        ) : null}
         {bidSummaryPanel}
         <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

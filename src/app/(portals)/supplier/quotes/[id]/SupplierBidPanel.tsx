@@ -21,6 +21,7 @@ import type { SupplierBidFormState } from "@/server/quotes/supplierQuoteServer";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
+import { SupplierDeclineRfqModal } from "./SupplierDeclineRfqModal";
 
 const INITIAL_SUPPLIER_BID_STATE: SupplierBidFormState = {
   ok: true,
@@ -37,6 +38,7 @@ type SupplierBidPanelProps = {
   approved: boolean;
   bidsUnavailableMessage: string | null;
   bidLocked?: boolean;
+  showDecline?: boolean;
 };
 
 export function SupplierBidPanel({
@@ -46,10 +48,12 @@ export function SupplierBidPanel({
   approved,
   bidsUnavailableMessage,
   bidLocked = false,
+  showDecline = false,
 }: SupplierBidPanelProps) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
   const [optimisticBid, setOptimisticBid] = useState<{
     amount: number | null;
     currency: string;
@@ -267,8 +271,23 @@ export function SupplierBidPanel({
 
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton label={buttonLabel} disabled={inputsDisabled} />
+          {showDecline && !inputsDisabled ? (
+            <button
+              type="button"
+              onClick={() => setDeclineOpen(true)}
+              className={`${ctaSizeClasses.md} rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:border-red-400 hover:text-white`}
+            >
+              Decline RFQ
+            </button>
+          ) : null}
         </div>
       </form>
+
+      <SupplierDeclineRfqModal
+        quoteId={quoteId}
+        open={declineOpen}
+        onClose={() => setDeclineOpen(false)}
+      />
 
       {initialBid ? (
         <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-6 py-4 text-sm text-slate-200">

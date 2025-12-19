@@ -25,6 +25,7 @@ import {
 } from "@/lib/relativeTime";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import { resolveMaybePromise, type SearchParamsLike } from "@/app/(portals)/quotes/pageUtils";
+import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 
 export const dynamic = "force-dynamic";
 
@@ -209,10 +210,11 @@ export default async function SupplierQuotesPage({
   const kickoffFilter = normalizeText(sp.get("kickoff"));
   const messagesFilter = normalizeText(sp.get("messages"));
   const partsCoverageFilter = normalizeText(sp.get("partsCoverage"));
+  const rfqQualityFilter = normalizeText(sp.get("rfqQuality"));
 
   const allRows = approvalGateActive ? [] : await loadSupplierQuotesList(user.id);
 
-  const filteredRows = allRows
+  let filteredRows = allRows
     .filter((row) => {
       if (statusFilter === "awarded") {
         return row.isAwardedToSupplier;
@@ -254,8 +256,32 @@ export default async function SupplierQuotesPage({
       return true;
     });
 
+  if (
+    rfqQualityFilter === "high" ||
+    rfqQualityFilter === "medium" ||
+    rfqQualityFilter === "low" ||
+    rfqQualityFilter === "min"
+  ) {
+    const summaries = await Promise.all(
+      filteredRows.map((row) =>
+        computeRfqQualitySummary(row.quoteId).catch(() => null),
+      ),
+    );
+    filteredRows = filteredRows.filter((row, idx) => {
+      const score = summaries[idx]?.score ?? 0;
+      if (rfqQualityFilter === "high") return score >= 85;
+      if (rfqQualityFilter === "medium") return score >= 70 && score <= 84;
+      if (rfqQualityFilter === "low") return score >= 50 && score <= 69;
+      return score < 50;
+    });
+  }
+
   const hasFilters = Boolean(
-    statusFilter || kickoffFilter || messagesFilter || partsCoverageFilter,
+    statusFilter ||
+      kickoffFilter ||
+      messagesFilter ||
+      partsCoverageFilter ||
+      rfqQualityFilter,
   );
 
   return (
@@ -335,6 +361,20 @@ export default async function SupplierQuotesPage({
               <option value="needs_attention">Needs attention</option>
               <option value="good">Good</option>
               <option value="none">No parts</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+            RFQ quality
+            <select
+              name="rfqQuality"
+              defaultValue={rfqQualityFilter}
+              className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+            >
+              <option value="">All</option>
+              <option value="high">High (85+)</option>
+              <option value="medium">Medium (70–84)</option>
+              <option value="low">Low (50–69)</option>
+              <option value="min">Min (&lt; 50)</option>
             </select>
           </label>
           <button
