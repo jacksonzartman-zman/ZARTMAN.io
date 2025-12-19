@@ -15,9 +15,11 @@ export type CadPreviewModalProps = {
 export function CadPreviewModal({ fileId, onClose, title, filename }: CadPreviewModalProps) {
   const safeTitle = typeof title === "string" && title.trim() ? title.trim() : "3D Preview";
 
-  const [viewerReport, setViewerReport] = useState<ThreeCadViewerReport | null>(null);
+  const [viewerStatus, setViewerStatus] = useState<ThreeCadViewerReport["status"] | null>(null);
+  const [errorReason, setErrorReason] = useState<string | null>(null);
   useEffect(() => {
-    setViewerReport(null);
+    setViewerStatus(null);
+    setErrorReason(null);
   }, [fileId]);
 
   const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(
@@ -30,7 +32,7 @@ export function CadPreviewModal({ fileId, onClose, title, filename }: CadPreview
   }, [filename]);
 
   const showStepFallback =
-    isStep && (viewerReport?.status === "error" || viewerReport?.status === "unsupported");
+    isStep && (viewerStatus === "error" || viewerStatus === "unsupported");
 
   return (
     <div
@@ -75,10 +77,16 @@ export function CadPreviewModal({ fileId, onClose, title, filename }: CadPreview
           {showStepFallback ? (
             <div className="flex h-[70vh] min-h-[380px] items-center justify-center rounded-xl border border-slate-800 bg-black px-6 text-center">
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-slate-100">STEP preview</p>
-                <p className="max-w-lg text-sm text-slate-300">
-                  STEP preview is not available for this file in the browser yet.
+                <p className="text-sm font-semibold text-slate-100">
+                  STEP preview is not available for this file yet
                 </p>
+                {errorReason ? (
+                  <p className="max-w-lg text-sm text-slate-400">Reason: {errorReason}.</p>
+                ) : (
+                  <p className="max-w-lg text-sm text-slate-300">
+                    STEP preview is not available for this file in the browser yet.
+                  </p>
+                )}
                 <a
                   href={downloadUrl}
                   className={clsx(
@@ -93,7 +101,10 @@ export function CadPreviewModal({ fileId, onClose, title, filename }: CadPreview
             <ThreeCadViewer
               fileId={fileId}
               filenameHint={filename ?? null}
-              onStatusChange={(report) => setViewerReport(report)}
+              onStatusChange={(report) => {
+                setViewerStatus(report.status);
+                setErrorReason(report.errorReason ?? null);
+              }}
             />
           )}
         </div>
