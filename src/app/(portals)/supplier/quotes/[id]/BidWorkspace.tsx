@@ -9,10 +9,12 @@ import {
   submitSupplierBidFromWorkspace,
   getUploadTargetsForSupplierQuote,
   registerUploadedFilesForSupplierQuote,
+  ensureCadMetricsForSupplierQuoteAction,
   type SupplierUploadTarget,
   type SupplierUploadsFormState,
 } from "./actions";
 import type { SupplierBidDraft } from "@/server/suppliers/bidLines";
+import type { CadFeatureSummary } from "@/server/quotes/cadFeatures";
 import { suggestLeadTimeDays, suggestUnitPriceRange } from "@/lib/quote/partPricing";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
@@ -26,6 +28,7 @@ type BidWorkspaceProps = {
   quote: QuoteWorkspaceQuote;
   parts: QuotePartWithFiles[];
   initialDraft: SupplierBidDraft | null;
+  cadFeaturesByFileId?: Record<string, CadFeatureSummary>;
   uploadTargets?: {
     accept?: string;
   };
@@ -111,7 +114,13 @@ function toDraft(
   };
 }
 
-export function BidWorkspace({ quote, parts, initialDraft, uploadTargets }: BidWorkspaceProps) {
+export function BidWorkspace({
+  quote,
+  parts,
+  initialDraft,
+  cadFeaturesByFileId,
+  uploadTargets,
+}: BidWorkspaceProps) {
   const router = useRouter();
   const partsList = useMemo(() => (Array.isArray(parts) ? parts : []), [parts]);
 
@@ -422,7 +431,9 @@ export function BidWorkspace({ quote, parts, initialDraft, uploadTargets }: BidW
       </section>
 
       <CadDrawingPreviewModal
+        quoteId={quote.id}
         state={previewModal}
+        cadFeaturesByFileId={cadFeaturesByFileId ?? {}}
         onClose={() => setPreviewModal({ open: false })}
         onSwitchFile={(fileId) => {
           if (!previewModal.open) return;
@@ -602,16 +613,21 @@ function PartBidTable({
 }
 
 function CadDrawingPreviewModal({
+  quoteId,
   state,
+  cadFeaturesByFileId,
   onClose,
   onSwitchFile,
 }: {
+  quoteId: string;
   state: PreviewModalState;
+  cadFeaturesByFileId: Record<string, CadFeatureSummary>;
   onClose: () => void;
   onSwitchFile: (fileId: string) => void;
 }) {
   if (!state.open) return null;
 
+  const router = useRouter();
   const active = state.files.find((f) => f.fileId === state.activeFileId) ?? state.files[0];
   const extension = (active?.extension ?? "").toLowerCase();
   const isPdf = extension === "pdf";
@@ -619,6 +635,46 @@ function CadDrawingPreviewModal({
     filename: active?.filename ?? "",
     extension: active?.extension ?? null,
   });
+
+  const feature = cadFeaturesByFileId[active?.fileId ?? ""] ?? null;
+  const hasFeatureMetrics = Boolean(feature?.bboxMin && feature?.bboxMax);
+  const bboxLabel =
+    feature?.bboxMin && feature?.bboxMax ? formatBboxLabel(feature.bboxMin, feature.bboxMax) : null;
+  const trianglesLabel =
+    typeof feature?.triangleCount === "number" && Number.isFinite(feature.triangleCount)
+      ? feature.triangleCount.toLocaleString()
+      : null;
+  const complexity = formatComplexity(feature?.complexityScore ?? null);
+  const dfmFlags = Array.isArray(feature?.dfmFlags) ? feature.dfmFlags : [];
+
+  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "pending" | "done" | "error">(
+    "idle",
+  );
+  const requestedRef = useRef(false);
+
+  useEffect(() => {
+    // Only kick off background analysis for CAD files that don't have cached metrics yet.
+    if (!state.open) return;
+    if (!cadType.ok) return;
+    if (hasFeatureMetrics) return;
+    if (requestedRef.current) return;
+    requestedRef.current = true;
+    setAnalysisStatus("pending");
+
+    void ensureCadMetricsForSupplierQuoteAction(quoteId)
+      .then((res) => {
+        if (!res.ok) {
+          setAnalysisStatus("error");
+          return;
+        }
+        setAnalysisStatus("done");
+        router.refresh();
+      })
+      .catch((error) => {
+        console.error("[bid workspace] cad analysis request failed", error);
+        setAnalysisStatus("error");
+      });
+  }, [cadType.ok, hasFeatureMetrics, quoteId, router, state.open]);
 
   const inlineUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(active?.fileId ?? "")}&disposition=inline`;
   const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(active?.fileId ?? "")}&disposition=attachment`;
@@ -680,7 +736,61 @@ function CadDrawingPreviewModal({
                 className="h-[70vh] w-full"
               />
             ) : cadType.ok ? (
-              <div className="p-4">
+              <div className="p-4 space-y-3">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        CAD metrics
+                      </p>
+                      {hasFeatureMetrics ? (
+                        <p className="mt-1 text-sm text-slate-200">
+                          Size{" "}
+                          <span className="font-semibold text-slate-100">{bboxLabel}</span>
+                          {trianglesLabel ? (
+                            <span className="ml-2 text-slate-400">
+                              • Triangles{" "}
+                              <span className="font-semibold text-slate-200">{trianglesLabel}</span>
+                            </span>
+                          ) : null}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-sm text-slate-300">
+                          {analysisStatus === "pending" || analysisStatus === "idle"
+                            ? "Analyzing CAD…"
+                            : analysisStatus === "error"
+                              ? "Metrics unavailable right now."
+                              : "Analyzing CAD…"}
+                        </p>
+                      )}
+                    </div>
+                    <span
+                      className={clsx(
+                        "rounded-full border px-3 py-1 text-[11px] font-semibold",
+                        complexity.pillClasses,
+                      )}
+                    >
+                      Complexity: {complexity.label}
+                    </span>
+                  </div>
+
+                  {dfmFlags.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {dfmFlags.slice(0, 6).map((flag) => (
+                        <span
+                          key={flag}
+                          className={clsx(
+                            "rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                            dfmFlagPillClasses(flag),
+                          )}
+                        >
+                          {formatDfmFlagLabel(flag)}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
                 <ThreeCadViewer fileId={active?.fileId ?? ""} filenameHint={active?.filename ?? null} />
               </div>
             ) : (
@@ -695,6 +805,65 @@ function CadDrawingPreviewModal({
       </div>
     </div>
   );
+}
+
+function formatBboxLabel(
+  min: { x: number; y: number; z: number },
+  max: { x: number; y: number; z: number },
+): string {
+  const dx = Math.abs(max.x - min.x);
+  const dy = Math.abs(max.y - min.y);
+  const dz = Math.abs(max.z - min.z);
+  return `${formatMm(dx)} × ${formatMm(dy)} × ${formatMm(dz)} mm`;
+}
+
+function formatMm(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function formatComplexity(score: number | null): { label: string; pillClasses: string } {
+  if (typeof score !== "number" || !Number.isFinite(score)) {
+    return {
+      label: "Unknown",
+      pillClasses: "border-slate-800 bg-slate-950/50 text-slate-300",
+    };
+  }
+  const s = Math.max(0, Math.min(100, Math.round(score)));
+  if (s <= 33) {
+    return {
+      label: "Low",
+      pillClasses: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+    };
+  }
+  if (s <= 66) {
+    return {
+      label: "Medium",
+      pillClasses: "border-amber-500/30 bg-amber-500/10 text-amber-100",
+    };
+  }
+  return { label: "High", pillClasses: "border-red-500/30 bg-red-500/10 text-red-100" };
+}
+
+function formatDfmFlagLabel(flag: string): string {
+  const normalized = (flag ?? "").trim().toLowerCase();
+  if (normalized === "very_large") return "Very large";
+  if (normalized === "very_small") return "Very small";
+  if (normalized === "very_complex") return "Very complex";
+  if (normalized === "maybe_thin") return "Maybe thin";
+  if (normalized === "step_unsupported") return "STEP unsupported";
+  return normalized.replace(/[_-]+/g, " ").trim().replace(/^\w/, (m) => m.toUpperCase());
+}
+
+function dfmFlagPillClasses(flag: string): string {
+  const normalized = (flag ?? "").trim().toLowerCase();
+  if (normalized === "very_complex") return "border-red-500/30 bg-red-500/10 text-red-100";
+  if (normalized === "very_large") return "border-amber-500/30 bg-amber-500/10 text-amber-100";
+  if (normalized === "maybe_thin") return "border-amber-500/30 bg-amber-500/5 text-amber-100";
+  if (normalized === "very_small") return "border-blue-500/30 bg-blue-500/10 text-blue-100";
+  if (normalized === "step_unsupported") return "border-slate-700 bg-slate-900/30 text-slate-200";
+  return "border-slate-800 bg-slate-950/50 text-slate-300";
 }
 
 function SupplierAttachmentsForm({ quoteId, accept }: { quoteId: string; accept: string }) {

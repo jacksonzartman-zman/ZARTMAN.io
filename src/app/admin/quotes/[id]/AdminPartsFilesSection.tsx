@@ -7,6 +7,7 @@ import type {
   QuotePartFileRole,
 } from "@/app/(portals)/quotes/workspaceData";
 import type { QuoteUploadFileEntry, QuoteUploadGroup } from "@/server/quotes/uploadFiles";
+import type { CadFeatureSummary } from "@/server/quotes/cadFeatures";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
 import { classifyCadFileType } from "@/lib/cadRendering";
 import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
@@ -23,6 +24,7 @@ type PartsSectionProps = {
   quoteId: string;
   parts: QuotePartWithFiles[];
   uploadGroups: QuoteUploadGroup[];
+  cadFeaturesByFileId?: Record<string, CadFeatureSummary>;
   createPartAction: (
     prev: AdminQuotePartActionState,
     formData: FormData,
@@ -39,6 +41,7 @@ export function AdminPartsFilesSection({
   quoteId,
   parts,
   uploadGroups,
+  cadFeaturesByFileId,
   createPartAction,
   updatePartFilesAction,
 }: PartsSectionProps) {
@@ -49,6 +52,11 @@ export function AdminPartsFilesSection({
 
   return (
     <div className="space-y-5">
+      <CadMetricsMiniCard
+        uploadGroups={uploadGroups}
+        cadFeaturesByFileId={cadFeaturesByFileId ?? {}}
+      />
+
       {createState.ok && createState.message ? (
         <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
           {createState.message}
@@ -460,5 +468,165 @@ function CountPill({
       {label}: {count}
     </span>
   );
+}
+
+function CadMetricsMiniCard({
+  uploadGroups,
+  cadFeaturesByFileId,
+}: {
+  uploadGroups: QuoteUploadGroup[];
+  cadFeaturesByFileId: Record<string, CadFeatureSummary>;
+}) {
+  const cadFiles = useMemo(() => {
+    const out: Array<{ id: string; filename: string; extension: string | null }> = [];
+    const seen = new Set<string>();
+    for (const group of uploadGroups ?? []) {
+      for (const entry of group.entries ?? []) {
+        const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const cadType = classifyCadFileType({
+          filename: entry.filename,
+          extension: entry.extension ?? null,
+        });
+        if (!cadType.ok) continue;
+        out.push({
+          id,
+          filename: entry.filename,
+          extension: entry.extension ?? null,
+        });
+      }
+    }
+    return out;
+  }, [uploadGroups]);
+
+  if (cadFiles.length === 0) return null;
+
+  return (
+    <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            CAD metrics
+          </p>
+          <p className="mt-1 text-sm text-slate-300">
+            Best-effort geometric metrics and low-fi “DFM-ish” flags (read-only).
+          </p>
+        </div>
+        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+          {cadFiles.length} CAD file{cadFiles.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-xl border border-slate-900/60 bg-slate-950/30">
+        <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_130px_120px] gap-3 border-b border-slate-900/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          <div>File</div>
+          <div>Bounding box</div>
+          <div className="text-right">Triangles</div>
+          <div>Complexity</div>
+        </div>
+        <div className="divide-y divide-slate-900/60">
+          {cadFiles.map((file) => {
+            const features = cadFeaturesByFileId[file.id] ?? null;
+            const bboxLabel = formatBboxLabel(features?.bboxMin ?? null, features?.bboxMax ?? null);
+            const triLabel =
+              typeof features?.triangleCount === "number" && Number.isFinite(features.triangleCount)
+                ? features.triangleCount.toLocaleString()
+                : "—";
+            const complexity = formatComplexity(features?.complexityScore ?? null);
+            const flags = Array.isArray(features?.dfmFlags) ? features!.dfmFlags : [];
+
+            return (
+              <div key={file.id} className="px-4 py-3">
+                <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_130px_120px] gap-3 text-sm text-slate-200">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-100">{file.filename}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {features ? "Cached" : "No metrics available"}
+                    </p>
+                    {flags.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {flags.slice(0, 6).map((flag) => (
+                          <span
+                            key={flag}
+                            className={clsx(
+                              "rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                              dfmFlagPillClasses(flag),
+                            )}
+                          >
+                            {formatDfmFlagLabel(flag)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="text-slate-200">{bboxLabel}</div>
+                  <div className="text-right tabular-nums text-slate-200">{triLabel}</div>
+                  <div>
+                    <span
+                      className={clsx(
+                        "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+                        complexity.pillClasses,
+                      )}
+                    >
+                      {complexity.label}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function formatBboxLabel(min: { x: number; y: number; z: number } | null, max: { x: number; y: number; z: number } | null): string {
+  if (!min || !max) return "—";
+  const dx = Math.abs(max.x - min.x);
+  const dy = Math.abs(max.y - min.y);
+  const dz = Math.abs(max.z - min.z);
+  return `${formatMm(dx)} × ${formatMm(dy)} × ${formatMm(dz)} mm`;
+}
+
+function formatMm(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function formatComplexity(score: number | null): { label: string; pillClasses: string } {
+  if (typeof score !== "number" || !Number.isFinite(score)) {
+    return { label: "Unknown", pillClasses: "border-slate-800 bg-slate-950/50 text-slate-300" };
+  }
+  const s = Math.max(0, Math.min(100, Math.round(score)));
+  if (s <= 33) {
+    return { label: "Low", pillClasses: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100" };
+  }
+  if (s <= 66) {
+    return { label: "Medium", pillClasses: "border-amber-500/30 bg-amber-500/10 text-amber-100" };
+  }
+  return { label: "High", pillClasses: "border-red-500/30 bg-red-500/10 text-red-100" };
+}
+
+function formatDfmFlagLabel(flag: string): string {
+  const normalized = (flag ?? "").trim().toLowerCase();
+  if (normalized === "very_large") return "Very large";
+  if (normalized === "very_small") return "Very small";
+  if (normalized === "very_complex") return "Very complex";
+  if (normalized === "maybe_thin") return "Maybe thin";
+  if (normalized === "step_unsupported") return "STEP unsupported";
+  return normalized.replace(/[_-]+/g, " ").replace(/^\\w/, (m) => m.toUpperCase());
+}
+
+function dfmFlagPillClasses(flag: string): string {
+  const normalized = (flag ?? "").trim().toLowerCase();
+  if (normalized === "very_complex") return "border-red-500/30 bg-red-500/10 text-red-100";
+  if (normalized === "very_large") return "border-amber-500/30 bg-amber-500/10 text-amber-100";
+  if (normalized === "maybe_thin") return "border-amber-500/30 bg-amber-500/5 text-amber-100";
+  if (normalized === "very_small") return "border-blue-500/30 bg-blue-500/10 text-blue-100";
+  if (normalized === "step_unsupported") return "border-slate-700 bg-slate-900/30 text-slate-200";
+  return "border-slate-800 bg-slate-950/50 text-slate-300";
 }
 

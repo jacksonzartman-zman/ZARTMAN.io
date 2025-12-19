@@ -102,6 +102,7 @@ import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadSupplierReputationForSuppliers } from "@/server/suppliers/reputation";
+import { ensureCadFeaturesForQuote, loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import {
   createQuotePartAction,
   updateQuotePartFilesForQuoteAction,
@@ -378,6 +379,27 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const uploadGroups = await loadQuoteUploadGroups(quote.id);
     const workspaceResult = await loadQuoteWorkspaceData(quote.id, { safeOnly: true });
     const parts = workspaceResult.ok && workspaceResult.data ? workspaceResult.data.parts : [];
+    const cadFeaturesByFileId = await (async () => {
+      // Best-effort pre-population: never block the page on heavy work.
+      try {
+        const ensurePromise = ensureCadFeaturesForQuote(quote.id).catch((error) => {
+          console.warn("[admin quote] cad ensure crashed", { quoteId: quote.id, error });
+        });
+        await Promise.race([
+          ensurePromise,
+          new Promise((resolve) => setTimeout(resolve, 1200)),
+        ]);
+      } catch (error) {
+        console.warn("[admin quote] cad ensure wrapper crashed", { quoteId: quote.id, error });
+      }
+
+      try {
+        return await loadCadFeaturesForQuote(quote.id);
+      } catch (error) {
+        console.warn("[admin quote] cad features load crashed", { quoteId: quote.id, error });
+        return {};
+      }
+    })();
     const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
     const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
 
@@ -1201,6 +1223,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         quoteId={quote.id}
         parts={parts ?? []}
         uploadGroups={uploadGroups}
+        cadFeaturesByFileId={cadFeaturesByFileId}
         createPartAction={createQuotePartAction.bind(null, quote.id)}
         updatePartFilesAction={updateQuotePartFilesForQuoteAction.bind(null, quote.id)}
       />
