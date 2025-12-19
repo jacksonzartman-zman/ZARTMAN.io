@@ -47,6 +47,7 @@ import { PortalShell } from "../components/PortalShell";
 import { PortalStatPills } from "../components/PortalStatPills";
 import { resolveSupplierActivityEmptyState } from "./activityEmptyState";
 import { loadSupplierOnboardingState } from "@/server/suppliers/onboarding";
+import { refreshNotificationsForUser } from "@/server/notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,9 @@ async function SupplierDashboardPage({
       </section>
     );
   }
+  void refreshNotificationsForUser(user.id, "supplier").catch((error) => {
+    console.error("[notifications] refresh failed (supplier)", { userId: user.id, error });
+  });
   console.log("[portal] user id", user.id);
   console.log("[portal] email", user.email);
   console.log("[portal] isSupplier", roles?.isSupplier);

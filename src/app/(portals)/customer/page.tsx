@@ -25,6 +25,7 @@ import { PortalStatPills } from "../components/PortalStatPills";
 import { QuoteStatusBadge } from "../components/QuoteStatusBadge";
 import { loadRecentCustomerActivity } from "@/server/customers/activity";
 import { loadCustomerOnboardingState } from "@/server/customer/onboarding";
+import { refreshNotificationsForUser } from "@/server/notifications";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
@@ -104,6 +105,9 @@ async function CustomerDashboardPage({
 }: CustomerPageProps) {
   const user = await requireUser({ redirectTo: "/customer" });
   const roles = await resolveUserRoles(user.id);
+  void refreshNotificationsForUser(user.id, "customer").catch((error) => {
+    console.error("[notifications] refresh failed (customer)", { userId: user.id, error });
+  });
   console.log("[portal] user id", user.id);
   console.log("[portal] email", user.email);
   console.log("[portal] isSupplier", roles?.isSupplier);
