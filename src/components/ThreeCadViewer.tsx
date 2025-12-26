@@ -206,6 +206,15 @@ export type ThreeCadViewerProps = {
    */
   fileId?: string;
   /**
+   * Intake API: Storage object identity + short-lived preview token.
+   * When provided, the viewer will fetch via `/api/cad-preview`.
+   */
+  storageSource?: {
+    bucket: string;
+    path: string;
+    token?: string | null;
+  };
+  /**
    * Optional override for a better UX; viewer will also try to infer from response headers.
    */
   filenameHint?: string | null;
@@ -240,8 +249,21 @@ type LegacyProps = {
   onStatusChange?: (report: ThreeCadViewerReport) => void;
 };
 
+type StorageSourceProps = {
+  storageSource: {
+    bucket: string;
+    path: string;
+    token?: string | null;
+  };
+  className?: string;
+  filenameHint?: string | null;
+  cadKind?: CadKind | null;
+  onStatusChange?: (report: ThreeCadViewerReport) => void;
+};
+
 export function ThreeCadViewer(props: Props & { className?: string }): ReactElement;
 export function ThreeCadViewer(props: LegacyProps): ReactElement;
+export function ThreeCadViewer(props: StorageSourceProps): ReactElement;
 export function ThreeCadViewer({
   fileId,
   className,
@@ -250,6 +272,7 @@ export function ThreeCadViewer({
   onStatusChange,
   fileName,
   url,
+  storageSource,
 }: ThreeCadViewerProps) {
   const didMountLogRef = useRef(false);
 
@@ -263,6 +286,23 @@ export function ThreeCadViewer({
   const safeFileId = safeTrim(fileId);
   const safeUrl = safeTrim(url);
   const safeFileName = safeTrim(fileName);
+  const safeBucket = safeTrim(storageSource?.bucket);
+  const safePath = safeTrim(storageSource?.path);
+  const safeToken = safeTrim(storageSource?.token ?? "");
+
+  const intakeInlineUrl = useMemo(() => {
+    if (!safeBucket || !safePath) return null;
+    let next = `/api/cad-preview?bucket=${encodeURIComponent(safeBucket)}&path=${encodeURIComponent(safePath)}&disposition=inline`;
+    if (safeToken) next += `&token=${encodeURIComponent(safeToken)}`;
+    return next;
+  }, [safeBucket, safePath, safeToken]);
+
+  const intakeDownloadUrl = useMemo(() => {
+    if (!safeBucket || !safePath) return null;
+    let next = `/api/cad-preview?bucket=${encodeURIComponent(safeBucket)}&path=${encodeURIComponent(safePath)}&disposition=attachment`;
+    if (safeToken) next += `&token=${encodeURIComponent(safeToken)}`;
+    return next;
+  }, [safeBucket, safePath, safeToken]);
 
   const inlineUrl = useMemo(() => {
     if (!safeFileId) return null;
@@ -272,12 +312,13 @@ export function ThreeCadViewer({
   }, [safeFileId, cadKind, filenameHint, safeFileName]);
 
   const downloadUrl = useMemo(() => {
+    if (intakeDownloadUrl) return intakeDownloadUrl;
     if (!safeFileId) return null;
     return `/api/parts-file-preview?fileId=${encodeURIComponent(safeFileId)}&disposition=attachment`;
-  }, [safeFileId]);
+  }, [safeFileId, intakeDownloadUrl]);
 
   const effectiveUrl = useMemo(() => {
-    const baseUrl = safeUrl || inlineUrl;
+    const baseUrl = safeUrl || intakeInlineUrl || inlineUrl;
     if (!baseUrl) return null;
     const filenameForStep = safeTrim(filenameHint) || safeFileName || null;
     return ensureStepStlPreviewUrl({
@@ -285,7 +326,7 @@ export function ThreeCadViewer({
       cadKind: cadKind ?? null,
       filename: filenameForStep,
     });
-  }, [safeUrl, inlineUrl, cadKind, filenameHint, safeFileName]);
+  }, [safeUrl, intakeInlineUrl, inlineUrl, cadKind, filenameHint, safeFileName]);
   const effectiveFileName = safeFileName || filenameHint || resolvedFilename || "";
 
   if (!didMountLogRef.current) {

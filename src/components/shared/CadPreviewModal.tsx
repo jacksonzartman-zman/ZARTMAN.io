@@ -9,7 +9,12 @@ import {
 } from "@/components/ThreeCadViewer";
 
 export type CadPreviewModalProps = {
-  fileId: string;
+  fileId?: string;
+  storageSource?: {
+    bucket: string;
+    path: string;
+    token?: string | null;
+  };
   onClose: () => void;
   title?: string | null;
   filename?: string | null;
@@ -18,6 +23,7 @@ export type CadPreviewModalProps = {
 
 export function CadPreviewModal({
   fileId,
+  storageSource,
   onClose,
   title,
   filename,
@@ -30,23 +36,20 @@ export function CadPreviewModal({
   useEffect(() => {
     setViewerStatus("idle");
     setErrorReason(null);
-  }, [fileId]);
+  }, [fileId, storageSource?.bucket, storageSource?.path]);
 
   const safeFileName = typeof filename === "string" && filename.trim() ? filename.trim() : null;
-  const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(
-    fileId,
-  )}&disposition=attachment`;
+  const downloadUrl = storageSource?.bucket && storageSource?.path
+    ? `/api/cad-preview?bucket=${encodeURIComponent(storageSource.bucket)}&path=${encodeURIComponent(storageSource.path)}&disposition=attachment${storageSource.token ? `&token=${encodeURIComponent(storageSource.token)}` : ""}`
+    : fileId
+      ? `/api/parts-file-preview?fileId=${encodeURIComponent(fileId)}&disposition=attachment`
+      : null;
 
-  // For STEP/STP files, request the server-side STL preview instead of parsing in the browser.
-  let previewUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(fileId)}&disposition=inline`;
-  if (safeFileName) {
-    previewUrl += `&fileName=${encodeURIComponent(safeFileName)}`;
-  }
-  if (cadKind === "step" && previewUrl.startsWith("/api/parts-file-preview")) {
-    const hasQuery = previewUrl.includes("?");
-    const sep = hasQuery ? "&" : "?";
-    previewUrl = `${previewUrl}${sep}previewAs=stl_preview`;
-  }
+  useEffect(() => {
+    if (storageSource?.bucket && storageSource?.path) {
+      console.log("[cad-preview] request", { bucket: storageSource.bucket, path: storageSource.path, kind: cadKind });
+    }
+  }, [storageSource?.bucket, storageSource?.path, cadKind]);
 
   const isSupportedCadKind =
     cadKind === "stl" || cadKind === "step" || cadKind === "obj" || cadKind === "glb";
@@ -70,14 +73,16 @@ export function CadPreviewModal({
             ) : null}
           </div>
           <div className="flex items-center gap-2">
-            <a
-              href={downloadUrl}
-              className={clsx(
-                "rounded-full border border-slate-700 bg-slate-900/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600",
-              )}
-            >
-              Download
-            </a>
+            {downloadUrl ? (
+              <a
+                href={downloadUrl}
+                className={clsx(
+                  "rounded-full border border-slate-700 bg-slate-900/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600",
+                )}
+              >
+                Download
+              </a>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -100,28 +105,41 @@ export function CadPreviewModal({
                 <p className="max-w-lg text-sm text-slate-300">
                   You can still download the file.
                 </p>
-                <a
-                  href={downloadUrl}
-                  className={clsx(
-                    "inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-900/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600",
-                  )}
-                >
-                  Download file
-                </a>
+                {downloadUrl ? (
+                  <a
+                    href={downloadUrl}
+                    className={clsx(
+                      "inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-900/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600",
+                    )}
+                  >
+                    Download file
+                  </a>
+                ) : null}
               </div>
             </div>
           ) : (
             <div>
-            <ThreeCadViewer
-              fileId={fileId}
-              filenameHint={filename ?? null}
-              url={previewUrl}
-              cadKind={cadKind}
-              onStatusChange={(report) => {
-                setViewerStatus(report.status);
-                setErrorReason(report.errorReason ?? null);
-              }}
-            />
+            {storageSource?.bucket && storageSource?.path ? (
+              <ThreeCadViewer
+                storageSource={storageSource}
+                filenameHint={filename ?? null}
+                cadKind={cadKind}
+                onStatusChange={(report) => {
+                  setViewerStatus(report.status);
+                  setErrorReason(report.errorReason ?? null);
+                }}
+              />
+            ) : fileId ? (
+              <ThreeCadViewer
+                fileId={fileId}
+                filenameHint={filename ?? null}
+                cadKind={cadKind}
+                onStatusChange={(report) => {
+                  setViewerStatus(report.status);
+                  setErrorReason(report.errorReason ?? null);
+                }}
+              />
+            ) : null}
             {cadKind === "step" && (viewerStatus === "error" || viewerStatus === "unsupported") ? (
               <div className="mt-4 rounded-md border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-200">
                 <div className="font-semibold">STEP preview is not available for this file yet.</div>

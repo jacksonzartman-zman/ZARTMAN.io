@@ -7,7 +7,10 @@
 // - SUPABASE_URL
 // - SUPABASE_SERVICE_ROLE_KEY (preferred) or SUPABASE_ANON_KEY
 //
-// Request:
+// Request (new, intake-friendly):
+//   { "bucket": string, "path": string, "fileName"?: string }
+//
+// Back-compat (portal fileId-based preview):
 //   { "quoteUploadFileId": string }
 //
 // Response (200):
@@ -42,6 +45,7 @@ type FilesRow = {
 
 const PREVIEW_BUCKET = "cad_previews";
 const PREVIEW_PREFIX = "step-stl";
+const MAX_CONVERT_BYTES = 50 * 1024 * 1024; // 50MB
 
 function corsHeaders() {
   return {
@@ -53,6 +57,11 @@ function corsHeaders() {
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizePath(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  return raw.replace(/^\/+/, "");
 }
 
 function normalizeExtension(value?: string | null): string | null {
@@ -81,6 +90,15 @@ function compactErrorReason(err: unknown): string {
   if (!err) return "unknown_error";
   if (err instanceof Error) return err.message || "error";
   return String(err).slice(0, 240);
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const bytes = new Uint8Array(digest);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function computeTriangleNormal(ax: number, ay: number, az: number, bx: number, by: number, bz: number, cx: number, cy: number, cz: number) {
@@ -216,6 +234,9 @@ Deno.serve(async (req: Request) => {
   }
 
   let quoteUploadFileId = "";
+  let intakeBucket = "";
+  let intakePath = "";
+  let previewPath = "";
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -238,18 +259,137 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = serviceRoleKey || anonKey;
     if (!supabaseKey) throw new Error("missing_SUPABASE_KEY");
 
-    const body = (await req.json().catch(() => null)) as { quoteUploadFileId?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as
+      | { quoteUploadFileId?: unknown; bucket?: unknown; path?: unknown; fileName?: unknown }
+      | null;
+
     quoteUploadFileId = normalizeId(body?.quoteUploadFileId);
-    if (!quoteUploadFileId) {
-      return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "missing_quoteUploadFileId" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders() },
-      });
+    intakeBucket = normalizeId(body?.bucket);
+    intakePath = normalizePath(body?.path);
+
+    const mode = intakeBucket && intakePath ? "intake" : quoteUploadFileId ? "fileId" : "missing";
+
+    if (mode === "missing") {
+      return new Response(
+        JSON.stringify({ ok: false, reason: "missing_bucket_path_or_quoteUploadFileId" }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders() },
+        },
+      );
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+
+    // New intake mode: bucket/path -> deterministic preview path.
+    if (mode === "intake") {
+      const previewHash = await sha256Hex(`${intakeBucket}:${intakePath}`);
+      previewPath = `${PREVIEW_PREFIX}/${previewHash}.stl`;
+
+      // Idempotency: if preview already exists, return immediately.
+      const { data: existing, error: existingError } = await supabase.storage
+        .from(PREVIEW_BUCKET)
+        .download(previewPath);
+      if (!existingError && existing) {
+        const size = (existing as any)?.size;
+        console.log("[step-to-stl]", {
+          bucket: intakeBucket,
+          path: intakePath,
+          previewPath,
+          ok: true,
+          reason: "cache_hit",
+        });
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            previewBucket: PREVIEW_BUCKET,
+            previewPath,
+            bytes: typeof size === "number" ? size : null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+        );
+      }
+
+      const { data: downloaded, error: downloadError } = await supabase.storage
+        .from(intakeBucket)
+        .download(intakePath);
+
+      if (downloadError || !downloaded) {
+        console.log("[step-to-stl]", {
+          bucket: intakeBucket,
+          path: intakePath,
+          previewPath,
+          ok: false,
+          reason: "download_failed",
+        });
+        return new Response(
+          JSON.stringify({ ok: false, reason: "download_failed" }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+        );
+      }
+
+      const stepBytes = new Uint8Array(await downloaded.arrayBuffer());
+      if (!stepBytes || stepBytes.byteLength === 0) {
+        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "empty" });
+        return new Response(JSON.stringify({ ok: false, reason: "empty" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders() },
+        });
+      }
+      if (stepBytes.byteLength > MAX_CONVERT_BYTES) {
+        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "file_too_large" });
+        return new Response(JSON.stringify({ ok: false, reason: "file_too_large" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders() },
+        });
+      }
+
+      const occt = await occtImportJs();
+      const result = (occt as any)?.ReadStepFile?.(stepBytes, null);
+      if (!result?.success) {
+        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "step_parse_failed" });
+        return new Response(JSON.stringify({ ok: false, reason: "step_parse_failed" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders() },
+        });
+      }
+
+      const stlBytes = encodeBinaryStlFromOcctMeshes(result.meshes);
+      if (!stlBytes || stlBytes.byteLength === 0) {
+        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "no_triangles" });
+        return new Response(JSON.stringify({ ok: false, reason: "no_triangles" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders() },
+        });
+      }
+
+      await ensurePreviewBucketExists(supabase);
+
+      const { error: uploadError } = await supabase.storage
+        .from(PREVIEW_BUCKET)
+        .upload(previewPath, stlBytes, { contentType: "model/stl", upsert: true });
+
+      if (uploadError) {
+        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "preview_upload_failed" });
+        return new Response(JSON.stringify({ ok: false, reason: "preview_upload_failed" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders() },
+        });
+      }
+
+      console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: true });
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          previewBucket: PREVIEW_BUCKET,
+          previewPath,
+          bytes: stlBytes.byteLength,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+      );
+    }
 
     const { data: uploadFile, error: uploadFileError } = await supabase
       .from("quote_upload_files")
@@ -362,6 +502,12 @@ Deno.serve(async (req: Request) => {
         headers: { "Content-Type": "application/json", ...corsHeaders() },
       });
     }
+    if (stepBytes.byteLength > MAX_CONVERT_BYTES) {
+      return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "file_too_large" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ...corsHeaders() },
+      });
+    }
 
     // Parse & tessellate STEP -> triangles
     const occt = await occtImportJs();
@@ -383,7 +529,7 @@ Deno.serve(async (req: Request) => {
 
     await ensurePreviewBucketExists(supabase);
 
-    const previewPath = `${PREVIEW_PREFIX}/${quoteUploadFileId}.stl`;
+    previewPath = `${PREVIEW_PREFIX}/${quoteUploadFileId}.stl`;
     const { error: uploadError } = await supabase.storage
       .from(PREVIEW_BUCKET)
       .upload(previewPath, stlBytes, { contentType: "model/stl", upsert: true });
@@ -395,12 +541,18 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    console.log("[step-to-stl]", { quoteUploadFileId, previewPath, ok: true });
     return new Response(
       JSON.stringify({
         ok: true,
         quoteUploadFileId,
+        // legacy response keys:
         bucket: PREVIEW_BUCKET,
         path: previewPath,
+        // new response keys:
+        previewBucket: PREVIEW_BUCKET,
+        previewPath,
+        bytes: stlBytes.byteLength,
       }),
       {
         status: 200,
@@ -408,9 +560,17 @@ Deno.serve(async (req: Request) => {
       },
     );
   } catch (error) {
-    console.error("[step-to-stl] failed", { quoteUploadFileId, error: compactErrorReason(error) });
+    const reason = compactErrorReason(error);
+    console.log("[step-to-stl]", {
+      bucket: intakeBucket || null,
+      path: intakePath || null,
+      quoteUploadFileId: quoteUploadFileId || null,
+      previewPath: previewPath || null,
+      ok: false,
+      reason,
+    });
     return new Response(
-      JSON.stringify({ ok: false, quoteUploadFileId, reason: compactErrorReason(error) }),
+      JSON.stringify({ ok: false, quoteUploadFileId: quoteUploadFileId || undefined, reason }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
     );
   }

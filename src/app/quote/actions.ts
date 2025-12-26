@@ -23,6 +23,7 @@ import {
   registerUploadedObjectsForExistingUpload,
   type UploadTarget,
 } from "@/server/quotes/uploadFiles";
+import { signPreviewToken } from "@/server/cadPreviewToken";
 
 export type QuoteIntakeActionState =
   | {
@@ -43,6 +44,7 @@ export type QuoteIntakeDirectUploadTarget = {
   fileName: string;
   mimeType: string | null;
   sizeBytes: number;
+  previewToken: string;
 };
 
 export type QuoteIntakeDirectPrepareState =
@@ -283,17 +285,26 @@ export async function prepareQuoteIntakeDirectUploadAction(
       };
     }
 
+    const now = Math.floor(Date.now() / 1000);
+    const exp = now + 15 * 60; // 15 minutes
+
     return {
       ok: true,
       quoteId: result.quoteId,
       uploadId: result.uploadId,
-      message: QUOTE_INTAKE_SUCCESS_MESSAGE,
+      message: "Upload targets prepared.",
       targets: result.targets.map((t) => ({
         storagePath: t.storagePath,
         bucketId: t.bucketId,
         fileName: t.originalFileName,
         mimeType: t.mimeType,
         sizeBytes: t.sizeBytes,
+        previewToken: signPreviewToken({
+          userId: user.id,
+          bucket: t.bucketId,
+          path: t.storagePath,
+          exp,
+        }),
       })),
     };
   } catch (error) {
