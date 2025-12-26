@@ -32,9 +32,21 @@ export function CadPreviewModal({
     setErrorReason(null);
   }, [fileId]);
 
+  const safeFileName = typeof filename === "string" && filename.trim() ? filename.trim() : null;
   const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(
     fileId,
   )}&disposition=attachment`;
+
+  // For STEP/STP files, request the server-side STL preview instead of parsing in the browser.
+  let previewUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(fileId)}&disposition=inline`;
+  if (safeFileName) {
+    previewUrl += `&fileName=${encodeURIComponent(safeFileName)}`;
+  }
+  if (cadKind === "step" && previewUrl.startsWith("/api/parts-file-preview")) {
+    const hasQuery = previewUrl.includes("?");
+    const sep = hasQuery ? "&" : "?";
+    previewUrl = `${previewUrl}${sep}previewAs=stl_preview`;
+  }
 
   const isSupportedCadKind =
     cadKind === "stl" || cadKind === "step" || cadKind === "obj" || cadKind === "glb";
@@ -103,17 +115,19 @@ export function CadPreviewModal({
             <ThreeCadViewer
               fileId={fileId}
               filenameHint={filename ?? null}
+              url={previewUrl}
               cadKind={cadKind}
               onStatusChange={(report) => {
                 setViewerStatus(report.status);
                 setErrorReason(report.errorReason ?? null);
               }}
             />
-            {cadKind === "step" ? (
-              <div className="mt-4 text-xs text-muted-foreground border border-dashed rounded-md p-2">
-                <div>STEP debug</div>
-                <div>Status: {viewerStatus}</div>
-                <div>Reason: {errorReason ?? "none"}</div>
+            {cadKind === "step" && (viewerStatus === "error" || viewerStatus === "unsupported") ? (
+              <div className="mt-4 rounded-md border border-slate-800 bg-slate-950/40 p-3 text-xs text-slate-200">
+                <div className="font-semibold">STEP preview is not available for this file yet.</div>
+                <div className="mt-1 text-slate-400">
+                  Reason: {errorReason ?? "Preview conversion failed."}
+                </div>
               </div>
             ) : null}
             </div>

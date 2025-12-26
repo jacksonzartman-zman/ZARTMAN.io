@@ -37,9 +37,11 @@ export default function StepViewerDebugPage({ searchParams }: PageProps) {
 
   const url = useMemo(() => {
     return fileId
-      ? `/api/parts-file-preview?fileId=${encodeURIComponent(fileId)}&disposition=inline`
+      ? `/api/parts-file-preview?fileId=${encodeURIComponent(fileId)}&disposition=inline&fileName=${encodeURIComponent(
+          fileName,
+        )}&previewAs=stl_preview`
       : null;
-  }, [fileId]);
+  }, [fileId, fileName]);
 
   const [status, setStatus] = useState<ViewerStatus>("idle");
   const [errorReason, setErrorReason] = useState<string | null>(null);
