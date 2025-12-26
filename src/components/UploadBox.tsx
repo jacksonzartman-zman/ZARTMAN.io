@@ -24,12 +24,15 @@ import {
   finalizeQuoteIntakeDirectUploadAction,
   prepareQuoteIntakeDirectUploadAction,
   type QuoteIntakeDirectPrepareState,
+  type QuoteIntakeDirectUploadTarget,
 } from "@/app/quote/actions";
 import { QUOTE_INTAKE_FALLBACK_ERROR } from "@/lib/quote/messages";
 import type { CadViewerPanelProps } from "@/app/(portals)/components/CadViewerPanel";
 import { PartDfMPanel } from "@/app/(portals)/components/PartDfMPanel";
 import type { GeometryStats } from "@/lib/dfm/basicPartChecks";
 import { supabaseBrowser } from "@/lib/supabase.client";
+import { classifyCadFileType } from "@/lib/cadRendering";
+import { CadPreviewModal } from "@/components/shared/CadPreviewModal";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
@@ -86,6 +89,12 @@ type SelectedCadFile = {
   file: File;
   objectUrl: string;
   addedAt: number;
+};
+
+type UploadedPreviewRef = {
+  bucket: string;
+  path: string;
+  token: string;
 };
 
 const buildFileKey = (file: File): string => {
@@ -284,6 +293,13 @@ export default function UploadBox({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [directSession, setDirectSession] = useState<{
+    quoteId: string;
+    uploadId: string;
+    targets: QuoteIntakeDirectUploadTarget[];
+  } | null>(null);
+  const [uploadedRefs, setUploadedRefs] = useState<Record<string, UploadedPreviewRef>>({});
+  const [previewOpenForId, setPreviewOpenForId] = useState<string | null>(null);
   const [geometryStatsMap, setGeometryStatsMap] = useState<
     Record<string, GeometryStats | null>
   >({});
@@ -299,6 +315,9 @@ export default function UploadBox({
       return { ...baseState };
     });
     setGeometryStatsMap({});
+    setDirectSession(null);
+    setUploadedRefs({});
+    setPreviewOpenForId(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -711,10 +730,17 @@ export default function UploadBox({
         return;
       }
 
+      setDirectSession({
+        quoteId: prepare.quoteId,
+        uploadId: prepare.uploadId,
+        targets: prepare.targets,
+      });
+
       const sb = supabaseBrowser();
       for (let i = 0; i < prepare.targets.length; i += 1) {
         const target = prepare.targets[i]!;
-        const file = state.files[i]!.file;
+        const entry = state.files[i]!;
+        const file = entry.file;
         const { error: uploadError } = await sb.storage
           .from(target.bucketId)
           .upload(target.storagePath, file, {
@@ -728,23 +754,19 @@ export default function UploadBox({
           setSuccessMessage(null);
           return;
         }
-      }
 
-      const finalizeData = new FormData();
-      finalizeData.set("quoteId", prepare.quoteId);
-      finalizeData.set("uploadId", prepare.uploadId);
-      finalizeData.set("targets", JSON.stringify(prepare.targets));
-      const finalized = await finalizeQuoteIntakeDirectUploadAction(finalizeData);
-      if (!finalized.ok) {
-        setError(finalized.error || QUOTE_INTAKE_FALLBACK_ERROR);
-        setSuccessMessage(null);
-        return;
+        setUploadedRefs((prev) => ({
+          ...prev,
+          [entry.id]: {
+            bucket: target.bucketId,
+            path: target.storagePath,
+            token: target.previewToken,
+          },
+        }));
       }
 
       setError(null);
-      setSuccessMessage(finalized.message || "RFQ received.");
-      setFieldErrors({});
-      resetUploadState();
+      setSuccessMessage("Files uploaded. Preview in 3D, then click “Submit RFQ” to finalize.");
     } catch (submitError) {
       console.error("[quote intake] submit handler failed", submitError);
       setError(QUOTE_INTAKE_FALLBACK_ERROR);
@@ -753,6 +775,35 @@ export default function UploadBox({
       setIsSubmitting(false);
     }
   };
+
+  const handleFinalize = useCallback(async () => {
+    try {
+      if (!directSession?.quoteId || !directSession?.uploadId) {
+        setError("Missing upload references.");
+        return;
+      }
+      const finalizeData = new FormData();
+      finalizeData.set("quoteId", directSession.quoteId);
+      finalizeData.set("uploadId", directSession.uploadId);
+      finalizeData.set("targets", JSON.stringify(directSession.targets));
+      setIsSubmitting(true);
+      const finalized = await finalizeQuoteIntakeDirectUploadAction(finalizeData);
+      if (!finalized.ok) {
+        setError(finalized.error || QUOTE_INTAKE_FALLBACK_ERROR);
+        setSuccessMessage(null);
+        return;
+      }
+      setError(null);
+      setSuccessMessage(finalized.message || "RFQ received.");
+      setFieldErrors({});
+      resetUploadState();
+    } catch (e) {
+      console.error("[quote intake direct] finalize failed (client)", e);
+      setError(QUOTE_INTAKE_FALLBACK_ERROR);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [directSession, resetUploadState]);
 
   return (
     <section
@@ -871,6 +922,13 @@ export default function UploadBox({
               ) : (
                 state.files.map((entry, index) => {
                   const isSelected = selectedPart?.id === entry.id;
+                  const uploaded = Boolean(uploadedRefs[entry.id]);
+                  const previewRef = uploadedRefs[entry.id] ?? null;
+                  const kindInfo = classifyCadFileType({
+                    filename: entry.file.name,
+                    extension: null,
+                  });
+                  const cadKind = kindInfo.ok ? kindInfo.type : null;
                   return (
                     <div
                       key={entry.id}
@@ -900,6 +958,23 @@ export default function UploadBox({
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
+                        {uploaded && previewRef && cadKind ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setPreviewOpenForId(entry.id);
+                            }}
+                            className="rounded-full border border-border/60 px-2 py-1 text-[11px] text-slate-100 transition hover:border-border"
+                            title="Preview in 3D (loads from server)"
+                          >
+                            Preview 3D
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-muted">
+                            {isSubmitting ? "Uploading…" : "Not uploaded yet"}
+                          </span>
+                        )}
                         <span
                           className={clsx(
                             "pill text-[10px] font-semibold uppercase tracking-wide",
@@ -914,6 +989,7 @@ export default function UploadBox({
                             event.stopPropagation();
                             handleRemovePart(entry.id);
                           }}
+                          disabled={isSubmitting || uploaded}
                           className="rounded-full border border-border/60 px-2 py-1 text-[11px] text-muted transition hover:border-red-400/60 hover:text-red-200"
                           aria-label={`Remove ${entry.file.name}`}
                         >
@@ -1345,10 +1421,45 @@ export default function UploadBox({
         </div>
 
         <div className="pt-2">
-          <SubmitButton disabled={!canSubmit} pending={isSubmitting} />
+          <div className="space-y-3">
+            <SubmitButton disabled={!canSubmit || Boolean(directSession)} pending={isSubmitting} />
+            {directSession && Object.keys(uploadedRefs).length === state.files.length ? (
+              <button
+                type="button"
+                onClick={handleFinalize}
+                disabled={isSubmitting}
+                className={clsx(
+                  primaryCtaClasses,
+                  "w-full px-6 py-3",
+                  isSubmitting && "cursor-wait",
+                )}
+              >
+                {isSubmitting ? "Submitting…" : "Submit RFQ"}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </form>
+    {previewOpenForId ? (
+      (() => {
+        const entry = state.files.find((f) => f.id === previewOpenForId) ?? null;
+        const ref = entry ? uploadedRefs[entry.id] ?? null : null;
+        const classification = entry
+          ? classifyCadFileType({ filename: entry.file.name, extension: null })
+          : { ok: false as const };
+        if (!entry || !ref || !classification.ok) return null;
+        return (
+          <CadPreviewModal
+            storageSource={{ bucket: ref.bucket, path: ref.path, token: ref.token }}
+            filename={entry.file.name}
+            cadKind={classification.type}
+            title="3D Preview"
+            onClose={() => setPreviewOpenForId(null)}
+          />
+        );
+      })()
+    ) : null}
     </section>
   );
 }
@@ -1365,7 +1476,7 @@ function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boole
       )}
       aria-busy={pending}
     >
-      {pending ? "Submitting…" : "Submit RFQ"}
+      {pending ? "Uploading…" : "Upload files"}
     </button>
   );
 }
