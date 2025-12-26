@@ -39,15 +39,22 @@ export function CadPreviewModal({
   }, [fileId, storageSource?.bucket, storageSource?.path]);
 
   const safeFileName = typeof filename === "string" && filename.trim() ? filename.trim() : null;
-  const downloadUrl = storageSource?.bucket && storageSource?.path
-    ? `/api/cad-preview?bucket=${encodeURIComponent(storageSource.bucket)}&path=${encodeURIComponent(storageSource.path)}&disposition=attachment${storageSource.token ? `&token=${encodeURIComponent(storageSource.token)}` : ""}`
-    : fileId
-      ? `/api/parts-file-preview?fileId=${encodeURIComponent(fileId)}&disposition=attachment`
-      : null;
+  const downloadUrl = storageSource?.token
+    ? `/api/cad-preview?token=${encodeURIComponent(storageSource.token)}&kind=${encodeURIComponent(cadKind)}&disposition=attachment`
+    : storageSource?.bucket && storageSource?.path
+      ? `/api/cad-preview?bucket=${encodeURIComponent(storageSource.bucket)}&path=${encodeURIComponent(storageSource.path)}&kind=${encodeURIComponent(cadKind)}&disposition=attachment`
+      : fileId
+        ? `/api/parts-file-preview?fileId=${encodeURIComponent(fileId)}&disposition=attachment`
+        : null;
 
   useEffect(() => {
     if (storageSource?.bucket && storageSource?.path) {
-      console.log("[cad-preview] request", { bucket: storageSource.bucket, path: storageSource.path, kind: cadKind });
+      console.log("[cad-preview] request", {
+        bucket: storageSource.bucket,
+        path: storageSource.path,
+        kind: cadKind,
+        tokenPresent: Boolean(storageSource.token),
+      });
     }
   }, [storageSource?.bucket, storageSource?.path, cadKind]);
 

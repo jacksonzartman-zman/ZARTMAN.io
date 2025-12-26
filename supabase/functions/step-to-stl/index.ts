@@ -237,6 +237,13 @@ Deno.serve(async (req: Request) => {
   let intakeBucket = "";
   let intakePath = "";
   let previewPath = "";
+  let didLogStart = false;
+
+  const logStartOnce = (input: { bucket: string; path: string; outPath: string }) => {
+    if (didLogStart) return;
+    didLogStart = true;
+    console.log("[step-to-stl] start", input);
+  };
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -287,6 +294,7 @@ Deno.serve(async (req: Request) => {
     if (mode === "intake") {
       const previewHash = await sha256Hex(`${intakeBucket}:${intakePath}`);
       previewPath = `${PREVIEW_PREFIX}/${previewHash}.stl`;
+      logStartOnce({ bucket: intakeBucket, path: intakePath, outPath: previewPath });
 
       // Idempotency: if preview already exists, return immediately.
       const { data: existing, error: existingError } = await supabase.storage
@@ -294,12 +302,10 @@ Deno.serve(async (req: Request) => {
         .download(previewPath);
       if (!existingError && existing) {
         const size = (existing as any)?.size;
-        console.log("[step-to-stl]", {
-          bucket: intakeBucket,
-          path: intakePath,
-          previewPath,
-          ok: true,
-          reason: "cache_hit",
+        console.log("[step-to-stl] ok", {
+          outBucket: PREVIEW_BUCKET,
+          outPath: previewPath,
+          bytes: typeof size === "number" ? size : null,
         });
         return new Response(
           JSON.stringify({
@@ -317,13 +323,7 @@ Deno.serve(async (req: Request) => {
         .download(intakePath);
 
       if (downloadError || !downloaded) {
-        console.log("[step-to-stl]", {
-          bucket: intakeBucket,
-          path: intakePath,
-          previewPath,
-          ok: false,
-          reason: "download_failed",
-        });
+        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "download_failed" });
         return new Response(
           JSON.stringify({ ok: false, reason: "download_failed" }),
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
@@ -332,14 +332,14 @@ Deno.serve(async (req: Request) => {
 
       const stepBytes = new Uint8Array(await downloaded.arrayBuffer());
       if (!stepBytes || stepBytes.byteLength === 0) {
-        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "empty" });
+        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "empty" });
         return new Response(JSON.stringify({ ok: false, reason: "empty" }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders() },
         });
       }
       if (stepBytes.byteLength > MAX_CONVERT_BYTES) {
-        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "file_too_large" });
+        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "file_too_large" });
         return new Response(JSON.stringify({ ok: false, reason: "file_too_large" }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders() },
@@ -349,7 +349,7 @@ Deno.serve(async (req: Request) => {
       const occt = await occtImportJs();
       const result = (occt as any)?.ReadStepFile?.(stepBytes, null);
       if (!result?.success) {
-        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "step_parse_failed" });
+        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "step_parse_failed" });
         return new Response(JSON.stringify({ ok: false, reason: "step_parse_failed" }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders() },
@@ -358,7 +358,7 @@ Deno.serve(async (req: Request) => {
 
       const stlBytes = encodeBinaryStlFromOcctMeshes(result.meshes);
       if (!stlBytes || stlBytes.byteLength === 0) {
-        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "no_triangles" });
+        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "no_triangles" });
         return new Response(JSON.stringify({ ok: false, reason: "no_triangles" }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders() },
@@ -372,14 +372,14 @@ Deno.serve(async (req: Request) => {
         .upload(previewPath, stlBytes, { contentType: "model/stl", upsert: true });
 
       if (uploadError) {
-        console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: false, reason: "preview_upload_failed" });
+        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "preview_upload_failed" });
         return new Response(JSON.stringify({ ok: false, reason: "preview_upload_failed" }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders() },
         });
       }
 
-      console.log("[step-to-stl]", { bucket: intakeBucket, path: intakePath, previewPath, ok: true });
+      console.log("[step-to-stl] ok", { outBucket: PREVIEW_BUCKET, outPath: previewPath, bytes: stlBytes.byteLength });
       return new Response(
         JSON.stringify({
           ok: true,
@@ -390,6 +390,9 @@ Deno.serve(async (req: Request) => {
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
       );
     }
+
+    previewPath = `${PREVIEW_PREFIX}/${quoteUploadFileId}.stl`;
+    logStartOnce({ bucket: "quote_upload_files", path: quoteUploadFileId, outPath: previewPath });
 
     const { data: uploadFile, error: uploadFileError } = await supabase
       .from("quote_upload_files")
@@ -529,7 +532,6 @@ Deno.serve(async (req: Request) => {
 
     await ensurePreviewBucketExists(supabase);
 
-    previewPath = `${PREVIEW_PREFIX}/${quoteUploadFileId}.stl`;
     const { error: uploadError } = await supabase.storage
       .from(PREVIEW_BUCKET)
       .upload(previewPath, stlBytes, { contentType: "model/stl", upsert: true });
@@ -541,7 +543,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    console.log("[step-to-stl]", { quoteUploadFileId, previewPath, ok: true });
+    console.log("[step-to-stl] ok", { outBucket: PREVIEW_BUCKET, outPath: previewPath, bytes: stlBytes.byteLength });
     return new Response(
       JSON.stringify({
         ok: true,
@@ -561,14 +563,12 @@ Deno.serve(async (req: Request) => {
     );
   } catch (error) {
     const reason = compactErrorReason(error);
-    console.log("[step-to-stl]", {
-      bucket: intakeBucket || null,
-      path: intakePath || null,
-      quoteUploadFileId: quoteUploadFileId || null,
-      previewPath: previewPath || null,
-      ok: false,
-      reason,
-    });
+    if (intakeBucket && intakePath && previewPath) {
+      logStartOnce({ bucket: intakeBucket, path: intakePath, outPath: previewPath });
+    } else if (quoteUploadFileId && previewPath) {
+      logStartOnce({ bucket: "quote_upload_files", path: quoteUploadFileId, outPath: previewPath });
+    }
+    console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath || null, reason });
     return new Response(
       JSON.stringify({ ok: false, quoteUploadFileId: quoteUploadFileId || undefined, reason }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },

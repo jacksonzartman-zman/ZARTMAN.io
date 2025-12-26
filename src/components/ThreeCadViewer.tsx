@@ -290,19 +290,43 @@ export function ThreeCadViewer({
   const safePath = safeTrim(storageSource?.path);
   const safeToken = safeTrim(storageSource?.token ?? "");
 
+  const kindForIntakeUrl = useMemo(() => {
+    if (cadKind) return cadKind;
+    const candidate =
+      safeTrim(filenameHint) ||
+      safeFileName ||
+      (safePath ? safePath.split("/").pop() ?? "" : "");
+    const info = classifyCadFileType({ filename: candidate, extension: null });
+    return info.ok ? info.type : null;
+  }, [cadKind, filenameHint, safeFileName, safePath]);
+
   const intakeInlineUrl = useMemo(() => {
+    // Intake preview is token-only: /api/cad-preview?token=<token>&kind=<cadKind>
+    if (safeToken) {
+      const kind = kindForIntakeUrl;
+      const qs = new URLSearchParams();
+      qs.set("token", safeToken);
+      if (kind) qs.set("kind", kind);
+      qs.set("disposition", "inline");
+      return `/api/cad-preview?${qs.toString()}`;
+    }
+    // Back-compat/admin debug mode.
     if (!safeBucket || !safePath) return null;
-    let next = `/api/cad-preview?bucket=${encodeURIComponent(safeBucket)}&path=${encodeURIComponent(safePath)}&disposition=inline`;
-    if (safeToken) next += `&token=${encodeURIComponent(safeToken)}`;
-    return next;
-  }, [safeBucket, safePath, safeToken]);
+    return `/api/cad-preview?bucket=${encodeURIComponent(safeBucket)}&path=${encodeURIComponent(safePath)}&disposition=inline`;
+  }, [safeBucket, safePath, safeToken, kindForIntakeUrl]);
 
   const intakeDownloadUrl = useMemo(() => {
+    if (safeToken) {
+      const kind = kindForIntakeUrl;
+      const qs = new URLSearchParams();
+      qs.set("token", safeToken);
+      if (kind) qs.set("kind", kind);
+      qs.set("disposition", "attachment");
+      return `/api/cad-preview?${qs.toString()}`;
+    }
     if (!safeBucket || !safePath) return null;
-    let next = `/api/cad-preview?bucket=${encodeURIComponent(safeBucket)}&path=${encodeURIComponent(safePath)}&disposition=attachment`;
-    if (safeToken) next += `&token=${encodeURIComponent(safeToken)}`;
-    return next;
-  }, [safeBucket, safePath, safeToken]);
+    return `/api/cad-preview?bucket=${encodeURIComponent(safeBucket)}&path=${encodeURIComponent(safePath)}&disposition=attachment`;
+  }, [safeBucket, safePath, safeToken, kindForIntakeUrl]);
 
   const inlineUrl = useMemo(() => {
     if (!safeFileId) return null;
@@ -437,13 +461,40 @@ export function ThreeCadViewer({
       setViewerState({ status: "loading", message: null, errorReason: null });
 
       try {
-        const res = await fetch(effectiveUrl, { method: "GET" });
+        const res = await fetch(effectiveUrl, {
+          method: "GET",
+          cache: "no-store",
+          headers: { "cache-control": "no-cache" },
+        });
         if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          if (cadKindHint === "step" && text.includes("step_preview_unavailable")) {
+          const contentType = safeTrim(res.headers.get("content-type"));
+          const isJson = contentType.toLowerCase().includes("application/json");
+          const bodyText = isJson
+            ? ""
+            : await res.text().catch(() => "");
+          const bodyJson = isJson
+            ? await res.json().catch(() => null)
+            : null;
+
+          const apiError =
+            bodyJson && typeof bodyJson === "object"
+              ? (bodyJson as any).error ?? (bodyJson as any).reason ?? null
+              : null;
+
+          const apiErrorString = typeof apiError === "string" ? apiError : "";
+          const fallbackText = safeTrim(bodyText) || (isJson ? JSON.stringify(bodyJson) : "");
+
+          const combined =
+            apiErrorString
+              ? `HTTP ${res.status}: ${apiErrorString}`
+              : fallbackText
+                ? `HTTP ${res.status}: ${fallbackText}`
+                : `HTTP ${res.status}`;
+
+          if (cadKindHint === "step" && combined.includes("step_preview_unavailable")) {
             throw new Error("step_preview_unavailable");
           }
-          throw new Error(text || `preview_failed_${res.status}`);
+          throw new Error(combined);
         }
 
         const inferred = parseFilenameFromContentDisposition(res.headers.get("content-disposition"));
@@ -583,7 +634,7 @@ export function ThreeCadViewer({
           setViewerState({
             status: "error",
             cadKind: detectedCadKind,
-            message: "Unable to render this CAD file. You can still download it.",
+            message: errMessage || "Unable to render this CAD file. You can still download it.",
             errorReason: isStep ? stepReason : null,
           });
           cleanup();

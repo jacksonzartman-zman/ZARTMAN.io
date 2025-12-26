@@ -129,3 +129,57 @@ export function verifyPreviewToken(input: {
   return { ok: true, payload: { ...payload, uid, b: bkt, p: pth } };
 }
 
+export function verifyPreviewTokenForUser(input: {
+  token: string;
+  userId: string;
+  nowSeconds?: number;
+}): { ok: true; payload: PreviewTokenPayloadV1 } | { ok: false; reason: string } {
+  const raw = typeof input.token === "string" ? input.token.trim() : "";
+  const parts = raw.split(".");
+  if (parts.length !== 2) return { ok: false, reason: "token_format" };
+  const [payloadB64, sigB64] = parts as [string, string];
+  if (!payloadB64 || !sigB64) return { ok: false, reason: "token_format" };
+
+  const expectedSig = createHmac("sha256", getTokenSecret()).update(payloadB64).digest();
+  const expectedSigB64 = base64UrlEncode(expectedSig);
+
+  // Constant-time compare to avoid oracle-y differences.
+  try {
+    const a = Buffer.from(expectedSigB64);
+    const b = Buffer.from(sigB64);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      return { ok: false, reason: "token_signature" };
+    }
+  } catch {
+    return { ok: false, reason: "token_signature" };
+  }
+
+  const decoded = base64UrlDecodeToString(payloadB64);
+  if (!decoded) return { ok: false, reason: "token_payload_decode" };
+
+  let payload: PreviewTokenPayloadV1 | null = null;
+  try {
+    payload = JSON.parse(decoded) as PreviewTokenPayloadV1;
+  } catch {
+    payload = null;
+  }
+
+  if (!payload || payload.v !== 1) return { ok: false, reason: "token_payload" };
+
+  const now =
+    typeof input.nowSeconds === "number" && Number.isFinite(input.nowSeconds)
+      ? input.nowSeconds
+      : Math.floor(Date.now() / 1000);
+
+  if (!payload.exp || payload.exp < now) return { ok: false, reason: "token_expired" };
+
+  const uid = normalizeId(payload.uid);
+  const bkt = normalizeId(payload.b);
+  const pth = normalizePath(payload.p);
+
+  if (!uid || !bkt || !pth) return { ok: false, reason: "token_payload" };
+  if (uid !== normalizeId(input.userId)) return { ok: false, reason: "token_user_mismatch" };
+
+  return { ok: true, payload: { ...payload, uid, b: bkt, p: pth } };
+}
+
