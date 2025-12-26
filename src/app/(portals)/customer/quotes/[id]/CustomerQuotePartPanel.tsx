@@ -110,7 +110,7 @@ export function CustomerQuotePartPanel({
               const previewStatus = preview?.signedUrl
                 ? "STL preview ready"
                 : preview?.fallbackMessage ??
-                  "Only STL files are supported for preview today.";
+                  "3D preview is coming soon; your file is still included with the RFQ.";
               return (
                 <button
                   key={preview?.id ?? `${file.filename}-${index}`}

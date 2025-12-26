@@ -28,6 +28,39 @@ function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function hasQueryParam(url: string, key: string): boolean {
+  // Best-effort string check; avoids URL parsing for relative URLs.
+  // Matches `?key=` or `&key=` occurrences.
+  const needle = `${encodeURIComponent(key)}=`;
+  return url.includes(`?${needle}`) || url.includes(`&${needle}`);
+}
+
+function appendQueryParam(url: string, key: string, value: string): string {
+  if (!url) return url;
+  if (hasQueryParam(url, key)) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+}
+
+function ensureStepStlPreviewUrl(input: {
+  url: string;
+  cadKind: CadKind | null;
+  filename: string | null;
+}): string {
+  const { url, cadKind, filename } = input;
+  if (cadKind !== "step") return url;
+  if (!url.startsWith("/api/parts-file-preview")) return url;
+
+  let next = url;
+  if (filename && !hasQueryParam(next, "fileName")) {
+    next = appendQueryParam(next, "fileName", filename);
+  }
+  if (!hasQueryParam(next, "previewAs")) {
+    next = appendQueryParam(next, "previewAs", "stl_preview");
+  }
+  return next;
+}
+
 function parseFilenameFromContentDisposition(value: string | null): string | null {
   const header = safeTrim(value);
   if (!header) return null;
@@ -146,6 +179,21 @@ function disposeObject3D(root: THREE.Object3D) {
   });
 }
 
+function buildStlMeshFromArrayBuffer(buffer: ArrayBuffer): THREE.Mesh {
+  const loader = new STLLoader();
+  const geometry = loader.parse(buffer);
+  geometry.computeVertexNormals();
+  const material = new THREE.MeshStandardMaterial({
+    color: "#7dd3fc",
+    metalness: 0.1,
+    roughness: 0.6,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  // Match existing STL orientation convention.
+  mesh.rotation.set(-Math.PI / 2, 0, 0);
+  return mesh;
+}
+
 export type ThreeCadViewerProps = {
   className?: string;
   /**
@@ -183,6 +231,11 @@ type LegacyProps = {
   fileId: string;
   className?: string;
   filenameHint?: string | null;
+  /**
+   * Optional override for where to fetch the preview from.
+   * Useful when the caller needs to force STEP -> server-side STL conversion.
+   */
+  url?: string;
   cadKind?: CadKind | null;
   onStatusChange?: (report: ThreeCadViewerReport) => void;
 };
@@ -213,20 +266,31 @@ export function ThreeCadViewer({
 
   const inlineUrl = useMemo(() => {
     if (!safeFileId) return null;
-    return `/api/parts-file-preview?fileId=${encodeURIComponent(safeFileId)}&disposition=inline`;
-  }, [safeFileId]);
+    const base = `/api/parts-file-preview?fileId=${encodeURIComponent(safeFileId)}&disposition=inline`;
+    const filenameForStep = safeTrim(filenameHint) || safeFileName || null;
+    return ensureStepStlPreviewUrl({ url: base, cadKind: cadKind ?? null, filename: filenameForStep });
+  }, [safeFileId, cadKind, filenameHint, safeFileName]);
 
   const downloadUrl = useMemo(() => {
     if (!safeFileId) return null;
     return `/api/parts-file-preview?fileId=${encodeURIComponent(safeFileId)}&disposition=attachment`;
   }, [safeFileId]);
 
-  const effectiveUrl = safeUrl || inlineUrl;
+  const effectiveUrl = useMemo(() => {
+    const baseUrl = safeUrl || inlineUrl;
+    if (!baseUrl) return null;
+    const filenameForStep = safeTrim(filenameHint) || safeFileName || null;
+    return ensureStepStlPreviewUrl({
+      url: baseUrl,
+      cadKind: cadKind ?? null,
+      filename: filenameForStep,
+    });
+  }, [safeUrl, inlineUrl, cadKind, filenameHint, safeFileName]);
   const effectiveFileName = safeFileName || filenameHint || resolvedFilename || "";
 
   if (!didMountLogRef.current) {
     didMountLogRef.current = true;
-    console.log("[three-step-debug] mount", {
+    console.log("[three-cad-viewer] mount", {
       fileName: effectiveFileName || null,
       url: effectiveUrl || null,
       cadKindProp: cadKind ?? null,
@@ -287,6 +351,8 @@ export function ThreeCadViewer({
     const start = async () => {
       let detectedCadKind: CadKindOrUnknown = "unknown";
       let fileNameForLogs: string = effectiveFileName || "unknown";
+      const cadKindHint: CadKind | null =
+        cadKind ?? (classification.ok ? classification.type : null);
 
       const setViewerState = (next: {
         status: ViewerStatus;
@@ -333,6 +399,9 @@ export function ThreeCadViewer({
         const res = await fetch(effectiveUrl, { method: "GET" });
         if (!res.ok) {
           const text = await res.text().catch(() => "");
+          if (cadKindHint === "step" && text.includes("step_preview_unavailable")) {
+            throw new Error("step_preview_unavailable");
+          }
           throw new Error(text || `preview_failed_${res.status}`);
         }
 
@@ -362,7 +431,7 @@ export function ThreeCadViewer({
             return typeInfo.ok ? typeInfo.type : null;
           })();
 
-        console.log("[three-step-debug] resolvedCadKind", {
+        console.log("[three-cad-viewer] resolvedCadKind", {
           fileName: fileNameForLogs,
           cadKind: resolvedCadKind,
         });
@@ -387,7 +456,7 @@ export function ThreeCadViewer({
         });
 
         if (resolvedCadKind !== "step") {
-          console.log("[three-step-debug] non-step-load", {
+          console.log("[three-cad-viewer] non-step-load", {
             cadKind: resolvedCadKind,
             fileName: fileNameForLogs,
           });
@@ -399,18 +468,7 @@ export function ThreeCadViewer({
         if (cancelled) return;
 
         if (resolvedCadKind === "stl") {
-          const loader = new STLLoader();
-          const geometry = loader.parse(buffer);
-          geometry.computeVertexNormals();
-          const material = new THREE.MeshStandardMaterial({
-            color: "#7dd3fc",
-            metalness: 0.1,
-            roughness: 0.6,
-          });
-          const mesh = new THREE.Mesh(geometry, material);
-          // Match existing STL orientation convention.
-          mesh.rotation.set(-Math.PI / 2, 0, 0);
-          objectRoot = mesh;
+          objectRoot = buildStlMeshFromArrayBuffer(buffer);
         } else if (resolvedCadKind === "obj") {
           const text = new TextDecoder().decode(new Uint8Array(buffer));
           const loader = new OBJLoader();
@@ -433,139 +491,28 @@ export function ThreeCadViewer({
           const gltf = await loader.parseAsync(buffer, "");
           objectRoot = gltf.scene ?? new THREE.Group();
         } else if (resolvedCadKind === "step") {
+          console.log("[three-step-preview] loading STL preview for STEP", {
+            fileName: fileNameForLogs,
+            url: effectiveUrl,
+          });
           try {
-            setViewerState({ status: "loading", cadKind: "step", message: null, errorReason: null });
-
-            // 1) Check WebAssembly availability
-            if (!(window as any).WebAssembly) {
-              const reason = "WebAssembly is not available in this browser";
-              console.error("[three-step-debug] step-error", { fileName: fileNameForLogs, reason });
-              setViewerState({
-                status: "unsupported",
-                cadKind: "step",
-                message: "STEP preview is not available for this file. You can still download it.",
-                errorReason: reason,
-              });
-              cleanup();
-              return;
-            }
-
-            // 2) Dynamic import occt-import-js
-            console.log("[three-step-debug] step-import-occt-start", { fileName: fileNameForLogs });
-            const mod = (await import("occt-import-js")) as any;
-            console.log("[three-step-debug] step-import-occt-success", {
-              fileName: fileNameForLogs,
-              hasDefault: Boolean(mod?.default),
-            });
-
-            const occtFactory = mod?.default ?? mod;
-            if (typeof occtFactory !== "function") {
-              throw new Error("occt initializer missing");
-            }
-
-            // 3) Use occt to parse the STEP buffer (existing logic)
-            const stepBytes = new Uint8Array(buffer);
-            const occt = await occtFactory({
-              locateFile(path: string) {
-                if (path.endsWith(".wasm")) return "/occt-import-js.wasm";
-                return path;
-              },
-            });
-            if (!occt || typeof occt.ReadStepFile !== "function") {
-              throw new Error("occt missing ReadStepFile");
-            }
-
-            const result = occt.ReadStepFile(stepBytes, null);
-            if (!result?.success) {
-              throw new Error("step parse failed");
-            }
-
-            const meshes = Array.isArray(result.meshes) ? result.meshes : [];
-            if (meshes.length === 0) {
-              throw new Error("no triangles");
-            }
-
-            const group = new THREE.Group();
-            const material = new THREE.MeshStandardMaterial({
-              color: "#7dd3fc",
-              metalness: 0.1,
-              roughness: 0.65,
-            });
-
-            let totalTriangles = 0;
-            for (const mesh of meshes) {
-              const pos = mesh?.attributes?.position?.array ?? mesh?.attributes?.position;
-              if (!pos) continue;
-
-              const geometry = new THREE.BufferGeometry();
-              const positions =
-                pos instanceof Float32Array ? pos : new Float32Array(pos as ArrayLike<number>);
-              if (positions.length < 3) continue;
-              geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-
-              const normals = mesh?.attributes?.normal?.array ?? mesh?.attributes?.normal;
-              if (normals) {
-                const normalArray =
-                  normals instanceof Float32Array
-                    ? normals
-                    : new Float32Array(normals as ArrayLike<number>);
-                if (normalArray.length === positions.length) {
-                  geometry.setAttribute("normal", new THREE.BufferAttribute(normalArray, 3));
-                }
-              }
-
-              const idx = mesh?.index?.array ?? mesh?.index;
-              if (idx) {
-                const indices =
-                  idx instanceof Uint32Array || idx instanceof Uint16Array
-                    ? idx
-                    : new Uint32Array(idx as ArrayLike<number>);
-                if (indices.length > 0) {
-                  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-                  totalTriangles += Math.floor(indices.length / 3);
-                }
-              } else {
-                totalTriangles += Math.floor(positions.length / 9);
-              }
-
-              geometry.computeBoundingBox();
-              if (!geometry.getAttribute("normal")) {
-                geometry.computeVertexNormals();
-              }
-
-              group.add(new THREE.Mesh(geometry, material));
-            }
-
-            if (group.children.length === 0 || totalTriangles <= 0) {
-              throw new Error("no triangles");
-            }
-
-            // 4) After creating geometry and adding mesh:
-            console.log("[three-step-debug] step-parse-success", {
-              fileName: fileNameForLogs,
-              triangleCount: totalTriangles,
-            });
-
-            if (cancelled) return;
-
-            objectRoot = group;
-            scene.add(objectRoot);
-            fitCameraToObject(camera, controls, objectRoot);
-
-            setViewerState({ status: "ready", cadKind: "step", message: null, errorReason: null });
-            animationId = window.requestAnimationFrame(renderLoop);
+            // Server provides an STL mesh preview for STEP files (previewAs=stl_preview).
+            objectRoot = buildStlMeshFromArrayBuffer(buffer);
           } catch (err) {
-            const reason = err instanceof Error ? err.message : "Unexpected STEP viewer error";
-            console.error("[three-step-debug] step-error", { fileName: fileNameForLogs, err, reason });
+            console.error("[three-step-preview] step STL preview error", {
+              fileName: fileNameForLogs,
+              url: effectiveUrl,
+              err,
+            });
             setViewerState({
               status: "error",
               cadKind: "step",
-              message: "STEP preview failed for this file. You can still download it.",
-              errorReason: reason,
+              message: "STEP preview is not available for this file yet. You can still download it.",
+              errorReason: "failed_to_load_step_stl_preview",
             });
             cleanup();
+            return;
           }
-          return;
         }
 
         if (!objectRoot) {
@@ -579,11 +526,24 @@ export function ThreeCadViewer({
         animationId = window.requestAnimationFrame(renderLoop);
       } catch (e) {
         if (!cancelled) {
+          const isStep = detectedCadKind === "step" || cadKindHint === "step";
+          const errMessage = e instanceof Error ? e.message : "";
+          const stepReason =
+            errMessage.includes("step_preview_unavailable")
+              ? "step_preview_unavailable"
+              : "failed_to_load_step_stl_preview";
+          if (isStep) {
+            console.error("[three-step-preview] step STL preview error", {
+              fileName: fileNameForLogs,
+              url: effectiveUrl,
+              err: e,
+            });
+          }
           setViewerState({
             status: "error",
             cadKind: detectedCadKind,
             message: "Unable to render this CAD file. You can still download it.",
-            errorReason: null,
+            errorReason: isStep ? stepReason : null,
           });
           cleanup();
         }
@@ -615,7 +575,9 @@ export function ThreeCadViewer({
               </p>
               <p className="max-w-lg text-sm text-slate-300">
                 {status === "loading"
-                  ? "Parsing CAD in your browser. This can take a moment."
+                  ? detectedCadKindForUi === "step"
+                    ? "Loading a server-generated STL preview for this STEP file."
+                    : "Parsing CAD in your browser. This can take a moment."
                   : errorMessage ?? "Unable to render this CAD file. You can still download it."}
               </p>
               {downloadUrl ? (
