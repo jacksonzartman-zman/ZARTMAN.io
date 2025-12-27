@@ -84,6 +84,7 @@ export type QuoteIntakeEphemeralUploadTarget = {
 export type QuoteIntakeEphemeralPrepareState =
   | {
       ok: true;
+      userId: string;
       sessionId: string;
       uploadBucketId: string;
       targets: QuoteIntakeEphemeralUploadTarget[];
@@ -422,11 +423,19 @@ export async function prepareQuoteIntakeEphemeralUploadAction(
       // server fallback, should be rare (client generates normally)
       randomBytes(12).toString("base64url");
 
-    const bucketId =
+    const bucketId = "cad_uploads";
+    const configuredBucket =
       process.env.SUPABASE_CAD_BUCKET ||
       process.env.NEXT_PUBLIC_CAD_BUCKET ||
       process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
-      "cad";
+      "";
+    const trimmedConfigured = configuredBucket.trim();
+    if (trimmedConfigured && trimmedConfigured !== bucketId) {
+      console.warn("[quote intake ephemeral] overriding configured bucket for intake", {
+        configuredBucket: trimmedConfigured,
+        normalizedBucket: bucketId,
+      });
+    }
 
     const now = Math.floor(Date.now() / 1000);
     const exp = now + 15 * 60; // 15 minutes
@@ -434,7 +443,7 @@ export async function prepareQuoteIntakeEphemeralUploadAction(
     const timestamp = Date.now();
     const targets: QuoteIntakeEphemeralUploadTarget[] = filesMeta.map((f, idx) => {
       const safeName = f.fileName.replace(/[^a-zA-Z0-9._-]/g, "_") || "file";
-      const storagePath = `uploads/intake/${sessionId}/${timestamp + idx}-${safeName}`;
+      const storagePath = `uploads/intake/${user.id}/${sessionId}/${timestamp + idx}-${safeName}`;
       return {
         clientFileId: f.clientFileId,
         storagePath,
@@ -453,6 +462,7 @@ export async function prepareQuoteIntakeEphemeralUploadAction(
 
     return {
       ok: true,
+      userId: user.id,
       sessionId,
       uploadBucketId: bucketId,
       targets,

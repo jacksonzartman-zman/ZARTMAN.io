@@ -34,6 +34,32 @@ import { classifyCadFileType } from "@/lib/cadRendering";
 import { CadPreviewModal } from "@/components/shared/CadPreviewModal";
 import { ThreeCadViewer } from "@/components/ThreeCadViewer";
 
+type StorageErrorLike = {
+  message?: unknown;
+  error?: unknown;
+  statusCode?: unknown;
+};
+
+const formatStorageUploadError = (input: {
+  error: unknown;
+  bucket: string;
+  path: string;
+}): string => {
+  const err = input.error as StorageErrorLike | null;
+  const message =
+    typeof err?.message === "string" && err.message.trim()
+      ? err.message.trim()
+      : typeof err?.error === "string" && err.error.trim()
+        ? err.error.trim()
+        : "Storage upload failed.";
+  const lower = message.toLowerCase();
+  const hint =
+    lower.includes("row-level security") || lower.includes("row level security")
+      ? " Likely missing Storage policy."
+      : "";
+  return `${message}\n\nbucket=${input.bucket}\npath=${input.path}${hint}`;
+};
+
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
     import("@/app/(portals)/components/CadViewerPanel").then(
@@ -601,7 +627,7 @@ export default function UploadBox({
     setPermissionTestPending(true);
     setPermissionTestResult(null);
     try {
-      const bucket = uploadBucketId ?? "cad";
+      const bucket = uploadBucketId ?? "cad_uploads";
       const suffix =
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID().slice(0, 8)
@@ -1056,14 +1082,21 @@ export default function UploadBox({
         setUploadBucketId((prev) => prev ?? prepared.uploadBucketId);
         setUploadTargets((prev) => ({ ...prev, [fileId]: target }));
 
+        const sb = supabaseBrowser();
+        const session = await sb.auth.getSession().then((res) => res.data.session).catch(() => null);
+        console.log("[intake-upload] bucket/path", {
+          bucket: target.bucketId,
+          path: target.storagePath,
+          hasSession: Boolean(session),
+        });
         console.log("[intake-upload] prepared", {
           bucket: target.bucketId,
           path: target.storagePath,
           hasToken: Boolean(target.previewToken),
+          userId: prepared.userId,
           target: true,
         });
 
-        const sb = supabaseBrowser();
         console.log("[intake-upload] uploading", { bucket: target.bucketId, path: target.storagePath });
         const { error: uploadError } = await sb.storage.from(target.bucketId).upload(target.storagePath, file, {
           cacheControl: "3600",
@@ -1072,16 +1105,17 @@ export default function UploadBox({
         });
 
         if (uploadError) {
-          const message =
-            typeof (uploadError as any)?.message === "string"
-              ? String((uploadError as any).message)
-              : "Storage upload failed.";
-          console.error("[intake-upload] failed", { step: "upload", message, err: uploadError });
+          const formatted = formatStorageUploadError({
+            error: uploadError,
+            bucket: target.bucketId,
+            path: target.storagePath,
+          });
+          console.error("[intake-upload] failed", { step: "upload", message: formatted, err: uploadError });
           setUploadProgress((prev) => ({
             ...prev,
-            [fileId]: { status: "failed", errorReason: message, step: "upload" },
+            [fileId]: { status: "failed", errorReason: formatted, step: "upload" },
           }));
-          setError(`Upload failed: ${message}`);
+          setError(`Upload failed:\n\n${formatted}`);
           setSuccessMessage(null);
           return;
         }
@@ -1234,7 +1268,7 @@ export default function UploadBox({
           </div>
         )}
         {error && (
-          <div className="mb-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
             {error}
           </div>
         )}
