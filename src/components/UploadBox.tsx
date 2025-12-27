@@ -113,6 +113,12 @@ type PreviewAttemptDiagnostics = {
   attemptedAt: number;
 };
 
+type SimpleFetchResult = {
+  status: number;
+  text: string;
+  attemptedAt: number;
+};
+
 const buildFileKey = (file: File): string => {
   const modified =
     typeof file.lastModified === "number" && Number.isFinite(file.lastModified)
@@ -319,6 +325,10 @@ export default function UploadBox({
   const [previewOpenForId, setPreviewOpenForId] = useState<string | null>(null);
   const [previewDiagnostics, setPreviewDiagnostics] = useState<Record<string, PreviewAttemptDiagnostics | null>>({});
   const [previewDiagnosticsPending, setPreviewDiagnosticsPending] = useState<Record<string, boolean>>({});
+  const [pingResult, setPingResult] = useState<SimpleFetchResult | null>(null);
+  const [pingPending, setPingPending] = useState(false);
+  const [forceFetchResult, setForceFetchResult] = useState<SimpleFetchResult | null>(null);
+  const [forceFetchPending, setForceFetchPending] = useState(false);
   const [geometryStatsMap, setGeometryStatsMap] = useState<
     Record<string, GeometryStats | null>
   >({});
@@ -428,16 +438,24 @@ export default function UploadBox({
     return state.files[0];
   }, [state.files, state.selectedFileId]);
   const selectedUploadedRef = selectedPart ? uploadedRefs[selectedPart.id] ?? null : null;
+  const selectedUploadStatus: UploadProgressState["status"] | null = useMemo(() => {
+    if (!selectedPart) return null;
+    const progress = uploadProgress[selectedPart.id]?.status;
+    if (progress) return progress;
+    return uploadedRefs[selectedPart.id] ? "uploaded" : "idle";
+  }, [selectedPart, uploadProgress, uploadedRefs]);
   const selectedKindInfo = useMemo(() => {
     if (!selectedPart) return { ok: false as const };
     return classifyCadFileType({ filename: selectedPart.file.name, extension: null });
   }, [selectedPart]);
   const selectedCadKind = selectedKindInfo.ok ? selectedKindInfo.type : null;
   const selectedPreviewUrl = useMemo(() => {
-    if (!selectedUploadedRef?.token || !selectedCadKind) return null;
+    if (!selectedUploadedRef?.token) return null;
     const qs = new URLSearchParams();
     qs.set("token", selectedUploadedRef.token);
-    qs.set("kind", selectedCadKind);
+    if (selectedCadKind) {
+      qs.set("kind", selectedCadKind);
+    }
     qs.set("disposition", "inline");
     return `/api/cad-preview?${qs.toString()}`;
   }, [selectedUploadedRef?.token, selectedCadKind]);
@@ -487,6 +505,83 @@ export default function UploadBox({
     },
     [],
   );
+
+  const lastAutoPreviewKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    // Auto-warm preview only after upload has completed, and only when selection changes.
+    if (!selectedPart) return;
+    if (selectedUploadStatus !== "uploaded") return;
+    if (!selectedUploadedRef?.token) return;
+    if (!selectedPreviewUrl) return;
+
+    const key = `${selectedPart.id}:${selectedUploadedRef.token}:${selectedCadKind ?? "unknown"}`;
+    if (lastAutoPreviewKeyRef.current === key) return;
+    lastAutoPreviewKeyRef.current = key;
+
+    void runPreviewTest({ fileId: selectedPart.id, previewUrl: selectedPreviewUrl });
+  }, [
+    runPreviewTest,
+    selectedCadKind,
+    selectedPart,
+    selectedPreviewUrl,
+    selectedUploadStatus,
+    selectedUploadedRef?.token,
+  ]);
+
+  const pingPreviewApi = useCallback(async () => {
+    setPingPending(true);
+    setPingResult(null);
+    try {
+      const res = await fetch("/api/cad-preview", { cache: "no-store" });
+      const text = await res.text().catch(() => "");
+      setPingResult({
+        status: res.status,
+        text: (text || "").slice(0, 500),
+        attemptedAt: Date.now(),
+      });
+    } catch (e) {
+      setPingResult({
+        status: 0,
+        text: e instanceof Error ? e.message : String(e),
+        attemptedAt: Date.now(),
+      });
+    } finally {
+      setPingPending(false);
+    }
+  }, []);
+
+  const forceFetchPreviewNow = useCallback(async () => {
+    const previewUrl = selectedPreviewUrl;
+    console.log("[cad-preview] force-fetch", { previewUrl });
+    setForceFetchPending(true);
+    setForceFetchResult(null);
+    try {
+      if (!previewUrl) {
+        setForceFetchResult({
+          status: 0,
+          text: "previewUrl is missing (need uploaded file + preview token + cadKind).",
+          attemptedAt: Date.now(),
+        });
+        return;
+      }
+      const res = await fetch(previewUrl, { cache: "no-store" });
+      const text = await res.text().catch(() => "");
+      setForceFetchResult({
+        status: res.status,
+        text: (text || "").slice(0, 500),
+        attemptedAt: Date.now(),
+      });
+    } catch (e) {
+      setForceFetchResult({
+        status: 0,
+        text: e instanceof Error ? e.message : String(e),
+        attemptedAt: Date.now(),
+      });
+    } finally {
+      setForceFetchPending(false);
+    }
+  }, [selectedPreviewUrl]);
+
   const selectedGeometryStats = selectedPart
     ? geometryStatsMap[selectedPart.id] ?? null
     : null;
@@ -882,19 +977,6 @@ export default function UploadBox({
         setState((prev) =>
           prev.selectedFileId === entry.id ? prev : { ...prev, selectedFileId: entry.id },
         );
-
-        // Warm the preview pipeline immediately (guaranteed network request + diagnostics).
-        const kindInfo = classifyCadFileType({ filename: file.name, extension: null });
-        if (kindInfo.ok && nextRef.token) {
-          const qs = new URLSearchParams();
-          qs.set("token", nextRef.token);
-          qs.set("kind", kindInfo.type);
-          qs.set("disposition", "inline");
-          void runPreviewTest({
-            fileId: entry.id,
-            previewUrl: `/api/cad-preview?${qs.toString()}`,
-          });
-        }
       }
 
       setError(null);
@@ -1058,6 +1140,10 @@ export default function UploadBox({
                   const previewRef = uploadedRefs[entry.id] ?? null;
                   const progress =
                     uploadProgress[entry.id]?.status ?? (uploaded ? "uploaded" : "idle");
+                  const isPreviewing = Boolean(isSelected && uploaded);
+                  if (isPreviewing && progress !== "uploaded") {
+                    console.warn("[uploadbox] invalid state: previewing before uploaded", entry);
+                  }
                   const kindInfo = classifyCadFileType({
                     filename: entry.file.name,
                     extension: null,
@@ -1092,19 +1178,21 @@ export default function UploadBox({
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {uploaded && previewRef && cadKind ? (
+                        {uploaded && previewRef ? (
                           <>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setPreviewOpenForId(entry.id);
-                              }}
-                              className="rounded-full border border-border/60 px-2 py-1 text-[11px] text-slate-100 transition hover:border-border"
-                              title="Preview in 3D (loads from server)"
-                            >
-                              Preview 3D
-                            </button>
+                            {cadKind ? (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setPreviewOpenForId(entry.id);
+                                }}
+                                className="rounded-full border border-border/60 px-2 py-1 text-[11px] text-slate-100 transition hover:border-border"
+                                title="Preview in 3D (loads from server)"
+                              >
+                                Preview 3D
+                              </button>
+                            ) : null}
                             <span className="text-[10px] font-semibold text-emerald-200">
                               Uploaded
                             </span>
@@ -1124,10 +1212,10 @@ export default function UploadBox({
                         <span
                           className={clsx(
                             "pill text-[10px] font-semibold uppercase tracking-wide",
-                            isSelected ? "pill-info" : "pill-muted",
+                            isPreviewing ? "pill-info" : "pill-muted",
                           )}
                         >
-                          {isSelected ? "Previewing" : "Preview"}
+                          {isPreviewing ? "Previewing" : uploaded ? "Preview" : "Not uploaded"}
                         </span>
                         <button
                           type="button"
@@ -1219,6 +1307,17 @@ export default function UploadBox({
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
+                        onClick={() => void pingPreviewApi()}
+                        disabled={pingPending}
+                        className={clsx(
+                          "rounded-full border border-border/60 bg-black/20 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-100 transition hover:border-border",
+                          pingPending && "opacity-60",
+                        )}
+                      >
+                        {pingPending ? "Pinging…" : "Ping /api/cad-preview (expect 400)"}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => {
                           if (!selectedPreviewUrl || !selectedPart) return;
                           void runPreviewTest({ fileId: selectedPart.id, previewUrl: selectedPreviewUrl });
@@ -1231,7 +1330,61 @@ export default function UploadBox({
                       >
                         {selectedPreviewDiagnosticsPending ? "Running…" : "Run preview test"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void forceFetchPreviewNow()}
+                        disabled={forceFetchPending}
+                        className={clsx(
+                          "rounded-full border border-border/60 bg-black/20 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-100 transition hover:border-border",
+                          forceFetchPending && "opacity-60",
+                        )}
+                      >
+                        {forceFetchPending ? "Fetching…" : "Force preview fetch now"}
+                      </button>
                     </div>
+
+                    {(pingResult || forceFetchResult) ? (
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="rounded-xl border border-white/5 bg-black/20 p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                            ping /api/cad-preview result
+                          </div>
+                          {pingResult ? (
+                            <div className="mt-2 space-y-2">
+                              <div className="text-[11px] text-muted">status</div>
+                              <div className="text-slate-100">{pingResult.status}</div>
+                              <div className="text-[11px] text-muted">body (first 500 chars)</div>
+                              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-slate-100">
+                                {pingResult.text || "—"}
+                              </pre>
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-[11px] text-muted">No ping yet.</div>
+                          )}
+                        </div>
+                        <div className="rounded-xl border border-white/5 bg-black/20 p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                            force preview fetch result
+                          </div>
+                          <div className="mt-2 space-y-2">
+                            <div className="text-[11px] text-muted">previewUrl</div>
+                            <div className="break-all text-slate-100">{selectedPreviewUrl ?? "—"}</div>
+                            {forceFetchResult ? (
+                              <>
+                                <div className="text-[11px] text-muted">status</div>
+                                <div className="text-slate-100">{forceFetchResult.status}</div>
+                                <div className="text-[11px] text-muted">body (first 500 chars)</div>
+                                <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-slate-100">
+                                  {forceFetchResult.text || "—"}
+                                </pre>
+                              </>
+                            ) : (
+                              <div className="text-[11px] text-muted">No force fetch yet.</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="rounded-xl border border-white/5 bg-black/20 p-3">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">

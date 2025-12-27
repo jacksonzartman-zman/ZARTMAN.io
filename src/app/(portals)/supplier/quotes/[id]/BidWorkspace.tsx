@@ -625,10 +625,19 @@ function CadDrawingPreviewModal({
   onClose: () => void;
   onSwitchFile: (fileId: string) => void;
 }) {
-  if (!state.open) return null;
-
   const router = useRouter();
-  const active = state.files.find((f) => f.fileId === state.activeFileId) ?? state.files[0];
+  const [analysisStatus, setAnalysisStatus] = useState<
+    "idle" | "pending" | "done" | "error"
+  >("idle");
+  const requestedRef = useRef(false);
+
+  const files = state.open ? state.files : [];
+  const activeFileId = state.open ? state.activeFileId : null;
+
+  const active =
+    files.find((f) => f.fileId === activeFileId) ??
+    files[0] ??
+    null;
   const extension = (active?.extension ?? "").toLowerCase();
   const isPdf = extension === "pdf";
   const cadType = classifyCadFileType({
@@ -646,11 +655,6 @@ function CadDrawingPreviewModal({
       : null;
   const complexity = formatComplexity(feature?.complexityScore ?? null);
   const dfmFlags = Array.isArray(feature?.dfmFlags) ? feature.dfmFlags : [];
-
-  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "pending" | "done" | "error">(
-    "idle",
-  );
-  const requestedRef = useRef(false);
 
   useEffect(() => {
     // Only kick off background analysis for CAD files that don't have cached metrics yet.
@@ -675,6 +679,8 @@ function CadDrawingPreviewModal({
         setAnalysisStatus("error");
       });
   }, [cadType.ok, hasFeatureMetrics, quoteId, router, state.open]);
+
+  if (!state.open) return null;
 
   const inlineUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(active?.fileId ?? "")}&disposition=inline`;
   const downloadUrl = `/api/parts-file-preview?fileId=${encodeURIComponent(active?.fileId ?? "")}&disposition=attachment`;
