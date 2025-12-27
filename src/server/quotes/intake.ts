@@ -18,6 +18,7 @@ import {
   buildUploadTargetForQuote,
   recordQuoteUploadFiles,
   type UploadTarget,
+  registerUploadedObjectsForExistingUpload,
 } from "@/server/quotes/uploadFiles";
 
 const CAD_BUCKET =
@@ -327,6 +328,255 @@ export async function persistQuoteIntakeDirectUpload(params: {
     return { ok: true, uploadId, quoteId, targets };
   } catch (error) {
     console.error("[quote intake direct] failed", {
+      ...logContext,
+      error: serializeSupabaseError(error),
+    });
+    return {
+      ok: false,
+      error: "Unexpected server error while submitting your RFQ.",
+      reason: "unexpected-error",
+    };
+  }
+}
+
+export type QuoteIntakeFromUploadedTargetsResult =
+  | { ok: true; uploadId: string; quoteId: string }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: QuoteIntakeFieldErrors;
+      reason?: string;
+    };
+
+/**
+ * Finalize an RFQ intake by creating DB records (quote + upload) and registering
+ * already-uploaded Storage objects (no byte upload performed here).
+ *
+ * This is used by the "ephemeral intake upload" flow where the browser uploads
+ * first (with proof), then we persist metadata once the user submits the RFQ.
+ */
+export async function persistQuoteIntakeFromUploadedTargets(params: {
+  payload: Omit<QuoteIntakePayload, "files"> & { files: QuoteIntakeFileMeta[] };
+  targets: UploadTarget[];
+  user: User;
+  options?: { contactEmailOverride?: string | null };
+}): Promise<QuoteIntakeFromUploadedTargetsResult> {
+  const { user } = params;
+  const sessionEmail = normalizeEmailInput(user.email ?? null);
+  const formEmail = normalizeEmailInput(params.payload.email);
+  const contactEmail =
+    normalizeEmailInput(params.options?.contactEmailOverride ?? null) ??
+    formEmail ??
+    sessionEmail;
+
+  if (!contactEmail) {
+    return {
+      ok: false,
+      error: "A valid email address is required.",
+      fieldErrors: { email: "Enter a valid email address." },
+      reason: "missing-email",
+    };
+  }
+
+  const filesMeta = Array.isArray(params.payload.files)
+    ? params.payload.files.filter(Boolean)
+    : [];
+  const targets = Array.isArray(params.targets) ? params.targets.filter(Boolean) : [];
+
+  if (filesMeta.length === 0) {
+    return {
+      ok: false,
+      error: "Attach at least one CAD file before submitting.",
+      fieldErrors: { file: "Attach at least one CAD file before submitting." },
+      reason: "file-missing",
+    };
+  }
+  if (targets.length === 0 || targets.length !== filesMeta.length) {
+    return {
+      ok: false,
+      error: "Upload targets are missing. Please retry the upload.",
+      reason: "targets-missing",
+    };
+  }
+
+  const pseudoFiles = filesMeta.map(
+    (f) =>
+      ({
+        name: f.fileName,
+        size: f.sizeBytes,
+        type: f.mimeType ?? "",
+      }) as unknown as File,
+  );
+
+  const payloadForValidation: QuoteIntakePayload = {
+    ...(params.payload as Omit<QuoteIntakePayload, "files">),
+    files: pseudoFiles,
+  };
+  const fieldErrors = validateQuoteIntakeFields(payloadForValidation);
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      error: "Please fix the highlighted fields before submitting.",
+      fieldErrors,
+      reason: "field-validation",
+    };
+  }
+
+  const contactName =
+    buildContactName(params.payload.firstName, params.payload.lastName) ||
+    sanitizeNullable(params.payload.company) ||
+    contactEmail;
+
+  const logContext = {
+    userId: user.id,
+    contactEmail,
+    sessionEmail,
+    primaryFileName: filesMeta[0]?.fileName ?? null,
+    fileCount: filesMeta.length,
+  };
+
+  try {
+    const customerId = await upsertCustomerRecord({
+      contactEmail,
+      contactName,
+      company: sanitizeNullable(params.payload.company),
+      user,
+      sessionEmail,
+    });
+
+    const primary = filesMeta[0]!;
+    const primaryTarget = targets[0]!;
+
+    // Create the quote first so we have a quote id to attach uploads/files to.
+    const quoteInsert = await supabaseServer
+      .from("quotes")
+      .insert({
+        upload_id: null,
+        customer_name: contactName,
+        customer_email: contactEmail,
+        company: sanitizeNullable(params.payload.company),
+        file_name: primary.fileName,
+        status: DEFAULT_QUOTE_STATUS,
+        currency: "USD",
+        price: null,
+        customer_id: customerId,
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (quoteInsert.error || !quoteInsert.data?.id) {
+      console.error("[quote intake finalize] quote insert failed", {
+        ...logContext,
+        error: serializeSupabaseError(quoteInsert.error),
+      });
+      return {
+        ok: false,
+        error: "We couldn’t create your quote record. Please retry.",
+        reason: "db-insert-quote",
+      };
+    }
+
+    const quoteId = quoteInsert.data.id;
+
+    const { data: uploadRow, error: uploadError } = await supabaseServer
+      .from("uploads")
+      .insert({
+        quote_id: quoteId,
+        file_name: primary.fileName,
+        file_path: primaryTarget.storagePath,
+        mime_type: primary.mimeType,
+        name: contactName,
+        email: contactEmail,
+        company: sanitizeNullable(params.payload.company),
+        notes: sanitizeNullable(params.payload.notes),
+        customer_id: customerId,
+        status: DEFAULT_QUOTE_STATUS,
+        first_name: sanitizeNullable(params.payload.firstName),
+        last_name: sanitizeNullable(params.payload.lastName),
+        phone: sanitizeNullable(params.payload.phone),
+        manufacturing_process: sanitizeNullable(params.payload.manufacturingProcess),
+        quantity: sanitizeNullable(params.payload.quantity),
+        shipping_postal_code: sanitizeNullable(params.payload.shippingPostalCode),
+        export_restriction: sanitizeNullable(params.payload.exportRestriction),
+        rfq_reason: sanitizeNullable(params.payload.rfqReason),
+        itar_acknowledged: params.payload.itarAcknowledged,
+        terms_accepted: params.payload.termsAccepted,
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (uploadError || !uploadRow?.id) {
+      console.error("[quote intake finalize] upload insert failed", {
+        ...logContext,
+        quoteId,
+        error: serializeSupabaseError(uploadError),
+      });
+      return {
+        ok: false,
+        error: "We couldn’t save your upload metadata. Please retry.",
+        reason: "db-insert-upload",
+      };
+    }
+
+    const uploadId = uploadRow.id;
+
+    const { error: quoteUpdateError } = await supabaseServer
+      .from("quotes")
+      .update({ upload_id: uploadId })
+      .eq("id", quoteId);
+    if (quoteUpdateError) {
+      console.error("[quote intake finalize] quote upload link failed", {
+        ...logContext,
+        quoteId,
+        uploadId,
+        error: serializeSupabaseError(quoteUpdateError),
+      });
+    }
+
+    const registerResult = await registerUploadedObjectsForExistingUpload({
+      quoteId,
+      uploadId,
+      targets,
+      supabase: supabaseServer,
+    });
+    if (!registerResult.ok) {
+      console.error("[quote intake finalize] register uploaded objects failed", {
+        ...logContext,
+        quoteId,
+        uploadId,
+      });
+      return {
+        ok: false,
+        error: "We couldn’t register your files. Please retry.",
+        reason: "register-files",
+      };
+    }
+
+    void emitQuoteEvent({
+      quoteId,
+      eventType: "submitted",
+      actorRole: "customer",
+      actorUserId: user.id,
+      metadata: {
+        upload_id: uploadId,
+        contact_email: contactEmail,
+        contact_name: contactName,
+        company: sanitizeNullable(params.payload.company),
+        primary_file_name: primary.fileName,
+      },
+    });
+
+    void notifyAdminOnQuoteSubmitted({
+      quoteId,
+      contactName,
+      contactEmail,
+      company: sanitizeNullable(params.payload.company),
+      fileName: primary.fileName,
+    });
+
+    return { ok: true, uploadId, quoteId };
+  } catch (error) {
+    console.error("[quote intake finalize] failed", {
       ...logContext,
       error: serializeSupabaseError(error),
     });
