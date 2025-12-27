@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { createAuthClient, requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
@@ -10,6 +11,7 @@ import {
 import {
   persistQuoteIntake,
   persistQuoteIntakeDirectUpload,
+  persistQuoteIntakeFromUploadedTargets,
   validateQuoteIntakeFields,
   type QuoteIntakeFieldErrors,
   type QuoteIntakePayload,
@@ -64,6 +66,33 @@ export type QuoteIntakeDirectPrepareState =
 export type QuoteIntakeDirectFinalizeState =
   | { ok: true; message: string; quoteId: string; uploadId: string }
   | { ok: false; error: string };
+
+export type QuoteIntakeEphemeralFinalizeState =
+  | { ok: true; message: string; quoteId: string; uploadId: string }
+  | { ok: false; error: string };
+
+export type QuoteIntakeEphemeralUploadTarget = {
+  clientFileId: string;
+  storagePath: string;
+  bucketId: string;
+  fileName: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  previewToken: string;
+};
+
+export type QuoteIntakeEphemeralPrepareState =
+  | {
+      ok: true;
+      sessionId: string;
+      uploadBucketId: string;
+      targets: QuoteIntakeEphemeralUploadTarget[];
+    }
+  | {
+      ok: false;
+      error: string;
+      fieldErrors?: QuoteIntakeFieldErrors;
+    };
 
 export type CreatePartFromSuggestionState =
   | { ok: true; quoteId: string; quotePartId: string; suggestionKey: string }
@@ -177,6 +206,10 @@ type QuoteIntakeFileMeta = {
   mimeType: string | null;
 };
 
+type QuoteIntakeEphemeralFileMeta = QuoteIntakeFileMeta & {
+  clientFileId: string;
+};
+
 function parseFilesMeta(formData: FormData): QuoteIntakeFileMeta[] {
   const json = formData.get("filesMeta");
   if (typeof json !== "string" || json.trim().length === 0) {
@@ -209,6 +242,55 @@ function parseFilesMeta(formData: FormData): QuoteIntakeFileMeta[] {
   } catch {
     return [];
   }
+}
+
+function parseEphemeralFilesMeta(formData: FormData): QuoteIntakeEphemeralFileMeta[] {
+  const json = formData.get("filesMeta");
+  if (typeof json !== "string" || json.trim().length === 0) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((row) => {
+        if (!row || typeof row !== "object") return null;
+        const clientFileId =
+          "clientFileId" in row && typeof (row as any).clientFileId === "string"
+            ? String((row as any).clientFileId)
+            : "";
+        const fileName =
+          "fileName" in row && typeof (row as any).fileName === "string"
+            ? String((row as any).fileName)
+            : "";
+        const sizeBytes =
+          "sizeBytes" in row && typeof (row as any).sizeBytes === "number"
+            ? Number((row as any).sizeBytes)
+            : NaN;
+        const mimeType =
+          "mimeType" in row && typeof (row as any).mimeType === "string"
+            ? String((row as any).mimeType)
+            : null;
+
+        const trimmedId = clientFileId.trim();
+        const trimmedName = fileName.trim();
+        if (!trimmedId) return null;
+        if (!trimmedName) return null;
+        if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return null;
+        return { clientFileId: trimmedId, fileName: trimmedName, sizeBytes, mimeType };
+      })
+      .filter((v): v is QuoteIntakeEphemeralFileMeta => Boolean(v));
+  } catch {
+    return [];
+  }
+}
+
+function normalizeSessionId(value: unknown): string | null {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return null;
+  // keep it conservative: only allow url-safe-ish ids
+  if (!/^[a-zA-Z0-9_-]{8,128}$/.test(raw)) return null;
+  return raw;
 }
 
 export async function prepareQuoteIntakeDirectUploadAction(
@@ -318,6 +400,74 @@ export async function prepareQuoteIntakeDirectUploadAction(
   }
 }
 
+export async function prepareQuoteIntakeEphemeralUploadAction(
+  formData: FormData,
+): Promise<QuoteIntakeEphemeralPrepareState> {
+  try {
+    const user = await requireUser({
+      message: "Sign in to upload CAD files.",
+    });
+
+    const filesMeta = parseEphemeralFilesMeta(formData);
+    if (filesMeta.length === 0) {
+      return {
+        ok: false,
+        error: "Attach at least one CAD file to upload.",
+        fieldErrors: { file: "Attach at least one CAD file to upload." },
+      };
+    }
+
+    const sessionId =
+      normalizeSessionId(formData.get("sessionId")) ??
+      // server fallback, should be rare (client generates normally)
+      randomBytes(12).toString("base64url");
+
+    const bucketId =
+      process.env.SUPABASE_CAD_BUCKET ||
+      process.env.NEXT_PUBLIC_CAD_BUCKET ||
+      process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
+      "cad";
+
+    const now = Math.floor(Date.now() / 1000);
+    const exp = now + 15 * 60; // 15 minutes
+
+    const timestamp = Date.now();
+    const targets: QuoteIntakeEphemeralUploadTarget[] = filesMeta.map((f, idx) => {
+      const safeName = f.fileName.replace(/[^a-zA-Z0-9._-]/g, "_") || "file";
+      const storagePath = `uploads/intake/${sessionId}/${timestamp + idx}-${safeName}`;
+      return {
+        clientFileId: f.clientFileId,
+        storagePath,
+        bucketId,
+        fileName: f.fileName,
+        mimeType: f.mimeType,
+        sizeBytes: f.sizeBytes,
+        previewToken: signPreviewToken({
+          userId: user.id,
+          bucket: bucketId,
+          path: storagePath,
+          exp,
+        }),
+      };
+    });
+
+    return {
+      ok: true,
+      sessionId,
+      uploadBucketId: bucketId,
+      targets,
+    };
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+    console.error("[quote intake ephemeral] prepare failed", {
+      error: serializeUnknownError(error),
+    });
+    return { ok: false, error: QUOTE_INTAKE_FALLBACK_ERROR };
+  }
+}
+
 export async function finalizeQuoteIntakeDirectUploadAction(
   formData: FormData,
 ): Promise<QuoteIntakeDirectFinalizeState> {
@@ -372,6 +522,97 @@ export async function finalizeQuoteIntakeDirectUploadAction(
       throw error;
     }
     console.error("[quote intake direct] finalize failed", serializeUnknownError(error));
+    return { ok: false, error: QUOTE_INTAKE_FALLBACK_ERROR };
+  }
+}
+
+export async function finalizeQuoteIntakeEphemeralUploadAction(
+  formData: FormData,
+): Promise<QuoteIntakeEphemeralFinalizeState> {
+  try {
+    const user = await requireUser({
+      message: "Sign in to submit RFQs.",
+    });
+
+    const targetsJson = formData.get("targets");
+    if (typeof targetsJson !== "string" || targetsJson.trim().length === 0) {
+      return { ok: false, error: "Missing upload targets." };
+    }
+
+    const parsed = JSON.parse(targetsJson) as Array<{
+      storagePath?: unknown;
+      bucketId?: unknown;
+      fileName?: unknown;
+      mimeType?: unknown;
+      sizeBytes?: unknown;
+    }>;
+
+    const targets: UploadTarget[] = Array.isArray(parsed)
+      ? parsed
+          .map((t) => ({
+            storagePath: typeof t.storagePath === "string" ? t.storagePath : "",
+            bucketId: typeof t.bucketId === "string" ? t.bucketId : "",
+            originalFileName: typeof t.fileName === "string" ? t.fileName : "",
+            mimeType: typeof t.mimeType === "string" ? t.mimeType : null,
+            sizeBytes: typeof t.sizeBytes === "number" ? t.sizeBytes : 0,
+          }))
+          .filter((t) => Boolean(t.storagePath && t.bucketId && t.originalFileName && t.sizeBytes > 0))
+      : [];
+
+    if (targets.length === 0) {
+      return { ok: false, error: "Missing upload targets." };
+    }
+
+    const payload = {
+      files: targets.map((t) => ({
+        fileName: t.originalFileName,
+        sizeBytes: t.sizeBytes,
+        mimeType: t.mimeType ?? null,
+      })),
+      firstName: getString(formData, "firstName"),
+      lastName: getString(formData, "lastName"),
+      email: getString(formData, "email"),
+      company: getString(formData, "company"),
+      phone: getString(formData, "phone"),
+      manufacturingProcess: getString(formData, "manufacturingProcess"),
+      quantity: getString(formData, "quantity"),
+      shippingPostalCode: getString(formData, "shippingPostalCode"),
+      exportRestriction: getString(formData, "exportRestriction"),
+      rfqReason: getString(formData, "rfqReason"),
+      notes: getString(formData, "notes"),
+      itarAcknowledged: parseBoolean(formData.get("itarAcknowledged")),
+      termsAccepted: parseBoolean(formData.get("termsAccepted")),
+    };
+
+    const result = await persistQuoteIntakeFromUploadedTargets({
+      payload,
+      targets,
+      user,
+    });
+
+    if (!result.ok) {
+      return { ok: false, error: result.error || QUOTE_INTAKE_FALLBACK_ERROR };
+    }
+
+    revalidatePath("/admin");
+    revalidatePath("/admin/quotes");
+    revalidatePath("/admin/uploads");
+    revalidatePath(`/admin/uploads/${result.uploadId}`);
+    revalidatePath(`/admin/quotes/${result.quoteId}`);
+    revalidatePath(`/customer/quotes/${result.quoteId}`);
+    revalidatePath(`/supplier/quotes/${result.quoteId}`);
+
+    return {
+      ok: true,
+      message: QUOTE_INTAKE_SUCCESS_MESSAGE,
+      quoteId: result.quoteId,
+      uploadId: result.uploadId,
+    };
+  } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error;
+    }
+    console.error("[quote intake ephemeral] finalize failed", serializeUnknownError(error));
     return { ok: false, error: QUOTE_INTAKE_FALLBACK_ERROR };
   }
 }

@@ -21,10 +21,9 @@ import {
 import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
 import { primaryCtaClasses } from "@/lib/ctas";
 import {
-  finalizeQuoteIntakeDirectUploadAction,
-  prepareQuoteIntakeDirectUploadAction,
-  type QuoteIntakeDirectPrepareState,
-  type QuoteIntakeDirectUploadTarget,
+  finalizeQuoteIntakeEphemeralUploadAction,
+  prepareQuoteIntakeEphemeralUploadAction,
+  type QuoteIntakeEphemeralUploadTarget,
 } from "@/app/quote/actions";
 import { QUOTE_INTAKE_FALLBACK_ERROR } from "@/lib/quote/messages";
 import type { CadViewerPanelProps } from "@/app/(portals)/components/CadViewerPanel";
@@ -102,7 +101,14 @@ type UploadProgressState =
   | { status: "idle" }
   | { status: "uploading" }
   | { status: "uploaded" }
-  | { status: "error"; error: string };
+  | { status: "failed"; errorReason: string; step: "prepare" | "upload" | "proof" | "finalize" };
+
+type StorageProofState =
+  | { status: "unknown" }
+  | { status: "checking" }
+  | { status: "ok"; bytes: number | null }
+  | { status: "missing" }
+  | { status: "failed"; errorReason: string };
 
 type PreviewAttemptDiagnostics = {
   ok: boolean;
@@ -315,13 +321,12 @@ export default function UploadBox({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [directSession, setDirectSession] = useState<{
-    quoteId: string;
-    uploadId: string;
-    targets: QuoteIntakeDirectUploadTarget[];
-  } | null>(null);
   const [uploadedRefs, setUploadedRefs] = useState<Record<string, UploadedPreviewRef>>({});
   const [uploadProgress, setUploadProgress] = useState<Record<string, UploadProgressState>>({});
+  const [uploadTargets, setUploadTargets] = useState<Record<string, QuoteIntakeEphemeralUploadTarget>>({});
+  const [storageProof, setStorageProof] = useState<Record<string, StorageProofState>>({});
+  const [uploadBucketId, setUploadBucketId] = useState<string | null>(null);
+  const uploadSessionIdRef = useRef<string | null>(null);
   const [previewOpenForId, setPreviewOpenForId] = useState<string | null>(null);
   const [previewDiagnostics, setPreviewDiagnostics] = useState<Record<string, PreviewAttemptDiagnostics | null>>({});
   const [previewDiagnosticsPending, setPreviewDiagnosticsPending] = useState<Record<string, boolean>>({});
@@ -329,11 +334,12 @@ export default function UploadBox({
   const [pingPending, setPingPending] = useState(false);
   const [forceFetchResult, setForceFetchResult] = useState<SimpleFetchResult | null>(null);
   const [forceFetchPending, setForceFetchPending] = useState(false);
+  const [permissionTestResult, setPermissionTestResult] = useState<SimpleFetchResult | null>(null);
+  const [permissionTestPending, setPermissionTestPending] = useState(false);
   const [geometryStatsMap, setGeometryStatsMap] = useState<
     Record<string, GeometryStats | null>
   >({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const lastPrepareResultRef = useRef<QuoteIntakeDirectPrepareState | null>(null);
   const contactFieldsLocked = Boolean(prefillContact);
   const contactFieldLockSet = contactFieldsLocked
     ? new Set<InputFieldKey>(["email"])
@@ -344,9 +350,12 @@ export default function UploadBox({
       return { ...baseState };
     });
     setGeometryStatsMap({});
-    setDirectSession(null);
     setUploadedRefs({});
     setUploadProgress({});
+    setUploadTargets({});
+    setStorageProof({});
+    setUploadBucketId(null);
+    uploadSessionIdRef.current = null;
     setPreviewOpenForId(null);
     setPreviewDiagnostics({});
     setPreviewDiagnosticsPending({});
@@ -413,6 +422,10 @@ export default function UploadBox({
   }, [state.files, syncFileInputWithFiles]);
 
   const hasFilesAttached = state.files.length > 0;
+  const allFilesUploaded = useMemo(() => {
+    if (state.files.length === 0) return false;
+    return state.files.every((entry) => uploadProgress[entry.id]?.status === "uploaded");
+  }, [state.files, uploadProgress]);
   const canSubmit = Boolean(
     hasFilesAttached &&
       state.firstName.trim() &&
@@ -422,7 +435,8 @@ export default function UploadBox({
       state.quantity.trim() &&
       state.exportRestriction &&
       state.itarAcknowledged &&
-      state.termsAccepted,
+      state.termsAccepted &&
+      allFilesUploaded,
   );
   const fileInputAccept = isIOSDevice ? undefined : CAD_ACCEPT_STRING;
   const selectedPart = useMemo(() => {
@@ -463,6 +477,7 @@ export default function UploadBox({
   const selectedPreviewDiagnosticsPending = selectedPart
     ? Boolean(previewDiagnosticsPending[selectedPart.id])
     : false;
+  const selectedStorageProof = selectedPart ? storageProof[selectedPart.id] ?? { status: "unknown" as const } : null;
 
   const runPreviewTest = useCallback(
     async (input: { fileId: string; previewUrl: string }) => {
@@ -581,6 +596,65 @@ export default function UploadBox({
       setForceFetchPending(false);
     }
   }, [selectedPreviewUrl]);
+
+  const testStorageUploadPermissions = useCallback(async () => {
+    setPermissionTestPending(true);
+    setPermissionTestResult(null);
+    try {
+      const bucket = uploadBucketId ?? "cad";
+      const suffix =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID().slice(0, 8)
+          : Math.random().toString(16).slice(2, 10);
+      const path = `uploads/permission-test/${Date.now()}-${suffix}.txt`;
+      const blob = new Blob(["x"], { type: "text/plain" });
+
+      console.log("[intake] storage permission test start", { bucket, path });
+      const sb = supabaseBrowser();
+      const { error: uploadError } = await sb.storage.from(bucket).upload(path, blob, {
+        cacheControl: "60",
+        upsert: false,
+        contentType: "text/plain",
+      });
+
+      if (uploadError) {
+        const message =
+          typeof (uploadError as any)?.message === "string"
+            ? String((uploadError as any).message)
+            : "upload_failed";
+        console.error("[intake] storage permission test failed", uploadError);
+        setPermissionTestResult({
+          status: 0,
+          text: `Upload failed: ${message}`,
+          attemptedAt: Date.now(),
+        });
+        return;
+      }
+
+      const proof = await (async () => {
+        const qs = new URLSearchParams();
+        qs.set("bucket", bucket);
+        qs.set("path", path);
+        const res = await fetch(`/api/storage-proof?${qs.toString()}`, { cache: "no-store" });
+        const json = (await res.json().catch(() => null)) as any;
+        return { res, json };
+      })();
+
+      setPermissionTestResult({
+        status: 200,
+        text: `Uploaded ok. Proof: ${proof.json?.ok === true ? (proof.json.exists === true ? "ok" : "missing") : "error"}. bucket=${bucket} path=${path}`,
+        attemptedAt: Date.now(),
+      });
+    } catch (e) {
+      setPermissionTestResult({
+        status: 0,
+        text: e instanceof Error ? e.message : String(e),
+        attemptedAt: Date.now(),
+      });
+    } finally {
+      setPermissionTestPending(false);
+    }
+  }, [uploadBucketId]);
 
   const selectedGeometryStats = selectedPart
     ? geometryStatsMap[selectedPart.id] ?? null
@@ -778,6 +852,18 @@ export default function UploadBox({
         delete next[fileId];
         return next;
       });
+      setUploadTargets((prev) => {
+        if (!(fileId in prev)) return prev;
+        const next = { ...prev };
+        delete next[fileId];
+        return next;
+      });
+      setStorageProof((prev) => {
+        if (!(fileId in prev)) return prev;
+        const next = { ...prev };
+        delete next[fileId];
+        return next;
+      });
       setPreviewDiagnostics((prev) => {
         if (!(fileId in prev)) return prev;
         const next = { ...prev };
@@ -854,12 +940,222 @@ export default function UploadBox({
       setSuccessMessage(null);
     };
 
+  const ensureUploadSessionId = useCallback((): string => {
+    const existing = uploadSessionIdRef.current;
+    if (existing) return existing;
+    const next =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID().replace(/-/g, "")
+        : `${Date.now().toString(36)}${Math.random().toString(16).slice(2)}`;
+    uploadSessionIdRef.current = next;
+    return next;
+  }, []);
+
+  const uploadInFlightRef = useRef<Set<string>>(new Set());
+
+  const runStorageProof = useCallback(
+    async (input: { fileId: string; bucket: string; path: string }) => {
+      setStorageProof((prev) => ({ ...prev, [input.fileId]: { status: "checking" } }));
+      try {
+        const qs = new URLSearchParams();
+        qs.set("bucket", input.bucket);
+        qs.set("path", input.path);
+        const res = await fetch(`/api/storage-proof?${qs.toString()}`, { cache: "no-store" });
+        const json = (await res.json().catch(() => null)) as
+          | { ok?: unknown; exists?: unknown; bytes?: unknown }
+          | { ok?: unknown; error?: unknown; status?: unknown; body?: unknown }
+          | null;
+
+        if (!json || json.ok !== true) {
+          const reason =
+            typeof (json as any)?.error === "string"
+              ? String((json as any).error)
+              : `storage_proof_not_ok_${res.status}`;
+          setStorageProof((prev) => ({ ...prev, [input.fileId]: { status: "failed", errorReason: reason } }));
+          return { ok: false as const, reason };
+        }
+
+        const exists = (json as any).exists === true;
+        if (!exists) {
+          setStorageProof((prev) => ({ ...prev, [input.fileId]: { status: "missing" } }));
+          return { ok: false as const, reason: "missing" };
+        }
+
+        const bytes = typeof (json as any).bytes === "number" && Number.isFinite((json as any).bytes)
+          ? Number((json as any).bytes)
+          : null;
+        setStorageProof((prev) => ({ ...prev, [input.fileId]: { status: "ok", bytes } }));
+        return { ok: true as const, bytes };
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : String(e);
+        setStorageProof((prev) => ({ ...prev, [input.fileId]: { status: "failed", errorReason: reason } }));
+        return { ok: false as const, reason };
+      }
+    },
+    [],
+  );
+
+  const startUploadForEntry = useCallback(
+    async (entry: SelectedCadFile) => {
+      const fileId = entry.id;
+      if (uploadInFlightRef.current.has(fileId)) return;
+      if (uploadedRefs[fileId]) return;
+      if (uploadProgress[fileId]?.status === "uploading") return;
+      if (uploadProgress[fileId]?.status === "failed") return;
+
+      uploadInFlightRef.current.add(fileId);
+
+      const file = entry.file;
+      console.log("[intake-upload] start", { fileName: file.name, size: file.size, type: file.type });
+
+      try {
+        setUploadProgress((prev) => ({ ...prev, [fileId]: { status: "uploading" } }));
+        setStorageProof((prev) => ({ ...prev, [fileId]: { status: "unknown" } }));
+
+        const sessionId = ensureUploadSessionId();
+        const prepareData = new FormData();
+        prepareData.set("sessionId", sessionId);
+        prepareData.set(
+          "filesMeta",
+          JSON.stringify([
+            {
+              clientFileId: fileId,
+              fileName: file.name,
+              sizeBytes: file.size,
+              mimeType: file.type || null,
+            },
+          ]),
+        );
+
+        const prepared = await prepareQuoteIntakeEphemeralUploadAction(prepareData);
+        if (!prepared.ok) {
+          const message = prepared.error || QUOTE_INTAKE_FALLBACK_ERROR;
+          console.error("[intake-upload] failed", { step: "prepare", message, err: prepared });
+          setUploadProgress((prev) => ({
+            ...prev,
+            [fileId]: { status: "failed", errorReason: message, step: "prepare" },
+          }));
+          setError(`Upload failed: ${message}`);
+          setSuccessMessage(null);
+          return;
+        }
+
+        const target = prepared.targets.find((t) => t.clientFileId === fileId) ?? null;
+        if (!target) {
+          const message = "Missing upload target.";
+          console.error("[intake-upload] failed", { step: "prepare", message, err: prepared });
+          setUploadProgress((prev) => ({
+            ...prev,
+            [fileId]: { status: "failed", errorReason: message, step: "prepare" },
+          }));
+          setError(`Upload failed: ${message}`);
+          setSuccessMessage(null);
+          return;
+        }
+
+        setUploadBucketId((prev) => prev ?? prepared.uploadBucketId);
+        setUploadTargets((prev) => ({ ...prev, [fileId]: target }));
+
+        console.log("[intake-upload] prepared", {
+          bucket: target.bucketId,
+          path: target.storagePath,
+          hasToken: Boolean(target.previewToken),
+          target: true,
+        });
+
+        const sb = supabaseBrowser();
+        console.log("[intake-upload] uploading", { bucket: target.bucketId, path: target.storagePath });
+        const { error: uploadError } = await sb.storage.from(target.bucketId).upload(target.storagePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: target.mimeType || file.type || "application/octet-stream",
+        });
+
+        if (uploadError) {
+          const message =
+            typeof (uploadError as any)?.message === "string"
+              ? String((uploadError as any).message)
+              : "Storage upload failed.";
+          console.error("[intake-upload] failed", { step: "upload", message, err: uploadError });
+          setUploadProgress((prev) => ({
+            ...prev,
+            [fileId]: { status: "failed", errorReason: message, step: "upload" },
+          }));
+          setError(`Upload failed: ${message}`);
+          setSuccessMessage(null);
+          return;
+        }
+
+        console.log("[intake-upload] uploaded", { bucket: target.bucketId, path: target.storagePath });
+
+        const proof = await runStorageProof({ fileId, bucket: target.bucketId, path: target.storagePath });
+        if (!proof.ok) {
+          const message = proof.reason === "missing" ? "Storage proof: missing object after upload." : `Storage proof failed: ${proof.reason}`;
+          console.error("[intake-upload] failed", { step: "proof", message, err: proof });
+          setUploadProgress((prev) => ({
+            ...prev,
+            [fileId]: { status: "failed", errorReason: message, step: "proof" },
+          }));
+          setError(`Upload failed: ${message}`);
+          setSuccessMessage(null);
+          return;
+        }
+
+        setUploadedRefs((prev) => ({
+          ...prev,
+          [fileId]: { bucket: target.bucketId, path: target.storagePath, token: target.previewToken },
+        }));
+        setUploadProgress((prev) => ({ ...prev, [fileId]: { status: "uploaded" } }));
+
+        // Make the newly uploaded file the active preview target.
+        setState((prev) =>
+          prev.selectedFileId === fileId ? prev : { ...prev, selectedFileId: fileId },
+        );
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.error("[intake-upload] failed", { step: "upload", message, err: e });
+        setUploadProgress((prev) => ({
+          ...prev,
+          [fileId]: { status: "failed", errorReason: message, step: "upload" },
+        }));
+        setError(`Upload failed: ${message}`);
+        setSuccessMessage(null);
+      } finally {
+        uploadInFlightRef.current.delete(fileId);
+      }
+    },
+    [
+      ensureUploadSessionId,
+      runStorageProof,
+      uploadProgress,
+      uploadedRefs,
+      setUploadedRefs,
+      setUploadProgress,
+      setError,
+      setSuccessMessage,
+    ],
+  );
+
+  useEffect(() => {
+    // Auto-upload on selection: enqueue any files that aren't uploaded/failed yet.
+    for (const entry of state.files) {
+      const fileId = entry.id;
+      const progress = uploadProgress[fileId]?.status ?? (uploadedRefs[fileId] ? "uploaded" : "idle");
+      if (progress === "idle") {
+        void startUploadForEntry(entry);
+      }
+    }
+  }, [startUploadForEntry, state.files, uploadProgress, uploadedRefs]);
+
+  useEffect(() => {
+    if (!uploadBucketId) return;
+    console.log("[intake] upload bucket", { uploadBucketId });
+  }, [uploadBucketId]);
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     try {
       e.preventDefault();
-      if (isSubmitting) {
-        return;
-      }
+      if (isSubmitting) return;
       setError(null);
       setSuccessMessage(null);
 
@@ -870,139 +1166,41 @@ export default function UploadBox({
         return;
       }
 
-      if (!hasFilesAttached) {
-        setFieldErrors((prev) => ({
-          ...prev,
-          file: "Attach at least one CAD file before submitting.",
-        }));
-        setError("Attach at least one CAD file before submitting.");
+      if (!allFilesUploaded) {
+        setError("Uploads are still in progress (or failed). Please wait for all files to show “Uploaded”.");
         return;
       }
 
-      for (const entry of state.files) {
-        const fileValidationError = validateCadFile(entry.file);
-        if (fileValidationError) {
-          setFieldErrors((prev) => ({
-            ...prev,
-            file: `${entry.file.name}: ${fileValidationError}`,
-          }));
-          setError(`${entry.file.name}: ${fileValidationError}`);
-          return;
-        }
+      const orderedTargets = state.files
+        .map((entry) => uploadTargets[entry.id] ?? null)
+        .filter((t): t is QuoteIntakeEphemeralUploadTarget => Boolean(t));
 
-        if (isFileTooLarge(entry.file)) {
-          const message = `Each file must be smaller than ${MAX_UPLOAD_SIZE_LABEL}. Try splitting your ZIP or compressing large drawings.`;
-          setFieldErrors((prev) => ({ ...prev, file: message }));
-          setError(message);
-          return;
-        }
+      if (orderedTargets.length !== state.files.length) {
+        setError("Missing upload targets for one or more files. Please re-add the file(s) and retry.");
+        return;
       }
-
-      setFieldErrors({});
 
       setIsSubmitting(true);
       const form = e.currentTarget;
       const formData = new FormData(form);
-      // Never send file bytes through Next server actions.
       formData.delete("files");
       formData.set(
-        "filesMeta",
+        "targets",
         JSON.stringify(
-          state.files.map((entry) => ({
-            fileName: entry.file.name,
-            sizeBytes: entry.file.size,
-            mimeType: entry.file.type || null,
+          orderedTargets.map((t) => ({
+            storagePath: t.storagePath,
+            bucketId: t.bucketId,
+            fileName: t.fileName,
+            mimeType: t.mimeType,
+            sizeBytes: t.sizeBytes,
           })),
         ),
       );
 
-      const prepare = await prepareQuoteIntakeDirectUploadAction(formData);
-      lastPrepareResultRef.current = prepare;
-      if (!prepare.ok) {
-        setError(prepare.error || QUOTE_INTAKE_FALLBACK_ERROR);
-        setSuccessMessage(null);
-        setFieldErrors((prepare.fieldErrors ?? {}) as FieldErrors);
-        return;
-      }
-
-      if (prepare.targets.length !== state.files.length) {
-        setError(QUOTE_INTAKE_FALLBACK_ERROR);
-        setSuccessMessage(null);
-        return;
-      }
-
-      setDirectSession({
-        quoteId: prepare.quoteId,
-        uploadId: prepare.uploadId,
-        targets: prepare.targets,
-      });
-
-      const sb = supabaseBrowser();
-      for (let i = 0; i < prepare.targets.length; i += 1) {
-        const target = prepare.targets[i]!;
-        const entry = state.files[i]!;
-        const file = entry.file;
-        setUploadProgress((prev) => ({ ...prev, [entry.id]: { status: "uploading" } }));
-        const { error: uploadError } = await sb.storage
-          .from(target.bucketId)
-          .upload(target.storagePath, file, {
-            cacheControl: "3600",
-            upsert: false,
-            contentType: target.mimeType || file.type || "application/octet-stream",
-          });
-        if (uploadError) {
-          console.error("[quote intake direct] storage upload failed", uploadError);
-          const reason =
-            typeof (uploadError as any)?.message === "string"
-              ? String((uploadError as any).message)
-              : "Please retry.";
-          setUploadProgress((prev) => ({
-            ...prev,
-            [entry.id]: { status: "error", error: reason },
-          }));
-          setError(`Uploading "${file.name}" failed. ${reason}`);
-          setSuccessMessage(null);
-          return;
-        }
-
-        const nextRef: UploadedPreviewRef = {
-          bucket: target.bucketId,
-          path: target.storagePath,
-          token: target.previewToken,
-        };
-        setUploadedRefs((prev) => ({ ...prev, [entry.id]: nextRef }));
-        setUploadProgress((prev) => ({ ...prev, [entry.id]: { status: "uploaded" } }));
-
-        // Make the newly uploaded file the active preview target.
-        setState((prev) =>
-          prev.selectedFileId === entry.id ? prev : { ...prev, selectedFileId: entry.id },
-        );
-      }
-
-      setError(null);
-      setSuccessMessage("Files uploaded. Preview in 3D, then click “Submit RFQ” to finalize.");
-    } catch (submitError) {
-      console.error("[quote intake] submit handler failed", submitError);
-      setError(QUOTE_INTAKE_FALLBACK_ERROR);
-      setSuccessMessage(null);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleFinalize = useCallback(async () => {
-    try {
-      if (!directSession?.quoteId || !directSession?.uploadId) {
-        setError("Missing upload references.");
-        return;
-      }
-      const finalizeData = new FormData();
-      finalizeData.set("quoteId", directSession.quoteId);
-      finalizeData.set("uploadId", directSession.uploadId);
-      finalizeData.set("targets", JSON.stringify(directSession.targets));
-      setIsSubmitting(true);
-      const finalized = await finalizeQuoteIntakeDirectUploadAction(finalizeData);
+      console.log("[intake-upload] finalize start", { fileCount: orderedTargets.length });
+      const finalized = await finalizeQuoteIntakeEphemeralUploadAction(formData);
       if (!finalized.ok) {
+        console.error("[intake-upload] failed", { step: "finalize", message: finalized.error, err: finalized });
         setError(finalized.error || QUOTE_INTAKE_FALLBACK_ERROR);
         setSuccessMessage(null);
         return;
@@ -1012,12 +1210,13 @@ export default function UploadBox({
       setFieldErrors({});
       resetUploadState();
     } catch (e) {
-      console.error("[quote intake direct] finalize failed (client)", e);
+      console.error("[intake-upload] failed", { step: "finalize", message: "unexpected error", err: e });
       setError(QUOTE_INTAKE_FALLBACK_ERROR);
+      setSuccessMessage(null);
     } finally {
       setIsSubmitting(false);
     }
-  }, [directSession, resetUploadState]);
+  };
 
   return (
     <section
@@ -1201,12 +1400,13 @@ export default function UploadBox({
                           <span className="text-[10px] text-muted">
                             {progress === "uploading"
                               ? "Uploading…"
-                              : progress === "error"
+                              : progress === "failed"
                                 ? `Upload failed: ${
-                                    (uploadProgress[entry.id] as { status: "error"; error: string } | undefined)
-                                      ?.error ?? "Unknown error"
+                                    (uploadProgress[entry.id] as
+                                      | { status: "failed"; errorReason: string }
+                                      | undefined)?.errorReason ?? "Unknown error"
                                   }`
-                                : "Ready to upload"}
+                                : "Queued…"}
                           </span>
                         )}
                         <span
@@ -1215,7 +1415,15 @@ export default function UploadBox({
                             isPreviewing ? "pill-info" : "pill-muted",
                           )}
                         >
-                          {isPreviewing ? "Previewing" : uploaded ? "Preview" : "Not uploaded"}
+                          {isPreviewing
+                            ? "Previewing"
+                            : progress === "uploading"
+                              ? "Uploading"
+                              : progress === "failed"
+                                ? "Failed"
+                                : uploaded
+                                  ? "Uploaded"
+                                  : "Queued"}
                         </span>
                         <button
                           type="button"
@@ -1237,31 +1445,53 @@ export default function UploadBox({
             </div>
           </div>
           <div className="space-y-4 lg:col-span-3">
-            {selectedPart && selectedUploadedRef?.token && selectedCadKind ? (
-              <ThreeCadViewer
-                storageSource={{
-                  bucket: selectedUploadedRef.bucket,
-                  path: selectedUploadedRef.path,
-                  token: selectedUploadedRef.token,
-                }}
-                filenameHint={selectedPart.file.name}
-                cadKind={selectedCadKind}
-              />
+            {selectedPart && selectedUploadStatus !== "uploaded" ? (
+              <div className="rounded-2xl border border-white/5 bg-white/5 p-6 text-left shadow-[0_10px_30px_rgba(2,6,23,0.45)]">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Preview pending upload
+                </div>
+                <p className="mt-2 text-sm text-slate-200">
+                  {selectedUploadStatus === "uploading"
+                    ? "Uploading…"
+                    : selectedUploadStatus === "failed"
+                      ? `Upload failed: ${
+                          (uploadProgress[selectedPart.id] as
+                            | { status: "failed"; errorReason: string }
+                            | undefined)?.errorReason ?? "Unknown error"
+                        }`
+                      : "Waiting to start upload…"}
+                </p>
+                <p className="mt-2 text-xs text-muted">
+                  We only start 3D preview + DFM after Storage proof is OK.
+                </p>
+              </div>
+            ) : selectedPart && selectedUploadedRef?.token && selectedCadKind ? (
+              <>
+                <ThreeCadViewer
+                  storageSource={{
+                    bucket: selectedUploadedRef.bucket,
+                    path: selectedUploadedRef.path,
+                    token: selectedUploadedRef.token,
+                  }}
+                  filenameHint={selectedPart.file.name}
+                  cadKind={selectedCadKind}
+                />
+                <PartDfMPanel
+                  geometryStats={selectedGeometryStats}
+                  process={state.manufacturingProcess}
+                  quantityHint={state.quantity}
+                  targetDate={null}
+                  className="bg-white/5"
+                />
+              </>
             ) : (
               <CadViewerPanel
-                file={selectedPart?.file ?? null}
+                file={null}
                 fileName={selectedPart?.file.name}
                 fallbackMessage="Select a CAD file to preview it in 3D."
                 onGeometryStats={viewerGeometryHandler}
               />
             )}
-            <PartDfMPanel
-              geometryStats={selectedGeometryStats}
-              process={state.manufacturingProcess}
-              quantityHint={state.quantity}
-              targetDate={null}
-              className="bg-white/5"
-            />
             <details className="rounded-2xl border border-white/5 bg-white/5 p-4 text-left shadow-[0_10px_30px_rgba(2,6,23,0.45)]">
               <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted">
                 Preview diagnostics
@@ -1270,6 +1500,10 @@ export default function UploadBox({
                 {selectedPart ? (
                   <>
                     <div className="grid gap-2 md:grid-cols-2">
+                      <div>
+                        <div className="text-[11px] text-muted">uploadBucketId (configured)</div>
+                        <div className="break-all text-slate-100">{uploadBucketId ?? "—"}</div>
+                      </div>
                       <div>
                         <div className="text-[11px] text-muted">filename</div>
                         <div className="break-all text-slate-100">{selectedPart.file.name}</div>
@@ -1288,6 +1522,14 @@ export default function UploadBox({
                         <div className="text-[11px] text-muted">path</div>
                         <div className="break-all text-slate-100">
                           {selectedUploadedRef?.path ?? "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted">storageProof</div>
+                        <div className="text-slate-100">
+                          {selectedStorageProof?.status === "ok"
+                            ? `ok${typeof selectedStorageProof.bytes === "number" ? ` (${selectedStorageProof.bytes} bytes)` : ""}`
+                            : selectedStorageProof?.status ?? "—"}
                         </div>
                       </div>
                       <div>
@@ -1341,9 +1583,20 @@ export default function UploadBox({
                       >
                         {forceFetchPending ? "Fetching…" : "Force preview fetch now"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void testStorageUploadPermissions()}
+                        disabled={permissionTestPending}
+                        className={clsx(
+                          "rounded-full border border-border/60 bg-black/20 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-100 transition hover:border-border",
+                          permissionTestPending && "opacity-60",
+                        )}
+                      >
+                        {permissionTestPending ? "Testing…" : "Test Storage upload permissions"}
+                      </button>
                     </div>
 
-                    {(pingResult || forceFetchResult) ? (
+                    {(pingResult || forceFetchResult || permissionTestResult) ? (
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className="rounded-xl border border-white/5 bg-black/20 p-3">
                           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
@@ -1382,6 +1635,23 @@ export default function UploadBox({
                               <div className="text-[11px] text-muted">No force fetch yet.</div>
                             )}
                           </div>
+                        </div>
+                        <div className="rounded-xl border border-white/5 bg-black/20 p-3 md:col-span-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                            storage permissions test
+                          </div>
+                          {permissionTestResult ? (
+                            <div className="mt-2 space-y-2">
+                              <div className="text-[11px] text-muted">status</div>
+                              <div className="text-slate-100">{permissionTestResult.status}</div>
+                              <div className="text-[11px] text-muted">result</div>
+                              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-slate-100">
+                                {permissionTestResult.text || "—"}
+                              </pre>
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-[11px] text-muted">No test yet.</div>
+                          )}
                         </div>
                       </div>
                     ) : null}
@@ -1842,20 +2112,11 @@ export default function UploadBox({
 
         <div className="pt-2">
           <div className="space-y-3">
-            <SubmitButton disabled={!canSubmit || Boolean(directSession)} pending={isSubmitting} />
-            {directSession && Object.keys(uploadedRefs).length === state.files.length ? (
-              <button
-                type="button"
-                onClick={handleFinalize}
-                disabled={isSubmitting}
-                className={clsx(
-                  primaryCtaClasses,
-                  "w-full px-6 py-3",
-                  isSubmitting && "cursor-wait",
-                )}
-              >
-                {isSubmitting ? "Submitting…" : "Submit RFQ"}
-              </button>
+            <SubmitButton disabled={!canSubmit} pending={isSubmitting} />
+            {!allFilesUploaded ? (
+              <p className="text-xs text-muted">
+                Uploads must complete (and pass storage proof) before you can submit.
+              </p>
             ) : null}
           </div>
         </div>
@@ -1896,7 +2157,7 @@ function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boole
       )}
       aria-busy={pending}
     >
-      {pending ? "Uploading…" : "Upload files"}
+      {pending ? "Submitting…" : "Submit RFQ"}
     </button>
   );
 }
