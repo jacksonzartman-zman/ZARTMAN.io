@@ -33,6 +33,7 @@ import type { GeometryStats } from "@/lib/dfm/basicPartChecks";
 import { supabaseBrowser } from "@/lib/supabase.client";
 import { classifyCadFileType } from "@/lib/cadRendering";
 import { CadPreviewModal } from "@/components/shared/CadPreviewModal";
+import { ThreeCadViewer } from "@/components/ThreeCadViewer";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
@@ -95,6 +96,21 @@ type UploadedPreviewRef = {
   bucket: string;
   path: string;
   token: string;
+};
+
+type UploadProgressState =
+  | { status: "idle" }
+  | { status: "uploading" }
+  | { status: "uploaded" }
+  | { status: "error"; error: string };
+
+type PreviewAttemptDiagnostics = {
+  ok: boolean;
+  status: number;
+  contentType: string | null;
+  bytes: number;
+  errorText: string | null;
+  attemptedAt: number;
 };
 
 const buildFileKey = (file: File): string => {
@@ -299,7 +315,10 @@ export default function UploadBox({
     targets: QuoteIntakeDirectUploadTarget[];
   } | null>(null);
   const [uploadedRefs, setUploadedRefs] = useState<Record<string, UploadedPreviewRef>>({});
+  const [uploadProgress, setUploadProgress] = useState<Record<string, UploadProgressState>>({});
   const [previewOpenForId, setPreviewOpenForId] = useState<string | null>(null);
+  const [previewDiagnostics, setPreviewDiagnostics] = useState<Record<string, PreviewAttemptDiagnostics | null>>({});
+  const [previewDiagnosticsPending, setPreviewDiagnosticsPending] = useState<Record<string, boolean>>({});
   const [geometryStatsMap, setGeometryStatsMap] = useState<
     Record<string, GeometryStats | null>
   >({});
@@ -317,7 +336,10 @@ export default function UploadBox({
     setGeometryStatsMap({});
     setDirectSession(null);
     setUploadedRefs({});
+    setUploadProgress({});
     setPreviewOpenForId(null);
+    setPreviewDiagnostics({});
+    setPreviewDiagnosticsPending({});
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -405,6 +427,66 @@ export default function UploadBox({
     }
     return state.files[0];
   }, [state.files, state.selectedFileId]);
+  const selectedUploadedRef = selectedPart ? uploadedRefs[selectedPart.id] ?? null : null;
+  const selectedKindInfo = useMemo(() => {
+    if (!selectedPart) return { ok: false as const };
+    return classifyCadFileType({ filename: selectedPart.file.name, extension: null });
+  }, [selectedPart]);
+  const selectedCadKind = selectedKindInfo.ok ? selectedKindInfo.type : null;
+  const selectedPreviewUrl = useMemo(() => {
+    if (!selectedUploadedRef?.token || !selectedCadKind) return null;
+    const qs = new URLSearchParams();
+    qs.set("token", selectedUploadedRef.token);
+    qs.set("kind", selectedCadKind);
+    qs.set("disposition", "inline");
+    return `/api/cad-preview?${qs.toString()}`;
+  }, [selectedUploadedRef?.token, selectedCadKind]);
+  const selectedPreviewDiagnostics = selectedPart ? previewDiagnostics[selectedPart.id] ?? null : null;
+  const selectedPreviewDiagnosticsPending = selectedPart
+    ? Boolean(previewDiagnosticsPending[selectedPart.id])
+    : false;
+
+  const runPreviewTest = useCallback(
+    async (input: { fileId: string; previewUrl: string }) => {
+      setPreviewDiagnosticsPending((prev) => ({ ...prev, [input.fileId]: true }));
+      try {
+        const res = await fetch(input.previewUrl, {
+          method: "GET",
+          cache: "no-store",
+          headers: { "cache-control": "no-cache" },
+        });
+        const ct = res.headers.get("content-type");
+        const errorText = !res.ok ? await res.clone().text().catch(() => "") : null;
+        const buf = await res.arrayBuffer().catch(() => new ArrayBuffer(0));
+        setPreviewDiagnostics((prev) => ({
+          ...prev,
+          [input.fileId]: {
+            ok: res.ok,
+            status: res.status,
+            contentType: ct,
+            bytes: buf.byteLength,
+            errorText: res.ok ? null : errorText || null,
+            attemptedAt: Date.now(),
+          },
+        }));
+      } catch (e) {
+        setPreviewDiagnostics((prev) => ({
+          ...prev,
+          [input.fileId]: {
+            ok: false,
+            status: 0,
+            contentType: null,
+            bytes: 0,
+            errorText: e instanceof Error ? e.message : String(e),
+            attemptedAt: Date.now(),
+          },
+        }));
+      } finally {
+        setPreviewDiagnosticsPending((prev) => ({ ...prev, [input.fileId]: false }));
+      }
+    },
+    [],
+  );
   const selectedGeometryStats = selectedPart
     ? geometryStatsMap[selectedPart.id] ?? null
     : null;
@@ -589,6 +671,30 @@ export default function UploadBox({
         delete next[fileId];
         return next;
       });
+      setUploadedRefs((prev) => {
+        if (!(fileId in prev)) return prev;
+        const next = { ...prev };
+        delete next[fileId];
+        return next;
+      });
+      setUploadProgress((prev) => {
+        if (!(fileId in prev)) return prev;
+        const next = { ...prev };
+        delete next[fileId];
+        return next;
+      });
+      setPreviewDiagnostics((prev) => {
+        if (!(fileId in prev)) return prev;
+        const next = { ...prev };
+        delete next[fileId];
+        return next;
+      });
+      setPreviewDiagnosticsPending((prev) => {
+        if (!(fileId in prev)) return prev;
+        const next = { ...prev };
+        delete next[fileId];
+        return next;
+      });
     },
     [setGeometryStatsMap],
   );
@@ -741,6 +847,7 @@ export default function UploadBox({
         const target = prepare.targets[i]!;
         const entry = state.files[i]!;
         const file = entry.file;
+        setUploadProgress((prev) => ({ ...prev, [entry.id]: { status: "uploading" } }));
         const { error: uploadError } = await sb.storage
           .from(target.bucketId)
           .upload(target.storagePath, file, {
@@ -750,19 +857,44 @@ export default function UploadBox({
           });
         if (uploadError) {
           console.error("[quote intake direct] storage upload failed", uploadError);
-          setError(`Uploading "${file.name}" failed. Please retry.`);
+          const reason =
+            typeof (uploadError as any)?.message === "string"
+              ? String((uploadError as any).message)
+              : "Please retry.";
+          setUploadProgress((prev) => ({
+            ...prev,
+            [entry.id]: { status: "error", error: reason },
+          }));
+          setError(`Uploading "${file.name}" failed. ${reason}`);
           setSuccessMessage(null);
           return;
         }
 
-        setUploadedRefs((prev) => ({
-          ...prev,
-          [entry.id]: {
-            bucket: target.bucketId,
-            path: target.storagePath,
-            token: target.previewToken,
-          },
-        }));
+        const nextRef: UploadedPreviewRef = {
+          bucket: target.bucketId,
+          path: target.storagePath,
+          token: target.previewToken,
+        };
+        setUploadedRefs((prev) => ({ ...prev, [entry.id]: nextRef }));
+        setUploadProgress((prev) => ({ ...prev, [entry.id]: { status: "uploaded" } }));
+
+        // Make the newly uploaded file the active preview target.
+        setState((prev) =>
+          prev.selectedFileId === entry.id ? prev : { ...prev, selectedFileId: entry.id },
+        );
+
+        // Warm the preview pipeline immediately (guaranteed network request + diagnostics).
+        const kindInfo = classifyCadFileType({ filename: file.name, extension: null });
+        if (kindInfo.ok && nextRef.token) {
+          const qs = new URLSearchParams();
+          qs.set("token", nextRef.token);
+          qs.set("kind", kindInfo.type);
+          qs.set("disposition", "inline");
+          void runPreviewTest({
+            fileId: entry.id,
+            previewUrl: `/api/cad-preview?${qs.toString()}`,
+          });
+        }
       }
 
       setError(null);
@@ -924,6 +1056,8 @@ export default function UploadBox({
                   const isSelected = selectedPart?.id === entry.id;
                   const uploaded = Boolean(uploadedRefs[entry.id]);
                   const previewRef = uploadedRefs[entry.id] ?? null;
+                  const progress =
+                    uploadProgress[entry.id]?.status ?? (uploaded ? "uploaded" : "idle");
                   const kindInfo = classifyCadFileType({
                     filename: entry.file.name,
                     extension: null,
@@ -959,20 +1093,32 @@ export default function UploadBox({
                       </div>
                       <div className="flex items-center gap-2">
                         {uploaded && previewRef && cadKind ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setPreviewOpenForId(entry.id);
-                            }}
-                            className="rounded-full border border-border/60 px-2 py-1 text-[11px] text-slate-100 transition hover:border-border"
-                            title="Preview in 3D (loads from server)"
-                          >
-                            Preview 3D
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setPreviewOpenForId(entry.id);
+                              }}
+                              className="rounded-full border border-border/60 px-2 py-1 text-[11px] text-slate-100 transition hover:border-border"
+                              title="Preview in 3D (loads from server)"
+                            >
+                              Preview 3D
+                            </button>
+                            <span className="text-[10px] font-semibold text-emerald-200">
+                              Uploaded
+                            </span>
+                          </>
                         ) : (
                           <span className="text-[10px] text-muted">
-                            {isSubmitting ? "Uploading…" : "Not uploaded yet"}
+                            {progress === "uploading"
+                              ? "Uploading…"
+                              : progress === "error"
+                                ? `Upload failed: ${
+                                    (uploadProgress[entry.id] as { status: "error"; error: string } | undefined)
+                                      ?.error ?? "Unknown error"
+                                  }`
+                                : "Ready to upload"}
                           </span>
                         )}
                         <span
@@ -1003,12 +1149,24 @@ export default function UploadBox({
             </div>
           </div>
           <div className="space-y-4 lg:col-span-3">
-            <CadViewerPanel
-              file={selectedPart?.file ?? null}
-              fileName={selectedPart?.file.name}
-              fallbackMessage="Select a CAD file to preview it in 3D."
-              onGeometryStats={viewerGeometryHandler}
-            />
+            {selectedPart && selectedUploadedRef?.token && selectedCadKind ? (
+              <ThreeCadViewer
+                storageSource={{
+                  bucket: selectedUploadedRef.bucket,
+                  path: selectedUploadedRef.path,
+                  token: selectedUploadedRef.token,
+                }}
+                filenameHint={selectedPart.file.name}
+                cadKind={selectedCadKind}
+              />
+            ) : (
+              <CadViewerPanel
+                file={selectedPart?.file ?? null}
+                fileName={selectedPart?.file.name}
+                fallbackMessage="Select a CAD file to preview it in 3D."
+                onGeometryStats={viewerGeometryHandler}
+              />
+            )}
             <PartDfMPanel
               geometryStats={selectedGeometryStats}
               process={state.manufacturingProcess}
@@ -1016,6 +1174,115 @@ export default function UploadBox({
               targetDate={null}
               className="bg-white/5"
             />
+            <details className="rounded-2xl border border-white/5 bg-white/5 p-4 text-left shadow-[0_10px_30px_rgba(2,6,23,0.45)]">
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-muted">
+                Preview diagnostics
+              </summary>
+              <div className="mt-4 space-y-3 text-xs text-slate-200">
+                {selectedPart ? (
+                  <>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <div>
+                        <div className="text-[11px] text-muted">filename</div>
+                        <div className="break-all text-slate-100">{selectedPart.file.name}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted">cadKind</div>
+                        <div className="text-slate-100">{selectedCadKind ?? "unknown"}</div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted">bucket</div>
+                        <div className="break-all text-slate-100">
+                          {selectedUploadedRef?.bucket ?? "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted">path</div>
+                        <div className="break-all text-slate-100">
+                          {selectedUploadedRef?.path ?? "—"}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-muted">previewToken present?</div>
+                        <div className="text-slate-100">
+                          {selectedUploadedRef?.token ? "yes" : "no"}
+                        </div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="text-[11px] text-muted">previewUrl</div>
+                        <div className="break-all text-slate-100">
+                          {selectedPreviewUrl ?? "—"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!selectedPreviewUrl || !selectedPart) return;
+                          void runPreviewTest({ fileId: selectedPart.id, previewUrl: selectedPreviewUrl });
+                        }}
+                        disabled={!selectedPreviewUrl || selectedPreviewDiagnosticsPending}
+                        className={clsx(
+                          "rounded-full border border-border/60 bg-black/20 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-100 transition hover:border-border",
+                          (!selectedPreviewUrl || selectedPreviewDiagnosticsPending) && "opacity-60",
+                        )}
+                      >
+                        {selectedPreviewDiagnosticsPending ? "Running…" : "Run preview test"}
+                      </button>
+                    </div>
+
+                    <div className="rounded-xl border border-white/5 bg-black/20 p-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                        last preview attempt result
+                      </div>
+                      {selectedPreviewDiagnostics ? (
+                        <div className="mt-2 grid gap-2 md:grid-cols-2">
+                          <div>
+                            <div className="text-[11px] text-muted">status</div>
+                            <div className="text-slate-100">
+                              {selectedPreviewDiagnostics.status}
+                              {selectedPreviewDiagnostics.ok ? " (ok)" : " (error)"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] text-muted">content-type</div>
+                            <div className="break-all text-slate-100">
+                              {selectedPreviewDiagnostics.contentType ?? "—"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] text-muted">bytes received</div>
+                            <div className="text-slate-100">{selectedPreviewDiagnostics.bytes}</div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] text-muted">attempted</div>
+                            <div className="text-slate-100">
+                              {new Date(selectedPreviewDiagnostics.attemptedAt).toLocaleTimeString()}
+                            </div>
+                          </div>
+                          <div className="md:col-span-2">
+                            <div className="text-[11px] text-muted">error text (if any)</div>
+                            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-slate-100">
+                              {selectedPreviewDiagnostics.errorText ?? "—"}
+                            </pre>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[11px] text-muted">
+                          No preview test run yet for this file.
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-[11px] text-muted">
+                    Select a file to view preview diagnostics.
+                  </div>
+                )}
+              </div>
+            </details>
           </div>
         </div>
 
