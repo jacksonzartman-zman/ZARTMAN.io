@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import UploadBox, { type PrefillContact } from "@/components/UploadBox";
 import type { User } from "@supabase/supabase-js";
 import { getServerAuthUser } from "@/server/auth";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 
 export default async function QuotePage() {
   const { user } = await getServerAuthUser();
@@ -63,18 +64,20 @@ export default async function QuotePage() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4 sm:p-6 shadow-lift-sm space-y-4">
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-4 text-sm text-slate-200">
-            <p className="font-semibold text-white">Upload tips</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-300">
-              <li>Have multiple parts? Upload a single ZIP.</li>
-              <li>Max 50 MB per file (including ZIPs). For larger packages, split into multiple ZIPs or upload only the most critical drawings.</li>
-              <li>We’ll enumerate files and help your Zartman team organize them by part.</li>
-              <li>Drawings (PDF/DWG/DXF) speed up quoting and reduce back-and-forth.</li>
-            </ul>
-          </div>
-          <UploadBox prefillContact={prefillContact} showExplainer />
-        </section>
+        <ErrorBoundary title="Quote intake crashed">
+          <section className="rounded-3xl border border-slate-800 bg-slate-950/40 p-4 sm:p-6 shadow-lift-sm space-y-4">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/30 p-4 text-sm text-slate-200">
+              <p className="font-semibold text-white">Upload tips</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-300">
+                <li>Have multiple parts? Upload a single ZIP.</li>
+                <li>Max 50 MB per file (including ZIPs). For larger packages, split into multiple ZIPs or upload only the most critical drawings.</li>
+                <li>We’ll enumerate files and help your Zartman team organize them by part.</li>
+                <li>Drawings (PDF/DWG/DXF) speed up quoting and reduce back-and-forth.</li>
+              </ul>
+            </div>
+            <UploadBox prefillContact={prefillContact} showExplainer />
+          </section>
+        </ErrorBoundary>
 
         <section className="space-y-6">
           <header className="space-y-2">

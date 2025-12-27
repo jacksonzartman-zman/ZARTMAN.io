@@ -119,24 +119,43 @@ export async function GET(req: NextRequest) {
   const disposition: "inline" | "attachment" =
     dispositionRaw === "attachment" ? "attachment" : "inline";
 
+  console.log("[cad-preview] hit", {
+    hasToken: Boolean(token),
+    kind: kindParam || null,
+    ts: Date.now(),
+  });
+
+  let isAdmin = false;
+  const requestId = shortRequestId();
+
+  // Consolidated intake preview path: token embeds bucket/path/exp/userId; kind passed explicitly.
+  let bucket = normalizeId(req.nextUrl.searchParams.get("bucket"));
+  let path = normalizePath(req.nextUrl.searchParams.get("path"));
+
+  // Allow cheap reachability pings without auth and without token.
+  // (If bucket/path were provided, we still require auth/admin below.)
+  if (!token && !bucket && !path) {
+    console.log("[cad-preview] start", {
+      rid: requestId,
+      tokenPresent: false,
+      bucket: null,
+      path: null,
+      kind: kindParam || null,
+    });
+    return NextResponse.json({ error: "missing_token" }, { status: 400 });
+  }
+
   const { user } = await getServerAuthUser();
   if (!user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  let isAdmin = false;
   try {
     await requireAdminUser();
     isAdmin = true;
   } catch {
     isAdmin = false;
   }
-
-  const requestId = shortRequestId();
-
-  // Consolidated intake preview path: token embeds bucket/path/exp/userId; kind passed explicitly.
-  let bucket = normalizeId(req.nextUrl.searchParams.get("bucket"));
-  let path = normalizePath(req.nextUrl.searchParams.get("path"));
 
   if (token) {
     const verified = verifyPreviewTokenForUser({ token, userId: user.id });
