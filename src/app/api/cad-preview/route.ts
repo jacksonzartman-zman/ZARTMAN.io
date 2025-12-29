@@ -243,7 +243,7 @@ export async function GET(req: NextRequest) {
 
     try {
       const { data, error: edgeError } = await supabaseServer.functions.invoke(functionName, {
-        body: { bucket, path, fileName },
+        body: { bucket, path, fileName, requestId },
       });
 
       if (edgeError) {

@@ -20,6 +20,7 @@ export async function ensureStepPreviewForFile(
   if (!id) return null;
 
   const path = `${PREVIEW_PREFIX}/${id}.stl`;
+  const requestId = `step-preview-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 10)}`;
 
   try {
     // Check whether the preview already exists.
@@ -36,7 +37,7 @@ export async function ensureStepPreviewForFile(
 
     const functionName = "step-to-stl" as const;
     const { data, error: edgeError } = await supabaseServer.functions.invoke(functionName, {
-      body: { quoteUploadFileId: id },
+      body: { quoteUploadFileId: id, requestId },
     });
 
     if (edgeError) {
