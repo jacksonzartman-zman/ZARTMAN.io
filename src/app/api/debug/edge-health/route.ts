@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
   let edgeBodyPreview: string | null = null;
 
   const { data, error: edgeError } = await supabaseServer.functions.invoke(functionName, {
-    body: { bucket, path, requestId },
+    body: { bucket, path, requestId, mode: "probe" },
   });
 
   if (edgeError) {
