@@ -276,7 +276,7 @@ export async function GET(req: NextRequest) {
       // 3) Convert STEP -> STL (Node runtime).
       log("convert_step_to_stl", { bytes: stepBytes.byteLength });
       const { convertStepToBinaryStl } = await import("@/server/cad/stepToStl");
-      const converted = await convertStepToBinaryStl(stepBytes);
+      const converted = await convertStepToBinaryStl(stepBytes, { rid: requestId });
       if (!converted.stl || converted.stl.byteLength <= 0) {
         log("response", { source: "conversion_failed", meshes: converted.meshes, triangles: converted.triangles });
         return NextResponse.json(

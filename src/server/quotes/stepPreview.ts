@@ -119,7 +119,7 @@ export async function ensureStepPreviewForFile(
 
     const stepBytes = new Uint8Array(await stepBlob.arrayBuffer());
     const { convertStepToBinaryStl } = await import("@/server/cad/stepToStl");
-    const converted = await convertStepToBinaryStl(stepBytes);
+    const converted = await convertStepToBinaryStl(stepBytes, { rid: requestId });
     if (!converted.stl || converted.stl.byteLength <= 0) {
       console.error("[step-preview] ensure failed", {
         quoteUploadFileId: id,
