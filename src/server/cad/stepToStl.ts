@@ -20,6 +20,7 @@ const PREVIEW_PREFIX = "step-stl/v1";
 
 let didLogOcctWasm = false;
 let cachedOcctPaths: { jsEntry: string; distDir: string; wasmPath: string } | null = null;
+let cachedWasmBinary: Uint8Array | null = null;
 
 function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -224,13 +225,19 @@ export async function convertStepToBinaryStl(
   }
 
   const occtImportJs = (await import("occt-import-js")).default;
-  const occt: OcctImportModule = await occtImportJs({
-    locateFile: (file) => {
-      const fileStr = String(file).split("?")[0] ?? "";
-      const resolved = fileStr.endsWith(".wasm") ? wasmPath : path.join(distDir, fileStr);
-      console.log("[stepToStl] locateFile", { rid, file, resolved, type: typeof resolved });
-      return resolved;
-    },
+  if (!cachedWasmBinary) {
+    try {
+      const buf = fs.readFileSync(wasmPath);
+      cachedWasmBinary = new Uint8Array(buf);
+      console.log("[stepToStl] wasmBinary loaded", { rid, wasmPath, bytes: cachedWasmBinary.byteLength });
+    } catch (err) {
+      throw new Error(`[stepToStl] failed to read wasmBinary at ${wasmPath}: ${String(err)}`);
+    }
+  }
+
+  // `occt-import-js` supports `wasmBinary` at runtime, but its types may not include it.
+  const occt: OcctImportModule = await (occtImportJs as unknown as (opts: { wasmBinary: Uint8Array }) => Promise<OcctImportModule>)({
+    wasmBinary: cachedWasmBinary,
   });
 
   const readResult = occt.ReadStepFile(stepBytes, {});
