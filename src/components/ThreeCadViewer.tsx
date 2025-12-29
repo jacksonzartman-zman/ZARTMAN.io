@@ -476,6 +476,23 @@ export function ThreeCadViewer({
             ? await res.json().catch(() => null)
             : null;
 
+          const userMessage =
+            bodyJson && typeof bodyJson === "object" && typeof (bodyJson as any)?.userMessage === "string"
+              ? String((bodyJson as any).userMessage).trim()
+              : "";
+          if (userMessage) {
+            const kindForUi = cadKindHint ?? detectedCadKind;
+            setViewerState({
+              status: "error",
+              cadKind: kindForUi,
+              message: userMessage,
+              // Bubble up into the STEP panel copy when relevant.
+              errorReason: kindForUi === "step" ? userMessage : null,
+            });
+            cleanup();
+            return;
+          }
+
           const apiError =
             bodyJson && typeof bodyJson === "object"
               ? (bodyJson as any).error ?? (bodyJson as any).reason ?? null

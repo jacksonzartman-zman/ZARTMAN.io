@@ -73,6 +73,34 @@ function safeSupabaseHost(supabaseUrl: string | null): string | null {
   }
 }
 
+function extractStepToStlVersionFromBody(data: unknown): string | null {
+  const raw = (data as any)?.version;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function extractStepToStlVersionFromEdgeError(edgeError: unknown): string | null {
+  // Best-effort: supabase-js Functions errors sometimes carry headers on `context`.
+  const anyErr = edgeError as any;
+  const headersObj = anyErr?.context?.headers;
+  if (headersObj && typeof headersObj === "object") {
+    const raw =
+      (headersObj as any)["x-step-to-stl-version"] ??
+      (headersObj as any)["X-Step-To-Stl-Version"];
+    const value = typeof raw === "string" ? raw.trim() : "";
+    return value || null;
+  }
+
+  const headersLike = anyErr?.context?.response?.headers;
+  if (headersLike && typeof headersLike.get === "function") {
+    const value = headersLike.get("x-step-to-stl-version");
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
+
+  return null;
+}
+
 function safeErrorForLog(err: unknown) {
   if (!err) return null;
   if (err instanceof Error) {
@@ -333,6 +361,128 @@ export async function GET(req: NextRequest) {
             edgeBodyPreview,
           },
           { status: 502 },
+        );
+      }
+
+      // Probe-aware handling: probe-v2 returns handler_entry and no preview location.
+      const versionBody = extractStepToStlVersionFromBody(data);
+      const versionHeader = extractStepToStlVersionFromEdgeError(edgeError);
+      const detectedVersion = versionBody ?? versionHeader;
+      if (detectedVersion === "probe-v2") {
+        console.log("[cad-preview] step-to-stl probe-v2 detected; invoking probe mode", {
+          rid: requestId,
+          functionName,
+          supabaseHost,
+          edgeUrl,
+          detectedVersion,
+        });
+
+        const { data: probeData, error: probeEdgeError } = await supabaseServer.functions.invoke(functionName, {
+          body: { mode: "probe", bucket, path, requestId },
+        });
+
+        if (probeEdgeError) {
+          const anyErr = probeEdgeError as any;
+          edgeStatus = typeof anyErr?.context?.status === "number" ? anyErr.context.status : null;
+          const body = anyErr?.context?.body;
+          const bodyText =
+            typeof body === "string" ? body : body != null ? JSON.stringify(body) : anyErr?.message ?? "";
+          edgeBodyPreview = bodyText ? truncateText(bodyText, 500) : null;
+
+          console.log("[cad-preview] step-to-stl probe invoke non-2xx", {
+            rid: requestId,
+            functionName,
+            supabaseHost,
+            edgeUrl,
+            edgeStatus,
+            edgeBodyPreview,
+            edgeError: safeErrorForLog(probeEdgeError),
+          });
+
+          return NextResponse.json(
+            {
+              error: "edge_conversion_failed",
+              reason: "edge_probe_invoke_failed",
+              requestId,
+              supabaseHost,
+              edgeStatus,
+              edgeBodyPreview,
+            },
+            { status: 502 },
+          );
+        }
+
+        const probeOk = Boolean((probeData as any)?.ok === true);
+        const probeStage = typeof (probeData as any)?.stage === "string" ? String((probeData as any).stage) : null;
+        const probeBytes =
+          typeof (probeData as any)?.bytes === "number" && Number.isFinite((probeData as any).bytes)
+            ? Number((probeData as any).bytes)
+            : null;
+        const storageStatus =
+          typeof (probeData as any)?.status === "number" && Number.isFinite((probeData as any).status)
+            ? Number((probeData as any).status)
+            : null;
+        edgeStatus = 200;
+        edgeBodyPreview = truncateText(JSON.stringify(probeData ?? null), 500);
+
+        console.log("[cad-preview] step-to-stl probe result", {
+          rid: requestId,
+          functionName,
+          supabaseHost,
+          edgeUrl,
+          edgeStatus,
+          probeOk,
+          probeStage,
+          storageStatus,
+          bytes: probeBytes,
+        });
+
+        if (probeOk && probeStage === "storage_download") {
+          const bytesLabel = typeof probeBytes === "number" ? `${probeBytes}` : "unknown";
+          const userMessage =
+            "STEP preview conversion is currently in probe mode (no STL generation). " +
+            `Storage download OK (${bytesLabel} bytes). RequestId: ${requestId}.`;
+          return NextResponse.json(
+            {
+              error: "step_preview_probe_mode",
+              userMessage,
+              requestId,
+              supabaseHost,
+              edgeStatus,
+              edgeBodyPreview,
+            },
+            { status: 501 },
+          );
+        }
+
+        const statusForClient =
+          storageStatus === 404
+            ? 404
+            : storageStatus === 401 || storageStatus === 403
+              ? 403
+              : storageStatus && storageStatus >= 400 && storageStatus < 500
+                ? 422
+                : 502;
+        const storageHint =
+          storageStatus === 404
+            ? "Object not found. Check bucket/path."
+            : storageStatus === 401 || storageStatus === 403
+              ? "Access denied. Check Storage policies for this bucket/path."
+              : "Storage download failed. Check bucket/path and Storage policies.";
+        const userMessage =
+          "STEP preview conversion is currently in probe mode (no STL generation). " +
+          `${storageHint} bucket=${bucket} path=${path}. RequestId: ${requestId}.`;
+
+        return NextResponse.json(
+          {
+            error: "step_preview_probe_mode_storage_download_failed",
+            userMessage,
+            requestId,
+            supabaseHost,
+            edgeStatus,
+            edgeBodyPreview,
+          },
+          { status: statusForClient },
         );
       }
 
