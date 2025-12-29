@@ -222,6 +222,40 @@ export async function GET(req: NextRequest) {
     };
 
     try {
+      // Product intent:
+      // - Inline: render a server-generated STL preview (cached in cad_previews).
+      // - Attachment: download the original STEP source file (STL is preview-only).
+      if (disposition === "attachment") {
+        log("storage_download", { target: "source_attachment" });
+        const { data: stepBlob, error: stepDownloadError } = await supabaseServer.storage
+          .from(bucket)
+          .download(path);
+        if (stepDownloadError || !stepBlob) {
+          log("response", {
+            source: "source_not_found",
+            error: safeErrorForLog(stepDownloadError),
+          });
+          return NextResponse.json(
+            {
+              error: "source_not_found",
+              bucket,
+              path,
+              requestId,
+            },
+            { status: 404 },
+          );
+        }
+        const safeName = fileName && fileName.trim() ? fileName.trim() : "file.step";
+        return new NextResponse(stepBlob.stream(), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/step",
+            "Content-Disposition": buildContentDisposition("attachment", safeName),
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+
       // Deterministic preview location in `cad_previews`.
       const { buildStepStlPreviewPath } = await import("@/server/cad/stepToStl");
       const previewPath = buildStepStlPreviewPath({

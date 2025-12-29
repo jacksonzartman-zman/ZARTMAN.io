@@ -41,8 +41,6 @@ export function fitAndCenter(
   if (box.isEmpty()) return;
 
   const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const maxDim = Math.max(size.x, size.y, size.z);
 
   // Recenter exactly once per loaded object instance.
   if (!(object.userData as any)?.[CENTERED_FLAG]) {
@@ -56,22 +54,25 @@ export function fitAndCenter(
   if (!Number.isFinite(box2.min.x) || !Number.isFinite(box2.max.x)) return;
   if (box2.isEmpty()) return;
 
-  const size2 = box2.getSize(new THREE.Vector3());
-  const maxDim2 = Math.max(size2.x, size2.y, size2.z);
-  const safeMaxDim2 = Math.max(maxDim2, 0.0001);
+  const sphere = box2.getBoundingSphere(new THREE.Sphere());
+  const radius = Math.max(sphere.radius || 0, 0.0001);
 
   controls.target.set(0, 0, 0);
 
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
 
-  const fov = (camera.fov * Math.PI) / 180;
-  const distance = (safeMaxDim2 / (2 * Math.tan(fov / 2))) * padding;
+  // Fit bounding sphere into view accounting for aspect ratio.
+  const vFov = (camera.fov * Math.PI) / 180;
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+  const limitingFov = Math.max(0.0001, Math.min(vFov, hFov));
+  const distance = (radius / Math.sin(limitingFov / 2)) * padding;
 
   // Stable diagonal view; avoids picking a "front" that might be arbitrary.
-  camera.position.set(distance, distance, distance);
-  camera.near = Math.max(distance / 100, 0.01);
-  camera.far = distance * 100;
+  const dir = new THREE.Vector3(1, 1, 1).normalize();
+  camera.position.copy(dir.multiplyScalar(distance));
+  camera.near = Math.max(distance / 1000, 0.001);
+  camera.far = Math.max(distance * 1000, camera.near + 1);
   camera.updateProjectionMatrix();
 
   // Snap immediately even if damping is enabled.

@@ -24,6 +24,8 @@ export type ThreeCadViewerReport = {
 };
 
 const MAX_RENDER_BYTES = 20 * 1024 * 1024; // 20MB
+const STEP_PREVIEW_TIMEOUT_MS = 120_000;
+const DEFAULT_FETCH_TIMEOUT_MS = 45_000;
 
 function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -49,7 +51,10 @@ function ensureStepStlPreviewUrl(input: {
   filename: string | null;
 }): string {
   const { url, cadKind, filename } = input;
-  if (cadKind !== "step") return url;
+  const isStep =
+    cadKind === "step" ||
+    (cadKind === null && typeof filename === "string" && /\.(step|stp)$/i.test(filename.trim()));
+  if (!isStep) return url;
   if (!url.startsWith("/api/parts-file-preview")) return url;
 
   let next = url;
@@ -117,21 +122,7 @@ function initializeThree(container: HTMLDivElement) {
   while (container.firstChild) container.removeChild(container.firstChild);
   container.appendChild(renderer.domElement);
 
-  let resizeObserver: ResizeObserver | null = null;
-  if (typeof ResizeObserver !== "undefined") {
-    resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      const nextWidth = Math.max(1, Math.floor(entry.contentRect.width));
-      const nextHeight = Math.max(1, Math.floor(entry.contentRect.height));
-      renderer.setSize(nextWidth, nextHeight, false);
-      camera.aspect = nextWidth / nextHeight;
-      camera.updateProjectionMatrix();
-    });
-    resizeObserver.observe(container);
-  }
-
-  return { renderer, scene, camera, controls, resizeObserver };
+  return { renderer, scene, camera, controls };
 }
 
 function getContainerRenderSize(container: HTMLDivElement, renderer: THREE.WebGLRenderer) {
@@ -154,10 +145,41 @@ function disposeObject3D(root: THREE.Object3D) {
       (mesh.geometry as any).dispose();
     }
     const material = (mesh as any).material as THREE.Material | THREE.Material[] | undefined;
+    const disposeMaterial = (m: THREE.Material | null | undefined) => {
+      if (!m) return;
+      // Dispose textures commonly attached to materials (GLTF, etc).
+      const anyMat = m as any;
+      const maybeTextureKeys = [
+        "map",
+        "alphaMap",
+        "aoMap",
+        "bumpMap",
+        "displacementMap",
+        "emissiveMap",
+        "envMap",
+        "lightMap",
+        "metalnessMap",
+        "normalMap",
+        "roughnessMap",
+        "specularMap",
+        "clearcoatMap",
+        "clearcoatNormalMap",
+        "clearcoatRoughnessMap",
+        "sheenColorMap",
+        "sheenRoughnessMap",
+        "transmissionMap",
+        "thicknessMap",
+      ] as const;
+      for (const key of maybeTextureKeys) {
+        const tex = anyMat?.[key] as THREE.Texture | null | undefined;
+        tex?.dispose?.();
+      }
+      m.dispose?.();
+    };
     if (Array.isArray(material)) {
-      material.forEach((m) => m?.dispose?.());
+      material.forEach((m) => disposeMaterial(m));
     } else {
-      material?.dispose?.();
+      disposeMaterial(material);
     }
   });
 }
@@ -266,6 +288,25 @@ export function ThreeCadViewer({
   const [resolvedFilename, setResolvedFilename] = useState<string | null>(null);
   const [resolvedCadKind, setResolvedCadKind] = useState<CadKindOrUnknown>("unknown");
 
+  // Avoid re-running viewer lifecycle effects due to changing callback identity.
+  const onStatusChangeRef = useRef<ThreeCadViewerProps["onStatusChange"]>(null);
+  useEffect(() => {
+    onStatusChangeRef.current = onStatusChange ?? null;
+  }, [onStatusChange]);
+
+  const runtimeRef = useRef<{
+    renderer: THREE.WebGLRenderer;
+    scene: THREE.Scene;
+    camera: THREE.PerspectiveCamera;
+    controls: OrbitControls;
+    container: HTMLDivElement;
+    resizeObserver: ResizeObserver | null;
+    animationId: number | null;
+  } | null>(null);
+  const modelRootRef = useRef<THREE.Object3D | null>(null);
+  const containerSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+  const fetchAbortRef = useRef<AbortController | null>(null);
+
   const safeFileId = safeTrim(fileId);
   const safeUrl = safeTrim(url);
   const safeFileName = safeTrim(fileName);
@@ -334,7 +375,8 @@ export function ThreeCadViewer({
       filename: filenameForStep,
     });
   }, [safeUrl, intakeInlineUrl, inlineUrl, cadKind, filenameHint, safeFileName]);
-  const effectiveFileName = safeFileName || filenameHint || resolvedFilename || "";
+  // Do not use server-inferred filenames for inference; they would retrigger reload loops.
+  const effectiveFileName = safeFileName || filenameHint || "";
 
   if (!didMountLogRef.current) {
     didMountLogRef.current = true;
@@ -359,198 +401,244 @@ export function ThreeCadViewer({
     return classification.ok ? classification.type : null;
   }, [cadKind, resolvedCadKind, classification]);
 
+  const setViewerState = (next: {
+    status: ViewerStatus;
+    cadKind?: CadKindOrUnknown;
+    message?: string | null;
+    errorReason?: string | null;
+  }) => {
+    const nextCadKind = typeof next.cadKind === "undefined" ? "unknown" : next.cadKind;
+    const nextMessage = typeof next.message === "undefined" ? null : next.message;
+    const nextReason = typeof next.errorReason === "undefined" ? null : next.errorReason;
+
+    setStatus(next.status);
+    setResolvedCadKind(nextCadKind);
+    setErrorMessage(nextMessage);
+    setErrorReason(nextReason);
+    onStatusChangeRef.current?.({
+      status: next.status,
+      cadKind: nextCadKind,
+      errorReason: nextReason ?? undefined,
+    });
+  };
+
+  const disposeCurrentModel = () => {
+    const rt = runtimeRef.current;
+    const model = modelRootRef.current;
+    if (!rt || !model) return;
+    rt.scene.remove(model);
+    disposeObject3D(model);
+    modelRootRef.current = null;
+  };
+
+  const tryFit = (padding = 1.35) => {
+    const rt = runtimeRef.current;
+    const model = modelRootRef.current;
+    if (!rt || !model) return;
+    const { width, height } = containerSizeRef.current;
+    if (!width || !height) return;
+    fitAndCenter(model, rt.camera, rt.controls, { width, height, padding });
+  };
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    if (runtimeRef.current) return;
 
-    let cancelled = false;
-    let animationId: number | null = null;
-    let renderer: THREE.WebGLRenderer | null = null;
-    let scene: THREE.Scene | null = null;
-    let camera: THREE.PerspectiveCamera | null = null;
-    let controls: OrbitControls | null = null;
-    let resizeObserver: ResizeObserver | null = null;
-    let objectRoot: THREE.Object3D | null = null;
+    if (!hasWebGLSupport()) {
+      setViewerState({
+        status: "error",
+        cadKind: "unknown",
+        message: "WebGL is not available in this browser. You can still download the file.",
+        errorReason: null,
+      });
+      return;
+    }
 
-    const resetContainer = () => {
-      while (container.firstChild) container.removeChild(container.firstChild);
+    const { renderer, scene, camera, controls } = initializeThree(container);
+
+    const updateSize = (w: number, h: number) => {
+      const width = Math.max(0, Math.floor(w));
+      const height = Math.max(0, Math.floor(h));
+      containerSizeRef.current = { width, height };
+      if (width <= 0 || height <= 0) return;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      tryFit();
     };
 
-    const cleanup = () => {
-      if (animationId !== null) cancelAnimationFrame(animationId);
-      resizeObserver?.disconnect();
-      controls?.dispose();
-      if (scene && objectRoot) {
-        scene.remove(objectRoot);
-        disposeObject3D(objectRoot);
-      }
-      renderer?.dispose();
-      objectRoot = null;
-      resetContainer();
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (!entry) return;
+            updateSize(entry.contentRect.width, entry.contentRect.height);
+          })
+        : null;
+    resizeObserver?.observe(container);
+
+    // Seed an initial size value in case ResizeObserver fires late.
+    updateSize(container.clientWidth || 0, container.clientHeight || 0);
+
+    runtimeRef.current = {
+      renderer,
+      scene,
+      camera,
+      controls,
+      container,
+      resizeObserver,
+      animationId: null,
     };
 
     const renderLoop = () => {
-      if (cancelled || !renderer || !scene || !camera) return;
-      controls?.update();
-      renderer.render(scene, camera);
-      animationId = window.requestAnimationFrame(renderLoop);
+      const rt = runtimeRef.current;
+      if (!rt) return;
+      rt.controls.update();
+      rt.renderer.render(rt.scene, rt.camera);
+      rt.animationId = window.requestAnimationFrame(renderLoop);
     };
+    runtimeRef.current.animationId = window.requestAnimationFrame(renderLoop);
 
-    const start = async () => {
-      let detectedCadKind: CadKindOrUnknown = "unknown";
+    return () => {
+      // Root cause of the Chrome warning “Too many active WebGL contexts” was repeated
+      // renderer creation (effect re-runs) without reliably releasing the old context.
+      // We now create exactly one renderer per mounted viewer and fully dispose on unmount.
+      fetchAbortRef.current?.abort();
+      fetchAbortRef.current = null;
+
+      const rt = runtimeRef.current;
+      if (!rt) return;
+
+      if (rt.animationId !== null) cancelAnimationFrame(rt.animationId);
+      rt.resizeObserver?.disconnect();
+      rt.controls.dispose();
+
+      disposeCurrentModel();
+
+      try {
+        (rt.renderer as any).renderLists?.dispose?.();
+      } catch {
+        // ignore
+      }
+      try {
+        rt.renderer.dispose();
+      } catch {
+        // ignore
+      }
+      try {
+        (rt.renderer as any).forceContextLoss?.();
+      } catch {
+        // ignore
+      }
+      try {
+        const canvas = rt.renderer.domElement;
+        canvas?.parentElement?.removeChild(canvas);
+      } catch {
+        // ignore
+      }
+      while (container.firstChild) container.removeChild(container.firstChild);
+      runtimeRef.current = null;
+    };
+    // Mount-only: keep WebGL objects stable across rerenders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const rt = runtimeRef.current;
+    if (!rt) return;
+
+    // Abort any in-flight request when the URL changes.
+    fetchAbortRef.current?.abort();
+    const abort = new AbortController();
+    fetchAbortRef.current = abort;
+
+    disposeCurrentModel();
+    setResolvedFilename(null);
+
+    const cadKindHint: CadKind | null = cadKind ?? (classification.ok ? classification.type : null);
+    const isStep = cadKindHint === "step";
+    const timeoutMs = isStep ? STEP_PREVIEW_TIMEOUT_MS : DEFAULT_FETCH_TIMEOUT_MS;
+
+    if (!effectiveUrl) {
+      setViewerState({ status: "idle", cadKind: "unknown", message: null, errorReason: null });
+      return;
+    }
+
+    setViewerState({ status: "loading", cadKind: cadKindHint ?? "unknown", message: null, errorReason: null });
+
+    const timeoutId = window.setTimeout(() => {
+      abort.abort();
+    }, timeoutMs);
+
+    const load = async () => {
+      let detectedCadKind: CadKindOrUnknown = cadKindHint ?? "unknown";
       let fileNameForLogs: string = effectiveFileName || "unknown";
-      const cadKindHint: CadKind | null =
-        cadKind ?? (classification.ok ? classification.type : null);
-
-      const setViewerState = (next: {
-        status: ViewerStatus;
-        cadKind?: CadKindOrUnknown;
-        message?: string | null;
-        errorReason?: string | null;
-      }) => {
-        if (cancelled) return;
-        const nextCadKind = typeof next.cadKind === "undefined" ? "unknown" : next.cadKind;
-        const nextMessage = typeof next.message === "undefined" ? null : next.message;
-        const nextReason = typeof next.errorReason === "undefined" ? null : next.errorReason;
-
-        setStatus(next.status);
-        setResolvedCadKind(nextCadKind);
-        setErrorMessage(nextMessage);
-        setErrorReason(nextReason);
-        onStatusChange?.({
-          status: next.status,
-          cadKind: nextCadKind,
-          errorReason: nextReason ?? undefined,
-        });
-      };
-
-      if (!effectiveUrl) {
-        setViewerState({ status: "idle", cadKind: "unknown", message: null, errorReason: null });
-        cleanup();
-        return;
-      }
-
-      if (!hasWebGLSupport()) {
-        setViewerState({
-          status: "error",
-          cadKind: "unknown",
-          message: "WebGL is not available in this browser. You can still download the file.",
-          errorReason: null,
-        });
-        cleanup();
-        return;
-      }
-
-      setViewerState({ status: "loading", message: null, errorReason: null });
-
       try {
         const res = await fetch(effectiveUrl, {
           method: "GET",
           cache: "no-store",
           headers: { "cache-control": "no-cache" },
+          signal: abort.signal,
         });
+
         if (!res.ok) {
           const contentType = safeTrim(res.headers.get("content-type"));
           const isJson = contentType.toLowerCase().includes("application/json");
-          const bodyText = isJson
-            ? ""
-            : await res.text().catch(() => "");
-          const bodyJson = isJson
-            ? await res.json().catch(() => null)
-            : null;
+          const bodyText = isJson ? "" : await res.text().catch(() => "");
+          const bodyJson = isJson ? await res.json().catch(() => null) : null;
 
           const userMessage =
             bodyJson && typeof bodyJson === "object" && typeof (bodyJson as any)?.userMessage === "string"
               ? String((bodyJson as any).userMessage).trim()
               : "";
-          if (userMessage) {
-            const kindForUi = cadKindHint ?? detectedCadKind;
-            setViewerState({
-              status: "error",
-              cadKind: kindForUi,
-              message: userMessage,
-              // Bubble up into the STEP panel copy when relevant.
-              errorReason: kindForUi === "step" ? userMessage : null,
-            });
-            cleanup();
-            return;
-          }
-
+          const requestId =
+            bodyJson && typeof bodyJson === "object" && typeof (bodyJson as any)?.requestId === "string"
+              ? String((bodyJson as any).requestId).trim()
+              : "";
           const apiError =
             bodyJson && typeof bodyJson === "object"
               ? (bodyJson as any).error ?? (bodyJson as any).reason ?? null
               : null;
-
           const apiErrorString = typeof apiError === "string" ? apiError : "";
           const fallbackText = safeTrim(bodyText) || (isJson ? JSON.stringify(bodyJson) : "");
 
-          // Special-case: STEP edge function missing (production deployment issue).
-          // `/api/cad-preview` returns { error: "edge_function_not_deployed", supabaseHost, requestId, userMessage }.
-          if (cadKindHint === "step" && bodyJson && typeof bodyJson === "object") {
-            const errCode = typeof (bodyJson as any)?.error === "string" ? String((bodyJson as any).error) : "";
-            if (errCode === "edge_function_not_deployed") {
-              const userMessage =
-                typeof (bodyJson as any)?.userMessage === "string" && (bodyJson as any).userMessage.trim()
-                  ? String((bodyJson as any).userMessage).trim()
-                  : null;
-              const supabaseHost =
-                typeof (bodyJson as any)?.supabaseHost === "string" && (bodyJson as any).supabaseHost.trim()
-                  ? String((bodyJson as any).supabaseHost).trim()
-                  : "unknown";
-              const requestId =
-                typeof (bodyJson as any)?.requestId === "string" && (bodyJson as any).requestId.trim()
-                  ? String((bodyJson as any).requestId).trim()
-                  : null;
-              const synthesized =
-                `STEP preview converter not deployed to ${supabaseHost}. Ask admin to deploy ‘step-to-stl’.` +
-                (requestId ? ` RequestId: ${requestId}` : "");
-              const messageToShow = userMessage ?? synthesized;
-
-              setViewerState({
-                status: "error",
-                cadKind: "step",
-                message: messageToShow,
-                // Also bubble up as "reason" for any surrounding STEP-specific UI.
-                errorReason: messageToShow,
-              });
-              cleanup();
-              return;
-            }
-          }
-
           const combined =
-            apiErrorString
+            userMessage ||
+            (apiErrorString
               ? `HTTP ${res.status}: ${apiErrorString}`
               : fallbackText
                 ? `HTTP ${res.status}: ${fallbackText}`
-                : `HTTP ${res.status}`;
+                : `HTTP ${res.status}`);
 
-          if (cadKindHint === "step" && combined.includes("step_preview_unavailable")) {
-            throw new Error("step_preview_unavailable");
-          }
-          throw new Error(combined);
+          setViewerState({
+            status: "error",
+            cadKind: cadKindHint ?? detectedCadKind,
+            message:
+              requestId && !combined.includes(requestId) ? `${combined} (RequestId: ${requestId})` : combined,
+            errorReason: cadKindHint === "step" ? combined : null,
+          });
+          return;
         }
 
         const inferred = parseFilenameFromContentDisposition(res.headers.get("content-disposition"));
-        if (!cancelled) setResolvedFilename(inferred ?? null);
+        setResolvedFilename(inferred ?? null);
         fileNameForLogs = effectiveFileName || inferred || "unknown";
 
         const blob = await res.blob();
-        if (cancelled) return;
-
         if (blob.size > MAX_RENDER_BYTES) {
           setViewerState({
             status: "error",
+            cadKind: cadKindHint ?? detectedCadKind,
             message:
               "This CAD file is too large to safely render in-browser (over 20 MB). You can still download it.",
             errorReason: null,
           });
-          cleanup();
           return;
         }
 
         const fileNameForType = effectiveFileName || inferred || null;
-        const resolvedCadKind: CadKind | null =
+        const resolvedCadKindValue: CadKind | null =
           cadKind ??
           (() => {
             const typeInfo = classifyCadFileType({ filename: fileNameForType, extension: null });
@@ -559,65 +647,40 @@ export function ThreeCadViewer({
 
         console.log("[three-cad-viewer] resolvedCadKind", {
           fileName: fileNameForLogs,
-          cadKind: resolvedCadKind,
+          cadKind: resolvedCadKindValue,
         });
 
-        if (!resolvedCadKind) {
+        if (!resolvedCadKindValue) {
           setViewerState({
             status: "error",
             cadKind: "unknown",
             message: "Unable to render this CAD file. You can still download it.",
             errorReason: null,
           });
-          cleanup();
           return;
         }
 
-        detectedCadKind = resolvedCadKind;
-        setViewerState({
-          status: "loading",
-          cadKind: detectedCadKind,
-          message: null,
-          errorReason: null,
-        });
+        detectedCadKind = resolvedCadKindValue;
+        setViewerState({ status: "loading", cadKind: detectedCadKind, message: null, errorReason: null });
 
-        if (resolvedCadKind !== "step") {
-          console.log("[three-cad-viewer] non-step-load", {
-            cadKind: resolvedCadKind,
-            fileName: fileNameForLogs,
+        const resContentType = safeTrim(res.headers.get("content-type")).toLowerCase();
+        if (resolvedCadKindValue === "step" && resContentType.includes("application/step")) {
+          setViewerState({
+            status: "error",
+            cadKind: "step",
+            message:
+              "This link points to the original STEP file, but the viewer needs a server-generated STL preview. Please retry Preview 3D.",
+            errorReason: "step_source_not_preview",
           });
+          return;
         }
-
-        ({ renderer, scene, camera, controls, resizeObserver } = initializeThree(container));
 
         const buffer = await blob.arrayBuffer();
-        if (cancelled) return;
 
-        // Re-fit on resize (but avoid cumulative recentering via object.userData flags).
-        resizeObserver?.disconnect();
-        if (typeof ResizeObserver !== "undefined") {
-          resizeObserver = new ResizeObserver((entries) => {
-            const entry = entries[0];
-            if (!entry || !renderer || !camera) return;
-            const nextWidth = Math.max(1, Math.floor(entry.contentRect.width));
-            const nextHeight = Math.max(1, Math.floor(entry.contentRect.height));
-            renderer.setSize(nextWidth, nextHeight, false);
-            camera.aspect = nextWidth / nextHeight;
-            camera.updateProjectionMatrix();
-            if (controls && objectRoot) {
-              fitAndCenter(objectRoot, camera, controls, {
-                width: nextWidth,
-                height: nextHeight,
-                padding: 1.35,
-              });
-            }
-          });
-          resizeObserver.observe(container);
-        }
-
-        if (resolvedCadKind === "stl") {
+        let objectRoot: THREE.Object3D | null = null;
+        if (resolvedCadKindValue === "stl") {
           objectRoot = buildStlMeshFromArrayBuffer(buffer);
-        } else if (resolvedCadKind === "obj") {
+        } else if (resolvedCadKindValue === "obj") {
           const text = new TextDecoder().decode(new Uint8Array(buffer));
           const loader = new OBJLoader();
           const obj = loader.parse(text);
@@ -634,84 +697,80 @@ export function ThreeCadViewer({
             }
           });
           objectRoot = obj;
-        } else if (resolvedCadKind === "glb") {
+        } else if (resolvedCadKindValue === "glb") {
           const loader = new GLTFLoader();
           const gltf = await loader.parseAsync(buffer, "");
           objectRoot = gltf.scene ?? new THREE.Group();
-        } else if (resolvedCadKind === "step") {
-          console.log("[three-step-preview] loading STL preview for STEP", {
-            fileName: fileNameForLogs,
-            url: effectiveUrl,
-          });
-          try {
-            // Server provides an STL mesh preview for STEP files (previewAs=stl_preview).
-            objectRoot = buildStlMeshFromArrayBuffer(buffer);
-          } catch (err) {
-            console.error("[three-step-preview] step STL preview error", {
-              fileName: fileNameForLogs,
-              url: effectiveUrl,
-              err,
-            });
-            setViewerState({
-              status: "error",
-              cadKind: "step",
-              message: "STEP preview is not available for this file yet. You can still download it.",
-              errorReason: "failed_to_load_step_stl_preview",
-            });
-            cleanup();
-            return;
-          }
+        } else if (resolvedCadKindValue === "step") {
+          // STEP is rendered via a server-generated STL preview artifact.
+          objectRoot = buildStlMeshFromArrayBuffer(buffer);
         }
 
         if (!objectRoot) {
           throw new Error("cad_parse_failed");
         }
 
-        // Wrap the loaded object in a stable root so we can translate the root
-        // to center the whole scene graph without mutating the loader's object directly.
         const centeredRoot = new THREE.Group();
         centeredRoot.add(objectRoot);
-        objectRoot = centeredRoot;
-        scene.add(objectRoot);
+        modelRootRef.current = centeredRoot;
+        rt.scene.add(centeredRoot);
 
-        const { width, height } = getContainerRenderSize(container, renderer);
-        fitAndCenter(objectRoot, camera, controls, { width, height, padding: 1.35 });
+        // Fit only once we have a real size. ResizeObserver will also re-fit on changes.
+        const { width, height } = containerSizeRef.current;
+        if (width > 0 && height > 0) {
+          tryFit(1.35);
+        } else {
+          const rect = rt.container.getBoundingClientRect();
+          const measured = { width: Math.floor(rect.width), height: Math.floor(rect.height) };
+          containerSizeRef.current = measured;
+          if (measured.width > 0 && measured.height > 0) {
+            tryFit(1.35);
+          }
+        }
 
         setViewerState({ status: "ready", cadKind: detectedCadKind, message: null, errorReason: null });
-        animationId = window.requestAnimationFrame(renderLoop);
       } catch (e) {
-        if (!cancelled) {
-          const isStep = detectedCadKind === "step" || cadKindHint === "step";
-          const errMessage = e instanceof Error ? e.message : "";
-          const stepReason =
-            errMessage.includes("step_preview_unavailable")
-              ? "step_preview_unavailable"
-              : "failed_to_load_step_stl_preview";
-          if (isStep) {
-            console.error("[three-step-preview] step STL preview error", {
-              fileName: fileNameForLogs,
-              url: effectiveUrl,
-              err: e,
-            });
-          }
+        const isAbort =
+          (e instanceof DOMException && e.name === "AbortError") ||
+          (e instanceof Error && e.name === "AbortError");
+        if (isAbort) {
           setViewerState({
             status: "error",
-            cadKind: detectedCadKind,
-            message: errMessage || "Unable to render this CAD file. You can still download it.",
-            errorReason: isStep ? stepReason : null,
+            cadKind: cadKindHint ?? "unknown",
+            message: `Preview request timed out after ${Math.round(timeoutMs / 1000)}s. Please retry.`,
+            errorReason: cadKindHint === "step" ? "timeout" : null,
           });
-          cleanup();
+          return;
         }
+
+        const isStepForLogs = detectedCadKind === "step" || cadKindHint === "step";
+        if (isStepForLogs) {
+          console.error("[three-step-preview] step STL preview error", {
+            fileName: fileNameForLogs,
+            url: effectiveUrl,
+            err: e,
+          });
+        }
+
+        const errMessage = e instanceof Error ? e.message : String(e);
+        setViewerState({
+          status: "error",
+          cadKind: detectedCadKind,
+          message: errMessage || "Unable to render this CAD file. You can still download it.",
+          errorReason: isStepForLogs ? "failed_to_load_step_stl_preview" : null,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
       }
     };
 
-    start();
+    void load();
 
     return () => {
-      cancelled = true;
-      cleanup();
+      window.clearTimeout(timeoutId);
+      abort.abort();
     };
-  }, [effectiveUrl, safeFileName, filenameHint, cadKind, onStatusChange]);
+  }, [effectiveUrl, cadKind, classification.ok, classification.type, effectiveFileName]);
 
   return (
     <div className={clsx("w-full", className)}>
@@ -731,7 +790,7 @@ export function ThreeCadViewer({
               <p className="max-w-lg text-sm text-slate-300">
                 {status === "loading"
                   ? detectedCadKindForUi === "step"
-                    ? "Loading a server-generated STL preview for this STEP file."
+                    ? "Generating a server-generated STL preview (STL is preview-only; the original STEP remains downloadable)."
                     : "Parsing CAD in your browser. This can take a moment."
                   : errorMessage ?? "Unable to render this CAD file. You can still download it."}
               </p>
