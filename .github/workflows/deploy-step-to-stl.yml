@@ -22,6 +22,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate required secrets (do not print values)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=0
+
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::Missing required GitHub Actions secret: SUPABASE_ACCESS_TOKEN. Add it under Settings → Secrets and variables → Actions."
+            missing=1
+          fi
+
+          if [ -z "${SUPABASE_PROJECT_REF:-}" ]; then
+            echo "::error::Missing required GitHub Actions secret: SUPABASE_PROJECT_REF. This should be the Supabase hosted project ref (the subdomain before .supabase.co)."
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+          echo "Supabase target clarification:"
+          echo "- Derived Supabase hostname: ${SUPABASE_PROJECT_REF}.supabase.co"
+          echo "- Expected project ref format: <ref> (subdomain), where the host is <ref>.supabase.co"
+
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
@@ -33,6 +58,15 @@ jobs:
       - name: Deploy step-to-stl
         run: supabase functions deploy step-to-stl --project-ref "$SUPABASE_PROJECT_REF"
 
-      - name: Post-deploy sanity (list functions)
+      - name: Post-deploy verification (list functions)
         run: supabase functions list --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Post-deploy verification (ensure step-to-stl exists)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! supabase functions list --project-ref "$SUPABASE_PROJECT_REF" | grep -qE '(^|[[:space:]])step-to-stl($|[[:space:]])'; then
+            echo "::error::Edge function 'step-to-stl' not found in supabase functions list output. Deployment likely failed or targeted the wrong project ref."
+            exit 1
+          fi
 
