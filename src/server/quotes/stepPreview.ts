@@ -34,42 +34,45 @@ export async function ensureStepPreviewForFile(
       }
     }
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      process.env.SUPABASE_URL ||
-      process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL ||
-      "";
-    if (!baseUrl) {
-      console.error("[step-preview] ensure failed", { quoteUploadFileId: id, reason: "missing_supabase_url" });
-      return null;
-    }
-
-    const url = `${baseUrl.replace(/\/+$/, "")}/functions/v1/step-to-stl`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(process.env.SUPABASE_SERVICE_ROLE_KEY
-          ? { Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` }
-          : {}),
-      },
-      body: JSON.stringify({ quoteUploadFileId: id }),
+    const functionName = "step-to-stl" as const;
+    const { data, error: edgeError } = await supabaseServer.functions.invoke(functionName, {
+      body: { quoteUploadFileId: id },
     });
 
-    const json = (await res.json().catch(() => null)) as
-      | { ok?: unknown; quoteUploadFileId?: unknown; bucket?: unknown; path?: unknown; reason?: unknown }
-      | null;
-
-    if (!json || json.ok !== true) {
+    if (edgeError) {
+      const anyErr = edgeError as any;
+      const edgeStatus = typeof anyErr?.context?.status === "number" ? anyErr.context.status : null;
+      const edgeBody = anyErr?.context?.body;
+      const edgeBodyPreview =
+        typeof edgeBody === "string"
+          ? edgeBody.slice(0, 500)
+          : edgeBody != null
+            ? JSON.stringify(edgeBody).slice(0, 500)
+            : null;
       console.error("[step-preview] ensure failed", {
         quoteUploadFileId: id,
-        reason: typeof json?.reason === "string" ? json.reason : `edge_not_ok_${res.status}`,
+        functionName,
+        edgeStatus,
+        edgeBodyPreview,
+        edgeError,
       });
       return null;
     }
 
-    const bucket = typeof json.bucket === "string" ? json.bucket.trim() : "";
-    const previewPath = typeof json.path === "string" ? json.path.trim() : "";
+    const ok = Boolean((data as any)?.ok === true);
+    if (!ok) {
+      console.error("[step-preview] ensure failed", {
+        quoteUploadFileId: id,
+        functionName,
+        reason: typeof (data as any)?.reason === "string" ? (data as any).reason : "edge_not_ok",
+      });
+      return null;
+    }
+
+    const bucketRaw = (data as any)?.previewBucket ?? (data as any)?.bucket;
+    const pathRaw = (data as any)?.previewPath ?? (data as any)?.path;
+    const bucket = typeof bucketRaw === "string" ? bucketRaw.trim() : "";
+    const previewPath = typeof pathRaw === "string" ? pathRaw.trim() : "";
     if (!bucket || !previewPath) {
       console.error("[step-preview] ensure failed", { quoteUploadFileId: id, reason: "edge_missing_bucket_or_path" });
       return null;

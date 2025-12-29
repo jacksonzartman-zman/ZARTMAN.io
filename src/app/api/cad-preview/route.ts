@@ -58,58 +58,50 @@ function buildContentDisposition(disposition: "inline" | "attachment", filename:
   return `${disposition}; filename="${safe}"`;
 }
 
-async function callStepToStlEdge(input: { bucket: string; path: string; fileName?: string | null }) {
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.SUPABASE_URL ||
-    process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL ||
-    "";
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!baseUrl) {
-    return { ok: false as const, reason: "missing_supabase_url" };
+function truncateText(input: string, maxChars: number): string {
+  if (!input) return "";
+  if (input.length <= maxChars) return input;
+  return `${input.slice(0, Math.max(0, maxChars))}…`;
+}
+
+function safeSupabaseHost(supabaseUrl: string | null): string | null {
+  if (!supabaseUrl) return null;
+  try {
+    return new URL(supabaseUrl).host || null;
+  } catch {
+    return null;
   }
-  if (!serviceRole) {
-    return { ok: false as const, reason: "missing_service_role_key" };
-  }
+}
 
-  const url = `${baseUrl.replace(/\/+$/, "")}/functions/v1/step-to-stl`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${serviceRole}`,
-    },
-    body: JSON.stringify({
-      bucket: input.bucket,
-      path: input.path,
-      fileName: input.fileName ?? undefined,
-    }),
-  });
-
-  const json = (await res.json().catch(() => null)) as
-    | {
-        ok?: unknown;
-        previewBucket?: unknown;
-        previewPath?: unknown;
-        bytes?: unknown;
-        reason?: unknown;
-      }
-    | null;
-
-  if (!json || json.ok !== true) {
+function safeErrorForLog(err: unknown) {
+  if (!err) return null;
+  if (err instanceof Error) {
     return {
-      ok: false as const,
-      reason: typeof json?.reason === "string" ? json.reason : `edge_not_ok_${res.status}`,
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
     };
   }
-
-  const previewBucket = typeof json.previewBucket === "string" ? json.previewBucket.trim() : "";
-  const previewPath = typeof json.previewPath === "string" ? json.previewPath.trim() : "";
-  if (!previewBucket || !previewPath) {
-    return { ok: false as const, reason: "edge_missing_preview_location" };
+  if (typeof err === "object") {
+    const anyErr = err as any;
+    const safeContext =
+      anyErr?.context && typeof anyErr.context === "object"
+        ? {
+            status: typeof anyErr.context.status === "number" ? anyErr.context.status : undefined,
+            body: anyErr.context.body,
+          }
+        : undefined;
+    return {
+      name: typeof anyErr?.name === "string" ? anyErr.name : undefined,
+      message: typeof anyErr?.message === "string" ? anyErr.message : undefined,
+      // Common supabase-js Functions error fields:
+      context: safeContext,
+      details: anyErr?.details,
+      hint: anyErr?.hint,
+      code: anyErr?.code,
+    };
   }
-
-  return { ok: true as const, previewBucket, previewPath };
+  return { message: String(err) };
 }
 
 export async function GET(req: NextRequest) {
@@ -224,44 +216,204 @@ export async function GET(req: NextRequest) {
   }
 
   if (inferredKind === "step") {
-    const result = await callStepToStlEdge({ bucket, path, fileName: path.split("/").pop() ?? null });
-    if (!result.ok) {
-      if (result.reason === "download_failed") {
+    const functionName = "step-to-stl" as const;
+    const supabaseUrl =
+      process.env.SUPABASE_URL ??
+      process.env.NEXT_PUBLIC_SUPABASE_URL ??
+      process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL ??
+      null;
+    const supabaseHost = safeSupabaseHost(supabaseUrl);
+    const edgeUrl =
+      supabaseUrl ? `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/${functionName}` : null;
+
+    console.log("[cad-preview] step-to-stl invoke start", {
+      rid: requestId,
+      bucket,
+      path,
+      kind: "step",
+      functionName,
+      supabaseUrlSet: Boolean(supabaseUrl),
+      supabaseHost,
+      edgeUrl,
+    });
+
+    const fileName = path.split("/").pop() ?? null;
+    let edgeStatus: number | null = null;
+    let edgeBodyPreview: string | null = null;
+
+    try {
+      const { data, error: edgeError } = await supabaseServer.functions.invoke(functionName, {
+        body: { bucket, path, fileName },
+      });
+
+      if (edgeError) {
+        const anyErr = edgeError as any;
+        edgeStatus = typeof anyErr?.context?.status === "number" ? anyErr.context.status : null;
+        const body = anyErr?.context?.body;
+        const bodyText =
+          typeof body === "string" ? body : body != null ? JSON.stringify(body) : anyErr?.message ?? "";
+        edgeBodyPreview = bodyText ? truncateText(bodyText, 500) : null;
+
+        console.log("[cad-preview] step-to-stl invoke non-2xx", {
+          rid: requestId,
+          functionName,
+          supabaseHost,
+          edgeUrl,
+          edgeStatus,
+          edgeBodyPreview,
+          edgeError: safeErrorForLog(edgeError),
+        });
+
+        if (edgeStatus === 404) {
+          return NextResponse.json(
+            {
+              error: "edge_function_not_found",
+              functionName,
+              supabaseHost,
+              requestId,
+              edgeStatus,
+              edgeBodyPreview: edgeBodyPreview ? truncateText(edgeBodyPreview, 500) : null,
+            },
+            { status: 502 },
+          );
+        }
+
         return NextResponse.json(
-          { error: "source_not_found", bucket, path },
-          { status: 404 },
+          {
+            error: "edge_conversion_failed",
+            requestId,
+            edgeStatus,
+            edgeBodyPreview: edgeBodyPreview ? truncateText(edgeBodyPreview, 500) : null,
+          },
+          { status: 502 },
         );
       }
+
+      // Edge function returns 200 with { ok: true/false }.
+      const ok = Boolean((data as any)?.ok === true);
+      if (!ok) {
+        const reason = typeof (data as any)?.reason === "string" ? (data as any).reason : "edge_not_ok";
+        edgeStatus = 200;
+        edgeBodyPreview = truncateText(JSON.stringify(data ?? null), 500);
+
+        console.log("[cad-preview] step-to-stl invoke ok=false", {
+          rid: requestId,
+          functionName,
+          supabaseHost,
+          edgeUrl,
+          edgeStatus,
+          reason,
+          edgeBodyPreview,
+        });
+
+        if (reason === "download_failed") {
+          return NextResponse.json(
+            { error: "source_not_found", bucket, path, requestId, edgeStatus, edgeBodyPreview },
+            { status: 404 },
+          );
+        }
+
+        return NextResponse.json(
+          {
+            error: "edge_conversion_failed",
+            reason,
+            requestId,
+            edgeStatus,
+            edgeBodyPreview,
+          },
+          { status: 502 },
+        );
+      }
+
+      const previewBucketRaw = (data as any)?.previewBucket ?? (data as any)?.bucket;
+      const previewPathRaw = (data as any)?.previewPath ?? (data as any)?.path;
+      const previewBucket = typeof previewBucketRaw === "string" ? previewBucketRaw.trim() : "";
+      const previewPath = typeof previewPathRaw === "string" ? previewPathRaw.trim() : "";
+      if (!previewBucket || !previewPath) {
+        edgeStatus = 200;
+        edgeBodyPreview = truncateText(JSON.stringify(data ?? null), 500);
+        console.log("[cad-preview] step-to-stl invoke missing preview location", {
+          rid: requestId,
+          functionName,
+          supabaseHost,
+          edgeUrl,
+          edgeStatus,
+          edgeBodyPreview,
+        });
+        return NextResponse.json(
+          {
+            error: "edge_conversion_failed",
+            reason: "edge_missing_preview_location",
+            requestId,
+            edgeStatus,
+            edgeBodyPreview,
+          },
+          { status: 502 },
+        );
+      }
+
+      edgeStatus = 200;
+      console.log("[cad-preview] step-to-stl invoke success", {
+        rid: requestId,
+        functionName,
+        supabaseHost,
+        edgeUrl,
+        edgeStatus,
+        previewBucket,
+        previewPath,
+      });
+
+      const { data: blob, error } = await supabaseServer.storage
+        .from(previewBucket)
+        .download(previewPath);
+
+      if (error || !blob) {
+        return NextResponse.json(
+          {
+            error: "edge_conversion_failed",
+            reason: "preview_download_failed",
+            requestId,
+            edgeStatus,
+          },
+          { status: 502 },
+        );
+      }
+
+      if (typeof blob.size === "number" && blob.size > MAX_PREVIEW_BYTES) {
+        return NextResponse.json({ error: "preview_too_large", requestId }, { status: 413 });
+      }
+
+      const filename = `${(path.split("/").pop() ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
+      return new NextResponse(blob.stream(), {
+        status: 200,
+        headers: {
+          "Content-Type": contentTypeFor("step"),
+          "Content-Disposition": buildContentDisposition(disposition, filename),
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (edgeInvokeThrown) {
+      const thrownText = edgeInvokeThrown instanceof Error ? edgeInvokeThrown.message : String(edgeInvokeThrown);
+      edgeBodyPreview = truncateText(thrownText, 500);
+      console.log("[cad-preview] step-to-stl invoke threw", {
+        rid: requestId,
+        functionName,
+        supabaseHost,
+        edgeUrl,
+        edgeStatus,
+        edgeBodyPreview,
+        edgeError: safeErrorForLog(edgeInvokeThrown),
+      });
       return NextResponse.json(
-        { error: "edge_conversion_failed", reason: result.reason },
+        {
+          error: "edge_conversion_failed",
+          requestId,
+          edgeStatus,
+          edgeBodyPreview,
+        },
         { status: 502 },
       );
     }
-
-    const { data: blob, error } = await supabaseServer.storage
-      .from(result.previewBucket)
-      .download(result.previewPath);
-
-    if (error || !blob) {
-      return NextResponse.json(
-        { error: "edge_conversion_failed", reason: "preview_download_failed" },
-        { status: 502 },
-      );
-    }
-
-    if (typeof blob.size === "number" && blob.size > MAX_PREVIEW_BYTES) {
-      return NextResponse.json({ error: "preview_too_large" }, { status: 413 });
-    }
-
-    const filename = `${(path.split("/").pop() ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
-    return new NextResponse(blob.stream(), {
-      status: 200,
-      headers: {
-        "Content-Type": contentTypeFor("step"),
-        "Content-Disposition": buildContentDisposition(disposition, filename),
-        "Cache-Control": "no-store",
-      },
-    });
   }
 
   const { data: blob, error } = await supabaseServer.storage.from(bucket).download(path);
