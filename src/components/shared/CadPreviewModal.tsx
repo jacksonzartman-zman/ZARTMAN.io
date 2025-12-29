@@ -78,6 +78,11 @@ export function CadPreviewModal({
             {filename ? (
               <p className="mt-1 truncate text-xs text-slate-400">{filename}</p>
             ) : null}
+            {cadKind === "step" ? (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Preview uses a <span className="font-semibold text-slate-300">server-generated STL</span> (preview-only). Download remains the original STEP.
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
             {downloadUrl ? (
@@ -87,7 +92,7 @@ export function CadPreviewModal({
                   "rounded-full border border-slate-700 bg-slate-900/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600",
                 )}
               >
-                Download
+                {cadKind === "step" ? "Download STEP" : "Download"}
               </a>
             ) : null}
             <button

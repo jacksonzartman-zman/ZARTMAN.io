@@ -31,7 +31,7 @@ export function CadPreviewButton({
   const cadKind: CadKind = classification.type;
   const tooltip =
     classification.type === "step"
-      ? "STEP previews are experimental; if they fail, we’ll show you the reason and you can still download the file."
+      ? "STEP previews are server-generated STL previews (preview-only). If it fails, we’ll show the reason and you can still download the original STEP."
       : undefined;
 
   return (
