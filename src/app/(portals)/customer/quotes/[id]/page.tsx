@@ -116,6 +116,7 @@ export default async function CustomerQuoteDetailPage({
 
   const workspaceResult = await loadQuoteWorkspaceData(quoteId, {
     safeOnly: true,
+    viewerUserId: user.id,
   });
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[customer quote] load failed", {

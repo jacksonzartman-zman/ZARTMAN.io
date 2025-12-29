@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import clsx from "clsx";
 import type { GeometryStats } from "@/lib/dfm/basicPartChecks";
+import { classifyCadFileType } from "@/lib/cadRendering";
+import { ThreeCadViewer } from "@/components/ThreeCadViewer";
 
 export type CadViewerPanelProps = {
   file?: File | null;
@@ -29,7 +31,29 @@ export function CadViewerPanel({
     onGeometryStats?.(null);
   }, [file, fileUrl, onGeometryStats]);
 
-  const hasSource = Boolean(file || fileUrl);
+  const localObjectUrl = useMemo(() => {
+    if (!file || typeof window === "undefined") return null;
+    try {
+      return URL.createObjectURL(file);
+    } catch {
+      return null;
+    }
+  }, [file]);
+  useEffect(() => {
+    return () => {
+      if (localObjectUrl) URL.revokeObjectURL(localObjectUrl);
+    };
+  }, [localObjectUrl]);
+
+  const effectiveUrl = fileUrl ?? localObjectUrl;
+  const hasSource = Boolean(effectiveUrl);
+  const displayName =
+    (typeof fileName === "string" && fileName.trim() ? fileName.trim() : null) ??
+    (file?.name ?? null);
+  const cadType = useMemo(
+    () => classifyCadFileType({ filename: displayName, extension: null }),
+    [displayName],
+  );
 
   const containerClasses = clsx(
     "rounded-2xl border border-slate-900/60 bg-slate-950/60 p-4",
@@ -41,25 +65,29 @@ export function CadViewerPanel({
       <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
         CAD preview
       </p>
-      <div
-        className="mt-3 flex items-center justify-center rounded-xl border border-dashed border-slate-800/80 bg-slate-950/70 px-6 text-center text-xs text-slate-400"
-        style={{ height }}
-      >
-        {hasSource ? (
+      {hasSource && effectiveUrl && cadType.ok ? (
+        <div className="mt-3">
+          <ThreeCadViewer
+            fileName={displayName ?? "file"}
+            url={effectiveUrl}
+            cadKind={cadType.type}
+            height={height}
+            minHeight={height}
+          />
+        </div>
+      ) : (
+        <div
+          className="mt-3 flex items-center justify-center rounded-xl border border-dashed border-slate-800/80 bg-slate-950/70 px-6 text-center text-xs text-slate-400"
+          style={{ height }}
+        >
           <span>
-            CAD 3D preview is coming soon. Your file{" "}
-            <span className="font-semibold">
-              {fileName ?? "has been attached"}
-            </span>{" "}
-            is still included with the RFQ.
+            {hasSource
+              ? "Preview is not available for this file type."
+              : fallbackMessage ??
+                "Upload a CAD file to attach it to your RFQ."}
           </span>
-        ) : (
-          <span>
-            {fallbackMessage ??
-              "Upload a CAD file to attach it to your RFQ. Preview will be added in a future update."}
-          </span>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -106,12 +106,13 @@ function initializeThree(container: HTMLDivElement) {
   const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 5000);
   camera.position.set(0, 0, 3);
 
-  const ambient = new THREE.AmbientLight(0xffffff, 0.65);
-  const key = new THREE.DirectionalLight(0xffffff, 0.9);
-  key.position.set(3, 3, 4);
-  const rim = new THREE.DirectionalLight(0xffffff, 0.25);
-  rim.position.set(-3, -2, -4);
-  scene.add(ambient, key, rim);
+  // Hubs-ish lighting defaults: hemisphere + a strong key.
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x0b1220, 0.75);
+  const key = new THREE.DirectionalLight(0xffffff, 1.0);
+  key.position.set(3, 4, 5);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+  fill.position.set(-3, -2, -4);
+  scene.add(hemi, key, fill);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -202,6 +203,15 @@ function buildStlMeshFromArrayBuffer(buffer: ArrayBuffer): THREE.Mesh {
 export type ThreeCadViewerProps = {
   className?: string;
   /**
+   * Optional fixed viewer height (px). Useful for inline panels.
+   * If omitted, the viewer uses a modal-friendly default height.
+   */
+  height?: number;
+  /**
+   * Optional minimum viewer height (px) when `height` is provided.
+   */
+  minHeight?: number;
+  /**
    * Preferred API (debug page): provide a filename + direct preview URL.
    */
   fileName?: string;
@@ -266,12 +276,20 @@ type StorageSourceProps = {
   onStatusChange?: (report: ThreeCadViewerReport) => void;
 };
 
-export function ThreeCadViewer(props: Props & { className?: string }): ReactElement;
-export function ThreeCadViewer(props: LegacyProps): ReactElement;
-export function ThreeCadViewer(props: StorageSourceProps): ReactElement;
+export function ThreeCadViewer(
+  props: Props & { className?: string; height?: number; minHeight?: number },
+): ReactElement;
+export function ThreeCadViewer(
+  props: LegacyProps & { height?: number; minHeight?: number },
+): ReactElement;
+export function ThreeCadViewer(
+  props: StorageSourceProps & { height?: number; minHeight?: number },
+): ReactElement;
 export function ThreeCadViewer({
   fileId,
   className,
+  height,
+  minHeight,
   filenameHint,
   cadKind,
   onStatusChange,
@@ -306,6 +324,17 @@ export function ThreeCadViewer({
   const modelRootRef = useRef<THREE.Object3D | null>(null);
   const containerSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   const fetchAbortRef = useRef<AbortController | null>(null);
+  const gridRef = useRef<THREE.GridHelper | null>(null);
+  const axesRef = useRef<THREE.AxesHelper | null>(null);
+  const lastViewRef = useRef<{
+    cameraPos: THREE.Vector3;
+    target: THREE.Vector3;
+    near: number;
+    far: number;
+  } | null>(null);
+
+  const [showGrid, setShowGrid] = useState(false);
+  const [showAxes, setShowAxes] = useState(false);
 
   const safeFileId = safeTrim(fileId);
   const safeUrl = safeTrim(url);
@@ -431,13 +460,24 @@ export function ThreeCadViewer({
     modelRootRef.current = null;
   };
 
-  const tryFit = (padding = 1.35) => {
+  const tryFit = (paddingFactor = 1.25) => {
     const rt = runtimeRef.current;
     const model = modelRootRef.current;
     if (!rt || !model) return;
     const { width, height } = containerSizeRef.current;
     if (!width || !height) return;
-    fitAndCenter(model, rt.camera, rt.controls, { width, height, padding });
+    fitAndCenter(model, rt.camera, rt.controls, {
+      width,
+      height,
+      paddingFactor,
+      viewDir: new THREE.Vector3(1, 1, 1),
+    });
+    lastViewRef.current = {
+      cameraPos: rt.camera.position.clone(),
+      target: rt.controls.target.clone(),
+      near: rt.camera.near,
+      far: rt.camera.far,
+    };
   };
 
   useEffect(() => {
@@ -456,6 +496,23 @@ export function ThreeCadViewer({
     }
 
     const { renderer, scene, camera, controls } = initializeThree(container);
+
+    // Optional scene helpers (toggled via overlay).
+    const grid = new THREE.GridHelper(2, 20, 0x334155, 0x1f2937);
+    // GridHelper.material is (Material | Material[]) depending on three version; treat as any.
+    const gridMat = grid.material as any;
+    if (gridMat) {
+      gridMat.transparent = true;
+      gridMat.opacity = 0.35;
+    }
+    grid.visible = false;
+    scene.add(grid);
+    gridRef.current = grid;
+
+    const axes = new THREE.AxesHelper(1.25);
+    axes.visible = false;
+    scene.add(axes);
+    axesRef.current = axes;
 
     const updateSize = (w: number, h: number) => {
       const width = Math.max(0, Math.floor(w));
@@ -516,6 +573,32 @@ export function ThreeCadViewer({
 
       disposeCurrentModel();
 
+      // Dispose helper objects (grid/axes).
+      try {
+        if (gridRef.current) {
+          rt.scene.remove(gridRef.current);
+          gridRef.current.geometry?.dispose?.();
+          const mat = (gridRef.current.material as unknown) as THREE.Material | THREE.Material[];
+          if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
+          else mat?.dispose?.();
+        }
+      } catch {
+        // ignore
+      } finally {
+        gridRef.current = null;
+      }
+      try {
+        if (axesRef.current) {
+          rt.scene.remove(axesRef.current);
+          axesRef.current.geometry?.dispose?.();
+          ((axesRef.current.material as unknown) as THREE.Material)?.dispose?.();
+        }
+      } catch {
+        // ignore
+      } finally {
+        axesRef.current = null;
+      }
+
       try {
         (rt.renderer as any).renderLists?.dispose?.();
       } catch {
@@ -543,6 +626,14 @@ export function ThreeCadViewer({
     // Mount-only: keep WebGL objects stable across rerenders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep helper visibility in sync with overlay toggles.
+  useEffect(() => {
+    if (gridRef.current) gridRef.current.visible = showGrid;
+  }, [showGrid]);
+  useEffect(() => {
+    if (axesRef.current) axesRef.current.visible = showAxes;
+  }, [showAxes]);
 
   useEffect(() => {
     const rt = runtimeRef.current;
@@ -714,17 +805,18 @@ export function ThreeCadViewer({
         centeredRoot.add(objectRoot);
         modelRootRef.current = centeredRoot;
         rt.scene.add(centeredRoot);
+        centeredRoot.updateWorldMatrix(true, true);
 
         // Fit only once we have a real size. ResizeObserver will also re-fit on changes.
         const { width, height } = containerSizeRef.current;
         if (width > 0 && height > 0) {
-          tryFit(1.35);
+          tryFit(1.25);
         } else {
           const rect = rt.container.getBoundingClientRect();
           const measured = { width: Math.floor(rect.width), height: Math.floor(rect.height) };
           containerSizeRef.current = measured;
           if (measured.width > 0 && measured.height > 0) {
-            tryFit(1.35);
+            tryFit(1.25);
           }
         }
 
@@ -772,10 +864,73 @@ export function ThreeCadViewer({
     };
   }, [effectiveUrl, cadKind, classification.ok, classification.type, effectiveFileName]);
 
+  const containerStyle =
+    typeof height === "number" && Number.isFinite(height) && height > 0
+      ? {
+          height: `${Math.floor(height)}px`,
+          minHeight:
+            typeof minHeight === "number" && Number.isFinite(minHeight) && minHeight > 0
+              ? `${Math.floor(minHeight)}px`
+              : undefined,
+        }
+      : undefined;
+  const containerClasses = containerStyle
+    ? "w-full"
+    : "h-[70vh] min-h-[380px] w-full";
+
   return (
     <div className={clsx("w-full", className)}>
       <div className="relative overflow-hidden rounded-xl border border-slate-800 bg-black">
-        <div ref={containerRef} className="h-[70vh] min-h-[380px] w-full" />
+        <div ref={containerRef} className={containerClasses} style={containerStyle} />
+
+        {/* Minimal viewer overlay controls */}
+        <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="pointer-events-auto rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-100 backdrop-blur hover:border-slate-600"
+            onClick={() => tryFit(1.25)}
+            title="Fit model to view"
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            className="pointer-events-auto rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-100 backdrop-blur hover:border-slate-600"
+            onClick={() => {
+              const rt = runtimeRef.current;
+              const snapshot = lastViewRef.current;
+              if (!rt || !snapshot) return;
+              rt.camera.position.copy(snapshot.cameraPos);
+              rt.camera.near = snapshot.near;
+              rt.camera.far = snapshot.far;
+              rt.camera.updateProjectionMatrix();
+              rt.camera.lookAt(0, 0, 0);
+              rt.controls.target.copy(snapshot.target);
+              rt.controls.update();
+            }}
+            title="Reset to the last fitted view"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            className="pointer-events-auto rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-100 backdrop-blur hover:border-slate-600"
+            onClick={() => setShowGrid((v) => !v)}
+            aria-pressed={showGrid}
+            title="Toggle grid"
+          >
+            Grid
+          </button>
+          <button
+            type="button"
+            className="pointer-events-auto rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-100 backdrop-blur hover:border-slate-600"
+            onClick={() => setShowAxes((v) => !v)}
+            aria-pressed={showAxes}
+            title="Toggle axes"
+          >
+            Axes
+          </button>
+        </div>
 
         {status !== "ready" ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40 px-6 text-center">

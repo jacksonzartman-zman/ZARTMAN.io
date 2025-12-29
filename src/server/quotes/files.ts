@@ -2,6 +2,8 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
 import type { QuoteFileMeta, QuoteFileSource } from "./types";
+import { classifyCadFileType } from "@/lib/cadRendering";
+import { signPreviewToken } from "@/server/cadPreviewToken";
 
 type FileStorageRow = {
   storage_path: string | null;
@@ -26,6 +28,8 @@ type CadFileCandidate = {
 type CadPreviewResult = {
   signedUrl: string | null;
   fileName?: string | null;
+  cadKind?: "step" | "stl" | "obj" | "glb" | null;
+  storageSource?: { bucket: string; path: string; token?: string | null } | null;
   reason?: string;
 };
 
@@ -41,6 +45,11 @@ export type QuoteFilePreviewOptions = {
   includeFilesTable?: boolean;
   uploadFileOverride?: UploadFileReference | null;
   onFilesError?: (error: unknown) => void;
+  /**
+   * When provided, server will sign a short-lived preview token for `/api/cad-preview`
+   * so non-admin portal users can render Storage-backed previews.
+   */
+  viewerUserId?: string | null;
 };
 
 export async function getQuoteFilePreviews(
@@ -148,7 +157,7 @@ export async function getQuoteFilePreviews(
       }
 
       const preview = candidate
-        ? await getPreviewForCandidate(candidate, previewCache)
+        ? await getPreviewForCandidate(candidate, previewCache, options)
         : {
             signedUrl: null,
             fileName: label,
@@ -160,6 +169,8 @@ export async function getQuoteFilePreviews(
         label,
         fileName: preview.fileName ?? label,
         signedUrl: preview.signedUrl,
+        cadKind: preview.cadKind ?? null,
+        storageSource: preview.storageSource ?? null,
         fallbackMessage: preview.reason,
       });
     }
@@ -173,12 +184,14 @@ export async function getQuoteFilePreviews(
         candidate.fileName ??
         extractFileNameFromPath(candidate.storagePath) ??
         `File ${entries.length + 1}`;
-      const preview = await getPreviewForCandidate(candidate, previewCache);
+      const preview = await getPreviewForCandidate(candidate, previewCache, options);
       entries.push({
         id: `${candidate.storagePath}-${index}`,
         label: fallbackLabel,
         fileName: preview.fileName ?? fallbackLabel,
         signedUrl: preview.signedUrl,
+        cadKind: preview.cadKind ?? null,
+        storageSource: preview.storageSource ?? null,
         fallbackMessage: preview.reason,
       });
     }
@@ -225,6 +238,7 @@ export function buildQuoteFilesFromRow(
 async function getPreviewForCandidate(
   candidate: CadFileCandidate,
   cache: Map<string, CadPreviewResult>,
+  options?: QuoteFilePreviewOptions,
 ): Promise<CadPreviewResult> {
   const cacheKey = `${candidate.bucketId ?? "default"}:${candidate.storagePath}`;
   if (cache.has(cacheKey)) {
@@ -233,14 +247,22 @@ async function getPreviewForCandidate(
 
   let result: CadPreviewResult;
 
-  if (!isStlCandidate(candidate)) {
+  const inferredFileName =
+    candidate.fileName ??
+    extractFileNameFromPath(candidate.storagePath) ??
+    null;
+  const cadType = classifyCadFileType({ filename: inferredFileName, extension: null });
+
+  if (!cadType.ok) {
     result = {
       signedUrl: null,
-      fileName:
-        candidate.fileName ??
-        extractFileNameFromPath(candidate.storagePath) ??
-        undefined,
-      reason: "3D preview is coming soon; your file is still included with the RFQ.",
+      fileName: inferredFileName ?? undefined,
+      cadKind: null,
+      storageSource: null,
+      reason:
+        cadType.type === "unsupported"
+          ? "Preview is not available for this file type yet."
+          : "Preview is not available for this file.",
     };
     cache.set(cacheKey, result);
     return result;
@@ -254,40 +276,48 @@ async function getPreviewForCandidate(
   if (!normalized) {
     result = {
       signedUrl: null,
-      fileName:
-        candidate.fileName ??
-        extractFileNameFromPath(candidate.storagePath) ??
-        undefined,
+      fileName: inferredFileName ?? undefined,
+      cadKind: cadType.type,
+      storageSource: null,
       reason: "Missing storage path for CAD file.",
     };
     cache.set(cacheKey, result);
     return result;
   }
 
-  const { data: signedData, error: signedError } = await supabaseServer.storage
-    .from(normalized.bucket)
-    .createSignedUrl(normalized.path, CAD_SIGNED_URL_TTL_SECONDS);
+  const viewerUserId =
+    typeof options?.viewerUserId === "string" && options.viewerUserId.trim()
+      ? options.viewerUserId.trim()
+      : null;
+  const exp = Math.floor(Date.now() / 1000) + CAD_SIGNED_URL_TTL_SECONDS;
+  const token = viewerUserId
+    ? signPreviewToken({
+        userId: viewerUserId,
+        bucket: normalized.bucket,
+        path: normalized.path,
+        exp,
+      })
+    : null;
 
-  if (signedError || !signedData?.signedUrl) {
-    console.error("Failed to create CAD signed URL", signedError);
-    result = {
-      signedUrl: null,
-      fileName:
-        candidate.fileName ??
-        extractFileNameFromPath(candidate.storagePath) ??
-        undefined,
-      reason: "Unable to generate CAD preview link right now.",
-    };
-    cache.set(cacheKey, result);
-    return result;
+  const qs = new URLSearchParams();
+  if (token) {
+    qs.set("token", token);
+  } else {
+    qs.set("bucket", normalized.bucket);
+    qs.set("path", normalized.path);
   }
+  qs.set("kind", cadType.type);
+  qs.set("disposition", "inline");
 
   result = {
-    signedUrl: signedData.signedUrl,
-    fileName:
-      candidate.fileName ??
-      extractFileNameFromPath(candidate.storagePath) ??
-      undefined,
+    signedUrl: `/api/cad-preview?${qs.toString()}`,
+    fileName: inferredFileName ?? undefined,
+    cadKind: cadType.type,
+    storageSource: {
+      bucket: normalized.bucket,
+      path: normalized.path,
+      token,
+    },
   };
 
   cache.set(cacheKey, result);
@@ -339,16 +369,6 @@ function gatherCadCandidates(
   }
 
   return candidates;
-}
-
-function isStlCandidate(candidate: CadFileCandidate): boolean {
-  const fileName = candidate.fileName?.toLowerCase() ?? "";
-  const path = candidate.storagePath.toLowerCase();
-  const mime = candidate.mime?.toLowerCase() ?? "";
-
-  return (
-    fileName.endsWith(".stl") || path.endsWith(".stl") || mime.includes("stl")
-  );
 }
 
 function normalizeStorageReference(

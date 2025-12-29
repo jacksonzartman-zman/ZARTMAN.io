@@ -7,10 +7,15 @@ export type FitAndCenterOptions = {
   width: number;
   height: number;
   /**
-   * Extra whitespace around the model (1.2–1.6 is typical).
-   * Defaults to 1.35.
+   * Extra whitespace around the model (1.1–1.6 is typical).
+   * Defaults to 1.25.
    */
-  padding?: number;
+  paddingFactor?: number;
+  /**
+   * Camera view direction (world space), e.g. (1,1,1).
+   * Defaults to a stable diagonal view.
+   */
+  viewDir?: THREE.Vector3;
 };
 
 /**
@@ -30,11 +35,18 @@ export function fitAndCenter(
 ): void {
   const width = Math.max(1, Math.floor(options.width || 1));
   const height = Math.max(1, Math.floor(options.height || 1));
-  const padding = typeof options.padding === "number" && Number.isFinite(options.padding) && options.padding > 0
-    ? options.padding
-    : 1.35;
+  const paddingFactor =
+    typeof options.paddingFactor === "number" &&
+    Number.isFinite(options.paddingFactor) &&
+    options.paddingFactor > 0
+      ? options.paddingFactor
+      : 1.25;
+  const viewDir =
+    options.viewDir && options.viewDir.lengthSq() > 0
+      ? options.viewDir.clone().normalize()
+      : new THREE.Vector3(1, 1, 1).normalize();
 
-  // Ensure world matrices are current before boxing.
+  // Ensure transforms are stable before measuring.
   object.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(object);
   if (!Number.isFinite(box.min.x) || !Number.isFinite(box.max.x)) return;
@@ -57,8 +69,6 @@ export function fitAndCenter(
   const sphere = box2.getBoundingSphere(new THREE.Sphere());
   const radius = Math.max(sphere.radius || 0, 0.0001);
 
-  controls.target.set(0, 0, 0);
-
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
 
@@ -66,14 +76,16 @@ export function fitAndCenter(
   const vFov = (camera.fov * Math.PI) / 180;
   const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
   const limitingFov = Math.max(0.0001, Math.min(vFov, hFov));
-  const distance = (radius / Math.sin(limitingFov / 2)) * padding;
+  const distance = (radius / Math.sin(limitingFov / 2)) * paddingFactor;
 
-  // Stable diagonal view; avoids picking a "front" that might be arbitrary.
-  const dir = new THREE.Vector3(1, 1, 1).normalize();
-  camera.position.copy(dir.multiplyScalar(distance));
-  camera.near = Math.max(distance / 1000, 0.001);
-  camera.far = Math.max(distance * 1000, camera.near + 1);
+  // Deterministic view direction + near/far planes.
+  camera.position.copy(viewDir.multiplyScalar(distance));
+  camera.near = Math.max(radius / 100, 0.001);
+  camera.far = Math.max(radius * 100, camera.near + 1);
   camera.updateProjectionMatrix();
+
+  camera.lookAt(0, 0, 0);
+  controls.target.set(0, 0, 0);
 
   // Snap immediately even if damping is enabled.
   controls.update();

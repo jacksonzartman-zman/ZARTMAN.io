@@ -70,6 +70,11 @@ type LoaderResult<TData> = {
 
 type LoadQuoteWorkspaceOptions = {
   safeOnly?: boolean;
+  /**
+   * When provided, file previews (Storage-backed) will be tokenized for this user.
+   * This enables portal users (non-admin) to render previews via `/api/cad-preview`.
+   */
+  viewerUserId?: string | null;
 };
 
 type SafeQuoteRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
@@ -188,6 +193,7 @@ export async function loadQuoteWorkspaceData(
     let filesErrorLogged = false;
     const filePreviewOptions: QuoteFilePreviewOptions = {
       includeFilesTable: !safeOnly,
+      viewerUserId: options?.viewerUserId ?? null,
     };
     if (typeof uploadFileReference !== "undefined") {
       filePreviewOptions.uploadFileOverride = uploadFileReference;
