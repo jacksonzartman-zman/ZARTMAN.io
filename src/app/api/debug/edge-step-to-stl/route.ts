@@ -129,6 +129,14 @@ export async function GET(req: NextRequest) {
       const bodyText =
         typeof body === "string" ? body : body != null ? JSON.stringify(body) : anyErr?.message ?? "";
       const edgeBodyPreview = bodyText ? truncateText(bodyText, 500) : null;
+      const edgeErrorCode =
+        body && typeof body === "object" && typeof (body as any)?.error === "string"
+          ? String((body as any).error)
+          : null;
+      const isEdgeFunctionNotFound =
+        edgeStatus === 404 ||
+        edgeErrorCode === "edge_function_not_found" ||
+        (typeof bodyText === "string" && bodyText.includes("edge_function_not_found"));
 
       console.log("[debug-edge-step-to-stl] invoke non-2xx", {
         rid: requestId,
@@ -143,6 +151,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
+          error: isEdgeFunctionNotFound ? "edge_function_not_deployed" : "edge_invoke_failed",
+          action: isEdgeFunctionNotFound ? "deploy step-to-stl to this project" : undefined,
           status: edgeStatus,
           requestId,
           functionName,

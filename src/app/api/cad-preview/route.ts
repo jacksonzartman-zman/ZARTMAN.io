@@ -253,6 +253,14 @@ export async function GET(req: NextRequest) {
         const bodyText =
           typeof body === "string" ? body : body != null ? JSON.stringify(body) : anyErr?.message ?? "";
         edgeBodyPreview = bodyText ? truncateText(bodyText, 500) : null;
+        const edgeErrorCode =
+          body && typeof body === "object" && typeof (body as any)?.error === "string"
+            ? String((body as any).error)
+            : null;
+        const isEdgeFunctionNotFound =
+          edgeStatus === 404 ||
+          edgeErrorCode === "edge_function_not_found" ||
+          (typeof bodyText === "string" && bodyText.includes("edge_function_not_found"));
 
         console.log("[cad-preview] step-to-stl invoke non-2xx", {
           rid: requestId,
@@ -264,15 +272,15 @@ export async function GET(req: NextRequest) {
           edgeError: safeErrorForLog(edgeError),
         });
 
-        if (edgeStatus === 404) {
+        if (isEdgeFunctionNotFound) {
           return NextResponse.json(
             {
-              error: "edge_function_not_found",
+              error: "edge_function_not_deployed",
               functionName,
               supabaseHost,
+              action: "deploy step-to-stl to this project",
               requestId,
               edgeStatus,
-              edgeBodyPreview: edgeBodyPreview ? truncateText(edgeBodyPreview, 500) : null,
             },
             { status: 502 },
           );
