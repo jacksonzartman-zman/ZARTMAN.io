@@ -297,9 +297,12 @@ export async function GET(req: NextRequest) {
         meshes: converted.meshes,
         triangles: converted.triangles,
       });
+      // supabase-js upload body should be Node-safe (Uint8Array/ArrayBuffer), not a Blob.
+      // Buffer is a Uint8Array, but we pass an explicit view to keep types happy in Next.js Node runtime.
+      const stlPayload = new Uint8Array(converted.stl.buffer, converted.stl.byteOffset, converted.stl.byteLength);
       const { error: uploadError } = await supabaseServer.storage
         .from(STEP_PREVIEW_BUCKET)
-        .upload(previewPath, new Blob([converted.stl], { type: "model/stl" }), {
+        .upload(previewPath, stlPayload, {
           contentType: "model/stl",
           upsert: true,
         });
