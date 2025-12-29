@@ -8,6 +8,7 @@ const nextConfig = {
     // Ensure the occt-import-js wasm is packaged for API route handlers (Vercel).
     // Next may match these globs against internal "app/..." paths (even when using `src/app`),
     // so we include both forms to be safe across Next versions.
+    "app/api/cad-preview/route": ["./node_modules/occt-import-js/dist/occt-import-js.wasm"],
     "app/api/**": ["node_modules/occt-import-js/dist/occt-import-js.wasm"],
     "src/app/api/**": ["node_modules/occt-import-js/dist/occt-import-js.wasm"],
   },

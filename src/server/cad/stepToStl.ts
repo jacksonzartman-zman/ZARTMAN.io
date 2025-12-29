@@ -19,7 +19,7 @@ export type StepToStlConversionResult = {
 const PREVIEW_PREFIX = "step-stl/v1";
 
 let didLogOcctWasm = false;
-let cachedOcctWasmPath: string | null = null;
+let cachedOcctPaths: { jsEntry: string; distDir: string; wasmPath: string } | null = null;
 
 function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -187,15 +187,16 @@ function encodeBinaryStlFromOcctMeshes(result: ReadStepResult): StepToStlConvers
   return { stl: out, triangles, meshes: meshes.length };
 }
 
-function resolveOcctWasmPath(): string {
-  if (cachedOcctWasmPath) return cachedOcctWasmPath;
+function resolveOcctPaths(): { jsEntry: string; distDir: string; wasmPath: string } {
+  if (cachedOcctPaths) return cachedOcctPaths;
 
   const require = createRequire(import.meta.url);
   // Resolve from the package's dist entry so the wasm is adjacent.
   const jsEntry = require.resolve("occt-import-js/dist/occt-import-js.js");
   const distDir = path.dirname(jsEntry);
-  cachedOcctWasmPath = path.join(distDir, "occt-import-js.wasm");
-  return cachedOcctWasmPath;
+  const wasmPath = path.join(distDir, "occt-import-js.wasm");
+  cachedOcctPaths = { jsEntry, distDir, wasmPath };
+  return cachedOcctPaths;
 }
 
 export async function convertStepToBinaryStl(
@@ -203,11 +204,18 @@ export async function convertStepToBinaryStl(
   opts?: { rid?: string },
 ): Promise<StepToStlConversionResult> {
   const rid = opts?.rid ?? "no-rid";
-  const wasmPath = resolveOcctWasmPath();
+  const { jsEntry, distDir, wasmPath } = resolveOcctPaths();
   const exists = fs.existsSync(wasmPath);
 
   if (!didLogOcctWasm) {
     didLogOcctWasm = true;
+    console.log("[stepToStl] occt paths", {
+      rid,
+      jsEntry,
+      distDir,
+      wasmPath,
+      wasmPathType: typeof wasmPath,
+    });
     console.log("[stepToStl] wasm", { rid, wasmPath, exists });
   }
 
@@ -217,9 +225,11 @@ export async function convertStepToBinaryStl(
 
   const occtImportJs = (await import("occt-import-js")).default;
   const occt: OcctImportModule = await occtImportJs({
-    locateFile: (p) => {
-      const withoutQuery = String(p).split("?")[0] ?? "";
-      return withoutQuery.endsWith(".wasm") ? wasmPath : p;
+    locateFile: (file) => {
+      const fileStr = String(file).split("?")[0] ?? "";
+      const resolved = fileStr.endsWith(".wasm") ? wasmPath : path.join(distDir, fileStr);
+      console.log("[stepToStl] locateFile", { rid, file, resolved, type: typeof resolved });
+      return resolved;
     },
   });
 
