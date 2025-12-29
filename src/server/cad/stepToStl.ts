@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { createRequire } from "module";
+import path from "node:path";
 import type { OcctImportModule, ReadStepResult } from "occt-import-js";
 
 export type StepPreviewKey = {
@@ -182,24 +183,20 @@ function encodeBinaryStlFromOcctMeshes(result: ReadStepResult): StepToStlConvers
   return { stl: out, triangles, meshes: meshes.length };
 }
 
-function resolveOcctWasmPath(basename: string): string {
+function resolveOcctWasmPath(requestedPath: string): string {
   // `occt-import-js` is an Emscripten build; this helps it find the wasm file in Node.
-  const require = createRequire(import.meta.url);
-  const candidates = [
-    `occt-import-js/${basename}`,
-    `occt-import-js/dist/${basename}`,
-    `occt-import-js/build/${basename}`,
-    `occt-import-js/wasm/${basename}`,
-  ];
-  for (const candidate of candidates) {
-    try {
-      return require.resolve(candidate);
-    } catch {
-      // try next
-    }
+  // Important: avoid referencing the `.wasm` file via an import/require specifier, or webpack will try to bundle it.
+  const basename = requestedPath.split("/").pop() ?? requestedPath;
+  if (!basename.endsWith(".wasm")) return basename;
+
+  try {
+    const require = createRequire(import.meta.url);
+    const jsEntry = require.resolve("occt-import-js");
+    return path.join(path.dirname(jsEntry), basename);
+  } catch {
+    // Fall back: let the module attempt its default resolution.
+    return basename;
   }
-  // Fall back: let the module attempt its default resolution.
-  return basename;
 }
 
 export async function convertStepToBinaryStl(stepBytes: Uint8Array): Promise<StepToStlConversionResult> {

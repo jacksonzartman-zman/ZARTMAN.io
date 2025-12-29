@@ -131,9 +131,11 @@ export async function ensureStepPreviewForFile(
       return null;
     }
 
+    // supabase-js upload body should be Node-safe (Uint8Array/ArrayBuffer), not a Blob/Buffer.
+    const stlPayload = new Uint8Array(converted.stl.buffer, converted.stl.byteOffset, converted.stl.byteLength);
     const { error: uploadError } = await supabaseServer.storage
       .from(PREVIEW_BUCKET)
-      .upload(previewPath, new Blob([converted.stl], { type: "model/stl" }), {
+      .upload(previewPath, stlPayload, {
         contentType: "model/stl",
         upsert: true,
       });

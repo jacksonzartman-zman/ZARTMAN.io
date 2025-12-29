@@ -321,7 +321,9 @@ export async function GET(req: NextRequest) {
         previewPath,
         stlBytes: converted.stl.byteLength,
       });
-      return new NextResponse(converted.stl, {
+      // NextResponse body must be Web-compatible (Uint8Array/ArrayBuffer), not Node Buffer.
+      const body = new Uint8Array(converted.stl);
+      return new NextResponse(body, {
         status: 200,
         headers: {
           "Content-Type": contentTypeFor("step"),
