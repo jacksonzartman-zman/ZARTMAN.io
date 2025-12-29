@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getServerAuthUser, requireAdminUser } from "@/server/auth";
-import { supabaseServer } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
+
+const FUNCTION_NAME = "step-to-stl" as const;
 
 function shortRequestId(): string {
   try {
@@ -46,9 +47,24 @@ function safeSupabaseHost(supabaseUrl: string | null): string | null {
   }
 }
 
+function headersToObject(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    out[key.toLowerCase()] = value;
+  });
+  return out;
+}
+
+function looksLikeHtml(bodyText: string, contentType: string | null): boolean {
+  if (!bodyText) return false;
+  const ct = (contentType ?? "").toLowerCase();
+  if (ct.includes("text/html")) return true;
+  const t = bodyText.trimStart().toLowerCase();
+  return t.startsWith("<!doctype html") || t.startsWith("<html");
+}
+
 export async function GET(req: NextRequest) {
   const requestId = shortRequestId();
-  const functionName = "step-to-stl" as const;
 
   const { user } = await getServerAuthUser();
   if (!user?.id) {
@@ -81,54 +97,106 @@ export async function GET(req: NextRequest) {
     null;
   const supabaseHost = safeSupabaseHost(supabaseUrl);
 
-  let edgeStatus: number | null = null;
-  let edgeBodyPreview: string | null = null;
+  if (!supabaseUrl) {
+    return NextResponse.json(
+      { ok: false, requestId, functionName: FUNCTION_NAME, error: "missing_SUPABASE_URL", supabaseHost },
+      { status: 200 },
+    );
+  }
 
-  const { data, error: edgeError } = await supabaseServer.functions.invoke(functionName, {
-    body: { bucket, path, requestId, mode: "probe" },
-  });
-
-  if (edgeError) {
-    const anyErr = edgeError as any;
-    edgeStatus = typeof anyErr?.context?.status === "number" ? anyErr.context.status : null;
-    const body = anyErr?.context?.body;
-    const bodyText =
-      typeof body === "string" ? body : body != null ? JSON.stringify(body) : anyErr?.message ?? "";
-    edgeBodyPreview = bodyText ? truncateText(bodyText, 500) : null;
-
+  const serviceRoleKey = normalizeId(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const anonKey = normalizeId(process.env.SUPABASE_ANON_KEY);
+  const supabaseKey = serviceRoleKey || anonKey;
+  if (!supabaseKey) {
     return NextResponse.json(
       {
         ok: false,
         requestId,
-        functionName,
-        mode: isCanaryMode ? "canary" : "invoke_only",
+        functionName: FUNCTION_NAME,
+        error: "missing_SUPABASE_SERVICE_ROLE_KEY_or_SUPABASE_ANON_KEY",
         supabaseHost,
-        edgeStatus,
-        edgeBodyPreview,
       },
       { status: 200 },
     );
   }
 
-  // If we reached the function (no invoke error), it's deployed.
-  // In canary mode, we also expect `{ ok: true }` from the function for a strong signal.
-  const dataOk = Boolean((data as any)?.ok === true);
-  const ok = isCanaryMode ? dataOk : true;
-  edgeStatus = 200;
-  edgeBodyPreview = truncateText(JSON.stringify(data ?? null), 500);
+  const edgeUrl = `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/${FUNCTION_NAME}`;
 
-  return NextResponse.json(
-    {
-      ok: true,
-      requestId,
-      functionName,
-      mode: isCanaryMode ? "canary" : "invoke_only",
-      supabaseHost,
-      edgeStatus: 200,
-      dataOk,
-      dataReason: typeof (data as any)?.reason === "string" ? (data as any).reason : null,
-    },
-    { status: 200 },
-  );
+  let edgeStatus: number | null = null;
+  let edgeHeaders: Record<string, string> | null = null;
+  let edgeBodyPreview: string | null = null;
+  let edgeJson: unknown | null = null;
+  let edgeVersionHeader: string | null = null;
+
+  try {
+    const resp = await fetch(edgeUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        apikey: supabaseKey,
+        authorization: `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({ bucket, path, requestId, mode: "probe" }),
+    });
+
+    edgeStatus = resp.status;
+    edgeHeaders = headersToObject(resp.headers);
+    edgeVersionHeader = edgeHeaders["x-step-to-stl-version"] ?? null;
+
+    const contentType = resp.headers.get("content-type");
+    const bodyText = await resp.text();
+    edgeBodyPreview = bodyText ? truncateText(bodyText, 50_000) : null;
+
+    try {
+      edgeJson = bodyText ? JSON.parse(bodyText) : null;
+    } catch {
+      edgeJson = null;
+    }
+
+    const didNotExecuteMessage =
+      edgeStatus === 502 && looksLikeHtml(bodyText, contentType)
+        ? "Function did not execute; likely runtime/bundle failure before handler."
+        : null;
+
+    const dataOk = Boolean((edgeJson as any)?.ok === true);
+    const ok = isCanaryMode ? dataOk : true;
+
+    const outHeaders = new Headers();
+    if (edgeVersionHeader) outHeaders.set("x-step-to-stl-version", edgeVersionHeader);
+
+    return NextResponse.json(
+      {
+        ok,
+        requestId,
+        functionName: FUNCTION_NAME,
+        mode: isCanaryMode ? "canary" : "invoke_only",
+        supabaseHost,
+        edgeUrl,
+        edgeStatus,
+        edgeHeaders,
+        edgeJson,
+        edgeBodyPreview,
+        didNotExecuteMessage,
+      },
+      { status: 200, headers: outHeaders },
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      {
+        ok: false,
+        requestId,
+        functionName: FUNCTION_NAME,
+        mode: isCanaryMode ? "canary" : "invoke_only",
+        supabaseHost,
+        edgeUrl,
+        edgeStatus,
+        edgeHeaders,
+        edgeBodyPreview: truncateText(msg, 500),
+        edgeJson,
+      },
+      { status: 200 },
+    );
+  }
 }
 
