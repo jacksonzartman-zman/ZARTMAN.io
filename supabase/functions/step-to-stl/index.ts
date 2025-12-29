@@ -18,8 +18,6 @@
 //   { ok: false, quoteUploadFileId, reason }
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import JSZip from "npm:jszip@3.10.1";
-import occtImportJs from "npm:occt-import-js@0.0.23";
 
 type QuoteUploadFileRow = {
   id: string;
@@ -46,6 +44,13 @@ type FilesRow = {
 const PREVIEW_BUCKET = "cad_previews";
 const PREVIEW_PREFIX = "step-stl";
 const MAX_CONVERT_BYTES = 50 * 1024 * 1024; // 50MB
+
+const STEP_TO_STL_VERSION = "1";
+
+// Can't-lie boot marker: if you never see this, module init/imports/runtime are failing.
+console.log("[step-to-stl] boot", { ts: Date.now(), version: STEP_TO_STL_VERSION });
+
+type DiagnosticsStage = "parse_request" | "env_check" | "storage_download" | "conversion" | "response";
 
 function corsHeaders() {
   return {
@@ -90,6 +95,18 @@ function compactErrorReason(err: unknown): string {
   if (!err) return "unknown_error";
   if (err instanceof Error) return err.message || "error";
   return String(err).slice(0, 240);
+}
+
+function safeErrorName(err: unknown): string {
+  if (!err) return "unknown_error";
+  if (err instanceof Error) return err.name || "Error";
+  return typeof err === "string" ? "Error" : "Error";
+}
+
+function safeErrorMessage(err: unknown): string {
+  if (!err) return "unknown_error";
+  if (err instanceof Error) return err.message || "error";
+  return String(err);
 }
 
 async function sha256Hex(input: string): Promise<string> {
@@ -233,76 +250,194 @@ Deno.serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders() });
   }
 
+  const makeJsonResponse = (payload: unknown, status = 200) =>
+    new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json", ...corsHeaders() } });
+
+  const shortRequestId = () => {
+    try {
+      const bytes = crypto.getRandomValues(new Uint8Array(8));
+      return Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    } catch {
+      return Math.random().toString(16).slice(2, 10);
+    }
+  };
+
+  let requestId = shortRequestId();
+  let stage: DiagnosticsStage = "parse_request";
+
   let quoteUploadFileId = "";
   let intakeBucket = "";
   let intakePath = "";
   let previewPath = "";
-  let didLogStart = false;
+  let mode: "intake" | "fileId" | "missing" | "probe" = "missing";
 
-  const logStartOnce = (input: { bucket: string; path: string; outPath: string }) => {
-    if (didLogStart) return;
-    didLogStart = true;
-    console.log("[step-to-stl] start", input);
+  const stageLog = (event: "start" | "end", extra?: Record<string, unknown>) => {
+    console.log("[step-to-stl] stage", {
+      event,
+      stage,
+      requestId,
+      ...extra,
+    });
   };
 
   try {
+    stage = "parse_request";
+    stageLog("start");
+
+    const body = (await req.json().catch(() => null)) as
+      | { quoteUploadFileId?: unknown; bucket?: unknown; path?: unknown; fileName?: unknown; requestId?: unknown; mode?: unknown }
+      | null;
+
+    const providedRequestId = normalizeId(body?.requestId);
+    if (providedRequestId) requestId = providedRequestId;
+
+    quoteUploadFileId = normalizeId(body?.quoteUploadFileId);
+    intakeBucket = normalizeId(body?.bucket);
+    intakePath = normalizePath(body?.path);
+    const requestedMode = normalizeId(body?.mode).toLowerCase();
+
+    if (requestedMode === "probe") {
+      mode = "probe";
+    } else {
+      mode = intakeBucket && intakePath ? "intake" : quoteUploadFileId ? "fileId" : "missing";
+    }
+
+    stageLog("end", { mode, hasBucketPath: Boolean(intakeBucket && intakePath), hasQuoteUploadFileId: Boolean(quoteUploadFileId) });
+
+    if (mode === "missing") {
+      return makeJsonResponse(
+        {
+          ok: false,
+          error: "missing_params",
+          stage,
+          requestId,
+          message: "Provide { bucket, path } or { quoteUploadFileId } (or mode='probe' with bucket/path).",
+          reason: "missing_bucket_path_or_quoteUploadFileId",
+        },
+        200,
+      );
+    }
+
+    if (mode === "probe" && !(intakeBucket && intakePath)) {
+      return makeJsonResponse(
+        {
+          ok: false,
+          error: "missing_params",
+          stage,
+          requestId,
+          message: "Probe mode requires { bucket, path }.",
+        },
+        200,
+      );
+    }
+
+    stage = "env_check";
+    stageLog("start");
+
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
-    if (!supabaseUrl) throw new Error("missing_SUPABASE_URL");
+    const missingEnv: string[] = [];
+    if (!supabaseUrl) missingEnv.push("SUPABASE_URL");
+    if (!serviceRoleKey && !anonKey) missingEnv.push("SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY");
+    if (missingEnv.length > 0) {
+      stageLog("end", { ok: false, missingEnv });
+      return makeJsonResponse(
+        {
+          ok: false,
+          error: "missing_env",
+          stage,
+          requestId,
+          message: `Missing required env var(s): ${missingEnv.join(", ")}`,
+          missingEnv,
+        },
+        200,
+      );
+    }
 
     // If service role is configured, require it as bearer token.
     if (serviceRoleKey) {
       const auth = req.headers.get("authorization") ?? "";
       if (auth !== `Bearer ${serviceRoleKey}`) {
-        return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "unauthorized" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        stageLog("end", { ok: false, reason: "unauthorized" });
+        return makeJsonResponse(
+          {
+            ok: false,
+            error: "unauthorized",
+            stage,
+            requestId,
+            message: "Unauthorized.",
+            reason: "unauthorized",
+          },
+          401,
+        );
       }
     }
 
     const supabaseKey = serviceRoleKey || anonKey;
-    if (!supabaseKey) throw new Error("missing_SUPABASE_KEY");
-
-    const body = (await req.json().catch(() => null)) as
-      | { quoteUploadFileId?: unknown; bucket?: unknown; path?: unknown; fileName?: unknown }
-      | null;
-
-    quoteUploadFileId = normalizeId(body?.quoteUploadFileId);
-    intakeBucket = normalizeId(body?.bucket);
-    intakePath = normalizePath(body?.path);
-
-    const mode = intakeBucket && intakePath ? "intake" : quoteUploadFileId ? "fileId" : "missing";
-
-    if (mode === "missing") {
-      return new Response(
-        JSON.stringify({ ok: false, reason: "missing_bucket_path_or_quoteUploadFileId" }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        },
-      );
-    }
-
     const supabase = createClient(supabaseUrl, supabaseKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    stageLog("end", { ok: true });
+
+    // Probe mode: prove storage access + function handler entry without doing conversion.
+    if (mode === "probe") {
+      stage = "storage_download";
+      stageLog("start", { bucket: intakeBucket, path: intakePath });
+
+      const { data: downloaded, error: downloadError } = await supabase.storage.from(intakeBucket).download(intakePath);
+      if (downloadError || !downloaded) {
+        stageLog("end", { ok: false, reason: "download_failed" });
+        return makeJsonResponse(
+          {
+            ok: false,
+            error: "download_failed",
+            stage,
+            requestId,
+            message: "Storage download failed (probe).",
+          },
+          200,
+        );
+      }
+
+      const buf = await downloaded.arrayBuffer();
+      const contentType = typeof (downloaded as any)?.type === "string" && (downloaded as any).type ? (downloaded as any).type : null;
+      stageLog("end", { ok: true, bytes: buf.byteLength, contentType });
+
+      return makeJsonResponse(
+        {
+          ok: true,
+          stage,
+          requestId,
+          bytes: buf.byteLength,
+          contentType,
+        },
+        200,
+      );
+    }
 
     // New intake mode: bucket/path -> deterministic preview path.
     if (mode === "intake") {
       const previewHash = await sha256Hex(`${intakeBucket}:${intakePath}`);
       previewPath = `${PREVIEW_PREFIX}/${previewHash}.stl`;
-      logStartOnce({ bucket: intakeBucket, path: intakePath, outPath: previewPath });
+      console.log("[step-to-stl] start", { requestId, mode, bucket: intakeBucket, path: intakePath, outBucket: PREVIEW_BUCKET, outPath: previewPath });
 
       // Idempotency: if preview already exists, return immediately.
+      stage = "storage_download";
+      stageLog("start", { kind: "idempotency_check", outBucket: PREVIEW_BUCKET, outPath: previewPath });
       const { data: existing, error: existingError } = await supabase.storage
         .from(PREVIEW_BUCKET)
         .download(previewPath);
       if (!existingError && existing) {
         const size = (existing as any)?.size;
+        stageLog("end", { ok: true, kind: "idempotency_check", bytes: typeof size === "number" ? size : null });
+        stage = "response";
+        stageLog("start");
         console.log("[step-to-stl] ok", {
+          requestId,
           outBucket: PREVIEW_BUCKET,
           outPath: previewPath,
           bytes: typeof size === "number" ? size : null,
@@ -313,58 +448,63 @@ Deno.serve(async (req: Request) => {
             previewBucket: PREVIEW_BUCKET,
             previewPath,
             bytes: typeof size === "number" ? size : null,
+            requestId,
+            stage: "response",
           }),
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
         );
       }
 
+      stageLog("end", { ok: true, kind: "idempotency_check", hit: false });
+
+      stage = "storage_download";
+      stageLog("start", { kind: "intake_download", bucket: intakeBucket, path: intakePath });
       const { data: downloaded, error: downloadError } = await supabase.storage
         .from(intakeBucket)
         .download(intakePath);
 
       if (downloadError || !downloaded) {
-        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "download_failed" });
-        return new Response(
-          JSON.stringify({ ok: false, reason: "download_failed" }),
-          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+        stageLog("end", { ok: false, reason: "download_failed" });
+        return makeJsonResponse(
+          { ok: false, error: "download_failed", stage, requestId, message: "Storage download failed.", reason: "download_failed" },
+          200,
         );
       }
 
       const stepBytes = new Uint8Array(await downloaded.arrayBuffer());
+      stageLog("end", { ok: true, bytes: stepBytes.byteLength });
       if (!stepBytes || stepBytes.byteLength === 0) {
-        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "empty" });
-        return new Response(JSON.stringify({ ok: false, reason: "empty" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        return makeJsonResponse({ ok: false, error: "empty", stage, requestId, message: "Downloaded file is empty.", reason: "empty" }, 200);
       }
       if (stepBytes.byteLength > MAX_CONVERT_BYTES) {
-        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "file_too_large" });
-        return new Response(JSON.stringify({ ok: false, reason: "file_too_large" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        return makeJsonResponse(
+          { ok: false, error: "file_too_large", stage, requestId, message: "File too large to convert.", reason: "file_too_large" },
+          200,
+        );
       }
 
+      stage = "conversion";
+      stageLog("start", { kind: "occt_import_and_parse" });
+      const { default: occtImportJs } = await import("npm:occt-import-js@0.0.23");
       const occt = await occtImportJs();
       const result = (occt as any)?.ReadStepFile?.(stepBytes, null);
       if (!result?.success) {
-        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "step_parse_failed" });
-        return new Response(JSON.stringify({ ok: false, reason: "step_parse_failed" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        stageLog("end", { ok: false, reason: "step_parse_failed" });
+        return makeJsonResponse(
+          { ok: false, error: "step_parse_failed", stage, requestId, message: "STEP parse failed.", reason: "step_parse_failed" },
+          200,
+        );
       }
 
       const stlBytes = encodeBinaryStlFromOcctMeshes(result.meshes);
       if (!stlBytes || stlBytes.byteLength === 0) {
-        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "no_triangles" });
-        return new Response(JSON.stringify({ ok: false, reason: "no_triangles" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        stageLog("end", { ok: false, reason: "no_triangles" });
+        return makeJsonResponse({ ok: false, error: "no_triangles", stage, requestId, message: "No triangles produced.", reason: "no_triangles" }, 200);
       }
+      stageLog("end", { ok: true, stlBytes: stlBytes.byteLength });
 
+      stage = "response";
+      stageLog("start", { kind: "upload_preview", outBucket: PREVIEW_BUCKET, outPath: previewPath });
       await ensurePreviewBucketExists(supabase);
 
       const { error: uploadError } = await supabase.storage
@@ -372,28 +512,26 @@ Deno.serve(async (req: Request) => {
         .upload(previewPath, stlBytes, { contentType: "model/stl", upsert: true });
 
       if (uploadError) {
-        console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath, reason: "preview_upload_failed" });
-        return new Response(JSON.stringify({ ok: false, reason: "preview_upload_failed" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        stageLog("end", { ok: false, reason: "preview_upload_failed" });
+        return makeJsonResponse(
+          { ok: false, error: "preview_upload_failed", stage, requestId, message: "Preview upload failed.", reason: "preview_upload_failed" },
+          200,
+        );
       }
 
-      console.log("[step-to-stl] ok", { outBucket: PREVIEW_BUCKET, outPath: previewPath, bytes: stlBytes.byteLength });
-      return new Response(
-        JSON.stringify({
-          ok: true,
-          previewBucket: PREVIEW_BUCKET,
-          previewPath,
-          bytes: stlBytes.byteLength,
-        }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+      stageLog("end", { ok: true, bytes: stlBytes.byteLength });
+      console.log("[step-to-stl] ok", { requestId, outBucket: PREVIEW_BUCKET, outPath: previewPath, bytes: stlBytes.byteLength });
+      return makeJsonResponse(
+        { ok: true, stage, requestId, previewBucket: PREVIEW_BUCKET, previewPath, bytes: stlBytes.byteLength },
+        200,
       );
     }
 
     previewPath = `${PREVIEW_PREFIX}/${quoteUploadFileId}.stl`;
-    logStartOnce({ bucket: "quote_upload_files", path: quoteUploadFileId, outPath: previewPath });
+    console.log("[step-to-stl] start", { requestId, mode, quoteUploadFileId, outBucket: PREVIEW_BUCKET, outPath: previewPath });
 
+    stage = "storage_download";
+    stageLog("start", { kind: "quote_upload_files_lookup" });
     const { data: uploadFile, error: uploadFileError } = await supabase
       .from("quote_upload_files")
       .select("id,upload_id,quote_id,path,filename,extension,is_from_archive")
@@ -401,11 +539,13 @@ Deno.serve(async (req: Request) => {
       .maybeSingle<QuoteUploadFileRow>();
 
     if (uploadFileError || !uploadFile?.id) {
-      return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "not_found" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders() },
-      });
+      stageLog("end", { ok: false, reason: "not_found" });
+      return makeJsonResponse(
+        { ok: false, error: "not_found", stage, requestId, message: "quote_upload_files row not found.", quoteUploadFileId, reason: "not_found" },
+        200,
+      );
     }
+    stageLog("end", { ok: true });
 
     const ext =
       normalizeExtension(uploadFile.extension) ??
@@ -414,15 +554,18 @@ Deno.serve(async (req: Request) => {
       null;
 
     if (!isStepExtension(ext)) {
-      return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "not_step" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders() },
-      });
+      stage = "parse_request";
+      return makeJsonResponse(
+        { ok: false, error: "not_step", stage, requestId, message: "File is not a STEP/STP.", quoteUploadFileId, reason: "not_step" },
+        200,
+      );
     }
 
     let stepBytes: Uint8Array | null = null;
 
     if (uploadFile.is_from_archive) {
+      stage = "storage_download";
+      stageLog("start", { kind: "archive_download" });
       const uploadId = normalizeId(uploadFile.upload_id);
       const { data: uploadRow } = await supabase
         .from("uploads")
@@ -433,10 +576,11 @@ Deno.serve(async (req: Request) => {
       const uploadFilePath = typeof uploadRow?.file_path === "string" ? uploadRow.file_path.trim() : "";
       const parsed = uploadFilePath ? parseStoragePath(uploadFilePath) : null;
       if (!parsed) {
-        return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "archive_unavailable" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        stageLog("end", { ok: false, reason: "archive_unavailable" });
+        return makeJsonResponse(
+          { ok: false, error: "archive_unavailable", stage, requestId, message: "Archive storage path unavailable.", quoteUploadFileId, reason: "archive_unavailable" },
+          200,
+        );
       }
 
       const { data: downloaded, error: downloadError } = await supabase.storage
@@ -444,26 +588,32 @@ Deno.serve(async (req: Request) => {
         .download(parsed.key);
 
       if (downloadError || !downloaded) {
-        return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "archive_download_failed" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        stageLog("end", { ok: false, reason: "archive_download_failed" });
+        return makeJsonResponse(
+          { ok: false, error: "archive_download_failed", stage, requestId, message: "Archive download failed.", quoteUploadFileId, reason: "archive_download_failed" },
+          200,
+        );
       }
 
       const zipBuffer = await downloaded.arrayBuffer();
+      const { default: JSZip } = await import("npm:jszip@3.10.1");
       const zip = await JSZip.loadAsync(zipBuffer);
       const entryPath = (uploadFile.path ?? "").replace(/^\/+/, "").trim();
       const normalizedEntry = entryPath.replace(/\\/g, "/");
       const file = zip.file(entryPath) ?? zip.file(normalizedEntry) ?? null;
       if (!file) {
-        return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "archive_entry_not_found" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        stageLog("end", { ok: false, reason: "archive_entry_not_found" });
+        return makeJsonResponse(
+          { ok: false, error: "archive_entry_not_found", stage, requestId, message: "Archive entry not found.", quoteUploadFileId, reason: "archive_entry_not_found" },
+          200,
+        );
       }
 
       stepBytes = await file.async("uint8array");
+      stageLog("end", { ok: true, bytes: stepBytes.byteLength });
     } else {
+      stage = "storage_download";
+      stageLog("start", { kind: "file_download" });
       const quoteId = normalizeId(uploadFile.quote_id);
       const keyName = typeof uploadFile.path === "string" ? uploadFile.path.trim() : "";
 
@@ -479,10 +629,11 @@ Deno.serve(async (req: Request) => {
         typeof fileMeta?.bucket_id === "string" && fileMeta.bucket_id.trim() ? fileMeta.bucket_id.trim() : null;
       const parsed = storagePath ? parseStoragePath(storagePath) : bucketId && keyName ? { bucket: bucketId, key: keyName } : null;
       if (!parsed) {
-        return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "file_unavailable" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        stageLog("end", { ok: false, reason: "file_unavailable" });
+        return makeJsonResponse(
+          { ok: false, error: "file_unavailable", stage, requestId, message: "File storage path unavailable.", quoteUploadFileId, reason: "file_unavailable" },
+          200,
+        );
       }
 
       const { data: downloaded, error: downloadError } = await supabase.storage
@@ -490,46 +641,56 @@ Deno.serve(async (req: Request) => {
         .download(parsed.key);
 
       if (downloadError || !downloaded) {
-        return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "download_failed" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json", ...corsHeaders() },
-        });
+        stageLog("end", { ok: false, reason: "download_failed" });
+        return makeJsonResponse(
+          { ok: false, error: "download_failed", stage, requestId, message: "Storage download failed.", quoteUploadFileId, reason: "download_failed" },
+          200,
+        );
       }
 
       stepBytes = new Uint8Array(await downloaded.arrayBuffer());
+      stageLog("end", { ok: true, bytes: stepBytes.byteLength });
     }
 
     if (!stepBytes || stepBytes.byteLength === 0) {
-      return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "empty" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders() },
-      });
+      return makeJsonResponse(
+        { ok: false, error: "empty", stage, requestId, message: "Downloaded file is empty.", quoteUploadFileId, reason: "empty" },
+        200,
+      );
     }
     if (stepBytes.byteLength > MAX_CONVERT_BYTES) {
-      return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "file_too_large" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders() },
-      });
+      return makeJsonResponse(
+        { ok: false, error: "file_too_large", stage, requestId, message: "File too large to convert.", quoteUploadFileId, reason: "file_too_large" },
+        200,
+      );
     }
 
     // Parse & tessellate STEP -> triangles
+    stage = "conversion";
+    stageLog("start", { kind: "occt_import_and_parse" });
+    const { default: occtImportJs } = await import("npm:occt-import-js@0.0.23");
     const occt = await occtImportJs();
     const result = (occt as any)?.ReadStepFile?.(stepBytes, null);
     if (!result?.success) {
-      return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "step_parse_failed" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders() },
-      });
+      stageLog("end", { ok: false, reason: "step_parse_failed" });
+      return makeJsonResponse(
+        { ok: false, error: "step_parse_failed", stage, requestId, message: "STEP parse failed.", quoteUploadFileId, reason: "step_parse_failed" },
+        200,
+      );
     }
 
     const stlBytes = encodeBinaryStlFromOcctMeshes(result.meshes);
     if (!stlBytes || stlBytes.byteLength === 0) {
-      return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "no_triangles" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders() },
-      });
+      stageLog("end", { ok: false, reason: "no_triangles" });
+      return makeJsonResponse(
+        { ok: false, error: "no_triangles", stage, requestId, message: "No triangles produced.", quoteUploadFileId, reason: "no_triangles" },
+        200,
+      );
     }
+    stageLog("end", { ok: true, stlBytes: stlBytes.byteLength });
 
+    stage = "response";
+    stageLog("start", { kind: "upload_preview", outBucket: PREVIEW_BUCKET, outPath: previewPath });
     await ensurePreviewBucketExists(supabase);
 
     const { error: uploadError } = await supabase.storage
@@ -537,16 +698,20 @@ Deno.serve(async (req: Request) => {
       .upload(previewPath, stlBytes, { contentType: "model/stl", upsert: true });
 
     if (uploadError) {
-      return new Response(JSON.stringify({ ok: false, quoteUploadFileId, reason: "preview_upload_failed" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders() },
-      });
+      stageLog("end", { ok: false, reason: "preview_upload_failed" });
+      return makeJsonResponse(
+        { ok: false, error: "preview_upload_failed", stage, requestId, message: "Preview upload failed.", quoteUploadFileId, reason: "preview_upload_failed" },
+        200,
+      );
     }
 
-    console.log("[step-to-stl] ok", { outBucket: PREVIEW_BUCKET, outPath: previewPath, bytes: stlBytes.byteLength });
-    return new Response(
-      JSON.stringify({
+    stageLog("end", { ok: true, bytes: stlBytes.byteLength });
+    console.log("[step-to-stl] ok", { requestId, outBucket: PREVIEW_BUCKET, outPath: previewPath, bytes: stlBytes.byteLength });
+    return makeJsonResponse(
+      {
         ok: true,
+        stage,
+        requestId,
         quoteUploadFileId,
         // legacy response keys:
         bucket: PREVIEW_BUCKET,
@@ -555,23 +720,36 @@ Deno.serve(async (req: Request) => {
         previewBucket: PREVIEW_BUCKET,
         previewPath,
         bytes: stlBytes.byteLength,
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders() },
       },
+      200,
     );
   } catch (error) {
     const reason = compactErrorReason(error);
-    if (intakeBucket && intakePath && previewPath) {
-      logStartOnce({ bucket: intakeBucket, path: intakePath, outPath: previewPath });
-    } else if (quoteUploadFileId && previewPath) {
-      logStartOnce({ bucket: "quote_upload_files", path: quoteUploadFileId, outPath: previewPath });
-    }
-    console.log("[step-to-stl] fail", { outBucket: PREVIEW_BUCKET, outPath: previewPath || null, reason });
-    return new Response(
-      JSON.stringify({ ok: false, quoteUploadFileId: quoteUploadFileId || undefined, reason }),
-      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders() } },
+    console.log("[step-to-stl] fail", {
+      requestId,
+      stage,
+      mode,
+      quoteUploadFileId: quoteUploadFileId || null,
+      intakeBucket: intakeBucket || null,
+      intakePath: intakePath || null,
+      outBucket: PREVIEW_BUCKET,
+      outPath: previewPath || null,
+      errorName: safeErrorName(error),
+      reason,
+    });
+
+    return makeJsonResponse(
+      {
+        ok: false,
+        error: safeErrorName(error),
+        stage,
+        requestId,
+        message: safeErrorMessage(error).slice(0, 500),
+        // back-compat
+        quoteUploadFileId: quoteUploadFileId || undefined,
+        reason,
+      },
+      200,
     );
   }
 });
