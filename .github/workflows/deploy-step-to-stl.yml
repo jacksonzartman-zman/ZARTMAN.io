@@ -1,0 +1,38 @@
+name: Deploy Supabase Edge Function (step-to-stl)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-step-to-stl-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Supabase CLI reads this for auth. Do not print.
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link CLI to production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Deploy step-to-stl
+        run: supabase functions deploy step-to-stl --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Post-deploy sanity (list functions)
+        run: supabase functions list --project-ref "$SUPABASE_PROJECT_REF"
+

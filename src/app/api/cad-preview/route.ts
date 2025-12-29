@@ -273,9 +273,12 @@ export async function GET(req: NextRequest) {
         });
 
         if (isEdgeFunctionNotFound) {
+          const safeHostLabel = supabaseHost ?? "unknown";
+          const userMessage = `STEP preview converter not deployed to ${safeHostLabel}. Ask admin to deploy ‘${functionName}’. RequestId: ${requestId}`;
           return NextResponse.json(
             {
               error: "edge_function_not_deployed",
+              userMessage,
               functionName,
               supabaseHost,
               action: "deploy step-to-stl to this project",

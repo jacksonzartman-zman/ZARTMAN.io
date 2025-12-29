@@ -1,85 +1,157 @@
 # STEP preview deployment (Supabase Edge Function: `step-to-stl`)
 
-This production runbook is for fixing **STEP preview failures** where the app returns a 404 / `edge_function_not_found` (surfaced as `edge_function_not_deployed` in our API responses).
+This production runbook is for fixing **STEP preview failures** where `/api/cad-preview` returns `502` with:
 
-## Confirm which Supabase project production is using
+- `error: "edge_function_not_deployed"`
+- `edgeStatus: 404`
+- `functionName: "step-to-stl"`
 
-1. Hit the admin-only env sanity endpoint:
+The root cause is almost always one of:
+
+- **The Edge Function isn’t deployed** to the production Supabase project.
+- **We deployed to the wrong Supabase project** (host mismatch vs production `SUPABASE_URL`).
+
+## 1) Confirm production Supabase host matches `SUPABASE_URL` (hostname only)
+
+You want the **hostname** (no protocol, no path), e.g.:
+
+- `qslztdkptpklopyedkfd.supabase.co`
+
+### From the running production app (admin-only, deterministic)
+
+Open:
 
 - `GET /api/debug/supabase-env`
 
-2. Confirm the hostnames match what you expect:
+Confirm:
 
-- `supabaseHost`: hostname parsed from `SUPABASE_URL`
-- `supabaseHostEffective`: hostname the server client is actually using (based on `SUPABASE_URL ?? NEXT_PUBLIC_SUPABASE_URL`)
-- `edgeUrl`: computed as `SUPABASE_URL + /functions/v1/step-to-stl` (with trailing slashes normalized)
+- `supabaseHost`: hostname parsed from `SUPABASE_URL` (this is the authoritative “prod host”)
+- `supabaseHostEffective`: hostname the server client is actually using (should match)
 
-If `supabaseHostEffective` is not the production Supabase project you expect, fix production environment variables first (wrong project = 404 even if another project has the function deployed).
+If these don’t match the Supabase project you intend to use, **fix production env vars first** (deploying the function to a different project will still 404).
 
-## Deploy the Edge Function to the correct project
+### Derive the project ref from the hostname
+
+For standard Supabase hosted projects:
+
+- project ref = the subdomain before `.supabase.co`
+- example: `qslztdkptpklopyedkfd.supabase.co` → project ref `qslztdkptpklopyedkfd`
+
+## 2) Link Supabase CLI to the production project
 
 Prereqs:
 
-- Supabase CLI installed (`supabase --version`)
-- You have access to the target Supabase project
+- Supabase CLI installed locally (or use CI)
+- Access to the target Supabase project
 
 From the repo root:
 
 ```bash
-supabase link --project-ref <ref>
+supabase link --project-ref <PROJECT_REF_FROM_PROD_HOST>
+```
+
+Repo script equivalent (expects env var):
+
+```bash
+SUPABASE_PROJECT_REF=<ref> npm run supabase:link
+```
+
+## 3) Deploy the Edge Function (`step-to-stl`)
+
+From the repo root:
+
+```bash
 supabase functions deploy step-to-stl
 ```
 
-If the function requires secrets in that project, set them explicitly (example; only set what your function actually reads):
+Repo script equivalent (forces target project; expects env var):
 
 ```bash
-supabase secrets set SOME_SECRET_NAME=...
+SUPABASE_PROJECT_REF=<ref> npm run supabase:deploy:step-to-stl
 ```
 
-## Apply required SQL migrations in the same project
+## 4) Required Edge Function secrets (and safe setup)
 
-The STEP preview pipeline requires Storage buckets and policies in the **same** Supabase project:
+`supabase/functions/step-to-stl` reads these secrets at runtime:
 
-- **`044_create_cad_previews_bucket.sql`**: creates the `cad_previews` bucket (preview output).
-- **`045_storage_intake_upload_policies.sql`**: ensures `cad_uploads` bucket + required RLS/policies (preview input).
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (**recommended**) or `SUPABASE_ANON_KEY`
 
-If you manage migrations via the Supabase CLI:
+Notes:
+
+- If `SUPABASE_SERVICE_ROLE_KEY` is set, the function **requires** `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>`. Our server-side invocations use the service role key, so production should set it.
+
+### Safe secrets setting (avoid pasting secrets into shell history)
+
+Preferred approach: export secrets into your shell environment via your password manager, then run:
 
 ```bash
-supabase db push
+supabase secrets set \
+  --project-ref <PROJECT_REF_FROM_PROD_HOST> \
+  SUPABASE_URL="$SUPABASE_URL" \
+  SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY"
 ```
 
-If migrations are applied manually in your org, ensure `sql/044_create_cad_previews_bucket.sql` and `sql/045_storage_intake_upload_policies.sql` are executed against the production database for this Supabase project.
+If you must use a file, use a local, uncommitted env file and load it into your shell before running `supabase secrets set`. Do **not** commit secrets to git.
 
-## Verify end-to-end (production-safe)
+## 5) Verify deployment (production-safe, deterministic)
 
-1. Pick a real uploaded STEP file:
+All endpoints below are **admin-only**.
+
+### (a) Supabase host sanity
+
+- `GET /api/debug/supabase-env`
+- Confirm `supabaseHost` matches production hostname.
+
+### (b) Edge function reachability / health
+
+- `GET /api/debug/edge-health`
+
+Expected:
+
+- `ok: true`
+- `edgeStatus: 200`
+- `mode: "invoke_only"` (meaning: “function exists and can be invoked”, even if the canary object is missing)
+
+If it returns `ok: false` with `edgeStatus: 404`, the function is not deployed to that Supabase project.
+
+### (c) Direct probe with a known STEP upload (must be non-404)
+
+Pick a known-good STEP upload:
 
 - `bucket=cad_uploads`
-- `path=<the stored path to a .step or .stp file>`
+- `path=<stored path to a .step or .stp>`
 
-2. Invoke the admin-only debug probe (it calls `functions.invoke("step-to-stl")`):
+Then call:
 
 - `GET /api/debug/edge-step-to-stl?bucket=cad_uploads&path=<path>`
 
-Expected results:
+Expected:
 
-- `ok: true` and `data.ok: true`
-- `functionName: "step-to-stl"`
-- `supabaseHost`/`edgeUrl` point at the expected project
+- `ok: true`
+- response contains `data` (the edge function response)
+- If the edge function was missing, this endpoint will surface `error: "edge_function_not_deployed"` and a 404 status in the payload.
 
-If you see `error: "edge_function_not_deployed"` with a 404 status inside the payload, the function is not deployed to that project (or you’re pointing at the wrong project).
+### (d) Where to check Supabase Edge logs
 
-3. Verify preview download works via the normal API:
+In the Supabase Dashboard for the production project:
 
-- `GET /api/cad-preview?...` for the same STEP upload should return `model/stl` bytes (not 502).
+- **Logs → Edge Functions**
+- Filter/select function: `step-to-stl`
 
-4. Confirm Supabase Edge logs
+You should see logs like:
 
-In Supabase dashboard logs for Edge Functions, you should see:
+- `[step-to-stl] start`
+- `[step-to-stl] ok`
 
-- `[step-to-stl] start` for the request
-- `[step-to-stl] ok` for the same request
+Tip: `/api/cad-preview` includes a `requestId`. Use it + timestamp/path to correlate app logs with Supabase Edge logs.
 
-Tip: our app logs include a `requestId` for `cad-preview` and `debug-edge-step-to-stl`; correlate by timestamp and file path.
+## GitHub Actions: required secrets for auto-deploy on `main`
+
+The deploy workflow expects these repository secrets:
+
+- `SUPABASE_ACCESS_TOKEN`: Supabase personal access token (CLI auth)
+- `SUPABASE_PROJECT_REF`: the production project ref (derived from production `SUPABASE_URL` hostname)
+
+Function runtime secrets (like `SUPABASE_SERVICE_ROLE_KEY`) are **Supabase project secrets** and must be managed via `supabase secrets set` (not printed in CI logs).
 
