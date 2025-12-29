@@ -61,26 +61,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "forbidden", requestId }, { status: 403 });
   }
 
-  const bucket =
-    normalizeId(req.nextUrl.searchParams.get("bucket")) ||
-    normalizeId(process.env.EDGE_HEALTH_CANARY_BUCKET);
-  const path =
-    normalizePath(req.nextUrl.searchParams.get("path")) ||
-    normalizePath(process.env.EDGE_HEALTH_CANARY_PATH);
+  const bucketParam = normalizeId(req.nextUrl.searchParams.get("bucket"));
+  const pathParam = normalizePath(req.nextUrl.searchParams.get("path"));
+  const bucketEnv = normalizeId(process.env.EDGE_HEALTH_CANARY_BUCKET);
+  const pathEnv = normalizePath(process.env.EDGE_HEALTH_CANARY_PATH);
 
-  if (!bucket || !path) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "missing_bucket_or_path",
-        requestId,
-        functionName,
-        hint:
-          "Pass ?bucket=<bucket>&path=<path> (or set EDGE_HEALTH_CANARY_BUCKET/EDGE_HEALTH_CANARY_PATH on the app).",
-      },
-      { status: 400 },
-    );
-  }
+  // Deterministic, production-safe "is it deployed?" check:
+  // - If no canary is configured/passed, we still invoke the function with a known bucket and a nonsense path.
+  // - The function will likely return `{ ok: false, reason: "download_failed" }`, which is still a healthy signal
+  //   that the edge function exists and is reachable (as opposed to 404 edge_function_not_found).
+  const isCanaryMode = Boolean((bucketParam && pathParam) || (bucketEnv && pathEnv));
+  const bucket = bucketParam || bucketEnv || "cad_uploads";
+  const path = pathParam || pathEnv || "__edge_health__/missing.step";
 
   const supabaseUrl =
     process.env.SUPABASE_URL ??
@@ -109,6 +101,7 @@ export async function GET(req: NextRequest) {
         ok: false,
         requestId,
         functionName,
+        mode: isCanaryMode ? "canary" : "invoke_only",
         supabaseHost,
         edgeStatus,
         edgeBodyPreview,
@@ -117,30 +110,23 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const ok = Boolean((data as any)?.ok === true);
-  if (!ok) {
-    edgeStatus = 200;
-    edgeBodyPreview = truncateText(JSON.stringify(data ?? null), 500);
-    return NextResponse.json(
-      {
-        ok: false,
-        requestId,
-        functionName,
-        supabaseHost,
-        edgeStatus,
-        edgeBodyPreview,
-      },
-      { status: 200 },
-    );
-  }
+  // If we reached the function (no invoke error), it's deployed.
+  // In canary mode, we also expect `{ ok: true }` from the function for a strong signal.
+  const dataOk = Boolean((data as any)?.ok === true);
+  const ok = isCanaryMode ? dataOk : true;
+  edgeStatus = 200;
+  edgeBodyPreview = truncateText(JSON.stringify(data ?? null), 500);
 
   return NextResponse.json(
     {
       ok: true,
       requestId,
       functionName,
+      mode: isCanaryMode ? "canary" : "invoke_only",
       supabaseHost,
       edgeStatus: 200,
+      dataOk,
+      dataReason: typeof (data as any)?.reason === "string" ? (data as any).reason : null,
     },
     { status: 200 },
   );

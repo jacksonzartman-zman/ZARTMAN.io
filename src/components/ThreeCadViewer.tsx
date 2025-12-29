@@ -484,6 +484,40 @@ export function ThreeCadViewer({
           const apiErrorString = typeof apiError === "string" ? apiError : "";
           const fallbackText = safeTrim(bodyText) || (isJson ? JSON.stringify(bodyJson) : "");
 
+          // Special-case: STEP edge function missing (production deployment issue).
+          // `/api/cad-preview` returns { error: "edge_function_not_deployed", supabaseHost, requestId, userMessage }.
+          if (cadKindHint === "step" && bodyJson && typeof bodyJson === "object") {
+            const errCode = typeof (bodyJson as any)?.error === "string" ? String((bodyJson as any).error) : "";
+            if (errCode === "edge_function_not_deployed") {
+              const userMessage =
+                typeof (bodyJson as any)?.userMessage === "string" && (bodyJson as any).userMessage.trim()
+                  ? String((bodyJson as any).userMessage).trim()
+                  : null;
+              const supabaseHost =
+                typeof (bodyJson as any)?.supabaseHost === "string" && (bodyJson as any).supabaseHost.trim()
+                  ? String((bodyJson as any).supabaseHost).trim()
+                  : "unknown";
+              const requestId =
+                typeof (bodyJson as any)?.requestId === "string" && (bodyJson as any).requestId.trim()
+                  ? String((bodyJson as any).requestId).trim()
+                  : null;
+              const synthesized =
+                `STEP preview converter not deployed to ${supabaseHost}. Ask admin to deploy ‘step-to-stl’.` +
+                (requestId ? ` RequestId: ${requestId}` : "");
+              const messageToShow = userMessage ?? synthesized;
+
+              setViewerState({
+                status: "error",
+                cadKind: "step",
+                message: messageToShow,
+                // Also bubble up as "reason" for any surrounding STEP-specific UI.
+                errorReason: messageToShow,
+              });
+              cleanup();
+              return;
+            }
+          }
+
           const combined =
             apiErrorString
               ? `HTTP ${res.status}: ${apiErrorString}`

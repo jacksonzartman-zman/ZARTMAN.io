@@ -10,7 +10,10 @@
     "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" \"*.{js,ts}\"",
     "check:no-quotes-email": "node scripts/check-no-quotes-email.mjs",
     "check:db-contract": "node scripts/check-db-view-contract.mjs",
-    "supabase:deploy:step-preview": "supabase functions deploy step-to-stl",
+    "supabase:link": "node scripts/supabase-link.mjs",
+    "supabase:deploy:step-to-stl": "node scripts/supabase-deploy-step-to-stl.mjs",
+    "supabase:logs:step-to-stl": "node scripts/supabase-logs-step-to-stl.mjs",
+    "supabase:deploy:step-preview": "npm run supabase:deploy:step-to-stl",
     "supabase:migrate": "supabase db push"
   },
   "dependencies": {
