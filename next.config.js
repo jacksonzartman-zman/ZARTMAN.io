@@ -4,6 +4,13 @@ const nextConfig = {
   output: undefined,
   images: { unoptimized: true },   // OK on Pages
   eslint: { ignoreDuringBuilds: true },
+  outputFileTracingIncludes: {
+    // Ensure the occt-import-js wasm is packaged for API route handlers (Vercel).
+    // Next may match these globs against internal "app/..." paths (even when using `src/app`),
+    // so we include both forms to be safe across Next versions.
+    "app/api/**": ["node_modules/occt-import-js/dist/occt-import-js.wasm"],
+    "src/app/api/**": ["node_modules/occt-import-js/dist/occt-import-js.wasm"],
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "25mb",

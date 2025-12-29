@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { createRequire } from "module";
+import fs from "node:fs";
 import path from "node:path";
 import type { OcctImportModule, ReadStepResult } from "occt-import-js";
 
@@ -16,6 +17,9 @@ export type StepToStlConversionResult = {
 };
 
 const PREVIEW_PREFIX = "step-stl/v1";
+
+let didLogOcctWasm = false;
+let cachedOcctWasmPath: string | null = null;
 
 function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -183,26 +187,40 @@ function encodeBinaryStlFromOcctMeshes(result: ReadStepResult): StepToStlConvers
   return { stl: out, triangles, meshes: meshes.length };
 }
 
-function resolveOcctWasmPath(requestedPath: string): string {
-  // `occt-import-js` is an Emscripten build; this helps it find the wasm file in Node.
-  // Important: avoid referencing the `.wasm` file via an import/require specifier, or webpack will try to bundle it.
-  const basename = requestedPath.split("/").pop() ?? requestedPath;
-  if (!basename.endsWith(".wasm")) return basename;
+function resolveOcctWasmPath(): string {
+  if (cachedOcctWasmPath) return cachedOcctWasmPath;
 
-  try {
-    const require = createRequire(import.meta.url);
-    const jsEntry = require.resolve("occt-import-js");
-    return path.join(path.dirname(jsEntry), basename);
-  } catch {
-    // Fall back: let the module attempt its default resolution.
-    return basename;
-  }
+  const require = createRequire(import.meta.url);
+  // Resolve from the package's dist entry so the wasm is adjacent.
+  const jsEntry = require.resolve("occt-import-js/dist/occt-import-js.js");
+  const distDir = path.dirname(jsEntry);
+  cachedOcctWasmPath = path.join(distDir, "occt-import-js.wasm");
+  return cachedOcctWasmPath;
 }
 
-export async function convertStepToBinaryStl(stepBytes: Uint8Array): Promise<StepToStlConversionResult> {
+export async function convertStepToBinaryStl(
+  stepBytes: Uint8Array,
+  opts?: { rid?: string },
+): Promise<StepToStlConversionResult> {
+  const rid = opts?.rid ?? "no-rid";
+  const wasmPath = resolveOcctWasmPath();
+  const exists = fs.existsSync(wasmPath);
+
+  if (!didLogOcctWasm) {
+    didLogOcctWasm = true;
+    console.log("[stepToStl] wasm", { rid, wasmPath, exists });
+  }
+
+  if (!exists) {
+    throw new Error(`occt-import-js wasm missing at resolved path: ${wasmPath}`);
+  }
+
   const occtImportJs = (await import("occt-import-js")).default;
   const occt: OcctImportModule = await occtImportJs({
-    locateFile: (path) => resolveOcctWasmPath(path),
+    locateFile: (p) => {
+      const withoutQuery = String(p).split("?")[0] ?? "";
+      return withoutQuery.endsWith(".wasm") ? wasmPath : p;
+    },
   });
 
   const readResult = occt.ReadStepFile(stepBytes, {});
