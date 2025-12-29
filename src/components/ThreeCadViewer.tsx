@@ -8,6 +8,7 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { classifyCadFileType } from "@/lib/cadRendering";
+import { fitAndCenter } from "@/lib/three/fitAndCenter";
 
 export type CadKind = "stl" | "obj" | "glb" | "step";
 type CadKindOrUnknown = CadKind | "unknown";
@@ -133,35 +134,17 @@ function initializeThree(container: HTMLDivElement) {
   return { renderer, scene, camera, controls, resizeObserver };
 }
 
-function fitCameraToObject(
-  camera: THREE.PerspectiveCamera,
-  controls: OrbitControls,
-  object: THREE.Object3D,
-) {
-  const box = new THREE.Box3().setFromObject(object);
-  if (!Number.isFinite(box.min.x) || !Number.isFinite(box.max.x)) {
-    return;
-  }
-
-  const center = new THREE.Vector3();
-  const size = new THREE.Vector3();
-  box.getCenter(center);
-  box.getSize(size);
-
-  const maxDim = Math.max(size.x, size.y, size.z);
-  const safeMaxDim = Math.max(maxDim, 0.0001);
-
-  const fov = (camera.fov * Math.PI) / 180;
-  const distance = safeMaxDim / (2 * Math.tan(fov / 2));
-  const offset = distance * 1.25;
-
-  camera.position.set(center.x, center.y, center.z + offset);
-  camera.near = safeMaxDim / 100;
-  camera.far = safeMaxDim * 200;
-  camera.updateProjectionMatrix();
-
-  controls.target.copy(center);
-  controls.update();
+function getContainerRenderSize(container: HTMLDivElement, renderer: THREE.WebGLRenderer) {
+  const canvas = renderer.domElement;
+  const width = Math.max(
+    1,
+    Math.floor(canvas?.clientWidth || container.clientWidth || 1),
+  );
+  const height = Math.max(
+    1,
+    Math.floor(canvas?.clientHeight || container.clientHeight || 1),
+  );
+  return { width, height };
 }
 
 function disposeObject3D(root: THREE.Object3D) {
@@ -610,6 +593,28 @@ export function ThreeCadViewer({
         const buffer = await blob.arrayBuffer();
         if (cancelled) return;
 
+        // Re-fit on resize (but avoid cumulative recentering via object.userData flags).
+        resizeObserver?.disconnect();
+        if (typeof ResizeObserver !== "undefined") {
+          resizeObserver = new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (!entry || !renderer || !camera) return;
+            const nextWidth = Math.max(1, Math.floor(entry.contentRect.width));
+            const nextHeight = Math.max(1, Math.floor(entry.contentRect.height));
+            renderer.setSize(nextWidth, nextHeight, false);
+            camera.aspect = nextWidth / nextHeight;
+            camera.updateProjectionMatrix();
+            if (controls && objectRoot) {
+              fitAndCenter(objectRoot, camera, controls, {
+                width: nextWidth,
+                height: nextHeight,
+                padding: 1.35,
+              });
+            }
+          });
+          resizeObserver.observe(container);
+        }
+
         if (resolvedCadKind === "stl") {
           objectRoot = buildStlMeshFromArrayBuffer(buffer);
         } else if (resolvedCadKind === "obj") {
@@ -662,8 +667,15 @@ export function ThreeCadViewer({
           throw new Error("cad_parse_failed");
         }
 
+        // Wrap the loaded object in a stable root so we can translate the root
+        // to center the whole scene graph without mutating the loader's object directly.
+        const centeredRoot = new THREE.Group();
+        centeredRoot.add(objectRoot);
+        objectRoot = centeredRoot;
         scene.add(objectRoot);
-        fitCameraToObject(camera, controls, objectRoot);
+
+        const { width, height } = getContainerRenderSize(container, renderer);
+        fitAndCenter(objectRoot, camera, controls, { width, height, padding: 1.35 });
 
         setViewerState({ status: "ready", cadKind: detectedCadKind, message: null, errorReason: null });
         animationId = window.requestAnimationFrame(renderLoop);
