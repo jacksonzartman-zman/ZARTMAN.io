@@ -153,5 +153,11 @@ The deploy workflow expects these repository secrets:
 - `SUPABASE_ACCESS_TOKEN`: Supabase personal access token (CLI auth)
 - `SUPABASE_PROJECT_REF`: the production project ref (derived from production `SUPABASE_URL` hostname)
 
+### Production mapping (current prod)
+
+For production host `qslztdkptpklopyedkfd.supabase.co`, set this GitHub Actions secret:
+
+- `SUPABASE_PROJECT_REF=qslztdkptpklopyedkfd`
+
 Function runtime secrets (like `SUPABASE_SERVICE_ROLE_KEY`) are **Supabase project secrets** and must be managed via `supabase secrets set` (not printed in CI logs).
 
