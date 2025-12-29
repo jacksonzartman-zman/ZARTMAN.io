@@ -191,10 +191,14 @@ function encodeBinaryStlFromOcctMeshes(result: ReadStepResult): StepToStlConvers
 function resolveOcctPaths(): { jsEntry: string; distDir: string; wasmPath: string } {
   if (cachedOcctPaths) return cachedOcctPaths;
 
-  const require = createRequire(import.meta.url);
-  // Resolve from the package's dist entry so the wasm is adjacent.
-  const jsEntry = require.resolve("occt-import-js/dist/occt-import-js.js");
-  const distDir = path.dirname(jsEntry);
+  // IMPORTANT: do NOT use require.resolve() here. When bundled by Next/webpack,
+  // require.resolve("...") can be rewritten into a numeric module id, which then
+  // breaks downstream path operations like path.dirname().
+  //
+  // Instead, compute absolute on-disk paths relative to the runtime working dir
+  // (Vercel lambdas run with CWD at the bundle root that contains node_modules).
+  const distDir = path.join(process.cwd(), "node_modules", "occt-import-js", "dist");
+  const jsEntry = path.join(distDir, "occt-import-js.js");
   const wasmPath = path.join(distDir, "occt-import-js.wasm");
   cachedOcctPaths = { jsEntry, distDir, wasmPath };
   return cachedOcctPaths;
@@ -206,39 +210,60 @@ export async function convertStepToBinaryStl(
 ): Promise<StepToStlConversionResult> {
   const rid = opts?.rid ?? "no-rid";
   const { jsEntry, distDir, wasmPath } = resolveOcctPaths();
-  const exists = fs.existsSync(wasmPath);
 
-  if (!didLogOcctWasm) {
-    didLogOcctWasm = true;
-    console.log("[stepToStl] occt paths", {
-      rid,
-      jsEntry,
-      distDir,
-      wasmPath,
-      wasmPathType: typeof wasmPath,
-    });
-    console.log("[stepToStl] wasm", { rid, wasmPath, exists });
-  }
-
-  if (!exists) {
-    throw new Error(`occt-import-js wasm missing at resolved path: ${wasmPath}`);
-  }
-
-  const occtImportJs = (await import("occt-import-js")).default;
+  // Load the wasm once and pass wasmBinary so we don't rely on locateFile().
   if (!cachedWasmBinary) {
+    const exists = fs.existsSync(wasmPath);
+    if (!exists) {
+      throw new Error(`occt-import-js wasm missing at resolved path: ${wasmPath}`);
+    }
     try {
       const buf = fs.readFileSync(wasmPath);
       cachedWasmBinary = new Uint8Array(buf);
-      console.log("[stepToStl] wasmBinary loaded", { rid, wasmPath, bytes: cachedWasmBinary.byteLength });
     } catch (err) {
       throw new Error(`[stepToStl] failed to read wasmBinary at ${wasmPath}: ${String(err)}`);
     }
   }
 
+  if (!didLogOcctWasm) {
+    didLogOcctWasm = true;
+    console.log("[stepToStl] occt runtime load", {
+      rid,
+      jsEntry,
+      jsEntryType: typeof jsEntry,
+      wasmPath,
+      wasmPathType: typeof wasmPath,
+      wasmExists: fs.existsSync(wasmPath),
+      wasmBytes: cachedWasmBinary?.byteLength ?? 0,
+      distDir,
+    });
+  }
+
+  // IMPORTANT: use runtime require() (not `import()`) to avoid webpack bundling.
+  const require = createRequire(import.meta.url);
+  let occtFactoryModule: unknown;
+  try {
+    // Prefer the dist entry (adjacent to wasm).
+    // Use a string literal to avoid webpack treating this as a dynamic require.
+    occtFactoryModule = require("occt-import-js/dist/occt-import-js.js");
+  } catch {
+    // Fallback to package entry if dist path changes.
+    occtFactoryModule = require("occt-import-js");
+  }
+  const occtImportFactory =
+    (occtFactoryModule as any)?.default && typeof (occtFactoryModule as any).default === "function"
+      ? (occtFactoryModule as any).default
+      : occtFactoryModule;
+  if (typeof occtImportFactory !== "function") {
+    throw new Error(`[stepToStl] occt-import-js factory not a function (typeof=${typeof occtImportFactory})`);
+  }
+
   // `occt-import-js` supports `wasmBinary` at runtime, but its types may not include it.
-  const occt: OcctImportModule = await (occtImportJs as unknown as (opts: { wasmBinary: Uint8Array }) => Promise<OcctImportModule>)({
-    wasmBinary: cachedWasmBinary,
-  });
+  const occt: OcctImportModule = await (occtImportFactory as unknown as (opts: { wasmBinary: Uint8Array }) => Promise<OcctImportModule>)(
+    {
+      wasmBinary: cachedWasmBinary,
+    },
+  );
 
   const readResult = occt.ReadStepFile(stepBytes, {});
   if (!readResult?.success) {
