@@ -1,4 +1,5 @@
 -- Phase 11.4: Fix Supabase Storage RLS for /quote intake uploads.
+-- IMPORTANT: This migration must be applied in Supabase (staging/prod) for uploads to work.
 --
 -- Goal: allow authenticated users to upload their own CAD files to:
 --   bucket: cad_uploads (private)

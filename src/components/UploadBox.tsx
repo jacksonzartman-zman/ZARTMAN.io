@@ -132,9 +132,9 @@ type UploadProgressState =
 type StorageProofState =
   | { status: "unknown" }
   | { status: "checking" }
-  | { status: "ok"; bytes: number | null }
-  | { status: "missing" }
-  | { status: "failed"; errorReason: string };
+  | { status: "ok"; bytes: number | null; url: string; httpStatus: number; raw: string | null }
+  | { status: "missing"; url: string; httpStatus: number; raw: string | null }
+  | { status: "failed"; errorReason: string; url: string; httpStatus: number; raw: string | null };
 
 type PreviewAttemptDiagnostics = {
   ok: boolean;
@@ -362,6 +362,12 @@ export default function UploadBox({
   const [forceFetchPending, setForceFetchPending] = useState(false);
   const [permissionTestResult, setPermissionTestResult] = useState<SimpleFetchResult | null>(null);
   const [permissionTestPending, setPermissionTestPending] = useState(false);
+  const [proofCanaryResult, setProofCanaryResult] = useState<{
+    upload: { ok: boolean; errorText: string | null; bucket: string; path: string };
+    proof: { ok: boolean; status: number; text: string };
+    attemptedAt: number;
+  } | null>(null);
+  const [proofCanaryPending, setProofCanaryPending] = useState(false);
   const [geometryStatsMap, setGeometryStatsMap] = useState<
     Record<string, GeometryStats | null>
   >({});
@@ -628,15 +634,27 @@ export default function UploadBox({
     setPermissionTestResult(null);
     try {
       const bucket = uploadBucketId ?? "cad_uploads";
+      const sb = supabaseBrowser();
+      const userId = await sb.auth
+        .getUser()
+        .then((res) => res.data.user?.id ?? null)
+        .catch(() => null);
+      if (!userId) {
+        setPermissionTestResult({
+          status: 401,
+          text: "No Supabase user session in browser (sign in required).",
+          attemptedAt: Date.now(),
+        });
+        return;
+      }
       const suffix =
         typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
           ? crypto.randomUUID().slice(0, 8)
           : Math.random().toString(16).slice(2, 10);
-      const path = `uploads/permission-test/${Date.now()}-${suffix}.txt`;
+      const path = `uploads/intake/${userId}/permission-test/${Date.now()}-${suffix}.txt`;
       const blob = new Blob(["x"], { type: "text/plain" });
 
       console.log("[intake] storage permission test start", { bucket, path });
-      const sb = supabaseBrowser();
       const { error: uploadError } = await sb.storage.from(bucket).upload(path, blob, {
         cacheControl: "60",
         upsert: false,
@@ -661,14 +679,22 @@ export default function UploadBox({
         const qs = new URLSearchParams();
         qs.set("bucket", bucket);
         qs.set("path", path);
-        const res = await fetch(`/api/storage-proof?${qs.toString()}`, { cache: "no-store" });
-        const json = (await res.json().catch(() => null)) as any;
-        return { res, json };
+        const url = `/api/storage-proof?${qs.toString()}`;
+        const res = await fetch(url, { cache: "no-store" });
+        const text = await res.text().catch(() => "");
+        const json = (() => {
+          try {
+            return JSON.parse(text);
+          } catch {
+            return null;
+          }
+        })();
+        return { res, json, text, url };
       })();
 
       setPermissionTestResult({
         status: 200,
-        text: `Uploaded ok. Proof: ${proof.json?.ok === true ? (proof.json.exists === true ? "ok" : "missing") : "error"}. bucket=${bucket} path=${path}`,
+        text: `Uploaded ok. Proof: ${proof.res.status} ${(proof.json as any)?.exists === true ? "exists" : "missing/error"}. bucket=${bucket} path=${path}`,
         attemptedAt: Date.now(),
       });
     } catch (e) {
@@ -986,40 +1012,148 @@ export default function UploadBox({
         const qs = new URLSearchParams();
         qs.set("bucket", input.bucket);
         qs.set("path", input.path);
-        const res = await fetch(`/api/storage-proof?${qs.toString()}`, { cache: "no-store" });
-        const json = (await res.json().catch(() => null)) as
-          | { ok?: unknown; exists?: unknown; bytes?: unknown }
-          | { ok?: unknown; error?: unknown; status?: unknown; body?: unknown }
-          | null;
+        const url = `/api/storage-proof?${qs.toString()}`;
+        const res = await fetch(url, { cache: "no-store" });
+        const text = await res.text().catch(() => "");
+        const parsed = (() => {
+          try {
+            return JSON.parse(text) as any;
+          } catch {
+            return null;
+          }
+        })();
 
-        if (!json || json.ok !== true) {
+        if (!res.ok) {
+          console.error("[storage-proof] failed", {
+            url,
+            status: res.status,
+            text: (text || "").slice(0, 500),
+          });
+          if (res.status === 404 && parsed && parsed.exists === false) {
+            setStorageProof((prev) => ({
+              ...prev,
+              [input.fileId]: { status: "missing", url, httpStatus: res.status, raw: (text || "").slice(0, 500) },
+            }));
+            return { ok: false as const, reason: "missing" };
+          }
           const reason =
-            typeof (json as any)?.error === "string"
-              ? String((json as any).error)
-              : `storage_proof_not_ok_${res.status}`;
-          setStorageProof((prev) => ({ ...prev, [input.fileId]: { status: "failed", errorReason: reason } }));
+            (parsed && typeof parsed.error === "string" && parsed.error.trim()) ||
+            `storage_proof_http_${res.status}`;
+          setStorageProof((prev) => ({
+            ...prev,
+            [input.fileId]: {
+              status: "failed",
+              errorReason: reason,
+              url,
+              httpStatus: res.status,
+              raw: (text || "").slice(0, 500),
+            },
+          }));
           return { ok: false as const, reason };
         }
 
-        const exists = (json as any).exists === true;
+        const exists = Boolean(parsed && parsed.exists === true);
+        const bytes =
+          parsed && typeof parsed.bytes === "number" && Number.isFinite(parsed.bytes)
+            ? Number(parsed.bytes)
+            : null;
         if (!exists) {
-          setStorageProof((prev) => ({ ...prev, [input.fileId]: { status: "missing" } }));
+          setStorageProof((prev) => ({
+            ...prev,
+            [input.fileId]: { status: "missing", url, httpStatus: res.status, raw: (text || "").slice(0, 500) },
+          }));
           return { ok: false as const, reason: "missing" };
         }
-
-        const bytes = typeof (json as any).bytes === "number" && Number.isFinite((json as any).bytes)
-          ? Number((json as any).bytes)
-          : null;
-        setStorageProof((prev) => ({ ...prev, [input.fileId]: { status: "ok", bytes } }));
+        setStorageProof((prev) => ({
+          ...prev,
+          [input.fileId]: { status: "ok", bytes, url, httpStatus: res.status, raw: (text || "").slice(0, 500) },
+        }));
         return { ok: true as const, bytes };
       } catch (e) {
         const reason = e instanceof Error ? e.message : String(e);
-        setStorageProof((prev) => ({ ...prev, [input.fileId]: { status: "failed", errorReason: reason } }));
+        setStorageProof((prev) => ({
+          ...prev,
+          [input.fileId]: {
+            status: "failed",
+            errorReason: reason,
+            url: "fetch_exception",
+            httpStatus: 0,
+            raw: null,
+          },
+        }));
         return { ok: false as const, reason };
       }
     },
     [],
   );
+
+  const runProofCanary = useCallback(async () => {
+    setProofCanaryPending(true);
+    setProofCanaryResult(null);
+    try {
+      const bucket = "cad_uploads";
+      const sb = supabaseBrowser();
+      const userId = await sb.auth
+        .getUser()
+        .then((res) => res.data.user?.id ?? null)
+        .catch(() => null);
+      if (!userId) {
+        setProofCanaryResult({
+          upload: { ok: false, errorText: "not_authenticated", bucket, path: "" },
+          proof: { ok: false, status: 401, text: "not_authenticated" },
+          attemptedAt: Date.now(),
+        });
+        return;
+      }
+
+      const path = `uploads/intake/${userId}/__canary__.txt`;
+      const blob = new Blob(["x"], { type: "text/plain" });
+
+      // Make it repeatable without requiring UPDATE policies: delete then insert.
+      await sb.storage.from(bucket).remove([path]).catch(() => undefined);
+      const { error: uploadError } = await sb.storage.from(bucket).upload(path, blob, {
+        cacheControl: "60",
+        upsert: false,
+        contentType: "text/plain",
+      });
+
+      const uploadOk = !uploadError;
+      const uploadErrorText =
+        uploadError && typeof (uploadError as any)?.message === "string"
+          ? String((uploadError as any).message)
+          : uploadError
+            ? "upload_failed"
+            : null;
+
+      const qs = new URLSearchParams();
+      qs.set("bucket", bucket);
+      qs.set("path", path);
+      const url = `/api/storage-proof?${qs.toString()}`;
+      const res = await fetch(url, { cache: "no-store" });
+      const text = await res.text().catch(() => "");
+      if (!res.ok) {
+        console.error("[storage-proof] failed", {
+          url,
+          status: res.status,
+          text: (text || "").slice(0, 500),
+        });
+      }
+
+      setProofCanaryResult({
+        upload: { ok: uploadOk, errorText: uploadErrorText, bucket, path },
+        proof: { ok: res.ok, status: res.status, text: (text || "").slice(0, 500) },
+        attemptedAt: Date.now(),
+      });
+    } catch (e) {
+      setProofCanaryResult({
+        upload: { ok: false, errorText: e instanceof Error ? e.message : String(e), bucket: "cad_uploads", path: "" },
+        proof: { ok: false, status: 0, text: e instanceof Error ? e.message : String(e) },
+        attemptedAt: Date.now(),
+      });
+    } finally {
+      setProofCanaryPending(false);
+    }
+  }, []);
 
   const startUploadForEntry = useCallback(
     async (entry: SelectedCadFile) => {
@@ -1566,6 +1700,23 @@ export default function UploadBox({
                             : selectedStorageProof?.status ?? "—"}
                         </div>
                       </div>
+                      <div className="md:col-span-2">
+                        <div className="text-[11px] text-muted">storageProof details</div>
+                        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-slate-100">
+                          {(() => {
+                            if (!selectedStorageProof || selectedStorageProof.status === "unknown") return "—";
+                            if (selectedStorageProof.status === "checking") return "checking…";
+                            const common = `httpStatus=${(selectedStorageProof as any).httpStatus} url=${(selectedStorageProof as any).url}`;
+                            if (selectedStorageProof.status === "ok") {
+                              return `${common}\nbytes=${String(selectedStorageProof.bytes ?? "null")}\nraw=${(selectedStorageProof.raw ?? "—").slice(0, 500)}`;
+                            }
+                            if (selectedStorageProof.status === "missing") {
+                              return `${common}\nraw=${(selectedStorageProof.raw ?? "—").slice(0, 500)}`;
+                            }
+                            return `${common}\nerrorReason=${(selectedStorageProof as any).errorReason}\nraw=${(selectedStorageProof as any).raw ?? "—"}`;
+                          })()}
+                        </pre>
+                      </div>
                       <div>
                         <div className="text-[11px] text-muted">previewToken present?</div>
                         <div className="text-slate-100">
@@ -1628,9 +1779,20 @@ export default function UploadBox({
                       >
                         {permissionTestPending ? "Testing…" : "Test Storage upload permissions"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void runProofCanary()}
+                        disabled={proofCanaryPending}
+                        className={clsx(
+                          "rounded-full border border-border/60 bg-black/20 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-100 transition hover:border-border",
+                          proofCanaryPending && "opacity-60",
+                        )}
+                      >
+                        {proofCanaryPending ? "Running…" : "Run proof canary"}
+                      </button>
                     </div>
 
-                    {(pingResult || forceFetchResult || permissionTestResult) ? (
+                    {(pingResult || forceFetchResult || permissionTestResult || proofCanaryResult) ? (
                       <div className="grid gap-3 md:grid-cols-2">
                         <div className="rounded-xl border border-white/5 bg-black/20 p-3">
                           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
@@ -1685,6 +1847,25 @@ export default function UploadBox({
                             </div>
                           ) : (
                             <div className="mt-2 text-[11px] text-muted">No test yet.</div>
+                          )}
+                        </div>
+                        <div className="rounded-xl border border-white/5 bg-black/20 p-3 md:col-span-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                            proof canary
+                          </div>
+                          {proofCanaryResult ? (
+                            <div className="mt-2 space-y-2">
+                              <div className="text-[11px] text-muted">upload</div>
+                              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-slate-100">
+                                {JSON.stringify(proofCanaryResult.upload, null, 2)}
+                              </pre>
+                              <div className="text-[11px] text-muted">proof</div>
+                              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-slate-100">
+                                {JSON.stringify(proofCanaryResult.proof, null, 2)}
+                              </pre>
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-[11px] text-muted">No canary run yet.</div>
                           )}
                         </div>
                       </div>

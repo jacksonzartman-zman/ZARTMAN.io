@@ -21,39 +21,35 @@ function encodeObjectPath(path: string): string {
 }
 
 export async function GET(req: NextRequest) {
-  const { user } = await getServerAuthUser();
-  if (!user?.id) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  }
-
   const bucket = normalizeId(req.nextUrl.searchParams.get("bucket"));
   const path = normalizePath(req.nextUrl.searchParams.get("path"));
 
+  const { user } = await getServerAuthUser();
+  console.log("[storage-proof] hit", {
+    ts: Date.now(),
+    bucket,
+    path,
+    hasSession: !!user,
+    hasAuthHeader: !!req.headers.get("authorization"),
+  });
+
+  if (!user?.id) {
+    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  }
+
   if (!bucket || !path) {
-    return NextResponse.json(
-      { ok: false, error: "missing_bucket_or_path" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "missing_bucket_or_path" }, { status: 400 });
   }
 
-  const allowedBucket =
-    process.env.SUPABASE_CAD_BUCKET ||
-    process.env.NEXT_PUBLIC_CAD_BUCKET ||
-    process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
-    "cad";
-
-  // Safety: only allow proof checks for intake uploads in the CAD bucket.
-  if (bucket !== allowedBucket) {
+  const allowedBuckets = ["cad_uploads"] as const;
+  if (!allowedBuckets.includes(bucket as (typeof allowedBuckets)[number])) {
     return NextResponse.json(
-      { ok: false, error: "bucket_not_allowed", allowedBucket },
+      { error: "bucket_not_allowed", bucket, allowed: allowedBuckets },
       { status: 403 },
     );
   }
-  if (!path.startsWith("uploads/")) {
-    return NextResponse.json(
-      { ok: false, error: "path_not_allowed", allowedPrefix: "uploads/" },
-      { status: 403 },
-    );
+  if (!path.startsWith("uploads/intake/")) {
+    return NextResponse.json({ error: "path_not_allowed", path }, { status: 403 });
   }
 
   const baseUrl = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "").replace(
@@ -62,13 +58,10 @@ export async function GET(req: NextRequest) {
   );
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
   if (!baseUrl) {
-    return NextResponse.json({ ok: false, error: "missing_supabase_url" }, { status: 500 });
+    return NextResponse.json({ error: "missing_supabase_url" }, { status: 500 });
   }
   if (!serviceRole) {
-    return NextResponse.json(
-      { ok: false, error: "missing_service_role_key" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "missing_service_role_key" }, { status: 500 });
   }
 
   const url = `${baseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${encodeObjectPath(path)}`;
@@ -88,20 +81,15 @@ export async function GET(req: NextRequest) {
       typeof contentLengthRaw === "string" && contentLengthRaw.trim().length > 0
         ? Number(contentLengthRaw)
         : null;
-    const contentType = res.headers.get("content-type");
 
     if (res.status === 404) {
-      return NextResponse.json(
-        { ok: true, exists: false, bucket, path, bytes: null, contentType: contentType ?? null },
-        { status: 200 },
-      );
+      return NextResponse.json({ exists: false }, { status: 404 });
     }
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       return NextResponse.json(
         {
-          ok: false,
           error: "storage_head_failed",
           bucket,
           path,
@@ -112,21 +100,10 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        exists: true,
-        bucket,
-        path,
-        bytes: Number.isFinite(bytes as number) ? bytes : null,
-        contentType: contentType ?? null,
-      },
-      { status: 200 },
-    );
+    return NextResponse.json({ exists: true, bytes: Number.isFinite(bytes as number) ? bytes : null }, { status: 200 });
   } catch (e) {
     return NextResponse.json(
       {
-        ok: false,
         error: "storage_head_exception",
         bucket,
         path,
