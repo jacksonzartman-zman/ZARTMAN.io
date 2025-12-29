@@ -7,10 +7,41 @@ export type StepPreviewInfo = {
 };
 
 const PREVIEW_BUCKET = "cad_previews";
-const PREVIEW_PREFIX = "step-stl";
+const MAX_PREVIEW_BYTES = 50 * 1024 * 1024; // 50MB
+const DEFAULT_CAD_BUCKET =
+  process.env.SUPABASE_CAD_BUCKET ||
+  process.env.NEXT_PUBLIC_CAD_BUCKET ||
+  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
+  "cad_uploads";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizePath(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  return raw.replace(/^\/+/, "");
+}
+
+function normalizeStorageReference(
+  storagePath: string,
+  bucketId?: string | null,
+): { bucket: string; path: string } | null {
+  if (!storagePath) return null;
+  let path = normalizePath(storagePath);
+  if (!path) return null;
+
+  let bucket = normalizeId(bucketId) || null;
+  if (!bucket && path.startsWith(`${DEFAULT_CAD_BUCKET}/`)) {
+    bucket = DEFAULT_CAD_BUCKET;
+    path = path.slice(DEFAULT_CAD_BUCKET.length + 1);
+  }
+  if (!bucket) bucket = DEFAULT_CAD_BUCKET;
+  if (path.startsWith(`${bucket}/`)) {
+    path = path.slice(bucket.length + 1);
+  }
+  if (!path) return null;
+  return { bucket, path };
 }
 
 export async function ensureStepPreviewForFile(
@@ -19,67 +50,106 @@ export async function ensureStepPreviewForFile(
   const id = normalizeId(quoteUploadFileId);
   if (!id) return null;
 
-  const path = `${PREVIEW_PREFIX}/${id}.stl`;
   const requestId = `step-preview-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 10)}`;
 
   try {
-    // Check whether the preview already exists.
-    const { data: listData, error: listError } = await supabaseServer.storage
-      .from(PREVIEW_BUCKET)
-      .list(PREVIEW_PREFIX, { limit: 10, search: `${id}.stl` });
+    // Resolve storage location from DB (quote_upload_files).
+    const { data: row, error: rowError } = await supabaseServer
+      .from("quote_upload_files")
+      .select("id,storage_path,bucket_id,filename,extension")
+      .eq("id", id)
+      .maybeSingle<{
+        id: string;
+        storage_path: string | null;
+        bucket_id: string | null;
+        filename: string | null;
+        extension: string | null;
+      }>();
 
-    if (!listError && Array.isArray(listData)) {
-      const exists = listData.some((f) => f?.name === `${id}.stl`);
-      if (exists) {
-        return { quoteUploadFileId: id, bucket: PREVIEW_BUCKET, path };
-      }
+    if (rowError || !row?.storage_path) {
+      console.error("[step-preview] ensure failed", { quoteUploadFileId: id, requestId, reason: "missing_storage_path" });
+      return null;
     }
 
-    const functionName = "step-to-stl" as const;
-    const { data, error: edgeError } = await supabaseServer.functions.invoke(functionName, {
-      body: { quoteUploadFileId: id, requestId },
+    const normalized = normalizeStorageReference(row.storage_path, row.bucket_id);
+    if (!normalized) {
+      console.error("[step-preview] ensure failed", { quoteUploadFileId: id, requestId, reason: "invalid_storage_ref" });
+      return null;
+    }
+
+    const { buildStepStlPreviewPath } = await import("@/server/cad/stepToStl");
+    const previewPath = buildStepStlPreviewPath({
+      sourceBucket: normalized.bucket,
+      sourcePath: normalized.path,
+      sourceFileName: row.filename ?? null,
     });
 
-    if (edgeError) {
-      const anyErr = edgeError as any;
-      const edgeStatus = typeof anyErr?.context?.status === "number" ? anyErr.context.status : null;
-      const edgeBody = anyErr?.context?.body;
-      const edgeBodyPreview =
-        typeof edgeBody === "string"
-          ? edgeBody.slice(0, 500)
-          : edgeBody != null
-            ? JSON.stringify(edgeBody).slice(0, 500)
-            : null;
+    // Cache hit: if preview exists, we’re done.
+    const { data: cached, error: cachedError } = await supabaseServer.storage
+      .from(PREVIEW_BUCKET)
+      .download(previewPath);
+    if (!cachedError && cached) {
+      return { quoteUploadFileId: id, bucket: PREVIEW_BUCKET, path: previewPath };
+    }
+
+    // Download source STEP and convert in Node (same converter as intake previews).
+    const { data: stepBlob, error: downloadError } = await supabaseServer.storage
+      .from(normalized.bucket)
+      .download(normalized.path);
+    if (downloadError || !stepBlob) {
       console.error("[step-preview] ensure failed", {
         quoteUploadFileId: id,
-        functionName,
-        edgeStatus,
-        edgeBodyPreview,
-        edgeError,
+        requestId,
+        reason: "source_download_failed",
+        bucket: normalized.bucket,
+        path: normalized.path,
+        downloadError,
+      });
+      return null;
+    }
+    if (typeof stepBlob.size === "number" && stepBlob.size > MAX_PREVIEW_BYTES) {
+      console.error("[step-preview] ensure failed", {
+        quoteUploadFileId: id,
+        requestId,
+        reason: "source_too_large",
+        bytes: stepBlob.size,
       });
       return null;
     }
 
-    const ok = Boolean((data as any)?.ok === true);
-    if (!ok) {
+    const stepBytes = new Uint8Array(await stepBlob.arrayBuffer());
+    const { convertStepToBinaryStl } = await import("@/server/cad/stepToStl");
+    const converted = await convertStepToBinaryStl(stepBytes);
+    if (!converted.stl || converted.stl.byteLength <= 0) {
       console.error("[step-preview] ensure failed", {
         quoteUploadFileId: id,
-        functionName,
-        reason: typeof (data as any)?.reason === "string" ? (data as any).reason : "edge_not_ok",
+        requestId,
+        reason: "conversion_failed",
+        meshes: converted.meshes,
+        triangles: converted.triangles,
       });
       return null;
     }
 
-    const bucketRaw = (data as any)?.previewBucket ?? (data as any)?.bucket;
-    const pathRaw = (data as any)?.previewPath ?? (data as any)?.path;
-    const bucket = typeof bucketRaw === "string" ? bucketRaw.trim() : "";
-    const previewPath = typeof pathRaw === "string" ? pathRaw.trim() : "";
-    if (!bucket || !previewPath) {
-      console.error("[step-preview] ensure failed", { quoteUploadFileId: id, reason: "edge_missing_bucket_or_path" });
+    const { error: uploadError } = await supabaseServer.storage
+      .from(PREVIEW_BUCKET)
+      .upload(previewPath, new Blob([converted.stl], { type: "model/stl" }), {
+        contentType: "model/stl",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("[step-preview] ensure upload failed", {
+        quoteUploadFileId: id,
+        requestId,
+        previewPath,
+        uploadError,
+      });
+      // Still allow caller to try to render from memory path next time; for now treat as unavailable.
       return null;
     }
 
-    return { quoteUploadFileId: id, bucket, path: previewPath };
+    return { quoteUploadFileId: id, bucket: PREVIEW_BUCKET, path: previewPath };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     console.error("[step-preview] ensure failed", { quoteUploadFileId: id, reason });

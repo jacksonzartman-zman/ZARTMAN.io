@@ -3,11 +3,13 @@ import { getServerAuthUser, requireAdminUser } from "@/server/auth";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { verifyPreviewToken, verifyPreviewTokenForUser } from "@/server/cadPreviewToken";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type CadKind = "step" | "stl" | "obj" | "glb";
 
 const MAX_PREVIEW_BYTES = 50 * 1024 * 1024; // 50MB
+const STEP_PREVIEW_BUCKET = "cad_previews";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -62,43 +64,6 @@ function truncateText(input: string, maxChars: number): string {
   if (!input) return "";
   if (input.length <= maxChars) return input;
   return `${input.slice(0, Math.max(0, maxChars))}…`;
-}
-
-function safeSupabaseHost(supabaseUrl: string | null): string | null {
-  if (!supabaseUrl) return null;
-  try {
-    return new URL(supabaseUrl).host || null;
-  } catch {
-    return null;
-  }
-}
-
-function extractStepToStlVersionFromBody(data: unknown): string | null {
-  const raw = (data as any)?.version;
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function extractStepToStlVersionFromEdgeError(edgeError: unknown): string | null {
-  // Best-effort: supabase-js Functions errors sometimes carry headers on `context`.
-  const anyErr = edgeError as any;
-  const headersObj = anyErr?.context?.headers;
-  if (headersObj && typeof headersObj === "object") {
-    const raw =
-      (headersObj as any)["x-step-to-stl-version"] ??
-      (headersObj as any)["X-Step-To-Stl-Version"];
-    const value = typeof raw === "string" ? raw.trim() : "";
-    return value || null;
-  }
-
-  const headersLike = anyErr?.context?.response?.headers;
-  if (headersLike && typeof headersLike.get === "function") {
-    const value = headersLike.get("x-step-to-stl-version");
-    return typeof value === "string" && value.trim() ? value.trim() : null;
-  }
-
-  return null;
 }
 
 function safeErrorForLog(err: unknown) {
@@ -244,308 +209,116 @@ export async function GET(req: NextRequest) {
   }
 
   if (inferredKind === "step") {
-    const functionName = "step-to-stl" as const;
-    const supabaseUrl =
-      process.env.SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_URL ??
-      process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL ??
-      null;
-    const supabaseHost = safeSupabaseHost(supabaseUrl);
-    const edgeUrl =
-      supabaseUrl ? `${supabaseUrl.replace(/\/+$/, "")}/functions/v1/${functionName}` : null;
-
-    console.log("[cad-preview] step-to-stl invoke start", {
-      rid: requestId,
-      bucket,
-      path,
-      kind: "step",
-      functionName,
-      supabaseUrlSet: Boolean(supabaseUrl),
-      supabaseHost,
-      edgeUrl,
-    });
-
     const fileName = path.split("/").pop() ?? null;
-    let edgeStatus: number | null = null;
-    let edgeBodyPreview: string | null = null;
+    const log = (stage: string, extra?: Record<string, unknown>) => {
+      console.log("[cad-preview]", {
+        rid: requestId,
+        stage,
+        bucket,
+        path,
+        kind: "step",
+        ...(extra ?? {}),
+      });
+    };
 
     try {
-      const { data, error: edgeError } = await supabaseServer.functions.invoke(functionName, {
-        body: { bucket, path, fileName, requestId },
+      // Deterministic preview location in `cad_previews`.
+      const { buildStepStlPreviewPath } = await import("@/server/cad/stepToStl");
+      const previewPath = buildStepStlPreviewPath({
+        sourceBucket: bucket,
+        sourcePath: path,
+        sourceFileName: fileName,
       });
 
-      if (edgeError) {
-        const anyErr = edgeError as any;
-        edgeStatus = typeof anyErr?.context?.status === "number" ? anyErr.context.status : null;
-        const body = anyErr?.context?.body;
-        const bodyText =
-          typeof body === "string" ? body : body != null ? JSON.stringify(body) : anyErr?.message ?? "";
-        edgeBodyPreview = bodyText ? truncateText(bodyText, 500) : null;
-        const edgeErrorCode =
-          body && typeof body === "object" && typeof (body as any)?.error === "string"
-            ? String((body as any).error)
-            : null;
-        const isEdgeFunctionNotFound =
-          edgeStatus === 404 ||
-          edgeErrorCode === "edge_function_not_found" ||
-          (typeof bodyText === "string" && bodyText.includes("edge_function_not_found"));
-
-        console.log("[cad-preview] step-to-stl invoke non-2xx", {
-          rid: requestId,
-          functionName,
-          supabaseHost,
-          edgeUrl,
-          edgeStatus,
-          edgeBodyPreview,
-          edgeError: safeErrorForLog(edgeError),
-        });
-
-        if (isEdgeFunctionNotFound) {
-          const safeHostLabel = supabaseHost ?? "unknown";
-          const userMessage = `STEP preview converter not deployed to ${safeHostLabel}. Ask admin to deploy ‘${functionName}’. RequestId: ${requestId}`;
-          return NextResponse.json(
-            {
-              error: "edge_function_not_deployed",
-              userMessage,
-              functionName,
-              supabaseHost,
-              action: "deploy step-to-stl to this project",
-              requestId,
-              edgeStatus,
-            },
-            { status: 502 },
-          );
-        }
-
-        return NextResponse.json(
-          {
-            error: "edge_conversion_failed",
-            requestId,
-            edgeStatus,
-            edgeBodyPreview: edgeBodyPreview ? truncateText(edgeBodyPreview, 500) : null,
-          },
-          { status: 502 },
-        );
-      }
-
-      // Edge function returns 200 with { ok: true/false }.
-      const ok = Boolean((data as any)?.ok === true);
-      if (!ok) {
-        const reason = typeof (data as any)?.reason === "string" ? (data as any).reason : "edge_not_ok";
-        edgeStatus = 200;
-        edgeBodyPreview = truncateText(JSON.stringify(data ?? null), 500);
-
-        console.log("[cad-preview] step-to-stl invoke ok=false", {
-          rid: requestId,
-          functionName,
-          supabaseHost,
-          edgeUrl,
-          edgeStatus,
-          reason,
-          edgeBodyPreview,
-        });
-
-        if (reason === "download_failed") {
-          return NextResponse.json(
-            { error: "source_not_found", bucket, path, requestId, edgeStatus, edgeBodyPreview },
-            { status: 404 },
-          );
-        }
-
-        return NextResponse.json(
-          {
-            error: "edge_conversion_failed",
-            reason,
-            requestId,
-            edgeStatus,
-            edgeBodyPreview,
-          },
-          { status: 502 },
-        );
-      }
-
-      // Probe-aware handling: probe-v2 returns handler_entry and no preview location.
-      const versionBody = extractStepToStlVersionFromBody(data);
-      const versionHeader = extractStepToStlVersionFromEdgeError(edgeError);
-      const detectedVersion = versionBody ?? versionHeader;
-      if (detectedVersion === "probe-v2") {
-        console.log("[cad-preview] step-to-stl probe-v2 detected; invoking probe mode", {
-          rid: requestId,
-          functionName,
-          supabaseHost,
-          edgeUrl,
-          detectedVersion,
-        });
-
-        const { data: probeData, error: probeEdgeError } = await supabaseServer.functions.invoke(functionName, {
-          body: { mode: "probe", bucket, path, requestId },
-        });
-
-        if (probeEdgeError) {
-          const anyErr = probeEdgeError as any;
-          edgeStatus = typeof anyErr?.context?.status === "number" ? anyErr.context.status : null;
-          const body = anyErr?.context?.body;
-          const bodyText =
-            typeof body === "string" ? body : body != null ? JSON.stringify(body) : anyErr?.message ?? "";
-          edgeBodyPreview = bodyText ? truncateText(bodyText, 500) : null;
-
-          console.log("[cad-preview] step-to-stl probe invoke non-2xx", {
-            rid: requestId,
-            functionName,
-            supabaseHost,
-            edgeUrl,
-            edgeStatus,
-            edgeBodyPreview,
-            edgeError: safeErrorForLog(probeEdgeError),
-          });
-
-          return NextResponse.json(
-            {
-              error: "edge_conversion_failed",
-              reason: "edge_probe_invoke_failed",
-              requestId,
-              supabaseHost,
-              edgeStatus,
-              edgeBodyPreview,
-            },
-            { status: 502 },
-          );
-        }
-
-        const probeOk = Boolean((probeData as any)?.ok === true);
-        const probeStage = typeof (probeData as any)?.stage === "string" ? String((probeData as any).stage) : null;
-        const probeBytes =
-          typeof (probeData as any)?.bytes === "number" && Number.isFinite((probeData as any).bytes)
-            ? Number((probeData as any).bytes)
-            : null;
-        const storageStatus =
-          typeof (probeData as any)?.status === "number" && Number.isFinite((probeData as any).status)
-            ? Number((probeData as any).status)
-            : null;
-        edgeStatus = 200;
-        edgeBodyPreview = truncateText(JSON.stringify(probeData ?? null), 500);
-
-        console.log("[cad-preview] step-to-stl probe result", {
-          rid: requestId,
-          functionName,
-          supabaseHost,
-          edgeUrl,
-          edgeStatus,
-          probeOk,
-          probeStage,
-          storageStatus,
-          bytes: probeBytes,
-        });
-
-        if (probeOk && probeStage === "storage_download") {
-          const bytesLabel = typeof probeBytes === "number" ? `${probeBytes}` : "unknown";
-          const userMessage =
-            "STEP preview conversion is currently in probe mode (no STL generation). " +
-            `Storage download OK (${bytesLabel} bytes). RequestId: ${requestId}.`;
-          return NextResponse.json(
-            {
-              error: "step_preview_probe_mode",
-              userMessage,
-              requestId,
-              supabaseHost,
-              edgeStatus,
-              edgeBodyPreview,
-            },
-            { status: 501 },
-          );
-        }
-
-        const statusForClient =
-          storageStatus === 404
-            ? 404
-            : storageStatus === 401 || storageStatus === 403
-              ? 403
-              : storageStatus && storageStatus >= 400 && storageStatus < 500
-                ? 422
-                : 502;
-        const storageHint =
-          storageStatus === 404
-            ? "Object not found. Check bucket/path."
-            : storageStatus === 401 || storageStatus === 403
-              ? "Access denied. Check Storage policies for this bucket/path."
-              : "Storage download failed. Check bucket/path and Storage policies.";
-        const userMessage =
-          "STEP preview conversion is currently in probe mode (no STL generation). " +
-          `${storageHint} bucket=${bucket} path=${path}. RequestId: ${requestId}.`;
-
-        return NextResponse.json(
-          {
-            error: "step_preview_probe_mode_storage_download_failed",
-            userMessage,
-            requestId,
-            supabaseHost,
-            edgeStatus,
-            edgeBodyPreview,
-          },
-          { status: statusForClient },
-        );
-      }
-
-      const previewBucketRaw = (data as any)?.previewBucket ?? (data as any)?.bucket;
-      const previewPathRaw = (data as any)?.previewPath ?? (data as any)?.path;
-      const previewBucket = typeof previewBucketRaw === "string" ? previewBucketRaw.trim() : "";
-      const previewPath = typeof previewPathRaw === "string" ? previewPathRaw.trim() : "";
-      if (!previewBucket || !previewPath) {
-        edgeStatus = 200;
-        edgeBodyPreview = truncateText(JSON.stringify(data ?? null), 500);
-        console.log("[cad-preview] step-to-stl invoke missing preview location", {
-          rid: requestId,
-          functionName,
-          supabaseHost,
-          edgeUrl,
-          edgeStatus,
-          edgeBodyPreview,
-        });
-        return NextResponse.json(
-          {
-            error: "edge_conversion_failed",
-            reason: "edge_missing_preview_location",
-            requestId,
-            edgeStatus,
-            edgeBodyPreview,
-          },
-          { status: 502 },
-        );
-      }
-
-      edgeStatus = 200;
-      console.log("[cad-preview] step-to-stl invoke success", {
-        rid: requestId,
-        functionName,
-        supabaseHost,
-        edgeUrl,
-        edgeStatus,
-        previewBucket,
-        previewPath,
-      });
-
-      const { data: blob, error } = await supabaseServer.storage
-        .from(previewBucket)
+      // 1) Cache hit: if preview exists, serve it directly.
+      log("storage_download", { target: "preview", previewBucket: STEP_PREVIEW_BUCKET, previewPath });
+      const { data: cachedBlob, error: cachedError } = await supabaseServer.storage
+        .from(STEP_PREVIEW_BUCKET)
         .download(previewPath);
+      if (!cachedError && cachedBlob) {
+        const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
+        log("response", { source: "cache_hit", previewBucket: STEP_PREVIEW_BUCKET, previewPath });
+        return new NextResponse(cachedBlob.stream(), {
+          status: 200,
+          headers: {
+            "Content-Type": contentTypeFor("step"),
+            "Content-Disposition": buildContentDisposition(disposition, filename),
+            "Cache-Control": "no-store",
+          },
+        });
+      }
 
-      if (error || !blob) {
+      // 2) Download source STEP file.
+      log("storage_download", { target: "source" });
+      const { data: stepBlob, error: stepDownloadError } = await supabaseServer.storage.from(bucket).download(path);
+      if (stepDownloadError || !stepBlob) {
+        log("response", {
+          source: "source_not_found",
+          error: safeErrorForLog(stepDownloadError),
+        });
         return NextResponse.json(
           {
-            error: "edge_conversion_failed",
-            reason: "preview_download_failed",
+            error: "source_not_found",
+            bucket,
+            path,
             requestId,
-            edgeStatus,
+          },
+          { status: 404 },
+        );
+      }
+      if (typeof stepBlob.size === "number" && stepBlob.size > MAX_PREVIEW_BYTES) {
+        log("response", { source: "source_too_large", bytes: stepBlob.size });
+        return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
+      }
+
+      const stepBytes = new Uint8Array(await stepBlob.arrayBuffer());
+
+      // 3) Convert STEP -> STL (Node runtime).
+      log("convert_step_to_stl", { bytes: stepBytes.byteLength });
+      const { convertStepToBinaryStl } = await import("@/server/cad/stepToStl");
+      const converted = await convertStepToBinaryStl(stepBytes);
+      if (!converted.stl || converted.stl.byteLength <= 0) {
+        log("response", { source: "conversion_failed", meshes: converted.meshes, triangles: converted.triangles });
+        return NextResponse.json(
+          {
+            error: "conversion_failed",
+            userMessage: `Unable to generate a STEP preview for this file. RequestId: ${requestId}`,
+            requestId,
           },
           { status: 502 },
         );
       }
 
-      if (typeof blob.size === "number" && blob.size > MAX_PREVIEW_BYTES) {
-        return NextResponse.json({ error: "preview_too_large", requestId }, { status: 413 });
+      // 4) Upload STL preview for cache.
+      log("storage_upload", {
+        previewBucket: STEP_PREVIEW_BUCKET,
+        previewPath,
+        stlBytes: converted.stl.byteLength,
+        meshes: converted.meshes,
+        triangles: converted.triangles,
+      });
+      const { error: uploadError } = await supabaseServer.storage
+        .from(STEP_PREVIEW_BUCKET)
+        .upload(previewPath, new Blob([converted.stl], { type: "model/stl" }), {
+          contentType: "model/stl",
+          upsert: true,
+        });
+      if (uploadError) {
+        // Non-fatal: still return the STL for this request (preview caching failed).
+        log("storage_upload", { ok: false, error: safeErrorForLog(uploadError) });
+      } else {
+        log("storage_upload", { ok: true });
       }
 
-      const filename = `${(path.split("/").pop() ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
-      return new NextResponse(blob.stream(), {
+      // 5) Stream response in the format expected by ThreeCadViewer (binary STL).
+      const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
+      log("response", {
+        source: "converted",
+        previewBucket: STEP_PREVIEW_BUCKET,
+        previewPath,
+        stlBytes: converted.stl.byteLength,
+      });
+      return new NextResponse(converted.stl, {
         status: 200,
         headers: {
           "Content-Type": contentTypeFor("step"),
@@ -553,24 +326,13 @@ export async function GET(req: NextRequest) {
           "Cache-Control": "no-store",
         },
       });
-    } catch (edgeInvokeThrown) {
-      const thrownText = edgeInvokeThrown instanceof Error ? edgeInvokeThrown.message : String(edgeInvokeThrown);
-      edgeBodyPreview = truncateText(thrownText, 500);
-      console.log("[cad-preview] step-to-stl invoke threw", {
-        rid: requestId,
-        functionName,
-        supabaseHost,
-        edgeUrl,
-        edgeStatus,
-        edgeBodyPreview,
-        edgeError: safeErrorForLog(edgeInvokeThrown),
-      });
+    } catch (err) {
+      log("response", { source: "exception", error: safeErrorForLog(err) });
       return NextResponse.json(
         {
-          error: "edge_conversion_failed",
+          error: "step_preview_failed",
+          userMessage: `STEP preview failed. RequestId: ${requestId}`,
           requestId,
-          edgeStatus,
-          edgeBodyPreview,
         },
         { status: 502 },
       );
