@@ -142,6 +142,8 @@ type PreviewAttemptDiagnostics = {
   contentType: string | null;
   bytes: number;
   errorText: string | null;
+  requestId?: string | null;
+  edgeStatus?: number | null;
   attemptedAt: number;
 };
 
@@ -522,6 +524,17 @@ export default function UploadBox({
         });
         const ct = res.headers.get("content-type");
         const errorText = !res.ok ? await res.clone().text().catch(() => "") : null;
+        let requestId: string | null = null;
+        let edgeStatus: number | null = null;
+        if (!res.ok && errorText) {
+          try {
+            const parsed = JSON.parse(errorText) as any;
+            requestId = typeof parsed?.requestId === "string" ? parsed.requestId : null;
+            edgeStatus = typeof parsed?.edgeStatus === "number" ? parsed.edgeStatus : null;
+          } catch {
+            // ignore
+          }
+        }
         const buf = await res.arrayBuffer().catch(() => new ArrayBuffer(0));
         setPreviewDiagnostics((prev) => ({
           ...prev,
@@ -531,6 +544,8 @@ export default function UploadBox({
             contentType: ct,
             bytes: buf.byteLength,
             errorText: res.ok ? null : errorText || null,
+            requestId,
+            edgeStatus,
             attemptedAt: Date.now(),
           },
         }));
@@ -543,6 +558,8 @@ export default function UploadBox({
             contentType: null,
             bytes: 0,
             errorText: e instanceof Error ? e.message : String(e),
+            requestId: null,
+            edgeStatus: null,
             attemptedAt: Date.now(),
           },
         }));
@@ -1884,6 +1901,22 @@ export default function UploadBox({
                               {selectedPreviewDiagnostics.ok ? " (ok)" : " (error)"}
                             </div>
                           </div>
+                          {selectedPreviewDiagnostics.requestId ? (
+                            <div>
+                              <div className="text-[11px] text-muted">requestId</div>
+                              <div className="break-all text-slate-100">
+                                {selectedPreviewDiagnostics.requestId}
+                              </div>
+                            </div>
+                          ) : null}
+                          {typeof selectedPreviewDiagnostics.edgeStatus === "number" ? (
+                            <div>
+                              <div className="text-[11px] text-muted">edgeStatus (if any)</div>
+                              <div className="text-slate-100">
+                                {selectedPreviewDiagnostics.edgeStatus}
+                              </div>
+                            </div>
+                          ) : null}
                           <div>
                             <div className="text-[11px] text-muted">content-type</div>
                             <div className="break-all text-slate-100">

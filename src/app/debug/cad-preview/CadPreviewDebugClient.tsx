@@ -53,6 +53,19 @@ export function CadPreviewDebugClient({
       });
 
       const errorText = !res.ok ? await res.clone().text().catch(() => "") : null;
+      let requestId: string | null = null;
+      let edgeStatus: number | null = null;
+      let edgeBodyPreview: string | null = null;
+      if (!res.ok && errorText) {
+        try {
+          const parsed = JSON.parse(errorText) as any;
+          requestId = typeof parsed?.requestId === "string" ? parsed.requestId : null;
+          edgeStatus = typeof parsed?.edgeStatus === "number" ? parsed.edgeStatus : null;
+          edgeBodyPreview = typeof parsed?.edgeBodyPreview === "string" ? parsed.edgeBodyPreview : null;
+        } catch {
+          // ignore
+        }
+      }
       const buf = await res.arrayBuffer().catch(() => new ArrayBuffer(0));
 
       const blobUrl = URL.createObjectURL(
@@ -65,6 +78,9 @@ export function CadPreviewDebugClient({
           {
             ok: res.ok,
             status: res.status,
+            requestId,
+            edgeStatus,
+            edgeBodyPreview,
             headers,
             bytes: buf.byteLength,
             errorText: errorText || null,
