@@ -2,14 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { QuoteFileViewer } from "../QuoteFileViewer";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { CadPreviewModal } from "@/components/shared/CadPreviewModal";
+import type { CadKind } from "@/components/ThreeCadViewer";
+import { classifyCadFileType } from "@/lib/cadRendering";
 
 export type QuoteFileItem = {
   id: string;
   label: string;
   fileName?: string | null;
   signedUrl: string | null;
+  cadKind?: CadKind | null;
+  storageSource?: { bucket: string; path: string; token?: string | null } | null;
   fallbackMessage?: string;
 };
 
@@ -26,6 +30,13 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
     () => files.find((file) => file.id === activeFileId) ?? null,
     [activeFileId, files],
   );
+  const activeCadKind = useMemo(() => {
+    if (!activeFile) return null;
+    if (activeFile.cadKind) return activeFile.cadKind;
+    const name = activeFile.fileName ?? activeFile.label;
+    const info = classifyCadFileType({ filename: name, extension: null });
+    return info.ok ? info.type : null;
+  }, [activeFile]);
 
   const closeModal = useCallback(() => {
     setActiveFileId(null);
@@ -97,19 +108,29 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
           )}
         </div>
 
-        {activeFile && (
-          <QuoteFileViewerModal file={activeFile} onClose={closeModal} />
-        )}
+        {activeFile ? (
+          activeFile.storageSource && activeCadKind ? (
+            <CadPreviewModal
+              storageSource={activeFile.storageSource}
+              filename={activeFile.fileName ?? activeFile.label}
+              cadKind={activeCadKind}
+              title="3D Preview"
+              onClose={closeModal}
+            />
+          ) : (
+            <QuoteFileUnsupportedModal file={activeFile} onClose={closeModal} />
+          )
+        ) : null}
       </section>
     );
 }
 
-type QuoteFileViewerModalProps = {
+type QuoteFileUnsupportedModalProps = {
   file: QuoteFileItem;
   onClose: () => void;
 };
 
-function QuoteFileViewerModal({ file, onClose }: QuoteFileViewerModalProps) {
+function QuoteFileUnsupportedModal({ file, onClose }: QuoteFileUnsupportedModalProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocusedElement = useRef<HTMLElement | null>(null);
 
@@ -180,11 +201,16 @@ function QuoteFileViewerModal({ file, onClose }: QuoteFileViewerModalProps) {
           </button>
         </div>
         <div className="px-6 py-6">
-          <QuoteFileViewer
-            fileName={file.fileName ?? file.label}
-            fileUrl={file.signedUrl}
-            fallbackMessage={file.fallbackMessage}
-          />
+          <div className="flex h-[420px] items-center justify-center rounded-2xl border border-slate-800 bg-black/20 px-6 text-center">
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-100">
+                Preview is not available for this file
+              </p>
+              <p className="text-sm text-slate-300">
+                {file.fallbackMessage ?? "You can still download the original file."}
+              </p>
+            </div>
+          </div>
         </div>
         <div className="flex justify-end gap-3 border-t border-slate-900 px-6 py-4">
           <button

@@ -163,7 +163,9 @@ export default async function SupplierQuoteDetailPage({
     );
   }
 
-  const workspaceResult = await loadQuoteWorkspaceData(quoteId);
+  const workspaceResult = await loadQuoteWorkspaceData(quoteId, {
+    viewerUserId: user.id,
+  });
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[supplier quote] load failed", {
       quoteId,
