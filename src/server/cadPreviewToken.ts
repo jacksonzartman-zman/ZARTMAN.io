@@ -8,6 +8,19 @@ type PreviewTokenPayloadV1 = {
   exp: number; // unix seconds
 };
 
+type PreviewTokenPayloadV2 = {
+  v: 2;
+  uid: string;
+  b: string;
+  p: string;
+  exp: number; // unix seconds
+  // Optional metadata to help server resolve alternate storage keys.
+  qid?: string; // quote id
+  fn?: string; // filename hint
+};
+
+type PreviewTokenPayload = PreviewTokenPayloadV1 | PreviewTokenPayloadV2;
+
 function base64UrlEncode(input: string | Uint8Array): string {
   const buf = typeof input === "string" ? Buffer.from(input, "utf8") : Buffer.from(input);
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
@@ -51,14 +64,22 @@ export function signPreviewToken(input: {
   bucket: string;
   path: string;
   exp: number; // unix seconds
+  quoteId?: string | null;
+  filename?: string | null;
 }): string {
-  const payload: PreviewTokenPayloadV1 = {
-    v: 1,
+  const base: Omit<PreviewTokenPayloadV2, "v"> = {
     uid: normalizeId(input.userId),
     b: normalizeId(input.bucket),
     p: normalizePath(input.path),
     exp: typeof input.exp === "number" && Number.isFinite(input.exp) ? input.exp : 0,
+    qid: normalizeId(input.quoteId),
+    fn: normalizeId(input.filename),
   };
+  if (!base.qid) delete (base as any).qid;
+  if (!base.fn) delete (base as any).fn;
+
+  const payload: PreviewTokenPayload =
+    base.qid || base.fn ? { v: 2, ...base } : { v: 1, ...base };
 
   if (!payload.uid || !payload.b || !payload.p || payload.exp <= 0) {
     throw new Error("invalid_preview_token_payload");
@@ -76,7 +97,7 @@ export function verifyPreviewToken(input: {
   bucket: string;
   path: string;
   nowSeconds?: number;
-}): { ok: true; payload: PreviewTokenPayloadV1 } | { ok: false; reason: string } {
+}): { ok: true; payload: PreviewTokenPayload } | { ok: false; reason: string } {
   const raw = typeof input.token === "string" ? input.token.trim() : "";
   const parts = raw.split(".");
   if (parts.length !== 2) return { ok: false, reason: "token_format" };
@@ -100,14 +121,16 @@ export function verifyPreviewToken(input: {
   const decoded = base64UrlDecodeToString(payloadB64);
   if (!decoded) return { ok: false, reason: "token_payload_decode" };
 
-  let payload: PreviewTokenPayloadV1 | null = null;
+  let payload: PreviewTokenPayload | null = null;
   try {
-    payload = JSON.parse(decoded) as PreviewTokenPayloadV1;
+    payload = JSON.parse(decoded) as PreviewTokenPayload;
   } catch {
     payload = null;
   }
 
-  if (!payload || payload.v !== 1) return { ok: false, reason: "token_payload" };
+  if (!payload || (payload.v !== 1 && payload.v !== 2)) {
+    return { ok: false, reason: "token_payload" };
+  }
 
   const now =
     typeof input.nowSeconds === "number" && Number.isFinite(input.nowSeconds)
@@ -126,14 +149,27 @@ export function verifyPreviewToken(input: {
   if (bkt !== normalizeId(input.bucket)) return { ok: false, reason: "token_bucket_mismatch" };
   if (pth !== normalizePath(input.path)) return { ok: false, reason: "token_path_mismatch" };
 
-  return { ok: true, payload: { ...payload, uid, b: bkt, p: pth } };
+  const qid = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).qid) : "";
+  const fn = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).fn) : "";
+  const normalizedPayload: PreviewTokenPayload =
+    payload.v === 2
+      ? {
+          ...(payload as PreviewTokenPayloadV2),
+          uid,
+          b: bkt,
+          p: pth,
+          ...(qid ? { qid } : {}),
+          ...(fn ? { fn } : {}),
+        }
+      : { ...(payload as PreviewTokenPayloadV1), uid, b: bkt, p: pth };
+  return { ok: true, payload: normalizedPayload };
 }
 
 export function verifyPreviewTokenForUser(input: {
   token: string;
   userId: string;
   nowSeconds?: number;
-}): { ok: true; payload: PreviewTokenPayloadV1 } | { ok: false; reason: string } {
+}): { ok: true; payload: PreviewTokenPayload } | { ok: false; reason: string } {
   const raw = typeof input.token === "string" ? input.token.trim() : "";
   const parts = raw.split(".");
   if (parts.length !== 2) return { ok: false, reason: "token_format" };
@@ -157,14 +193,16 @@ export function verifyPreviewTokenForUser(input: {
   const decoded = base64UrlDecodeToString(payloadB64);
   if (!decoded) return { ok: false, reason: "token_payload_decode" };
 
-  let payload: PreviewTokenPayloadV1 | null = null;
+  let payload: PreviewTokenPayload | null = null;
   try {
-    payload = JSON.parse(decoded) as PreviewTokenPayloadV1;
+    payload = JSON.parse(decoded) as PreviewTokenPayload;
   } catch {
     payload = null;
   }
 
-  if (!payload || payload.v !== 1) return { ok: false, reason: "token_payload" };
+  if (!payload || (payload.v !== 1 && payload.v !== 2)) {
+    return { ok: false, reason: "token_payload" };
+  }
 
   const now =
     typeof input.nowSeconds === "number" && Number.isFinite(input.nowSeconds)
@@ -180,6 +218,19 @@ export function verifyPreviewTokenForUser(input: {
   if (!uid || !bkt || !pth) return { ok: false, reason: "token_payload" };
   if (uid !== normalizeId(input.userId)) return { ok: false, reason: "token_user_mismatch" };
 
-  return { ok: true, payload: { ...payload, uid, b: bkt, p: pth } };
+  const qid = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).qid) : "";
+  const fn = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).fn) : "";
+  const normalizedPayload: PreviewTokenPayload =
+    payload.v === 2
+      ? {
+          ...(payload as PreviewTokenPayloadV2),
+          uid,
+          b: bkt,
+          p: pth,
+          ...(qid ? { qid } : {}),
+          ...(fn ? { fn } : {}),
+        }
+      : { ...(payload as PreviewTokenPayloadV1), uid, b: bkt, p: pth };
+  return { ok: true, payload: normalizedPayload };
 }
 

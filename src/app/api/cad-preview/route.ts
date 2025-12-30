@@ -139,6 +139,52 @@ function storageErrorForLog(err: unknown): { message?: string; status?: number; 
   return { message: String(err) };
 }
 
+type TokenStorageHints = {
+  quoteId: string | null;
+  filename: string | null;
+};
+
+function isStorageObjectNotFound(err: unknown): boolean {
+  const info = storageErrorForLog(err);
+  const message = (info?.message ?? (err instanceof Error ? err.message : "")).toLowerCase();
+  return message.includes("object not found") || message.includes("not found");
+}
+
+function basenameOfPath(path: string): string {
+  const normalized = normalizePath(path);
+  const parts = normalized.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? normalized;
+}
+
+function buildAlternateStorageKeys(input: { path: string; quoteId: string | null }): string[] {
+  const path = normalizePath(input.path);
+  const quoteId = normalizeId(input.quoteId);
+  const base = basenameOfPath(path);
+  const candidates: string[] = [];
+
+  if (quoteId) {
+    candidates.push(
+      `quote_uploads/${quoteId}/${path}`,
+      `quote_uploads/${quoteId}/uploads/${base}`,
+      `quotes/${quoteId}/${path}`,
+      `quotes/${quoteId}/uploads/${base}`,
+      `${quoteId}/${path}`,
+      `${quoteId}/uploads/${base}`,
+    );
+  }
+  candidates.push(`uploads/${base}`);
+
+  // De-dupe and normalize slashes.
+  const unique = Array.from(
+    new Set(
+      candidates
+        .map((c) => c.replace(/^\/+/, "").replace(/\/{2,}/g, "/"))
+        .filter((c) => c && c !== path),
+    ),
+  );
+  return unique;
+}
+
 type SignedUrlDownloadResult = {
   bytes: Uint8Array;
   contentType: string | null;
@@ -225,6 +271,56 @@ async function downloadViaSignedUrl(
   const contentType = res.headers.get("content-type");
   const ab = await res.arrayBuffer();
   return { bytes: new Uint8Array(ab), contentType };
+}
+
+async function downloadViaSignedUrlWithFallback(
+  supabase: SupabaseClient,
+  bucket: string,
+  path: string,
+  expiresSeconds: number,
+  rid: string,
+  target: string,
+  hints: TokenStorageHints,
+): Promise<SignedUrlDownloadResult & { resolvedPath: string }> {
+  try {
+    const downloaded = await downloadViaSignedUrl(supabase, bucket, path, expiresSeconds, rid, target);
+    return { ...downloaded, resolvedPath: path };
+  } catch (err) {
+    // Only attempt deterministic fallbacks for "not found" cases.
+    if (!isStorageObjectNotFound(err)) {
+      throw err;
+    }
+    const alternates = buildAlternateStorageKeys({ path, quoteId: hints.quoteId });
+    if (alternates.length === 0) {
+      throw err;
+    }
+    for (const candidate of alternates) {
+      try {
+        const downloaded = await downloadViaSignedUrl(
+          supabase,
+          bucket,
+          candidate,
+          expiresSeconds,
+          rid,
+          `${target}_alt`,
+        );
+        console.log("[cad-preview]", {
+          rid,
+          stage: "storage_path_resolved",
+          bucket,
+          requestedPath: path,
+          resolvedPath: candidate,
+          target,
+        });
+        return { ...downloaded, resolvedPath: candidate };
+      } catch (candidateErr) {
+        if (!isStorageObjectNotFound(candidateErr)) {
+          throw candidateErr;
+        }
+      }
+    }
+    throw err;
+  }
 }
 
 function getServiceSupabase(input: { requestId: string }):
@@ -324,6 +420,7 @@ export async function GET(req: NextRequest) {
   const storageSupabase = storageClientResult.client;
 
   let decodedBucketBeforeNormalize: string | null = null;
+  const tokenHints: TokenStorageHints = { quoteId: null, filename: null };
   if (token) {
     const verified = verifyPreviewTokenForUser({ token, userId: user.id });
     if (!verified.ok) {
@@ -339,12 +436,21 @@ export async function GET(req: NextRequest) {
     decodedBucketBeforeNormalize = verified.payload.b;
     bucket = normalizeBucket(verified.payload.b);
     path = verified.payload.p;
+    tokenHints.quoteId =
+      typeof (verified.payload as any)?.qid === "string"
+        ? normalizeId((verified.payload as any).qid)
+        : null;
+    tokenHints.filename =
+      typeof (verified.payload as any)?.fn === "string"
+        ? normalizeId((verified.payload as any).fn)
+        : null;
     log("token_decoded", {
       bucketBefore: decodedBucketBeforeNormalize,
       bucketAfter: bucket,
       path,
       kind: kindParam || null,
       disposition,
+      quoteId: tokenHints.quoteId,
     });
   } else if (!isAdmin) {
     log("start", {
@@ -413,12 +519,23 @@ export async function GET(req: NextRequest) {
       if (disposition === "attachment") {
         if (tokenPresent) {
           try {
-            const downloaded = await downloadViaSignedUrl(storageSupabase, bucket, path, 60, requestId, "source_attachment");
+            const downloaded = await downloadViaSignedUrlWithFallback(
+              storageSupabase,
+              bucket,
+              path,
+              60,
+              requestId,
+              "source_attachment",
+              tokenHints,
+            );
             if (downloaded.bytes.byteLength > MAX_PREVIEW_BYTES) {
               logStep("response", { source: "source_too_large", bytes: downloaded.bytes.byteLength });
               return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
             }
-            const safeName = fileName && fileName.trim() ? fileName.trim() : "file.step";
+            const safeName =
+              (fileName && fileName.trim()
+                ? fileName.trim()
+                : basenameOfPath(downloaded.resolvedPath) || "file.step") || "file.step";
             const body = downloaded.bytes.buffer.slice(
               downloaded.bytes.byteOffset,
               downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
@@ -608,14 +725,24 @@ export async function GET(req: NextRequest) {
 
       // 2) Download source STEP file.
       let stepBytes: Uint8Array;
+      let resolvedSourcePath = path;
       if (tokenPresent) {
         try {
-          const downloaded = await downloadViaSignedUrl(storageSupabase, bucket, path, 60, requestId, "source");
+          const downloaded = await downloadViaSignedUrlWithFallback(
+            storageSupabase,
+            bucket,
+            path,
+            60,
+            requestId,
+            "source",
+            tokenHints,
+          );
           if (downloaded.bytes.byteLength > MAX_PREVIEW_BYTES) {
             logStep("response", { source: "source_too_large", bytes: downloaded.bytes.byteLength });
             return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
           }
           stepBytes = downloaded.bytes;
+          resolvedSourcePath = downloaded.resolvedPath;
         } catch (err) {
           logStep("response", { source: "source_not_found", error: safeErrorForLog(err) });
           return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
@@ -666,9 +793,19 @@ export async function GET(req: NextRequest) {
       // supabase-js upload body should be Node-safe (Uint8Array/ArrayBuffer), not a Blob.
       // Buffer is a Uint8Array, but we pass an explicit view to keep types happy in Next.js Node runtime.
       const stlPayload = new Uint8Array(converted.stl.buffer, converted.stl.byteOffset, converted.stl.byteLength);
+      // If we resolved the source path via fallbacks, prefer caching under the resolved preview key.
+      const previewPathForUpload =
+        resolvedSourcePath !== path
+          ? buildStepStlPreviewPath({
+              sourceBucket: bucket,
+              sourcePath: resolvedSourcePath,
+              sourceFileName: fileName,
+            })
+          : canonicalPreviewPath;
+
       const { error: uploadError } = await storageSupabase.storage
         .from(STEP_PREVIEW_BUCKET)
-        .upload(canonicalPreviewPath, stlPayload, {
+        .upload(previewPathForUpload, stlPayload, {
           contentType: "model/stl",
           upsert: true,
         });
@@ -687,7 +824,7 @@ export async function GET(req: NextRequest) {
       logStep("response", {
         source: "converted",
         previewBucket: STEP_PREVIEW_BUCKET,
-        previewPath: canonicalPreviewPath,
+        previewPath: previewPathForUpload,
         stlBytes: converted.stl.byteLength,
       });
       // NextResponse body must be Web-compatible (Uint8Array/ArrayBuffer), not Node Buffer.
@@ -715,11 +852,19 @@ export async function GET(req: NextRequest) {
 
   if (tokenPresent) {
     try {
-      const downloaded = await downloadViaSignedUrl(storageSupabase, bucket, path, 60, requestId, "source");
+      const downloaded = await downloadViaSignedUrlWithFallback(
+        storageSupabase,
+        bucket,
+        path,
+        60,
+        requestId,
+        "source",
+        tokenHints,
+      );
       if (downloaded.bytes.byteLength > MAX_PREVIEW_BYTES) {
         return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
       }
-      const filename = path.split("/").pop() ?? "file";
+      const filename = basenameOfPath(downloaded.resolvedPath) || "file";
       const body = downloaded.bytes.buffer.slice(
         downloaded.bytes.byteOffset,
         downloaded.bytes.byteOffset + downloaded.bytes.byteLength,

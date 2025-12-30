@@ -110,29 +110,16 @@ export async function getQuoteFilePreviews(
     let files: FileStorageRow[] = [];
     if (includeFilesTable) {
       try {
-        // Prefer canonical storage fields; fall back to legacy schema if needed.
-        const queryNew = () =>
-          supabaseServer
-            .from("files")
-            .select("id,storage_path,storage_bucket_id,filename,mime")
-            .eq("quote_id", quote.id)
-            .order("created_at", { ascending: true });
-        const queryLegacy = () =>
-          supabaseServer
-            .from("files")
-            .select("id,storage_path,bucket_id,filename,mime")
-            .eq("quote_id", quote.id)
-            .order("created_at", { ascending: true });
+        // IMPORTANT: Do not reference non-existent columns in select lists.
+        // Use `*` and normalize in-code across schema variants.
+        const result = await supabaseServer
+          .from("files")
+          .select("*")
+          .eq("quote_id", quote.id)
+          .order("created_at", { ascending: true });
 
-        const first = await queryNew();
-        let data = first.data as FileStorageRow[] | null;
-        let filesError = first.error;
-
-        if (filesError && isMissingTableOrColumnError(filesError)) {
-          const retry = await queryLegacy();
-          data = retry.data as FileStorageRow[] | null;
-          filesError = retry.error;
-        }
+        const data = result.data as FileStorageRow[] | null;
+        const filesError = result.error;
 
         if (filesError) {
           const serializedError = serializeSupabaseError(filesError);
@@ -177,28 +164,16 @@ export async function getQuoteFilePreviews(
     if (uploadOverrideProvided) {
       uploadFile = options?.uploadFileOverride ?? null;
     } else if (quote.upload_id) {
-      // Prefer canonical storage fields when present; fall back to legacy uploads schema.
-      const queryNew = () =>
-        supabaseServer
-          .from("uploads")
-          .select("id,file_name,file_path,mime_type,storage_bucket_id,storage_path,bucket_id")
-          .eq("id", quote.upload_id)
-          .maybeSingle<UploadFileReference>();
-      const queryLegacy = () =>
-        supabaseServer
-          .from("uploads")
-          .select("id,file_name,file_path,mime_type")
-          .eq("id", quote.upload_id)
-          .maybeSingle<UploadFileReference>();
+      // IMPORTANT: Do not reference non-existent columns in select lists.
+      // Use `*` and normalize in-code across schema variants.
+      const first = await supabaseServer
+        .from("uploads")
+        .select("*")
+        .eq("id", quote.upload_id)
+        .maybeSingle<UploadFileReference>();
 
-      const first = await queryNew();
-      let uploadData = first.data as UploadFileReference | null;
-      let uploadError = first.error;
-      if (uploadError && isMissingTableOrColumnError(uploadError)) {
-        const retry = await queryLegacy();
-        uploadData = retry.data as UploadFileReference | null;
-        uploadError = retry.error;
-      }
+      const uploadData = first.data as UploadFileReference | null;
+      const uploadError = first.error;
 
       if (uploadError) {
         console.error(
@@ -241,7 +216,7 @@ export async function getQuoteFilePreviews(
       }
 
       const preview = candidate
-        ? await getPreviewForCandidate(candidate, previewCache, options)
+        ? await getPreviewForCandidate(candidate, previewCache, quote.id, options)
         : {
             signedUrl: null,
             fileName: label,
@@ -268,7 +243,7 @@ export async function getQuoteFilePreviews(
         candidate.fileName ??
         extractFileNameFromPath(candidate.storagePath) ??
         `File ${entries.length + 1}`;
-      const preview = await getPreviewForCandidate(candidate, previewCache, options);
+      const preview = await getPreviewForCandidate(candidate, previewCache, quote.id, options);
       entries.push({
         id: `${candidate.storagePath}-${index}`,
         label: fallbackLabel,
@@ -322,6 +297,7 @@ export function buildQuoteFilesFromRow(
 async function getPreviewForCandidate(
   candidate: CadFileCandidate,
   cache: Map<string, CadPreviewResult>,
+  quoteId: string,
   options?: QuoteFilePreviewOptions,
 ): Promise<CadPreviewResult> {
   const cacheKey = `${candidate.bucketId ?? "default"}:${candidate.storagePath}`;
@@ -375,7 +351,8 @@ async function getPreviewForCandidate(
       : null;
   const exp = Math.floor(Date.now() / 1000) + CAD_SIGNED_URL_TTL_SECONDS;
   const signedBucket = canonicalizeCadBucket(normalized.bucket) || normalized.bucket;
-  const signedPath = normalized.path;
+  let signedPath = normalized.path;
+  const pathBeforeProbe = signedPath;
   if (viewerUserId) {
     const shortId = shortLogId();
     const source = candidate.source ?? null;
@@ -385,25 +362,32 @@ async function getPreviewForCandidate(
         : null;
     const usedFieldNames = Array.isArray(source?.usedFieldNames) ? source!.usedFieldNames : [];
     const filename = inferredFileName ?? null;
-    console.info("[portal-preview-sign]", {
-      shortId,
-      quoteFileId,
-      bucket: signedBucket,
-      path: signedPath,
-      usedFieldNames,
-      filename,
-    });
-
     const probeEnabled = process.env.PORTAL_PREVIEW_SIGN_PROBE === "1";
+    let probe: ProbeMatchResult | null = null;
     if (probeEnabled) {
-      void probeStoragePrefix({
+      probe = await probeStorageForKeyMatch({
         shortId,
+        quoteId,
         quoteFileId,
         bucket: signedBucket,
         path: signedPath,
         filename,
       });
+      if (probe.matchedKey && probe.matchCount === 1) {
+        signedPath = probe.matchedKey;
+      }
     }
+
+    console.info("[portal-preview-sign]", {
+      shortId,
+      quoteId,
+      quoteFileId,
+      bucket: signedBucket,
+      path: signedPath,
+      pathBeforeProbe: probeEnabled ? pathBeforeProbe : undefined,
+      usedFieldNames,
+      filename,
+    });
   }
   const token = viewerUserId
     ? signPreviewToken({
@@ -411,6 +395,8 @@ async function getPreviewForCandidate(
         bucket: signedBucket,
         path: signedPath,
         exp,
+        quoteId,
+        filename: inferredFileName ?? null,
       })
     : null;
 
@@ -593,57 +579,105 @@ export function extractFileNameFromPath(path: string): string | undefined {
   return segments[segments.length - 1] || undefined;
 }
 
-async function probeStoragePrefix(input: {
+type ProbeMatchResult = {
+  triedPrefixes: string[];
+  matchCount: number;
+  matchedKey: string | null;
+};
+
+async function probeStorageForKeyMatch(input: {
   shortId: string;
+  quoteId: string;
   quoteFileId: string | null;
   bucket: string;
   path: string;
   filename: string | null;
-}): Promise<void> {
+}): Promise<ProbeMatchResult> {
   // Safety: never probe in prod unless explicitly enabled.
   if (process.env.NODE_ENV === "production" && process.env.PORTAL_PREVIEW_SIGN_PROBE !== "1") {
-    return;
+    return { triedPrefixes: [], matchCount: 0, matchedKey: null };
   }
   if (!isAllowedCadBucket(input.bucket)) {
-    return;
+    return { triedPrefixes: [], matchCount: 0, matchedKey: null };
   }
 
-  const pathSegments = input.path.split("/").filter(Boolean);
-  if (pathSegments.length === 0) return;
-  const baseName = (pathSegments[pathSegments.length - 1] ?? "").trim();
-  const prefixSegments = pathSegments.slice(0, Math.min(2, Math.max(0, pathSegments.length - 1)));
-  const prefix = prefixSegments.join("/");
+  const quoteId = typeof input.quoteId === "string" ? input.quoteId.trim() : "";
+  const basename = extractFileNameFromPath(input.path) ?? "";
+  const filenameHint = (input.filename ?? basename).trim();
+  const needle = filenameHint.toLowerCase();
 
+  const prefixes: string[] = ["uploads"];
+  if (quoteId) {
+    prefixes.push(
+      `quote_uploads/${quoteId}`,
+      `quote_uploads/${quoteId}/uploads`,
+      `quotes/${quoteId}`,
+      `quotes/${quoteId}/uploads`,
+    );
+  }
+
+  const triedPrefixes: string[] = [];
+  const matches: string[] = [];
   try {
-    const { data, error } = await supabaseServer.storage.from(input.bucket).list(prefix, {
-      limit: 50,
-      offset: 0,
-      sortBy: { column: "name", order: "asc" },
-    });
-    const items = Array.isArray(data) ? data : [];
-    const haystack = (input.filename ?? baseName).toLowerCase();
-    const matches = items.filter((it: any) => {
-      const name = typeof it?.name === "string" ? it.name : "";
-      return haystack ? name.toLowerCase().includes(haystack) : false;
-    });
+    for (const prefix of prefixes) {
+      triedPrefixes.push(prefix);
+      const { data, error } = await supabaseServer.storage.from(input.bucket).list(prefix, {
+        limit: 50,
+        offset: 0,
+        sortBy: { column: "name", order: "asc" },
+      });
+      if (error) {
+        console.info("[portal-preview-sign-probe]", {
+          shortId: input.shortId,
+          quoteId,
+          quoteFileId: input.quoteFileId,
+          bucket: input.bucket,
+          triedPrefixes,
+          prefix,
+          error: serializeSupabaseError(error),
+        });
+        continue;
+      }
+      const items = Array.isArray(data) ? data : [];
+      for (const it of items as any[]) {
+        const name = typeof it?.name === "string" ? it.name : "";
+        if (!name) continue;
+        const fullKey = `${prefix}/${name}`.replace(/\/{2,}/g, "/");
+        if (needle && fullKey.toLowerCase().includes(needle)) {
+          matches.push(fullKey);
+        }
+      }
+    }
+
+    const uniqueMatches = Array.from(new Set(matches));
+    const matchedKey = uniqueMatches.length === 1 ? uniqueMatches[0]! : null;
+
     console.info("[portal-preview-sign-probe]", {
       shortId: input.shortId,
+      quoteId,
       quoteFileId: input.quoteFileId,
       bucket: input.bucket,
-      probePrefix: prefix,
-      requestedBaseName: baseName || null,
-      filenameHint: input.filename,
-      listed: items.length,
-      matchCount: matches.length,
-      error: error ? serializeSupabaseError(error) : null,
+      triedPrefixes,
+      matchCount: uniqueMatches.length,
+      matchedKey,
+      filename: filenameHint || null,
     });
+
+    return {
+      triedPrefixes,
+      matchCount: uniqueMatches.length,
+      matchedKey,
+    };
   } catch (err) {
     console.info("[portal-preview-sign-probe]", {
       shortId: input.shortId,
+      quoteId,
       quoteFileId: input.quoteFileId,
       bucket: input.bucket,
+      triedPrefixes,
       probeFailed: true,
       error: serializeSupabaseError(err),
     });
+    return { triedPrefixes, matchCount: 0, matchedKey: null };
   }
 }
