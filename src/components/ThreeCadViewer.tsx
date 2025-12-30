@@ -101,6 +101,9 @@ function initializeThree(container: HTMLDivElement) {
   renderer.setSize(width, height, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.setClearColor(0x05070d, 1);
+  renderer.domElement.style.width = "100%";
+  renderer.domElement.style.height = "100%";
+  renderer.domElement.style.display = "block";
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 5000);
@@ -124,6 +127,25 @@ function initializeThree(container: HTMLDivElement) {
   container.appendChild(renderer.domElement);
 
   return { renderer, scene, camera, controls };
+}
+
+async function waitForNonZeroSize(container: HTMLElement): Promise<{ width: number; height: number }> {
+  let last = { width: 0, height: 0 };
+  const maxFrames = 30;
+
+  for (let i = 0; i < maxFrames; i += 1) {
+    const rect = container.getBoundingClientRect();
+    const width = Math.floor(rect.width || container.clientWidth || 0);
+    const height = Math.floor(rect.height || container.clientHeight || 0);
+    last = { width, height };
+    if (width > 0 && height > 0) {
+      return last;
+    }
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+  }
+
+  // Best-effort: return the latest measured size; callers should still clamp to >= 1.
+  return last;
 }
 
 function getContainerRenderSize(container: HTMLDivElement, renderer: THREE.WebGLRenderer) {
@@ -326,12 +348,6 @@ export function ThreeCadViewer({
   const fetchAbortRef = useRef<AbortController | null>(null);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const axesRef = useRef<THREE.AxesHelper | null>(null);
-  const lastViewRef = useRef<{
-    cameraPos: THREE.Vector3;
-    target: THREE.Vector3;
-    near: number;
-    far: number;
-  } | null>(null);
 
   const [showGrid, setShowGrid] = useState(false);
   const [showAxes, setShowAxes] = useState(false);
@@ -460,24 +476,23 @@ export function ThreeCadViewer({
     modelRootRef.current = null;
   };
 
-  const tryFit = (paddingFactor = 1.25) => {
+  const updateRendererToContainer = (rt: NonNullable<typeof runtimeRef.current>) => {
+    const { width, height } = getContainerRenderSize(rt.container, rt.renderer);
+    containerSizeRef.current = { width, height };
+    rt.renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
+    rt.renderer.setSize(width, height, false);
+    rt.camera.aspect = width / height;
+    rt.camera.updateProjectionMatrix();
+  };
+
+  const handleFit = () => {
     const rt = runtimeRef.current;
     const model = modelRootRef.current;
     if (!rt || !model) return;
-    const { width, height } = containerSizeRef.current;
-    if (!width || !height) return;
-    fitAndCenter(model, rt.camera, rt.controls, {
-      width,
-      height,
-      paddingFactor,
-      viewDir: new THREE.Vector3(1, 1, 1),
-    });
-    lastViewRef.current = {
-      cameraPos: rt.camera.position.clone(),
-      target: rt.controls.target.clone(),
-      near: rt.camera.near,
-      far: rt.camera.far,
-    };
+    updateRendererToContainer(rt);
+    model.updateWorldMatrix(true, true);
+    fitAndCenter(model, rt.camera, rt.controls, rt.renderer.domElement);
+    rt.controls.saveState();
   };
 
   useEffect(() => {
@@ -497,32 +512,16 @@ export function ThreeCadViewer({
 
     const { renderer, scene, camera, controls } = initializeThree(container);
 
-    // Optional scene helpers (toggled via overlay).
-    const grid = new THREE.GridHelper(2, 20, 0x334155, 0x1f2937);
-    // GridHelper.material is (Material | Material[]) depending on three version; treat as any.
-    const gridMat = grid.material as any;
-    if (gridMat) {
-      gridMat.transparent = true;
-      gridMat.opacity = 0.35;
-    }
-    grid.visible = false;
-    scene.add(grid);
-    gridRef.current = grid;
-
-    const axes = new THREE.AxesHelper(1.25);
-    axes.visible = false;
-    scene.add(axes);
-    axesRef.current = axes;
-
     const updateSize = (w: number, h: number) => {
       const width = Math.max(0, Math.floor(w));
       const height = Math.max(0, Math.floor(h));
       containerSizeRef.current = { width, height };
       if (width <= 0 || height <= 0) return;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      tryFit();
+      controls.update();
     };
 
     const resizeObserver =
@@ -627,12 +626,55 @@ export function ThreeCadViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep helper visibility in sync with overlay toggles.
+  // Keep helper presence in sync with overlay toggles.
   useEffect(() => {
-    if (gridRef.current) gridRef.current.visible = showGrid;
+    const rt = runtimeRef.current;
+    if (!rt) return;
+    if (showGrid) {
+      if (!gridRef.current) {
+        const grid = new THREE.GridHelper(2, 20, 0x334155, 0x1f2937);
+        // GridHelper.material is (Material | Material[]) depending on three version; treat as any.
+        const gridMat = grid.material as any;
+        if (gridMat) {
+          gridMat.transparent = true;
+          gridMat.opacity = 0.35;
+        }
+        gridRef.current = grid;
+      }
+      if (gridRef.current && !rt.scene.children.includes(gridRef.current)) {
+        rt.scene.add(gridRef.current);
+      }
+      return;
+    }
+
+    if (gridRef.current) {
+      rt.scene.remove(gridRef.current);
+      gridRef.current.geometry?.dispose?.();
+      const mat = (gridRef.current.material as unknown) as THREE.Material | THREE.Material[];
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
+      else mat?.dispose?.();
+      gridRef.current = null;
+    }
   }, [showGrid]);
   useEffect(() => {
-    if (axesRef.current) axesRef.current.visible = showAxes;
+    const rt = runtimeRef.current;
+    if (!rt) return;
+    if (showAxes) {
+      if (!axesRef.current) {
+        axesRef.current = new THREE.AxesHelper(1.25);
+      }
+      if (axesRef.current && !rt.scene.children.includes(axesRef.current)) {
+        rt.scene.add(axesRef.current);
+      }
+      return;
+    }
+
+    if (axesRef.current) {
+      rt.scene.remove(axesRef.current);
+      axesRef.current.geometry?.dispose?.();
+      ((axesRef.current.material as unknown) as THREE.Material)?.dispose?.();
+      axesRef.current = null;
+    }
   }, [showAxes]);
 
   useEffect(() => {
@@ -807,18 +849,16 @@ export function ThreeCadViewer({
         rt.scene.add(centeredRoot);
         centeredRoot.updateWorldMatrix(true, true);
 
-        // Fit only once we have a real size. ResizeObserver will also re-fit on changes.
-        const { width, height } = containerSizeRef.current;
-        if (width > 0 && height > 0) {
-          tryFit(1.25);
-        } else {
-          const rect = rt.container.getBoundingClientRect();
-          const measured = { width: Math.floor(rect.width), height: Math.floor(rect.height) };
-          containerSizeRef.current = measured;
-          if (measured.width > 0 && measured.height > 0) {
-            tryFit(1.25);
-          }
-        }
+        // First-fit must wait until the container has a real size; then lock reset state.
+        const measured = await waitForNonZeroSize(rt.container);
+        containerSizeRef.current = {
+          width: Math.max(1, measured.width),
+          height: Math.max(1, measured.height),
+        };
+        updateRendererToContainer(rt);
+        centeredRoot.updateWorldMatrix(true, true);
+        fitAndCenter(centeredRoot, rt.camera, rt.controls, rt.renderer.domElement);
+        rt.controls.saveState();
 
         setViewerState({ status: "ready", cadKind: detectedCadKind, message: null, errorReason: null });
       } catch (e) {
@@ -888,7 +928,7 @@ export function ThreeCadViewer({
           <button
             type="button"
             className="pointer-events-auto rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-100 backdrop-blur hover:border-slate-600"
-            onClick={() => tryFit(1.25)}
+            onClick={handleFit}
             title="Fit model to view"
           >
             Fit
@@ -898,17 +938,11 @@ export function ThreeCadViewer({
             className="pointer-events-auto rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-100 backdrop-blur hover:border-slate-600"
             onClick={() => {
               const rt = runtimeRef.current;
-              const snapshot = lastViewRef.current;
-              if (!rt || !snapshot) return;
-              rt.camera.position.copy(snapshot.cameraPos);
-              rt.camera.near = snapshot.near;
-              rt.camera.far = snapshot.far;
-              rt.camera.updateProjectionMatrix();
-              rt.camera.lookAt(0, 0, 0);
-              rt.controls.target.copy(snapshot.target);
+              if (!rt) return;
+              rt.controls.reset();
               rt.controls.update();
             }}
-            title="Reset to the last fitted view"
+            title="Reset camera to last Fit"
           >
             Reset
           </button>

@@ -104,14 +104,21 @@ export async function GET(req: NextRequest) {
   const disposition: "inline" | "attachment" =
     dispositionRaw === "attachment" ? "attachment" : "inline";
 
-  console.log("[cad-preview] hit", {
-    hasToken: Boolean(token),
-    kind: kindParam || null,
-    ts: Date.now(),
-  });
-
   let isAdmin = false;
   const requestId = shortRequestId();
+  const log = (stage: string, extra?: Record<string, unknown>) => {
+    console.log("[cad-preview]", {
+      rid: requestId,
+      stage,
+      ...(extra ?? {}),
+    });
+  };
+  log("hit", {
+    hasToken: Boolean(token),
+    kind: kindParam || null,
+    disposition,
+    ts: Date.now(),
+  });
 
   // Consolidated intake preview path: token embeds bucket/path/exp/userId; kind passed explicitly.
   let bucket = normalizeId(req.nextUrl.searchParams.get("bucket"));
@@ -120,8 +127,7 @@ export async function GET(req: NextRequest) {
   // Allow cheap reachability pings without auth and without token.
   // (If bucket/path were provided, we still require auth/admin below.)
   if (!token && !bucket && !path) {
-    console.log("[cad-preview] start", {
-      rid: requestId,
+    log("start", {
       tokenPresent: false,
       bucket: null,
       path: null,
@@ -145,8 +151,7 @@ export async function GET(req: NextRequest) {
   if (token) {
     const verified = verifyPreviewTokenForUser({ token, userId: user.id });
     if (!verified.ok) {
-      console.log("[cad-preview] start", {
-        rid: requestId,
+      log("start", {
         tokenPresent: true,
         bucket: bucket || null,
         path: path || null,
@@ -157,9 +162,14 @@ export async function GET(req: NextRequest) {
     }
     bucket = verified.payload.b;
     path = verified.payload.p;
+    log("token_decoded", {
+      bucket,
+      path,
+      kind: kindParam || null,
+      disposition,
+    });
   } else if (!isAdmin) {
-    console.log("[cad-preview] start", {
-      rid: requestId,
+    log("start", {
       tokenPresent: false,
       bucket: bucket || null,
       path: path || null,
@@ -169,8 +179,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (!bucket || !path) {
-    console.log("[cad-preview] start", {
-      rid: requestId,
+    log("start", {
       tokenPresent: Boolean(token),
       bucket: bucket || null,
       path: path || null,
@@ -183,8 +192,7 @@ export async function GET(req: NextRequest) {
   if (token && isAdmin) {
     const verified = verifyPreviewToken({ token, userId: user.id, bucket, path });
     if (!verified.ok) {
-      console.log("[cad-preview] start", {
-        rid: requestId,
+      log("start", {
         tokenPresent: true,
         bucket,
         path,
@@ -196,27 +204,26 @@ export async function GET(req: NextRequest) {
   }
 
   const inferredKind = inferCadKind(path, kindParam);
-  console.log("[cad-preview] start", {
-    rid: requestId,
+  log("start", {
     tokenPresent: Boolean(token),
     bucket,
     path,
     kind: inferredKind ?? null,
+    disposition,
   });
 
   if (!inferredKind) {
-    return NextResponse.json({ error: "unsupported_kind" }, { status: 400 });
+    return NextResponse.json({ error: "unsupported_kind", requestId }, { status: 400 });
   }
 
   if (inferredKind === "step") {
     const fileName = path.split("/").pop() ?? null;
-    const log = (stage: string, extra?: Record<string, unknown>) => {
-      console.log("[cad-preview]", {
-        rid: requestId,
-        stage,
+    const logStep = (stage: string, extra?: Record<string, unknown>) => {
+      log(stage, {
         bucket,
         path,
         kind: "step",
+        disposition,
         ...(extra ?? {}),
       });
     };
@@ -226,13 +233,15 @@ export async function GET(req: NextRequest) {
       // - Inline: render a server-generated STL preview (cached in cad_previews).
       // - Attachment: download the original STEP source file (STL is preview-only).
       if (disposition === "attachment") {
-        log("storage_download", { target: "source_attachment" });
+        logStep("storage_download_start", { target: "source_attachment", bucket, path });
         const { data: stepBlob, error: stepDownloadError } = await supabaseServer.storage
           .from(bucket)
           .download(path);
         if (stepDownloadError || !stepBlob) {
-          log("response", {
-            source: "source_not_found",
+          logStep("storage_download_failed", {
+            target: "source_attachment",
+            bucket,
+            path,
             error: safeErrorForLog(stepDownloadError),
           });
           return NextResponse.json(
@@ -265,13 +274,19 @@ export async function GET(req: NextRequest) {
       });
 
       // 1) Cache hit: if preview exists, serve it directly.
-      log("storage_download", { target: "preview", previewBucket: STEP_PREVIEW_BUCKET, previewPath });
+      logStep("storage_download_start", {
+        target: "preview",
+        bucket: STEP_PREVIEW_BUCKET,
+        path: previewPath,
+        previewBucket: STEP_PREVIEW_BUCKET,
+        previewPath,
+      });
       const { data: cachedBlob, error: cachedError } = await supabaseServer.storage
         .from(STEP_PREVIEW_BUCKET)
         .download(previewPath);
       if (!cachedError && cachedBlob) {
         const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
-        log("response", { source: "cache_hit", previewBucket: STEP_PREVIEW_BUCKET, previewPath });
+        logStep("response", { source: "cache_hit", previewBucket: STEP_PREVIEW_BUCKET, previewPath });
         return new NextResponse(cachedBlob.stream(), {
           status: 200,
           headers: {
@@ -283,11 +298,13 @@ export async function GET(req: NextRequest) {
       }
 
       // 2) Download source STEP file.
-      log("storage_download", { target: "source" });
+      logStep("storage_download_start", { target: "source", bucket, path });
       const { data: stepBlob, error: stepDownloadError } = await supabaseServer.storage.from(bucket).download(path);
       if (stepDownloadError || !stepBlob) {
-        log("response", {
-          source: "source_not_found",
+        logStep("storage_download_failed", {
+          target: "source",
+          bucket,
+          path,
           error: safeErrorForLog(stepDownloadError),
         });
         return NextResponse.json(
@@ -301,18 +318,18 @@ export async function GET(req: NextRequest) {
         );
       }
       if (typeof stepBlob.size === "number" && stepBlob.size > MAX_PREVIEW_BYTES) {
-        log("response", { source: "source_too_large", bytes: stepBlob.size });
+        logStep("response", { source: "source_too_large", bytes: stepBlob.size });
         return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
       }
 
       const stepBytes = new Uint8Array(await stepBlob.arrayBuffer());
 
       // 3) Convert STEP -> STL (Node runtime).
-      log("convert_step_to_stl", { bytes: stepBytes.byteLength });
+      logStep("convert_step_to_stl", { bytes: stepBytes.byteLength });
       const { convertStepToBinaryStl } = await import("@/server/cad/stepToStl");
       const converted = await convertStepToBinaryStl(stepBytes, { rid: requestId });
       if (!converted.stl || converted.stl.byteLength <= 0) {
-        log("response", { source: "conversion_failed", meshes: converted.meshes, triangles: converted.triangles });
+        logStep("response", { source: "conversion_failed", meshes: converted.meshes, triangles: converted.triangles });
         return NextResponse.json(
           {
             error: "conversion_failed",
@@ -324,7 +341,7 @@ export async function GET(req: NextRequest) {
       }
 
       // 4) Upload STL preview for cache.
-      log("storage_upload", {
+      logStep("storage_upload", {
         previewBucket: STEP_PREVIEW_BUCKET,
         previewPath,
         stlBytes: converted.stl.byteLength,
@@ -342,14 +359,14 @@ export async function GET(req: NextRequest) {
         });
       if (uploadError) {
         // Non-fatal: still return the STL for this request (preview caching failed).
-        log("storage_upload", { ok: false, error: safeErrorForLog(uploadError) });
+        logStep("storage_upload", { ok: false, error: safeErrorForLog(uploadError) });
       } else {
-        log("storage_upload", { ok: true });
+        logStep("storage_upload", { ok: true });
       }
 
       // 5) Stream response in the format expected by ThreeCadViewer (binary STL).
       const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
-      log("response", {
+      logStep("response", {
         source: "converted",
         previewBucket: STEP_PREVIEW_BUCKET,
         previewPath,
@@ -366,7 +383,7 @@ export async function GET(req: NextRequest) {
         },
       });
     } catch (err) {
-      log("response", { source: "exception", error: safeErrorForLog(err) });
+      logStep("response", { source: "exception", error: safeErrorForLog(err) });
       return NextResponse.json(
         {
           error: "step_preview_failed",
@@ -378,12 +395,20 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  log("storage_download_start", { bucket, path, kind: inferredKind, disposition });
   const { data: blob, error } = await supabaseServer.storage.from(bucket).download(path);
   if (error || !blob) {
-    return NextResponse.json({ error: "source_not_found", bucket, path }, { status: 404 });
+    log("storage_download_failed", {
+      bucket,
+      path,
+      kind: inferredKind,
+      disposition,
+      error: safeErrorForLog(error),
+    });
+    return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
   }
   if (typeof blob.size === "number" && blob.size > MAX_PREVIEW_BYTES) {
-    return NextResponse.json({ error: "file_too_large" }, { status: 413 });
+    return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
   }
 
   const filename = path.split("/").pop() ?? "file";

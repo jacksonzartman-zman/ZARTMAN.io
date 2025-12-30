@@ -37,7 +37,7 @@ const DEFAULT_CAD_BUCKET =
   process.env.SUPABASE_CAD_BUCKET ||
   process.env.NEXT_PUBLIC_CAD_BUCKET ||
   process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
-  "cad";
+  "cad_uploads";
 
 const CAD_SIGNED_URL_TTL_SECONDS = 60 * 60;
 
@@ -386,16 +386,26 @@ function normalizeStorageReference(
 
   let bucket = bucketId?.trim() || null;
 
-  if (!bucket && path.startsWith(`${DEFAULT_CAD_BUCKET}/`)) {
-    bucket = DEFAULT_CAD_BUCKET;
-    path = path.slice(DEFAULT_CAD_BUCKET.length + 1);
+  if (!bucket) {
+    // If the storage path is already in `<bucket>/<objectKey>` form, infer it.
+    // Only accept a small allowlist to avoid signing tokens for arbitrary buckets.
+    const firstSegment = path.split("/")[0] ?? "";
+    const allowedBuckets = new Set([DEFAULT_CAD_BUCKET, "cad_uploads", "cad"]);
+    if (firstSegment && allowedBuckets.has(firstSegment)) {
+      bucket = firstSegment;
+      path = path.slice(firstSegment.length + 1);
+    } else if (path.startsWith(`${DEFAULT_CAD_BUCKET}/`)) {
+      bucket = DEFAULT_CAD_BUCKET;
+      path = path.slice(DEFAULT_CAD_BUCKET.length + 1);
+    }
   }
 
   if (!bucket) {
     bucket = DEFAULT_CAD_BUCKET;
   }
 
-  if (path.startsWith(`${bucket}/`)) {
+  // Normalize away any accidental duplicated bucket prefixes.
+  while (path.startsWith(`${bucket}/`)) {
     path = path.slice(bucket.length + 1);
   }
 
