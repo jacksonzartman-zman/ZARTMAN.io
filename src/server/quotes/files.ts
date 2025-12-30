@@ -7,7 +7,10 @@ import { signPreviewToken } from "@/server/cadPreviewToken";
 
 type FileStorageRow = {
   storage_path: string | null;
-  bucket_id: string | null;
+  // Legacy column name (some deployments).
+  bucket_id?: string | null;
+  // Canonical column name (preferred).
+  storage_bucket_id?: string | null;
   filename: string | null;
   mime: string | null;
 };
@@ -61,11 +64,29 @@ export async function getQuoteFilePreviews(
     let files: FileStorageRow[] = [];
     if (includeFilesTable) {
       try {
-        const { data, error: filesError } = await supabaseServer
-          .from("files")
-          .select("storage_path,bucket_id,filename,mime")
-          .eq("quote_id", quote.id)
-          .order("created_at", { ascending: true });
+        // Prefer canonical storage fields; fall back to legacy schema if needed.
+        const queryNew = () =>
+          supabaseServer
+            .from("files")
+            .select("storage_path,storage_bucket_id,filename,mime")
+            .eq("quote_id", quote.id)
+            .order("created_at", { ascending: true });
+        const queryLegacy = () =>
+          supabaseServer
+            .from("files")
+            .select("storage_path,bucket_id,filename,mime")
+            .eq("quote_id", quote.id)
+            .order("created_at", { ascending: true });
+
+        const first = await queryNew();
+        let data = first.data as FileStorageRow[] | null;
+        let filesError = first.error;
+
+        if (filesError && isMissingTableOrColumnError(filesError)) {
+          const retry = await queryLegacy();
+          data = retry.data as FileStorageRow[] | null;
+          filesError = retry.error;
+        }
 
         if (filesError) {
           const serializedError = serializeSupabaseError(filesError);
@@ -268,10 +289,10 @@ async function getPreviewForCandidate(
     return result;
   }
 
-  const normalized = normalizeStorageReference(
-    candidate.storagePath,
-    candidate.bucketId,
-  );
+  const normalized = normalizeBucketAndPath({
+    bucket: candidate.bucketId ?? null,
+    path: candidate.storagePath,
+  });
 
   if (!normalized) {
     result = {
@@ -354,7 +375,7 @@ function gatherCadCandidates(
     if (!file?.storage_path) return;
     candidates.push({
       storagePath: file.storage_path,
-      bucketId: file.bucket_id,
+      bucketId: (file.storage_bucket_id ?? file.bucket_id) ?? null,
       fileName: file.filename,
       mime: file.mime,
     });
@@ -371,47 +392,38 @@ function gatherCadCandidates(
   return candidates;
 }
 
-function normalizeStorageReference(
-  storagePath: string,
-  bucketId?: string | null,
-): { bucket: string; path: string } | null {
-  if (!storagePath) {
-    return null;
-  }
+function normalizeBucketAndPath(input: {
+  bucket?: string | null;
+  path?: string | null;
+}): { bucket: string; path: string } | null {
+  const rawBucket = typeof input.bucket === "string" ? input.bucket.trim() : "";
+  const rawPath = typeof input.path === "string" ? input.path.trim() : "";
+  if (!rawPath) return null;
 
-  let path = storagePath.trim().replace(/^\/+/, "");
-  if (!path) {
-    return null;
-  }
+  let bucket = rawBucket || null;
+  let path = rawPath.replace(/^\/+/, "");
+  if (!path) return null;
 
-  let bucket = bucketId?.trim() || null;
-
+  // If the path is already in `<bucket>/<objectKey>` form, infer bucket.
+  // Only accept a small allowlist to avoid signing tokens for arbitrary buckets.
   if (!bucket) {
-    // If the storage path is already in `<bucket>/<objectKey>` form, infer it.
-    // Only accept a small allowlist to avoid signing tokens for arbitrary buckets.
     const firstSegment = path.split("/")[0] ?? "";
-    const allowedBuckets = new Set([DEFAULT_CAD_BUCKET, "cad_uploads", "cad"]);
+    const allowedBuckets = new Set([DEFAULT_CAD_BUCKET, "cad_uploads", "cad", "cad_previews"]);
     if (firstSegment && allowedBuckets.has(firstSegment)) {
       bucket = firstSegment;
       path = path.slice(firstSegment.length + 1);
-    } else if (path.startsWith(`${DEFAULT_CAD_BUCKET}/`)) {
-      bucket = DEFAULT_CAD_BUCKET;
-      path = path.slice(DEFAULT_CAD_BUCKET.length + 1);
     }
   }
 
-  if (!bucket) {
-    bucket = DEFAULT_CAD_BUCKET;
-  }
+  if (!bucket) bucket = DEFAULT_CAD_BUCKET;
 
-  // Normalize away any accidental duplicated bucket prefixes.
+  // Normalize away any accidental duplicated bucket prefixes (including repeated ones).
   while (path.startsWith(`${bucket}/`)) {
     path = path.slice(bucket.length + 1);
   }
 
-  if (!path) {
-    return null;
-  }
+  path = path.replace(/^\/+/, "");
+  if (!path) return null;
 
   return { bucket, path };
 }

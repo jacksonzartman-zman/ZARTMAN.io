@@ -27,6 +27,13 @@ const MAX_RENDER_BYTES = 20 * 1024 * 1024; // 20MB
 const STEP_PREVIEW_TIMEOUT_MS = 120_000;
 const DEFAULT_FETCH_TIMEOUT_MS = 45_000;
 
+type ModelMetrics = {
+  boxSize: THREE.Vector3;
+  maxDim: number;
+  radius: number;
+  minY: number;
+};
+
 function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -222,6 +229,21 @@ function buildStlMeshFromArrayBuffer(buffer: ArrayBuffer): THREE.Mesh {
   return mesh;
 }
 
+function clampInt(value: number, min: number, max: number): number {
+  const v = Number.isFinite(value) ? Math.floor(value) : min;
+  return Math.max(min, Math.min(max, v));
+}
+
+function niceStep(rawStep: number): number {
+  const raw = Number.isFinite(rawStep) ? rawStep : 0;
+  if (raw <= 0) return 1;
+  const exp = Math.floor(Math.log10(raw));
+  const base = Math.pow(10, exp);
+  const scaled = raw / base;
+  const snapped = scaled <= 1 ? 1 : scaled <= 2 ? 2 : scaled <= 5 ? 5 : 10;
+  return snapped * base;
+}
+
 export type ThreeCadViewerProps = {
   className?: string;
   /**
@@ -348,6 +370,7 @@ export function ThreeCadViewer({
   const fetchAbortRef = useRef<AbortController | null>(null);
   const gridRef = useRef<THREE.GridHelper | null>(null);
   const axesRef = useRef<THREE.AxesHelper | null>(null);
+  const modelMetricsRef = useRef<ModelMetrics | null>(null);
 
   const [showGrid, setShowGrid] = useState(false);
   const [showAxes, setShowAxes] = useState(false);
@@ -474,6 +497,85 @@ export function ThreeCadViewer({
     rt.scene.remove(model);
     disposeObject3D(model);
     modelRootRef.current = null;
+    modelMetricsRef.current = null;
+  };
+
+  const disposeGrid = (rt: NonNullable<typeof runtimeRef.current>) => {
+    if (!gridRef.current) return;
+    rt.scene.remove(gridRef.current);
+    gridRef.current.geometry?.dispose?.();
+    const mat = (gridRef.current.material as unknown) as THREE.Material | THREE.Material[];
+    if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
+    else mat?.dispose?.();
+    gridRef.current = null;
+  };
+
+  const disposeAxes = (rt: NonNullable<typeof runtimeRef.current>) => {
+    if (!axesRef.current) return;
+    rt.scene.remove(axesRef.current);
+    axesRef.current.geometry?.dispose?.();
+    ((axesRef.current.material as unknown) as THREE.Material)?.dispose?.();
+    axesRef.current = null;
+  };
+
+  const computeModelMetrics = (model: THREE.Object3D): ModelMetrics | null => {
+    model.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(model);
+    if (!Number.isFinite(box.min.x) || !Number.isFinite(box.max.x)) return null;
+    if (box.isEmpty()) return null;
+
+    const boxSize = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(boxSize.x, boxSize.y, boxSize.z);
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const radius = Math.max(sphere.radius || 0, 0.0001);
+    const minY = box.min.y;
+
+    return { boxSize, maxDim, radius, minY };
+  };
+
+  const rebuildHelpers = () => {
+    const rt = runtimeRef.current;
+    const model = modelRootRef.current;
+    if (!rt || !model) return;
+
+    const metrics = modelMetricsRef.current ?? computeModelMetrics(model);
+    if (metrics) {
+      modelMetricsRef.current = metrics;
+    }
+    const m = modelMetricsRef.current;
+    if (!m) return;
+
+    // Grid: Hubs-ish scaling.
+    if (showGrid) {
+      disposeGrid(rt);
+      const maxDim = Number.isFinite(m.maxDim) && m.maxDim > 0 ? m.maxDim : m.radius * 2;
+      const gridSize = Math.max(maxDim * 3, 0.001);
+      const targetStep = niceStep(maxDim / 10);
+      const divisions = clampInt(gridSize / Math.max(targetStep, 1e-6), 10, 320);
+      const grid = new THREE.GridHelper(gridSize, divisions, 0x334155, 0x1f2937);
+      const gridMat = grid.material as any;
+      if (gridMat) {
+        gridMat.transparent = true;
+        gridMat.opacity = 0.35;
+      }
+      grid.position.set(0, m.minY, 0);
+      gridRef.current = grid;
+      rt.scene.add(grid);
+    } else {
+      disposeGrid(rt);
+    }
+
+    // Axes.
+    if (showAxes) {
+      disposeAxes(rt);
+      const maxDim = Number.isFinite(m.maxDim) && m.maxDim > 0 ? m.maxDim : m.radius * 2;
+      const axesSize = Math.max(maxDim * 0.75, 0.001);
+      const axes = new THREE.AxesHelper(axesSize);
+      axesRef.current = axes;
+      rt.scene.add(axes);
+    } else {
+      disposeAxes(rt);
+    }
   };
 
   const updateRendererToContainer = (rt: NonNullable<typeof runtimeRef.current>) => {
@@ -489,10 +591,12 @@ export function ThreeCadViewer({
     const rt = runtimeRef.current;
     const model = modelRootRef.current;
     if (!rt || !model) return;
+    rt.controls.reset();
     updateRendererToContainer(rt);
     model.updateWorldMatrix(true, true);
     fitAndCenter(model, rt.camera, rt.controls, rt.renderer.domElement);
     rt.controls.saveState();
+    rebuildHelpers();
   };
 
   useEffect(() => {
@@ -574,24 +678,14 @@ export function ThreeCadViewer({
 
       // Dispose helper objects (grid/axes).
       try {
-        if (gridRef.current) {
-          rt.scene.remove(gridRef.current);
-          gridRef.current.geometry?.dispose?.();
-          const mat = (gridRef.current.material as unknown) as THREE.Material | THREE.Material[];
-          if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
-          else mat?.dispose?.();
-        }
+        disposeGrid(rt);
       } catch {
         // ignore
       } finally {
         gridRef.current = null;
       }
       try {
-        if (axesRef.current) {
-          rt.scene.remove(axesRef.current);
-          axesRef.current.geometry?.dispose?.();
-          ((axesRef.current.material as unknown) as THREE.Material)?.dispose?.();
-        }
+        disposeAxes(rt);
       } catch {
         // ignore
       } finally {
@@ -628,53 +722,10 @@ export function ThreeCadViewer({
 
   // Keep helper presence in sync with overlay toggles.
   useEffect(() => {
-    const rt = runtimeRef.current;
-    if (!rt) return;
-    if (showGrid) {
-      if (!gridRef.current) {
-        const grid = new THREE.GridHelper(2, 20, 0x334155, 0x1f2937);
-        // GridHelper.material is (Material | Material[]) depending on three version; treat as any.
-        const gridMat = grid.material as any;
-        if (gridMat) {
-          gridMat.transparent = true;
-          gridMat.opacity = 0.35;
-        }
-        gridRef.current = grid;
-      }
-      if (gridRef.current && !rt.scene.children.includes(gridRef.current)) {
-        rt.scene.add(gridRef.current);
-      }
-      return;
-    }
-
-    if (gridRef.current) {
-      rt.scene.remove(gridRef.current);
-      gridRef.current.geometry?.dispose?.();
-      const mat = (gridRef.current.material as unknown) as THREE.Material | THREE.Material[];
-      if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
-      else mat?.dispose?.();
-      gridRef.current = null;
-    }
+    rebuildHelpers();
   }, [showGrid]);
   useEffect(() => {
-    const rt = runtimeRef.current;
-    if (!rt) return;
-    if (showAxes) {
-      if (!axesRef.current) {
-        axesRef.current = new THREE.AxesHelper(1.25);
-      }
-      if (axesRef.current && !rt.scene.children.includes(axesRef.current)) {
-        rt.scene.add(axesRef.current);
-      }
-      return;
-    }
-
-    if (axesRef.current) {
-      rt.scene.remove(axesRef.current);
-      axesRef.current.geometry?.dispose?.();
-      ((axesRef.current.material as unknown) as THREE.Material)?.dispose?.();
-      axesRef.current = null;
-    }
+    rebuildHelpers();
   }, [showAxes]);
 
   useEffect(() => {
@@ -856,9 +907,13 @@ export function ThreeCadViewer({
           height: Math.max(1, measured.height),
         };
         updateRendererToContainer(rt);
+        rt.controls.reset();
         centeredRoot.updateWorldMatrix(true, true);
         fitAndCenter(centeredRoot, rt.camera, rt.controls, rt.renderer.domElement);
         rt.controls.saveState();
+
+        modelMetricsRef.current = computeModelMetrics(centeredRoot);
+        rebuildHelpers();
 
         setViewerState({ status: "ready", cadKind: detectedCadKind, message: null, errorReason: null });
       } catch (e) {
