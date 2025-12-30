@@ -41,6 +41,7 @@ function resolveSize(source: FitAndCenterSizeSource): { width: number; height: n
  * Center an Object3D at the origin and fit a PerspectiveCamera + OrbitControls to it.
  *
  * - Recenters by translating the provided root Object3D so its bounding-box center is at (0,0,0).
+ * - Treats Z as “up”: after centering, translates so the model “floor” sits at z=0.
  * - Always updates camera aspect, orbit target, and camera distance.
  * - Prevents cumulative recentering by flagging `object.userData.__fitAndCenterCentered`.
  *
@@ -77,25 +78,35 @@ export function fitAndCenter(
 
   // Ensure transforms are stable before measuring.
   object.updateWorldMatrix(true, true);
-  const box = new THREE.Box3().setFromObject(object);
-  if (!Number.isFinite(box.min.x) || !Number.isFinite(box.max.x)) return;
-  if (box.isEmpty()) return;
+  const initialBox = new THREE.Box3().setFromObject(object);
+  if (!Number.isFinite(initialBox.min.x) || !Number.isFinite(initialBox.max.x)) return;
+  if (initialBox.isEmpty()) return;
 
-  const center = box.getCenter(new THREE.Vector3());
-
-  // Recenter exactly once per loaded object instance.
+  // Recenter + ground exactly once per loaded object instance.
   if (!(object.userData as any)?.[CENTERED_FLAG]) {
+    const center = initialBox.getCenter(new THREE.Vector3());
     object.position.sub(center);
     object.updateWorldMatrix(true, true);
+
+    // After centering, ground the model so its "floor" sits on z=0.
+    const centeredBox = new THREE.Box3().setFromObject(object);
+    if (Number.isFinite(centeredBox.min.z)) {
+      const minZ = centeredBox.min.z;
+      if (Number.isFinite(minZ) && Math.abs(minZ) > 1e-9) {
+        object.position.z -= minZ;
+        object.updateWorldMatrix(true, true);
+      }
+    }
+
     (object.userData as any)[CENTERED_FLAG] = true;
   }
 
-  // Recompute after recenter for correctness.
-  const box2 = new THREE.Box3().setFromObject(object);
-  if (!Number.isFinite(box2.min.x) || !Number.isFinite(box2.max.x)) return;
-  if (box2.isEmpty()) return;
+  // Recompute after recenter/ground for correctness.
+  const finalBox = new THREE.Box3().setFromObject(object);
+  if (!Number.isFinite(finalBox.min.x) || !Number.isFinite(finalBox.max.x)) return;
+  if (finalBox.isEmpty()) return;
 
-  const sphere = box2.getBoundingSphere(new THREE.Sphere());
+  const sphere = finalBox.getBoundingSphere(new THREE.Sphere());
   const radius = Math.max(sphere.radius || 0, 0.0001);
 
   camera.aspect = width / height;
@@ -108,13 +119,18 @@ export function fitAndCenter(
   const distance = (radius / Math.sin(limitingFov / 2)) * paddingFactor;
 
   // Deterministic view direction + near/far planes.
-  camera.position.copy(viewDir.multiplyScalar(distance));
-  camera.near = Math.max(radius / 100, 0.001);
-  camera.far = Math.max(radius * 100, camera.near + 1);
+  camera.position.copy(viewDir.clone().multiplyScalar(distance));
+  camera.near = Math.max(radius / 1000, 0.0001);
+  camera.far = Math.max(radius * 1000, distance + radius * 20);
   camera.updateProjectionMatrix();
 
   camera.lookAt(0, 0, 0);
   controls.target.set(0, 0, 0);
+
+  // Ensure orbit distances won't clamp the fitted view.
+  // (OrbitControls will clamp camera position when updating if outside min/max.)
+  controls.minDistance = Math.min(controls.minDistance || Infinity, Math.max(0.0001, distance / 200));
+  controls.maxDistance = Math.max(controls.maxDistance || 0, distance * 20, radius * 2000);
 
   // Snap immediately even if damping is enabled.
   controls.update();

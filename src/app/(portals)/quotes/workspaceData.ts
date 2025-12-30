@@ -88,6 +88,11 @@ type UploadMetaRow = UploadMeta & {
   file_name: string | null;
   file_path: string | null;
   mime_type: string | null;
+  // Optional canonical storage identity (some deployments).
+  storage_bucket_id?: string | null;
+  storage_path?: string | null;
+  // Optional legacy bucket column (some deployments).
+  bucket_id?: string | null;
 };
 
 export async function loadQuoteWorkspaceData(
@@ -169,13 +174,30 @@ export async function loadQuoteWorkspaceData(
     let uploadMeta: UploadMeta | null = null;
     let uploadFileReference: UploadFileReference | undefined;
     if (quote.upload_id) {
-      const { data: meta, error: metaError } = await supabaseServer
+      // Prefer canonical storage fields when present; fall back to legacy uploads schema.
+      const selectNew =
+        "first_name,last_name,phone,company,manufacturing_process,quantity,shipping_postal_code,export_restriction,rfq_reason,notes,itar_acknowledged,terms_accepted,file_name,file_path,mime_type,storage_bucket_id,storage_path,bucket_id";
+      const selectLegacy =
+        "first_name,last_name,phone,company,manufacturing_process,quantity,shipping_postal_code,export_restriction,rfq_reason,notes,itar_acknowledged,terms_accepted,file_name,file_path,mime_type";
+
+      const first = await supabaseServer
         .from("uploads")
-        .select(
-          "first_name,last_name,phone,company,manufacturing_process,quantity,shipping_postal_code,export_restriction,rfq_reason,notes,itar_acknowledged,terms_accepted,file_name,file_path,mime_type",
-        )
+        .select(selectNew)
         .eq("id", quote.upload_id)
         .maybeSingle<UploadMetaRow>();
+
+      let meta = first.data as UploadMetaRow | null;
+      let metaError = first.error;
+
+      if (metaError && isMissingTableOrColumnError(metaError)) {
+        const retry = await supabaseServer
+          .from("uploads")
+          .select(selectLegacy)
+          .eq("id", quote.upload_id)
+          .maybeSingle<UploadMetaRow>();
+        meta = retry.data as UploadMetaRow | null;
+        metaError = retry.error;
+      }
 
       if (metaError) {
         console.error("Portal workspace loader: failed to load upload meta", metaError);
@@ -185,6 +207,9 @@ export async function loadQuoteWorkspaceData(
           file_name: meta.file_name,
           file_path: meta.file_path,
           mime_type: meta.mime_type ?? undefined,
+          storage_bucket_id: meta.storage_bucket_id ?? null,
+          storage_path: meta.storage_path ?? null,
+          bucket_id: meta.bucket_id ?? null,
         };
       }
     }
