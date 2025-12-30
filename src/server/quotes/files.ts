@@ -349,32 +349,27 @@ async function getPreviewForCandidate(
       ? options.viewerUserId.trim()
       : null;
   const exp = Math.floor(Date.now() / 1000) + CAD_SIGNED_URL_TTL_SECONDS;
+  const signedBucket = canonicalizeCadBucket(normalized.bucket) || normalized.bucket;
+  const signedPath = normalized.path;
   if (viewerUserId) {
-    // Server-only diagnostic for portal previews: prints the final bucket/path we will sign.
-    // This helps debug `source_not_found` 404s from `/api/cad-preview`.
-    const rid = shortLogId();
+    const shortId = shortLogId();
     const source = candidate.source ?? null;
-    console.info("[portal cad-preview] signing token", {
-      rid,
-      signedBucket: normalized.bucket,
-      signedPath: normalized.path,
-      sourceFields: source
-        ? `${source.table}.${source.bucketField ?? "bucket?"}+${source.table}.${source.pathField}`
-        : null,
-      raw: {
-        storage_bucket_id_or_bucket_id: candidate.bucketId ?? null,
-        storage_path_or_file_path: candidate.storagePath ?? null,
-      },
-      fileName: inferredFileName ?? null,
-      cadKind: cadType.type,
-      exp,
+    const used: "storage_bucket_id/storage_path" | "bucket_id/file_path" =
+      source?.bucketField === "storage_bucket_id" || source?.pathField === "storage_path"
+        ? "storage_bucket_id/storage_path"
+        : "bucket_id/file_path";
+    console.info("[portal-preview-sign]", {
+      shortId,
+      bucket: signedBucket,
+      path: signedPath,
+      used,
     });
   }
   const token = viewerUserId
     ? signPreviewToken({
         userId: viewerUserId,
-        bucket: normalized.bucket,
-        path: normalized.path,
+        bucket: signedBucket,
+        path: signedPath,
         exp,
       })
     : null;
@@ -394,8 +389,8 @@ async function getPreviewForCandidate(
     fileName: inferredFileName ?? undefined,
     cadKind: cadType.type,
     storageSource: {
-      bucket: normalized.bucket,
-      path: normalized.path,
+      bucket: signedBucket,
+      path: signedPath,
       token,
     },
   };
@@ -520,6 +515,9 @@ function normalizeBucketAndPath(input: {
 
   if (!bucket) bucket = DEFAULT_CAD_BUCKET;
   bucket = canonicalizeCadBucket(bucket) || bucket;
+  // Hard guard: never return legacy hyphenated CAD buckets.
+  if (bucket === "cad-uploads") bucket = "cad_uploads";
+  if (bucket === "cad-previews") bucket = "cad_previews";
 
   const legacyPrefix =
     bucket === "cad_uploads" ? "cad-uploads" : bucket === "cad_previews" ? "cad-previews" : null;
