@@ -139,6 +139,94 @@ function storageErrorForLog(err: unknown): { message?: string; status?: number; 
   return { message: String(err) };
 }
 
+type SignedUrlDownloadResult = {
+  bytes: Uint8Array;
+  contentType: string | null;
+};
+
+class StorageSignedUrlError extends Error {
+  readonly kind = "storage_signed_url_failed";
+  readonly bucket: string;
+  readonly path: string;
+  readonly target: string;
+  readonly status?: number;
+  constructor(input: { bucket: string; path: string; target: string; message: string; status?: number }) {
+    super(input.message);
+    this.name = "StorageSignedUrlError";
+    this.bucket = input.bucket;
+    this.path = input.path;
+    this.target = input.target;
+    this.status = input.status;
+  }
+}
+
+class StorageFetchError extends Error {
+  readonly kind = "storage_fetch_failed";
+  readonly bucket: string;
+  readonly path: string;
+  readonly target: string;
+  readonly status: number;
+  constructor(input: { bucket: string; path: string; target: string; status: number; message: string }) {
+    super(input.message);
+    this.name = "StorageFetchError";
+    this.bucket = input.bucket;
+    this.path = input.path;
+    this.target = input.target;
+    this.status = input.status;
+  }
+}
+
+async function downloadViaSignedUrl(
+  supabase: SupabaseClient,
+  bucket: string,
+  path: string,
+  expiresSeconds: number,
+  rid: string,
+  target: string,
+): Promise<SignedUrlDownloadResult> {
+  const log = (stage: string, extra?: Record<string, unknown>) => {
+    console.log("[cad-preview]", { rid, stage, ...(extra ?? {}) });
+  };
+
+  log("storage_signed_url_start", { bucket, path, target });
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresSeconds);
+  const errInfo = storageErrorForLog(error);
+  const signedUrl = data?.signedUrl ?? null;
+  if (error || !signedUrl) {
+    log("storage_signed_url_failed", {
+      bucket,
+      path,
+      target,
+      message: errInfo?.message ?? (error ? String(error) : "missing_signed_url"),
+      status: errInfo?.status,
+    });
+    throw new StorageSignedUrlError({
+      bucket,
+      path,
+      target,
+      message: errInfo?.message ?? "Failed to create signed URL",
+      status: errInfo?.status,
+    });
+  }
+
+  log("storage_fetch_start", { bucket, path, target });
+  const res = await fetch(signedUrl, { cache: "no-store" });
+  if (!res.ok) {
+    log("storage_fetch_failed", { bucket, path, target, status: res.status });
+    throw new StorageFetchError({
+      bucket,
+      path,
+      target,
+      status: res.status,
+      message: `Signed URL fetch failed (${res.status})`,
+    });
+  }
+
+  const contentType = res.headers.get("content-type");
+  const ab = await res.arrayBuffer();
+  return { bytes: new Uint8Array(ab), contentType };
+}
+
 function getServiceSupabase(input: { requestId: string }):
   | { ok: true; client: SupabaseClient }
   | { ok: false; response: NextResponse } {
@@ -210,12 +298,12 @@ export async function GET(req: NextRequest) {
       path: null,
       kind: kindParam || null,
     });
-    return NextResponse.json({ error: "missing_token" }, { status: 400 });
+    return NextResponse.json({ error: "missing_token", requestId }, { status: 400 });
   }
 
   const { user } = await getServerAuthUser();
   if (!user?.id) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "unauthorized", requestId }, { status: 401 });
   }
 
   try {
@@ -246,7 +334,7 @@ export async function GET(req: NextRequest) {
         kind: kindParam || null,
         invalidTokenReason: verified.reason,
       });
-      return NextResponse.json({ error: "invalid_token" }, { status: 401 });
+      return NextResponse.json({ error: "invalid_token", requestId }, { status: 401 });
     }
     decodedBucketBeforeNormalize = verified.payload.b;
     bucket = normalizeBucket(verified.payload.b);
@@ -265,7 +353,7 @@ export async function GET(req: NextRequest) {
       path: path || null,
       kind: kindParam || null,
     });
-    return NextResponse.json({ error: "missing_token" }, { status: 400 });
+    return NextResponse.json({ error: "missing_token", requestId }, { status: 400 });
   }
 
   if (!bucket || !path) {
@@ -275,7 +363,7 @@ export async function GET(req: NextRequest) {
       path: path || null,
       kind: kindParam || null,
     });
-    return NextResponse.json({ error: "missing_bucket_or_path" }, { status: 400 });
+    return NextResponse.json({ error: "missing_bucket_or_path", requestId }, { status: 400 });
   }
 
   // Admin-only back-compat: if bucket/path were provided with a token, verify they match.
@@ -289,7 +377,7 @@ export async function GET(req: NextRequest) {
         kind: kindParam || null,
         invalidTokenReason: verified.reason,
       });
-      return NextResponse.json({ error: "invalid_token" }, { status: 401 });
+      return NextResponse.json({ error: "invalid_token", requestId }, { status: 401 });
     }
   }
 
@@ -323,10 +411,34 @@ export async function GET(req: NextRequest) {
       // - Inline: render a server-generated STL preview (cached in cad_previews).
       // - Attachment: download the original STEP source file (STL is preview-only).
       if (disposition === "attachment") {
+        if (tokenPresent) {
+          try {
+            const downloaded = await downloadViaSignedUrl(storageSupabase, bucket, path, 60, requestId, "source_attachment");
+            if (downloaded.bytes.byteLength > MAX_PREVIEW_BYTES) {
+              logStep("response", { source: "source_too_large", bytes: downloaded.bytes.byteLength });
+              return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
+            }
+            const safeName = fileName && fileName.trim() ? fileName.trim() : "file.step";
+            const body = downloaded.bytes.buffer.slice(
+              downloaded.bytes.byteOffset,
+              downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
+            ) as ArrayBuffer;
+            return new NextResponse(body, {
+              status: 200,
+              headers: {
+                "Content-Type": downloaded.contentType ?? "application/step",
+                "Content-Disposition": buildContentDisposition("attachment", safeName),
+                "Cache-Control": "no-store",
+              },
+            });
+          } catch (err) {
+            logStep("response", { source: "source_not_found", error: safeErrorForLog(err) });
+            return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
+          }
+        }
+
         logStep("storage_download_start", { target: "source_attachment", bucket, path });
-        const { data: stepBlob, error: stepDownloadError } = await storageSupabase.storage
-          .from(bucket)
-          .download(path);
+        const { data: stepBlob, error: stepDownloadError } = await storageSupabase.storage.from(bucket).download(path);
         if (stepDownloadError || !stepBlob) {
           logStep("storage_download_failed", {
             target: "source_attachment",
@@ -334,15 +446,7 @@ export async function GET(req: NextRequest) {
             path,
             error: storageErrorForLog(stepDownloadError) ?? safeErrorForLog(stepDownloadError),
           });
-          return NextResponse.json(
-            {
-              error: "source_not_found",
-              bucket,
-              path,
-              requestId,
-            },
-            { status: 404 },
-          );
+          return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
         }
         const safeName = fileName && fileName.trim() ? fileName.trim() : "file.step";
         return new NextResponse(stepBlob.stream(), {
@@ -374,54 +478,53 @@ export async function GET(req: NextRequest) {
           : null;
 
       // 1) Cache hit: if preview exists, serve it directly.
-      logStep("storage_download_start", {
-        target: "preview",
-        bucket: STEP_PREVIEW_BUCKET,
-        path: canonicalPreviewPath,
-        previewBucket: STEP_PREVIEW_BUCKET,
-        previewPath: canonicalPreviewPath,
-        previewPathLegacy: legacyPreviewPath,
-      });
-      const { data: cachedBlob, error: cachedError } = await storageSupabase.storage
-        .from(STEP_PREVIEW_BUCKET)
-        .download(canonicalPreviewPath);
-      if (!cachedError && cachedBlob) {
-        const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
-        logStep("response", {
-          source: "cache_hit",
-          previewBucket: STEP_PREVIEW_BUCKET,
-          previewPath: canonicalPreviewPath,
-        });
-        return new NextResponse(cachedBlob.stream(), {
-          status: 200,
-          headers: {
-            "Content-Type": contentTypeFor("step"),
-            "Content-Disposition": buildContentDisposition(disposition, filename),
-            "Cache-Control": "no-store",
-          },
-        });
-      }
-      if (cachedError) {
-        logStep("storage_download_failed", {
+      if (tokenPresent) {
+        try {
+          const downloaded = await downloadViaSignedUrl(
+            storageSupabase,
+            STEP_PREVIEW_BUCKET,
+            canonicalPreviewPath,
+            60,
+            requestId,
+            "preview",
+          );
+          const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
+          logStep("hit", { source: "cache_hit", previewBucket: STEP_PREVIEW_BUCKET, previewPath: canonicalPreviewPath });
+          const body = downloaded.bytes.buffer.slice(
+            downloaded.bytes.byteOffset,
+            downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
+          ) as ArrayBuffer;
+          return new NextResponse(body, {
+            status: 200,
+            headers: {
+              "Content-Type": downloaded.contentType ?? contentTypeFor("step"),
+              "Content-Disposition": buildContentDisposition(disposition, filename),
+              "Cache-Control": "no-store",
+            },
+          });
+        } catch {
+          // Cache miss (or signed-url failure) falls through to legacy preview key / source conversion.
+        }
+      } else {
+        logStep("storage_download_start", {
           target: "preview",
           bucket: STEP_PREVIEW_BUCKET,
           path: canonicalPreviewPath,
-          error: storageErrorForLog(cachedError) ?? safeErrorForLog(cachedError),
+          previewBucket: STEP_PREVIEW_BUCKET,
+          previewPath: canonicalPreviewPath,
+          previewPathLegacy: legacyPreviewPath,
         });
-      }
-
-      if (legacyPreviewPath) {
-        const { data: legacyBlob, error: legacyError } = await storageSupabase.storage
+        const { data: cachedBlob, error: cachedError } = await storageSupabase.storage
           .from(STEP_PREVIEW_BUCKET)
-          .download(legacyPreviewPath);
-        if (!legacyError && legacyBlob) {
+          .download(canonicalPreviewPath);
+        if (!cachedError && cachedBlob) {
           const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
-          logStep("response", {
-            source: "cache_hit_legacy_key",
+          logStep("hit", {
+            source: "cache_hit",
             previewBucket: STEP_PREVIEW_BUCKET,
-            previewPath: legacyPreviewPath,
+            previewPath: canonicalPreviewPath,
           });
-          return new NextResponse(legacyBlob.stream(), {
+          return new NextResponse(cachedBlob.stream(), {
             status: 200,
             headers: {
               "Content-Type": contentTypeFor("step"),
@@ -430,42 +533,111 @@ export async function GET(req: NextRequest) {
             },
           });
         }
-        if (legacyError) {
+        if (cachedError) {
           logStep("storage_download_failed", {
-            target: "preview_legacy_key",
+            target: "preview",
             bucket: STEP_PREVIEW_BUCKET,
-            path: legacyPreviewPath,
-            error: storageErrorForLog(legacyError) ?? safeErrorForLog(legacyError),
+            path: canonicalPreviewPath,
+            error: storageErrorForLog(cachedError) ?? safeErrorForLog(cachedError),
           });
         }
       }
 
-      // 2) Download source STEP file.
-      logStep("storage_download_start", { target: "source", bucket, path });
-      const { data: stepBlob, error: stepDownloadError } = await storageSupabase.storage.from(bucket).download(path);
-      if (stepDownloadError || !stepBlob) {
-        logStep("storage_download_failed", {
-          target: "source",
-          bucket,
-          path,
-          error: storageErrorForLog(stepDownloadError) ?? safeErrorForLog(stepDownloadError),
-        });
-        return NextResponse.json(
-          {
-            error: "source_not_found",
-            bucket,
-            path,
-            requestId,
-          },
-          { status: 404 },
-        );
-      }
-      if (typeof stepBlob.size === "number" && stepBlob.size > MAX_PREVIEW_BYTES) {
-        logStep("response", { source: "source_too_large", bytes: stepBlob.size });
-        return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
+      if (legacyPreviewPath) {
+        if (tokenPresent) {
+          try {
+            const downloaded = await downloadViaSignedUrl(
+              storageSupabase,
+              STEP_PREVIEW_BUCKET,
+              legacyPreviewPath,
+              60,
+              requestId,
+              "preview_legacy_key",
+            );
+            const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
+            logStep("hit", {
+              source: "cache_hit_legacy_key",
+              previewBucket: STEP_PREVIEW_BUCKET,
+              previewPath: legacyPreviewPath,
+            });
+            const body = downloaded.bytes.buffer.slice(
+              downloaded.bytes.byteOffset,
+              downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
+            ) as ArrayBuffer;
+            return new NextResponse(body, {
+              status: 200,
+              headers: {
+                "Content-Type": downloaded.contentType ?? contentTypeFor("step"),
+                "Content-Disposition": buildContentDisposition(disposition, filename),
+                "Cache-Control": "no-store",
+              },
+            });
+          } catch {
+            // continue to source
+          }
+        } else {
+          const { data: legacyBlob, error: legacyError } = await storageSupabase.storage
+            .from(STEP_PREVIEW_BUCKET)
+            .download(legacyPreviewPath);
+          if (!legacyError && legacyBlob) {
+            const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
+            logStep("hit", {
+              source: "cache_hit_legacy_key",
+              previewBucket: STEP_PREVIEW_BUCKET,
+              previewPath: legacyPreviewPath,
+            });
+            return new NextResponse(legacyBlob.stream(), {
+              status: 200,
+              headers: {
+                "Content-Type": contentTypeFor("step"),
+                "Content-Disposition": buildContentDisposition(disposition, filename),
+                "Cache-Control": "no-store",
+              },
+            });
+          }
+          if (legacyError) {
+            logStep("storage_download_failed", {
+              target: "preview_legacy_key",
+              bucket: STEP_PREVIEW_BUCKET,
+              path: legacyPreviewPath,
+              error: storageErrorForLog(legacyError) ?? safeErrorForLog(legacyError),
+            });
+          }
+        }
       }
 
-      const stepBytes = new Uint8Array(await stepBlob.arrayBuffer());
+      // 2) Download source STEP file.
+      let stepBytes: Uint8Array;
+      if (tokenPresent) {
+        try {
+          const downloaded = await downloadViaSignedUrl(storageSupabase, bucket, path, 60, requestId, "source");
+          if (downloaded.bytes.byteLength > MAX_PREVIEW_BYTES) {
+            logStep("response", { source: "source_too_large", bytes: downloaded.bytes.byteLength });
+            return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
+          }
+          stepBytes = downloaded.bytes;
+        } catch (err) {
+          logStep("response", { source: "source_not_found", error: safeErrorForLog(err) });
+          return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
+        }
+      } else {
+        logStep("storage_download_start", { target: "source", bucket, path });
+        const { data: stepBlob, error: stepDownloadError } = await storageSupabase.storage.from(bucket).download(path);
+        if (stepDownloadError || !stepBlob) {
+          logStep("storage_download_failed", {
+            target: "source",
+            bucket,
+            path,
+            error: storageErrorForLog(stepDownloadError) ?? safeErrorForLog(stepDownloadError),
+          });
+          return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
+        }
+        if (typeof stepBlob.size === "number" && stepBlob.size > MAX_PREVIEW_BYTES) {
+          logStep("response", { source: "source_too_large", bytes: stepBlob.size });
+          return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
+        }
+        stepBytes = new Uint8Array(await stepBlob.arrayBuffer());
+      }
 
       // 3) Convert STEP -> STL (Node runtime).
       logStep("convert_step_to_stl", { bytes: stepBytes.byteLength });
@@ -538,6 +710,31 @@ export async function GET(req: NextRequest) {
         },
         { status: 502 },
       );
+    }
+  }
+
+  if (tokenPresent) {
+    try {
+      const downloaded = await downloadViaSignedUrl(storageSupabase, bucket, path, 60, requestId, "source");
+      if (downloaded.bytes.byteLength > MAX_PREVIEW_BYTES) {
+        return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
+      }
+      const filename = path.split("/").pop() ?? "file";
+      const body = downloaded.bytes.buffer.slice(
+        downloaded.bytes.byteOffset,
+        downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
+      ) as ArrayBuffer;
+      return new NextResponse(body, {
+        status: 200,
+        headers: {
+          "Content-Type": downloaded.contentType ?? contentTypeFor(inferredKind),
+          "Content-Disposition": buildContentDisposition(disposition, filename),
+          "Cache-Control": "no-store",
+        },
+      });
+    } catch (err) {
+      log("response", { source: "source_not_found", error: safeErrorForLog(err) });
+      return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
     }
   }
 
