@@ -85,6 +85,7 @@ type QuoteExtrasRow = Pick<
 >;
 
 type UploadMetaRow = UploadMeta & {
+  id?: string | null;
   file_name: string | null;
   file_path: string | null;
   mime_type: string | null;

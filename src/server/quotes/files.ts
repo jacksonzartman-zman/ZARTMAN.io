@@ -6,6 +6,7 @@ import { classifyCadFileType } from "@/lib/cadRendering";
 import { signPreviewToken } from "@/server/cadPreviewToken";
 
 type FileStorageRow = {
+  id?: string | null;
   storage_path: string | null;
   // Legacy column name (some deployments).
   bucket_id?: string | null;
@@ -26,9 +27,11 @@ export type UploadFileReference = {
   file_path?: string | null;
   file_name: string | null;
   mime_type?: string | null;
+  id?: string | null;
 };
 
 type CadFileCandidate = {
+  quoteFileId?: string | null;
   storagePath: string;
   bucketId?: string | null;
   fileName?: string | null;
@@ -37,6 +40,7 @@ type CadFileCandidate = {
     table: "files" | "uploads";
     bucketField: "storage_bucket_id" | "bucket_id" | null;
     pathField: "storage_path" | "file_path";
+    usedFieldNames: string[];
   };
 };
 
@@ -56,6 +60,10 @@ function canonicalizeCadBucket(input: unknown): string {
   if (raw === "cad-previews") return "cad_previews";
   if (raw === "cad_previews") return "cad_previews";
   return raw;
+}
+
+function isAllowedCadBucket(bucket: string): bucket is "cad_uploads" | "cad_previews" {
+  return bucket === "cad_uploads" || bucket === "cad_previews";
 }
 
 function shortLogId(): string {
@@ -106,13 +114,13 @@ export async function getQuoteFilePreviews(
         const queryNew = () =>
           supabaseServer
             .from("files")
-            .select("storage_path,storage_bucket_id,filename,mime")
+            .select("id,storage_path,storage_bucket_id,filename,mime")
             .eq("quote_id", quote.id)
             .order("created_at", { ascending: true });
         const queryLegacy = () =>
           supabaseServer
             .from("files")
-            .select("storage_path,bucket_id,filename,mime")
+            .select("id,storage_path,bucket_id,filename,mime")
             .eq("quote_id", quote.id)
             .order("created_at", { ascending: true });
 
@@ -169,11 +177,28 @@ export async function getQuoteFilePreviews(
     if (uploadOverrideProvided) {
       uploadFile = options?.uploadFileOverride ?? null;
     } else if (quote.upload_id) {
-      const { data: uploadData, error: uploadError } = await supabaseServer
-        .from("uploads")
-        .select("file_path,file_name,mime_type")
-        .eq("id", quote.upload_id)
-        .maybeSingle<UploadFileReference>();
+      // Prefer canonical storage fields when present; fall back to legacy uploads schema.
+      const queryNew = () =>
+        supabaseServer
+          .from("uploads")
+          .select("id,file_name,file_path,mime_type,storage_bucket_id,storage_path,bucket_id")
+          .eq("id", quote.upload_id)
+          .maybeSingle<UploadFileReference>();
+      const queryLegacy = () =>
+        supabaseServer
+          .from("uploads")
+          .select("id,file_name,file_path,mime_type")
+          .eq("id", quote.upload_id)
+          .maybeSingle<UploadFileReference>();
+
+      const first = await queryNew();
+      let uploadData = first.data as UploadFileReference | null;
+      let uploadError = first.error;
+      if (uploadError && isMissingTableOrColumnError(uploadError)) {
+        const retry = await queryLegacy();
+        uploadData = retry.data as UploadFileReference | null;
+        uploadError = retry.error;
+      }
 
       if (uploadError) {
         console.error(
@@ -354,16 +379,31 @@ async function getPreviewForCandidate(
   if (viewerUserId) {
     const shortId = shortLogId();
     const source = candidate.source ?? null;
-    const used: "storage_bucket_id/storage_path" | "bucket_id/file_path" =
-      source?.bucketField === "storage_bucket_id" || source?.pathField === "storage_path"
-        ? "storage_bucket_id/storage_path"
-        : "bucket_id/file_path";
+    const quoteFileId =
+      typeof candidate.quoteFileId === "string" && candidate.quoteFileId.trim()
+        ? candidate.quoteFileId.trim()
+        : null;
+    const usedFieldNames = Array.isArray(source?.usedFieldNames) ? source!.usedFieldNames : [];
+    const filename = inferredFileName ?? null;
     console.info("[portal-preview-sign]", {
       shortId,
+      quoteFileId,
       bucket: signedBucket,
       path: signedPath,
-      used,
+      usedFieldNames,
+      filename,
     });
+
+    const probeEnabled = process.env.PORTAL_PREVIEW_SIGN_PROBE === "1";
+    if (probeEnabled) {
+      void probeStoragePrefix({
+        shortId,
+        quoteFileId,
+        bucket: signedBucket,
+        path: signedPath,
+        filename,
+      });
+    }
   }
   const token = viewerUserId
     ? signPreviewToken({
@@ -441,7 +481,13 @@ function gatherCadCandidates(
           ? file.bucket_id
           : (file.storage_bucket_id ?? file.bucket_id) ?? null;
 
+    const usedFieldNames: string[] = [];
+    if (hasCanonicalBucket) usedFieldNames.push("files.storage_bucket_id");
+    else if (hasLegacyBucket) usedFieldNames.push("files.bucket_id");
+    usedFieldNames.push(canonicalPathValue ? "files.storage_path" : "files.file_path");
+
     candidates.push({
+      quoteFileId: typeof file?.id === "string" ? file.id : null,
       storagePath,
       bucketId: bucketId ?? null,
       fileName: file.filename,
@@ -450,6 +496,7 @@ function gatherCadCandidates(
         table: "files",
         bucketField: hasCanonicalBucket ? "storage_bucket_id" : hasLegacyBucket ? "bucket_id" : null,
         pathField: canonicalPathValue ? "storage_path" : "file_path",
+        usedFieldNames,
       },
     });
   });
@@ -466,7 +513,12 @@ function gatherCadCandidates(
     const uploadHasCanonicalPath = typeof upload?.storage_path === "string" && upload.storage_path.trim().length > 0;
     const uploadHasCanonicalBucket = typeof upload?.storage_bucket_id === "string" && upload.storage_bucket_id.trim().length > 0;
     const uploadHasLegacyBucket = typeof upload?.bucket_id === "string" && upload.bucket_id.trim().length > 0;
+    const usedFieldNames: string[] = [];
+    if (uploadHasCanonicalBucket) usedFieldNames.push("uploads.storage_bucket_id");
+    else if (uploadHasLegacyBucket) usedFieldNames.push("uploads.bucket_id");
+    usedFieldNames.push(uploadHasCanonicalPath ? "uploads.storage_path" : "uploads.file_path");
     candidates.push({
+      quoteFileId: typeof upload?.id === "string" ? upload.id : null,
       storagePath: uploadStoragePath,
       bucketId: uploadBucketId,
       fileName: upload?.file_name ?? null,
@@ -474,6 +526,7 @@ function gatherCadCandidates(
         table: "uploads",
         bucketField: uploadHasCanonicalBucket ? "storage_bucket_id" : uploadHasLegacyBucket ? "bucket_id" : null,
         pathField: uploadHasCanonicalPath ? "storage_path" : "file_path",
+        usedFieldNames,
       },
     });
   }
@@ -489,46 +542,46 @@ function normalizeBucketAndPath(input: {
   const rawPath = typeof input.path === "string" ? input.path.trim() : "";
   if (!rawPath) return null;
 
-  let bucket = rawBucket ? canonicalizeCadBucket(rawBucket) : null;
+  // Path normalization rules:
+  // - trim leading slash only
+  // - collapse accidental double slashes
+  // - do NOT infer or relocate into "uploads/" (caller must supply real object key)
   let path = rawPath.replace(/^\/+/, "");
-  // Collapse accidental double slashes inside paths.
   path = path.replace(/\/{2,}/g, "/");
   if (!path) return null;
 
-  // If the path is already in `<bucket>/<objectKey>` form, infer bucket.
-  // Only accept a small allowlist to avoid signing tokens for arbitrary buckets.
-  if (!bucket) {
-    const firstSegment = path.split("/")[0] ?? "";
-    const allowedBuckets = new Set([
-      DEFAULT_CAD_BUCKET,
-      "cad_uploads",
-      "cad-uploads",
-      "cad_previews",
-      "cad-previews",
-      "cad",
-    ]);
-    if (firstSegment && allowedBuckets.has(firstSegment)) {
-      bucket = canonicalizeCadBucket(firstSegment) || firstSegment;
+  let bucket = rawBucket ? canonicalizeCadBucket(rawBucket) : "";
+
+  const firstSegment = (path.split("/")[0] ?? "").trim();
+  const firstSegmentCanonical = canonicalizeCadBucket(firstSegment);
+
+  // If a known CAD bucket prefix exists in the path, prefer it.
+  // This rescues cases where DB stored `bucket/path` but bucket column is missing/mismatched.
+  if (firstSegmentCanonical && isAllowedCadBucket(firstSegmentCanonical)) {
+    if (!bucket || !isAllowedCadBucket(bucket)) {
+      bucket = firstSegmentCanonical;
+    }
+    if (bucket === firstSegmentCanonical) {
       path = path.slice(firstSegment.length + 1);
     }
   }
 
-  if (!bucket) bucket = DEFAULT_CAD_BUCKET;
-  bucket = canonicalizeCadBucket(bucket) || bucket;
-  // Hard guard: never return legacy hyphenated CAD buckets.
-  if (bucket === "cad-uploads") bucket = "cad_uploads";
-  if (bucket === "cad-previews") bucket = "cad_previews";
+  // Final bucket resolution: constrain to portal CAD buckets only.
+  if (!bucket || !isAllowedCadBucket(bucket)) {
+    const fallback = canonicalizeCadBucket(DEFAULT_CAD_BUCKET);
+    bucket = isAllowedCadBucket(fallback) ? fallback : "cad_uploads";
+  }
 
-  const legacyPrefix =
-    bucket === "cad_uploads" ? "cad-uploads" : bucket === "cad_previews" ? "cad-previews" : null;
-
-  // Normalize away any accidental duplicated bucket prefixes (including repeated ones).
+  // Strip an exact bucket prefix if present (supports accidental duplication like bucket/bucket/...).
+  const legacyPrefix = bucket === "cad_uploads" ? "cad-uploads" : bucket === "cad_previews" ? "cad-previews" : null;
   while (path.startsWith(`${bucket}/`) || (legacyPrefix ? path.startsWith(`${legacyPrefix}/`) : false)) {
     const prefix = path.startsWith(`${bucket}/`) ? bucket : legacyPrefix!;
     path = path.slice(prefix.length + 1);
+    path = path.replace(/^\/+/, "");
   }
 
   path = path.replace(/^\/+/, "");
+  path = path.replace(/\/{2,}/g, "/");
   if (!path) return null;
 
   return { bucket, path };
@@ -538,4 +591,59 @@ export function extractFileNameFromPath(path: string): string | undefined {
   if (!path) return undefined;
   const segments = path.split("/");
   return segments[segments.length - 1] || undefined;
+}
+
+async function probeStoragePrefix(input: {
+  shortId: string;
+  quoteFileId: string | null;
+  bucket: string;
+  path: string;
+  filename: string | null;
+}): Promise<void> {
+  // Safety: never probe in prod unless explicitly enabled.
+  if (process.env.NODE_ENV === "production" && process.env.PORTAL_PREVIEW_SIGN_PROBE !== "1") {
+    return;
+  }
+  if (!isAllowedCadBucket(input.bucket)) {
+    return;
+  }
+
+  const pathSegments = input.path.split("/").filter(Boolean);
+  if (pathSegments.length === 0) return;
+  const baseName = (pathSegments[pathSegments.length - 1] ?? "").trim();
+  const prefixSegments = pathSegments.slice(0, Math.min(2, Math.max(0, pathSegments.length - 1)));
+  const prefix = prefixSegments.join("/");
+
+  try {
+    const { data, error } = await supabaseServer.storage.from(input.bucket).list(prefix, {
+      limit: 50,
+      offset: 0,
+      sortBy: { column: "name", order: "asc" },
+    });
+    const items = Array.isArray(data) ? data : [];
+    const haystack = (input.filename ?? baseName).toLowerCase();
+    const matches = items.filter((it: any) => {
+      const name = typeof it?.name === "string" ? it.name : "";
+      return haystack ? name.toLowerCase().includes(haystack) : false;
+    });
+    console.info("[portal-preview-sign-probe]", {
+      shortId: input.shortId,
+      quoteFileId: input.quoteFileId,
+      bucket: input.bucket,
+      probePrefix: prefix,
+      requestedBaseName: baseName || null,
+      filenameHint: input.filename,
+      listed: items.length,
+      matchCount: matches.length,
+      error: error ? serializeSupabaseError(error) : null,
+    });
+  } catch (err) {
+    console.info("[portal-preview-sign-probe]", {
+      shortId: input.shortId,
+      quoteFileId: input.quoteFileId,
+      bucket: input.bucket,
+      probeFailed: true,
+      error: serializeSupabaseError(err),
+    });
+  }
 }
