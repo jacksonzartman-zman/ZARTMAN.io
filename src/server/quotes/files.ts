@@ -33,6 +33,11 @@ type CadFileCandidate = {
   bucketId?: string | null;
   fileName?: string | null;
   mime?: string | null;
+  source?: {
+    table: "files" | "uploads";
+    bucketField: "storage_bucket_id" | "bucket_id" | null;
+    pathField: "storage_path" | "file_path";
+  };
 };
 
 type CadPreviewResult = {
@@ -43,11 +48,37 @@ type CadPreviewResult = {
   reason?: string;
 };
 
-const DEFAULT_CAD_BUCKET =
+function canonicalizeCadBucket(input: unknown): string {
+  const raw = typeof input === "string" ? input.trim() : "";
+  if (!raw) return "";
+  if (raw === "cad-uploads") return "cad_uploads";
+  if (raw === "cad_uploads") return "cad_uploads";
+  if (raw === "cad-previews") return "cad_previews";
+  if (raw === "cad_previews") return "cad_previews";
+  return raw;
+}
+
+function shortLogId(): string {
+  try {
+    // eslint-disable-next-line no-restricted-globals
+    const bytes = typeof crypto !== "undefined" && "getRandomValues" in crypto ? crypto.getRandomValues(new Uint8Array(5)) : null;
+    if (bytes) {
+      return Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+    }
+  } catch {
+    // ignore
+  }
+  return Math.random().toString(16).slice(2, 10);
+}
+
+const DEFAULT_CAD_BUCKET = canonicalizeCadBucket(
   process.env.SUPABASE_CAD_BUCKET ||
-  process.env.NEXT_PUBLIC_CAD_BUCKET ||
-  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
-  "cad_uploads";
+    process.env.NEXT_PUBLIC_CAD_BUCKET ||
+    process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
+    "cad_uploads",
+);
 
 const CAD_SIGNED_URL_TTL_SECONDS = 60 * 60;
 
@@ -321,13 +352,19 @@ async function getPreviewForCandidate(
   if (viewerUserId) {
     // Server-only diagnostic for portal previews: prints the final bucket/path we will sign.
     // This helps debug `source_not_found` 404s from `/api/cad-preview`.
-    console.log("[portal cad-preview] signing token", {
-      viewerUserId,
-      bucket: normalized.bucket,
-      path: normalized.path,
-      // Raw inputs (helpful when legacy rows store `bucket/path` inside `storage_path`).
-      rawBucket: candidate.bucketId ?? null,
-      rawPath: candidate.storagePath ?? null,
+    const rid = shortLogId();
+    const source = candidate.source ?? null;
+    console.info("[portal cad-preview] signing token", {
+      rid,
+      signedBucket: normalized.bucket,
+      signedPath: normalized.path,
+      sourceFields: source
+        ? `${source.table}.${source.bucketField ?? "bucket?"}+${source.table}.${source.pathField}`
+        : null,
+      raw: {
+        storage_bucket_id_or_bucket_id: candidate.bucketId ?? null,
+        storage_path_or_file_path: candidate.storagePath ?? null,
+      },
       fileName: inferredFileName ?? null,
       cadKind: cadType.type,
       exp,
@@ -394,9 +431,9 @@ function gatherCadCandidates(
   const candidates: CadFileCandidate[] = [];
 
   files?.forEach((file) => {
-    const storagePath =
-      (typeof file?.storage_path === "string" ? file.storage_path : null) ??
-      (typeof (file as any)?.file_path === "string" ? ((file as any).file_path as string) : null);
+    const canonicalPathValue = typeof file?.storage_path === "string" ? file.storage_path : null;
+    const legacyPathValue = typeof (file as any)?.file_path === "string" ? ((file as any).file_path as string) : null;
+    const storagePath = canonicalPathValue ?? legacyPathValue;
     if (!storagePath) return;
 
     // Prefer canonical storage fields when present; fall back to legacy.
@@ -414,6 +451,11 @@ function gatherCadCandidates(
       bucketId: bucketId ?? null,
       fileName: file.filename,
       mime: file.mime,
+      source: {
+        table: "files",
+        bucketField: hasCanonicalBucket ? "storage_bucket_id" : hasLegacyBucket ? "bucket_id" : null,
+        pathField: canonicalPathValue ? "storage_path" : "file_path",
+      },
     });
   });
 
@@ -426,10 +468,18 @@ function gatherCadCandidates(
     null;
 
   if (uploadStoragePath) {
+    const uploadHasCanonicalPath = typeof upload?.storage_path === "string" && upload.storage_path.trim().length > 0;
+    const uploadHasCanonicalBucket = typeof upload?.storage_bucket_id === "string" && upload.storage_bucket_id.trim().length > 0;
+    const uploadHasLegacyBucket = typeof upload?.bucket_id === "string" && upload.bucket_id.trim().length > 0;
     candidates.push({
       storagePath: uploadStoragePath,
       bucketId: uploadBucketId,
       fileName: upload?.file_name ?? null,
+      source: {
+        table: "uploads",
+        bucketField: uploadHasCanonicalBucket ? "storage_bucket_id" : uploadHasLegacyBucket ? "bucket_id" : null,
+        pathField: uploadHasCanonicalPath ? "storage_path" : "file_path",
+      },
     });
   }
 
@@ -444,7 +494,7 @@ function normalizeBucketAndPath(input: {
   const rawPath = typeof input.path === "string" ? input.path.trim() : "";
   if (!rawPath) return null;
 
-  let bucket = rawBucket || null;
+  let bucket = rawBucket ? canonicalizeCadBucket(rawBucket) : null;
   let path = rawPath.replace(/^\/+/, "");
   // Collapse accidental double slashes inside paths.
   path = path.replace(/\/{2,}/g, "/");
@@ -454,18 +504,30 @@ function normalizeBucketAndPath(input: {
   // Only accept a small allowlist to avoid signing tokens for arbitrary buckets.
   if (!bucket) {
     const firstSegment = path.split("/")[0] ?? "";
-    const allowedBuckets = new Set([DEFAULT_CAD_BUCKET, "cad_uploads", "cad", "cad_previews"]);
+    const allowedBuckets = new Set([
+      DEFAULT_CAD_BUCKET,
+      "cad_uploads",
+      "cad-uploads",
+      "cad_previews",
+      "cad-previews",
+      "cad",
+    ]);
     if (firstSegment && allowedBuckets.has(firstSegment)) {
-      bucket = firstSegment;
+      bucket = canonicalizeCadBucket(firstSegment) || firstSegment;
       path = path.slice(firstSegment.length + 1);
     }
   }
 
   if (!bucket) bucket = DEFAULT_CAD_BUCKET;
+  bucket = canonicalizeCadBucket(bucket) || bucket;
+
+  const legacyPrefix =
+    bucket === "cad_uploads" ? "cad-uploads" : bucket === "cad_previews" ? "cad-previews" : null;
 
   // Normalize away any accidental duplicated bucket prefixes (including repeated ones).
-  while (path.startsWith(`${bucket}/`)) {
-    path = path.slice(bucket.length + 1);
+  while (path.startsWith(`${bucket}/`) || (legacyPrefix ? path.startsWith(`${legacyPrefix}/`) : false)) {
+    const prefix = path.startsWith(`${bucket}/`) ? bucket : legacyPrefix!;
+    path = path.slice(prefix.length + 1);
   }
 
   path = path.replace(/^\/+/, "");

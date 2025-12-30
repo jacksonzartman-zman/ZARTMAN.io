@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getServerAuthUser, requireAdminUser } from "@/server/auth";
-import { supabaseServer } from "@/lib/supabaseServer";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createReadOnlyAuthClient, getServerAuthUser, requireAdminUser } from "@/server/auth";
 import { verifyPreviewToken, verifyPreviewTokenForUser } from "@/server/cadPreviewToken";
 
 export const runtime = "nodejs";
@@ -10,6 +10,16 @@ type CadKind = "step" | "stl" | "obj" | "glb";
 
 const MAX_PREVIEW_BYTES = 50 * 1024 * 1024; // 50MB
 const STEP_PREVIEW_BUCKET = "cad_previews";
+
+function normalizeBucket(input: unknown): string {
+  const raw = typeof input === "string" ? input.trim() : "";
+  if (!raw) return "";
+  if (raw === "cad-uploads") return "cad_uploads";
+  if (raw === "cad_uploads") return "cad_uploads";
+  if (raw === "cad-previews") return "cad_previews";
+  if (raw === "cad_previews") return "cad_previews";
+  return raw;
+}
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -97,6 +107,73 @@ function safeErrorForLog(err: unknown) {
   return { message: String(err) };
 }
 
+function storageErrorForLog(err: unknown): { message?: string; status?: number; code?: string } | null {
+  if (!err) return null;
+  if (err instanceof Error) {
+    const anyErr = err as any;
+    const status =
+      typeof anyErr?.status === "number"
+        ? anyErr.status
+        : typeof anyErr?.statusCode === "number"
+          ? anyErr.statusCode
+          : typeof anyErr?.context?.status === "number"
+            ? anyErr.context.status
+            : undefined;
+    const code = typeof anyErr?.code === "string" ? anyErr.code : undefined;
+    return { message: err.message, status, code };
+  }
+  if (typeof err === "object") {
+    const anyErr = err as any;
+    const message = typeof anyErr?.message === "string" ? anyErr.message : undefined;
+    const status =
+      typeof anyErr?.status === "number"
+        ? anyErr.status
+        : typeof anyErr?.statusCode === "number"
+          ? anyErr.statusCode
+          : typeof anyErr?.context?.status === "number"
+            ? anyErr.context.status
+            : undefined;
+    const code = typeof anyErr?.code === "string" ? anyErr.code : undefined;
+    return { message, status, code };
+  }
+  return { message: String(err) };
+}
+
+function getServiceSupabase(input: { requestId: string }):
+  | { ok: true; client: SupabaseClient }
+  | { ok: false; response: NextResponse } {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceKey || !serviceKey.trim()) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "server_misconfigured: missing service role key for token previews",
+          requestId: input.requestId,
+        },
+        { status: 500 },
+      ),
+    };
+  }
+  if (!url || !url.trim()) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "server_misconfigured: missing NEXT_PUBLIC_SUPABASE_URL",
+          requestId: input.requestId,
+        },
+        { status: 500 },
+      ),
+    };
+  }
+  return {
+    ok: true,
+    client: createClient(url, serviceKey, { auth: { persistSession: false } }),
+  };
+}
+
 export async function GET(req: NextRequest) {
   const token = normalizeId(req.nextUrl.searchParams.get("token"));
   const kindParam = normalizeId(req.nextUrl.searchParams.get("kind"));
@@ -121,7 +198,7 @@ export async function GET(req: NextRequest) {
   });
 
   // Consolidated intake preview path: token embeds bucket/path/exp/userId; kind passed explicitly.
-  let bucket = normalizeId(req.nextUrl.searchParams.get("bucket"));
+  let bucket = normalizeBucket(req.nextUrl.searchParams.get("bucket"));
   let path = normalizePath(req.nextUrl.searchParams.get("path"));
 
   // Allow cheap reachability pings without auth and without token.
@@ -148,6 +225,17 @@ export async function GET(req: NextRequest) {
     isAdmin = false;
   }
 
+  const tokenPresent = Boolean(token);
+  const storageClientResult = tokenPresent
+    ? getServiceSupabase({ requestId })
+    : ({ ok: true, client: await createReadOnlyAuthClient() } as const);
+  if (!storageClientResult.ok) {
+    log("response", { source: "server_misconfigured", tokenPresent: true });
+    return storageClientResult.response;
+  }
+  const storageSupabase = storageClientResult.client;
+
+  let decodedBucketBeforeNormalize: string | null = null;
   if (token) {
     const verified = verifyPreviewTokenForUser({ token, userId: user.id });
     if (!verified.ok) {
@@ -160,10 +248,12 @@ export async function GET(req: NextRequest) {
       });
       return NextResponse.json({ error: "invalid_token" }, { status: 401 });
     }
-    bucket = verified.payload.b;
+    decodedBucketBeforeNormalize = verified.payload.b;
+    bucket = normalizeBucket(verified.payload.b);
     path = verified.payload.p;
     log("token_decoded", {
-      bucket,
+      bucketBefore: decodedBucketBeforeNormalize,
+      bucketAfter: bucket,
       path,
       kind: kindParam || null,
       disposition,
@@ -234,7 +324,7 @@ export async function GET(req: NextRequest) {
       // - Attachment: download the original STEP source file (STL is preview-only).
       if (disposition === "attachment") {
         logStep("storage_download_start", { target: "source_attachment", bucket, path });
-        const { data: stepBlob, error: stepDownloadError } = await supabaseServer.storage
+        const { data: stepBlob, error: stepDownloadError } = await storageSupabase.storage
           .from(bucket)
           .download(path);
         if (stepDownloadError || !stepBlob) {
@@ -242,7 +332,7 @@ export async function GET(req: NextRequest) {
             target: "source_attachment",
             bucket,
             path,
-            error: safeErrorForLog(stepDownloadError),
+            error: storageErrorForLog(stepDownloadError) ?? safeErrorForLog(stepDownloadError),
           });
           return NextResponse.json(
             {
@@ -267,26 +357,41 @@ export async function GET(req: NextRequest) {
 
       // Deterministic preview location in `cad_previews`.
       const { buildStepStlPreviewPath } = await import("@/server/cad/stepToStl");
-      const previewPath = buildStepStlPreviewPath({
+      const canonicalPreviewPath = buildStepStlPreviewPath({
         sourceBucket: bucket,
         sourcePath: path,
         sourceFileName: fileName,
       });
+      const legacyPreviewPath =
+        decodedBucketBeforeNormalize &&
+        decodedBucketBeforeNormalize.trim() &&
+        decodedBucketBeforeNormalize !== bucket
+          ? buildStepStlPreviewPath({
+              sourceBucket: decodedBucketBeforeNormalize,
+              sourcePath: path,
+              sourceFileName: fileName,
+            })
+          : null;
 
       // 1) Cache hit: if preview exists, serve it directly.
       logStep("storage_download_start", {
         target: "preview",
         bucket: STEP_PREVIEW_BUCKET,
-        path: previewPath,
+        path: canonicalPreviewPath,
         previewBucket: STEP_PREVIEW_BUCKET,
-        previewPath,
+        previewPath: canonicalPreviewPath,
+        previewPathLegacy: legacyPreviewPath,
       });
-      const { data: cachedBlob, error: cachedError } = await supabaseServer.storage
+      const { data: cachedBlob, error: cachedError } = await storageSupabase.storage
         .from(STEP_PREVIEW_BUCKET)
-        .download(previewPath);
+        .download(canonicalPreviewPath);
       if (!cachedError && cachedBlob) {
         const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
-        logStep("response", { source: "cache_hit", previewBucket: STEP_PREVIEW_BUCKET, previewPath });
+        logStep("response", {
+          source: "cache_hit",
+          previewBucket: STEP_PREVIEW_BUCKET,
+          previewPath: canonicalPreviewPath,
+        });
         return new NextResponse(cachedBlob.stream(), {
           status: 200,
           headers: {
@@ -296,16 +401,54 @@ export async function GET(req: NextRequest) {
           },
         });
       }
+      if (cachedError) {
+        logStep("storage_download_failed", {
+          target: "preview",
+          bucket: STEP_PREVIEW_BUCKET,
+          path: canonicalPreviewPath,
+          error: storageErrorForLog(cachedError) ?? safeErrorForLog(cachedError),
+        });
+      }
+
+      if (legacyPreviewPath) {
+        const { data: legacyBlob, error: legacyError } = await storageSupabase.storage
+          .from(STEP_PREVIEW_BUCKET)
+          .download(legacyPreviewPath);
+        if (!legacyError && legacyBlob) {
+          const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
+          logStep("response", {
+            source: "cache_hit_legacy_key",
+            previewBucket: STEP_PREVIEW_BUCKET,
+            previewPath: legacyPreviewPath,
+          });
+          return new NextResponse(legacyBlob.stream(), {
+            status: 200,
+            headers: {
+              "Content-Type": contentTypeFor("step"),
+              "Content-Disposition": buildContentDisposition(disposition, filename),
+              "Cache-Control": "no-store",
+            },
+          });
+        }
+        if (legacyError) {
+          logStep("storage_download_failed", {
+            target: "preview_legacy_key",
+            bucket: STEP_PREVIEW_BUCKET,
+            path: legacyPreviewPath,
+            error: storageErrorForLog(legacyError) ?? safeErrorForLog(legacyError),
+          });
+        }
+      }
 
       // 2) Download source STEP file.
       logStep("storage_download_start", { target: "source", bucket, path });
-      const { data: stepBlob, error: stepDownloadError } = await supabaseServer.storage.from(bucket).download(path);
+      const { data: stepBlob, error: stepDownloadError } = await storageSupabase.storage.from(bucket).download(path);
       if (stepDownloadError || !stepBlob) {
         logStep("storage_download_failed", {
           target: "source",
           bucket,
           path,
-          error: safeErrorForLog(stepDownloadError),
+          error: storageErrorForLog(stepDownloadError) ?? safeErrorForLog(stepDownloadError),
         });
         return NextResponse.json(
           {
@@ -343,7 +486,7 @@ export async function GET(req: NextRequest) {
       // 4) Upload STL preview for cache.
       logStep("storage_upload", {
         previewBucket: STEP_PREVIEW_BUCKET,
-        previewPath,
+        previewPath: canonicalPreviewPath,
         stlBytes: converted.stl.byteLength,
         meshes: converted.meshes,
         triangles: converted.triangles,
@@ -351,15 +494,18 @@ export async function GET(req: NextRequest) {
       // supabase-js upload body should be Node-safe (Uint8Array/ArrayBuffer), not a Blob.
       // Buffer is a Uint8Array, but we pass an explicit view to keep types happy in Next.js Node runtime.
       const stlPayload = new Uint8Array(converted.stl.buffer, converted.stl.byteOffset, converted.stl.byteLength);
-      const { error: uploadError } = await supabaseServer.storage
+      const { error: uploadError } = await storageSupabase.storage
         .from(STEP_PREVIEW_BUCKET)
-        .upload(previewPath, stlPayload, {
+        .upload(canonicalPreviewPath, stlPayload, {
           contentType: "model/stl",
           upsert: true,
         });
       if (uploadError) {
         // Non-fatal: still return the STL for this request (preview caching failed).
-        logStep("storage_upload", { ok: false, error: safeErrorForLog(uploadError) });
+        logStep("storage_upload", {
+          ok: false,
+          error: storageErrorForLog(uploadError) ?? safeErrorForLog(uploadError),
+        });
       } else {
         logStep("storage_upload", { ok: true });
       }
@@ -369,7 +515,7 @@ export async function GET(req: NextRequest) {
       logStep("response", {
         source: "converted",
         previewBucket: STEP_PREVIEW_BUCKET,
-        previewPath,
+        previewPath: canonicalPreviewPath,
         stlBytes: converted.stl.byteLength,
       });
       // NextResponse body must be Web-compatible (Uint8Array/ArrayBuffer), not Node Buffer.
@@ -396,14 +542,15 @@ export async function GET(req: NextRequest) {
   }
 
   log("storage_download_start", { bucket, path, kind: inferredKind, disposition });
-  const { data: blob, error } = await supabaseServer.storage.from(bucket).download(path);
+  const { data: blob, error } = await storageSupabase.storage.from(bucket).download(path);
   if (error || !blob) {
     log("storage_download_failed", {
+      target: "source",
       bucket,
       path,
       kind: inferredKind,
       disposition,
-      error: safeErrorForLog(error),
+      error: storageErrorForLog(error) ?? safeErrorForLog(error),
     });
     return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
   }
