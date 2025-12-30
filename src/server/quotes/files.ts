@@ -11,12 +11,19 @@ type FileStorageRow = {
   bucket_id?: string | null;
   // Canonical column name (preferred).
   storage_bucket_id?: string | null;
+  // Some deployments used `file_path` instead of `storage_path`.
+  file_path?: string | null;
   filename: string | null;
   mime: string | null;
 };
 
 export type UploadFileReference = {
-  file_path: string | null;
+  // Canonical storage identity (preferred when present).
+  storage_bucket_id?: string | null;
+  storage_path?: string | null;
+  // Legacy upload columns.
+  bucket_id?: string | null;
+  file_path?: string | null;
   file_name: string | null;
   mime_type?: string | null;
 };
@@ -311,6 +318,21 @@ async function getPreviewForCandidate(
       ? options.viewerUserId.trim()
       : null;
   const exp = Math.floor(Date.now() / 1000) + CAD_SIGNED_URL_TTL_SECONDS;
+  if (viewerUserId) {
+    // Server-only diagnostic for portal previews: prints the final bucket/path we will sign.
+    // This helps debug `source_not_found` 404s from `/api/cad-preview`.
+    console.log("[portal cad-preview] signing token", {
+      viewerUserId,
+      bucket: normalized.bucket,
+      path: normalized.path,
+      // Raw inputs (helpful when legacy rows store `bucket/path` inside `storage_path`).
+      rawBucket: candidate.bucketId ?? null,
+      rawPath: candidate.storagePath ?? null,
+      fileName: inferredFileName ?? null,
+      cadKind: cadType.type,
+      exp,
+    });
+  }
   const token = viewerUserId
     ? signPreviewToken({
         userId: viewerUserId,
@@ -372,20 +394,42 @@ function gatherCadCandidates(
   const candidates: CadFileCandidate[] = [];
 
   files?.forEach((file) => {
-    if (!file?.storage_path) return;
+    const storagePath =
+      (typeof file?.storage_path === "string" ? file.storage_path : null) ??
+      (typeof (file as any)?.file_path === "string" ? ((file as any).file_path as string) : null);
+    if (!storagePath) return;
+
+    // Prefer canonical storage fields when present; fall back to legacy.
+    const hasCanonicalBucket = typeof file?.storage_bucket_id === "string" && file.storage_bucket_id.trim().length > 0;
+    const hasLegacyBucket = typeof file?.bucket_id === "string" && file.bucket_id.trim().length > 0;
+    const bucketId =
+      hasCanonicalBucket && typeof file?.storage_path === "string" && file.storage_path
+        ? file.storage_bucket_id
+        : hasLegacyBucket
+          ? file.bucket_id
+          : (file.storage_bucket_id ?? file.bucket_id) ?? null;
+
     candidates.push({
-      storagePath: file.storage_path,
-      bucketId: (file.storage_bucket_id ?? file.bucket_id) ?? null,
+      storagePath,
+      bucketId: bucketId ?? null,
       fileName: file.filename,
       mime: file.mime,
     });
   });
 
-  if (upload?.file_path) {
+  const uploadStoragePath =
+    (typeof upload?.storage_path === "string" ? upload.storage_path : null) ??
+    (typeof upload?.file_path === "string" ? upload.file_path : null);
+  const uploadBucketId =
+    (typeof upload?.storage_bucket_id === "string" ? upload.storage_bucket_id : null) ??
+    (typeof upload?.bucket_id === "string" ? upload.bucket_id : null) ??
+    null;
+
+  if (uploadStoragePath) {
     candidates.push({
-      storagePath: upload.file_path,
-      bucketId: null,
-      fileName: upload.file_name,
+      storagePath: uploadStoragePath,
+      bucketId: uploadBucketId,
+      fileName: upload?.file_name ?? null,
     });
   }
 
@@ -402,6 +446,8 @@ function normalizeBucketAndPath(input: {
 
   let bucket = rawBucket || null;
   let path = rawPath.replace(/^\/+/, "");
+  // Collapse accidental double slashes inside paths.
+  path = path.replace(/\/{2,}/g, "/");
   if (!path) return null;
 
   // If the path is already in `<bucket>/<objectKey>` form, infer bucket.

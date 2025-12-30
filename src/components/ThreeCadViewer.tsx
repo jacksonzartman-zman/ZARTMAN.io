@@ -31,7 +31,7 @@ type ModelMetrics = {
   boxSize: THREE.Vector3;
   maxDim: number;
   radius: number;
-  minY: number;
+  minZ: number;
 };
 
 function safeTrim(value: unknown): string {
@@ -115,6 +115,8 @@ function initializeThree(container: HTMLDivElement) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 5000);
   camera.position.set(0, 0, 3);
+  // CAD-friendly coordinate system: Z-up.
+  camera.up.set(0, 0, 1);
 
   // Hubs-ish lighting defaults: hemisphere + a strong key.
   const hemi = new THREE.HemisphereLight(0xffffff, 0x0b1220, 0.75);
@@ -129,6 +131,9 @@ function initializeThree(container: HTMLDivElement) {
   controls.dampingFactor = 0.08;
   controls.enablePan = true;
   controls.enableZoom = true;
+  // Ensure OrbitControls uses the same Z-up axis as the camera.
+  controls.object.up.copy(camera.up);
+  controls.update();
 
   while (container.firstChild) container.removeChild(container.firstChild);
   container.appendChild(renderer.domElement);
@@ -224,8 +229,7 @@ function buildStlMeshFromArrayBuffer(buffer: ArrayBuffer): THREE.Mesh {
     roughness: 0.6,
   });
   const mesh = new THREE.Mesh(geometry, material);
-  // Match existing STL orientation convention.
-  mesh.rotation.set(-Math.PI / 2, 0, 0);
+  // Z-up viewer: do not apply Y-up STL rotation.
   return mesh;
 }
 
@@ -528,9 +532,9 @@ export function ThreeCadViewer({
     const maxDim = Math.max(boxSize.x, boxSize.y, boxSize.z);
     const sphere = box.getBoundingSphere(new THREE.Sphere());
     const radius = Math.max(sphere.radius || 0, 0.0001);
-    const minY = box.min.y;
+    const minZ = box.min.z;
 
-    return { boxSize, maxDim, radius, minY };
+    return { boxSize, maxDim, radius, minZ };
   };
 
   const rebuildHelpers = () => {
@@ -556,9 +560,11 @@ export function ThreeCadViewer({
       const gridMat = grid.material as any;
       if (gridMat) {
         gridMat.transparent = true;
-        gridMat.opacity = 0.35;
+        gridMat.opacity = 0.5;
       }
-      grid.position.set(0, m.minY, 0);
+      // GridHelper is XZ by default (Y-up). For Z-up, rotate so it lies on XY as a "floor".
+      grid.rotation.x = Math.PI / 2;
+      grid.position.set(0, 0, Number.isFinite(m.minZ) ? m.minZ : 0);
       gridRef.current = grid;
       rt.scene.add(grid);
     } else {
@@ -571,6 +577,7 @@ export function ThreeCadViewer({
       const maxDim = Number.isFinite(m.maxDim) && m.maxDim > 0 ? m.maxDim : m.radius * 2;
       const axesSize = Math.max(maxDim * 0.75, 0.001);
       const axes = new THREE.AxesHelper(axesSize);
+      axes.position.set(0, 0, 0);
       axesRef.current = axes;
       rt.scene.add(axes);
     } else {
