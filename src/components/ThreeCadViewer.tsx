@@ -556,12 +556,17 @@ export function ThreeCadViewer({
       const gridSize = Math.max(maxDim * 3, 0.001);
       const targetStep = niceStep(maxDim / 10);
       const divisions = clampInt(gridSize / Math.max(targetStep, 1e-6), 10, 320);
-      const grid = new THREE.GridHelper(gridSize, divisions, 0x334155, 0x1f2937);
-      const gridMat = grid.material as any;
-      if (gridMat) {
-        gridMat.transparent = true;
-        gridMat.opacity = 0.5;
-      }
+      // Make the grid clearly visible on the dark background.
+      // `GridHelper` uses two materials (center + minor); set both explicitly.
+      const grid = new THREE.GridHelper(gridSize, divisions, 0x94a3b8, 0x334155);
+      const mats = Array.isArray(grid.material) ? grid.material : [grid.material];
+      mats.forEach((mat) => {
+        const mtl = mat as THREE.LineBasicMaterial;
+        mtl.transparent = true;
+        mtl.opacity = 0.65;
+        // Avoid the grid "disappearing" due to depth-write interactions on dark backgrounds.
+        mtl.depthWrite = false;
+      });
       // GridHelper is XZ by default (Y-up). For Z-up, rotate so it lies on XY as a "floor".
       grid.rotation.x = Math.PI / 2;
       grid.position.set(0, 0, Number.isFinite(m.minZ) ? m.minZ : 0);
@@ -575,7 +580,7 @@ export function ThreeCadViewer({
     if (showAxes) {
       disposeAxes(rt);
       const maxDim = Number.isFinite(m.maxDim) && m.maxDim > 0 ? m.maxDim : m.radius * 2;
-      const axesSize = Math.max(maxDim * 0.75, 0.001);
+      const axesSize = Math.max(maxDim * 0.9, 0.001);
       const axes = new THREE.AxesHelper(axesSize);
       axes.position.set(0, 0, 0);
       axesRef.current = axes;

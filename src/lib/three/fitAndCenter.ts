@@ -74,7 +74,7 @@ export function fitAndCenter(
       ? sourceOptions.viewDir.clone().normalize()
       : options?.viewDir && options.viewDir.lengthSq() > 0
         ? options.viewDir.clone().normalize()
-      : new THREE.Vector3(1, 1, 1).normalize();
+      : new THREE.Vector3(1, -1, 1).normalize();
 
   // Ensure transforms are stable before measuring.
   object.updateWorldMatrix(true, true);
