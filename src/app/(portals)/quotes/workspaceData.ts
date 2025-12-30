@@ -175,30 +175,16 @@ export async function loadQuoteWorkspaceData(
     let uploadMeta: UploadMeta | null = null;
     let uploadFileReference: UploadFileReference | undefined;
     if (quote.upload_id) {
-      // Prefer canonical storage fields when present; fall back to legacy uploads schema.
-      const selectNew =
-        "first_name,last_name,phone,company,manufacturing_process,quantity,shipping_postal_code,export_restriction,rfq_reason,notes,itar_acknowledged,terms_accepted,file_name,file_path,mime_type,storage_bucket_id,storage_path,bucket_id";
-      const selectLegacy =
-        "first_name,last_name,phone,company,manufacturing_process,quantity,shipping_postal_code,export_restriction,rfq_reason,notes,itar_acknowledged,terms_accepted,file_name,file_path,mime_type";
-
+      // IMPORTANT: Do not reference non-existent columns in select lists.
+      // Use `*` and normalize in-code across schema variants.
       const first = await supabaseServer
         .from("uploads")
-        .select(selectNew)
+        .select("*")
         .eq("id", quote.upload_id)
         .maybeSingle<UploadMetaRow>();
 
       let meta = first.data as UploadMetaRow | null;
       let metaError = first.error;
-
-      if (metaError && isMissingTableOrColumnError(metaError)) {
-        const retry = await supabaseServer
-          .from("uploads")
-          .select(selectLegacy)
-          .eq("id", quote.upload_id)
-          .maybeSingle<UploadMetaRow>();
-        meta = retry.data as UploadMetaRow | null;
-        metaError = retry.error;
-      }
 
       if (metaError) {
         console.error("Portal workspace loader: failed to load upload meta", metaError);
