@@ -18,6 +18,25 @@ export type FitAndCenterOptions = {
   viewDir?: THREE.Vector3;
 };
 
+export type FitAndCenterSizeSource =
+  | FitAndCenterOptions
+  | Pick<FitAndCenterOptions, "width" | "height">
+  | HTMLElement;
+
+function resolveSize(source: FitAndCenterSizeSource): { width: number; height: number } {
+  if (typeof (source as HTMLElement)?.getBoundingClientRect === "function") {
+    const el = source as HTMLElement;
+    const rect = el.getBoundingClientRect();
+    const width = Math.max(1, Math.floor(rect.width || el.clientWidth || 1));
+    const height = Math.max(1, Math.floor(rect.height || el.clientHeight || 1));
+    return { width, height };
+  }
+  const any = source as { width?: unknown; height?: unknown };
+  const width = Math.max(1, Math.floor(typeof any.width === "number" ? any.width : 1));
+  const height = Math.max(1, Math.floor(typeof any.height === "number" ? any.height : 1));
+  return { width, height };
+}
+
 /**
  * Center an Object3D at the origin and fit a PerspectiveCamera + OrbitControls to it.
  *
@@ -31,19 +50,29 @@ export function fitAndCenter(
   object: THREE.Object3D,
   camera: THREE.PerspectiveCamera,
   controls: OrbitControls,
-  options: FitAndCenterOptions,
+  sizeOrElement: FitAndCenterSizeSource,
+  options?: Omit<FitAndCenterOptions, "width" | "height">,
 ): void {
-  const width = Math.max(1, Math.floor(options.width || 1));
-  const height = Math.max(1, Math.floor(options.height || 1));
+  const { width, height } = resolveSize(sizeOrElement);
+  const sourceOptions =
+    typeof (sizeOrElement as any)?.width === "number" && typeof (sizeOrElement as any)?.height === "number"
+      ? (sizeOrElement as FitAndCenterOptions)
+      : null;
   const paddingFactor =
-    typeof options.paddingFactor === "number" &&
-    Number.isFinite(options.paddingFactor) &&
-    options.paddingFactor > 0
-      ? options.paddingFactor
+    typeof sourceOptions?.paddingFactor === "number" &&
+    Number.isFinite(sourceOptions.paddingFactor) &&
+    sourceOptions.paddingFactor > 0
+      ? sourceOptions.paddingFactor
+      : typeof options?.paddingFactor === "number" &&
+          Number.isFinite(options.paddingFactor) &&
+          options.paddingFactor > 0
+        ? options.paddingFactor
       : 1.25;
   const viewDir =
-    options.viewDir && options.viewDir.lengthSq() > 0
-      ? options.viewDir.clone().normalize()
+    sourceOptions?.viewDir && sourceOptions.viewDir.lengthSq() > 0
+      ? sourceOptions.viewDir.clone().normalize()
+      : options?.viewDir && options.viewDir.lengthSq() > 0
+        ? options.viewDir.clone().normalize()
       : new THREE.Vector3(1, 1, 1).normalize();
 
   // Ensure transforms are stable before measuring.
