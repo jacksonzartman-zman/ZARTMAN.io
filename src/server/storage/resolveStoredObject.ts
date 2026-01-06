@@ -3,9 +3,9 @@ import path from "node:path";
 
 type ResolveAttempts = {
   triedBuckets: string[];
-  listCalls: number;
-  triedPrefixes: Array<{ bucket: string; prefix: string }>;
+  triedPrefixes: string[];
   triedSearchTermsCount: number;
+  listCalls: number;
 };
 
 export type ResolveStoredObjectResult = {
@@ -113,6 +113,7 @@ export async function resolveStoredObject(input: {
 }): Promise<ResolveStoredObjectResult> {
   const requestedBucket = normalizeBucket(input.requestedBucket);
   const rid = typeof input.rid === "string" ? input.rid : undefined;
+  const filenameHint = typeof input.filename === "string" ? input.filename.trim() : "";
 
   // Normalize path candidates (strict/minimal; do not relocate).
   let requestedPath = normalizePath(input.requestedPath);
@@ -124,211 +125,235 @@ export async function resolveStoredObject(input: {
 
   const attempts: ResolveAttempts = {
     triedBuckets: [],
-    triedPrefixesCount: 0,
-    listCalls: 0,
-    listErrors: [],
     triedPrefixes: [],
+    triedSearchTermsCount: 0,
+    listCalls: 0,
+  };
+  const listErrors: Array<{ bucket: string; prefix: string; message: string }> = [];
+
+  let result: ResolveStoredObjectResult = {
+    bucket: null,
+    path: null,
+    found: false,
+    attempts,
+    candidatesCount: 0,
   };
 
-  const finish = (result: ResolveStoredObjectResult) => {
+  try {
+    if (!requestedBucket || !requestedPath || !base) {
+      return result;
+    }
+
+    const quoteId = normalizeId(input.quoteId);
+
+    const buckets: string[] = [];
+    addUnique(buckets, requestedBucket);
+    for (const alias of bucketAliases(requestedBucket)) addUnique(buckets, alias);
+
+    // Include intake ephemeral bucket constant (plus alias) when present.
+    // The intake uploader uses `cad_uploads` in this repo; in some deployments it may differ.
+    const INTAKE_EPHEMERAL_BUCKET = "cad_uploads";
+    addUnique(buckets, INTAKE_EPHEMERAL_BUCKET);
+    for (const alias of bucketAliases(INTAKE_EPHEMERAL_BUCKET)) addUnique(buckets, alias);
+
+    const MAX_LIST_CALLS = 12;
+    const LIST_LIMIT = 100;
+
+    const triedSearchTerms = new Set<string>();
+    const searchTerms = buildSearchTerms({ requestedBasename: base, filenameHint });
+
+    type Candidate = { bucket: string; key: string };
+    const candidates: Candidate[] = [];
+    const seen = new Set<string>();
+
+    const addCandidate = (bucket: string, key: string) => {
+      const b = normalizeBucket(bucket);
+      const k = normalizePath(key);
+      if (!b || !k) return;
+      const id = `${b}:${k}`;
+      if (seen.has(id)) return;
+      seen.add(id);
+      candidates.push({ bucket: b, key: k });
+    };
+
+    const recordPrefixAttempt = (prefix: string) => {
+      const normalized = normalizePath(prefix);
+      const stored = normalized ? ensurePrefix(normalized) : "";
+      if (!attempts.triedPrefixes.includes(stored)) attempts.triedPrefixes.push(stored);
+    };
+
+    const listOnce = async (bucket: string, prefix: string, search: string | null) => {
+      if (attempts.listCalls >= MAX_LIST_CALLS) return;
+      attempts.listCalls += 1;
+      recordPrefixAttempt(prefix);
+      if (typeof search === "string" && search.trim()) triedSearchTerms.add(search.trim());
+
+      const listPrefix = normalizePath(prefix);
+      try {
+        const { data, error } = await input.serviceSupabase.storage.from(bucket).list(listPrefix, {
+          limit: LIST_LIMIT,
+          search: search ?? undefined,
+          offset: 0,
+          sortBy: { column: "name", order: "asc" },
+        });
+
+        if (error) {
+          listErrors.push({
+            bucket,
+            prefix: listPrefix,
+            message: typeof (error as any)?.message === "string" ? (error as any).message : String(error),
+          });
+          return;
+        }
+
+        const items = Array.isArray(data) ? (data as any[]) : [];
+        for (const it of items) {
+          const name = typeof it?.name === "string" ? it.name : "";
+          if (!name) continue;
+          addCandidate(bucket, joinPrefix(listPrefix, name));
+        }
+      } catch (e) {
+        listErrors.push({
+          bucket,
+          prefix: listPrefix,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+    };
+
+    for (const bucket of buckets) {
+      if (attempts.listCalls >= MAX_LIST_CALLS) break;
+      attempts.triedBuckets.push(bucket);
+
+      // a) list("uploads/", { search: base, limit: 100 })
+      for (const term of searchTerms.slice(0, 2)) {
+        await listOnce(bucket, "uploads/", term);
+        if (attempts.listCalls >= MAX_LIST_CALLS) break;
+      }
+      if (attempts.listCalls >= MAX_LIST_CALLS) break;
+
+      // b) if quoteId: list(quote_uploads/${quoteId}/, { search: base, limit: 100 })
+      if (quoteId) {
+        for (const term of searchTerms.slice(0, 2)) {
+          await listOnce(bucket, `quote_uploads/${quoteId}/`, term);
+          if (attempts.listCalls >= MAX_LIST_CALLS) break;
+        }
+        if (attempts.listCalls >= MAX_LIST_CALLS) break;
+      }
+
+      // c) if quoteId: list(quotes/${quoteId}/, { search: base, limit: 100 })
+      if (quoteId) {
+        for (const term of searchTerms.slice(0, 2)) {
+          await listOnce(bucket, `quotes/${quoteId}/`, term);
+          if (attempts.listCalls >= MAX_LIST_CALLS) break;
+        }
+        if (attempts.listCalls >= MAX_LIST_CALLS) break;
+      }
+
+      // d) list("", { limit: 100 }) to discover top-level “folders”; probe likely candidates.
+      if (attempts.listCalls >= MAX_LIST_CALLS) break;
+      const topLevel: string[] = [];
+      recordPrefixAttempt("");
+      try {
+        const { data, error } = await input.serviceSupabase.storage.from(bucket).list("", {
+          limit: LIST_LIMIT,
+          offset: 0,
+          sortBy: { column: "name", order: "asc" },
+        });
+        attempts.listCalls += 1;
+        if (!error) {
+          const items = Array.isArray(data) ? (data as any[]) : [];
+          for (const it of items) {
+            const name = typeof it?.name === "string" ? it.name : "";
+            if (name) topLevel.push(name);
+          }
+        } else {
+          listErrors.push({
+            bucket,
+            prefix: "",
+            message: typeof (error as any)?.message === "string" ? (error as any).message : String(error),
+          });
+        }
+      } catch (e) {
+        attempts.listCalls += 1;
+        listErrors.push({
+          bucket,
+          prefix: "",
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+
+      if (attempts.listCalls >= MAX_LIST_CALLS) break;
+
+      const folderNeedles = ["quote", "rfq", "intake"];
+      const filtered = topLevel
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .filter((name) => {
+          const lower = name.toLowerCase();
+          if (quoteId && lower.includes(quoteId.toLowerCase())) return true;
+          return folderNeedles.some((needle) => lower.includes(needle));
+        })
+        .slice(0, 3); // strict: only probe a few folders
+
+      for (const folder of filtered) {
+        if (attempts.listCalls >= MAX_LIST_CALLS) break;
+        await listOnce(bucket, `${folder}/`, searchTerms[0] ?? base);
+      }
+    }
+
+    attempts.triedSearchTermsCount = triedSearchTerms.size;
+
+    // Rank candidates.
+    const requestedKey = requestedPath;
+    const scored = candidates.map((c, idx) => {
+      const exact = c.key === requestedKey;
+      const endsWithBase = c.key === base || c.key.endsWith(`/${base}`);
+      const prefersRequestedBucket = c.bucket === requestedBucket;
+      const score = [
+        exact ? 0 : 1,
+        endsWithBase ? 0 : 1,
+        prefersRequestedBucket ? 0 : 1,
+        idx,
+      ] as const;
+      return { c, score };
+    });
+
+    scored.sort((a, b) => {
+      for (let i = 0; i < a.score.length; i += 1) {
+        const diff = a.score[i] - b.score[i];
+        if (diff !== 0) return diff;
+      }
+      return 0;
+    });
+
+    const best = scored[0]?.c ?? null;
+
+    result = {
+      bucket: best?.bucket ?? null,
+      path: best?.key ?? null,
+      found: Boolean(best?.bucket && best?.key),
+      attempts,
+      candidatesCount: candidates.length,
+    };
+
+    return result;
+  } finally {
     console.log("[cad-preview]", {
       stage: "storage_resolver",
-      requestedBucket: requestedBucket || null,
-      requestedPath: requestedPath || null,
+      requestedBucket,
+      requestedPath,
+      filenameHint,
+      quoteId: normalizeId(input.quoteId) || null,
       triedBuckets: attempts.triedBuckets,
-      triedPrefixesCount: attempts.triedPrefixesCount,
+      triedPrefixes: attempts.triedPrefixes,
+      triedSearchTermsCount: attempts.triedSearchTermsCount,
+      listCalls: attempts.listCalls,
       candidatesCount: result.candidatesCount,
       resolvedBucket: result.bucket,
       resolvedPath: result.path,
       rid,
     });
-    return result;
-  };
-
-  if (!requestedBucket || !requestedPath || !base) {
-    return finish({
-      bucket: null,
-      path: null,
-      found: false,
-      attempts,
-      candidatesCount: 0,
-    });
   }
-
-  const quoteId = typeof input.quoteId === "string" ? input.quoteId.trim() : "";
-
-  const buckets: string[] = [];
-  addUnique(buckets, requestedBucket);
-  for (const alias of bucketAliases(requestedBucket)) addUnique(buckets, alias);
-
-  // Include intake ephemeral bucket constant (plus alias) when present.
-  // The intake uploader uses `cad_uploads` in this repo; in some deployments it may differ.
-  const INTAKE_EPHEMERAL_BUCKET = "cad_uploads";
-  addUnique(buckets, INTAKE_EPHEMERAL_BUCKET);
-  for (const alias of bucketAliases(INTAKE_EPHEMERAL_BUCKET)) addUnique(buckets, alias);
-
-  const MAX_LIST_CALLS = 12;
-  const LIST_LIMIT = 100;
-
-  type Candidate = { bucket: string; key: string };
-  const candidates: Candidate[] = [];
-  const seen = new Set<string>();
-
-  const addCandidate = (bucket: string, key: string) => {
-    const b = normalizeBucket(bucket);
-    const k = normalizePath(key);
-    if (!b || !k) return;
-    const id = `${b}:${k}`;
-    if (seen.has(id)) return;
-    seen.add(id);
-    candidates.push({ bucket: b, key: k });
-  };
-
-  const listOnce = async (bucket: string, prefix: string, search: string | null) => {
-    if (attempts.listCalls >= MAX_LIST_CALLS) return;
-    attempts.listCalls += 1;
-    attempts.triedPrefixesCount += 1;
-    attempts.triedPrefixes.push({ bucket, prefix });
-
-    const listPrefix = normalizePath(prefix);
-    try {
-      const { data, error } = await input.serviceSupabase.storage.from(bucket).list(listPrefix, {
-        limit: LIST_LIMIT,
-        search: search ?? undefined,
-        offset: 0,
-        sortBy: { column: "name", order: "asc" },
-      });
-
-      if (error) {
-        attempts.listErrors.push({
-          bucket,
-          prefix: listPrefix,
-          message: typeof (error as any)?.message === "string" ? (error as any).message : String(error),
-        });
-        return;
-      }
-
-      const items = Array.isArray(data) ? (data as any[]) : [];
-      for (const it of items) {
-        const name = typeof it?.name === "string" ? it.name : "";
-        if (!name) continue;
-        addCandidate(bucket, joinPrefix(listPrefix, name));
-      }
-    } catch (e) {
-      attempts.listErrors.push({
-        bucket,
-        prefix: listPrefix,
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-  };
-
-  for (const bucket of buckets) {
-    if (attempts.listCalls >= MAX_LIST_CALLS) break;
-    attempts.triedBuckets.push(bucket);
-
-    // a) list("uploads/", { search: base, limit: 100 })
-    await listOnce(bucket, "uploads/", base);
-    if (attempts.listCalls >= MAX_LIST_CALLS) break;
-
-    // b) if quoteId: list(quote_uploads/${quoteId}/, { search: base, limit: 100 })
-    if (quoteId) {
-      await listOnce(bucket, `quote_uploads/${quoteId}/`, base);
-      if (attempts.listCalls >= MAX_LIST_CALLS) break;
-    }
-
-    // c) if quoteId: list(quotes/${quoteId}/, { search: base, limit: 100 })
-    if (quoteId) {
-      await listOnce(bucket, `quotes/${quoteId}/`, base);
-      if (attempts.listCalls >= MAX_LIST_CALLS) break;
-    }
-
-    // d) list("", { limit: 100 }) to discover top-level “folders”; probe likely candidates.
-    if (attempts.listCalls >= MAX_LIST_CALLS) break;
-    const topLevel: string[] = [];
-    try {
-      const { data, error } = await input.serviceSupabase.storage.from(bucket).list("", {
-        limit: LIST_LIMIT,
-        offset: 0,
-        sortBy: { column: "name", order: "asc" },
-      });
-      attempts.listCalls += 1;
-      attempts.triedPrefixesCount += 1;
-      attempts.triedPrefixes.push({ bucket, prefix: "" });
-      if (!error) {
-        const items = Array.isArray(data) ? (data as any[]) : [];
-        for (const it of items) {
-          const name = typeof it?.name === "string" ? it.name : "";
-          if (name) topLevel.push(name);
-        }
-      } else {
-        attempts.listErrors.push({
-          bucket,
-          prefix: "",
-          message: typeof (error as any)?.message === "string" ? (error as any).message : String(error),
-        });
-      }
-    } catch (e) {
-      attempts.listCalls += 1;
-      attempts.triedPrefixesCount += 1;
-      attempts.triedPrefixes.push({ bucket, prefix: "" });
-      attempts.listErrors.push({
-        bucket,
-        prefix: "",
-        message: e instanceof Error ? e.message : String(e),
-      });
-    }
-
-    if (attempts.listCalls >= MAX_LIST_CALLS) break;
-
-    const folderNeedles = ["quote", "rfq", "intake"];
-    const filtered = topLevel
-      .map((n) => n.trim())
-      .filter(Boolean)
-      .filter((name) => {
-        const lower = name.toLowerCase();
-        if (quoteId && lower.includes(quoteId.toLowerCase())) return true;
-        return folderNeedles.some((needle) => lower.includes(needle));
-      })
-      .slice(0, 3); // strict: only probe a few folders
-
-    for (const folder of filtered) {
-      if (attempts.listCalls >= MAX_LIST_CALLS) break;
-      await listOnce(bucket, `${folder}/`, base);
-    }
-  }
-
-  // Rank candidates.
-  const requestedKey = requestedPath;
-  const scored = candidates.map((c, idx) => {
-    const exact = c.key === requestedKey;
-    const endsWithBase = c.key === base || c.key.endsWith(`/${base}`);
-    const prefersRequestedBucket = c.bucket === requestedBucket;
-    const score = [
-      exact ? 0 : 1,
-      endsWithBase ? 0 : 1,
-      prefersRequestedBucket ? 0 : 1,
-      idx,
-    ] as const;
-    return { c, score };
-  });
-
-  scored.sort((a, b) => {
-    for (let i = 0; i < a.score.length; i += 1) {
-      const diff = a.score[i] - b.score[i];
-      if (diff !== 0) return diff;
-    }
-    return 0;
-  });
-
-  const best = scored[0]?.c ?? null;
-
-  return finish({
-    bucket: best?.bucket ?? null,
-    path: best?.key ?? null,
-    found: Boolean(best?.bucket && best?.key),
-    attempts,
-    candidatesCount: candidates.length,
-  });
 }
 
