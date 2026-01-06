@@ -171,6 +171,8 @@ function buildAlternateStorageKeys(input: { path: string; quoteId: string | null
 
   if (quoteId) {
     candidates.push(
+      `uploads/${quoteId}/${base}`,
+      `uploads/${quoteId}/uploads/${base}`,
       `quote_uploads/${quoteId}/${path}`,
       `quote_uploads/${quoteId}/uploads/${base}`,
       `quotes/${quoteId}/${path}`,

@@ -78,16 +78,19 @@ function buildSearchTerms(input: { requestedBasename: string; filenameHint?: str
   const hint = typeof input.filenameHint === "string" ? input.filenameHint.trim() : "";
 
   // Try multiple variants; Storage `search` may be case-sensitive.
+  // Keep this deterministic + small: basename and optional hint, with lowercased variants.
+  const baseLower = base ? base.toLowerCase() : "";
+  const hintLower = hint ? hint.toLowerCase() : "";
+
   return uniqNonEmpty([
-    // a) basename from requestedPath (as-is)
+    // a) requested basename as-is (from requestedPath)
     base || null,
-    // b) basename lowercased
-    base ? base.toLowerCase() : null,
-    // c) basename uppercased (or filename hint as-is)
-    base ? base.toUpperCase() : null,
+    // b) requested basename lower
+    base && baseLower !== base ? baseLower : null,
+    // c) filenameHint as-is (if provided)
     hint || null,
-    // d) filename hint as-is and lowercased (when provided)
-    hint ? hint.toLowerCase() : null,
+    // d) filenameHint lower (if different)
+    hint && hintLower !== hint ? hintLower : null,
   ]);
 }
 
@@ -145,6 +148,7 @@ export async function resolveStoredObject(input: {
     }
 
     const quoteId = normalizeId(input.quoteId);
+    const quoteFileId = normalizeId(input.quoteFileId);
 
     const buckets: string[] = [];
     addUnique(buckets, requestedBucket);
@@ -225,80 +229,39 @@ export async function resolveStoredObject(input: {
       if (attempts.listCalls >= MAX_LIST_CALLS) break;
       attempts.triedBuckets.push(bucket);
 
-      // a) list("uploads/", { search: base, limit: 100 })
-      for (const term of searchTerms.slice(0, 2)) {
-        await listOnce(bucket, "uploads/", term);
-        if (attempts.listCalls >= MAX_LIST_CALLS) break;
-      }
-      if (attempts.listCalls >= MAX_LIST_CALLS) break;
+      // Deterministic, bounded prefix attempts (no root scans; no folder iteration).
+      // Keep caps: MAX_LIST_CALLS total; LIST_LIMIT per call.
+      const prefixes: string[] = [];
 
-      // b) if quoteId: list(quote_uploads/${quoteId}/, { search: base, limit: 100 })
+      // Quote-scoped upload subfolders (first-class).
       if (quoteId) {
-        for (const term of searchTerms.slice(0, 2)) {
-          await listOnce(bucket, `quote_uploads/${quoteId}/`, term);
-          if (attempts.listCalls >= MAX_LIST_CALLS) break;
-        }
-        if (attempts.listCalls >= MAX_LIST_CALLS) break;
+        prefixes.push(`uploads/${quoteId}/`);
+        prefixes.push(`uploads/${quoteId}/uploads/`);
+        prefixes.push(`uploads/${quoteId}/files/`);
+      }
+      if (quoteFileId) {
+        prefixes.push(`uploads/${quoteFileId}/`);
       }
 
-      // c) if quoteId: list(quotes/${quoteId}/, { search: base, limit: 100 })
-      if (quoteId) {
-        for (const term of searchTerms.slice(0, 2)) {
-          await listOnce(bucket, `quotes/${quoteId}/`, term);
-          if (attempts.listCalls >= MAX_LIST_CALLS) break;
-        }
+      // Existing deterministic prefixes.
+      prefixes.push("uploads/");
+      if (quoteId) prefixes.push(`quote_uploads/${quoteId}/`);
+      if (quoteId) prefixes.push(`quotes/${quoteId}/`);
+      prefixes.push("");
+
+      // Ensure we actually try basename/hint case variants (at least once),
+      // while staying bounded: try all search terms on the highest-priority prefix,
+      // then use the primary basename for remaining prefixes.
+      const primaryPrefix = prefixes[0] ?? "uploads/";
+      for (const term of searchTerms) {
         if (attempts.listCalls >= MAX_LIST_CALLS) break;
+        await listOnce(bucket, primaryPrefix, term);
       }
 
-      // d) list("", { limit: 100 }) to discover top-level “folders”; probe likely candidates.
-      if (attempts.listCalls >= MAX_LIST_CALLS) break;
-      const topLevel: string[] = [];
-      recordPrefixAttempt("");
-      try {
-        const { data, error } = await input.serviceSupabase.storage.from(bucket).list("", {
-          limit: LIST_LIMIT,
-          offset: 0,
-          sortBy: { column: "name", order: "asc" },
-        });
-        attempts.listCalls += 1;
-        if (!error) {
-          const items = Array.isArray(data) ? (data as any[]) : [];
-          for (const it of items) {
-            const name = typeof it?.name === "string" ? it.name : "";
-            if (name) topLevel.push(name);
-          }
-        } else {
-          listErrors.push({
-            bucket,
-            prefix: "",
-            message: typeof (error as any)?.message === "string" ? (error as any).message : String(error),
-          });
-        }
-      } catch (e) {
-        attempts.listCalls += 1;
-        listErrors.push({
-          bucket,
-          prefix: "",
-          message: e instanceof Error ? e.message : String(e),
-        });
-      }
-
-      if (attempts.listCalls >= MAX_LIST_CALLS) break;
-
-      const folderNeedles = ["quote", "rfq", "intake"];
-      const filtered = topLevel
-        .map((n) => n.trim())
-        .filter(Boolean)
-        .filter((name) => {
-          const lower = name.toLowerCase();
-          if (quoteId && lower.includes(quoteId.toLowerCase())) return true;
-          return folderNeedles.some((needle) => lower.includes(needle));
-        })
-        .slice(0, 3); // strict: only probe a few folders
-
-      for (const folder of filtered) {
+      for (const prefix of prefixes) {
         if (attempts.listCalls >= MAX_LIST_CALLS) break;
-        await listOnce(bucket, `${folder}/`, searchTerms[0] ?? base);
+        if (normalizePath(prefix) === normalizePath(primaryPrefix)) continue;
+        await listOnce(bucket, prefix, searchTerms[0] ?? base);
       }
     }
 
@@ -309,11 +272,11 @@ export async function resolveStoredObject(input: {
     const scored = candidates.map((c, idx) => {
       const exact = c.key === requestedKey;
       const endsWithBase = c.key === base || c.key.endsWith(`/${base}`);
-      const prefersRequestedBucket = c.bucket === requestedBucket;
+      const containsUploads = c.key.includes("/uploads/") || c.key.startsWith("uploads/");
       const score = [
         exact ? 0 : 1,
         endsWithBase ? 0 : 1,
-        prefersRequestedBucket ? 0 : 1,
+        containsUploads ? 0 : 1,
         idx,
       ] as const;
       return { c, score };
