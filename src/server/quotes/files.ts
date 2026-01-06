@@ -241,8 +241,6 @@ async function getPreviewForCandidate(
   const token = viewerUserId
     ? signPreviewToken({
         userId: viewerUserId,
-        bucket: signedBucket,
-        path: signedPath,
         exp,
         quoteId,
         quoteFileId,
@@ -362,6 +360,7 @@ async function loadCanonicalFilesForQuote(
 ): Promise<FileStorageRow[]> {
   const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
   if (!normalizedQuoteId) return [];
+  const logEnabled = process.env.LOG_CANONICAL_QUOTE_FILES === "1";
 
   const tryLoad = async (table: "files_valid" | "files"): Promise<FileStorageRow[] | null> => {
     try {
@@ -399,9 +398,25 @@ async function loadCanonicalFilesForQuote(
   };
 
   const fromValid = await tryLoad("files_valid");
+  if (logEnabled) {
+    console.log("[quote files] canonical load", {
+      quoteId: normalizedQuoteId,
+      client: "supabaseServer(service-role)",
+      table: "files_valid",
+      count: Array.isArray(fromValid) ? fromValid.length : null,
+    });
+  }
   if (Array.isArray(fromValid) && fromValid.length > 0) return fromValid;
 
   const fromFiles = await tryLoad("files");
+  if (logEnabled) {
+    console.log("[quote files] canonical load", {
+      quoteId: normalizedQuoteId,
+      client: "supabaseServer(service-role)",
+      table: "files",
+      count: Array.isArray(fromFiles) ? fromFiles.length : null,
+    });
+  }
   if (Array.isArray(fromFiles)) return fromFiles;
 
   return [];

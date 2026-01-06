@@ -75,6 +75,20 @@ function normalizePath(value: unknown): string {
   return raw.replace(/^\/+/, "");
 }
 
+function normalizeStorageObjectKey(bucket: string, path: string): string {
+  const normalizedBucket = canonicalizeBucketId(bucket) || bucket;
+  let key = normalizePath(path);
+  if (!key) return "";
+  // If callers accidentally pass `bucket/key`, strip the bucket prefix.
+  if (normalizedBucket && key.startsWith(`${normalizedBucket}/`)) {
+    key = key.slice(normalizedBucket.length + 1);
+  } else if (normalizedBucket === "cad_uploads" && key.startsWith("cad-uploads/")) {
+    key = key.slice("cad-uploads/".length);
+  }
+  key = normalizePath(key);
+  return key;
+}
+
 function basename(path: string): string {
   const normalized = normalizePath(path);
   const parts = normalized.split("/").filter(Boolean);
@@ -85,7 +99,9 @@ function normalizeFilenameForMatch(value: string): string {
   return (value ?? "")
     .trim()
     .toLowerCase()
-    .replace(/[^\w.-]+/g, "_")
+    // Treat hyphens and underscores as equivalent for historical filename matching.
+    .replace(/-+/g, "_")
+    .replace(/[^\w._]+/g, "_")
     .replace(/_+/g, "_");
 }
 
@@ -128,6 +144,12 @@ function parseArgs(argv: string[]) {
   };
 }
 
+function storageObjectsQuery(supabase: ReturnType<typeof createClient>) {
+  // IMPORTANT: "storage.objects" must be queried via schema('storage').from('objects') in PostgREST.
+  // Using from("storage.objects") will silently fail in many environments.
+  return (supabase as any).schema ? (supabase as any).schema("storage").from("objects") : null;
+}
+
 async function detectCanonicalTable(supabase: ReturnType<typeof createClient>) {
   // Prefer files_valid if the table exists in this environment.
   try {
@@ -153,12 +175,14 @@ async function loadQuotesNeedingCheck(
   supabase: ReturnType<typeof createClient>,
   limit: number,
 ): Promise<QuoteRow[]> {
-  // Best-effort: fetch quotes that declare legacy filenames.
+  // Best-effort: fetch quotes that might need backfill.
   // NOTE: file_names is commonly a jsonb array; "is not null" is enough for coarse filtering.
+  // We include upload-linked quotes too, since some historical quotes were created
+  // without legacy filename fields but do have uploads/storage objects.
   const { data, error } = await supabase
     .from("quotes")
     .select("id,upload_id,customer_id,customer_email,file_name,file_names,created_at")
-    .or("file_name.not.is.null,file_names.not.is.null")
+    .or("upload_id.not.is.null,file_name.not.is.null,file_names.not.is.null")
     .order("created_at", { ascending: false })
     .limit(limit)
     .returns<QuoteRow[]>();
@@ -197,7 +221,7 @@ async function loadExistingCanonicalKeys(
   const keys = new Set<string>();
   const add = (bucket: string, path: string) => {
     const b = canonicalizeBucketId(bucket) || bucket;
-    const p = normalizePath(path);
+    const p = normalizeStorageObjectKey(b, path);
     if (!b || !p) return;
     keys.add(`${b}:${p}`);
   };
@@ -236,6 +260,36 @@ async function loadExistingCanonicalKeys(
   await tryLoad("files_valid");
   await tryLoad("files");
   return keys;
+}
+
+type QuoteUploadFileRow = {
+  id: string;
+  filename: string;
+  path: string;
+  extension: string | null;
+  is_from_archive: boolean;
+};
+
+async function loadQuoteUploadFilenames(
+  supabase: ReturnType<typeof createClient>,
+  quoteId: string,
+): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from("quote_upload_files")
+      .select("id,filename,path,extension,is_from_archive")
+      .eq("quote_id", quoteId)
+      .order("created_at", { ascending: true })
+      .limit(1000)
+      .returns<QuoteUploadFileRow[]>();
+    if (error || !Array.isArray(data)) return [];
+    const names = data
+      .map((row) => (typeof row?.filename === "string" ? row.filename.trim() : ""))
+      .filter(Boolean);
+    return Array.from(new Set(names));
+  } catch {
+    return [];
+  }
 }
 
 async function resolveAuthUserIdForQuote(supabase: ReturnType<typeof createClient>, quote: QuoteRow): Promise<string | null> {
@@ -300,7 +354,13 @@ async function loadUpload(supabase: ReturnType<typeof createClient>, uploadId: s
 
 async function loadCandidateObjects(
   supabase: ReturnType<typeof createClient>,
-  input: { quoteId: string; authUserId: string | null; upload: UploadRow | null; verbose: boolean },
+  input: {
+    quoteId: string;
+    authUserId: string | null;
+    upload: UploadRow | null;
+    declaredNames: string[];
+    verbose: boolean;
+  },
 ): Promise<StorageObjectRow[]> {
   const candidates: StorageObjectRow[] = [];
   const seen = new Set<string>();
@@ -317,11 +377,18 @@ async function loadCandidateObjects(
     }
   };
 
+  const storageObjects = storageObjectsQuery(supabase);
+  if (!storageObjects) {
+    if (input.verbose) {
+      console.warn("[backfill] storage schema client unavailable; cannot query storage.objects via PostgREST");
+    }
+    return candidates;
+  }
+
   // 1) Intake uploads (preferred): uploads/intake/<auth.uid()>/...
   if (input.authUserId) {
     const prefix = `uploads/intake/${input.authUserId}/`;
-    const { data } = await supabase
-      .from("storage.objects")
+    const { data } = await storageObjects
       .select("bucket_id,name,created_at")
       .eq("bucket_id", CANONICAL_BUCKET)
       .like("name", `${prefix}%`)
@@ -334,8 +401,7 @@ async function loadCandidateObjects(
   // 2) Quote-scoped uploads from portals: uploads/quotes/<quoteId>/...
   {
     const prefix = `uploads/quotes/${input.quoteId}/`;
-    const { data } = await supabase
-      .from("storage.objects")
+    const { data } = await storageObjects
       .select("bucket_id,name,created_at")
       .eq("bucket_id", CANONICAL_BUCKET)
       .like("name", `${prefix}%`)
@@ -355,8 +421,7 @@ async function loadCandidateObjects(
     for (const name of namesToTry) {
       if (!name) continue;
       // Try both "bucket/name" stored formats and "name" stored formats.
-      const { data } = await supabase
-        .from("storage.objects")
+      const { data } = await storageObjects
         .select("bucket_id,name,created_at")
         .eq("bucket_id", CANONICAL_BUCKET)
         .eq("name", name)
@@ -364,6 +429,25 @@ async function loadCandidateObjects(
         .returns<StorageObjectRow[]>();
       push(data);
     }
+  }
+
+  // 4) Fallback: filename search across bucket.
+  // Historical uploads sometimes used `uploads/<ts>-<rand>-<sanitizedName>` without a quote/user prefix.
+  // We keep this bounded to avoid full-bucket scans.
+  const nameSearchTargets = Array.from(new Set((input.declaredNames ?? []).filter(Boolean))).slice(0, 10);
+  for (const declared of nameSearchTargets) {
+    const needle = normalizeFilenameForMatch(declared);
+    if (!needle) continue;
+    // Best-effort: find any objects whose key contains the (normalized) filename.
+    // NOTE: PostgREST ilike uses % wildcards; we avoid introducing raw %/_ from user input by normalizing first.
+    const { data } = await storageObjects
+      .select("bucket_id,name,created_at")
+      .eq("bucket_id", CANONICAL_BUCKET)
+      .ilike("name", `%${needle}%`)
+      .order("created_at", { ascending: false })
+      .limit(200)
+      .returns<StorageObjectRow[]>();
+    push(data);
   }
 
   if (input.verbose) {
@@ -462,7 +546,6 @@ async function main() {
 
     const quoteId = quote.id;
     const legacyNames = extractLegacyFilenames(quote);
-    if (legacyNames.length === 0) continue;
 
     const existingKeys = await loadExistingCanonicalKeys(supabase, quoteId);
     const existingCount = await loadCanonicalCount(supabase, quoteId);
@@ -473,32 +556,70 @@ async function main() {
     const uploadId = normalizeId(quote.upload_id);
     const upload = uploadId ? await loadUpload(supabase, uploadId) : null;
     const authUserId = await resolveAuthUserIdForQuote(supabase, quote);
+    const uploadFileNames = await loadQuoteUploadFilenames(supabase, quoteId);
+
+    const declaredNames =
+      legacyNames.length > 0
+        ? legacyNames
+        : uploadFileNames.length > 0
+          ? uploadFileNames
+          : [];
 
     const objects = await loadCandidateObjects(supabase, {
       quoteId,
       authUserId,
       upload,
+      declaredNames,
       verbose: args.verbose,
     });
 
     const planned: CanonicalFileInsertRow[] = [];
-    for (const name of legacyNames) {
-      const match = pickBestMatchForFilename(name, objects);
-      if (!match) continue;
-      const bucket = canonicalizeBucketId(match.bucket_id) || match.bucket_id;
-      if (bucket !== CANONICAL_BUCKET) {
-        continue;
+    if (declaredNames.length > 0) {
+      for (const name of declaredNames) {
+        const match = pickBestMatchForFilename(name, objects);
+        if (!match) continue;
+        const bucket = canonicalizeBucketId(match.bucket_id) || match.bucket_id;
+        if (bucket !== CANONICAL_BUCKET) {
+          continue;
+        }
+        const key = normalizeStorageObjectKey(bucket, match.name);
+        const dedupeKey = `${CANONICAL_BUCKET}:${key}`;
+        if (existingKeys.has(dedupeKey)) continue;
+        planned.push({
+          quote_id: quoteId,
+          filename: name,
+          mime: mimeFromFileName(name),
+          storage_path: key,
+          bucket_id: CANONICAL_BUCKET,
+        });
+        existingKeys.add(dedupeKey);
       }
-      const dedupeKey = `${CANONICAL_BUCKET}:${normalizePath(match.name)}`;
-      if (existingKeys.has(dedupeKey)) continue;
-      planned.push({
-        quote_id: quoteId,
-        filename: name,
-        mime: mimeFromFileName(name),
-        storage_path: normalizePath(match.name),
-        bucket_id: CANONICAL_BUCKET,
+    } else if (objects.length > 0) {
+      // Fallback: if we can find a single unambiguous storage object but no declared filenames,
+      // backfill using the storage object's basename.
+      // This avoids leaving "upload-only" quotes permanently empty in portals.
+      const sorted = [...objects].sort((a, b) => {
+        const am = a.created_at ? Date.parse(a.created_at) : Number.NEGATIVE_INFINITY;
+        const bm = b.created_at ? Date.parse(b.created_at) : Number.NEGATIVE_INFINITY;
+        return bm - am;
       });
-      existingKeys.add(dedupeKey);
+      const first = sorted[0] ?? null;
+      if (first) {
+        const bucket = canonicalizeBucketId(first.bucket_id) || first.bucket_id;
+        const key = normalizeStorageObjectKey(bucket, first.name);
+        const dedupeKey = `${CANONICAL_BUCKET}:${key}`;
+        if (bucket === CANONICAL_BUCKET && key && !existingKeys.has(dedupeKey)) {
+          const inferredName = basename(key);
+          planned.push({
+            quote_id: quoteId,
+            filename: inferredName,
+            mime: mimeFromFileName(inferredName),
+            storage_path: key,
+            bucket_id: CANONICAL_BUCKET,
+          });
+          existingKeys.add(dedupeKey);
+        }
+      }
     }
 
     if (planned.length === 0) {
@@ -517,7 +638,8 @@ async function main() {
         quoteId,
         uploadId: uploadId || null,
         authUserId,
-        legacyFileNames: legacyNames,
+        legacyFileNames: legacyNames.length > 0 ? legacyNames : undefined,
+        uploadFileNames: uploadFileNames.length > 0 ? uploadFileNames : undefined,
         candidatesScanned: objects.length,
       });
       continue;

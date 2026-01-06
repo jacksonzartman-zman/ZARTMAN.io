@@ -29,6 +29,20 @@ function normalizePath(value: unknown): string {
   return raw.replace(/^\/+/, "");
 }
 
+function normalizeStorageObjectKey(bucket: string, path: string): string {
+  const b = normalizeBucket(bucket);
+  let key = normalizePath(path);
+  if (!key) return "";
+  if (b && key.startsWith(`${b}/`)) {
+    key = key.slice(b.length + 1);
+  }
+  // Legacy alias: cad-uploads prefix inside key (should not exist in canonical rows, but can).
+  if (b === "cad_uploads" && key.startsWith("cad-uploads/")) {
+    key = key.slice("cad-uploads/".length);
+  }
+  return normalizePath(key);
+}
+
 function shortRequestId(): string {
   // Short, log-friendly request id (not cryptographically meaningful).
   try {
@@ -142,6 +156,55 @@ function basenameOfPath(path: string): string {
   const normalized = normalizePath(path);
   const parts = normalized.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? normalized;
+}
+
+type CanonicalQuoteFileRow = {
+  id: string;
+  quote_id: string | null;
+  filename: string | null;
+  storage_path?: string | null;
+  file_path?: string | null;
+  bucket_id?: string | null;
+  storage_bucket_id?: string | null;
+};
+
+async function resolveCanonicalStorageForQuoteFileId(
+  supabase: SupabaseClient,
+  quoteFileId: string,
+): Promise<{ ok: true; bucket: string; path: string; filename: string | null } | { ok: false; reason: string }> {
+  const qfid = normalizeId(quoteFileId);
+  if (!qfid) return { ok: false, reason: "missing_quote_file_id" };
+
+  const tryLoad = async (table: "files_valid" | "files"): Promise<CanonicalQuoteFileRow | null> => {
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .select("id,quote_id,filename,storage_path,file_path,bucket_id,storage_bucket_id")
+        .eq("id", qfid)
+        .maybeSingle<CanonicalQuoteFileRow>();
+      if (error || !data?.id) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  };
+
+  const row = (await tryLoad("files_valid")) ?? (await tryLoad("files"));
+  if (!row?.id) return { ok: false, reason: "quote_file_not_found" };
+
+  const bucketRaw =
+    (typeof row.storage_bucket_id === "string" && row.storage_bucket_id.trim()) ||
+    (typeof row.bucket_id === "string" && row.bucket_id.trim()) ||
+    "";
+  const pathRaw =
+    (typeof row.storage_path === "string" && row.storage_path.trim()) ||
+    (typeof row.file_path === "string" && row.file_path.trim()) ||
+    "";
+  const bucket = normalizeBucket(bucketRaw);
+  const path = normalizeStorageObjectKey(bucket, pathRaw);
+  if (!bucket || !path) return { ok: false, reason: "missing_storage_identity" };
+
+  return { ok: true, bucket, path, filename: row.filename ?? null };
 }
 
 type SignedUrlDownloadResult = {
@@ -305,6 +368,7 @@ export async function GET(req: NextRequest) {
   // Consolidated intake preview path: token embeds bucket/path/exp/userId; kind passed explicitly.
   let bucket = normalizeBucket(req.nextUrl.searchParams.get("bucket"));
   let path = normalizePath(req.nextUrl.searchParams.get("path"));
+  let quoteFileIdFromToken: string | null = null;
 
   // Allow cheap reachability pings without auth and without token.
   // (If bucket/path were provided, we still require auth/admin below.)
@@ -353,16 +417,54 @@ export async function GET(req: NextRequest) {
       });
       return NextResponse.json({ error: "invalid_token", requestId }, { status: 401 });
     }
-    decodedBucketBeforeNormalize = verified.payload.b;
-    bucket = normalizeBucket(verified.payload.b);
-    path = verified.payload.p;
-    log("token_decoded", {
-      bucketBefore: decodedBucketBeforeNormalize,
-      bucketAfter: bucket,
-      path,
-      kind: kindParam || null,
-      disposition,
-    });
+    if (verified.payload.v === 3) {
+      quoteFileIdFromToken = normalizeId((verified.payload as any).qfid);
+      const resolved = quoteFileIdFromToken
+        ? await resolveCanonicalStorageForQuoteFileId(storageSupabase, quoteFileIdFromToken)
+        : { ok: false as const, reason: "missing_quote_file_id" };
+      if (!resolved.ok) {
+        log("token_decoded", {
+          tokenVersion: 3,
+          quoteFileId: quoteFileIdFromToken,
+          resolveFailed: resolved.reason,
+        });
+        return NextResponse.json(
+          {
+            error: "source_not_found",
+            code: "source_not_found",
+            userMessage:
+              resolved.reason === "quote_file_not_found"
+                ? "This file is no longer available. Please re-upload it to restore previews."
+                : "Preview is unavailable for this file.",
+            requestId,
+            quoteFileId: quoteFileIdFromToken,
+          },
+          { status: 404 },
+        );
+      }
+      bucket = resolved.bucket;
+      path = resolved.path;
+      log("token_decoded", {
+        tokenVersion: 3,
+        quoteFileId: quoteFileIdFromToken,
+        bucket,
+        path,
+        kind: kindParam || null,
+        disposition,
+      });
+    } else {
+      decodedBucketBeforeNormalize = (verified.payload as any).b;
+      bucket = normalizeBucket((verified.payload as any).b);
+      path = (verified.payload as any).p;
+      log("token_decoded", {
+        tokenVersion: verified.payload.v,
+        bucketBefore: decodedBucketBeforeNormalize,
+        bucketAfter: bucket,
+        path,
+        kind: kindParam || null,
+        disposition,
+      });
+    }
   } else if (!isAdmin) {
     log("start", {
       tokenPresent: false,
@@ -384,7 +486,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Admin-only back-compat: if bucket/path were provided with a token, verify they match.
-  if (token && isAdmin) {
+  if (token && isAdmin && !quoteFileIdFromToken) {
     const verified = verifyPreviewToken({ token, userId: user.id, bucket, path });
     if (!verified.ok) {
       log("start", {
@@ -460,7 +562,18 @@ export async function GET(req: NextRequest) {
             });
           } catch (err) {
             logStep("response", { source: "source_not_found", error: safeErrorForLog(err) });
-            return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
+            return NextResponse.json(
+              {
+                error: "source_not_found",
+                code: "source_not_found",
+                userMessage: "This file is missing from storage. Please re-upload it to restore previews.",
+                bucket,
+                path,
+                requestId,
+                quoteFileId: quoteFileIdFromToken,
+              },
+              { status: 404 },
+            );
           }
         }
 
@@ -473,7 +586,18 @@ export async function GET(req: NextRequest) {
             path,
             error: storageErrorForLog(stepDownloadError) ?? safeErrorForLog(stepDownloadError),
           });
-          return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
+          return NextResponse.json(
+            {
+              error: "source_not_found",
+              code: "source_not_found",
+              userMessage: "This file is missing from storage. Please re-upload it to restore previews.",
+              bucket,
+              path,
+              requestId,
+              quoteFileId: quoteFileIdFromToken,
+            },
+            { status: 404 },
+          );
         }
         const safeName = fileName && fileName.trim() ? fileName.trim() : "file.step";
         return new NextResponse(stepBlob.stream(), {
@@ -654,7 +778,18 @@ export async function GET(req: NextRequest) {
           resolvedSourcePath = downloaded.resolvedPath;
         } catch (err) {
           logStep("response", { source: "source_not_found", error: safeErrorForLog(err) });
-          return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
+          return NextResponse.json(
+            {
+              error: "source_not_found",
+              code: "source_not_found",
+              userMessage: "This file is missing from storage. Please re-upload it to restore previews.",
+              bucket,
+              path,
+              requestId,
+              quoteFileId: quoteFileIdFromToken,
+            },
+            { status: 404 },
+          );
         }
       } else {
         logStep("storage_download_start", { target: "source", bucket, path });
@@ -666,7 +801,18 @@ export async function GET(req: NextRequest) {
             path,
             error: storageErrorForLog(stepDownloadError) ?? safeErrorForLog(stepDownloadError),
           });
-          return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
+          return NextResponse.json(
+            {
+              error: "source_not_found",
+              code: "source_not_found",
+              userMessage: "This file is missing from storage. Please re-upload it to restore previews.",
+              bucket,
+              path,
+              requestId,
+              quoteFileId: quoteFileIdFromToken,
+            },
+            { status: 404 },
+          );
         }
         if (typeof stepBlob.size === "number" && stepBlob.size > MAX_PREVIEW_BYTES) {
           logStep("response", { source: "source_too_large", bytes: stepBlob.size });
@@ -787,7 +933,18 @@ export async function GET(req: NextRequest) {
       });
     } catch (err) {
       log("response", { source: "source_not_found", error: safeErrorForLog(err) });
-      return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
+      return NextResponse.json(
+        {
+          error: "source_not_found",
+          code: "source_not_found",
+          userMessage: "This file is missing from storage. Please re-upload it to restore previews.",
+          bucket,
+          path,
+          requestId,
+          quoteFileId: quoteFileIdFromToken,
+        },
+        { status: 404 },
+      );
     }
   }
 
@@ -802,7 +959,18 @@ export async function GET(req: NextRequest) {
       disposition,
       error: storageErrorForLog(error) ?? safeErrorForLog(error),
     });
-    return NextResponse.json({ error: "source_not_found", bucket, path, requestId }, { status: 404 });
+    return NextResponse.json(
+      {
+        error: "source_not_found",
+        code: "source_not_found",
+        userMessage: "This file is missing from storage. Please re-upload it to restore previews.",
+        bucket,
+        path,
+        requestId,
+        quoteFileId: quoteFileIdFromToken,
+      },
+      { status: 404 },
+    );
   }
   if (typeof blob.size === "number" && blob.size > MAX_PREVIEW_BYTES) {
     return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });

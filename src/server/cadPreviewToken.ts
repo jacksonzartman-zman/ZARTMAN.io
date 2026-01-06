@@ -20,7 +20,19 @@ type PreviewTokenPayloadV2 = {
   fn?: string; // filename hint
 };
 
-type PreviewTokenPayload = PreviewTokenPayloadV1 | PreviewTokenPayloadV2;
+type PreviewTokenPayloadV3 = {
+  v: 3;
+  uid: string;
+  exp: number; // unix seconds
+  // Canonical quote file id (from files_valid/files). Server will resolve bucket/path from DB.
+  qfid: string;
+  // Optional: quote id for observability only.
+  qid?: string;
+  // Optional filename hint.
+  fn?: string;
+};
+
+type PreviewTokenPayload = PreviewTokenPayloadV1 | PreviewTokenPayloadV2 | PreviewTokenPayloadV3;
 
 function base64UrlEncode(input: string | Uint8Array): string {
   const buf = typeof input === "string" ? Buffer.from(input, "utf8") : Buffer.from(input);
@@ -62,21 +74,49 @@ function normalizePath(value: unknown): string {
 
 export function signPreviewToken(input: {
   userId: string;
-  bucket: string;
-  path: string;
+  bucket?: string | null;
+  path?: string | null;
   exp: number; // unix seconds
   quoteId?: string | null;
   quoteFileId?: string | null;
   filename?: string | null;
 }): string {
+  const uid = normalizeId(input.userId);
+  const exp = typeof input.exp === "number" && Number.isFinite(input.exp) ? input.exp : 0;
+  const qid = normalizeId(input.quoteId);
+  const qfid = normalizeId(input.quoteFileId);
+  const fn = normalizeId(input.filename);
+
+  // V3 (preferred for portals): quoteFileId-only token.
+  if (qfid) {
+    const payload: PreviewTokenPayloadV3 = {
+      v: 3,
+      uid,
+      exp,
+      qfid,
+      ...(qid ? { qid } : {}),
+      ...(fn ? { fn } : {}),
+    };
+    if (!payload.uid || payload.exp <= 0 || !payload.qfid) {
+      throw new Error("invalid_preview_token_payload");
+    }
+    const payloadB64 = base64UrlEncode(JSON.stringify(payload));
+    const sig = createHmac("sha256", getTokenSecret()).update(payloadB64).digest();
+    const sigB64 = base64UrlEncode(sig);
+    return `${payloadB64}.${sigB64}`;
+  }
+
+  // Legacy (intake / admin / direct bucket+path previews): bucket+path token.
+  const b = normalizeId(input.bucket);
+  const p = normalizePath(input.path);
   const base: Omit<PreviewTokenPayloadV2, "v"> = {
-    uid: normalizeId(input.userId),
-    b: normalizeId(input.bucket),
-    p: normalizePath(input.path),
-    exp: typeof input.exp === "number" && Number.isFinite(input.exp) ? input.exp : 0,
-    qid: normalizeId(input.quoteId),
-    qfid: normalizeId(input.quoteFileId),
-    fn: normalizeId(input.filename),
+    uid,
+    b,
+    p,
+    exp,
+    qid,
+    qfid,
+    fn,
   };
   if (!base.qid) delete (base as any).qid;
   if (!base.qfid) delete (base as any).qfid;
@@ -85,7 +125,7 @@ export function signPreviewToken(input: {
   const payload: PreviewTokenPayload =
     base.qid || base.qfid || base.fn ? { v: 2, ...base } : { v: 1, ...base };
 
-  if (!payload.uid || !payload.b || !payload.p || payload.exp <= 0) {
+  if (!payload.uid || !("b" in payload) || !("p" in payload) || !payload.b || !payload.p || payload.exp <= 0) {
     throw new Error("invalid_preview_token_payload");
   }
 
@@ -132,7 +172,7 @@ export function verifyPreviewToken(input: {
     payload = null;
   }
 
-  if (!payload || (payload.v !== 1 && payload.v !== 2)) {
+  if (!payload || (payload.v !== 1 && payload.v !== 2 && payload.v !== 3)) {
     return { ok: false, reason: "token_payload" };
   }
 
@@ -143,9 +183,14 @@ export function verifyPreviewToken(input: {
 
   if (!payload.exp || payload.exp < now) return { ok: false, reason: "token_expired" };
 
+  // verifyPreviewToken enforces bucket/path match; it is only applicable to v1/v2 tokens.
+  if (payload.v === 3) {
+    return { ok: false, reason: "token_version_mismatch" };
+  }
+
   const uid = normalizeId(payload.uid);
-  const bkt = normalizeId(payload.b);
-  const pth = normalizePath(payload.p);
+  const bkt = normalizeId((payload as PreviewTokenPayloadV1 | PreviewTokenPayloadV2).b);
+  const pth = normalizePath((payload as PreviewTokenPayloadV1 | PreviewTokenPayloadV2).p);
 
   if (!uid || !bkt || !pth) return { ok: false, reason: "token_payload" };
 
@@ -206,7 +251,7 @@ export function verifyPreviewTokenForUser(input: {
     payload = null;
   }
 
-  if (!payload || (payload.v !== 1 && payload.v !== 2)) {
+  if (!payload || (payload.v !== 1 && payload.v !== 2 && payload.v !== 3)) {
     return { ok: false, reason: "token_payload" };
   }
 
@@ -218,11 +263,27 @@ export function verifyPreviewTokenForUser(input: {
   if (!payload.exp || payload.exp < now) return { ok: false, reason: "token_expired" };
 
   const uid = normalizeId(payload.uid);
-  const bkt = normalizeId(payload.b);
-  const pth = normalizePath(payload.p);
-
-  if (!uid || !bkt || !pth) return { ok: false, reason: "token_payload" };
+  if (!uid) return { ok: false, reason: "token_payload" };
   if (uid !== normalizeId(input.userId)) return { ok: false, reason: "token_user_mismatch" };
+
+  if (payload.v === 3) {
+    const qfid = normalizeId((payload as PreviewTokenPayloadV3).qfid);
+    const qid = normalizeId((payload as PreviewTokenPayloadV3).qid);
+    const fn = normalizeId((payload as PreviewTokenPayloadV3).fn);
+    if (!qfid) return { ok: false, reason: "token_payload" };
+    const normalizedPayload: PreviewTokenPayloadV3 = {
+      ...(payload as PreviewTokenPayloadV3),
+      uid,
+      qfid,
+      ...(qid ? { qid } : {}),
+      ...(fn ? { fn } : {}),
+    };
+    return { ok: true, payload: normalizedPayload };
+  }
+
+  const bkt = normalizeId((payload as PreviewTokenPayloadV1 | PreviewTokenPayloadV2).b);
+  const pth = normalizePath((payload as PreviewTokenPayloadV1 | PreviewTokenPayloadV2).p);
+  if (!bkt || !pth) return { ok: false, reason: "token_payload" };
 
   const qid = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).qid) : "";
   const qfid = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).qfid) : "";
