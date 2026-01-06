@@ -76,35 +76,56 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
               No files listed.
             </p>
           ) : (
-              files.map((file) => (
+            files.map((file) => {
+              const name = file.fileName ?? file.label;
+              const classified = classifyCadFileType({ filename: name, extension: null });
+              const cadKind = file.cadKind ?? (classified.ok ? classified.type : null);
+              const canPreview = Boolean(file.storageSource && cadKind && file.signedUrl);
+
+              const content = (
+                <>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-100">
+                      {file.label}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {canPreview
+                        ? "3D preview available"
+                        : file.fallbackMessage ?? "Preview not available"}
+                    </p>
+                  </div>
+                  {canPreview ? (
+                    <span
+                      className={clsx(
+                        secondaryCtaClasses,
+                        ctaSizeClasses.sm,
+                        "whitespace-nowrap",
+                      )}
+                    >
+                      View model
+                    </span>
+                  ) : null}
+                </>
+              );
+
+              return canPreview ? (
                 <button
                   key={file.id}
                   type="button"
                   onClick={() => setActiveFileId(file.id)}
                   className="group flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/20 px-6 py-4 text-left transition hover:border-slate-800 hover:bg-slate-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-100">
-                      {file.label}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {file.signedUrl
-                        ? "Interactive STL available"
-                        : file.fallbackMessage ?? "Preview not available yet"}
-                    </p>
-                  </div>
-                  <span
-                    className={clsx(
-                      secondaryCtaClasses,
-                      ctaSizeClasses.sm,
-                      "whitespace-nowrap",
-                      !file.signedUrl && "opacity-70",
-                    )}
-                  >
-                    View model
-                  </span>
+                  {content}
                 </button>
-              ))
+              ) : (
+                <div
+                  key={file.id}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/10 px-6 py-4 text-left opacity-80"
+                >
+                  {content}
+                </div>
+              );
+            })
           )}
         </div>
 

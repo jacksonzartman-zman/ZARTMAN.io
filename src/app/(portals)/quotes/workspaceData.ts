@@ -1,9 +1,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
-  buildQuoteFilesFromRow,
   getQuoteFilePreviews,
   type QuoteFilePreviewOptions,
-  type UploadFileReference,
 } from "@/server/quotes/files";
 import type {
   QuoteFileMeta,
@@ -173,7 +171,6 @@ export async function loadQuoteWorkspaceData(
     }
 
     let uploadMeta: UploadMeta | null = null;
-    let uploadFileReference: UploadFileReference | undefined;
     if (quote.upload_id) {
       // IMPORTANT: Do not reference non-existent columns in select lists.
       // Use `*` and normalize in-code across schema variants.
@@ -190,26 +187,14 @@ export async function loadQuoteWorkspaceData(
         console.error("Portal workspace loader: failed to load upload meta", metaError);
       } else if (meta) {
         uploadMeta = meta;
-        uploadFileReference = {
-          file_name: meta.file_name,
-          file_path: meta.file_path,
-          mime_type: meta.mime_type ?? undefined,
-          storage_bucket_id: meta.storage_bucket_id ?? null,
-          storage_path: meta.storage_path ?? null,
-          bucket_id: meta.bucket_id ?? null,
-        };
       }
     }
 
-    let filesUnavailable = safeOnly;
+    let filesUnavailable = false;
     let filesErrorLogged = false;
     const filePreviewOptions: QuoteFilePreviewOptions = {
-      includeFilesTable: !safeOnly,
       viewerUserId: options?.viewerUserId ?? null,
     };
-    if (typeof uploadFileReference !== "undefined") {
-      filePreviewOptions.uploadFileOverride = uploadFileReference;
-    }
     filePreviewOptions.onFilesError = (error) => {
       const serializedError = serializeSupabaseError(error);
 
@@ -235,8 +220,10 @@ export async function loadQuoteWorkspaceData(
     const filePreviews = await getQuoteFilePreviews(quote, filePreviewOptions);
     const uploadGroups = await loadQuoteUploadGroups(quoteId);
     const parts = await loadQuotePartsWithFiles(quoteId);
-    const files = buildQuoteFilesFromRow(quote);
-    const fileCount = files.length;
+    const files: QuoteFileMeta[] = filePreviews.map((file) => ({
+      filename: (file.fileName ?? file.label).trim(),
+    }));
+    const fileCount = filePreviews.length;
     const enrichedQuote: QuoteWorkspaceQuote = {
       ...quote,
       files,
