@@ -16,6 +16,7 @@ type PreviewTokenPayloadV2 = {
   exp: number; // unix seconds
   // Optional metadata to help server resolve alternate storage keys.
   qid?: string; // quote id
+  qfid?: string; // quote file id (public.files/public.uploads)
   fn?: string; // filename hint
 };
 
@@ -65,6 +66,7 @@ export function signPreviewToken(input: {
   path: string;
   exp: number; // unix seconds
   quoteId?: string | null;
+  quoteFileId?: string | null;
   filename?: string | null;
 }): string {
   const base: Omit<PreviewTokenPayloadV2, "v"> = {
@@ -73,13 +75,15 @@ export function signPreviewToken(input: {
     p: normalizePath(input.path),
     exp: typeof input.exp === "number" && Number.isFinite(input.exp) ? input.exp : 0,
     qid: normalizeId(input.quoteId),
+    qfid: normalizeId(input.quoteFileId),
     fn: normalizeId(input.filename),
   };
   if (!base.qid) delete (base as any).qid;
+  if (!base.qfid) delete (base as any).qfid;
   if (!base.fn) delete (base as any).fn;
 
   const payload: PreviewTokenPayload =
-    base.qid || base.fn ? { v: 2, ...base } : { v: 1, ...base };
+    base.qid || base.qfid || base.fn ? { v: 2, ...base } : { v: 1, ...base };
 
   if (!payload.uid || !payload.b || !payload.p || payload.exp <= 0) {
     throw new Error("invalid_preview_token_payload");
@@ -150,6 +154,7 @@ export function verifyPreviewToken(input: {
   if (pth !== normalizePath(input.path)) return { ok: false, reason: "token_path_mismatch" };
 
   const qid = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).qid) : "";
+  const qfid = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).qfid) : "";
   const fn = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).fn) : "";
   const normalizedPayload: PreviewTokenPayload =
     payload.v === 2
@@ -159,6 +164,7 @@ export function verifyPreviewToken(input: {
           b: bkt,
           p: pth,
           ...(qid ? { qid } : {}),
+          ...(qfid ? { qfid } : {}),
           ...(fn ? { fn } : {}),
         }
       : { ...(payload as PreviewTokenPayloadV1), uid, b: bkt, p: pth };
@@ -219,6 +225,7 @@ export function verifyPreviewTokenForUser(input: {
   if (uid !== normalizeId(input.userId)) return { ok: false, reason: "token_user_mismatch" };
 
   const qid = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).qid) : "";
+  const qfid = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).qfid) : "";
   const fn = payload.v === 2 ? normalizeId((payload as PreviewTokenPayloadV2).fn) : "";
   const normalizedPayload: PreviewTokenPayload =
     payload.v === 2
@@ -228,6 +235,7 @@ export function verifyPreviewTokenForUser(input: {
           b: bkt,
           p: pth,
           ...(qid ? { qid } : {}),
+          ...(qfid ? { qfid } : {}),
           ...(fn ? { fn } : {}),
         }
       : { ...(payload as PreviewTokenPayloadV1), uid, b: bkt, p: pth };

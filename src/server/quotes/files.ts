@@ -373,9 +373,6 @@ async function getPreviewForCandidate(
         path: signedPath,
         filename,
       });
-      if (probe.matchedKey && probe.matchCount === 1) {
-        signedPath = probe.matchedKey;
-      }
     }
 
     console.info("[portal-preview-sign]", {
@@ -385,6 +382,7 @@ async function getPreviewForCandidate(
       bucket: signedBucket,
       path: signedPath,
       pathBeforeProbe: probeEnabled ? pathBeforeProbe : undefined,
+      probe: probeEnabled ? probe : undefined,
       usedFieldNames,
       filename,
     });
@@ -396,6 +394,10 @@ async function getPreviewForCandidate(
         path: signedPath,
         exp,
         quoteId,
+        quoteFileId:
+          typeof candidate.quoteFileId === "string" && candidate.quoteFileId.trim()
+            ? candidate.quoteFileId.trim()
+            : null,
         filename: inferredFileName ?? null,
       })
     : null;
@@ -528,42 +530,29 @@ function normalizeBucketAndPath(input: {
   const rawPath = typeof input.path === "string" ? input.path.trim() : "";
   if (!rawPath) return null;
 
-  // Path normalization rules:
-  // - trim leading slash only
+  // Path normalization rules (minimal):
+  // - strip leading slash
   // - collapse accidental double slashes
-  // - do NOT infer or relocate into "uploads/" (caller must supply real object key)
+  // - do NOT infer / relocate into other prefixes
   let path = rawPath.replace(/^\/+/, "");
   path = path.replace(/\/{2,}/g, "/");
   if (!path) return null;
 
+  // Bucket normalization rules:
+  // - constrain to the canonical portal buckets only
   let bucket = rawBucket ? canonicalizeCadBucket(rawBucket) : "";
-
-  const firstSegment = (path.split("/")[0] ?? "").trim();
-  const firstSegmentCanonical = canonicalizeCadBucket(firstSegment);
-
-  // If a known CAD bucket prefix exists in the path, prefer it.
-  // This rescues cases where DB stored `bucket/path` but bucket column is missing/mismatched.
-  if (firstSegmentCanonical && isAllowedCadBucket(firstSegmentCanonical)) {
-    if (!bucket || !isAllowedCadBucket(bucket)) {
-      bucket = firstSegmentCanonical;
-    }
-    if (bucket === firstSegmentCanonical) {
-      path = path.slice(firstSegment.length + 1);
-    }
-  }
-
-  // Final bucket resolution: constrain to portal CAD buckets only.
   if (!bucket || !isAllowedCadBucket(bucket)) {
     const fallback = canonicalizeCadBucket(DEFAULT_CAD_BUCKET);
     bucket = isAllowedCadBucket(fallback) ? fallback : "cad_uploads";
   }
 
-  // Strip an exact bucket prefix if present (supports accidental duplication like bucket/bucket/...).
-  const legacyPrefix = bucket === "cad_uploads" ? "cad-uploads" : bucket === "cad_previews" ? "cad-previews" : null;
-  while (path.startsWith(`${bucket}/`) || (legacyPrefix ? path.startsWith(`${legacyPrefix}/`) : false)) {
-    const prefix = path.startsWith(`${bucket}/`) ? bucket : legacyPrefix!;
-    path = path.slice(prefix.length + 1);
-    path = path.replace(/^\/+/, "");
+  // Strip a duplicated bucket prefix only when it matches the resolved bucket.
+  const legacyPrefix =
+    bucket === "cad_uploads" ? "cad-uploads" : bucket === "cad_previews" ? "cad-previews" : null;
+  if (path.startsWith(`${bucket}/`)) {
+    path = path.slice(bucket.length + 1);
+  } else if (legacyPrefix && path.startsWith(`${legacyPrefix}/`)) {
+    path = path.slice(legacyPrefix.length + 1);
   }
 
   path = path.replace(/^\/+/, "");
@@ -606,13 +595,13 @@ async function probeStorageForKeyMatch(input: {
   const filenameHint = (input.filename ?? basename).trim();
   const needle = filenameHint.toLowerCase();
 
-  const prefixes: string[] = ["uploads"];
+  const prefixes: string[] = ["uploads/"];
   if (quoteId) {
     prefixes.push(
-      `quote_uploads/${quoteId}`,
-      `quote_uploads/${quoteId}/uploads`,
-      `quotes/${quoteId}`,
-      `quotes/${quoteId}/uploads`,
+      `quote_uploads/${quoteId}/`,
+      `quote_uploads/${quoteId}/uploads/`,
+      `quotes/${quoteId}/`,
+      `quotes/${quoteId}/uploads/`,
     );
   }
 
@@ -642,7 +631,7 @@ async function probeStorageForKeyMatch(input: {
       for (const it of items as any[]) {
         const name = typeof it?.name === "string" ? it.name : "";
         if (!name) continue;
-        const fullKey = `${prefix}/${name}`.replace(/\/{2,}/g, "/");
+        const fullKey = `${prefix}${name}`.replace(/\/{2,}/g, "/");
         if (needle && fullKey.toLowerCase().includes(needle)) {
           matches.push(fullKey);
         }
