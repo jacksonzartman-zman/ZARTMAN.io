@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createReadOnlyAuthClient, getServerAuthUser, requireAdminUser } from "@/server/auth";
 import { verifyPreviewToken, verifyPreviewTokenForUser } from "@/server/cadPreviewToken";
-import { resolveStorageObjectKey } from "@/server/storage/resolveObjectKey";
+import { resolveStoredObject } from "@/server/storage/resolveStoredObject";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,10 +15,9 @@ const STEP_PREVIEW_BUCKET = "cad_previews";
 function normalizeBucket(input: unknown): string {
   const raw = typeof input === "string" ? input.trim() : "";
   if (!raw) return "";
-  if (raw === "cad-uploads") return "cad_uploads";
-  if (raw === "cad_uploads") return "cad_uploads";
-  if (raw === "cad-previews") return "cad_previews";
-  if (raw === "cad_previews") return "cad_previews";
+  // IMPORTANT: do not rewrite bucket identifiers here.
+  // Some deployments use underscore vs hyphen bucket ids; the resolver handles aliasing,
+  // and we backfill the actual bucket id once resolved.
   return raw;
 }
 
@@ -150,6 +149,12 @@ function isStorageObjectNotFound(err: unknown): boolean {
   const info = storageErrorForLog(err);
   const message = (info?.message ?? (err instanceof Error ? err.message : "")).toLowerCase();
   return message.includes("object not found") || message.includes("not found");
+}
+
+function isSignedUrlObjectNotFound(err: unknown): boolean {
+  if (!(err instanceof StorageSignedUrlError)) return false;
+  if (err.status !== 400) return false;
+  return isStorageObjectNotFound(err);
 }
 
 function basenameOfPath(path: string): string {
@@ -288,52 +293,59 @@ async function downloadViaSignedUrlWithFallback(
     const downloaded = await downloadViaSignedUrl(supabase, bucket, path, expiresSeconds, rid, target);
     return { ...downloaded, resolvedPath: path };
   } catch (err) {
-    // Only attempt deterministic fallbacks for "not found" cases.
-    if (!isStorageObjectNotFound(err)) {
+    // Only attempt resolver/fallbacks for token signed-url "Object not found".
+    // This is the production failure mode we need to self-heal.
+    if (!isSignedUrlObjectNotFound(err)) {
       throw err;
     }
 
-    // 1) Targeted storage catalog resolver (no bucket-wide listing).
-    if (bucket === "cad_uploads" || bucket === "cad_previews") {
-      try {
-        const resolved = await resolveStorageObjectKey({
-          supabaseService: supabase,
-          bucket,
+    // 1) Storage API resolver (strict caps; no bucket-wide scan).
+    // This runs BEFORE deterministic alternate paths, because bucket mismatch is common.
+    try {
+      const resolved = await resolveStoredObject({
+        serviceSupabase: supabase,
+        requestedBucket: bucket,
+        requestedPath: path,
+        quoteId: hints.quoteId,
+        quoteFileId: hints.quoteFileId,
+        filename: hints.filename,
+        rid,
+      });
+
+      if (resolved.found && resolved.bucket && resolved.path) {
+        const downloaded = await downloadViaSignedUrl(
+          supabase,
+          resolved.bucket,
+          resolved.path,
+          expiresSeconds,
+          rid,
+          `${target}_resolved`,
+        );
+        console.log("[cad-preview]", {
+          rid,
+          stage: "storage_path_resolved",
+          target,
+          requestedBucket: bucket,
           requestedPath: path,
-          quoteId: hints.quoteId,
-          quoteFileId: hints.quoteFileId,
-          filename: hints.filename,
-          requestId: rid,
+          resolvedBucket: resolved.bucket,
+          resolvedPath: resolved.path,
         });
-        if (resolved?.resolvedPath && resolved.resolvedPath !== path) {
-          const downloaded = await downloadViaSignedUrl(
-            supabase,
-            bucket,
-            resolved.resolvedPath,
-            expiresSeconds,
-            rid,
-            `${target}_resolved`,
-          );
-          console.log("[cad-preview]", {
-            rid,
-            stage: "storage_path_resolved",
-            bucket,
-            requestedPath: path,
-            resolvedPath: resolved.resolvedPath,
-            target,
-          });
+
+        // Only backfill for source objects (not preview artifacts).
+        if (target.startsWith("source")) {
           await backfillCanonicalStorageKey({
             supabaseService: supabase,
             rid,
             quoteFileId: hints.quoteFileId,
-            bucket,
-            resolvedPath: resolved.resolvedPath,
+            bucket: resolved.bucket,
+            resolvedPath: resolved.path,
           });
-          return { ...downloaded, resolvedPath: resolved.resolvedPath };
         }
-      } catch {
-        // Resolver is best-effort; continue to deterministic alternates.
+
+        return { ...downloaded, resolvedPath: resolved.path };
       }
+    } catch {
+      // Resolver is best-effort; continue to deterministic alternates.
     }
 
     const alternates = buildAlternateStorageKeys({ path, quoteId: hints.quoteId });
@@ -353,21 +365,24 @@ async function downloadViaSignedUrlWithFallback(
         console.log("[cad-preview]", {
           rid,
           stage: "storage_path_resolved",
-          bucket,
-          requestedPath: path,
-          resolvedPath: candidate,
           target,
-        });
-        await backfillCanonicalStorageKey({
-          supabaseService: supabase,
-          rid,
-          quoteFileId: hints.quoteFileId,
-          bucket,
+          requestedPath: path,
+          requestedBucket: bucket,
+          resolvedBucket: bucket,
           resolvedPath: candidate,
         });
+        if (target.startsWith("source")) {
+          await backfillCanonicalStorageKey({
+            supabaseService: supabase,
+            rid,
+            quoteFileId: hints.quoteFileId,
+            bucket,
+            resolvedPath: candidate,
+          });
+        }
         return { ...downloaded, resolvedPath: candidate };
       } catch (candidateErr) {
-        if (!isStorageObjectNotFound(candidateErr)) {
+        if (!isSignedUrlObjectNotFound(candidateErr)) {
           throw candidateErr;
         }
       }
