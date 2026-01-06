@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createReadOnlyAuthClient, getServerAuthUser, requireAdminUser } from "@/server/auth";
 import { verifyPreviewToken, verifyPreviewTokenForUser } from "@/server/cadPreviewToken";
+import { resolveStorageObjectKey } from "@/server/storage/resolveObjectKey";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -141,6 +142,7 @@ function storageErrorForLog(err: unknown): { message?: string; status?: number; 
 
 type TokenStorageHints = {
   quoteId: string | null;
+  quoteFileId: string | null;
   filename: string | null;
 };
 
@@ -290,6 +292,50 @@ async function downloadViaSignedUrlWithFallback(
     if (!isStorageObjectNotFound(err)) {
       throw err;
     }
+
+    // 1) Targeted storage catalog resolver (no bucket-wide listing).
+    if (bucket === "cad_uploads" || bucket === "cad_previews") {
+      try {
+        const resolved = await resolveStorageObjectKey({
+          supabaseService: supabase,
+          bucket,
+          requestedPath: path,
+          quoteId: hints.quoteId,
+          quoteFileId: hints.quoteFileId,
+          filename: hints.filename,
+          requestId: rid,
+        });
+        if (resolved?.resolvedPath && resolved.resolvedPath !== path) {
+          const downloaded = await downloadViaSignedUrl(
+            supabase,
+            bucket,
+            resolved.resolvedPath,
+            expiresSeconds,
+            rid,
+            `${target}_resolved`,
+          );
+          console.log("[cad-preview]", {
+            rid,
+            stage: "storage_path_resolved",
+            bucket,
+            requestedPath: path,
+            resolvedPath: resolved.resolvedPath,
+            target,
+          });
+          await backfillCanonicalStorageKey({
+            supabaseService: supabase,
+            rid,
+            quoteFileId: hints.quoteFileId,
+            bucket,
+            resolvedPath: resolved.resolvedPath,
+          });
+          return { ...downloaded, resolvedPath: resolved.resolvedPath };
+        }
+      } catch {
+        // Resolver is best-effort; continue to deterministic alternates.
+      }
+    }
+
     const alternates = buildAlternateStorageKeys({ path, quoteId: hints.quoteId });
     if (alternates.length === 0) {
       throw err;
@@ -312,6 +358,13 @@ async function downloadViaSignedUrlWithFallback(
           resolvedPath: candidate,
           target,
         });
+        await backfillCanonicalStorageKey({
+          supabaseService: supabase,
+          rid,
+          quoteFileId: hints.quoteFileId,
+          bucket,
+          resolvedPath: candidate,
+        });
         return { ...downloaded, resolvedPath: candidate };
       } catch (candidateErr) {
         if (!isStorageObjectNotFound(candidateErr)) {
@@ -321,6 +374,70 @@ async function downloadViaSignedUrlWithFallback(
     }
     throw err;
   }
+}
+
+async function backfillCanonicalStorageKey(input: {
+  supabaseService: SupabaseClient;
+  rid: string;
+  quoteFileId: string | null;
+  bucket: string;
+  resolvedPath: string;
+}): Promise<void> {
+  const quoteFileId = normalizeId(input.quoteFileId);
+  const bucket = normalizeBucket(input.bucket);
+  const resolvedPath = normalizePath(input.resolvedPath);
+
+  if (!quoteFileId || !bucket || !resolvedPath) {
+    console.log("[cad-preview]", {
+      rid: input.rid,
+      stage: "storage_key_backfilled",
+      quoteFileId: quoteFileId || null,
+      table: "none",
+      bucket: bucket || null,
+      resolvedPath: resolvedPath || null,
+    });
+    return;
+  }
+
+  const tryBackfillTable = async (table: "files" | "uploads"): Promise<boolean> => {
+    const { data, error } = await input.supabaseService.from(table).select("*").eq("id", quoteFileId).maybeSingle<any>();
+    if (error || !data) {
+      return false;
+    }
+
+    const has = (field: string) => Object.prototype.hasOwnProperty.call(data, field);
+    const pathField = has("storage_path") ? "storage_path" : has("file_path") ? "file_path" : has("path") ? "path" : null;
+    const bucketField = has("storage_bucket_id") ? "storage_bucket_id" : has("bucket_id") ? "bucket_id" : null;
+    if (!pathField) {
+      return false;
+    }
+
+    const payload: Record<string, unknown> = { [pathField]: resolvedPath };
+    if (bucketField) payload[bucketField] = bucket;
+
+    const updateResult = await input.supabaseService.from(table).update(payload).eq("id", quoteFileId);
+    return !updateResult.error;
+  };
+
+  let table: "files" | "uploads" | "none" = "none";
+  try {
+    if (await tryBackfillTable("files")) {
+      table = "files";
+    } else if (await tryBackfillTable("uploads")) {
+      table = "uploads";
+    }
+  } catch {
+    table = "none";
+  }
+
+  console.log("[cad-preview]", {
+    rid: input.rid,
+    stage: "storage_key_backfilled",
+    quoteFileId,
+    table,
+    bucket,
+    resolvedPath,
+  });
 }
 
 function getServiceSupabase(input: { requestId: string }):
@@ -420,7 +537,7 @@ export async function GET(req: NextRequest) {
   const storageSupabase = storageClientResult.client;
 
   let decodedBucketBeforeNormalize: string | null = null;
-  const tokenHints: TokenStorageHints = { quoteId: null, filename: null };
+  const tokenHints: TokenStorageHints = { quoteId: null, quoteFileId: null, filename: null };
   if (token) {
     const verified = verifyPreviewTokenForUser({ token, userId: user.id });
     if (!verified.ok) {
@@ -440,6 +557,10 @@ export async function GET(req: NextRequest) {
       typeof (verified.payload as any)?.qid === "string"
         ? normalizeId((verified.payload as any).qid)
         : null;
+    tokenHints.quoteFileId =
+      typeof (verified.payload as any)?.qfid === "string"
+        ? normalizeId((verified.payload as any).qfid)
+        : null;
     tokenHints.filename =
       typeof (verified.payload as any)?.fn === "string"
         ? normalizeId((verified.payload as any).fn)
@@ -451,6 +572,7 @@ export async function GET(req: NextRequest) {
       kind: kindParam || null,
       disposition,
       quoteId: tokenHints.quoteId,
+      quoteFileId: tokenHints.quoteFileId,
     });
   } else if (!isAdmin) {
     log("start", {
