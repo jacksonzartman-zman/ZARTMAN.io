@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createReadOnlyAuthClient, getServerAuthUser, requireAdminUser } from "@/server/auth";
 import { verifyPreviewToken, verifyPreviewTokenForUser } from "@/server/cadPreviewToken";
-import { resolveStoredObject } from "@/server/storage/resolveStoredObject";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -139,59 +138,10 @@ function storageErrorForLog(err: unknown): { message?: string; status?: number; 
   return { message: String(err) };
 }
 
-type TokenStorageHints = {
-  quoteId: string | null;
-  quoteFileId: string | null;
-  filename: string | null;
-};
-
-function isStorageObjectNotFound(err: unknown): boolean {
-  const info = storageErrorForLog(err);
-  const message = (info?.message ?? (err instanceof Error ? err.message : "")).toLowerCase();
-  return message.includes("object not found") || message.includes("not found");
-}
-
-function isSignedUrlObjectNotFound(err: unknown): boolean {
-  if (!(err instanceof StorageSignedUrlError)) return false;
-  if (err.status !== 400) return false;
-  return isStorageObjectNotFound(err);
-}
-
 function basenameOfPath(path: string): string {
   const normalized = normalizePath(path);
   const parts = normalized.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? normalized;
-}
-
-function buildAlternateStorageKeys(input: { path: string; quoteId: string | null }): string[] {
-  const path = normalizePath(input.path);
-  const quoteId = normalizeId(input.quoteId);
-  const base = basenameOfPath(path);
-  const candidates: string[] = [];
-
-  if (quoteId) {
-    candidates.push(
-      `uploads/${quoteId}/${base}`,
-      `uploads/${quoteId}/uploads/${base}`,
-      `quote_uploads/${quoteId}/${path}`,
-      `quote_uploads/${quoteId}/uploads/${base}`,
-      `quotes/${quoteId}/${path}`,
-      `quotes/${quoteId}/uploads/${base}`,
-      `${quoteId}/${path}`,
-      `${quoteId}/uploads/${base}`,
-    );
-  }
-  candidates.push(`uploads/${base}`);
-
-  // De-dupe and normalize slashes.
-  const unique = Array.from(
-    new Set(
-      candidates
-        .map((c) => c.replace(/^\/+/, "").replace(/\/{2,}/g, "/"))
-        .filter((c) => c && c !== path),
-    ),
-  );
-  return unique;
 }
 
 type SignedUrlDownloadResult = {
@@ -289,172 +239,9 @@ async function downloadViaSignedUrlWithFallback(
   expiresSeconds: number,
   rid: string,
   target: string,
-  hints: TokenStorageHints,
 ): Promise<SignedUrlDownloadResult & { resolvedPath: string }> {
-  try {
-    const downloaded = await downloadViaSignedUrl(supabase, bucket, path, expiresSeconds, rid, target);
-    return { ...downloaded, resolvedPath: path };
-  } catch (err) {
-    // Only attempt resolver/fallbacks for token signed-url "Object not found".
-    // This is the production failure mode we need to self-heal.
-    if (!isSignedUrlObjectNotFound(err)) {
-      throw err;
-    }
-
-    // 1) Storage API resolver (strict caps; no bucket-wide scan).
-    // This runs BEFORE deterministic alternate paths, because bucket mismatch is common.
-    try {
-      const resolved = await resolveStoredObject({
-        serviceSupabase: supabase,
-        requestedBucket: bucket,
-        requestedPath: path,
-        quoteId: hints.quoteId,
-        quoteFileId: hints.quoteFileId,
-        filename: hints.filename,
-        rid,
-      });
-
-      if (resolved.found && resolved.bucket && resolved.path) {
-        const downloaded = await downloadViaSignedUrl(
-          supabase,
-          resolved.bucket,
-          resolved.path,
-          expiresSeconds,
-          rid,
-          `${target}_resolved`,
-        );
-        console.log("[cad-preview]", {
-          rid,
-          stage: "storage_path_resolved",
-          target,
-          requestedBucket: bucket,
-          requestedPath: path,
-          resolvedBucket: resolved.bucket,
-          resolvedPath: resolved.path,
-        });
-
-        // Only backfill for source objects (not preview artifacts).
-        if (target.startsWith("source")) {
-          await backfillCanonicalStorageKey({
-            supabaseService: supabase,
-            rid,
-            quoteFileId: hints.quoteFileId,
-            bucket: resolved.bucket,
-            resolvedPath: resolved.path,
-          });
-        }
-
-        return { ...downloaded, resolvedPath: resolved.path };
-      }
-    } catch {
-      // Resolver is best-effort; continue to deterministic alternates.
-    }
-
-    const alternates = buildAlternateStorageKeys({ path, quoteId: hints.quoteId });
-    if (alternates.length === 0) {
-      throw err;
-    }
-    for (const candidate of alternates) {
-      try {
-        const downloaded = await downloadViaSignedUrl(
-          supabase,
-          bucket,
-          candidate,
-          expiresSeconds,
-          rid,
-          `${target}_alt`,
-        );
-        console.log("[cad-preview]", {
-          rid,
-          stage: "storage_path_resolved",
-          target,
-          requestedPath: path,
-          requestedBucket: bucket,
-          resolvedBucket: bucket,
-          resolvedPath: candidate,
-        });
-        if (target.startsWith("source")) {
-          await backfillCanonicalStorageKey({
-            supabaseService: supabase,
-            rid,
-            quoteFileId: hints.quoteFileId,
-            bucket,
-            resolvedPath: candidate,
-          });
-        }
-        return { ...downloaded, resolvedPath: candidate };
-      } catch (candidateErr) {
-        if (!isSignedUrlObjectNotFound(candidateErr)) {
-          throw candidateErr;
-        }
-      }
-    }
-    throw err;
-  }
-}
-
-async function backfillCanonicalStorageKey(input: {
-  supabaseService: SupabaseClient;
-  rid: string;
-  quoteFileId: string | null;
-  bucket: string;
-  resolvedPath: string;
-}): Promise<void> {
-  const quoteFileId = normalizeId(input.quoteFileId);
-  const bucket = normalizeBucket(input.bucket);
-  const resolvedPath = normalizePath(input.resolvedPath);
-
-  if (!quoteFileId || !bucket || !resolvedPath) {
-    console.log("[cad-preview]", {
-      rid: input.rid,
-      stage: "storage_key_backfilled",
-      quoteFileId: quoteFileId || null,
-      table: "none",
-      bucket: bucket || null,
-      resolvedPath: resolvedPath || null,
-    });
-    return;
-  }
-
-  const tryBackfillTable = async (table: "files" | "uploads"): Promise<boolean> => {
-    const { data, error } = await input.supabaseService.from(table).select("*").eq("id", quoteFileId).maybeSingle<any>();
-    if (error || !data) {
-      return false;
-    }
-
-    const has = (field: string) => Object.prototype.hasOwnProperty.call(data, field);
-    const pathField = has("storage_path") ? "storage_path" : has("file_path") ? "file_path" : has("path") ? "path" : null;
-    const bucketField = has("storage_bucket_id") ? "storage_bucket_id" : has("bucket_id") ? "bucket_id" : null;
-    if (!pathField) {
-      return false;
-    }
-
-    const payload: Record<string, unknown> = { [pathField]: resolvedPath };
-    if (bucketField) payload[bucketField] = bucket;
-
-    const updateResult = await input.supabaseService.from(table).update(payload).eq("id", quoteFileId);
-    return !updateResult.error;
-  };
-
-  let table: "files" | "uploads" | "none" = "none";
-  try {
-    if (await tryBackfillTable("files")) {
-      table = "files";
-    } else if (await tryBackfillTable("uploads")) {
-      table = "uploads";
-    }
-  } catch {
-    table = "none";
-  }
-
-  console.log("[cad-preview]", {
-    rid: input.rid,
-    stage: "storage_key_backfilled",
-    quoteFileId,
-    table,
-    bucket,
-    resolvedPath,
-  });
+  const downloaded = await downloadViaSignedUrl(supabase, bucket, path, expiresSeconds, rid, target);
+  return { ...downloaded, resolvedPath: path };
 }
 
 function getServiceSupabase(input: { requestId: string }):
@@ -554,7 +341,6 @@ export async function GET(req: NextRequest) {
   const storageSupabase = storageClientResult.client;
 
   let decodedBucketBeforeNormalize: string | null = null;
-  const tokenHints: TokenStorageHints = { quoteId: null, quoteFileId: null, filename: null };
   if (token) {
     const verified = verifyPreviewTokenForUser({ token, userId: user.id });
     if (!verified.ok) {
@@ -570,26 +356,12 @@ export async function GET(req: NextRequest) {
     decodedBucketBeforeNormalize = verified.payload.b;
     bucket = normalizeBucket(verified.payload.b);
     path = verified.payload.p;
-    tokenHints.quoteId =
-      typeof (verified.payload as any)?.qid === "string"
-        ? normalizeId((verified.payload as any).qid)
-        : null;
-    tokenHints.quoteFileId =
-      typeof (verified.payload as any)?.qfid === "string"
-        ? normalizeId((verified.payload as any).qfid)
-        : null;
-    tokenHints.filename =
-      typeof (verified.payload as any)?.fn === "string"
-        ? normalizeId((verified.payload as any).fn)
-        : null;
     log("token_decoded", {
       bucketBefore: decodedBucketBeforeNormalize,
       bucketAfter: bucket,
       path,
       kind: kindParam || null,
       disposition,
-      quoteId: tokenHints.quoteId,
-      quoteFileId: tokenHints.quoteFileId,
     });
   } else if (!isAdmin) {
     log("start", {
@@ -665,7 +437,6 @@ export async function GET(req: NextRequest) {
               60,
               requestId,
               "source_attachment",
-              tokenHints,
             );
             if (downloaded.bytes.byteLength > MAX_PREVIEW_BYTES) {
               logStep("response", { source: "source_too_large", bytes: downloaded.bytes.byteLength });
@@ -874,7 +645,6 @@ export async function GET(req: NextRequest) {
             60,
             requestId,
             "source",
-            tokenHints,
           );
           if (downloaded.bytes.byteLength > MAX_PREVIEW_BYTES) {
             logStep("response", { source: "source_too_large", bytes: downloaded.bytes.byteLength });
@@ -998,7 +768,6 @@ export async function GET(req: NextRequest) {
         60,
         requestId,
         "source",
-        tokenHints,
       );
       if (downloaded.bytes.byteLength > MAX_PREVIEW_BYTES) {
         return NextResponse.json({ error: "file_too_large", requestId }, { status: 413 });
