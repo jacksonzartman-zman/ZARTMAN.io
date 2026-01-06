@@ -50,11 +50,39 @@ export type StoredUploadFileForEnumeration = {
   buffer?: Buffer; // only retained for ZIP enumeration
 };
 
-const CAD_BUCKET =
-  process.env.SUPABASE_CAD_BUCKET ||
-  process.env.NEXT_PUBLIC_CAD_BUCKET ||
-  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
-  "cad";
+/**
+ * Canonical invariant:
+ * - Portal previews only use canonical quote files from `files_valid` (fallback `files`).
+ * - Canonical rows MUST store the exact Storage bucket + object key that was written.
+ * - If there is no canonical row, there is no preview (no path guessing).
+ */
+const CANONICAL_CAD_BUCKET = "cad_uploads";
+
+function canonicalizeCadBucketId(input: unknown): string {
+  const raw = typeof input === "string" ? input.trim() : "";
+  if (!raw) return "";
+  if (raw === "cad-uploads") return "cad_uploads";
+  if (raw === "cad_uploads") return "cad_uploads";
+  if (raw === "cad") return "cad_uploads";
+  return raw;
+}
+
+const CAD_BUCKET = (() => {
+  const configured =
+    process.env.SUPABASE_CAD_BUCKET ||
+    process.env.NEXT_PUBLIC_CAD_BUCKET ||
+    process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
+    "";
+  const normalized = canonicalizeCadBucketId(configured) || CANONICAL_CAD_BUCKET;
+  if (normalized !== CANONICAL_CAD_BUCKET) {
+    console.warn("[quote upload files] overriding configured CAD bucket", {
+      configuredBucket: configured || null,
+      normalizedBucket: normalized,
+      canonicalBucket: CANONICAL_CAD_BUCKET,
+    });
+  }
+  return CANONICAL_CAD_BUCKET;
+})();
 
 const DEFAULT_UPLOAD_STATUS = "submitted";
 
@@ -98,6 +126,259 @@ type StoredCadFile = {
   bucket: string;
   buffer?: Buffer; // retained only for ZIP enumeration
 };
+
+function normalizeStorageObjectKey(bucket: string, path: string): string {
+  const normalizedBucket = canonicalizeCadBucketId(bucket) || bucket;
+  const rawPath = typeof path === "string" ? path.trim() : "";
+  if (!rawPath) return "";
+  // Strip leading slashes.
+  let key = rawPath.replace(/^\/+/, "");
+  // If callers accidentally pass `bucket/key`, strip the bucket prefix.
+  if (key.startsWith(`${normalizedBucket}/`)) {
+    key = key.slice(normalizedBucket.length + 1);
+  } else if (normalizedBucket === "cad_uploads" && key.startsWith("cad-uploads/")) {
+    key = key.slice("cad-uploads/".length);
+  }
+  key = key.replace(/^\/+/, "");
+  return key;
+}
+
+type CanonicalFileRow = {
+  quote_id: string;
+  filename: string;
+  mime: string;
+  storage_path: string;
+  bucket_id: string;
+  size_bytes?: number | null;
+};
+
+async function insertCanonicalQuoteFiles(params: {
+  supabase: SupabaseClient;
+  quoteId: string;
+  files: Array<{
+    bucketId: string;
+    storagePath: string;
+    filename: string;
+    mimeType: string | null;
+    sizeBytes: number | null;
+  }>;
+}): Promise<{ ok: boolean; inserted: number; table: "files_valid" | "files" | null }> {
+  const quoteId = typeof params.quoteId === "string" ? params.quoteId.trim() : "";
+  const supabase = params.supabase;
+  const inputFiles = Array.isArray(params.files) ? params.files.filter(Boolean) : [];
+  if (!quoteId) return { ok: false, inserted: 0, table: null };
+  if (inputFiles.length === 0) return { ok: true, inserted: 0, table: null };
+
+  // Avoid duplicates without relying on schema constraints.
+  const existing = new Set<string>();
+  const loadExisting = async (table: "files_valid" | "files") => {
+    try {
+      const { data, error } = await supabase
+        .from(table)
+        .select("bucket_id,storage_bucket_id,storage_path,file_path")
+        .eq("quote_id", quoteId)
+        .returns<
+          Array<{
+            bucket_id?: string | null;
+            storage_bucket_id?: string | null;
+            storage_path?: string | null;
+            file_path?: string | null;
+          }>
+        >();
+
+      if (error) {
+        if (isMissingTableOrColumnError(error)) return;
+        console.warn("[canonical quote files] failed to enumerate existing rows", {
+          quoteId,
+          table,
+          error: serializeSupabaseError(error),
+        });
+        return;
+      }
+
+      for (const row of data ?? []) {
+        const rawBucket =
+          typeof row.storage_bucket_id === "string" && row.storage_bucket_id.trim()
+            ? row.storage_bucket_id
+            : typeof row.bucket_id === "string"
+              ? row.bucket_id
+              : "";
+        const bucket = canonicalizeCadBucketId(rawBucket) || rawBucket;
+        const rawPath =
+          typeof row.storage_path === "string" && row.storage_path.trim()
+            ? row.storage_path
+            : typeof row.file_path === "string"
+              ? row.file_path
+              : "";
+        const key = normalizeStorageObjectKey(bucket || CANONICAL_CAD_BUCKET, rawPath);
+        if (!bucket || !key) continue;
+        existing.add(`${bucket}:${key}`);
+      }
+    } catch (error) {
+      if (isMissingTableOrColumnError(error)) return;
+      console.warn("[canonical quote files] enumerate crashed", {
+        quoteId,
+        table,
+        error: serializeSupabaseError(error),
+      });
+    }
+  };
+
+  // Prefer `files_valid` when available; fall back to `files`.
+  await loadExisting("files_valid");
+  await loadExisting("files");
+
+  const rows: CanonicalFileRow[] = [];
+  for (const file of inputFiles) {
+    const bucket = CANONICAL_CAD_BUCKET;
+    const key = normalizeStorageObjectKey(bucket, file.storagePath);
+    const filename = typeof file.filename === "string" ? file.filename.trim() : "";
+    if (!key || !filename) continue;
+
+    const dedupeKey = `${bucket}:${key}`;
+    if (existing.has(dedupeKey)) continue;
+
+    rows.push({
+      quote_id: quoteId,
+      filename,
+      mime:
+        typeof file.mimeType === "string" && file.mimeType.trim().length > 0
+          ? file.mimeType
+          : "application/octet-stream",
+      storage_path: key,
+      bucket_id: bucket,
+      size_bytes:
+        typeof file.sizeBytes === "number" && Number.isFinite(file.sizeBytes)
+          ? file.sizeBytes
+          : null,
+    });
+    existing.add(dedupeKey);
+  }
+
+  if (rows.length === 0) {
+    return { ok: true, inserted: 0, table: null };
+  }
+
+  const tryInsert = async (
+    table: "files_valid" | "files",
+  ): Promise<{ ok: boolean; inserted: number; table: "files_valid" | "files" | null }> => {
+    // Schema variants: some deployments use `storage_bucket_id` instead of `bucket_id`,
+    // and `file_path` instead of `storage_path`. We retry with alternate column names.
+    const base = rows;
+
+    try {
+      const attempt1 = await supabase.from(table).insert(
+        base.map((r) => ({
+          quote_id: r.quote_id,
+          filename: r.filename,
+          mime: r.mime,
+          storage_path: r.storage_path,
+          bucket_id: r.bucket_id,
+          size_bytes: r.size_bytes ?? null,
+        })),
+      );
+      if (!attempt1.error) {
+        return { ok: true, inserted: rows.length, table };
+      }
+      if (!isMissingTableOrColumnError(attempt1.error)) {
+        console.error("[canonical quote files] insert failed", {
+          quoteId,
+          table,
+          error: serializeSupabaseError(attempt1.error),
+        });
+        return { ok: false, inserted: 0, table: null };
+      }
+
+      // Retry: storage_bucket_id column.
+      const attempt2 = await supabase.from(table).insert(
+        base.map((r) => ({
+          quote_id: r.quote_id,
+          filename: r.filename,
+          mime: r.mime,
+          storage_path: r.storage_path,
+          storage_bucket_id: r.bucket_id,
+          size_bytes: r.size_bytes ?? null,
+        })),
+      );
+      if (!attempt2.error) {
+        return { ok: true, inserted: rows.length, table };
+      }
+      if (!isMissingTableOrColumnError(attempt2.error)) {
+        console.error("[canonical quote files] insert failed", {
+          quoteId,
+          table,
+          error: serializeSupabaseError(attempt2.error),
+        });
+        return { ok: false, inserted: 0, table: null };
+      }
+
+      // Retry: legacy `file_path` column.
+      const attempt3 = await supabase.from(table).insert(
+        base.map((r) => ({
+          quote_id: r.quote_id,
+          filename: r.filename,
+          mime: r.mime,
+          file_path: r.storage_path,
+          bucket_id: r.bucket_id,
+          size_bytes: r.size_bytes ?? null,
+        })),
+      );
+      if (!attempt3.error) {
+        return { ok: true, inserted: rows.length, table };
+      }
+      if (!isMissingTableOrColumnError(attempt3.error)) {
+        console.error("[canonical quote files] insert failed", {
+          quoteId,
+          table,
+          error: serializeSupabaseError(attempt3.error),
+        });
+        return { ok: false, inserted: 0, table: null };
+      }
+
+      // Retry: both legacy columns.
+      const attempt4 = await supabase.from(table).insert(
+        base.map((r) => ({
+          quote_id: r.quote_id,
+          filename: r.filename,
+          mime: r.mime,
+          file_path: r.storage_path,
+          storage_bucket_id: r.bucket_id,
+          size_bytes: r.size_bytes ?? null,
+        })),
+      );
+      if (!attempt4.error) {
+        return { ok: true, inserted: rows.length, table };
+      }
+
+      if (isMissingTableOrColumnError(attempt4.error)) {
+        return { ok: true, inserted: 0, table: null };
+      }
+
+      console.error("[canonical quote files] insert failed", {
+        quoteId,
+        table,
+        error: serializeSupabaseError(attempt4.error),
+      });
+      return { ok: false, inserted: 0, table: null };
+    } catch (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return { ok: true, inserted: 0, table: null };
+      }
+      console.error("[canonical quote files] insert crashed", {
+        quoteId,
+        table,
+        error: serializeSupabaseError(error),
+      });
+      return { ok: false, inserted: 0, table: null };
+    }
+  };
+
+  const validResult = await tryInsert("files_valid");
+  if (validResult.ok && validResult.table) return validResult;
+
+  const filesResult = await tryInsert("files");
+  return filesResult;
+}
 
 export function buildUploadTargetForQuote(params: {
   quoteId: string;
@@ -272,29 +553,23 @@ export async function registerUploadedObjectsForExistingUpload(params: {
     return { ok: true, recorded: false };
   }
 
-  // Insert into public.files (best effort in some envs).
-  try {
-    const rows = targets.map((t) => ({
+  // Persist canonical file rows (files_valid preferred; fallback to files).
+  const canonicalResult = await insertCanonicalQuoteFiles({
+    supabase,
+    quoteId,
+    files: targets.map((t) => ({
+      bucketId: t.bucketId,
+      storagePath: t.storagePath,
       filename: t.originalFileName,
-      size_bytes: t.sizeBytes,
-      mime: t.mimeType ?? "application/octet-stream",
-      storage_path: t.storagePath,
-      bucket_id: t.bucketId,
-      quote_id: quoteId,
-    }));
-    const { error: filesError } = await supabase.from("files").insert(rows);
-    if (filesError && !isMissingTableOrColumnError(filesError)) {
-      console.error("[quote upload files] files insert failed (direct upload)", {
-        quoteId,
-        uploadId,
-        error: serializeSupabaseError(filesError),
-      });
-    }
-  } catch (error) {
-    console.error("[quote upload files] files insert crashed (direct upload)", {
+      mimeType: t.mimeType,
+      sizeBytes: t.sizeBytes,
+    })),
+  });
+
+  if (!canonicalResult.ok) {
+    console.error("[quote upload files] canonical insert failed", {
       quoteId,
       uploadId,
-      error: serializeSupabaseError(error),
     });
   }
 
@@ -372,7 +647,8 @@ async function appendFilesToQuoteUploadWithClient(args: {
     const mimeType = detectMimeType(file, extension);
     const safeFileName = sanitizeFileName(originalName, extension);
     const storageKey = buildStorageKey(safeFileName);
-    const storagePath = `${CAD_BUCKET}/${storageKey}`;
+    // Object key inside the bucket. (Canonical rows must store this exact key.)
+    const storagePath = storageKey;
     const isZip =
       extension === "zip" ||
       (typeof mimeType === "string" && mimeType.toLowerCase().includes("zip"));
@@ -433,7 +709,7 @@ async function appendFilesToQuoteUploadWithClient(args: {
       quote_id: quoteId,
       status: uploadStatus,
       file_name: primaryStoredFile.originalName,
-      file_path: primaryStoredFile.storagePath,
+      file_path: `${CAD_BUCKET}/${primaryStoredFile.storagePath}`,
       mime_type: primaryStoredFile.mimeType,
       name: uploadName,
       email: uploadEmail,
@@ -452,37 +728,23 @@ async function appendFilesToQuoteUploadWithClient(args: {
 
   const uploadId = uploadRow.id;
 
-  // Insert into public.files (best effort in some envs, but required for “Uploads” UI parity).
-  try {
-    const rows = storedFiles.map((storedFile) => ({
+  // Persist canonical file rows (files_valid preferred; fallback to files).
+  const canonicalResult = await insertCanonicalQuoteFiles({
+    supabase: supabase as unknown as SupabaseClient,
+    quoteId,
+    files: storedFiles.map((storedFile) => ({
+      bucketId: storedFile.bucket,
+      storagePath: storedFile.storagePath,
       filename: storedFile.originalName,
-      size_bytes: storedFile.sizeBytes,
-      mime: storedFile.mimeType,
-      storage_path: storedFile.storagePath,
-      bucket_id: storedFile.bucket,
-      quote_id: quoteId,
-    }));
-    const { error: filesError } = await supabase.from("files").insert(rows);
-    if (filesError) {
-      if (isMissingTableOrColumnError(filesError)) {
-        console.warn("[quote upload files] files schema missing; skipping file metadata", {
-          quoteId,
-          uploadId,
-          error: serializeSupabaseError(filesError),
-        });
-      } else {
-        console.error("[quote upload files] files insert failed", {
-          quoteId,
-          uploadId,
-          error: serializeSupabaseError(filesError),
-        });
-      }
-    }
-  } catch (error) {
-    console.error("[quote upload files] files insert crashed", {
+      mimeType: storedFile.mimeType,
+      sizeBytes: storedFile.sizeBytes,
+    })),
+  });
+
+  if (!canonicalResult.ok) {
+    console.error("[quote upload files] canonical insert failed", {
       quoteId,
       uploadId,
-      error: serializeSupabaseError(error),
     });
   }
 

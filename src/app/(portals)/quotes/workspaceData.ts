@@ -1,6 +1,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
   getQuoteFilePreviews,
+  buildQuoteFilesFromRow,
   type QuoteFilePreviewOptions,
 } from "@/server/quotes/files";
 import type {
@@ -39,6 +40,13 @@ export type QuoteWorkspaceData = {
   messages: QuoteMessageRecord[];
   messagesError?: string | null;
   filesUnavailable?: boolean;
+  /**
+   * True when the quote advertises legacy filenames (quotes.file_name / file_names)
+   * but has no canonical `files_valid`/`files` rows. In this state, the portal must
+   * not offer preview links (no canonical row => no preview).
+   */
+  filesMissingCanonical?: boolean;
+  legacyFileNames?: string[];
 };
 
 export type QuotePartFileRole = "cad" | "drawing" | "other";
@@ -220,6 +228,16 @@ export async function loadQuoteWorkspaceData(
     const filePreviews = await getQuoteFilePreviews(quote, filePreviewOptions);
     const uploadGroups = await loadQuoteUploadGroups(quoteId);
     const parts = await loadQuotePartsWithFiles(quoteId);
+    const legacyDeclared = buildQuoteFilesFromRow(quote);
+    const filesMissingCanonical = filePreviews.length === 0 && legacyDeclared.length > 0;
+    const legacyFileNames = legacyDeclared.map((f) => f.filename);
+    if (filesMissingCanonical) {
+      console.warn("[portal workspace] quote has legacy filenames but no canonical file rows", {
+        quoteId,
+        legacyCount: legacyFileNames.length,
+        legacyFileNames: legacyFileNames.slice(0, 10),
+      });
+    }
     const files: QuoteFileMeta[] = filePreviews.map((file) => ({
       filename: (file.fileName ?? file.label).trim(),
     }));
@@ -251,6 +269,8 @@ export async function loadQuoteWorkspaceData(
         messages: messages ?? [],
         messagesError,
         filesUnavailable: filesIssue,
+        filesMissingCanonical,
+        legacyFileNames: legacyFileNames.length > 0 ? legacyFileNames : undefined,
       },
         error: filesIssue
           ? "files-unavailable"

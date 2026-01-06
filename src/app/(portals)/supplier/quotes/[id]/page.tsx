@@ -421,7 +421,7 @@ function SupplierQuoteWorkspace({
   capacitySnapshotsResult: Awaited<ReturnType<typeof loadSupplierCapacitySnapshotsForWeek>>;
   capacityRequestCreatedAt: string | null;
 }) {
-  const { quote, uploadMeta, filePreviews, uploadGroups, parts } = data;
+  const { quote, uploadMeta, filePreviews, uploadGroups, parts, filesMissingCanonical, legacyFileNames } = data;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
   const fileCount =
     typeof quote.fileCount === "number" ? quote.fileCount : quoteFiles.length;
@@ -746,6 +746,8 @@ function SupplierQuoteWorkspace({
         fileCountText={fileCountText}
         uploadGroups={uploadGroups}
         parts={parts ?? []}
+        filesMissingCanonical={Boolean(filesMissingCanonical)}
+        legacyFileNames={legacyFileNames}
       />
     </DisclosureSection>
   );
