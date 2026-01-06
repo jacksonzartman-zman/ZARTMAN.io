@@ -139,6 +139,8 @@ export default async function CustomerQuoteDetailPage({
     parts,
     messages: quoteMessages,
     messagesError,
+    filesMissingCanonical,
+    legacyFileNames,
   } = workspaceResult.data;
   const messagesUnavailable = Boolean(messagesError);
   const [
@@ -1040,6 +1042,8 @@ export default async function CustomerQuoteDetailPage({
         fileCountText={fileCountText}
         uploadGroups={uploadGroups}
         parts={parts ?? []}
+        filesMissingCanonical={Boolean(filesMissingCanonical)}
+        legacyFileNames={legacyFileNames}
         partsSection={
           readOnly ? undefined : (
             <CustomerPartsSection

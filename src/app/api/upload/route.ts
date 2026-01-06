@@ -10,15 +10,37 @@ import {
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
-import { recordQuoteUploadFiles } from "@/server/quotes/uploadFiles";
+import { registerUploadedObjectsForExistingUpload } from "@/server/quotes/uploadFiles";
 
 export const runtime = "nodejs";
 
-const CAD_BUCKET =
-  process.env.SUPABASE_CAD_BUCKET ||
-  process.env.NEXT_PUBLIC_CAD_BUCKET ||
-  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
-  "cad";
+const CANONICAL_CAD_BUCKET = "cad_uploads";
+
+function canonicalizeCadBucketId(input: unknown): string {
+  const raw = typeof input === "string" ? input.trim() : "";
+  if (!raw) return "";
+  if (raw === "cad-uploads") return "cad_uploads";
+  if (raw === "cad_uploads") return "cad_uploads";
+  if (raw === "cad") return "cad_uploads";
+  return raw;
+}
+
+const CAD_BUCKET = (() => {
+  const configured =
+    process.env.SUPABASE_CAD_BUCKET ||
+    process.env.NEXT_PUBLIC_CAD_BUCKET ||
+    process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
+    "";
+  const normalized = canonicalizeCadBucketId(configured) || CANONICAL_CAD_BUCKET;
+  if (normalized !== CANONICAL_CAD_BUCKET) {
+    console.warn("[quote upload api] overriding configured CAD bucket", {
+      configuredBucket: configured || null,
+      normalizedBucket: normalized,
+      canonicalBucket: CANONICAL_CAD_BUCKET,
+    });
+  }
+  return CANONICAL_CAD_BUCKET;
+})();
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   stl: "model/stl",
@@ -220,11 +242,12 @@ export async function POST(req: NextRequest) {
 
     const safeFileName = sanitizeFileName(file.name, extension);
     const storageKey = buildStorageKey(safeFileName);
-    const storagePath = `${CAD_BUCKET}/${storageKey}`;
+    // Object key inside the bucket. Canonical rows must store this exact key.
+    const storagePath = storageKey;
     const supabase = supabaseServer;
     logContext.bucket = CAD_BUCKET;
     logContext.storageKey = storageKey;
-    logContext.storagePath = storagePath;
+    logContext.storagePath = `${CAD_BUCKET}/${storagePath}`;
 
     if (isStlUpload) {
       logUploadDebug("Handling STL upload", {
@@ -304,7 +327,7 @@ export async function POST(req: NextRequest) {
       .from("uploads")
       .insert({
         file_name: file.name,
-        file_path: storagePath,
+        file_path: `${CAD_BUCKET}/${storagePath}`,
         mime_type: mimeType,
           name: contactName,
         email: contactEmail,
@@ -431,7 +454,7 @@ export async function POST(req: NextRequest) {
     const normalizedFile: UploadFileMetadata = {
       bucket: CAD_BUCKET,
       storageKey,
-      storagePath,
+      storagePath: `${CAD_BUCKET}/${storagePath}`,
       sizeBytes: file.size,
       mimeType,
       originalFileName: file.name,
@@ -440,62 +463,24 @@ export async function POST(req: NextRequest) {
     };
 
     let metadataRecorded = false;
-    try {
-      const { error: fileMetadataError } = await supabase.from("files").insert({
-        filename: file.name,
-        size_bytes: file.size,
-        mime: mimeType,
-        storage_path: storagePath,
-        bucket_id: CAD_BUCKET,
-        quote_id: quoteId,
-      });
-
-      if (fileMetadataError) {
-        const missingTable = isMissingTableError(fileMetadataError);
-        const logFn = missingTable ? logUploadDebug : logUploadError;
-        logFn(
-          missingTable
-            ? "File metadata insert skipped (table missing)"
-            : "File metadata insert failed",
-          {
-            ...logContext,
-            error: serializeSupabaseError(fileMetadataError),
-            missingTable,
-          },
-        );
-      } else {
-        metadataRecorded = true;
-      }
-    } catch (metadataError) {
-      const missingTable = isMissingTableError(metadataError);
-      const logFn = missingTable ? logUploadDebug : logUploadError;
-      logFn(
-        missingTable
-          ? "File metadata insert skipped (table missing)"
-          : "Unexpected metadata insert error",
-        {
-          ...logContext,
-          error: serializeSupabaseError(metadataError),
-          missingTable,
-        },
-      );
-    }
-
-    // Record per-file entries (including ZIP member enumeration) for quote detail UI.
-    // Best-effort: do not fail the upload if this optional table is missing.
+    // Persist canonical rows (files_valid preferred; fallback files) and
+    // enumerate upload contents (quote_upload_files) when available.
     if (quoteId) {
-      void recordQuoteUploadFiles({
+      const registered = await registerUploadedObjectsForExistingUpload({
         quoteId,
         uploadId: uploadRow.id,
-        storedFiles: [
+        targets: [
           {
-            originalName: file.name,
-            sizeBytes: file.size,
+            bucketId: CAD_BUCKET,
+            storagePath,
+            originalFileName: file.name,
             mimeType,
-            buffer: isZipUpload ? buffer : undefined,
+            sizeBytes: file.size,
           },
         ],
+        supabase,
       });
+      metadataRecorded = registered.ok;
     }
 
     logUploadDebug("Upload finished successfully", {

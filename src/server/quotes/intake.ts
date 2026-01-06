@@ -21,11 +21,33 @@ import {
   registerUploadedObjectsForExistingUpload,
 } from "@/server/quotes/uploadFiles";
 
-const CAD_BUCKET =
-  process.env.SUPABASE_CAD_BUCKET ||
-  process.env.NEXT_PUBLIC_CAD_BUCKET ||
-  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
-  "cad";
+const CANONICAL_CAD_BUCKET = "cad_uploads";
+
+function canonicalizeCadBucketId(input: unknown): string {
+  const raw = typeof input === "string" ? input.trim() : "";
+  if (!raw) return "";
+  if (raw === "cad-uploads") return "cad_uploads";
+  if (raw === "cad_uploads") return "cad_uploads";
+  if (raw === "cad") return "cad_uploads";
+  return raw;
+}
+
+const CAD_BUCKET = (() => {
+  const configured =
+    process.env.SUPABASE_CAD_BUCKET ||
+    process.env.NEXT_PUBLIC_CAD_BUCKET ||
+    process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
+    "";
+  const normalized = canonicalizeCadBucketId(configured) || CANONICAL_CAD_BUCKET;
+  if (normalized !== CANONICAL_CAD_BUCKET) {
+    console.warn("[quote intake] overriding configured CAD bucket", {
+      configuredBucket: configured || null,
+      normalizedBucket: normalized,
+      canonicalBucket: CANONICAL_CAD_BUCKET,
+    });
+  }
+  return CANONICAL_CAD_BUCKET;
+})();
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   stl: "model/stl",
@@ -733,7 +755,8 @@ export async function persistQuoteIntake(
       const mimeType = detectMimeType(file, extension);
       const safeFileName = sanitizeFileName(file.name, extension);
       const storageKey = buildStorageKey(safeFileName);
-      const storagePath = `${CAD_BUCKET}/${storageKey}`;
+      // Object key inside the bucket. Canonical rows must store this exact key.
+      const storagePath = storageKey;
       const isZip =
         extension === "zip" ||
         (typeof mimeType === "string" && mimeType.toLowerCase().includes("zip"));
@@ -793,7 +816,7 @@ export async function persistQuoteIntake(
       .from("uploads")
       .insert({
         file_name: primaryStoredFile.originalName,
-        file_path: primaryStoredFile.storagePath,
+        file_path: `${CAD_BUCKET}/${primaryStoredFile.storagePath}`,
         mime_type: primaryStoredFile.mimeType,
         name: contactName,
         email: contactEmail,
@@ -899,76 +922,39 @@ export async function persistQuoteIntake(
       });
     }
 
-    let metadataRecorded = false;
-    if (storedFiles.length > 0) {
-      const rows = storedFiles.map((storedFile) => ({
-        filename: storedFile.originalName,
-        size_bytes: storedFile.sizeBytes,
-        mime: storedFile.mimeType,
-        storage_path: storedFile.storagePath,
-        bucket_id: storedFile.bucket,
-        quote_id: quoteId,
-      }));
-      // We support up to MAX_FILES_PER_RFQ files per RFQ; by inserting a row for
-      // every stored file we preserve the full part list instead of silently
-      // discarding entries beyond index 0.
+    const targets: UploadTarget[] = storedFiles.map((file) => ({
+      storagePath: file.storagePath,
+      bucketId: file.bucket,
+      originalFileName: file.originalName,
+      mimeType: file.mimeType,
+      sizeBytes: file.sizeBytes,
+    }));
 
-      try {
-        const { error: filesError } = await supabaseServer.from("files").insert(rows);
-
-        if (filesError) {
-          const serializedError = serializeSupabaseError(filesError);
-          if (isMissingTableOrColumnError(filesError)) {
-            console.warn("[quote intake] file metadata insert skipped", {
-              ...logContext,
-              quoteId,
-              uploadId,
-              error: serializedError,
-            });
-          } else {
-            console.error("[quote intake] file metadata insert failed", {
-              ...logContext,
-              quoteId,
-              uploadId,
-              error: serializedError,
-            });
-            return {
-              ok: false,
-              error: "We couldn’t record your CAD files. Please retry.",
-              reason: "db-insert-files",
-            };
-          }
-        } else {
-          metadataRecorded = true;
-        }
-      } catch (filesError) {
-        const serializedError = serializeSupabaseError(filesError);
-        console.error("[quote intake] file metadata insert crashed", {
-          ...logContext,
-          quoteId,
-          uploadId,
-          error: serializedError,
-        });
-        return {
-          ok: false,
-          error: "We couldn’t record your CAD files. Please retry.",
-          reason: "db-insert-files",
-        };
-      }
-    }
-
-    // Record per-file entries (including ZIP member enumeration) for quote detail UI.
-    // Best-effort: do not fail intake if this optional table is missing.
-    void recordQuoteUploadFiles({
+    // Persist canonical rows (files_valid preferred; fallback files) and
+    // enumerate upload contents (quote_upload_files) when available.
+    const registerResult = await registerUploadedObjectsForExistingUpload({
       quoteId,
       uploadId,
-      storedFiles: storedFiles.map((file) => ({
-        originalName: file.originalName,
-        sizeBytes: file.sizeBytes,
-        mimeType: file.mimeType,
-        buffer: file.buffer,
-      })),
+      targets,
+      supabase: supabaseServer,
     });
+
+    let metadataRecorded = registerResult.ok;
+
+    // Keep legacy ZIP enumeration hook for older deployments that call this directly.
+    // (If `quote_upload_files` exists, the register helper already records it.)
+    if (!registerResult.recorded) {
+      void recordQuoteUploadFiles({
+        quoteId,
+        uploadId,
+        storedFiles: storedFiles.map((file) => ({
+          originalName: file.originalName,
+          sizeBytes: file.sizeBytes,
+          mimeType: file.mimeType,
+          buffer: file.buffer,
+        })),
+      });
+    }
 
     return {
       ok: true,

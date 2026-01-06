@@ -86,6 +86,18 @@ export async function getQuoteFilePreviews(
 ): Promise<QuoteFileItem[]> {
   try {
     const files = await loadCanonicalFilesForQuote(quote.id, { onError: options?.onFilesError });
+    if (!files || files.length === 0) {
+      const legacyDeclared = buildQuoteFilesFromRow(quote);
+      if (legacyDeclared.length > 0) {
+        // Minimal observability: alert when a quote has legacy filename metadata but no canonical
+        // Storage-backed file rows. This indicates a backfill is required (or the customer must re-upload).
+        console.warn("[quote files] legacy filenames present but canonical files missing", {
+          quoteId: quote.id,
+          legacyFileNames: legacyDeclared.map((f) => f.filename).slice(0, 10),
+          legacyCount: legacyDeclared.length,
+        });
+      }
+    }
     const candidates = gatherCadCandidates(files);
     const previewCache = new Map<string, CadPreviewResult>();
 
@@ -387,7 +399,7 @@ async function loadCanonicalFilesForQuote(
   };
 
   const fromValid = await tryLoad("files_valid");
-  if (Array.isArray(fromValid)) return fromValid;
+  if (Array.isArray(fromValid) && fromValid.length > 0) return fromValid;
 
   const fromFiles = await tryLoad("files");
   if (Array.isArray(fromFiles)) return fromFiles;

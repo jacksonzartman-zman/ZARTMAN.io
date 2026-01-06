@@ -20,6 +20,8 @@ type QuoteFilesUploadsSectionProps = {
   uploadGroups?: QuoteUploadGroup[];
   parts?: QuotePartWithFiles[];
   partsSection?: ReactNode;
+  filesMissingCanonical?: boolean;
+  legacyFileNames?: string[];
 };
 
 export function QuoteFilesUploadsSection({
@@ -29,9 +31,14 @@ export function QuoteFilesUploadsSection({
   uploadGroups,
   parts,
   partsSection,
+  filesMissingCanonical = false,
+  legacyFileNames,
 }: QuoteFilesUploadsSectionProps) {
   const partsList = Array.isArray(parts) ? parts : [];
   const { perPart, summary } = computePartsCoverage(partsList);
+  const legacyList = Array.isArray(legacyFileNames)
+    ? legacyFileNames.map((name) => (typeof name === "string" ? name.trim() : "")).filter(Boolean)
+    : [];
 
   return (
     <CollapsibleCard
@@ -47,6 +54,19 @@ export function QuoteFilesUploadsSection({
       <div className="space-y-2">
         {uploadGroups && uploadGroups.length > 0 ? (
           <QuoteUploadsStructuredList uploadGroups={uploadGroups} />
+        ) : null}
+        {filesMissingCanonical ? (
+          <EmptyStateCard
+            title="Files missing — re-upload required"
+            description={
+              legacyList.length > 0
+                ? `This RFQ references legacy filenames, but the underlying file records are missing: ${legacyList.slice(0, 5).join(", ")}${
+                    legacyList.length > 5 ? "…" : ""
+                  }. Please re-upload the files, or contact support to backfill them.`
+                : "This RFQ references legacy filenames, but the underlying file records are missing. Please re-upload the files, or contact support to backfill them."
+            }
+            className="mb-3"
+          />
         ) : null}
         <QuoteFilesCard files={files} />
         {files.length === 0 ? (
