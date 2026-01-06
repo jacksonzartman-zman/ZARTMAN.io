@@ -3,10 +3,9 @@ import path from "node:path";
 
 type ResolveAttempts = {
   triedBuckets: string[];
-  triedPrefixesCount: number;
   listCalls: number;
-  listErrors: Array<{ bucket: string; prefix: string; message: string }>;
   triedPrefixes: Array<{ bucket: string; prefix: string }>;
+  triedSearchTermsCount: number;
 };
 
 export type ResolveStoredObjectResult = {
@@ -18,6 +17,10 @@ export type ResolveStoredObjectResult = {
 };
 
 function normalizeBucket(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
@@ -60,6 +63,44 @@ function stripBucketPrefixOnce(inputPath: string, bucket: string): string {
   return p.startsWith(prefix) ? p.slice(prefix.length) : p;
 }
 
+function uniqNonEmpty(values: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  for (const v of values) {
+    const s = typeof v === "string" ? v.trim() : "";
+    if (!s) continue;
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
+function buildSearchTerms(input: { requestedBasename: string; filenameHint?: string | null }): string[] {
+  const base = normalizePath(input.requestedBasename);
+  const hint = typeof input.filenameHint === "string" ? input.filenameHint.trim() : "";
+
+  // Try multiple variants; Storage `search` may be case-sensitive.
+  return uniqNonEmpty([
+    // a) basename from requestedPath (as-is)
+    base || null,
+    // b) basename lowercased
+    base ? base.toLowerCase() : null,
+    // c) basename uppercased (or filename hint as-is)
+    base ? base.toUpperCase() : null,
+    hint || null,
+    // d) filename hint as-is and lowercased (when provided)
+    hint ? hint.toLowerCase() : null,
+  ]);
+}
+
+function keyMatchesCaseInsensitive(input: { key: string; baseLower: string }): boolean {
+  const keyLower = normalizePath(input.key).toLowerCase();
+  const baseLower = input.baseLower;
+  if (!keyLower || !baseLower) return false;
+
+  if (keyLower.endsWith(`/${baseLower}`)) return true;
+  if (keyLower.endsWith(baseLower)) return true;
+  return keyLower.includes(baseLower);
+}
+
 export async function resolveStoredObject(input: {
   serviceSupabase: SupabaseClient;
   requestedBucket: string;
@@ -67,6 +108,7 @@ export async function resolveStoredObject(input: {
   quoteId?: string | null;
   quoteFileId?: string | null;
   filename?: string | null;
+  requestedBasename?: string | null;
   rid?: string;
 }): Promise<ResolveStoredObjectResult> {
   const requestedBucket = normalizeBucket(input.requestedBucket);
