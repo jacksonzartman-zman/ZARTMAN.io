@@ -336,17 +336,29 @@ export function extractFileNameFromPath(path: string): string | undefined {
 }
 
 function normalizeSupabaseErrorText(error: unknown): string {
-  const serialized = serializeSupabaseError(error);
-  const parts = [serialized?.message, serialized?.details, serialized?.hint].filter(
+  const serialized = serializeSupabaseError(error) as unknown;
+
+  const readField = (key: "message" | "details" | "hint"): string | null => {
+    if (!serialized || typeof serialized !== "object") return null;
+    if (!(key in serialized)) return null;
+    const value = (serialized as Record<string, unknown>)[key];
+    return typeof value === "string" ? value : null;
+  };
+
+  const parts = [readField("message"), readField("details"), readField("hint")].filter(
     (value): value is string => typeof value === "string" && value.trim().length > 0,
   );
   return parts.join(" ").toLowerCase();
 }
 
 function isPostgrestSelectParseError(error: unknown): boolean {
-  const serialized = serializeSupabaseError(error);
-  const code = typeof serialized?.code === "string" ? serialized.code : null;
-  if (code === "PGRST100") return true;
+  const serialized = serializeSupabaseError(error) as unknown;
+  const code =
+    serialized && typeof serialized === "object" && "code" in serialized
+      ? (serialized as Record<string, unknown>).code
+      : null;
+  const codeString = typeof code === "string" ? code : null;
+  if (codeString === "PGRST100") return true;
 
   const text = normalizeSupabaseErrorText(error);
   return (
@@ -358,8 +370,12 @@ function isPostgrestSelectParseError(error: unknown): boolean {
 }
 
 function isMissingTableError(error: unknown): boolean {
-  const serialized = serializeSupabaseError(error);
-  return serialized?.code === "42P01";
+  const serialized = serializeSupabaseError(error) as unknown;
+  const code =
+    serialized && typeof serialized === "object" && "code" in serialized
+      ? (serialized as Record<string, unknown>).code
+      : null;
+  return code === "42P01";
 }
 
 function mentionsColumn(error: unknown, column: string): boolean {
