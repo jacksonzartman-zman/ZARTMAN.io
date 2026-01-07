@@ -1,6 +1,10 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
-import { serializeSupabaseError, isMissingTableOrColumnError } from "@/server/admin/logging";
+import {
+  serializeSupabaseError,
+  isMissingTableOrColumnError,
+  type SerializedSupabaseError,
+} from "@/server/admin/logging";
 import type { QuoteFileMeta, QuoteFileSource } from "./types";
 import { classifyCadFileType } from "@/lib/cadRendering";
 import { signPreviewToken } from "@/server/cadPreviewToken";
@@ -336,8 +340,8 @@ export function extractFileNameFromPath(path: string): string | undefined {
 }
 
 function normalizeSupabaseErrorText(error: unknown): string {
-  const serialized = serializeSupabaseError(error);
-  const parts = [serialized?.message, serialized?.details, serialized?.hint].filter(
+  const serialized: SerializedSupabaseError = serializeSupabaseError(error);
+  const parts = [serialized.message, serialized.details, serialized.hint].filter(
     (value): value is string => typeof value === "string" && value.trim().length > 0,
   );
   return parts.join(" ").toLowerCase();

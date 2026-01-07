@@ -9,6 +9,13 @@ type LogLevel = "info" | "warn" | "error";
 
 type LogContext = Record<string, unknown | null | undefined>;
 
+export type SerializedSupabaseError = {
+  message?: string;
+  details?: string;
+  hint?: string;
+  code?: string;
+};
+
 function logWithScope(
   scope: AdminLogScope,
   level: LogLevel,
@@ -93,24 +100,21 @@ export function extractSupabaseSource(error: unknown): unknown {
   return error;
 }
 
-export function serializeSupabaseError(error: unknown) {
+export function serializeSupabaseError(error: unknown): SerializedSupabaseError {
   const source = extractSupabaseSource(error);
-  if (!source || typeof source !== "object") {
-    return source ?? null;
+  if (!source) return {};
+
+  if (typeof source !== "object") {
+    return { message: String(source) };
   }
 
-  const maybeError = source as {
-    code?: unknown;
-    message?: unknown;
-    details?: unknown;
-    hint?: unknown;
-  };
+  const maybeError = source as Record<string, unknown>;
 
   return {
-    code: typeof maybeError.code === "string" ? maybeError.code : null,
-    message: typeof maybeError.message === "string" ? maybeError.message : null,
-    details: typeof maybeError.details === "string" ? maybeError.details : null,
-    hint: typeof maybeError.hint === "string" ? maybeError.hint : null,
+    code: typeof maybeError.code === "string" ? maybeError.code : undefined,
+    message: typeof maybeError.message === "string" ? maybeError.message : undefined,
+    details: typeof maybeError.details === "string" ? maybeError.details : undefined,
+    hint: typeof maybeError.hint === "string" ? maybeError.hint : undefined,
   };
 }
 
