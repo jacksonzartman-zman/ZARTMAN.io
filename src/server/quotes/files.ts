@@ -62,13 +62,6 @@ function isAllowedCadBucket(bucket: string): bucket is "cad_uploads" | "cad_prev
   return bucket === "cad_uploads" || bucket === "cad_previews";
 }
 
-const DEFAULT_CAD_BUCKET = canonicalizeCadBucket(
-  process.env.SUPABASE_CAD_BUCKET ||
-    process.env.NEXT_PUBLIC_CAD_BUCKET ||
-    process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ||
-    "cad_uploads",
-);
-
 const CAD_SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 export type QuoteFilePreviewOptions = {
@@ -86,18 +79,6 @@ export async function getQuoteFilePreviews(
 ): Promise<QuoteFileItem[]> {
   try {
     const files = await loadCanonicalFilesForQuote(quote.id, { onError: options?.onFilesError });
-    if (!files || files.length === 0) {
-      const legacyDeclared = buildQuoteFilesFromRow(quote);
-      if (legacyDeclared.length > 0) {
-        // Minimal observability: alert when a quote has legacy filename metadata but no canonical
-        // Storage-backed file rows. This indicates a backfill is required (or the customer must re-upload).
-        console.warn("[quote files] legacy filenames present but canonical files missing", {
-          quoteId: quote.id,
-          legacyFileNames: legacyDeclared.map((f) => f.filename).slice(0, 10),
-          legacyCount: legacyDeclared.length,
-        });
-      }
-    }
     const candidates = gatherCadCandidates(files);
     const previewCache = new Map<string, CadPreviewResult>();
 
@@ -241,6 +222,7 @@ async function getPreviewForCandidate(
   const token = viewerUserId
     ? signPreviewToken({
         userId: viewerUserId,
+        viewerContext: { userId: viewerUserId },
         exp,
         quoteId,
         quoteFileId,
@@ -325,12 +307,10 @@ function normalizeBucketAndPath(input: {
   if (!path) return null;
 
   // Bucket normalization rules:
-  // - constrain to the canonical portal buckets only
-  let bucket = rawBucket ? canonicalizeCadBucket(rawBucket) : "";
-  if (!bucket || !isAllowedCadBucket(bucket)) {
-    const fallback = canonicalizeCadBucket(DEFAULT_CAD_BUCKET);
-    bucket = isAllowedCadBucket(fallback) ? fallback : "cad_uploads";
-  }
+  // - canonical-only: caller must provide a bucket (no guessing / defaults)
+  // - allow underscore vs hyphen aliases only
+  const bucket = rawBucket ? canonicalizeCadBucket(rawBucket) : "";
+  if (!bucket || !isAllowedCadBucket(bucket)) return null;
 
   // Strip a duplicated bucket prefix only when it matches the resolved bucket.
   const legacyPrefix =
@@ -364,26 +344,47 @@ async function loadCanonicalFilesForQuote(
 
   const tryLoad = async (table: "files_valid" | "files"): Promise<FileStorageRow[] | null> => {
     try {
-      const result = await supabaseServer
-        .from(table)
-        .select("*")
-        .eq("quote_id", normalizedQuoteId)
-        .order("created_at", { ascending: true });
-      const data = result.data as FileStorageRow[] | null;
-      const error = result.error;
+      const selectVariants = [
+        // Canonical column names.
+        "id,quote_id,filename,mime,created_at,storage_bucket_id,storage_path",
+        "id,quote_id,filename,created_at,storage_bucket_id,storage_path",
+        // Legacy bucket column name.
+        "id,quote_id,filename,mime,created_at,bucket_id,storage_path",
+        "id,quote_id,filename,created_at,bucket_id,storage_path",
+        // Legacy path column name.
+        "id,quote_id,filename,mime,created_at,storage_bucket_id,file_path",
+        "id,quote_id,filename,created_at,storage_bucket_id,file_path",
+        "id,quote_id,filename,mime,created_at,bucket_id,file_path",
+        "id,quote_id,filename,created_at,bucket_id,file_path",
+      ] as const;
 
-      if (error) {
-        if (isMissingTableOrColumnError(error)) {
-          return null;
+      for (const columns of selectVariants) {
+        const result = await supabaseServer
+          .from(table)
+          .select(columns)
+          .eq("quote_id", normalizedQuoteId)
+          .order("created_at", { ascending: true });
+
+        if (result.error) {
+          if (isMissingTableOrColumnError(result.error)) {
+            // Try the next select shape (or conclude the table doesn't exist).
+            continue;
+          }
+
+          console.error(`[quote files] failed to load ${table}`, {
+            quoteId: normalizedQuoteId,
+            error: serializeSupabaseError(result.error),
+          });
+          options?.onError?.(result.error);
+          return [];
         }
-        console.error(`[quote files] failed to load ${table}`, {
-          quoteId: normalizedQuoteId,
-          error: serializeSupabaseError(error),
-        });
-        options?.onError?.(error);
-        return [];
+
+        const data = result.data as FileStorageRow[] | null;
+        return data ?? [];
       }
-      return data ?? [];
+
+      // If every variant failed with "missing schema", treat as table missing.
+      return null;
     } catch (error) {
       if (isMissingTableOrColumnError(error)) {
         return null;

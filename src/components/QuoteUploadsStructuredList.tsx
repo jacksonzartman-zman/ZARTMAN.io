@@ -5,10 +5,16 @@ import { CadPreviewButton } from "@/components/shared/CadPreviewButton";
 
 type QuoteUploadsStructuredListProps = {
   uploadGroups: QuoteUploadGroup[];
+  /**
+   * Legacy previews are backed by `quote_upload_files` and are not canonical.
+   * Portals should keep this disabled to avoid non-canonical preview paths.
+   */
+  enableLegacyPreviews?: boolean;
 };
 
 export function QuoteUploadsStructuredList({
   uploadGroups,
+  enableLegacyPreviews = false,
 }: QuoteUploadsStructuredListProps) {
   if (!uploadGroups || uploadGroups.length === 0) {
     return null;
@@ -17,13 +23,23 @@ export function QuoteUploadsStructuredList({
   return (
     <section className="space-y-3">
       {uploadGroups.map((group) => (
-        <UploadGroupCard key={group.uploadId} group={group} />
+        <UploadGroupCard
+          key={group.uploadId}
+          group={group}
+          enableLegacyPreviews={enableLegacyPreviews}
+        />
       ))}
     </section>
   );
 }
 
-function UploadGroupCard({ group }: { group: QuoteUploadGroup }) {
+function UploadGroupCard({
+  group,
+  enableLegacyPreviews,
+}: {
+  group: QuoteUploadGroup;
+  enableLegacyPreviews: boolean;
+}) {
   const entries = Array.isArray(group.entries) ? group.entries : [];
   const archiveEntries = entries.filter((entry) => entry.is_from_archive);
   const nonArchiveEntries = entries.filter((entry) => !entry.is_from_archive);
@@ -66,6 +82,7 @@ function UploadGroupCard({ group }: { group: QuoteUploadGroup }) {
               entries={nonArchiveEntries}
               defaultOpen={nonArchiveEntries.length <= 12 && !hasArchive}
               showPath={false}
+              enableLegacyPreviews={enableLegacyPreviews}
             />
           ) : null}
           {archiveEntries.length > 0 ? (
@@ -74,6 +91,7 @@ function UploadGroupCard({ group }: { group: QuoteUploadGroup }) {
               entries={archiveEntries}
               defaultOpen={archiveEntries.length <= 12}
               showPath
+              enableLegacyPreviews={enableLegacyPreviews}
             />
           ) : null}
         </div>
@@ -87,11 +105,13 @@ function FileList({
   entries,
   defaultOpen,
   showPath,
+  enableLegacyPreviews,
 }: {
   title: string;
   entries: QuoteUploadGroup["entries"];
   defaultOpen: boolean;
   showPath: boolean;
+  enableLegacyPreviews: boolean;
 }) {
   return (
     <details
@@ -121,12 +141,14 @@ function FileList({
               ) : null}
             </div>
             <div className="flex flex-col items-end gap-1">
-              <CadPreviewButton
-                fileId={entry.id}
-                filename={entry.filename}
-                extension={entry.extension}
-                className="text-xs font-semibold text-blue-200 underline-offset-4 hover:underline"
-              />
+              {enableLegacyPreviews ? (
+                <CadPreviewButton
+                  fileId={entry.id}
+                  filename={entry.filename}
+                  extension={entry.extension}
+                  className="text-xs font-semibold text-blue-200 underline-offset-4 hover:underline"
+                />
+              ) : null}
               <span className="whitespace-nowrap text-[11px] text-slate-500">
                 {formatBytes(entry.size_bytes)}
               </span>

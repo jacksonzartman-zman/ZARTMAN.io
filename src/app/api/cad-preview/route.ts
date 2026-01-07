@@ -10,6 +10,7 @@ type CadKind = "step" | "stl" | "obj" | "glb";
 
 const MAX_PREVIEW_BYTES = 50 * 1024 * 1024; // 50MB
 const STEP_PREVIEW_BUCKET = "cad_previews";
+const LOG_CAD_PREVIEW_API = process.env.LOG_CAD_PREVIEW_API === "1";
 
 function normalizeBucket(input: unknown): string {
   const raw = typeof input === "string" ? input.trim() : "";
@@ -352,6 +353,7 @@ export async function GET(req: NextRequest) {
   let isAdmin = false;
   const requestId = shortRequestId();
   const log = (stage: string, extra?: Record<string, unknown>) => {
+    if (!LOG_CAD_PREVIEW_API) return;
     console.log("[cad-preview]", {
       rid: requestId,
       stage,
@@ -418,7 +420,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "invalid_token", requestId }, { status: 401 });
     }
     if (verified.payload.v === 3) {
-      quoteFileIdFromToken = normalizeId((verified.payload as any).qfid);
+      quoteFileIdFromToken = normalizeId(
+        (verified.payload as any).quoteFileId ?? (verified.payload as any).qfid,
+      );
       const resolved = quoteFileIdFromToken
         ? await resolveCanonicalStorageForQuoteFileId(storageSupabase, quoteFileIdFromToken)
         : { ok: false as const, reason: "missing_quote_file_id" };
