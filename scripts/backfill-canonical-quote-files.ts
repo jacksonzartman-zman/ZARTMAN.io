@@ -440,30 +440,14 @@ async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) {
-    throw new Error(
+    console.error(
       "Missing required env vars: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY",
     );
+    process.exit(1);
+    return;
   }
 
-  const supabase = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false },
-  });
-
-  const canonicalTable = await detectCanonicalTable(supabase);
-  const canonicalColumns = await detectCanonicalColumns(supabase, canonicalTable);
-
-  if (!canonicalColumns.bucket || !canonicalColumns.path) {
-    throw new Error(
-      `Unsupported ${canonicalTable} schema: expected bucket_id/storage_bucket_id and storage_path/file_path`,
-    );
-  }
-
-  if (args.verbose) {
-    console.log(
-      `canonicalTable=${canonicalTable} bucketCol=${canonicalColumns.bucket} pathCol=${canonicalColumns.path}`,
-    );
-  }
-
+  let canonicalTableUsed: CanonicalTable | "unknown" = "unknown";
   let scannedQuotes = 0;
   let eligibleQuotes = 0;
   let insertedRows = 0;
@@ -471,213 +455,229 @@ async function main() {
   let missingStorageObjects = 0;
   const perQuoteVerbose: PerQuoteVerbose[] = [];
 
-  let quotes: QuoteRow[] = [];
-
-  if (args.quoteId) {
-    const q = await supabase
-      .from("quotes")
-      .select("id,user_id,file_name,file_names")
-      .eq("id", args.quoteId)
-      .limit(1);
-    if (q.error) throw q.error;
-    quotes = (q.data ?? []) as QuoteRow[];
-  } else {
-    const q = await supabase
-      .from("quotes")
-      .select("id,user_id,file_name,file_names,created_at")
-      .or("file_name.not.is.null,file_names.not.is.null")
-      .order("created_at", { ascending: false })
-      .limit(args.limit);
-    if (q.error) throw q.error;
-    quotes = (q.data ?? []).map((r) => {
-      const rr = r as QuoteRow & { created_at?: unknown };
-      return {
-        id: rr.id,
-        user_id: rr.user_id ?? null,
-        file_name: rr.file_name ?? null,
-        file_names: rr.file_names ?? null,
-      };
+  try {
+    const supabase = createClient(url, serviceRoleKey, {
+      auth: { persistSession: false },
     });
-  }
 
-  scannedQuotes = quotes.length;
+    const canonicalTable = await detectCanonicalTable(supabase);
+    canonicalTableUsed = canonicalTable;
+    const canonicalColumns = await detectCanonicalColumns(supabase, canonicalTable);
 
-  for (const quote of quotes) {
-    const legacyFileNames = coerceFileNames(quote.file_names);
-    const hintNamesRaw = dedupe(
-      [
-        typeof quote.file_name === "string" ? quote.file_name : null,
-        ...legacyFileNames,
-      ].filter((x): x is string => typeof x === "string" && x.trim().length > 0),
-    );
-    const filenameHints = dedupe(hintNamesRaw.map(baseFilename)).filter(Boolean);
-
-    const hasHints = filenameHints.length > 0;
-    if (!hasHints) continue;
-
-    const canonicalCount = await supabase
-      .from(canonicalTable)
-      .select("id", { head: true, count: "exact" })
-      .eq("quote_id", quote.id);
-    if (canonicalCount.error) throw canonicalCount.error;
-    const count = canonicalCount.count ?? 0;
-    if (count !== 0) {
-      if (args.verbose) {
-        console.log(`skip quote=${quote.id} canonicalRows=${count}`);
-      }
-      continue;
+    if (!canonicalColumns.bucket || !canonicalColumns.path) {
+      throw new Error(
+        `Unsupported ${canonicalTable} schema: expected bucket_id/storage_bucket_id and storage_path/file_path`,
+      );
     }
-
-    eligibleQuotes += 1;
 
     if (args.verbose) {
       console.log(
-        `quote=${quote.id} hints=${filenameHints.length} (${filenameHints.join(", ")})`,
+        `canonicalTable=${canonicalTable} bucketCol=${canonicalColumns.bucket} pathCol=${canonicalColumns.path}`,
       );
     }
 
-    const matches = await findStorageObjectsForQuote({
-      supabase,
-      quoteId: quote.id,
-      filenameHints,
-      verbose: args.verbose,
-    });
+    let quotes: QuoteRow[] = [];
 
-    if (matches.length === 0) {
-      missingStorageObjects += 1;
-      if (args.verbose) console.log(`  no storage objects found`);
-      if (args.verbose) {
-        perQuoteVerbose.push({
-          quoteId: quote.id,
-          legacyFilenames: hintNamesRaw,
-          matchedObjectKeysCount: 0,
-          matchedObjectKeysSample: [],
-          wouldInsertCount: 0,
-          skippedExistingCount: 0,
-          missingStorageObjects: true,
-        });
-      }
-      continue;
+    if (args.quoteId) {
+      const q = await supabase
+        .from("quotes")
+        .select("id,user_id,file_name,file_names")
+        .eq("id", args.quoteId)
+        .limit(1);
+      if (q.error) throw q.error;
+      quotes = (q.data ?? []) as QuoteRow[];
+    } else {
+      const q = await supabase
+        .from("quotes")
+        .select("id,user_id,file_name,file_names,created_at")
+        .or("file_name.not.is.null,file_names.not.is.null")
+        .order("created_at", { ascending: false })
+        .limit(args.limit);
+      if (q.error) throw q.error;
+      quotes = (q.data ?? []).map((r) => {
+        const rr = r as QuoteRow & { created_at?: unknown };
+        return {
+          id: rr.id,
+          user_id: rr.user_id ?? null,
+          file_name: rr.file_name ?? null,
+          file_names: rr.file_names ?? null,
+        };
+      });
     }
 
-    // Load existing canonical rows for this quote; skip any already present.
-    const existingRes = await supabase
-      .from(canonicalTable)
-      .select(`${canonicalColumns.bucket},${canonicalColumns.path}`)
-      .eq("quote_id", quote.id)
-      .limit(5000);
-    if (existingRes.error) throw existingRes.error;
+    scannedQuotes = quotes.length;
 
-    const existing = new Set<string>();
-    for (const r of existingRes.data ?? []) {
-      const row = r as Record<string, unknown>;
-      const bRaw = String(row[canonicalColumns.bucket] ?? "");
-      const b = normalizeBucketId(bRaw);
-      const p = String(row[canonicalColumns.path] ?? "");
-      if (!b || !p) continue;
-      existing.add(`${b}:${p}`);
-    }
-
-    const toInsert: Record<string, unknown>[] = [];
-    let quoteSkippedExisting = 0;
-
-    for (const obj of matches) {
-      const storagePath = obj.name;
-      const filenameFromPath = baseFilename(obj.name);
-      const bestLegacy = filenameHints.find((f) =>
-        obj.name.toLowerCase().includes(f.toLowerCase()),
+    for (const quote of quotes) {
+      const legacyFileNames = coerceFileNames(quote.file_names);
+      const hintNamesRaw = dedupe(
+        [
+          typeof quote.file_name === "string" ? quote.file_name : null,
+          ...legacyFileNames,
+        ].filter((x): x is string => typeof x === "string" && x.trim().length > 0),
       );
-      const filename = bestLegacy ?? filenameFromPath;
-      const canonicalBucket = "cad_uploads"; // normalize, even when found in cad-uploads
+      const filenameHints = dedupe(hintNamesRaw.map(baseFilename)).filter(Boolean);
 
-      const key = `${canonicalBucket}:${storagePath}`;
-      if (existing.has(key)) {
-        skippedExisting += 1;
-        quoteSkippedExisting += 1;
+      const hasHints = filenameHints.length > 0;
+      if (!hasHints) continue;
+
+      const canonicalCount = await supabase
+        .from(canonicalTable)
+        .select("id", { head: true, count: "exact" })
+        .eq("quote_id", quote.id);
+      if (canonicalCount.error) throw canonicalCount.error;
+      const count = canonicalCount.count ?? 0;
+      if (count !== 0) {
         if (args.verbose) {
-          console.log(`  skip existing bucket=${canonicalBucket} path=${storagePath}`);
+          console.log(`skip quote=${quote.id} canonicalRows=${count}`);
         }
         continue;
       }
 
-      const row: Record<string, unknown> = {
-        quote_id: quote.id,
-        [canonicalColumns.bucket]: canonicalBucket,
-        [canonicalColumns.path]: storagePath,
-      };
-
-      if (canonicalColumns.filename) row[canonicalColumns.filename] = filename;
-      if (canonicalColumns.mime) {
-        row[canonicalColumns.mime] = mimeFromMetadata(obj.metadata) ?? mimeFromFilename(filename);
-      }
-      if (canonicalColumns.sizeBytes) {
-        row[canonicalColumns.sizeBytes] = sizeBytesFromMetadata(obj.metadata);
-      }
-
-      toInsert.push(row);
-      existing.add(key);
+      eligibleQuotes += 1;
 
       if (args.verbose) {
         console.log(
-          `  match bucket=${obj.bucket_id} -> ${canonicalBucket} path=${storagePath} filename=${filename}`,
+          `quote=${quote.id} hints=${filenameHints.length} (${filenameHints.join(", ")})`,
         );
       }
-    }
 
-    if (args.verbose) {
-      const sample = matches
-        .slice(0, 5)
-        .map((m) => `${m.bucket_id}/${m.name}`)
-        .filter(Boolean);
-      perQuoteVerbose.push({
+      const matches = await findStorageObjectsForQuote({
+        supabase,
         quoteId: quote.id,
-        legacyFilenames: hintNamesRaw,
-        matchedObjectKeysCount: matches.length,
-        matchedObjectKeysSample: sample,
-        wouldInsertCount: toInsert.length,
-        skippedExistingCount: quoteSkippedExisting,
-        missingStorageObjects: false,
+        filenameHints,
+        verbose: args.verbose,
       });
+
+      if (matches.length === 0) {
+        missingStorageObjects += 1;
+        if (args.verbose) console.log(`  no storage objects found`);
+        if (args.verbose) {
+          perQuoteVerbose.push({
+            quoteId: quote.id,
+            legacyFilenames: hintNamesRaw,
+            matchedObjectKeysCount: 0,
+            matchedObjectKeysSample: [],
+            wouldInsertCount: 0,
+            skippedExistingCount: 0,
+            missingStorageObjects: true,
+          });
+        }
+        continue;
+      }
+
+      // Load existing canonical rows for this quote; skip any already present.
+      const existingRes = await supabase
+        .from(canonicalTable)
+        .select(`${canonicalColumns.bucket},${canonicalColumns.path}`)
+        .eq("quote_id", quote.id)
+        .limit(5000);
+      if (existingRes.error) throw existingRes.error;
+
+      const existing = new Set<string>();
+      for (const r of existingRes.data ?? []) {
+        const row = r as Record<string, unknown>;
+        const bRaw = String(row[canonicalColumns.bucket] ?? "");
+        const b = normalizeBucketId(bRaw);
+        const p = String(row[canonicalColumns.path] ?? "");
+        if (!b || !p) continue;
+        existing.add(`${b}:${p}`);
+      }
+
+      const toInsert: Record<string, unknown>[] = [];
+      let quoteSkippedExisting = 0;
+
+      for (const obj of matches) {
+        const storagePath = obj.name;
+        const filenameFromPath = baseFilename(obj.name);
+        const bestLegacy = filenameHints.find((f) =>
+          obj.name.toLowerCase().includes(f.toLowerCase()),
+        );
+        const filename = bestLegacy ?? filenameFromPath;
+        const canonicalBucket = "cad_uploads"; // normalize, even when found in cad-uploads
+
+        const key = `${canonicalBucket}:${storagePath}`;
+        if (existing.has(key)) {
+          skippedExisting += 1;
+          quoteSkippedExisting += 1;
+          if (args.verbose) {
+            console.log(`  skip existing bucket=${canonicalBucket} path=${storagePath}`);
+          }
+          continue;
+        }
+
+        const row: Record<string, unknown> = {
+          quote_id: quote.id,
+          [canonicalColumns.bucket]: canonicalBucket,
+          [canonicalColumns.path]: storagePath,
+        };
+
+        if (canonicalColumns.filename) row[canonicalColumns.filename] = filename;
+        if (canonicalColumns.mime) {
+          row[canonicalColumns.mime] =
+            mimeFromMetadata(obj.metadata) ?? mimeFromFilename(filename);
+        }
+        if (canonicalColumns.sizeBytes) {
+          row[canonicalColumns.sizeBytes] = sizeBytesFromMetadata(obj.metadata);
+        }
+
+        toInsert.push(row);
+        existing.add(key);
+
+        if (args.verbose) {
+          console.log(
+            `  match bucket=${obj.bucket_id} -> ${canonicalBucket} path=${storagePath} filename=${filename}`,
+          );
+        }
+      }
+
+      if (args.verbose) {
+        const sample = matches
+          .slice(0, 5)
+          .map((m) => `${m.bucket_id}/${m.name}`)
+          .filter(Boolean);
+        perQuoteVerbose.push({
+          quoteId: quote.id,
+          legacyFilenames: hintNamesRaw,
+          matchedObjectKeysCount: matches.length,
+          matchedObjectKeysSample: sample,
+          wouldInsertCount: toInsert.length,
+          skippedExistingCount: quoteSkippedExisting,
+          missingStorageObjects: false,
+        });
+      }
+
+      if (toInsert.length === 0) continue;
+
+      if (args.dryRun) {
+        if (args.verbose) console.log(`  dryRun wouldInsert=${toInsert.length}`);
+        continue;
+      }
+
+      for (const batch of chunk(toInsert, 100)) {
+        const ins = await supabase.from(canonicalTable).insert(batch);
+        if (ins.error) throw ins.error;
+        insertedRows += batch.length;
+      }
     }
-
-    if (toInsert.length === 0) continue;
-
-    if (args.dryRun) {
-      if (args.verbose) console.log(`  dryRun wouldInsert=${toInsert.length}`);
-      continue;
-    }
-
-    for (const batch of chunk(toInsert, 100)) {
-      const ins = await supabase.from(canonicalTable).insert(batch);
-      if (ins.error) throw ins.error;
-      insertedRows += batch.length;
-    }
-  }
-
-  console.log(
-    JSON.stringify(
-      {
-        canonicalTableUsed: canonicalTable,
+  } finally {
+    // Always print a final JSON summary to stdout (even if no eligible quotes).
+    console.log(
+      JSON.stringify({
+        canonicalTableUsed,
         scannedQuotes,
         eligibleQuotes,
         insertedRows,
         skippedExisting,
         missingStorageObjects,
-        ...(args.verbose ? { perQuote: perQuoteVerbose } : {}),
-        dryRun: args.dryRun, // extra context; keep in output for safety
-      },
-      null,
-      2,
-    ),
-  );
+      }),
+    );
+  }
 }
 
 main()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error(err);
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e);
     process.exit(1);
   });
 
