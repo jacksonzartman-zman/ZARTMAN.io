@@ -132,39 +132,17 @@ async function loadQuotesForBackfill(
   supabase: any,
   quoteId: string | undefined,
   limit: number
-): Promise<Array<{ id: string; file_name: string | null; file_names?: any }>> {
-  // Attempt the “wide” select first (works on schemas that have file_names)
-  let q = supabase.from("quotes").select("id,file_name,file_names");
-
+): Promise<Array<{ id: string; file_name: string | null }>> {
+  let q = supabase.from("quotes").select("id,file_name");
   if (quoteId) q = q.eq("id", quoteId);
   q = q.limit(limit);
 
-  const wide = await q;
+  const res = await q;
+  if (res.error) throw res.error;
 
-  // If the column does not exist, PostgREST surfaces a Postgres error code 42703.
-  if (wide.error && (wide.error.code === "42703" || String(wide.error.message || "").includes("file_names"))) {
-    // Retry with the “narrow” select for schemas without file_names.
-    console.log("[backfill] fallback: quotes.file_names missing; using quotes.file_name only");
-    let q2 = supabase.from("quotes").select("id,file_name");
-    if (quoteId) q2 = q2.eq("id", quoteId);
-    q2 = q2.limit(limit);
-
-    const narrow = await q2;
-    if (narrow.error) throw narrow.error;
-
-    // Return rows without file_names
-    return (narrow.data || []).map((r: any) => ({
-      id: r.id,
-      file_name: r.file_name ?? null
-    }));
-  }
-
-  if (wide.error) throw wide.error;
-
-  return (wide.data || []).map((r: any) => ({
+  return (res.data || []).map((r: any) => ({
     id: r.id,
-    file_name: r.file_name ?? null,
-    file_names: r.file_names
+    file_name: r.file_name ?? null
   }));
 }
 
@@ -358,14 +336,7 @@ async function loadEligibleQuotes(params: {
   const candidates = quoteRows
     .map((q) => {
       const legacyFilenames: string[] = [];
-      if (q.file_name) legacyFilenames.push(q.file_name);
-
-      const fn = (q as any).file_names;
-      if (Array.isArray(fn)) {
-        for (const x of fn) if (typeof x === "string" && x.trim()) legacyFilenames.push(x.trim());
-      } else if (typeof fn === "string" && fn.trim()) {
-        legacyFilenames.push(fn.trim());
-      }
+      if (q.file_name && String(q.file_name).trim()) legacyFilenames.push(String(q.file_name).trim());
 
       return { quoteId: q.id, legacyFilenames: uniq(legacyFilenames) };
     })
