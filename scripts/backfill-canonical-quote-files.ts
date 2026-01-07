@@ -9,9 +9,6 @@ type CliArgs = {
   verbose: boolean;
 };
 
-type QuoteRowBase = { id: string; file_name: string | null };
-type QuoteRowWithNames = QuoteRowBase & { file_names: string[] | null };
-
 type CanonicalColumns = {
   bucketCol: "bucket_id" | "storage_bucket_id";
   pathCol: "storage_path" | "file_path";
@@ -132,47 +129,43 @@ function isMissingColumnError(error: unknown): boolean {
 }
 
 async function loadQuotesForBackfill(
-  supabase: ReturnType<typeof createClient>,
-  quoteId?: string,
-  limit?: number
-): Promise<{ rows: Array<{ id: string; legacyFilenames: string[] }>; hasFileNamesColumn: boolean }> {
-  // Attempt schema that includes file_names (plural)
-  const queryBase = supabase
-    .from("quotes")
-    .select("id,file_name,file_names");
+  supabase: any,
+  quoteId: string | undefined,
+  limit: number
+): Promise<Array<{ id: string; file_name: string | null; file_names?: any }>> {
+  // Attempt the “wide” select first (works on schemas that have file_names)
+  let q = supabase.from("quotes").select("id,file_name,file_names");
 
-  const query = quoteId ? queryBase.eq("id", quoteId) : queryBase.limit(limit ?? 200);
+  if (quoteId) q = q.eq("id", quoteId);
+  q = q.limit(limit);
 
-  const wide = await query;
-  if (!wide.error) {
-    const data = (wide.data ?? []) as QuoteRowWithNames[];
-    const rows = data.map((q) => {
-      const legacy: string[] = [];
-      if (q.file_name) legacy.push(q.file_name);
-      if (Array.isArray(q.file_names)) legacy.push(...q.file_names.filter(Boolean));
-      return { id: q.id, legacyFilenames: Array.from(new Set(legacy)) };
-    });
-    return { rows, hasFileNamesColumn: true };
-  }
+  const wide = await q;
 
-  // If file_names doesn't exist in this DB, retry without it
-  if (wide.error.code === "42703") {
-    const queryBase2 = supabase.from("quotes").select("id,file_name");
-    const query2 = quoteId ? queryBase2.eq("id", quoteId) : queryBase2.limit(limit ?? 200);
+  // If the column does not exist, PostgREST surfaces a Postgres error code 42703.
+  if (wide.error && (wide.error.code === "42703" || String(wide.error.message || "").includes("file_names"))) {
+    // Retry with the “narrow” select for schemas without file_names.
+    console.log("[backfill] fallback: quotes.file_names missing; using quotes.file_name only");
+    let q2 = supabase.from("quotes").select("id,file_name");
+    if (quoteId) q2 = q2.eq("id", quoteId);
+    q2 = q2.limit(limit);
 
-    const narrow = await query2;
+    const narrow = await q2;
     if (narrow.error) throw narrow.error;
 
-    const data = (narrow.data ?? []) as QuoteRowBase[];
-    const rows = data.map((q) => ({
-      id: q.id,
-      legacyFilenames: q.file_name ? [q.file_name] : [],
+    // Return rows without file_names
+    return (narrow.data || []).map((r: any) => ({
+      id: r.id,
+      file_name: r.file_name ?? null
     }));
-    return { rows, hasFileNamesColumn: false };
   }
 
-  // Any other error should hard-fail
-  throw wide.error;
+  if (wide.error) throw wide.error;
+
+  return (wide.data || []).map((r: any) => ({
+    id: r.id,
+    file_name: r.file_name ?? null,
+    file_names: r.file_names
+  }));
 }
 
 async function detectCanonicalTable(supabase: SupabaseClient): Promise<CanonicalTable> {
@@ -359,11 +352,23 @@ async function loadEligibleQuotes(params: {
 }): Promise<{ scannedQuotes: number; eligible: Array<{ quoteId: string; legacyFilenames: string[] }> }> {
   const { supabase, canonicalTable, quoteId, limit } = params;
 
-  const { rows: quoteRows } = await loadQuotesForBackfill(supabase, quoteId, limit);
+  const quoteRows = await loadQuotesForBackfill(supabase, quoteId, limit);
 
   const scannedQuotes = quoteRows.length;
   const candidates = quoteRows
-    .map((r) => ({ quoteId: r.id, legacyFilenames: uniq(r.legacyFilenames) }))
+    .map((q) => {
+      const legacyFilenames: string[] = [];
+      if (q.file_name) legacyFilenames.push(q.file_name);
+
+      const fn = (q as any).file_names;
+      if (Array.isArray(fn)) {
+        for (const x of fn) if (typeof x === "string" && x.trim()) legacyFilenames.push(x.trim());
+      } else if (typeof fn === "string" && fn.trim()) {
+        legacyFilenames.push(fn.trim());
+      }
+
+      return { quoteId: q.id, legacyFilenames: uniq(legacyFilenames) };
+    })
     .filter((r) => r.legacyFilenames.length > 0);
 
   if (candidates.length === 0) return { scannedQuotes, eligible: [] };
