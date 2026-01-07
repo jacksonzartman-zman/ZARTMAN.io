@@ -38,6 +38,34 @@ npm run backfill:files:dry
 npm run backfill:files
 ```
 
+## Backfill from uploads (recommended)
+
+This mode backfills canonical rows deterministically from `quotes.upload_id -> uploads.file_path`, and resolves the Storage object key from `storage.objects` in the `cad_uploads` bucket.
+
+### Single quote dry-run
+
+```bash
+npm run backfill:uploads:dry -- --quoteId <quote-uuid> --verbose
+```
+
+### Single quote apply
+
+```bash
+npm run backfill:uploads -- --quoteId <quote-uuid> --verbose
+```
+
+### Batch dry-run
+
+```bash
+npm run backfill:uploads:dry -- --limit 50 --verbose
+```
+
+### Batch apply
+
+```bash
+npm run backfill:uploads -- --limit 500 --verbose
+```
+
 ### Single quote dry-run
 
 ```bash
@@ -63,6 +91,46 @@ npm run backfill:files -- --limit 500 --verbose
 ```
 
 ### Verification SQL
+
+- Canonical count per quote:
+
+```sql
+-- If `public.files_valid` exists:
+select quote_id, count(*) as canonical_count
+from public.files_valid
+group by quote_id
+order by canonical_count desc
+limit 100;
+
+-- If your env does not have `public.files_valid`, use `public.files`:
+select quote_id, count(*) as canonical_count
+from public.files
+group by quote_id
+order by canonical_count desc
+limit 100;
+```
+
+- Show canonical rows for a specific quote_id:
+
+```sql
+-- Prefer files_valid if it exists in your env.
+select *
+from public.files_valid
+where quote_id = '<quote-uuid>'
+
+select *
+from public.files
+where quote_id = '<quote-uuid>'
+```
+
+- Check `storage.objects` presence by path:
+
+```sql
+select o.bucket_id, o.name, o.created_at
+from storage.objects o
+where o.bucket_id = 'cad_uploads'
+  and o.name = '<storage-object-key>';
+```
 
 - Show recent quotes with **zero canonical file rows**:
 

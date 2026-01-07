@@ -5,6 +5,8 @@
   "scripts": {
     "backfill:files:dry": "tsx scripts/backfill-canonical-quote-files.ts --dryRun --limit 20 --verbose",
     "backfill:files": "tsx scripts/backfill-canonical-quote-files.ts --limit 500 --verbose",
+    "backfill:uploads:dry": "tsx scripts/backfill-canonical-files-from-uploads.ts --dryRun --limit 50 --verbose",
+    "backfill:uploads": "tsx scripts/backfill-canonical-files-from-uploads.ts --limit 500 --verbose",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
