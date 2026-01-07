@@ -26,10 +26,9 @@ import { createClient } from "@supabase/supabase-js";
  *   - bucket `cad_uploads`
  *   - bucket `cad-uploads`
  * - Matches historical key patterns (bounded queries):
- *   - `uploads/intake/<uid>/**/<ts>-<filename>`
- *   - `uploads/<ts>-<rand>-<filename>`
+ *   - `uploads/intake/<uid>/**` (deep)
+ *   - `uploads/<timestamp-or-random>-<anything>-<filename>`
  *   - `uploads/<quoteId>/**`
- *   - `uploads/quotes/<quoteId>/**`
  *   - `quote_uploads/<quoteId>/**`
  *   - `quotes/<quoteId>/**`
  * - Inserts canonical rows into `files_valid` (fallback `files`) with:
@@ -69,9 +68,11 @@ type CustomerRow = {
 };
 
 type StorageObjectRow = {
+  id: string;
   bucket_id: string;
   name: string;
   created_at: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 type CanonicalFileInsertRow = {
@@ -124,6 +125,12 @@ function basename(path: string): string {
   return parts[parts.length - 1] ?? normalized;
 }
 
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
 function normalizeFilenameForMatch(value: string): string {
   return (value ?? "")
     .trim()
@@ -163,6 +170,56 @@ function mimeFromFileName(fileName: string): string {
   if (lower.endsWith(".dwg")) return "application/acad";
   if (lower.endsWith(".dxf")) return "application/dxf";
   return "application/octet-stream";
+}
+
+function resolveBestFilenameForObject(input: {
+  objectKey: string;
+  legacyNames: string[];
+}): string {
+  const base = basename(input.objectKey);
+  const baseNorm = normalizeFilenameForMatch(base);
+  const strippedNorm = normalizeFilenameForMatch(stripTimestampPrefixes(base));
+
+  const candidates = Array.from(new Set((input.legacyNames ?? []).map((n) => n.trim()).filter(Boolean)));
+  const ranked = candidates
+    .map((legacy) => {
+      const target = normalizeFilenameForMatch(legacy);
+      const score =
+        target && (baseNorm === target || strippedNorm === target)
+          ? 3
+          : target && (baseNorm.endsWith(`-${target}`) || baseNorm.endsWith(target))
+            ? 2
+            : target && (strippedNorm.endsWith(`-${target}`) || strippedNorm.endsWith(target))
+              ? 2
+              : 0;
+      return { legacy, score };
+    })
+    .filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return ranked[0]?.legacy ?? (base || input.objectKey);
+}
+
+function resolveMimeAndSizeFromObject(input: {
+  filename: string;
+  metadata?: Record<string, unknown> | null;
+}): { mime: string; size_bytes: number | null } {
+  const meta = input.metadata ?? null;
+  const fromMetaMime =
+    meta && typeof meta["mimetype"] === "string" && meta["mimetype"].trim()
+      ? String(meta["mimetype"]).trim()
+      : meta && typeof meta["contentType"] === "string" && meta["contentType"].trim()
+        ? String(meta["contentType"]).trim()
+        : null;
+  const mime = fromMetaMime ?? mimeFromFileName(input.filename) ?? "application/octet-stream";
+
+  const size =
+    (meta ? asNumber(meta["size"]) : null) ??
+    (meta ? asNumber(meta["contentLength"]) : null) ??
+    (meta ? asNumber(meta["ContentLength"]) : null) ??
+    null;
+
+  return { mime, size_bytes: size };
 }
 
 function parseArgs(argv: string[]) {
@@ -221,14 +278,13 @@ async function loadQuotesNeedingCheck(
   supabase: ReturnType<typeof createClient>,
   limit: number,
 ): Promise<QuoteRow[]> {
-  // Best-effort: fetch quotes that might need backfill.
-  // NOTE: file_names is commonly a jsonb array; "is not null" is enough for coarse filtering.
-  // We include upload-linked quotes too, since some historical quotes were created
-  // without legacy filename fields but do have uploads/storage objects.
+  // Must-have scope:
+  // - Target quotes that have legacy filenames (quotes.file_name OR quotes.file_names not null/empty).
+  // We filter "not null" at the DB layer, then drop empty arrays/strings in JS.
   const { data, error } = await supabase
     .from("quotes")
     .select("id,upload_id,customer_id,customer_email,file_name,file_names,created_at")
-    .or("upload_id.not.is.null,file_name.not.is.null,file_names.not.is.null")
+    .or("file_name.not.is.null,file_names.not.is.null")
     .order("created_at", { ascending: false })
     .limit(limit)
     .returns<QuoteRow[]>();
@@ -238,73 +294,63 @@ async function loadQuotesNeedingCheck(
 
 async function loadCanonicalCount(
   supabase: ReturnType<typeof createClient>,
+  table: "files_valid" | "files",
   quoteId: string,
 ): Promise<number> {
-  const countFrom = async (table: "files_valid" | "files") => {
-    try {
-      const { count, error } = await supabase
-        .from(table)
-        .select("id", { count: "exact", head: true })
-        .eq("quote_id", quoteId);
-      if (error) return null;
-      return typeof count === "number" ? count : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const valid = await countFrom("files_valid");
-  if (typeof valid === "number") return valid;
-  const files = await countFrom("files");
-  if (typeof files === "number") return files;
-  return 0;
+  try {
+    const { count, error } = await supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .eq("quote_id", quoteId);
+    if (error) return 0;
+    return typeof count === "number" ? count : 0;
+  } catch {
+    return 0;
+  }
 }
 
 async function loadExistingCanonicalKeys(
   supabase: ReturnType<typeof createClient>,
+  table: "files_valid" | "files",
   quoteId: string,
 ): Promise<Set<string>> {
   const keys = new Set<string>();
   const add = (bucket: string, path: string) => {
     const b = canonicalizeBucketId(bucket) || bucket;
-    const p = normalizeStorageObjectKey(b, path);
+    // Keep storage key "exact" (storage.objects.name) and only normalize leading slashes.
+    const p = normalizePath(path);
     if (!b || !p) return;
     keys.add(`${b}:${p}`);
   };
 
-  const tryLoad = async (table: "files_valid" | "files") => {
-    try {
-      const { data, error } = await supabase
-        .from(table)
-        .select("bucket_id,storage_bucket_id,storage_path,file_path")
-        .eq("quote_id", quoteId)
-        .returns<
-          Array<{
-            bucket_id?: string | null;
-            storage_bucket_id?: string | null;
-            storage_path?: string | null;
-            file_path?: string | null;
-          }>
-        >();
-      if (error) return;
-      for (const row of data ?? []) {
-        const bucket =
-          (typeof row.storage_bucket_id === "string" && row.storage_bucket_id) ||
-          (typeof row.bucket_id === "string" && row.bucket_id) ||
-          "";
-        const path =
-          (typeof row.storage_path === "string" && row.storage_path) ||
-          (typeof row.file_path === "string" && row.file_path) ||
-          "";
-        if (bucket && path) add(bucket, path);
-      }
-    } catch {
-      // ignore
+  try {
+    const { data, error } = await supabase
+      .from(table)
+      .select("bucket_id,storage_bucket_id,storage_path,file_path")
+      .eq("quote_id", quoteId)
+      .returns<
+        Array<{
+          bucket_id?: string | null;
+          storage_bucket_id?: string | null;
+          storage_path?: string | null;
+          file_path?: string | null;
+        }>
+      >();
+    if (error) return keys;
+    for (const row of data ?? []) {
+      const bucket =
+        (typeof row.bucket_id === "string" && row.bucket_id) ||
+        (typeof row.storage_bucket_id === "string" && row.storage_bucket_id) ||
+        "";
+      const path =
+        (typeof row.storage_path === "string" && row.storage_path) ||
+        (typeof row.file_path === "string" && row.file_path) ||
+        "";
+      if (bucket && path) add(bucket, path);
     }
-  };
-
-  await tryLoad("files_valid");
-  await tryLoad("files");
+  } catch {
+    // ignore
+  }
   return keys;
 }
 
@@ -412,13 +458,14 @@ async function loadCandidateObjects(
 
   const push = (rows: StorageObjectRow[] | null | undefined) => {
     for (const row of rows ?? []) {
+      const id = normalizeId(row.id);
       const bucket = canonicalizeBucketId(row.bucket_id) || row.bucket_id;
       const name = normalizePath(row.name);
-      if (!bucket || !name) continue;
-      const key = `${bucket}:${name}`;
+      if (!id || !bucket || !name) continue;
+      const key = `${bucket}:${name}:${id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      candidates.push({ ...row, bucket_id: bucket, name });
+      candidates.push({ ...row, id, bucket_id: bucket, name });
     }
   };
 
@@ -430,12 +477,7 @@ async function loadCandidateObjects(
     return candidates;
   }
 
-  const quotePrefixes = [
-    `uploads/quotes/${input.quoteId}/`,
-    `uploads/${input.quoteId}/`,
-    `quote_uploads/${input.quoteId}/`,
-    `quotes/${input.quoteId}/`,
-  ];
+  const quotePrefixes = [`uploads/${input.quoteId}/`, `quote_uploads/${input.quoteId}/`, `quotes/${input.quoteId}/`];
 
   const intakePrefix = input.authUserId ? `uploads/intake/${input.authUserId}/` : null;
 
@@ -443,7 +485,7 @@ async function loadCandidateObjects(
     // 1) Intake uploads (preferred): uploads/intake/<auth.uid()>/...
     if (intakePrefix) {
       const { data } = await storageObjects
-        .select("bucket_id,name,created_at")
+        .select("id,bucket_id,name,created_at,metadata")
         .eq("bucket_id", bucketId)
         .like("name", `${intakePrefix}%`)
         .order("created_at", { ascending: false })
@@ -455,7 +497,7 @@ async function loadCandidateObjects(
     // 2) Quote-scoped known historical prefixes.
     for (const prefix of quotePrefixes) {
       const { data } = await storageObjects
-        .select("bucket_id,name,created_at")
+        .select("id,bucket_id,name,created_at,metadata")
         .eq("bucket_id", bucketId)
         .like("name", `${prefix}%`)
         .order("created_at", { ascending: false })
@@ -476,7 +518,7 @@ async function loadCandidateObjects(
       for (const name of namesToTry) {
         if (!name) continue;
         const { data } = await storageObjects
-          .select("bucket_id,name,created_at")
+          .select("id,bucket_id,name,created_at,metadata")
           .eq("bucket_id", bucketId)
           .eq("name", name)
           .limit(1)
@@ -491,7 +533,7 @@ async function loadCandidateObjects(
       const needle = sanitizeForLikeNeedle(declared);
       if (!needle) continue;
       const { data } = await storageObjects
-        .select("bucket_id,name,created_at")
+        .select("id,bucket_id,name,created_at,metadata")
         .eq("bucket_id", bucketId)
         .like("name", "uploads/%")
         .ilike("name", `%${needle}%`)
@@ -526,36 +568,9 @@ function extractLegacyFilenames(quote: QuoteRow): string[] {
   return Array.from(new Set(names));
 }
 
-function pickBestMatchForFilename(
-  filename: string,
-  objects: StorageObjectRow[],
-): StorageObjectRow | null {
-  const target = normalizeFilenameForMatch(filename);
-  if (!target) return null;
-
-  const matches = objects
-    .map((obj) => ({ obj, base: basename(obj.name) }))
-    .map((entry) => ({
-      obj: entry.obj,
-      base: entry.base,
-      score: (() => {
-        const baseNorm = normalizeFilenameForMatch(entry.base);
-        const strippedNorm = normalizeFilenameForMatch(stripTimestampPrefixes(entry.base));
-        if (baseNorm === target) return 3;
-        if (strippedNorm === target) return 3;
-        // Heuristic: intake uploads add prefixes like "<ts>-", "<ts>-<rand>-"
-        // so we also match on suffix.
-        if (baseNorm.endsWith(`-${target}`) || baseNorm.endsWith(target)) return 2;
-        if (strippedNorm.endsWith(`-${target}`) || strippedNorm.endsWith(target)) return 2;
-        return 0;
-      })(),
-      createdMs: entry.obj.created_at ? Date.parse(entry.obj.created_at) : Number.NEGATIVE_INFINITY,
-    }))
-    .filter((m) => m.score > 0)
-    .sort((a, b) => b.score - a.score || b.createdMs - a.createdMs);
-
-  return matches[0]?.obj ?? null;
-}
+// NOTE: Previously the script picked one best object per legacy filename.
+// Must-have behavior is now: insert all distinct storage matches safely,
+// using legacy filenames only as hints for naming.
 
 async function upsertCanonicalRows(params: {
   supabase: ReturnType<typeof createClient>;
@@ -574,6 +589,7 @@ async function upsertCanonicalRows(params: {
       mime: r.mime,
       bucket_id: r.bucket_id,
       storage_path: r.storage_path,
+      size_bytes: r.size_bytes ?? null,
       created_at: r.created_at ?? null,
     }),
     // Alternate bucket column.
@@ -583,6 +599,7 @@ async function upsertCanonicalRows(params: {
       mime: r.mime,
       storage_bucket_id: r.bucket_id,
       storage_path: r.storage_path,
+      size_bytes: r.size_bytes ?? null,
       created_at: r.created_at ?? null,
     }),
     // Alternate path column.
@@ -592,6 +609,7 @@ async function upsertCanonicalRows(params: {
       mime: r.mime,
       bucket_id: r.bucket_id,
       file_path: r.storage_path,
+      size_bytes: r.size_bytes ?? null,
       created_at: r.created_at ?? null,
     }),
     // Both alternates.
@@ -601,23 +619,14 @@ async function upsertCanonicalRows(params: {
       mime: r.mime,
       storage_bucket_id: r.bucket_id,
       file_path: r.storage_path,
+      size_bytes: r.size_bytes ?? null,
       created_at: r.created_at ?? null,
     }),
   ] as const;
 
-  // Attempt upsert if a unique index exists; fallback to insert.
-  // If schema doesn't support the chosen columns, try the next variant.
+  // Insert best-effort with multiple schema variants.
   for (const mapper of variants) {
     const payload = rows.map(mapper);
-    try {
-      const upsertAttempt = await supabase
-        .from(table)
-        .upsert(payload as any, { onConflict: "quote_id,bucket_id,storage_path" });
-      if (!upsertAttempt.error) return { ok: true, inserted: rows.length };
-    } catch {
-      // ignore and fall through
-    }
-
     // Retry without created_at if the column doesn't exist.
     const payloadWithoutCreatedAt = payload.map((row) => {
       const copy = { ...(row as any) };
@@ -650,7 +659,7 @@ async function main() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
     console.error(
-      "Missing env. Required: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+      "Missing env vars. Required: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
     );
     process.exit(1);
   }
@@ -675,31 +684,33 @@ async function main() {
     quotes = await loadQuotesNeedingCheck(supabase, args.limit);
   }
 
-  let scanned = 0;
-  let eligible = 0;
-  let fixedQuotes = 0;
+  let scannedQuotes = 0;
+  let eligibleQuotes = 0;
   let insertedRows = 0;
-  let skippedAlreadyCanonical = 0;
-  let skippedNoMatches = 0;
-  let skippedNoHints = 0;
+  let skippedExisting = 0;
+  let missingStorageObjects = 0;
 
   for (const quote of quotes) {
     if (!quote?.id) continue;
-    scanned += 1;
+    scannedQuotes += 1;
 
     const quoteId = quote.id;
-    const legacyNames = extractLegacyFilenames(quote);
+    const legacyNames = extractLegacyFilenames(quote).map((n) => n.trim()).filter(Boolean);
+    if (legacyNames.length === 0) {
+      // Must-have: only target quotes with legacy filenames.
+      continue;
+    }
 
-    const existingKeys = await loadExistingCanonicalKeys(supabase, quoteId);
-    const existingCount = await loadCanonicalCount(supabase, quoteId);
+    const existingCount = await loadCanonicalCount(supabase, writeTable, quoteId);
     if (existingCount !== 0) {
-      skippedAlreadyCanonical += 1;
       if (args.verbose) {
-        console.log("[backfill] skip (already has canonical rows)", { quoteId, existingCount });
+        console.log("[backfill] skip (already has canonical rows)", { quoteId, writeTable, existingCount });
       }
       continue;
     }
-    eligible += 1;
+    eligibleQuotes += 1;
+
+    const existingKeys = await loadExistingCanonicalKeys(supabase, writeTable, quoteId);
 
     const uploadId = normalizeId(quote.upload_id);
     const upload = uploadId ? await loadUpload(supabase, uploadId) : null;
@@ -718,75 +729,71 @@ async function main() {
       verbose: args.verbose,
     });
 
-    const planned: CanonicalFileInsertRow[] = [];
-    if (declaredNames.length > 0) {
-      for (const name of declaredNames) {
-        const match = pickBestMatchForFilename(name, objects);
-        if (!match) continue;
-        const key = normalizeStorageObjectKey(match.bucket_id, match.name);
-        const dedupeKey = `${CANONICAL_BUCKET}:${key}`;
-        if (existingKeys.has(dedupeKey)) continue;
-        planned.push({
-          quote_id: quoteId,
-          filename: name,
-          mime: mimeFromFileName(name),
-          storage_path: key,
-          bucket_id: CANONICAL_BUCKET,
-          created_at: new Date().toISOString(),
+    if (objects.length === 0) {
+      missingStorageObjects += 1;
+      if (args.verbose) {
+        console.warn("[backfill] no storage matches", {
+          quoteId,
+          uploadId: uploadId || null,
+          authUserId,
+          legacyFileNames: legacyNames.length > 0 ? legacyNames : undefined,
+          uploadFileNames: uploadFileNames.length > 0 ? uploadFileNames : undefined,
+          candidatesScanned: objects.length,
         });
-        existingKeys.add(dedupeKey);
       }
-    } else if (objects.length > 0) {
-      // Fallback: if we can find a single unambiguous storage object but no declared filenames,
-      // backfill using the storage object's basename.
-      // This avoids leaving "upload-only" quotes permanently empty in portals.
-      const sorted = [...objects].sort((a, b) => {
-        const am = a.created_at ? Date.parse(a.created_at) : Number.NEGATIVE_INFINITY;
-        const bm = b.created_at ? Date.parse(b.created_at) : Number.NEGATIVE_INFINITY;
-        return bm - am;
+      continue;
+    }
+
+    // Must-have: keep inserts safe when multiple matches exist (insert all distinct).
+    const planned: CanonicalFileInsertRow[] = [];
+    const plannedKeys = new Set<string>();
+    for (const obj of objects) {
+      const key = normalizePath(obj.name); // exact key from storage.objects.name
+      if (!key) continue;
+
+      const dedupeKey = `${CANONICAL_BUCKET}:${key}`;
+      if (existingKeys.has(dedupeKey)) {
+        skippedExisting += 1;
+        continue;
+      }
+      if (plannedKeys.has(dedupeKey)) continue;
+
+      const filename = resolveBestFilenameForObject({
+        objectKey: key,
+        legacyNames: declaredNames.length > 0 ? declaredNames : legacyNames,
       });
-      const first = sorted[0] ?? null;
-      if (first) {
-        const key = normalizeStorageObjectKey(first.bucket_id, first.name);
-        const dedupeKey = `${CANONICAL_BUCKET}:${key}`;
-        if (key && !existingKeys.has(dedupeKey)) {
-          const inferredName = basename(key);
-          planned.push({
-            quote_id: quoteId,
-            filename: inferredName,
-            mime: mimeFromFileName(inferredName),
-            storage_path: key,
-            bucket_id: CANONICAL_BUCKET,
-            created_at: new Date().toISOString(),
-          });
-          existingKeys.add(dedupeKey);
-        }
-      }
+      const meta = resolveMimeAndSizeFromObject({
+        filename,
+        metadata: obj.metadata ?? null,
+      });
+
+      planned.push({
+        quote_id: quoteId,
+        filename,
+        bucket_id: CANONICAL_BUCKET,
+        storage_path: key,
+        mime: meta.mime,
+        size_bytes: meta.size_bytes,
+        created_at: new Date().toISOString(),
+      });
+      plannedKeys.add(dedupeKey);
     }
 
     if (planned.length === 0) {
-      if (declaredNames.length === 0) {
-        skippedNoHints += 1;
-      } else {
-        skippedNoMatches += 1;
-      }
-      if (args.verbose) {
-        console.warn("[backfill] no storage matches", {
-        quoteId,
-        uploadId: uploadId || null,
-        authUserId,
-        legacyFileNames: legacyNames.length > 0 ? legacyNames : undefined,
-        uploadFileNames: uploadFileNames.length > 0 ? uploadFileNames : undefined,
-        candidatesScanned: objects.length,
-        });
-      }
+      missingStorageObjects += 1;
       continue;
     }
 
     if (args.dryRun) {
       console.log("[backfill] dry-run would insert", {
         quoteId,
-        rows: planned.map((r) => ({ bucket: r.bucket_id, path: r.storage_path, filename: r.filename })),
+        rows: planned.map((r) => ({
+          bucket: r.bucket_id,
+          path: r.storage_path,
+          filename: r.filename,
+          mime: r.mime,
+          size_bytes: r.size_bytes ?? null,
+        })),
       });
       continue;
     }
@@ -801,19 +808,16 @@ async function main() {
       continue;
     }
 
-    fixedQuotes += 1;
     insertedRows += planned.length;
     console.log("[backfill] inserted", { quoteId, rows: planned.length, writeTable });
   }
 
   console.log("[backfill] complete", {
-    scanned,
-    eligible,
+    scannedQuotes,
+    eligibleQuotes,
     insertedRows,
-    fixedQuotes,
-    skippedAlreadyCanonical,
-    skippedNoMatches,
-    skippedNoHints,
+    skippedExisting,
+    missingStorageObjects,
   });
 }
 
