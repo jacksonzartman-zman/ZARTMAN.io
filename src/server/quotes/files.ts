@@ -344,29 +344,43 @@ async function loadCanonicalFilesForQuote(
 
   const tryLoad = async (table: "files_valid" | "files"): Promise<FileStorageRow[] | null> => {
     try {
+      // IMPORTANT:
+      // Some deployments do not have a `created_at` column on `files`/`files_valid`.
+      // The portal only needs bucket/path/filename to render cards, so we try
+      // variants both with and without `created_at`, and only order when it's present.
       const selectVariants = [
         // Canonical column names.
-        "id,quote_id,filename,mime,created_at,storage_bucket_id,storage_path",
-        "id,quote_id,filename,created_at,storage_bucket_id,storage_path",
+        { columns: "id,quote_id,filename,mime,created_at,storage_bucket_id,storage_path", orderByCreatedAt: true },
+        { columns: "id,quote_id,filename,created_at,storage_bucket_id,storage_path", orderByCreatedAt: true },
+        { columns: "id,quote_id,filename,mime,storage_bucket_id,storage_path", orderByCreatedAt: false },
+        { columns: "id,quote_id,filename,storage_bucket_id,storage_path", orderByCreatedAt: false },
         // Legacy bucket column name.
-        "id,quote_id,filename,mime,created_at,bucket_id,storage_path",
-        "id,quote_id,filename,created_at,bucket_id,storage_path",
+        { columns: "id,quote_id,filename,mime,created_at,bucket_id,storage_path", orderByCreatedAt: true },
+        { columns: "id,quote_id,filename,created_at,bucket_id,storage_path", orderByCreatedAt: true },
+        { columns: "id,quote_id,filename,mime,bucket_id,storage_path", orderByCreatedAt: false },
+        { columns: "id,quote_id,filename,bucket_id,storage_path", orderByCreatedAt: false },
         // Legacy path column name.
-        "id,quote_id,filename,mime,created_at,storage_bucket_id,file_path",
-        "id,quote_id,filename,created_at,storage_bucket_id,file_path",
-        "id,quote_id,filename,mime,created_at,bucket_id,file_path",
-        "id,quote_id,filename,created_at,bucket_id,file_path",
+        { columns: "id,quote_id,filename,mime,created_at,storage_bucket_id,file_path", orderByCreatedAt: true },
+        { columns: "id,quote_id,filename,created_at,storage_bucket_id,file_path", orderByCreatedAt: true },
+        { columns: "id,quote_id,filename,mime,storage_bucket_id,file_path", orderByCreatedAt: false },
+        { columns: "id,quote_id,filename,storage_bucket_id,file_path", orderByCreatedAt: false },
+        { columns: "id,quote_id,filename,mime,created_at,bucket_id,file_path", orderByCreatedAt: true },
+        { columns: "id,quote_id,filename,created_at,bucket_id,file_path", orderByCreatedAt: true },
+        { columns: "id,quote_id,filename,mime,bucket_id,file_path", orderByCreatedAt: false },
+        { columns: "id,quote_id,filename,bucket_id,file_path", orderByCreatedAt: false },
       ] as const;
 
-      for (const columns of selectVariants) {
-        const result = await supabaseServer
+      for (const variant of selectVariants) {
+        let query = supabaseServer
           .from(table)
           // NOTE: the supabase-js select-string type parser can't narrow a dynamic
           // select list, so we provide an explicit return type.
-          .select(columns as any)
-          .eq("quote_id", normalizedQuoteId)
-          .order("created_at", { ascending: true })
-          .returns<FileStorageRow[]>();
+          .select(variant.columns as any)
+          .eq("quote_id", normalizedQuoteId);
+        if (variant.orderByCreatedAt) {
+          query = query.order("created_at", { ascending: true }) as any;
+        }
+        const result = await (query as any).returns<FileStorageRow[]>();
 
         if (result.error) {
           if (isMissingTableOrColumnError(result.error)) {
