@@ -4,3 +4,7 @@ node_modules/
 .DS_Store
 .next/
 tsconfig.tsbuildinfo
+
+# local build artifacts
+backfill.log
+tsconfig.tsbuildinfo
