@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "backfill:files:dry": "tsx scripts/backfill-canonical-quote-files.ts --dryRun --limit 20 --verbose",
+    "backfill:files": "tsx scripts/backfill-canonical-quote-files.ts --limit 500 --verbose",
+    
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
