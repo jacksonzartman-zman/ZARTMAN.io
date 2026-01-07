@@ -361,9 +361,12 @@ async function loadCanonicalFilesForQuote(
       for (const columns of selectVariants) {
         const result = await supabaseServer
           .from(table)
-          .select(columns)
+          // NOTE: the supabase-js select-string type parser can't narrow a dynamic
+          // select list, so we provide an explicit return type.
+          .select(columns as any)
           .eq("quote_id", normalizedQuoteId)
-          .order("created_at", { ascending: true });
+          .order("created_at", { ascending: true })
+          .returns<FileStorageRow[]>();
 
         if (result.error) {
           if (isMissingTableOrColumnError(result.error)) {
@@ -379,8 +382,7 @@ async function loadCanonicalFilesForQuote(
           return [];
         }
 
-        const data = result.data as FileStorageRow[] | null;
-        return data ?? [];
+        return result.data ?? [];
       }
 
       // If every variant failed with "missing schema", treat as table missing.
