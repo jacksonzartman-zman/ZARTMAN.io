@@ -148,30 +148,28 @@ function isMissingRelationError(error: unknown): boolean {
   return code === "42P01" || (msg.includes("relation") && msg.includes("does not exist"));
 }
 
-async function detectCanonicalTable(params: { supabase: SupabaseClient; verbose: boolean }): Promise<CanonicalTable> {
-  const { supabase, verbose } = params;
-
-  // IMPORTANT: Per requirements, table selection may only probe `id`.
-  const probeValid = await supabase.from("files_valid").select("id").limit(1);
-  if (!probeValid.error) return "files_valid";
-
-  if (verbose) {
-    console.warn("[backfill] canonical table probe failed for files_valid; falling back to files", probeValid);
-  }
-  return "files";
+async function detectCanonicalTable(supabase: SupabaseClient): Promise<CanonicalTable> {
+  const r1 = await supabase.from("files_valid").select("id").limit(1);
+  if (!r1.error) return "files_valid";
+  const r2 = await supabase.from("files").select("id").limit(1);
+  if (!r2.error) return "files";
+  throw new Error(
+    `[backfill] cannot read files tables: files_valid=${JSON.stringify(r1.error)} files=${JSON.stringify(r2.error)}`,
+  );
 }
 
 type CanonicalExistingRow = {
   id: string;
   quote_id: string | null;
-  storage_bucket_id?: string | null;
-  bucket_id?: string | null;
+  bucket_id: string | null;
   storage_path?: string | null;
   file_path?: string | null;
+  filename?: string | null;
+  mime?: string | null;
 };
 
 function rowBucketId(row: CanonicalExistingRow): string | null {
-  return (row.storage_bucket_id ?? row.bucket_id ?? null) as string | null;
+  return row.bucket_id ?? null;
 }
 
 function rowPath(row: CanonicalExistingRow): string | null {
@@ -188,26 +186,17 @@ async function loadExistingCanonicalRowsForQuote(params: {
 
   maybeLogStep(verbose, "load existing canonical rows");
 
-  const selectOptions = [
-    // A)
-    "id,quote_id,storage_bucket_id,storage_path",
-    // B)
-    "id,quote_id,bucket_id,storage_path",
-    // C)
-    "id,quote_id,storage_bucket_id,file_path",
-    // D)
-    "id,quote_id,bucket_id,file_path",
-  ] as const;
+  const select1 = "id,quote_id,bucket_id,storage_path,filename,mime";
+  const r1 = await supabase.from(canonicalTable).select(select1).eq("quote_id", quoteId).limit(5000);
+  if (!r1.error) return (r1.data ?? []) as CanonicalExistingRow[];
 
-  for (const select of selectOptions) {
-    const res = await supabase.from(canonicalTable).select(select).eq("quote_id", quoteId).limit(5000);
-    if (res.error) {
-      console.warn(`[backfill] canonical read failed (select="${select}")`, res);
-      continue;
-    }
-    return (res.data ?? []) as CanonicalExistingRow[];
-  }
+  console.warn(`[backfill] canonical read failed (select="${select1}")`, r1);
 
+  const select2 = "id,quote_id,bucket_id,file_path,filename,mime";
+  const r2 = await supabase.from(canonicalTable).select(select2).eq("quote_id", quoteId).limit(5000);
+  if (!r2.error) return (r2.data ?? []) as CanonicalExistingRow[];
+
+  console.warn(`[backfill] canonical read failed (select="${select2}")`, r2);
   console.warn("[backfill] all canonical read select options failed; proceeding without existence check", {
     canonicalTable,
     quoteId,
@@ -334,40 +323,28 @@ async function insertCanonicalRow(params: {
   const filename = basename(key) || key;
   const mime = (upload.mime_type ?? "").trim() || deriveMimeFromExtension(filename);
 
-  const insertOptions = [
-    // A)
-    { label: "A", payload: { quote_id: quoteId, storage_bucket_id: bucketId, storage_path: key, filename, mime } },
-    // B)
-    { label: "B", payload: { quote_id: quoteId, bucket_id: bucketId, storage_path: key, filename, mime } },
-    // C)
-    { label: "C", payload: { quote_id: quoteId, storage_bucket_id: bucketId, file_path: key, filename, mime } },
-    // D)
-    { label: "D", payload: { quote_id: quoteId, bucket_id: bucketId, file_path: key, filename, mime } },
-  ] as const;
-
   maybeLogStep(verbose, "insert canonical rows");
-  for (const opt of insertOptions) {
-    const res = await supabase.from(canonicalTable).insert(opt.payload);
-    if (res.error) {
-      console.warn(`[backfill] canonical insert failed (shape=${opt.label})`, res);
-      if (isUniqueViolation(res.error)) return "duplicate";
-      continue;
-    }
-    return "inserted";
-  }
+  const r1 = await supabase
+    .from(canonicalTable)
+    .insert({ quote_id: quoteId, bucket_id: bucketId, storage_path: key, filename, mime });
+  if (!r1.error) return "inserted";
 
-  throw new Error(
-    `[backfill] all canonical insert shapes failed: ${JSON.stringify({
-      canonicalTable,
-      quoteId,
-      key,
-    })}`,
-  );
+  console.warn("[backfill] canonical insert failed (shape={quote_id,bucket_id,storage_path,filename,mime})", r1);
+  if (isUniqueViolation(r1.error)) return "duplicate";
+
+  const r2 = await supabase
+    .from(canonicalTable)
+    .insert({ quote_id: quoteId, bucket_id: bucketId, file_path: key, filename, mime });
+  if (!r2.error) return "inserted";
+
+  console.warn("[backfill] canonical insert failed (shape={quote_id,bucket_id,file_path,filename,mime})", r2);
+  if (isUniqueViolation(r2.error)) return "duplicate";
+
+  throw new Error(`[backfill] all canonical insert shapes failed: ${JSON.stringify({ canonicalTable, quoteId, key })}`);
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-
+  let args: CliArgs = { dryRun: false, limit: 200, verbose: false };
   const perQuote: PerQuoteDetail[] = [];
   let canonicalTableUsed: CanonicalTable | null = null;
   let scannedQuotes = 0;
@@ -379,6 +356,8 @@ async function main(): Promise<void> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   try {
+    args = parseArgs(process.argv.slice(2));
+
     if (!url || !serviceRoleKey) {
       throw new Error("Missing required env vars: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
     }
@@ -387,7 +366,7 @@ async function main(): Promise<void> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    canonicalTableUsed = await detectCanonicalTable({ supabase, verbose: args.verbose });
+    canonicalTableUsed = await detectCanonicalTable(supabase);
 
     const quotes = await loadCandidateQuotes({ supabase, quoteId: args.quoteId, limit: args.limit, verbose: args.verbose });
     scannedQuotes = quotes.length;
