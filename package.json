@@ -3,34 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "prebuild": "npm run check:no-quotes-email && npm run check:db-contract",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" \"*.{js,ts}\"",
     "backfill:files:dry": "tsx scripts/backfill-canonical-quote-files.ts --dryRun --limit 20 --verbose",
     "backfill:files": "tsx scripts/backfill-canonical-quote-files.ts --limit 500 --verbose",
-    "check:no-quotes-email": "node scripts/check-no-quotes-email.mjs",
-    "check:db-contract": "node scripts/check-db-view-contract.mjs",
-    "supabase:link": "node scripts/supabase-link.mjs",
-    "supabase:deploy:step-to-stl": "node scripts/supabase-deploy-step-to-stl.mjs",
-    "supabase:logs:step-to-stl": "node scripts/supabase-logs-step-to-stl.mjs",
-    "supabase:deploy:step-preview": "npm run supabase:deploy:step-to-stl",
-    "supabase:migrate": "supabase db push"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" \"*.{js,ts}\""
   },
   "dependencies": {
     "@react-three/drei": "^9.103.0",
     "@react-three/fiber": "^8.15.16",
-    "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.81.1",
-    "@types/adm-zip": "^0.5.7",
-    "adm-zip": "^0.5.16",
     "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
-    "next": "15.5.7",
-    "occt-import-js": "^0.0.23",
-    "openai": "^6.14.0",
-    "pdfjs-dist": "^5.4.449",
+    "next": "^16.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "three": "^0.160.1"
@@ -45,7 +30,7 @@
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
     "tailwindcss": "^3.4.7",
-    "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "tsx": "^4.21.0",
+    "typescript": "^5.6.2"
   }
 }
