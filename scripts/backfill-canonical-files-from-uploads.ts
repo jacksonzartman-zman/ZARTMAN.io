@@ -2,20 +2,26 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 type CanonicalTable = "files_valid" | "files";
 
-function formatSupabaseError(e: any): string {
+function toPlainError(e: unknown): Record<string, unknown> {
   const out: Record<string, unknown> = {};
 
   if (!e || (typeof e !== "object" && typeof e !== "function")) {
     out.message = String(e);
-    return JSON.stringify(out);
+    return out;
   }
 
+  // Preserve enumerable keys (Supabase/PostgREST often uses these).
+  for (const k of Object.keys(e as Record<string, unknown>)) {
+    out[k] = (e as Record<string, unknown>)[k];
+  }
+
+  // Ensure common Error-ish fields exist even if non-enumerable.
   for (const k of ["message", "details", "hint", "code", "status", "name", "stack"] as const) {
     const v = (e as Record<string, unknown>)[k];
     if (v !== undefined) out[k] = v;
   }
 
-  return JSON.stringify(out);
+  return out;
 }
 
 function maybeLogStep(verbose: boolean, stepName: string): void {
@@ -158,16 +164,21 @@ function isMissingColumnError(error: unknown): boolean {
 async function detectCanonicalTable(params: { supabase: SupabaseClient; verbose: boolean }): Promise<CanonicalTable> {
   const { supabase, verbose } = params;
   maybeLogStep(verbose, "probe canonical table");
-  const probe = await supabase.from("files_valid").select("id", { head: true }).limit(1);
-  if (!probe.error) return "files_valid";
-  if (!isMissingRelationError(probe.error)) {
-    throw new Error(`[backfill] probe canonical table failed: ${formatSupabaseError(probe.error)}`);
-  }
+  const probeValid = await supabase.from("files_valid").select("id").limit(1);
+  if (!probeValid.error) return "files_valid";
+  const filesValidError = probeValid.error;
 
   maybeLogStep(verbose, "probe canonical table");
-  const fallback = await supabase.from("files").select("id", { head: true }).limit(1);
-  if (fallback.error) throw new Error(`[backfill] probe canonical table failed: ${formatSupabaseError(fallback.error)}`);
-  return "files";
+  const probeFiles = await supabase.from("files").select("id").limit(1);
+  if (!probeFiles.error) return "files";
+  const filesError = probeFiles.error;
+
+  throw new Error(
+    `[backfill] probe canonical table failed: ${JSON.stringify({
+      files_valid: toPlainError(filesValidError),
+      files: toPlainError(filesError),
+    })}`,
+  );
 }
 
 async function detectCanonicalColumns(params: {
@@ -181,7 +192,7 @@ async function detectCanonicalColumns(params: {
     const q = await supabase.from(table).select("storage_bucket_id", { head: true }).limit(1);
     if (!q.error) return "storage_bucket_id";
     if (isMissingColumnError(q.error)) return "bucket_id";
-    throw new Error(`[backfill] probe canonical table failed: ${formatSupabaseError(q.error)}`);
+    throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
   })();
 
   const pathCol: CanonicalColumns["pathCol"] = await (async () => {
@@ -189,7 +200,7 @@ async function detectCanonicalColumns(params: {
     const q = await supabase.from(table).select("storage_path", { head: true }).limit(1);
     if (!q.error) return "storage_path";
     if (isMissingColumnError(q.error)) return "file_path";
-    throw new Error(`[backfill] probe canonical table failed: ${formatSupabaseError(q.error)}`);
+    throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
   })();
 
   const filenameCol: CanonicalColumns["filenameCol"] = await (async () => {
@@ -197,14 +208,14 @@ async function detectCanonicalColumns(params: {
     const q = await supabase.from(table).select("filename", { head: true }).limit(1);
     if (!q.error) return "filename";
     if (isMissingColumnError(q.error)) return "file_name";
-    throw new Error(`[backfill] probe canonical table failed: ${formatSupabaseError(q.error)}`);
+    throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
   })();
 
   // mime is required for canonical rows; fail fast if absent.
   {
     maybeLogStep(verbose, "probe canonical table");
     const q = await supabase.from(table).select("mime", { head: true }).limit(1);
-    if (q.error) throw new Error(`[backfill] probe canonical table failed: ${formatSupabaseError(q.error)}`);
+    if (q.error) throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
   }
 
   const hasSizeBytes = await (async () => {
@@ -212,7 +223,7 @@ async function detectCanonicalColumns(params: {
     const q = await supabase.from(table).select("size_bytes", { head: true }).limit(1);
     if (!q.error) return true;
     if (isMissingColumnError(q.error)) return false;
-    throw new Error(`[backfill] probe canonical table failed: ${formatSupabaseError(q.error)}`);
+    throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
   })();
 
   return { bucketCol, pathCol, filenameCol, hasSizeBytes };
@@ -235,7 +246,7 @@ async function loadCandidateQuotes(params: {
 
   maybeLogStep(verbose, "load quotes");
   const res = await q.limit(limit);
-  if (res.error) throw new Error(`[backfill] load quotes failed: ${formatSupabaseError(res.error)}`);
+  if (res.error) throw new Error(`[backfill] load quotes failed: ${JSON.stringify(toPlainError(res.error))}`);
   return (res.data ?? []) as QuoteRow[];
 }
 
@@ -251,7 +262,7 @@ async function loadUploadById(params: {
     .select("id,quote_id,file_path,file_name,mime_type,created_at")
     .eq("id", uploadId)
     .maybeSingle();
-  if (res.error) throw new Error(`[backfill] load upload row failed: ${formatSupabaseError(res.error)}`);
+  if (res.error) throw new Error(`[backfill] load upload row failed: ${JSON.stringify(toPlainError(res.error))}`);
   return (res.data ?? null) as UploadRow | null;
 }
 
@@ -274,7 +285,7 @@ async function resolveStorageObjectForUpload(params: {
       .eq("bucket_id", bucketId)
       .eq("name", filePath)
       .maybeSingle();
-    if (exact.error) throw new Error(`[backfill] lookup storage exact failed: ${formatSupabaseError(exact.error)}`);
+    if (exact.error) throw new Error(`[backfill] lookup storage exact failed: ${JSON.stringify(toPlainError(exact.error))}`);
     if (exact.data) return exact.data as StorageObjectRow;
   }
 
@@ -292,7 +303,8 @@ async function resolveStorageObjectForUpload(params: {
       .order("name", { ascending: true })
       .limit(1)
       .maybeSingle();
-    if (fallback.error) throw new Error(`[backfill] lookup storage ilike failed: ${formatSupabaseError(fallback.error)}`);
+    if (fallback.error)
+      throw new Error(`[backfill] lookup storage ilike failed: ${JSON.stringify(toPlainError(fallback.error))}`);
     if (fallback.data) return fallback.data as StorageObjectRow;
   }
 
@@ -317,7 +329,7 @@ async function canonicalRowExists(params: {
     .eq(canonicalCols.bucketCol, bucketId)
     .eq(canonicalCols.pathCol, storagePath)
     .limit(1);
-  if (q.error) throw new Error(`[backfill] load existing canonical rows failed: ${formatSupabaseError(q.error)}`);
+  if (q.error) throw new Error(`[backfill] load existing canonical rows failed: ${JSON.stringify(toPlainError(q.error))}`);
   return (q.count ?? 0) > 0;
 }
 
@@ -347,7 +359,7 @@ async function insertCanonicalRow(params: {
 
   maybeLogStep(verbose, "insert canonical rows");
   const ins = await supabase.from(canonicalTable).insert(row);
-  if (ins.error) throw new Error(`[backfill] insert canonical rows failed: ${formatSupabaseError(ins.error)}`);
+  if (ins.error) throw new Error(`[backfill] insert canonical rows failed: ${JSON.stringify(toPlainError(ins.error))}`);
   return row;
 }
 
