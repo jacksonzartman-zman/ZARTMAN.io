@@ -37,16 +37,19 @@ type StorageObjectRow = {
   created_at: string | null;
 };
 
-type Summary = {
-  canonicalTableUsed: CanonicalTable;
-  scannedQuotes: number;
-  eligibleQuotes: number;
-  wouldInsertRows: number;
-  insertedRows: number;
-  skippedExisting: number;
-  missingUploadId: number;
-  missingUploadRows: number;
-  missingStorageObjects: number;
+type PerQuoteDetail = {
+  quoteId: string;
+  uploadId: string | null;
+  uploadFilePath: string | null;
+  uploadFileName: string | null;
+  storageObjectName: string | null;
+  action:
+    | "skipped_no_upload_id"
+    | "skipped_missing_upload_row"
+    | "missing_storage_object"
+    | "skipped_existing"
+    | "would_insert"
+    | "inserted";
 };
 
 function parseArgs(argv: string[]): CliArgs {
@@ -319,25 +322,43 @@ async function main(): Promise<void> {
 
   const quotes = await loadCandidateQuotes({ supabase, quoteId: args.quoteId, limit: args.limit });
 
+  const perQuote: PerQuoteDetail[] = [];
   let eligibleQuotes = 0;
-  let wouldInsertRows = 0;
   let insertedRows = 0;
   let skippedExisting = 0;
-  let missingUploadId = 0;
-  let missingUploadRows = 0;
   let missingStorageObjects = 0;
 
   for (const quote of quotes) {
     const quoteId = quote.id;
     const uploadId = quote.upload_id;
     if (!uploadId) {
-      missingUploadId += 1;
+      if (args.verbose) {
+        perQuote.push({
+          quoteId,
+          uploadId: null,
+          uploadFilePath: null,
+          uploadFileName: null,
+          storageObjectName: null,
+          action: "skipped_no_upload_id",
+        });
+      }
       continue;
     }
 
+    eligibleQuotes += 1;
+
     const upload = await loadUploadById({ supabase, uploadId });
     if (!upload) {
-      missingUploadRows += 1;
+      if (args.verbose) {
+        perQuote.push({
+          quoteId,
+          uploadId,
+          uploadFilePath: null,
+          uploadFileName: null,
+          storageObjectName: null,
+          action: "skipped_missing_upload_row",
+        });
+      }
       continue;
     }
 
@@ -345,27 +366,17 @@ async function main(): Promise<void> {
     if (!obj) {
       missingStorageObjects += 1;
       if (args.verbose) {
-        console.log(
-          JSON.stringify(
-            {
-              quoteId,
-              uploadId,
-              reason: "missing_storage_object",
-              upload: {
-                file_path: upload.file_path,
-                file_name: upload.file_name,
-                created_at: upload.created_at,
-              },
-            },
-            null,
-            2,
-          ),
-        );
+        perQuote.push({
+          quoteId,
+          uploadId,
+          uploadFilePath: upload.file_path,
+          uploadFileName: upload.file_name,
+          storageObjectName: null,
+          action: "missing_storage_object",
+        });
       }
       continue;
     }
-
-    eligibleQuotes += 1;
 
     const exists = await canonicalRowExists({
       supabase,
@@ -377,28 +388,30 @@ async function main(): Promise<void> {
     });
     if (exists) {
       skippedExisting += 1;
+      if (args.verbose) {
+        perQuote.push({
+          quoteId,
+          uploadId,
+          uploadFilePath: upload.file_path,
+          uploadFileName: upload.file_name,
+          storageObjectName: obj.name,
+          action: "skipped_existing",
+        });
+      }
       continue;
     }
 
-    const plannedRow: Record<string, unknown> = {
-      quote_id: quoteId,
-      [canonicalCols.bucketCol]: "cad_uploads",
-      [canonicalCols.pathCol]: obj.name,
-      [canonicalCols.filenameCol]: basename(obj.name) || obj.name,
-      mime: (upload.mime_type ?? "").trim() || deriveMimeFromExtension(basename(obj.name) || obj.name),
-    };
-    if (canonicalCols.hasSizeBytes) plannedRow.size_bytes = sizeBytesFromMetadata(obj.metadata);
-
-    wouldInsertRows += 1;
-
     if (args.dryRun) {
-      console.log(
-        JSON.stringify(
-          { action: "insert", table: canonicalTableUsed, row: plannedRow },
-          null,
-          2,
-        ),
-      );
+      if (args.verbose) {
+        perQuote.push({
+          quoteId,
+          uploadId,
+          uploadFilePath: upload.file_path,
+          uploadFileName: upload.file_name,
+          storageObjectName: obj.name,
+          action: "would_insert",
+        });
+      }
       continue;
     }
 
@@ -411,19 +424,28 @@ async function main(): Promise<void> {
       obj,
     });
     insertedRows += 1;
+    if (args.verbose) {
+      perQuote.push({
+        quoteId,
+        uploadId,
+        uploadFilePath: upload.file_path,
+        uploadFileName: upload.file_name,
+        storageObjectName: obj.name,
+        action: "inserted",
+      });
+    }
   }
 
-  const summary: Summary = {
+  const summary: Record<string, unknown> = {
     canonicalTableUsed,
     scannedQuotes: quotes.length,
     eligibleQuotes,
-    wouldInsertRows,
     insertedRows,
     skippedExisting,
-    missingUploadId,
-    missingUploadRows,
     missingStorageObjects,
   };
+
+  if (args.verbose) summary.perQuote = perQuote;
 
   console.log(JSON.stringify(summary, null, 2));
 }
