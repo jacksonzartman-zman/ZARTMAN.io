@@ -1,21 +1,27 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 type CanonicalTable = "files_valid" | "files";
 
-type CanonicalColumnConfig = {
-  quoteId: "quote_id";
-  bucket: "bucket_id" | "storage_bucket_id" | null /* required */;
-  path: "storage_path" | "file_path" | null /* required */;
-  filename: "filename" | "file_name" | null;
-  mime: "mime" | null;
-  sizeBytes: "size_bytes" | null;
+type CliArgs = {
+  dryRun: boolean;
+  limit: number;
+  quoteId?: string;
+  verbose: boolean;
+};
+
+type CanonicalColumns = {
+  bucketCol: "bucket_id" | "storage_bucket_id";
+  pathCol: "storage_path" | "file_path";
+  filenameCol: "filename" | "file_name";
+  hasMime: boolean;
+  hasSizeBytes: boolean;
 };
 
 type QuoteRow = {
   id: string;
-  user_id: string | null;
   file_name: string | null;
   file_names: unknown | null;
+  created_at?: string | null;
 };
 
 type StorageObjectRow = {
@@ -24,254 +30,83 @@ type StorageObjectRow = {
   metadata: unknown | null;
 };
 
-type CliArgs = {
-  quoteId?: string;
-  limit: number;
-  dryRun: boolean;
-  verbose: boolean;
-};
-
 type PerQuoteVerbose = {
   quoteId: string;
   legacyFilenames: string[];
-  matchedObjectKeysCount: number;
-  matchedObjectKeysSample: string[];
-  wouldInsertCount: number;
-  skippedExistingCount: number;
-  missingStorageObjects: boolean;
+  matchedCount: number;
+  sampleKeys: string[];
+};
+
+type Summary = {
+  canonicalTableUsed: CanonicalTable;
+  scannedQuotes: number;
+  eligibleQuotes: number;
+  insertedRows: number;
+  skippedExisting: number;
+  missingStorageObjects: number;
+  perQuote?: PerQuoteVerbose[];
 };
 
 function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = { limit: 200, dryRun: false, verbose: false };
+  const out: CliArgs = { dryRun: false, limit: 200, verbose: false };
 
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-
-    if (a === "--quoteId") {
-      const v = argv[i + 1];
-      if (!v) throw new Error("Missing value for --quoteId");
-      args.quoteId = v;
-      i += 1;
+    if (a === "--dryRun") {
+      out.dryRun = true;
       continue;
     }
-
+    if (a === "--verbose") {
+      out.verbose = true;
+      continue;
+    }
     if (a === "--limit") {
       const v = argv[i + 1];
       if (!v) throw new Error("Missing value for --limit");
       const n = Number(v);
-      if (!Number.isFinite(n) || n <= 0) {
-        throw new Error(`Invalid --limit value: ${v}`);
-      }
-      args.limit = Math.floor(n);
+      if (!Number.isFinite(n) || n <= 0) throw new Error(`Invalid --limit value: ${v}`);
+      out.limit = Math.floor(n);
       i += 1;
       continue;
     }
-
-    if (a === "--dryRun") {
-      args.dryRun = true;
+    if (a === "--quoteId") {
+      const v = argv[i + 1];
+      if (!v) throw new Error("Missing value for --quoteId");
+      out.quoteId = v;
+      i += 1;
       continue;
     }
-
-    if (a === "--verbose") {
-      args.verbose = true;
-      continue;
-    }
-
     throw new Error(`Unknown arg: ${a}`);
   }
 
-  return args;
-}
-
-function baseFilename(input: string): string {
-  // Normalize to last path segment and preserve extension.
-  const trimmed = input.trim();
-  const parts = trimmed.split(/[/\\]/);
-  return parts[parts.length - 1] ?? trimmed;
-}
-
-function dedupe<T>(items: T[]): T[] {
-  const seen = new Set<T>();
-  const out: T[] = [];
-  for (const i of items) {
-    if (seen.has(i)) continue;
-    seen.add(i);
-    out.push(i);
-  }
   return out;
 }
 
-function mimeFromFilename(filename: string): string {
-  const lower = filename.toLowerCase();
-  const ext = lower.includes(".") ? lower.split(".").pop() : "";
-
-  if (!ext) return "application/octet-stream";
-  if (ext === "step" || ext === "stp") return "application/step";
-  if (ext === "stl") return "model/stl";
-  if (ext === "pdf") return "application/pdf";
-  return "application/octet-stream";
+function basename(path: string): string {
+  const normalized = String(path ?? "").trim().replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return (parts[parts.length - 1] ?? "").trim();
 }
 
-function mimeFromMetadata(metadata: unknown): string | null {
-  if (!metadata || typeof metadata !== "object") return null;
-  const m = metadata as Record<string, unknown>;
-  const candidates = [m.mimetype, m.mimeType, m.contentType, m["content-type"]];
-  for (const c of candidates) {
-    if (typeof c === "string" && c.trim()) return c.trim();
+function uniq(items: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const it of items) {
+    const v = it.trim();
+    if (!v) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
   }
-  return null;
-}
-
-function sizeBytesFromMetadata(metadata: unknown): number | null {
-  if (!metadata || typeof metadata !== "object") return null;
-
-  const m = metadata as Record<string, unknown>;
-  const direct = m.size;
-  if (typeof direct === "number" && Number.isFinite(direct)) return direct;
-  if (typeof direct === "string") {
-    const n = Number(direct);
-    if (Number.isFinite(n)) return n;
-  }
-
-  const contentLength =
-    m["content-length"] ?? m["content_length"] ?? m["Content-Length"];
-  if (typeof contentLength === "number" && Number.isFinite(contentLength)) {
-    return contentLength;
-  }
-  if (typeof contentLength === "string") {
-    const n = Number(contentLength);
-    if (Number.isFinite(n)) return n;
-  }
-
-  return null;
-}
-
-function isMissingRelationOrPermission(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const msg = String((error as { message?: unknown }).message ?? "");
-  const code = String((error as { code?: unknown }).code ?? "");
-
-  return (
-    code === "42P01" || // undefined_table
-    msg.includes("does not exist") ||
-    msg.toLowerCase().includes("permission denied") ||
-    msg.toLowerCase().includes("not allowed") ||
-    msg.toLowerCase().includes("schema cache")
-  );
-}
-
-async function detectCanonicalTable(supabase: ReturnType<typeof createClient>) {
-  const probe = await supabase
-    .from("files_valid")
-    .select("id", { head: true })
-    .limit(1);
-
-  if (!probe.error) return "files_valid" as const;
-  if (!isMissingRelationOrPermission(probe.error)) throw probe.error;
-
-  const fallback = await supabase.from("files").select("id", { head: true }).limit(1);
-  if (fallback.error) throw fallback.error;
-  return "files" as const;
-}
-
-function isMissingColumnError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const msg = String((error as { message?: unknown }).message ?? "").toLowerCase();
-  // PostgREST uses "column <x> does not exist" style errors from Postgres.
-  return msg.includes("column") && msg.includes("does not exist");
-}
-
-async function detectCanonicalColumns(
-  supabase: ReturnType<typeof createClient>,
-  canonicalTable: CanonicalTable,
-): Promise<CanonicalColumnConfig> {
-  // We avoid relying on `information_schema` being exposed via PostgREST.
-  // Instead, we probe for valid column combos using head selects.
-  const combos: Array<{
-    bucket: NonNullable<CanonicalColumnConfig["bucket"]>;
-    path: NonNullable<CanonicalColumnConfig["path"]>;
-  }> = [
-    { bucket: "bucket_id", path: "storage_path" },
-    { bucket: "storage_bucket_id", path: "storage_path" },
-    { bucket: "bucket_id", path: "file_path" },
-    { bucket: "storage_bucket_id", path: "file_path" },
-  ];
-
-  let bucket: CanonicalColumnConfig["bucket"] = null;
-  let path: CanonicalColumnConfig["path"] = null;
-
-  for (const c of combos) {
-    const probe = await supabase
-      .from(canonicalTable)
-      .select(`quote_id,${c.bucket},${c.path}`, { head: true })
-      .limit(1);
-    if (!probe.error) {
-      bucket = c.bucket;
-      path = c.path;
-      break;
-    }
-    if (!isMissingColumnError(probe.error)) {
-      // Permission or other non-column issue should surface immediately.
-      throw probe.error;
-    }
-  }
-
-  const filenameProbe = await supabase
-    .from(canonicalTable)
-    .select("filename", { head: true })
-    .limit(1);
-
-  let filenameCol: CanonicalColumnConfig["filename"] = null;
-  if (!filenameProbe.error) {
-    filenameCol = "filename";
-  } else if (isMissingColumnError(filenameProbe.error)) {
-    const alt = await supabase
-      .from(canonicalTable)
-      .select("file_name", { head: true })
-      .limit(1);
-    if (!alt.error) filenameCol = "file_name";
-    else if (!isMissingColumnError(alt.error)) throw alt.error;
-  } else {
-    throw filenameProbe.error;
-  }
-
-  const mimeProbe = await supabase.from(canonicalTable).select("mime", { head: true }).limit(1);
-  const mime: CanonicalColumnConfig["mime"] = !mimeProbe.error
-    ? "mime"
-    : isMissingColumnError(mimeProbe.error)
-      ? null
-      : (() => {
-          throw mimeProbe.error;
-        })();
-
-  const sizeProbe = await supabase
-    .from(canonicalTable)
-    .select("size_bytes", { head: true })
-    .limit(1);
-  const sizeBytes: CanonicalColumnConfig["sizeBytes"] = !sizeProbe.error
-    ? "size_bytes"
-    : isMissingColumnError(sizeProbe.error)
-      ? null
-      : (() => {
-          throw sizeProbe.error;
-        })();
-
-  return {
-    quoteId: "quote_id",
-    bucket,
-    path,
-    filename: filenameCol,
-    mime,
-    sizeBytes,
-  };
+  return out;
 }
 
 function coerceFileNames(value: unknown): string[] {
   if (!value) return [];
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
-  // Sometimes arrays come back as Postgres array string (e.g. "{a,b}").
   if (typeof value === "string") {
     const s = value.trim();
+    // PostgREST sometimes returns arrays as "{a,b}" for older stacks.
     if (s.startsWith("{") && s.endsWith("}")) {
       const inner = s.slice(1, -1).trim();
       if (!inner) return [];
@@ -284,400 +119,423 @@ function coerceFileNames(value: unknown): string[] {
   return [];
 }
 
-function makeLikeOrFilter(column: string, patterns: string[]): string {
-  // PostgREST OR filter format: "name.ilike.%foo,name.ilike.%bar"
-  // NOTE: supabase-js will URL encode this string.
-  return patterns.map((p) => `${column}.ilike.${p}`).join(",");
+function deriveMimeFromExtension(filename: string): string {
+  const lower = (filename ?? "").toLowerCase();
+  const ext = lower.includes(".") ? lower.split(".").pop() ?? "" : "";
+  if (ext === "step" || ext === "stp") return "model/step";
+  if (ext === "stl") return "model/stl";
+  if (ext === "pdf") return "application/pdf";
+  return "application/octet-stream";
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
+function sizeBytesFromMetadata(metadata: unknown): number | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const m = metadata as Record<string, unknown>;
+  const direct = m.size ?? m["content-length"] ?? m["content_length"] ?? m["Content-Length"];
+  if (typeof direct === "number" && Number.isFinite(direct)) return direct;
+  if (typeof direct === "string") {
+    const n = Number(direct);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
 }
 
-function normalizeBucketId(bucketId: string): string {
-  return bucketId === "cad-uploads" ? "cad_uploads" : bucketId;
+function isMissingRelationError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const msg = String((error as { message?: unknown }).message ?? "").toLowerCase();
+  const code = String((error as { code?: unknown }).code ?? "");
+  return code === "42P01" || (msg.includes("relation") && msg.includes("does not exist"));
 }
 
-function canUseOrFilter(patterns: string[]): boolean {
-  // PostgREST OR filters use commas as separators; commas inside patterns will break the filter string.
-  // Parentheses can also cause confusion in some edge cases.
-  return patterns.every((p) => !p.includes(",") && !p.includes("(") && !p.includes(")"));
+function isMissingColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const msg = String((error as { message?: unknown }).message ?? "").toLowerCase();
+  return msg.includes("column") && msg.includes("does not exist");
 }
 
-async function findStorageObjectsForQuote(params: {
-  supabase: ReturnType<typeof createClient>;
-  quoteId: string;
-  filenameHints: string[];
-  verbose: boolean;
+async function detectCanonicalTable(supabase: SupabaseClient): Promise<CanonicalTable> {
+  const probe = await supabase.from("files_valid").select("id", { head: true }).limit(1);
+  if (!probe.error) return "files_valid";
+  if (!isMissingRelationError(probe.error)) throw probe.error;
+
+  const fallback = await supabase.from("files").select("id", { head: true }).limit(1);
+  if (fallback.error) throw fallback.error;
+  return "files";
+}
+
+async function detectCanonicalColumns(
+  supabase: SupabaseClient,
+  table: CanonicalTable,
+): Promise<CanonicalColumns> {
+  const bucketCol: CanonicalColumns["bucketCol"] = await (async () => {
+    const q = await supabase.from(table).select("storage_bucket_id", { head: true }).limit(1);
+    if (!q.error) return "storage_bucket_id";
+    if (isMissingColumnError(q.error)) return "bucket_id";
+    throw q.error;
+  })();
+
+  const pathCol: CanonicalColumns["pathCol"] = await (async () => {
+    const q = await supabase.from(table).select("storage_path", { head: true }).limit(1);
+    if (!q.error) return "storage_path";
+    if (isMissingColumnError(q.error)) return "file_path";
+    throw q.error;
+  })();
+
+  const filenameCol: CanonicalColumns["filenameCol"] = await (async () => {
+    const q = await supabase.from(table).select("filename", { head: true }).limit(1);
+    if (!q.error) return "filename";
+    if (isMissingColumnError(q.error)) return "file_name";
+    throw q.error;
+  })();
+
+  const hasMime = await (async () => {
+    const q = await supabase.from(table).select("mime", { head: true }).limit(1);
+    if (!q.error) return true;
+    if (isMissingColumnError(q.error)) return false;
+    throw q.error;
+  })();
+
+  const hasSizeBytes = await (async () => {
+    const q = await supabase.from(table).select("size_bytes", { head: true }).limit(1);
+    if (!q.error) return true;
+    if (isMissingColumnError(q.error)) return false;
+    throw q.error;
+  })();
+
+  return { bucketCol, pathCol, filenameCol, hasMime, hasSizeBytes };
+}
+
+async function listObjectsByLike(params: {
+  supabase: SupabaseClient;
+  bucketId: string;
+  like: string;
+  maxRows: number;
 }): Promise<StorageObjectRow[]> {
-  const { supabase, quoteId, filenameHints } = params;
-  const buckets = ["cad_uploads", "cad-uploads"] as const;
+  const { supabase, bucketId, like, maxRows } = params;
+  const pageSize = 1000;
+  const out: StorageObjectRow[] = [];
 
-  // Bound OR filter size.
-  const hints = filenameHints.slice(0, 30);
-
-  const all: StorageObjectRow[] = [];
-  const seen = new Set<string>(); // `${bucket}:${name}`
-
-  for (const bucket of buckets) {
-    const take = (rows: unknown[] | null) => {
-      for (const r of rows ?? []) {
-        const row = r as StorageObjectRow;
-        const key = `${row.bucket_id}:${row.name}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        all.push(row);
-      }
-    };
-
-    // Pattern group A: uploads/intake/... + filename match (ILIKE %<filename>%)
-    if (hints.length > 0) {
-      const patterns = hints.map((f) => `uploads/intake/%${f}%`);
-      if (canUseOrFilter(patterns)) {
-        const q = await supabase
-          .schema("storage")
-          .from("objects")
-          .select("name,bucket_id,metadata")
-          .eq("bucket_id", bucket)
-          .or(makeLikeOrFilter("name", patterns))
-          .limit(200);
-        if (q.error) throw q.error;
-        take(q.data as unknown[]);
-      } else {
-        for (const p of patterns) {
-          const q = await supabase
-            .schema("storage")
-            .from("objects")
-            .select("name,bucket_id,metadata")
-            .eq("bucket_id", bucket)
-            .ilike("name", p)
-            .limit(200);
-          if (q.error) throw q.error;
-          take(q.data as unknown[]);
-        }
-      }
-    }
-
-    // Pattern group B: uploads/... + filename match (covers uploads/<ts>-<random>-<filename>)
-    if (hints.length > 0) {
-      const patterns = hints.map((f) => `uploads/%${f}%`);
-      if (canUseOrFilter(patterns)) {
-        const q = await supabase
-          .schema("storage")
-          .from("objects")
-          .select("name,bucket_id,metadata")
-          .eq("bucket_id", bucket)
-          .or(makeLikeOrFilter("name", patterns))
-          .limit(200);
-        if (q.error) throw q.error;
-        take(q.data as unknown[]);
-      } else {
-        for (const p of patterns) {
-          const q = await supabase
-            .schema("storage")
-            .from("objects")
-            .select("name,bucket_id,metadata")
-            .eq("bucket_id", bucket)
-            .ilike("name", p)
-            .limit(200);
-          if (q.error) throw q.error;
-          take(q.data as unknown[]);
-        }
-      }
-    }
-
-    // Pattern group C: quote-scoped prefix (uploads/<quoteId>/%)
-    const qQuote = await supabase
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const q = await supabase
       .schema("storage")
       .from("objects")
       .select("name,bucket_id,metadata")
-      .eq("bucket_id", bucket)
-      .ilike("name", `uploads/${quoteId}/%`)
-      .limit(200);
-    if (qQuote.error) throw qQuote.error;
-    take(qQuote.data as unknown[]);
+      .eq("bucket_id", bucketId)
+      .like("name", like)
+      .range(offset, offset + pageSize - 1);
+    if (q.error) throw q.error;
+    const rows = (q.data ?? []) as StorageObjectRow[];
+    out.push(...rows);
+    if (rows.length < pageSize) break;
+  }
 
-    // Loose fallback: anywhere in key (ILIKE %<filename>%) if prefix matching finds nothing for this bucket.
-    if (hints.length > 0) {
-      const hadAnyForBucket = Array.from(seen).some((k) => k.startsWith(`${bucket}:`));
-      if (!hadAnyForBucket) {
-        const patterns = hints.map((f) => `%${f}%`);
-        if (canUseOrFilter(patterns)) {
-          const q = await supabase
-            .schema("storage")
-            .from("objects")
-            .select("name,bucket_id,metadata")
-            .eq("bucket_id", bucket)
-            .or(makeLikeOrFilter("name", patterns))
-            .limit(200);
-          if (q.error) throw q.error;
-          take(q.data as unknown[]);
-        } else {
-          for (const p of patterns) {
-            const q = await supabase
-              .schema("storage")
-              .from("objects")
-              .select("name,bucket_id,metadata")
-              .eq("bucket_id", bucket)
-              .ilike("name", p)
-              .limit(200);
-            if (q.error) throw q.error;
-            take(q.data as unknown[]);
-          }
-        }
+  return out;
+}
+
+async function listObjectsByILike(params: {
+  supabase: SupabaseClient;
+  bucketId: string;
+  ilike: string;
+  maxRows: number;
+}): Promise<StorageObjectRow[]> {
+  const { supabase, bucketId, ilike, maxRows } = params;
+  const pageSize = 1000;
+  const out: StorageObjectRow[] = [];
+
+  for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const q = await supabase
+      .schema("storage")
+      .from("objects")
+      .select("name,bucket_id,metadata")
+      .eq("bucket_id", bucketId)
+      .ilike("name", ilike)
+      .range(offset, offset + pageSize - 1);
+    if (q.error) throw q.error;
+    const rows = (q.data ?? []) as StorageObjectRow[];
+    out.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+
+  return out;
+}
+
+async function scanStorageForQuote(params: {
+  supabase: SupabaseClient;
+  quoteId: string;
+  legacyFilenames: string[];
+}): Promise<StorageObjectRow[]> {
+  const { supabase, quoteId, legacyFilenames } = params;
+  const buckets = ["cad_uploads", "cad-uploads"] as const;
+
+  for (const bucketId of buckets) {
+    const matches: StorageObjectRow[] = [];
+    const seen = new Set<string>();
+
+    const take = (rows: StorageObjectRow[]) => {
+      for (const r of rows) {
+        if (!r?.name) continue;
+        if (seen.has(r.name)) continue;
+        seen.add(r.name);
+        matches.push(r);
       }
+    };
+
+    // 1) Prefix scan (in order)
+    const p1 = `uploads/intake/%/${quoteId}/%`;
+    const r1 = await listObjectsByLike({ supabase, bucketId, like: p1, maxRows: 5000 });
+    take(r1);
+
+    if (r1.length === 0) {
+      const p2 = `uploads/intake/%/%`;
+      const r2 = await listObjectsByLike({ supabase, bucketId, like: p2, maxRows: 5000 });
+      // Best-effort filter to avoid unrelated intake rows.
+      const filtered = r2.filter((r) => r.name.includes(quoteId));
+      take(filtered);
+    }
+
+    const p3 = `uploads/${quoteId}/%`;
+    take(await listObjectsByLike({ supabase, bucketId, like: p3, maxRows: 5000 }));
+
+    const p4 = `quotes/${quoteId}/%`;
+    take(await listObjectsByLike({ supabase, bucketId, like: p4, maxRows: 5000 }));
+
+    if (matches.length === 0) {
+      const p5 = `uploads/%`;
+      const r5 = await listObjectsByLike({ supabase, bucketId, like: p5, maxRows: 5000 });
+      const filtered = r5.filter((r) => r.name.includes(quoteId));
+      take(filtered);
+    }
+
+    // 2) Fallback contains scan per legacy filename (only if nothing found)
+    if (matches.length === 0) {
+      for (const fn of legacyFilenames) {
+        const needle = fn.trim();
+        if (!needle) continue;
+        const rows = await listObjectsByILike({
+          supabase,
+          bucketId,
+          ilike: `%${needle}%`,
+          maxRows: 2000,
+        });
+        take(rows);
+      }
+    }
+
+    if (matches.length > 0) {
+      return matches;
     }
   }
 
-  return all.slice(0, 200);
+  return [];
 }
 
-async function main() {
+async function loadEligibleQuotes(params: {
+  supabase: SupabaseClient;
+  canonicalTable: CanonicalTable;
+  quoteId?: string;
+  limit: number;
+}): Promise<{ scannedQuotes: number; eligible: Array<{ quoteId: string; legacyFilenames: string[] }> }> {
+  const { supabase, canonicalTable, quoteId, limit } = params;
+
+  if (quoteId) {
+    const q = await supabase
+      .from("quotes")
+      .select("id,file_name,file_names")
+      .eq("id", quoteId)
+      .limit(1);
+    if (q.error) throw q.error;
+    const row = (q.data?.[0] ?? null) as QuoteRow | null;
+    if (!row?.id) return { scannedQuotes: 0, eligible: [] };
+
+    const legacyFilenames = uniq([
+      ...(typeof row.file_name === "string" ? [row.file_name] : []),
+      ...coerceFileNames(row.file_names),
+    ]);
+    if (legacyFilenames.length === 0) return { scannedQuotes: 1, eligible: [] };
+
+    const existing = await supabase.from(canonicalTable).select("id", { head: true, count: "exact" }).eq("quote_id", row.id);
+    if (existing.error) throw existing.error;
+    if ((existing.count ?? 0) !== 0) return { scannedQuotes: 1, eligible: [] };
+
+    return { scannedQuotes: 1, eligible: [{ quoteId: row.id, legacyFilenames }] };
+  }
+
+  const eligible: Array<{ quoteId: string; legacyFilenames: string[] }> = [];
+  let scannedQuotes = 0;
+
+  const pageSize = 500;
+  for (let offset = 0; eligible.length < limit; offset += pageSize) {
+    const q = await supabase
+      .from("quotes")
+      .select("id,file_name,file_names,created_at")
+      .or("file_name.not.is.null,file_names.not.is.null")
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (q.error) throw q.error;
+    const rows = (q.data ?? []) as QuoteRow[];
+    if (rows.length === 0) break;
+
+    scannedQuotes += rows.length;
+
+    const candidates: Array<{ quoteId: string; legacyFilenames: string[] }> = [];
+    for (const r of rows) {
+      const legacyFilenames = uniq([
+        ...(typeof r.file_name === "string" ? [r.file_name] : []),
+        ...coerceFileNames(r.file_names),
+      ]);
+      if (legacyFilenames.length === 0) continue;
+      candidates.push({ quoteId: r.id, legacyFilenames });
+    }
+    if (candidates.length === 0) continue;
+
+    // Filter out any quote that already has canonical rows in the chosen canonical table.
+    const ids = candidates.map((c) => c.quoteId);
+    const existing = await supabase
+      .from(canonicalTable)
+      .select("quote_id")
+      .in("quote_id", ids)
+      .limit(5000);
+    if (existing.error) throw existing.error;
+    const existingIds = new Set((existing.data ?? []).map((r) => (r as { quote_id?: string }).quote_id).filter(Boolean));
+
+    for (const c of candidates) {
+      if (existingIds.has(c.quoteId)) continue;
+      eligible.push(c);
+      if (eligible.length >= limit) break;
+    }
+  }
+
+  return { scannedQuotes, eligible };
+}
+
+async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceRoleKey) {
-    console.error(
-      "Missing required env vars: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY",
-    );
+    console.error("Missing required env vars: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
     process.exit(1);
     return;
   }
 
-  let canonicalTableUsed: CanonicalTable | "unknown" = "unknown";
-  let scannedQuotes = 0;
-  let eligibleQuotes = 0;
+  const supabase = createClient(url, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const canonicalTableUsed = await detectCanonicalTable(supabase);
+  const canonicalCols = await detectCanonicalColumns(supabase, canonicalTableUsed);
+
+  const { scannedQuotes, eligible } = await loadEligibleQuotes({
+    supabase,
+    canonicalTable: canonicalTableUsed,
+    quoteId: args.quoteId,
+    limit: args.limit,
+  });
+
   let insertedRows = 0;
   let skippedExisting = 0;
   let missingStorageObjects = 0;
-  const perQuoteVerbose: PerQuoteVerbose[] = [];
+  const perQuote: PerQuoteVerbose[] = [];
 
-  try {
-    const supabase = createClient(url, serviceRoleKey, {
-      auth: { persistSession: false },
+  for (const q of eligible) {
+    // Scan storage for object keys.
+    const objects = await scanStorageForQuote({
+      supabase,
+      quoteId: q.quoteId,
+      legacyFilenames: q.legacyFilenames,
     });
 
-    const canonicalTable = await detectCanonicalTable(supabase);
-    canonicalTableUsed = canonicalTable;
-    const canonicalColumns = await detectCanonicalColumns(supabase, canonicalTable);
+    const objectKeys = uniq(objects.map((o) => o.name));
+    if (objectKeys.length === 0) {
+      missingStorageObjects += 1;
+      if (args.verbose) {
+        perQuote.push({
+          quoteId: q.quoteId,
+          legacyFilenames: q.legacyFilenames,
+          matchedCount: 0,
+          sampleKeys: [],
+        });
+      }
+      continue;
+    }
 
-    if (!canonicalColumns.bucket || !canonicalColumns.path) {
-      throw new Error(
-        `Unsupported ${canonicalTable} schema: expected bucket_id/storage_bucket_id and storage_path/file_path`,
-      );
+    // Load existing canonical paths for this quote and skip any already present.
+    const existingRes = await supabase
+      .from(canonicalTableUsed)
+      .select(`${canonicalCols.pathCol}`)
+      .eq("quote_id", q.quoteId)
+      .limit(5000);
+    if (existingRes.error) throw existingRes.error;
+    const existingPaths = new Set(
+      (existingRes.data ?? [])
+        .map((r) => (r as Record<string, unknown>)[canonicalCols.pathCol])
+        .filter((v): v is string => typeof v === "string" && v.trim().length > 0),
+    );
+
+    const toInsert: Array<Record<string, unknown>> = [];
+
+    for (const obj of objects) {
+      const storagePath = obj.name;
+      if (existingPaths.has(storagePath)) {
+        skippedExisting += 1;
+        continue;
+      }
+
+      const filename = basename(storagePath) || storagePath;
+      const row: Record<string, unknown> = {
+        quote_id: q.quoteId,
+        [canonicalCols.bucketCol]: "cad_uploads",
+        [canonicalCols.pathCol]: storagePath,
+        [canonicalCols.filenameCol]: filename,
+      };
+
+      if (canonicalCols.hasMime) row.mime = deriveMimeFromExtension(filename);
+      if (canonicalCols.hasSizeBytes) row.size_bytes = sizeBytesFromMetadata(obj.metadata);
+
+      toInsert.push(row);
+      existingPaths.add(storagePath);
     }
 
     if (args.verbose) {
-      console.log(
-        `canonicalTable=${canonicalTable} bucketCol=${canonicalColumns.bucket} pathCol=${canonicalColumns.path}`,
-      );
-    }
-
-    let quotes: QuoteRow[] = [];
-
-    if (args.quoteId) {
-      const q = await supabase
-        .from("quotes")
-        .select("id,user_id,file_name,file_names")
-        .eq("id", args.quoteId)
-        .limit(1);
-      if (q.error) throw q.error;
-      quotes = (q.data ?? []) as QuoteRow[];
-    } else {
-      const q = await supabase
-        .from("quotes")
-        .select("id,user_id,file_name,file_names,created_at")
-        .or("file_name.not.is.null,file_names.not.is.null")
-        .order("created_at", { ascending: false })
-        .limit(args.limit);
-      if (q.error) throw q.error;
-      quotes = (q.data ?? []).map((r) => {
-        const rr = r as QuoteRow & { created_at?: unknown };
-        return {
-          id: rr.id,
-          user_id: rr.user_id ?? null,
-          file_name: rr.file_name ?? null,
-          file_names: rr.file_names ?? null,
-        };
+      perQuote.push({
+        quoteId: q.quoteId,
+        legacyFilenames: q.legacyFilenames,
+        matchedCount: objectKeys.length,
+        sampleKeys: objectKeys.slice(0, 5),
       });
     }
 
-    scannedQuotes = quotes.length;
+    if (toInsert.length === 0) continue;
+    if (args.dryRun) continue;
 
-    for (const quote of quotes) {
-      const legacyFileNames = coerceFileNames(quote.file_names);
-      const hintNamesRaw = dedupe(
-        [
-          typeof quote.file_name === "string" ? quote.file_name : null,
-          ...legacyFileNames,
-        ].filter((x): x is string => typeof x === "string" && x.trim().length > 0),
-      );
-      const filenameHints = dedupe(hintNamesRaw.map(baseFilename)).filter(Boolean);
-
-      const hasHints = filenameHints.length > 0;
-      if (!hasHints) continue;
-
-      const canonicalCount = await supabase
-        .from(canonicalTable)
-        .select("id", { head: true, count: "exact" })
-        .eq("quote_id", quote.id);
-      if (canonicalCount.error) throw canonicalCount.error;
-      const count = canonicalCount.count ?? 0;
-      if (count !== 0) {
-        if (args.verbose) {
-          console.log(`skip quote=${quote.id} canonicalRows=${count}`);
-        }
-        continue;
-      }
-
-      eligibleQuotes += 1;
-
-      if (args.verbose) {
-        console.log(
-          `quote=${quote.id} hints=${filenameHints.length} (${filenameHints.join(", ")})`,
-        );
-      }
-
-      const matches = await findStorageObjectsForQuote({
-        supabase,
-        quoteId: quote.id,
-        filenameHints,
-        verbose: args.verbose,
-      });
-
-      if (matches.length === 0) {
-        missingStorageObjects += 1;
-        if (args.verbose) console.log(`  no storage objects found`);
-        if (args.verbose) {
-          perQuoteVerbose.push({
-            quoteId: quote.id,
-            legacyFilenames: hintNamesRaw,
-            matchedObjectKeysCount: 0,
-            matchedObjectKeysSample: [],
-            wouldInsertCount: 0,
-            skippedExistingCount: 0,
-            missingStorageObjects: true,
-          });
-        }
-        continue;
-      }
-
-      // Load existing canonical rows for this quote; skip any already present.
-      const existingRes = await supabase
-        .from(canonicalTable)
-        .select(`${canonicalColumns.bucket},${canonicalColumns.path}`)
-        .eq("quote_id", quote.id)
-        .limit(5000);
-      if (existingRes.error) throw existingRes.error;
-
-      const existing = new Set<string>();
-      for (const r of existingRes.data ?? []) {
-        const row = r as Record<string, unknown>;
-        const bRaw = String(row[canonicalColumns.bucket] ?? "");
-        const b = normalizeBucketId(bRaw);
-        const p = String(row[canonicalColumns.path] ?? "");
-        if (!b || !p) continue;
-        existing.add(`${b}:${p}`);
-      }
-
-      const toInsert: Record<string, unknown>[] = [];
-      let quoteSkippedExisting = 0;
-
-      for (const obj of matches) {
-        const storagePath = obj.name;
-        const filenameFromPath = baseFilename(obj.name);
-        const bestLegacy = filenameHints.find((f) =>
-          obj.name.toLowerCase().includes(f.toLowerCase()),
-        );
-        const filename = bestLegacy ?? filenameFromPath;
-        const canonicalBucket = "cad_uploads"; // normalize, even when found in cad-uploads
-
-        const key = `${canonicalBucket}:${storagePath}`;
-        if (existing.has(key)) {
-          skippedExisting += 1;
-          quoteSkippedExisting += 1;
-          if (args.verbose) {
-            console.log(`  skip existing bucket=${canonicalBucket} path=${storagePath}`);
-          }
-          continue;
-        }
-
-        const row: Record<string, unknown> = {
-          quote_id: quote.id,
-          [canonicalColumns.bucket]: canonicalBucket,
-          [canonicalColumns.path]: storagePath,
-        };
-
-        if (canonicalColumns.filename) row[canonicalColumns.filename] = filename;
-        if (canonicalColumns.mime) {
-          row[canonicalColumns.mime] =
-            mimeFromMetadata(obj.metadata) ?? mimeFromFilename(filename);
-        }
-        if (canonicalColumns.sizeBytes) {
-          row[canonicalColumns.sizeBytes] = sizeBytesFromMetadata(obj.metadata);
-        }
-
-        toInsert.push(row);
-        existing.add(key);
-
-        if (args.verbose) {
-          console.log(
-            `  match bucket=${obj.bucket_id} -> ${canonicalBucket} path=${storagePath} filename=${filename}`,
-          );
-        }
-      }
-
-      if (args.verbose) {
-        const sample = matches
-          .slice(0, 5)
-          .map((m) => `${m.bucket_id}/${m.name}`)
-          .filter(Boolean);
-        perQuoteVerbose.push({
-          quoteId: quote.id,
-          legacyFilenames: hintNamesRaw,
-          matchedObjectKeysCount: matches.length,
-          matchedObjectKeysSample: sample,
-          wouldInsertCount: toInsert.length,
-          skippedExistingCount: quoteSkippedExisting,
-          missingStorageObjects: false,
-        });
-      }
-
-      if (toInsert.length === 0) continue;
-
-      if (args.dryRun) {
-        if (args.verbose) console.log(`  dryRun wouldInsert=${toInsert.length}`);
-        continue;
-      }
-
-      for (const batch of chunk(toInsert, 100)) {
-        const ins = await supabase.from(canonicalTable).insert(batch);
-        if (ins.error) throw ins.error;
-        insertedRows += batch.length;
-      }
+    // Insert in batches (idempotent under unique constraint + our in-memory path set).
+    const batchSize = 100;
+    for (let i = 0; i < toInsert.length; i += batchSize) {
+      const batch = toInsert.slice(i, i + batchSize);
+      const ins = await supabase.from(canonicalTableUsed).insert(batch);
+      if (ins.error) throw ins.error;
+      insertedRows += batch.length;
     }
-  } finally {
-    // Always print a final JSON summary to stdout (even if no eligible quotes).
-    console.log(
-      JSON.stringify({
-        canonicalTableUsed,
-        scannedQuotes,
-        eligibleQuotes,
-        insertedRows,
-        skippedExisting,
-        missingStorageObjects,
-      }),
-    );
   }
+
+  const summary: Summary = {
+    canonicalTableUsed,
+    scannedQuotes,
+    eligibleQuotes: eligible.length,
+    insertedRows,
+    skippedExisting,
+    missingStorageObjects,
+  };
+  if (args.verbose) summary.perQuote = perQuote;
+
+  // Required output: final JSON summary to stdout.
+  // Keep stdout machine-readable by avoiding any other writes to stdout.
+  process.stdout.write(`${JSON.stringify(summary)}\n`);
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
 
