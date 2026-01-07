@@ -6,6 +6,8 @@ Customer + supplier portals show RFQ files **only** from canonical rows in `file
 
 If historical quotes have `canonical_file_rows = 0`, portals will show **No files attached** (or **Files missing (needs backfill/re-upload)** if legacy filenames exist).
 
+If portals show **0 files even after backfill**, ensure the loader fallback is deployed.
+
 ### Security note
 
 This script uses the **Supabase service role** key. Run it only from a **secure environment** (Codespace or similarly locked down machine) and never paste the key into logs or tickets.
