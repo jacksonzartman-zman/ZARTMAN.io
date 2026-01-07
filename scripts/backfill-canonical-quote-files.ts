@@ -9,19 +9,15 @@ type CliArgs = {
   verbose: boolean;
 };
 
+type QuoteRowBase = { id: string; file_name: string | null };
+type QuoteRowWithNames = QuoteRowBase & { file_names: string[] | null };
+
 type CanonicalColumns = {
   bucketCol: "bucket_id" | "storage_bucket_id";
   pathCol: "storage_path" | "file_path";
   filenameCol: "filename" | "file_name";
   hasMime: boolean;
   hasSizeBytes: boolean;
-};
-
-type QuoteRow = {
-  id: string;
-  file_name: string | null;
-  file_names: unknown | null;
-  created_at?: string | null;
 };
 
 type StorageObjectRow = {
@@ -101,24 +97,6 @@ function uniq(items: string[]): string[] {
   return out;
 }
 
-function coerceFileNames(value: unknown): string[] {
-  if (!value) return [];
-  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
-  if (typeof value === "string") {
-    const s = value.trim();
-    // PostgREST sometimes returns arrays as "{a,b}" for older stacks.
-    if (s.startsWith("{") && s.endsWith("}")) {
-      const inner = s.slice(1, -1).trim();
-      if (!inner) return [];
-      return inner
-        .split(",")
-        .map((x) => x.trim())
-        .filter(Boolean);
-    }
-  }
-  return [];
-}
-
 function deriveMimeFromExtension(filename: string): string {
   const lower = (filename ?? "").toLowerCase();
   const ext = lower.includes(".") ? lower.split(".").pop() ?? "" : "";
@@ -151,6 +129,50 @@ function isMissingColumnError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const msg = String((error as { message?: unknown }).message ?? "").toLowerCase();
   return msg.includes("column") && msg.includes("does not exist");
+}
+
+async function loadQuotesForBackfill(
+  supabase: ReturnType<typeof createClient>,
+  quoteId?: string,
+  limit?: number
+): Promise<{ rows: Array<{ id: string; legacyFilenames: string[] }>; hasFileNamesColumn: boolean }> {
+  // Attempt schema that includes file_names (plural)
+  const queryBase = supabase
+    .from("quotes")
+    .select("id,file_name,file_names");
+
+  const query = quoteId ? queryBase.eq("id", quoteId) : queryBase.limit(limit ?? 200);
+
+  const wide = await query;
+  if (!wide.error) {
+    const data = (wide.data ?? []) as QuoteRowWithNames[];
+    const rows = data.map((q) => {
+      const legacy: string[] = [];
+      if (q.file_name) legacy.push(q.file_name);
+      if (Array.isArray(q.file_names)) legacy.push(...q.file_names.filter(Boolean));
+      return { id: q.id, legacyFilenames: Array.from(new Set(legacy)) };
+    });
+    return { rows, hasFileNamesColumn: true };
+  }
+
+  // If file_names doesn't exist in this DB, retry without it
+  if (wide.error.code === "42703") {
+    const queryBase2 = supabase.from("quotes").select("id,file_name");
+    const query2 = quoteId ? queryBase2.eq("id", quoteId) : queryBase2.limit(limit ?? 200);
+
+    const narrow = await query2;
+    if (narrow.error) throw narrow.error;
+
+    const data = (narrow.data ?? []) as QuoteRowBase[];
+    const rows = data.map((q) => ({
+      id: q.id,
+      legacyFilenames: q.file_name ? [q.file_name] : [],
+    }));
+    return { rows, hasFileNamesColumn: false };
+  }
+
+  // Any other error should hard-fail
+  throw wide.error;
 }
 
 async function detectCanonicalTable(supabase: SupabaseClient): Promise<CanonicalTable> {
@@ -337,75 +359,34 @@ async function loadEligibleQuotes(params: {
 }): Promise<{ scannedQuotes: number; eligible: Array<{ quoteId: string; legacyFilenames: string[] }> }> {
   const { supabase, canonicalTable, quoteId, limit } = params;
 
+  const { rows: quoteRows } = await loadQuotesForBackfill(supabase, quoteId, limit);
+
+  const scannedQuotes = quoteRows.length;
+  const candidates = quoteRows
+    .map((r) => ({ quoteId: r.id, legacyFilenames: uniq(r.legacyFilenames) }))
+    .filter((r) => r.legacyFilenames.length > 0);
+
+  if (candidates.length === 0) return { scannedQuotes, eligible: [] };
+
   if (quoteId) {
-    const q = await supabase
-      .from("quotes")
-      .select("id,file_name,file_names")
-      .eq("id", quoteId)
-      .limit(1);
-    if (q.error) throw q.error;
-    const row = (q.data?.[0] ?? null) as QuoteRow | null;
-    if (!row?.id) return { scannedQuotes: 0, eligible: [] };
-
-    const legacyFilenames = uniq([
-      ...(typeof row.file_name === "string" ? [row.file_name] : []),
-      ...coerceFileNames(row.file_names),
-    ]);
-    if (legacyFilenames.length === 0) return { scannedQuotes: 1, eligible: [] };
-
-    const existing = await supabase.from(canonicalTable).select("id", { head: true, count: "exact" }).eq("quote_id", row.id);
-    if (existing.error) throw existing.error;
-    if ((existing.count ?? 0) !== 0) return { scannedQuotes: 1, eligible: [] };
-
-    return { scannedQuotes: 1, eligible: [{ quoteId: row.id, legacyFilenames }] };
-  }
-
-  const eligible: Array<{ quoteId: string; legacyFilenames: string[] }> = [];
-  let scannedQuotes = 0;
-
-  const pageSize = 500;
-  for (let offset = 0; eligible.length < limit; offset += pageSize) {
-    const q = await supabase
-      .from("quotes")
-      .select("id,file_name,file_names,created_at")
-      .or("file_name.not.is.null,file_names.not.is.null")
-      .order("created_at", { ascending: false })
-      .range(offset, offset + pageSize - 1);
-    if (q.error) throw q.error;
-    const rows = (q.data ?? []) as QuoteRow[];
-    if (rows.length === 0) break;
-
-    scannedQuotes += rows.length;
-
-    const candidates: Array<{ quoteId: string; legacyFilenames: string[] }> = [];
-    for (const r of rows) {
-      const legacyFilenames = uniq([
-        ...(typeof r.file_name === "string" ? [r.file_name] : []),
-        ...coerceFileNames(r.file_names),
-      ]);
-      if (legacyFilenames.length === 0) continue;
-      candidates.push({ quoteId: r.id, legacyFilenames });
-    }
-    if (candidates.length === 0) continue;
-
-    // Filter out any quote that already has canonical rows in the chosen canonical table.
-    const ids = candidates.map((c) => c.quoteId);
+    const only = candidates[0];
     const existing = await supabase
       .from(canonicalTable)
-      .select("quote_id")
-      .in("quote_id", ids)
-      .limit(5000);
+      .select("id", { head: true, count: "exact" })
+      .eq("quote_id", only.quoteId);
     if (existing.error) throw existing.error;
-    const existingIds = new Set((existing.data ?? []).map((r) => (r as { quote_id?: string }).quote_id).filter(Boolean));
-
-    for (const c of candidates) {
-      if (existingIds.has(c.quoteId)) continue;
-      eligible.push(c);
-      if (eligible.length >= limit) break;
-    }
+    if ((existing.count ?? 0) !== 0) return { scannedQuotes, eligible: [] };
+    return { scannedQuotes, eligible: [only] };
   }
 
-  return { scannedQuotes, eligible };
+  // Filter out any quote that already has canonical rows in the chosen canonical table.
+  const ids = candidates.map((c) => c.quoteId);
+  const existing = await supabase.from(canonicalTable).select("quote_id").in("quote_id", ids).limit(5000);
+  if (existing.error) throw existing.error;
+  const existingIds = new Set((existing.data ?? []).map((r) => (r as { quote_id?: string }).quote_id).filter(Boolean));
+
+  const eligible = candidates.filter((c) => !existingIds.has(c.quoteId));
+  return { scannedQuotes, eligible: eligible.slice(0, limit) };
 }
 
 async function main(): Promise<void> {
