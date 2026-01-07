@@ -380,7 +380,13 @@ async function loadCanonicalFilesForQuote(
         if (variant.orderByCreatedAt) {
           query = query.order("created_at", { ascending: true }) as any;
         }
-        const result = await (query as any).returns<FileStorageRow[]>();
+        // `returns<T>()` is a supabase-js helper, but when the query is `any` TS
+        // disallows generic type args ("Untyped function calls may not accept type arguments").
+        // We keep runtime behavior and cast the result/data instead.
+        const result = (await (query as any).returns()) as {
+          data?: unknown;
+          error?: unknown;
+        };
 
         if (result.error) {
           if (isMissingTableOrColumnError(result.error)) {
@@ -396,7 +402,7 @@ async function loadCanonicalFilesForQuote(
           return [];
         }
 
-        return result.data ?? [];
+        return (result.data ?? []) as FileStorageRow[];
       }
 
       // If every variant failed with "missing schema", treat as table missing.
