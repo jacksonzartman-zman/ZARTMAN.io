@@ -17,6 +17,7 @@ type FileStorageRow = {
   file_path?: string | null;
   filename: string | null;
   mime: string | null;
+  size_bytes?: number | string | null;
   created_at?: string | null;
 };
 
@@ -334,6 +335,38 @@ export function extractFileNameFromPath(path: string): string | undefined {
   return segments[segments.length - 1] || undefined;
 }
 
+function normalizeSupabaseErrorText(error: unknown): string {
+  const serialized = serializeSupabaseError(error);
+  const parts = [serialized?.message, serialized?.details, serialized?.hint].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  return parts.join(" ").toLowerCase();
+}
+
+function isPostgrestSelectParseError(error: unknown): boolean {
+  const serialized = serializeSupabaseError(error);
+  const code = typeof serialized?.code === "string" ? serialized.code : null;
+  if (code === "PGRST100") return true;
+
+  const text = normalizeSupabaseErrorText(error);
+  return (
+    text.includes("failed to parse") ||
+    (text.includes("parse") && text.includes("select")) ||
+    text.includes("unexpected") ||
+    text.includes("syntax error")
+  );
+}
+
+function isMissingTableError(error: unknown): boolean {
+  const serialized = serializeSupabaseError(error);
+  return serialized?.code === "42P01";
+}
+
+function mentionsColumn(error: unknown, column: string): boolean {
+  const text = normalizeSupabaseErrorText(error);
+  return text.includes(column.toLowerCase());
+}
+
 async function loadCanonicalFilesForQuote(
   quoteId: string,
   options?: { onError?: (error: unknown) => void },
@@ -345,62 +378,151 @@ async function loadCanonicalFilesForQuote(
   const tryLoad = async (table: "files_valid" | "files"): Promise<FileStorageRow[] | null> => {
     try {
       // IMPORTANT:
-      // Some deployments do not have a `created_at` column on `files`/`files_valid`.
-      // The portal only needs bucket/path/filename to render cards, so we try
-      // variants both with and without `created_at`, and only order when it's present.
-      const selectVariants = [
-        // Canonical column names.
-        { columns: "id,quote_id,filename,mime,created_at,storage_bucket_id,storage_path", orderByCreatedAt: true },
-        { columns: "id,quote_id,filename,created_at,storage_bucket_id,storage_path", orderByCreatedAt: true },
-        { columns: "id,quote_id,filename,mime,storage_bucket_id,storage_path", orderByCreatedAt: false },
-        { columns: "id,quote_id,filename,storage_bucket_id,storage_path", orderByCreatedAt: false },
-        // Legacy bucket column name.
-        { columns: "id,quote_id,filename,mime,created_at,bucket_id,storage_path", orderByCreatedAt: true },
-        { columns: "id,quote_id,filename,created_at,bucket_id,storage_path", orderByCreatedAt: true },
-        { columns: "id,quote_id,filename,mime,bucket_id,storage_path", orderByCreatedAt: false },
-        { columns: "id,quote_id,filename,bucket_id,storage_path", orderByCreatedAt: false },
-        // Legacy path column name.
-        { columns: "id,quote_id,filename,mime,created_at,storage_bucket_id,file_path", orderByCreatedAt: true },
-        { columns: "id,quote_id,filename,created_at,storage_bucket_id,file_path", orderByCreatedAt: true },
-        { columns: "id,quote_id,filename,mime,storage_bucket_id,file_path", orderByCreatedAt: false },
-        { columns: "id,quote_id,filename,storage_bucket_id,file_path", orderByCreatedAt: false },
-        { columns: "id,quote_id,filename,mime,created_at,bucket_id,file_path", orderByCreatedAt: true },
-        { columns: "id,quote_id,filename,created_at,bucket_id,file_path", orderByCreatedAt: true },
-        { columns: "id,quote_id,filename,mime,bucket_id,file_path", orderByCreatedAt: false },
-        { columns: "id,quote_id,filename,bucket_id,file_path", orderByCreatedAt: false },
-      ] as const;
+      // Some deployments do not have a `created_at` column on `files` / `files_valid`,
+      // and some can surface PostgREST select parsing errors when selecting/ordering
+      // by a column that isn't present in schema cache. Portals must still load files.
+      //
+      // We only select the columns needed to render Uploads + previews:
+      // - id, quote_id, bucket_id/storage_bucket_id, storage_path/file_path, filename, mime, size_bytes (if present)
+      // and we do a strict two-step fallback:
+      // (a) try with created_at + order by created_at
+      // (b) if created_at is missing OR select string parsing fails, retry without created_at and without ordering by it
+      const variants: Array<
+        { bucket: "storage_bucket_id" | "bucket_id"; path: "storage_path" | "file_path" }
+      > = [
+        { bucket: "storage_bucket_id", path: "storage_path" },
+        { bucket: "bucket_id", path: "storage_path" },
+        { bucket: "storage_bucket_id", path: "file_path" },
+        { bucket: "bucket_id", path: "file_path" },
+      ];
 
-      for (const variant of selectVariants) {
+      const runSelect = async (input: {
+        bucket: "storage_bucket_id" | "bucket_id";
+        path: "storage_path" | "file_path";
+        includeCreatedAt: boolean;
+        includeSizeBytes: boolean;
+        orderByCreatedAt: boolean;
+      }): Promise<{ data: FileStorageRow[]; error: unknown | null }> => {
+        const cols: string[] = ["id", "quote_id", "filename", "mime"];
+        if (input.includeCreatedAt) cols.push("created_at");
+        cols.push(input.bucket);
+        cols.push(input.path);
+        if (input.includeSizeBytes) cols.push("size_bytes");
+
         let query = supabaseServer
           .from(table)
-          .select(variant.columns as any)
+          .select(cols.join(",") as any)
           .eq("quote_id", normalizedQuoteId);
-        if (variant.orderByCreatedAt) {
+        if (input.orderByCreatedAt) {
           query = query.order("created_at", { ascending: true }) as any;
+        } else {
+          // If we can't rely on created_at, keep results deterministic.
+          query = query.order("id", { ascending: true }) as any;
         }
-        // `query` is treated as `any` (dynamic select string), so we can't pass
-        // a generic type arg to `returns<T>()` without triggering:
-        // "Untyped function calls may not accept type arguments."
-        const result = await (query as any).returns();
 
-        if (result.error) {
-          if (isMissingTableOrColumnError(result.error)) {
-            // Try the next select shape (or conclude the table doesn't exist).
+        const result = (await (query as any)) as { data?: unknown; error?: unknown };
+        return { data: ((result.data ?? []) as FileStorageRow[]), error: result.error ?? null };
+      };
+
+      // Handle "size_bytes (if present)" without requiring it to exist.
+      const runSelectWithOptionalSizeBytes = async (input: {
+        bucket: "storage_bucket_id" | "bucket_id";
+        path: "storage_path" | "file_path";
+        includeCreatedAt: boolean;
+        orderByCreatedAt: boolean;
+      }): Promise<{ data: FileStorageRow[]; error: unknown | null; sizeBytesOmitted: boolean }> => {
+        const withSize = await runSelect({ ...input, includeSizeBytes: true });
+        if (!withSize.error) {
+          return { data: withSize.data, error: null, sizeBytesOmitted: false };
+        }
+
+        if (isMissingTableOrColumnError(withSize.error) && mentionsColumn(withSize.error, "size_bytes")) {
+          const withoutSize = await runSelect({ ...input, includeSizeBytes: false });
+          return { data: withoutSize.data, error: withoutSize.error, sizeBytesOmitted: true };
+        }
+
+        return { data: [], error: withSize.error, sizeBytesOmitted: false };
+      };
+
+      for (const variant of variants) {
+        // Step (a): try created_at ordering if possible.
+        const attemptWithCreatedAt = await runSelectWithOptionalSizeBytes({
+          bucket: variant.bucket,
+          path: variant.path,
+          includeCreatedAt: true,
+          orderByCreatedAt: true,
+        });
+
+        if (!attemptWithCreatedAt.error) {
+          return attemptWithCreatedAt.data;
+        }
+
+        const error = attemptWithCreatedAt.error;
+        if (isMissingTableError(error)) {
+          return null;
+        }
+
+        const createdAtRetryable =
+          isPostgrestSelectParseError(error) ||
+          (isMissingTableOrColumnError(error) && mentionsColumn(error, "created_at"));
+
+        if (createdAtRetryable) {
+          // Step (b): retry without created_at and without ordering by it.
+          const attemptWithoutCreatedAt = await runSelectWithOptionalSizeBytes({
+            bucket: variant.bucket,
+            path: variant.path,
+            includeCreatedAt: false,
+            orderByCreatedAt: false,
+          });
+
+          if (!attemptWithoutCreatedAt.error) {
+            return attemptWithoutCreatedAt.data;
+          }
+
+          // If this variant is missing bucket/path columns, try the next variant.
+          if (
+            isMissingTableOrColumnError(attemptWithoutCreatedAt.error) &&
+            (mentionsColumn(attemptWithoutCreatedAt.error, variant.bucket) ||
+              mentionsColumn(attemptWithoutCreatedAt.error, variant.path))
+          ) {
             continue;
+          }
+
+          if (isMissingTableError(attemptWithoutCreatedAt.error)) {
+            return null;
           }
 
           console.error(`[quote files] failed to load ${table}`, {
             quoteId: normalizedQuoteId,
-            error: serializeSupabaseError(result.error),
+            error: serializeSupabaseError(attemptWithoutCreatedAt.error),
           });
-          options?.onError?.(result.error);
+          options?.onError?.(attemptWithoutCreatedAt.error);
           return [];
         }
 
-        return ((result.data ?? []) as FileStorageRow[]);
+        // If this variant is missing bucket/path columns, try the next variant.
+        if (
+          isMissingTableOrColumnError(error) &&
+          (mentionsColumn(error, variant.bucket) || mentionsColumn(error, variant.path))
+        ) {
+          continue;
+        }
+
+        // Any other schema drift (e.g. missing mime/filename) => try next variant;
+        // if none match, we'll treat as table missing.
+        if (isMissingTableOrColumnError(error) || isPostgrestSelectParseError(error)) {
+          continue;
+        }
+
+        console.error(`[quote files] failed to load ${table}`, {
+          quoteId: normalizedQuoteId,
+          error: serializeSupabaseError(error),
+        });
+        options?.onError?.(error);
+        return [];
       }
 
-      // If every variant failed with "missing schema", treat as table missing.
+      // If every variant failed due to missing schema / parse errors, treat as table missing.
       return null;
     } catch (error) {
       if (isMissingTableOrColumnError(error)) {
