@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint \"src/**/*.{js,jsx,ts,tsx}\" \"*.{js,ts}\"",
-    "backfill:files:dry": "tsx scripts/backfill-canonical-quote-files.ts --dryRun --limit 5 --verbose",
+    "backfill:files:dry": "tsx scripts/backfill-canonical-quote-files.ts --dryRun --limit 20 --verbose",
     "backfill:files": "tsx scripts/backfill-canonical-quote-files.ts --limit 500 --verbose",
     "check:no-quotes-email": "node scripts/check-no-quotes-email.mjs",
     "check:db-contract": "node scripts/check-db-view-contract.mjs",

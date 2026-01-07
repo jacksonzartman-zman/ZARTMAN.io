@@ -6,6 +6,10 @@ Customer + supplier portals show RFQ files **only** from canonical rows in `file
 
 If historical quotes have `canonical_file_rows = 0`, portals will show **No files attached** (or **Files missing (needs backfill/re-upload)** if legacy filenames exist).
 
+### Security note
+
+This script uses the **Supabase service role** key. Run it only from a **secure environment** (Codespace or similarly locked down machine) and never paste the key into logs or tickets.
+
 ### One-time setup
 
 - Install dependencies:
@@ -23,13 +27,37 @@ npm i -D tsx
 ### Dry-run (recommended)
 
 ```bash
-npx tsx scripts/backfill-canonical-quote-files.ts --dryRun --limit 5 --verbose
+npm run backfill:files:dry
 ```
 
 ### Apply
 
 ```bash
-npx tsx scripts/backfill-canonical-quote-files.ts --limit 500 --verbose
+npm run backfill:files
+```
+
+### Single quote dry-run
+
+```bash
+npm run backfill:files:dry -- --quoteId <quote-uuid>
+```
+
+### Single quote apply
+
+```bash
+npm run backfill:files -- --quoteId <quote-uuid>
+```
+
+### Batch dry-run
+
+```bash
+npm run backfill:files:dry -- --limit 20 --verbose
+```
+
+### Batch apply
+
+```bash
+npm run backfill:files -- --limit 500 --verbose
 ```
 
 ### Verification SQL
