@@ -53,27 +53,63 @@ export async function ensureStepPreviewForFile(
   const requestId = `step-preview-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 10)}`;
 
   try {
-    // Resolve storage location from DB (quote_upload_files).
+    // Resolve quote_upload_files row (schema: id, upload_id, filename, extension, is_from_archive, path).
     const { data: row, error: rowError } = await supabaseServer
       .from("quote_upload_files")
-      .select("id,storage_path,bucket_id,filename,extension")
+      .select("id,upload_id,filename,extension,is_from_archive,path")
       .eq("id", id)
       .maybeSingle<{
         id: string;
-        storage_path: string | null;
-        bucket_id: string | null;
+        upload_id: string;
         filename: string | null;
         extension: string | null;
+        is_from_archive: boolean;
+        path: string;
       }>();
 
-    if (rowError || !row?.storage_path) {
+    if (rowError || !row?.id || !row?.upload_id) {
       console.error("[step-preview] ensure failed", { quoteUploadFileId: id, requestId, reason: "missing_storage_path" });
       return null;
     }
 
-    const normalized = normalizeStorageReference(row.storage_path, row.bucket_id);
+    // ZIP members do not have a direct Storage object identity in this schema.
+    // (We store the container upload object, plus per-member metadata.)
+    if (row.is_from_archive) {
+      console.warn("[step-preview] skip archive member (no direct storage identity)", {
+        quoteUploadFileId: id,
+        requestId,
+        uploadId: row.upload_id,
+        path: row.path,
+      });
+      return null;
+    }
+
+    // Resolve storage object identity from uploads.file_path (this is the actual uploaded object).
+    const { data: uploadRow, error: uploadError } = await supabaseServer
+      .from("uploads")
+      .select("id,file_path")
+      .eq("id", row.upload_id)
+      .maybeSingle<{ id: string; file_path: string | null }>();
+    if (uploadError || !uploadRow?.file_path) {
+      console.error("[step-preview] ensure failed", {
+        quoteUploadFileId: id,
+        requestId,
+        reason: "upload_missing_file_path",
+        uploadId: row.upload_id,
+      });
+      return null;
+    }
+
+    // uploads.file_path is sometimes stored as "bucket/key" and sometimes just "key".
+    const normalized = normalizeStorageReference(uploadRow.file_path, null);
     if (!normalized) {
-      console.error("[step-preview] ensure failed", { quoteUploadFileId: id, requestId, reason: "invalid_storage_ref" });
+      console.error("[step-preview] ensure failed", {
+        quoteUploadFileId: id,
+        requestId,
+        reason: "invalid_storage_ref",
+        uploadId: row.upload_id,
+        filePath: uploadRow.file_path,
+      });
       return null;
     }
 

@@ -26,6 +26,7 @@ export type ThreeCadViewerReport = {
 const MAX_RENDER_BYTES = 20 * 1024 * 1024; // 20MB
 const STEP_PREVIEW_TIMEOUT_MS = 120_000;
 const DEFAULT_FETCH_TIMEOUT_MS = 45_000;
+const LOG_THREE_CAD_VIEWER = process.env.NEXT_PUBLIC_LOG_CAD_VIEWER === "1";
 
 type ModelMetrics = {
   boxSize: THREE.Vector3;
@@ -452,11 +453,13 @@ export function ThreeCadViewer({
 
   if (!didMountLogRef.current) {
     didMountLogRef.current = true;
-    console.log("[three-cad-viewer] mount", {
-      fileName: effectiveFileName || null,
-      url: effectiveUrl || null,
-      cadKindProp: cadKind ?? null,
-    });
+    if (LOG_THREE_CAD_VIEWER) {
+      console.log("[three-cad-viewer] mount", {
+        fileName: effectiveFileName || null,
+        url: effectiveUrl || null,
+        cadKindProp: cadKind ?? null,
+      });
+    }
   }
 
   const classification = useMemo(() => {
@@ -841,10 +844,12 @@ export function ThreeCadViewer({
             return typeInfo.ok ? typeInfo.type : null;
           })();
 
-        console.log("[three-cad-viewer] resolvedCadKind", {
-          fileName: fileNameForLogs,
-          cadKind: resolvedCadKindValue,
-        });
+        if (LOG_THREE_CAD_VIEWER) {
+          console.log("[three-cad-viewer] resolvedCadKind", {
+            fileName: fileNameForLogs,
+            cadKind: resolvedCadKindValue,
+          });
+        }
 
         if (!resolvedCadKindValue) {
           setViewerState({

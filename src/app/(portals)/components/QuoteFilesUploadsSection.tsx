@@ -57,7 +57,7 @@ export function QuoteFilesUploadsSection({
         ) : null}
         {filesMissingCanonical ? (
           <EmptyStateCard
-            title="Files missing — re-upload required"
+            title="Files missing (needs backfill/re-upload)"
             description={
               legacyList.length > 0
                 ? `This RFQ references legacy filenames, but the underlying file records are missing: ${legacyList.slice(0, 5).join(", ")}${
@@ -71,8 +71,8 @@ export function QuoteFilesUploadsSection({
         <QuoteFilesCard files={files} />
         {files.length === 0 ? (
           <EmptyStateCard
-            title="No files yet"
-            description="We’ll attach uploads here automatically once they’re processed."
+            title="No files attached"
+            description="Uploads will appear here once they’re processed."
             className="mt-3"
           />
         ) : null}

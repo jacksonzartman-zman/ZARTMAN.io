@@ -1210,7 +1210,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const uploadsContent = (
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.6fr)_minmax(0,0.4fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-4 lg:space-y-5">
-          <QuoteUploadsStructuredList uploadGroups={uploadGroups} />
+          <QuoteUploadsStructuredList uploadGroups={uploadGroups} enableLegacyPreviews />
           <QuoteFilesCard id={fileCardAnchorId} files={filePreviews} />
           {rfqSummaryCard}
         </div>

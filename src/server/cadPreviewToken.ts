@@ -20,19 +20,36 @@ type PreviewTokenPayloadV2 = {
   fn?: string; // filename hint
 };
 
+/**
+ * v3 (portal canonical-only):
+ * - token contains NO bucket/path
+ * - server resolves storage identity from canonical `files_valid`/`files` via `quoteFileId`
+ * - token binds to the caller via `viewerContext.userId`
+ */
 type PreviewTokenPayloadV3 = {
   v: 3;
-  uid: string;
+  quoteFileId: string;
   exp: number; // unix seconds
-  // Canonical quote file id (from files_valid/files). Server will resolve bucket/path from DB.
+  viewerContext: {
+    userId: string;
+  };
+};
+
+// Backward compat: earlier v3 deployments used { uid, exp, qfid } (no viewerContext).
+type PreviewTokenPayloadV3Legacy = {
+  v: 3;
+  uid: string;
+  exp: number;
   qfid: string;
-  // Optional: quote id for observability only.
   qid?: string;
-  // Optional filename hint.
   fn?: string;
 };
 
-type PreviewTokenPayload = PreviewTokenPayloadV1 | PreviewTokenPayloadV2 | PreviewTokenPayloadV3;
+type PreviewTokenPayload =
+  | PreviewTokenPayloadV1
+  | PreviewTokenPayloadV2
+  | PreviewTokenPayloadV3
+  | PreviewTokenPayloadV3Legacy;
 
 function base64UrlEncode(input: string | Uint8Array): string {
   const buf = typeof input === "string" ? Buffer.from(input, "utf8") : Buffer.from(input);
@@ -73,31 +90,35 @@ function normalizePath(value: unknown): string {
 }
 
 export function signPreviewToken(input: {
-  userId: string;
+  /**
+   * For legacy v1/v2 tokens, this is the bound Supabase user id.
+   * For v3 tokens, portals should pass the id via `viewerContext.userId`.
+   */
+  userId?: string;
   bucket?: string | null;
   path?: string | null;
   exp: number; // unix seconds
   quoteId?: string | null;
   quoteFileId?: string | null;
   filename?: string | null;
+  viewerContext?: { userId: string } | null;
 }): string {
   const uid = normalizeId(input.userId);
   const exp = typeof input.exp === "number" && Number.isFinite(input.exp) ? input.exp : 0;
   const qid = normalizeId(input.quoteId);
   const qfid = normalizeId(input.quoteFileId);
   const fn = normalizeId(input.filename);
+  const viewerUserId = normalizeId(input.viewerContext?.userId);
 
   // V3 (preferred for portals): quoteFileId-only token.
   if (qfid) {
     const payload: PreviewTokenPayloadV3 = {
       v: 3,
-      uid,
+      quoteFileId: qfid,
       exp,
-      qfid,
-      ...(qid ? { qid } : {}),
-      ...(fn ? { fn } : {}),
+      viewerContext: { userId: viewerUserId || uid },
     };
-    if (!payload.uid || payload.exp <= 0 || !payload.qfid) {
+    if (!payload.viewerContext.userId || payload.exp <= 0 || !payload.quoteFileId) {
       throw new Error("invalid_preview_token_payload");
     }
     const payloadB64 = base64UrlEncode(JSON.stringify(payload));
@@ -262,17 +283,31 @@ export function verifyPreviewTokenForUser(input: {
 
   if (!payload.exp || payload.exp < now) return { ok: false, reason: "token_expired" };
 
-  const uid = normalizeId(payload.uid);
-  if (!uid) return { ok: false, reason: "token_payload" };
-  if (uid !== normalizeId(input.userId)) return { ok: false, reason: "token_user_mismatch" };
-
   if (payload.v === 3) {
-    const qfid = normalizeId((payload as PreviewTokenPayloadV3).qfid);
-    const qid = normalizeId((payload as PreviewTokenPayloadV3).qid);
-    const fn = normalizeId((payload as PreviewTokenPayloadV3).fn);
-    if (!qfid) return { ok: false, reason: "token_payload" };
-    const normalizedPayload: PreviewTokenPayloadV3 = {
-      ...(payload as PreviewTokenPayloadV3),
+    // New v3 payload shape (canonical-only).
+    if ("viewerContext" in payload && (payload as any).viewerContext) {
+      const quoteFileId = normalizeId((payload as PreviewTokenPayloadV3).quoteFileId);
+      const viewerUserId = normalizeId((payload as PreviewTokenPayloadV3).viewerContext?.userId);
+      if (!quoteFileId || !viewerUserId) return { ok: false, reason: "token_payload" };
+      if (viewerUserId !== normalizeId(input.userId)) return { ok: false, reason: "token_user_mismatch" };
+      const normalizedPayload: PreviewTokenPayloadV3 = {
+        ...(payload as PreviewTokenPayloadV3),
+        quoteFileId,
+        viewerContext: { userId: viewerUserId },
+      };
+      return { ok: true, payload: normalizedPayload };
+    }
+
+    // Legacy v3 payload shape (pre viewerContext).
+    const legacy = payload as PreviewTokenPayloadV3Legacy;
+    const uid = normalizeId(legacy.uid);
+    const qfid = normalizeId(legacy.qfid);
+    const qid = normalizeId(legacy.qid);
+    const fn = normalizeId(legacy.fn);
+    if (!uid || !qfid) return { ok: false, reason: "token_payload" };
+    if (uid !== normalizeId(input.userId)) return { ok: false, reason: "token_user_mismatch" };
+    const normalizedPayload: PreviewTokenPayloadV3Legacy = {
+      ...(payload as PreviewTokenPayloadV3Legacy),
       uid,
       qfid,
       ...(qid ? { qid } : {}),
@@ -280,6 +315,10 @@ export function verifyPreviewTokenForUser(input: {
     };
     return { ok: true, payload: normalizedPayload };
   }
+
+  const uid = normalizeId((payload as PreviewTokenPayloadV1 | PreviewTokenPayloadV2).uid);
+  if (!uid) return { ok: false, reason: "token_payload" };
+  if (uid !== normalizeId(input.userId)) return { ok: false, reason: "token_user_mismatch" };
 
   const bkt = normalizeId((payload as PreviewTokenPayloadV1 | PreviewTokenPayloadV2).b);
   const pth = normalizePath((payload as PreviewTokenPayloadV1 | PreviewTokenPayloadV2).p);

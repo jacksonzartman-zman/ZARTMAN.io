@@ -8,6 +8,8 @@ import {
   type ViewerStatus,
 } from "@/components/ThreeCadViewer";
 
+const LOG_CAD_PREVIEW_MODAL = process.env.NEXT_PUBLIC_LOG_CAD_PREVIEW === "1";
+
 export type CadPreviewModalProps = {
   fileId?: string;
   storageSource?: {
@@ -49,6 +51,7 @@ export function CadPreviewModal({
 
   useEffect(() => {
     if (storageSource?.bucket && storageSource?.path) {
+      if (!LOG_CAD_PREVIEW_MODAL) return;
       console.log("[cad-preview] request", {
         bucket: storageSource.bucket,
         path: storageSource.path,
@@ -56,7 +59,7 @@ export function CadPreviewModal({
         tokenPresent: Boolean(storageSource.token),
       });
     }
-  }, [storageSource?.bucket, storageSource?.path, cadKind]);
+  }, [storageSource?.bucket, storageSource?.path, storageSource?.token, cadKind]);
 
   const isSupportedCadKind =
     cadKind === "stl" || cadKind === "step" || cadKind === "obj" || cadKind === "glb";

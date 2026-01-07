@@ -232,11 +232,13 @@ export async function loadQuoteWorkspaceData(
     const filesMissingCanonical = filePreviews.length === 0 && legacyDeclared.length > 0;
     const legacyFileNames = legacyDeclared.map((f) => f.filename);
     if (filesMissingCanonical) {
-      console.warn("[portal workspace] quote has legacy filenames but no canonical file rows", {
-        quoteId,
-        legacyCount: legacyFileNames.length,
-        legacyFileNames: legacyFileNames.slice(0, 10),
-      });
+      if (process.env.LOG_CANONICAL_QUOTE_FILES === "1") {
+        console.warn("[portal workspace] quote has legacy filenames but no canonical file rows", {
+          quoteId,
+          legacyCount: legacyFileNames.length,
+          legacyFileNames: legacyFileNames.slice(0, 10),
+        });
+      }
     }
     const files: QuoteFileMeta[] = filePreviews.map((file) => ({
       filename: (file.fileName ?? file.label).trim(),
