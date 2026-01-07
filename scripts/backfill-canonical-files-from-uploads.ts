@@ -35,13 +35,6 @@ type CliArgs = {
   verbose: boolean;
 };
 
-type CanonicalColumns = {
-  bucketCol: "bucket_id" | "storage_bucket_id";
-  pathCol: "storage_path" | "file_path";
-  filenameCol: "filename" | "file_name";
-  hasSizeBytes: boolean;
-};
-
 type QuoteRow = {
   id: string;
   upload_id: string | null;
@@ -155,78 +148,78 @@ function isMissingRelationError(error: unknown): boolean {
   return code === "42P01" || (msg.includes("relation") && msg.includes("does not exist"));
 }
 
-function isMissingColumnError(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const msg = String((error as { message?: unknown }).message ?? "").toLowerCase();
-  return msg.includes("column") && msg.includes("does not exist");
-}
-
 async function detectCanonicalTable(params: { supabase: SupabaseClient; verbose: boolean }): Promise<CanonicalTable> {
   const { supabase, verbose } = params;
-  maybeLogStep(verbose, "probe canonical table");
+
+  // IMPORTANT: Per requirements, table selection may only probe `id`.
   const probeValid = await supabase.from("files_valid").select("id").limit(1);
   if (!probeValid.error) return "files_valid";
-  const filesValidError = probeValid.error;
 
-  maybeLogStep(verbose, "probe canonical table");
-  const probeFiles = await supabase.from("files").select("id").limit(1);
-  if (!probeFiles.error) return "files";
-  const filesError = probeFiles.error;
-
-  throw new Error(
-    `[backfill] probe canonical table failed: ${JSON.stringify({
-      files_valid: toPlainError(filesValidError),
-      files: toPlainError(filesError),
-    })}`,
-  );
+  if (verbose) {
+    console.warn("[backfill] canonical table probe failed for files_valid; falling back to files", probeValid);
+  }
+  return "files";
 }
 
-async function detectCanonicalColumns(params: {
+type CanonicalExistingRow = {
+  id: string;
+  quote_id: string | null;
+  storage_bucket_id?: string | null;
+  bucket_id?: string | null;
+  storage_path?: string | null;
+  file_path?: string | null;
+};
+
+function rowBucketId(row: CanonicalExistingRow): string | null {
+  return (row.storage_bucket_id ?? row.bucket_id ?? null) as string | null;
+}
+
+function rowPath(row: CanonicalExistingRow): string | null {
+  return (row.storage_path ?? row.file_path ?? null) as string | null;
+}
+
+async function loadExistingCanonicalRowsForQuote(params: {
   supabase: SupabaseClient;
-  table: CanonicalTable;
+  canonicalTable: CanonicalTable;
+  quoteId: string;
   verbose: boolean;
-}): Promise<CanonicalColumns> {
-  const { supabase, table, verbose } = params;
-  const bucketCol: CanonicalColumns["bucketCol"] = await (async () => {
-    maybeLogStep(verbose, "probe canonical table");
-    const q = await supabase.from(table).select("storage_bucket_id", { head: true }).limit(1);
-    if (!q.error) return "storage_bucket_id";
-    if (isMissingColumnError(q.error)) return "bucket_id";
-    throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
-  })();
+}): Promise<CanonicalExistingRow[] | null> {
+  const { supabase, canonicalTable, quoteId, verbose } = params;
 
-  const pathCol: CanonicalColumns["pathCol"] = await (async () => {
-    maybeLogStep(verbose, "probe canonical table");
-    const q = await supabase.from(table).select("storage_path", { head: true }).limit(1);
-    if (!q.error) return "storage_path";
-    if (isMissingColumnError(q.error)) return "file_path";
-    throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
-  })();
+  maybeLogStep(verbose, "load existing canonical rows");
 
-  const filenameCol: CanonicalColumns["filenameCol"] = await (async () => {
-    maybeLogStep(verbose, "probe canonical table");
-    const q = await supabase.from(table).select("filename", { head: true }).limit(1);
-    if (!q.error) return "filename";
-    if (isMissingColumnError(q.error)) return "file_name";
-    throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
-  })();
+  const selectOptions = [
+    // A)
+    "id,quote_id,storage_bucket_id,storage_path",
+    // B)
+    "id,quote_id,bucket_id,storage_path",
+    // C)
+    "id,quote_id,storage_bucket_id,file_path",
+    // D)
+    "id,quote_id,bucket_id,file_path",
+  ] as const;
 
-  // mime is required for canonical rows; fail fast if absent.
-  {
-    maybeLogStep(verbose, "probe canonical table");
-    const q = await supabase.from(table).select("mime", { head: true }).limit(1);
-    if (q.error) throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
+  for (const select of selectOptions) {
+    const res = await supabase.from(canonicalTable).select(select).eq("quote_id", quoteId).limit(5000);
+    if (res.error) {
+      console.warn(`[backfill] canonical read failed (select="${select}")`, res);
+      continue;
+    }
+    return (res.data ?? []) as CanonicalExistingRow[];
   }
 
-  const hasSizeBytes = await (async () => {
-    maybeLogStep(verbose, "probe canonical table");
-    const q = await supabase.from(table).select("size_bytes", { head: true }).limit(1);
-    if (!q.error) return true;
-    if (isMissingColumnError(q.error)) return false;
-    throw new Error(`[backfill] probe canonical table failed: ${JSON.stringify(toPlainError(q.error))}`);
-  })();
+  console.warn("[backfill] all canonical read select options failed; proceeding without existence check", {
+    canonicalTable,
+    quoteId,
+  });
+  return null;
+}
 
-  return { bucketCol, pathCol, filenameCol, hasSizeBytes };
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = String((error as { code?: unknown }).code ?? "");
+  const msg = String((error as { message?: unknown }).message ?? "").toLowerCase();
+  return code === "23505" || msg.includes("duplicate key value violates unique constraint");
 }
 
 async function loadCandidateQuotes(params: {
@@ -314,53 +307,62 @@ async function resolveStorageObjectForUpload(params: {
 async function canonicalRowExists(params: {
   supabase: SupabaseClient;
   canonicalTable: CanonicalTable;
-  canonicalCols: CanonicalColumns;
   quoteId: string;
   bucketId: string;
   storagePath: string;
   verbose: boolean;
 }): Promise<boolean> {
-  const { supabase, canonicalTable, canonicalCols, quoteId, bucketId, storagePath, verbose } = params;
-  maybeLogStep(verbose, "load existing canonical rows");
-  const q = await supabase
-    .from(canonicalTable)
-    .select("id", { head: true, count: "exact" })
-    .eq("quote_id", quoteId)
-    .eq(canonicalCols.bucketCol, bucketId)
-    .eq(canonicalCols.pathCol, storagePath)
-    .limit(1);
-  if (q.error) throw new Error(`[backfill] load existing canonical rows failed: ${JSON.stringify(toPlainError(q.error))}`);
-  return (q.count ?? 0) > 0;
+  const { supabase, canonicalTable, quoteId, bucketId, storagePath, verbose } = params;
+
+  const rows = await loadExistingCanonicalRowsForQuote({ supabase, canonicalTable, quoteId, verbose });
+  if (!rows) return false;
+
+  return rows.some((r) => rowBucketId(r) === bucketId && rowPath(r) === storagePath);
 }
 
 async function insertCanonicalRow(params: {
   supabase: SupabaseClient;
   canonicalTable: CanonicalTable;
-  canonicalCols: CanonicalColumns;
   quoteId: string;
   upload: UploadRow;
   obj: StorageObjectRow;
   verbose: boolean;
-}): Promise<Record<string, unknown>> {
-  const { supabase, canonicalTable, canonicalCols, quoteId, upload, obj, verbose } = params;
+}): Promise<"inserted" | "duplicate"> {
+  const { supabase, canonicalTable, quoteId, upload, obj, verbose } = params;
   const bucketId = "cad_uploads";
-  const storagePath = obj.name;
-  const filename = basename(storagePath) || storagePath;
+  const key = obj.name;
+  const filename = basename(key) || key;
   const mime = (upload.mime_type ?? "").trim() || deriveMimeFromExtension(filename);
 
-  const row: Record<string, unknown> = {
-    quote_id: quoteId,
-    [canonicalCols.bucketCol]: bucketId,
-    [canonicalCols.pathCol]: storagePath,
-    [canonicalCols.filenameCol]: filename,
-    mime,
-  };
-  if (canonicalCols.hasSizeBytes) row.size_bytes = sizeBytesFromMetadata(obj.metadata);
+  const insertOptions = [
+    // A)
+    { label: "A", payload: { quote_id: quoteId, storage_bucket_id: bucketId, storage_path: key, filename, mime } },
+    // B)
+    { label: "B", payload: { quote_id: quoteId, bucket_id: bucketId, storage_path: key, filename, mime } },
+    // C)
+    { label: "C", payload: { quote_id: quoteId, storage_bucket_id: bucketId, file_path: key, filename, mime } },
+    // D)
+    { label: "D", payload: { quote_id: quoteId, bucket_id: bucketId, file_path: key, filename, mime } },
+  ] as const;
 
   maybeLogStep(verbose, "insert canonical rows");
-  const ins = await supabase.from(canonicalTable).insert(row);
-  if (ins.error) throw new Error(`[backfill] insert canonical rows failed: ${JSON.stringify(toPlainError(ins.error))}`);
-  return row;
+  for (const opt of insertOptions) {
+    const res = await supabase.from(canonicalTable).insert(opt.payload);
+    if (res.error) {
+      console.warn(`[backfill] canonical insert failed (shape=${opt.label})`, res);
+      if (isUniqueViolation(res.error)) return "duplicate";
+      continue;
+    }
+    return "inserted";
+  }
+
+  throw new Error(
+    `[backfill] all canonical insert shapes failed: ${JSON.stringify({
+      canonicalTable,
+      quoteId,
+      key,
+    })}`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -386,7 +388,6 @@ async function main(): Promise<void> {
     });
 
     canonicalTableUsed = await detectCanonicalTable({ supabase, verbose: args.verbose });
-    const canonicalCols = await detectCanonicalColumns({ supabase, table: canonicalTableUsed, verbose: args.verbose });
 
     const quotes = await loadCandidateQuotes({ supabase, quoteId: args.quoteId, limit: args.limit, verbose: args.verbose });
     scannedQuotes = quotes.length;
@@ -444,7 +445,6 @@ async function main(): Promise<void> {
       const exists = await canonicalRowExists({
         supabase,
         canonicalTable: canonicalTableUsed,
-        canonicalCols,
         quoteId,
         bucketId: "cad_uploads",
         storagePath: obj.name,
@@ -479,25 +479,38 @@ async function main(): Promise<void> {
         continue;
       }
 
-      await insertCanonicalRow({
+      const outcome = await insertCanonicalRow({
         supabase,
         canonicalTable: canonicalTableUsed,
-        canonicalCols,
         quoteId,
         upload,
         obj,
         verbose: args.verbose,
       });
-      insertedRows += 1;
-      if (args.verbose) {
-        perQuote.push({
-          quoteId,
-          uploadId,
-          uploadFilePath: upload.file_path,
-          uploadFileName: upload.file_name,
-          storageObjectName: obj.name,
-          action: "inserted",
-        });
+      if (outcome === "duplicate") {
+        skippedExisting += 1;
+        if (args.verbose) {
+          perQuote.push({
+            quoteId,
+            uploadId,
+            uploadFilePath: upload.file_path,
+            uploadFileName: upload.file_name,
+            storageObjectName: obj.name,
+            action: "skipped_existing",
+          });
+        }
+      } else {
+        insertedRows += 1;
+        if (args.verbose) {
+          perQuote.push({
+            quoteId,
+            uploadId,
+            uploadFilePath: upload.file_path,
+            uploadFileName: upload.file_name,
+            storageObjectName: obj.name,
+            action: "inserted",
+          });
+        }
       }
     }
   } catch (err) {
