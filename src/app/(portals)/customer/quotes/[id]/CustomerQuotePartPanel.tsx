@@ -12,6 +12,7 @@ import {
   formatQuoteWorkspaceStatusLabel,
   type QuoteWorkspaceStatus,
 } from "@/lib/quote/workspaceStatus";
+import { classifyCadFileType } from "@/lib/cadRendering";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
@@ -46,6 +47,9 @@ export function CustomerQuotePartPanel({
   const [geometryStatsMap, setGeometryStatsMap] = useState<
     Record<number, GeometryStats | null>
   >({});
+  const hasCadPreviewFiles = previews.some(
+    (file) => file.storageSource?.bucket === "cad_previews",
+  );
 
   useEffect(() => {
     if (files.length === 0) {
@@ -220,13 +224,36 @@ export function CustomerQuotePartPanel({
                   const previewStatus = preview?.signedUrl
                     ? "Preview ready"
                     : preview?.fallbackMessage ?? "Preview not available";
-                  const lowerName = (file.filename ?? "").toLowerCase();
-                  const isStep = lowerName.endsWith(".step") || lowerName.endsWith(".stp");
-                  const originalTag = isStep
-                    ? "Original STEP"
-                    : lowerName.endsWith(".stl")
-                      ? "Original STL"
-                      : "Original file";
+                  const classified = classifyCadFileType({
+                    filename: displayName,
+                    extension: null,
+                  });
+                  const cadKind =
+                    preview?.cadKind ?? (classified.ok ? classified.type : null);
+                  const bucket = preview?.storageSource?.bucket ?? null;
+                  const isAutoPreviewFile = bucket === "cad_previews";
+                  const isStep = cadKind === "step";
+                  const isOriginalStepWithoutPreviewFile =
+                    isStep && !isAutoPreviewFile && !hasCadPreviewFiles;
+                  const kindLabel = isStep
+                    ? "STEP"
+                    : cadKind === "stl"
+                      ? "STL"
+                      : cadKind === "obj"
+                        ? "OBJ"
+                        : cadKind === "glb"
+                          ? "GLB"
+                          : "file";
+                  const primaryTag = isAutoPreviewFile
+                    ? `Preview ${kindLabel} (auto-generated)`
+                    : `Original ${kindLabel}`;
+                  const helperLine = isOriginalStepWithoutPreviewFile
+                    ? preview?.signedUrl
+                      ? "Preview will be generated when viewed."
+                      : "Preview unavailable (re-upload may be required)."
+                    : isStep
+                      ? "Preview is for viewing only. Download retains the original file."
+                      : null;
 
                   return (
                     <button
@@ -244,23 +271,16 @@ export function CustomerQuotePartPanel({
                         <p className="text-[11px] uppercase tracking-wide text-slate-500">{`Part ${index + 1}`}</p>
                         <div className="flex flex-wrap gap-1.5">
                           <span className="rounded-full border border-slate-800 bg-slate-950/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-200">
-                            {originalTag}
+                            {primaryTag}
                           </span>
-                          {isStep ? (
-                            <span className="rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-100">
-                              Preview STL (auto-generated)
-                            </span>
-                          ) : null}
                         </div>
                       </div>
                       <p className="truncate text-sm font-semibold text-slate-100">
                         {displayName}
                       </p>
                       <p className="mt-1 text-[11px] text-slate-400">{previewStatus}</p>
-                      {isStep ? (
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          Preview is for viewing only. Download retains the original file.
-                        </p>
+                      {helperLine ? (
+                        <p className="mt-1 text-[11px] text-slate-500">{helperLine}</p>
                       ) : null}
                     </button>
                   );
