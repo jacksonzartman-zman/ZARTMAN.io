@@ -54,6 +54,11 @@ export function CustomerQuotePartPanel({
   const selectedPreview = previews[selectedIndex] ?? null;
   const selectedFileMeta = files[selectedIndex] ?? null;
   const selectedGeometry = geometryStatsMap[selectedIndex] ?? null;
+  const selectedFileLabel =
+    selectedPreview?.fileName ??
+    selectedPreview?.label ??
+    selectedFileMeta?.filename ??
+    null;
 
   const handleGeometryStats = useCallback(
     (stats: GeometryStats | null) => {
@@ -77,73 +82,41 @@ export function CustomerQuotePartPanel({
         className,
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-            RFQ parts
+            Quote workspace
           </p>
-          <p className="text-sm text-slate-300">
+          <h2 className="mt-1 text-lg font-semibold text-slate-50">
+            CAD preview
+          </h2>
+          <p className="mt-1 text-sm text-slate-300">
             {files.length === 0
               ? "No files attached yet."
-              : "Review every CAD file tied to this RFQ and run instant DFM."}
+              : "Preview files and run instant DFM checks."}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Preview renders may be simplified. The original upload is the source of truth.
           </p>
         </div>
-        <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-          {files.length} file{files.length === 1 ? "" : "s"}
-        </span>
-      </div>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-5">
-        <div className="space-y-2 rounded-2xl border border-slate-900 bg-slate-950/40 p-3 lg:col-span-2">
-          {files.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-900/60 bg-slate-950/20 px-4 py-3 text-sm text-slate-400">
-              Files attached to your RFQ will appear here for quick previewing.
-            </p>
-          ) : (
-            files.map((file, index) => {
-              const preview = previews[index] ?? null;
-              const isSelected = selectedIndex === index;
-              const displayName =
-                preview?.fileName ??
-                preview?.label ??
-                file.filename;
-              const previewStatus = preview?.signedUrl
-                ? "STL preview ready"
-                : preview?.fallbackMessage ??
-                  "Preview not available for this file.";
-              return (
-                <button
-                  key={preview?.id ?? `${file.filename}-${index}`}
-                  type="button"
-                  onClick={() => setSelectedIndex(index)}
-                  className={clsx(
-                    "w-full rounded-xl border px-4 py-3 text-left transition",
-                    isSelected
-                      ? "border-emerald-400/40 bg-emerald-400/5"
-                      : "border-slate-900/60 bg-slate-950/30 hover:border-slate-800",
-                  )}
-                >
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500">{`Part ${index + 1}`}</p>
-                  <p className="truncate text-sm font-semibold text-slate-100">
-                    {displayName}
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    {previewStatus}
-                  </p>
-                </button>
-              );
-            })
-          )}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+            {files.length} file{files.length === 1 ? "" : "s"}
+          </span>
+          <span className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+            Quote status: —
+          </span>
         </div>
-        <div className="space-y-4 lg:col-span-3">
+      </header>
+
+      <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-4">
           <CadViewerPanel
+            className="p-5"
+            height={520}
             fileUrl={selectedPreview?.signedUrl ?? null}
-            fileName={
-              selectedPreview?.fileName ??
-              selectedPreview?.label ??
-              selectedFileMeta?.filename ??
-              null
-            }
+            fileName={selectedFileLabel}
             fallbackMessage="Select a CAD file or ask the admin team to attach an STL."
             onGeometryStats={handleGeometryStats}
           />
@@ -154,6 +127,120 @@ export function CustomerQuotePartPanel({
             targetDate={targetDate}
           />
         </div>
+
+        <aside className="space-y-4">
+          <button
+            type="button"
+            onClick={() => {
+              // TODO(order): wire this to the real checkout / order flow.
+              console.log("[quote] proceed to order", {
+                selectedFile: selectedFileLabel,
+                selectedIndex,
+              });
+            }}
+            className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+          >
+            Proceed to Order
+          </button>
+
+          <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Quote info
+            </p>
+            <dl className="mt-3 grid gap-3 text-sm text-slate-200">
+              <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+                <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                  Part name
+                </dt>
+                <dd className="truncate font-medium text-slate-100">
+                  {selectedFileLabel ?? "—"}
+                </dd>
+              </div>
+              <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+                <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                  Upload date
+                </dt>
+                <dd className="font-medium text-slate-100">—</dd>
+              </div>
+              {processHint ? (
+                <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                    Process
+                  </dt>
+                  <dd className="font-medium text-slate-100">{processHint}</dd>
+                </div>
+              ) : null}
+              {quantityHint != null && `${quantityHint}`.trim() ? (
+                <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                    Quantity
+                  </dt>
+                  <dd className="font-medium text-slate-100">{quantityHint}</dd>
+                </div>
+              ) : null}
+              {targetDate ? (
+                <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
+                    Target date
+                  </dt>
+                  <dd className="font-medium text-slate-100">{targetDate}</dd>
+                </div>
+              ) : null}
+            </dl>
+            <p className="mt-3 text-xs text-slate-500">
+              Material will appear here when it’s provided.
+            </p>
+          </section>
+
+          <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Files
+              </p>
+              <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+                {files.length}
+              </span>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {files.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-900/60 bg-slate-950/20 px-4 py-3 text-sm text-slate-400">
+                  Files attached to your RFQ will appear here for quick previewing.
+                </p>
+              ) : (
+                files.map((file, index) => {
+                  const preview = previews[index] ?? null;
+                  const isSelected = selectedIndex === index;
+                  const displayName =
+                    preview?.fileName ?? preview?.label ?? file.filename;
+                  const previewStatus = preview?.signedUrl
+                    ? "Preview ready"
+                    : preview?.fallbackMessage ?? "Preview not available";
+
+                  return (
+                    <button
+                      key={preview?.id ?? `${file.filename}-${index}`}
+                      type="button"
+                      onClick={() => setSelectedIndex(index)}
+                      className={clsx(
+                        "w-full rounded-xl border px-4 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70",
+                        isSelected
+                          ? "border-emerald-400/40 bg-emerald-400/5"
+                          : "border-slate-900/60 bg-slate-950/30 hover:border-slate-800",
+                      )}
+                    >
+                      <p className="text-[11px] uppercase tracking-wide text-slate-500">{`Part ${index + 1}`}</p>
+                      <p className="truncate text-sm font-semibold text-slate-100">
+                        {displayName}
+                      </p>
+                      <p className="text-xs text-slate-400">{previewStatus}</p>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </section>
+        </aside>
       </div>
     </section>
   );
