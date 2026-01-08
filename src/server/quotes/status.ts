@@ -31,15 +31,15 @@ export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
 };
 
 export const QUOTE_STATUS_HELPERS: Record<QuoteStatus, string> = {
-  submitted: "We're routing this RFQ to vetted suppliers and collecting bids.",
-  in_review: "We're reviewing supplier responses and lining up the best fit.",
+  submitted: "RFQ received. We’re collecting supplier bids.",
+  in_review: "Bids are being reviewed. We’ll reach out in Messages if anything needs clarification.",
   quoted:
-    "We've reviewed supplier bids and prepared pricing. Compare options and ask questions.",
+    "Pricing is ready to review. Compare options and use Messages for questions or scope changes.",
   approved:
-    "You've selected a winning supplier. Next step is kickoff based on the plan you aligned on.",
-  won: "You've selected a winning supplier. Next step is kickoff based on the plan you aligned on.",
-  lost: "This RFQ was marked lost. Reach out if you'd like to reopen or adjust scope.",
-  cancelled: "This RFQ was canceled. Upload a new RFQ whenever you're ready.",
+    "Approved to award. Select a supplier to start kickoff tasks and confirm final details.",
+  won: "Supplier selected. Kickoff tasks and project updates are tracked in this workspace.",
+  lost: "Closed as lost. You can reopen if you’d like to request bids again.",
+  cancelled: "Cancelled. Your files and timeline remain available.",
 };
 
 export function normalizeQuoteStatus(

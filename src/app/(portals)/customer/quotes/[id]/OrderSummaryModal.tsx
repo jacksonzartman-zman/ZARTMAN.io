@@ -39,7 +39,7 @@ export function OrderSummaryModal({
           <SectionHeader
             variant="label"
             title="Order summary"
-            subtitle="Review the order flow—clear, fast, and easy to track."
+            subtitle="Review the order steps and details before placing anything."
             titleClassName="truncate text-sm font-semibold text-white"
             subtitleClassName="text-xs text-slate-400"
             className="min-w-0"
@@ -54,6 +54,16 @@ export function OrderSummaryModal({
         </div>
 
         <div className="space-y-6 p-6">
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/30 px-4 py-3 text-sm text-slate-200">
+            <p className="flex items-start gap-2">
+              <InlineInfoMark className="mt-0.5" />
+              <span className="font-semibold text-slate-100">Preview only.</span>
+              <span className="text-slate-300">
+                No order or payment is placed from this screen.
+              </span>
+            </p>
+          </div>
+
           <section className="space-y-3">
             <SectionHeader variant="label" title="Items" />
             <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
@@ -85,7 +95,7 @@ export function OrderSummaryModal({
                   <p className="mt-1 text-sm font-semibold text-slate-100">{priceLabel}</p>
                   <p className="mt-1 text-[11px] text-slate-500">
                     {/* TODO(checkout): compute taxes, shipping, and totals. */}
-                    Taxes, shipping, and totals are finalized when the order is placed.
+                    Taxes, shipping, and totals are finalized when an order is placed.
                   </p>
                 </div>
               </div>
@@ -176,6 +186,33 @@ export function OrderSummaryModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function InlineInfoMark({ className }: { className?: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden="true"
+      className={clsx("shrink-0 text-slate-300", className)}
+    >
+      <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M10 9v5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M10 6.5h.01"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 

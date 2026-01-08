@@ -100,7 +100,7 @@ export function CustomerQuoteAwardPanel({
                 Compare bids, choose the supplier that fits best, and we’ll record your selection.
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                You’re in control—choose a supplier only when price, lead time, and fit align.
+                Choose a supplier only when price, lead time, and fit align. Your selection will show in Timeline and unlock kickoff steps.
               </p>
             </>
           }
@@ -109,7 +109,13 @@ export function CustomerQuoteAwardPanel({
 
       {state.ok && state.message ? (
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          <p>{state.message}</p>
+          <p className="flex items-start gap-2">
+            <InlineStatusIcon tone="success" className="mt-0.5" />
+            <span>{state.message}</span>
+          </p>
+          <p className="mt-2 text-xs text-emerald-200">
+            Recorded for this RFQ. You can track progress in Kickoff and Timeline below.
+          </p>
           <a href="#kickoff" className="mt-2 inline-flex text-xs font-semibold text-emerald-200 hover:underline">
             Jump to kickoff
           </a>
@@ -129,9 +135,18 @@ export function CustomerQuoteAwardPanel({
       ) : null}
 
       {selectionLocked && winnerSupplierName ? (
-        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-3 text-sm text-emerald-100">
-          Selected supplier: <span className="font-semibold text-white">{winnerSupplierName}</span>
-        </p>
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-3 text-sm text-emerald-100">
+          <p className="flex items-start gap-2">
+            <InlineStatusIcon tone="success" className="mt-0.5" />
+            <span>
+              Selected supplier:{" "}
+              <span className="font-semibold text-white">{winnerSupplierName}</span>
+            </span>
+          </p>
+          <p className="mt-2 text-xs text-emerald-200">
+            This does not place an order or payment automatically.
+          </p>
+        </div>
       ) : null}
 
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-black/20 px-5 py-4">
@@ -260,17 +275,39 @@ export function CustomerQuoteAwardPanel({
                 Select {confirmingBid.supplierName}?
               </h3>
               <p className="text-sm text-slate-300">
-                This confirms your selection and starts kickoff.
+                This records your selection and starts kickoff.
               </p>
             </div>
             <form action={formAction} className="space-y-3">
               <input type="hidden" name="quoteId" value={quoteId} />
               <input type="hidden" name="bidId" value={confirmingBid.id} />
-              <p className="text-xs text-slate-400">
-                You’re selecting{" "}
-                <span className="font-semibold text-slate-200">{confirmingBid.supplierName}</span>. This can’t be
-                changed in the customer portal.
-              </p>
+              <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-xs text-slate-300">
+                <p className="font-semibold text-slate-100">What this does</p>
+                <ul className="space-y-1">
+                  <li className="flex gap-2">
+                    <InlineStatusIcon tone="neutral" className="mt-0.5" />
+                    <span>
+                      Starts kickoff so final details can be confirmed.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <InlineStatusIcon tone="neutral" className="mt-0.5" />
+                    <span>
+                      Does not place a purchase order or payment automatically.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <InlineStatusIcon tone="neutral" className="mt-0.5" />
+                    <span>
+                      Logs the change in Timeline for shared visibility.
+                    </span>
+                  </li>
+                </ul>
+                <p className="text-slate-400">
+                  You’re selecting{" "}
+                  <span className="font-semibold text-slate-200">{confirmingBid.supplierName}</span>. Changes after confirming may require help from the team—use Messages if you need to adjust.
+                </p>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <ConfirmAwardButton />
                 <CancelConfirmButton onClick={() => setConfirmingBidId(null)} />
@@ -363,4 +400,31 @@ function getBidStatusTone(status?: string | null): TagPillTone {
     return "amber";
   }
   return "blue";
+}
+
+function InlineStatusIcon({
+  tone,
+  className,
+}: {
+  tone: "success" | "neutral";
+  className?: string;
+}) {
+  const stroke = tone === "success" ? "stroke-emerald-200" : "stroke-slate-300";
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden="true"
+      className={clsx("shrink-0", stroke, className)}
+    >
+      <path
+        d="M4.5 10.5l3.1 3.1L15.5 6.9"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }

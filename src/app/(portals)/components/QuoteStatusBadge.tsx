@@ -2,6 +2,7 @@ import clsx from "clsx";
 
 import {
   getQuoteStatusLabel,
+  getQuoteStatusHelper,
   normalizeQuoteStatus,
   type QuoteStatus,
 } from "@/server/quotes/status";
@@ -29,6 +30,7 @@ export function QuoteStatusBadge({
 }: QuoteStatusBadgeProps) {
   const normalized = normalizeQuoteStatus(status ?? undefined);
   const label = getQuoteStatusLabel(normalized);
+  const helper = getQuoteStatusHelper(normalized);
   const variant = BADGE_VARIANTS[normalized] ?? "pill-muted";
 
   return (
@@ -39,6 +41,7 @@ export function QuoteStatusBadge({
         variant,
         className,
       )}
+      title={helper}
     >
       {label}
     </span>
