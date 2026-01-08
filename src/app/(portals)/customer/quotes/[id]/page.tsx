@@ -77,6 +77,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
+import { CustomerCheckoutScaffoldCard } from "./CustomerCheckoutScaffoldCard";
 
 export const dynamic = "force-dynamic";
 
@@ -691,6 +692,15 @@ export default async function CustomerQuoteDetailPage({
       </p>
     </div>
   ) : null;
+
+  const checkoutScaffoldSection =
+    quoteHasWinner && winningSupplierId ? (
+      <CustomerCheckoutScaffoldCard
+        partName={primaryFileName}
+        supplierName={winningSupplierName}
+        priceLabel={winningBidPriceLabel}
+      />
+    ) : null;
 
   const bidSummaryPanel = (
     <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4">
@@ -1565,6 +1575,7 @@ export default async function CustomerQuoteDetailPage({
               </div>
             </PortalCard>
           ) : null}
+          {checkoutScaffoldSection}
           {filesSection}
           {quoteDetailsSection}
           {notesSection}
