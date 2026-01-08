@@ -58,7 +58,7 @@ export function CustomerQuoteStatusCtas({
           action={reopenFormAction}
           onSubmit={(event) => {
             const confirmed = window.confirm(
-              "Reopen this RFQ?\n\nReopening means invited suppliers can bid again.",
+              "Reopen this RFQ?\n\nThis makes the RFQ active again so invited suppliers can bid. You can archive it later if needed.",
             );
             if (!confirmed) {
               event.preventDefault();
@@ -76,7 +76,7 @@ export function CustomerQuoteStatusCtas({
           action={archiveFormAction}
           onSubmit={(event) => {
             const confirmed = window.confirm(
-              "Archive this RFQ?\n\nArchiving hides it from active lists, but keeps its timeline and files available.",
+              "Archive this RFQ?\n\nThis hides it from active lists. Files, messages, and timeline remain available.",
             );
             if (!confirmed) {
               event.preventDefault();
@@ -114,17 +114,50 @@ function StatusButton({
 function InlineState({ state }: { state: QuoteStatusTransitionState }) {
   if (!state.ok && state.error) {
     return (
-      <span className="text-[11px] text-amber-300" aria-live="polite">
-        {state.error}
+      <span className="inline-flex items-start gap-1.5 text-[11px] text-amber-300" aria-live="polite">
+        <InlineStateIcon tone="warning" className="mt-0.5" />
+        <span>{state.error}</span>
       </span>
     );
   }
   if (state.ok && state.message) {
     return (
-      <span className="text-[11px] text-emerald-300" aria-live="polite">
-        {state.message}
+      <span className="inline-flex items-start gap-1.5 text-[11px] text-emerald-300" aria-live="polite">
+        <InlineStateIcon tone="success" className="mt-0.5" />
+        <span>{state.message}</span>
       </span>
     );
   }
   return null;
+}
+
+function InlineStateIcon({
+  tone,
+  className,
+}: {
+  tone: "success" | "warning";
+  className?: string;
+}) {
+  const stroke = tone === "success" ? "stroke-emerald-300" : "stroke-amber-300";
+  const path =
+    tone === "success"
+      ? "M4.5 10.5l3.1 3.1L15.5 6.9"
+      : "M10 6v5m0 3h.01";
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 20 20"
+      fill="none"
+      aria-hidden="true"
+      className={clsx("shrink-0", stroke, className)}
+    >
+      <path
+        d={path}
+        strokeWidth={tone === "success" ? "2" : "2"}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
