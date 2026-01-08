@@ -51,7 +51,7 @@ export function QuoteFilesUploadsSection({
         </span>
       }
     >
-      <div className="space-y-2">
+      <div className="space-y-4">
         {uploadGroups && uploadGroups.length > 0 ? (
           <QuoteUploadsStructuredList uploadGroups={uploadGroups} />
         ) : null}
@@ -65,7 +65,6 @@ export function QuoteFilesUploadsSection({
                   }. Please re-upload the files, or contact support to backfill them.`
                 : "This RFQ references legacy filenames, but the underlying file records are missing. Please re-upload the files, or contact support to backfill them."
             }
-            className="mb-3"
           />
         ) : null}
         <QuoteFilesCard files={files} />
@@ -73,7 +72,6 @@ export function QuoteFilesUploadsSection({
           <EmptyStateCard
             title="No files attached"
             description="Uploads will appear here once they’re processed."
-            className="mt-3"
           />
         ) : null}
 

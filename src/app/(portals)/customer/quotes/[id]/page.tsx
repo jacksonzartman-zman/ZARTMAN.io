@@ -604,7 +604,7 @@ export default async function CustomerQuoteDetailPage({
   });
 
   const headerContent = (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <CustomerQuoteJourneyHeaderAuto
         partName={primaryFileName}
         status={workspaceStatus}
@@ -848,14 +848,14 @@ export default async function CustomerQuoteDetailPage({
   );
 
   const receiptBanner = shouldShowReceiptBanner ? (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4">
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/50 px-6 py-5">
       <div className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Early RFQ update
         </p>
         <h2 className="text-lg font-semibold text-white">We&apos;ve got your RFQ.</h2>
       </div>
-      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
+      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-200">
         <li>We&apos;re routing this RFQ to vetted suppliers who match your process and volumes.</li>
         <li>You&apos;ll start seeing bids here as suppliers respond.</li>
         <li>Once we review bids, we&apos;ll prepare pricing and move the status to Quote prepared.</li>
@@ -926,7 +926,7 @@ export default async function CustomerQuoteDetailPage({
         </span>
       }
     >
-      <div className="space-y-5">
+      <div className="space-y-6">
         <div className="flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
             Status: {quoteStatusLabel}
@@ -999,31 +999,33 @@ export default async function CustomerQuoteDetailPage({
         </span>
       }
     >
-      {showCadDfMHint ? (
-        <p className="mb-4 rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200">
-          Some CAD files look <span className="font-semibold text-slate-100">very large or complex</span>. You may see higher prices or longer lead times on these parts.
-        </p>
-      ) : null}
-      {!readOnly ? <CustomerUploadsForm quoteId={quote.id} /> : null}
-      <QuoteFilesUploadsSection
-        files={filePreviews}
-        fileCountText={fileCountText}
-        uploadGroups={uploadGroups}
-        parts={parts ?? []}
-        filesMissingCanonical={Boolean(filesMissingCanonical)}
-        legacyFileNames={legacyFileNames}
-        partsSection={
-          readOnly ? undefined : (
-            <CustomerPartsSection
-              quoteId={quote.id}
-              parts={parts ?? []}
-              uploadGroups={uploadGroups ?? []}
-              aiSuggestions={cachedAiSuggestions?.suggestions ?? null}
-              aiModelVersion={cachedAiSuggestions?.modelVersion ?? null}
-            />
-          )
-        }
-      />
+      <div className="space-y-6">
+        {showCadDfMHint ? (
+          <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200">
+            Some CAD files look <span className="font-semibold text-slate-100">very large or complex</span>. You may see higher prices or longer lead times on these parts.
+          </p>
+        ) : null}
+        {!readOnly ? <CustomerUploadsForm quoteId={quote.id} /> : null}
+        <QuoteFilesUploadsSection
+          files={filePreviews}
+          fileCountText={fileCountText}
+          uploadGroups={uploadGroups}
+          parts={parts ?? []}
+          filesMissingCanonical={Boolean(filesMissingCanonical)}
+          legacyFileNames={legacyFileNames}
+          partsSection={
+            readOnly ? undefined : (
+              <CustomerPartsSection
+                quoteId={quote.id}
+                parts={parts ?? []}
+                uploadGroups={uploadGroups ?? []}
+                aiSuggestions={cachedAiSuggestions?.suggestions ?? null}
+                aiModelVersion={cachedAiSuggestions?.modelVersion ?? null}
+              />
+            )
+          }
+        />
+      </div>
     </DisclosureSection>
   );
 
@@ -1078,7 +1080,7 @@ export default async function CustomerQuoteDetailPage({
         )
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-6">
         {customerFeedbackAdvisories.length > 0 ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4">
             <p className="text-sm font-semibold text-slate-100">
@@ -1352,7 +1354,7 @@ export default async function CustomerQuoteDetailPage({
         </span>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-6">
         {partsCoverageSummary.anyParts ? (
           <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1424,8 +1426,8 @@ export default async function CustomerQuoteDetailPage({
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
       {receiptBanner}
-      <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
-        <div className="space-y-5">
+      <div className="space-y-8 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-8 lg:space-y-0">
+        <div className="space-y-8">
           {orderWorkspaceSection}
           {decisionSection}
           {kickoffSection}
@@ -1472,7 +1474,7 @@ export default async function CustomerQuoteDetailPage({
             />
           </DisclosureSection>
         </div>
-        <div className="space-y-5">
+        <div className="space-y-8">
           {quoteIsWon ? (
             <PortalCard
               title="Project status"

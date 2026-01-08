@@ -47,7 +47,7 @@ export function CustomerQuoteOrderWorkspace({
   const proceedHandler = hasWinner ? openOrderSummary : undefined;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <CustomerQuotePartPanel
         files={files}
         previews={previews}
