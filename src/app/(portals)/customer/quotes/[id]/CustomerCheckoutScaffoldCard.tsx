@@ -52,9 +52,9 @@ export function CustomerCheckoutScaffoldCard({
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Checkout
         </p>
-        <h2 className="text-lg font-semibold text-white">Next step: order (coming soon)</h2>
+        <h2 className="text-lg font-semibold text-white">Next step: order</h2>
         <p className="text-sm text-slate-300">
-          Preview what checkout will look like once enabled.
+          Review how ordering will work for this quote.
         </p>
       </header>
 
@@ -76,7 +76,7 @@ export function CustomerCheckoutScaffoldCard({
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-slate-400">
           {/* TODO(checkout): show real order totals and shipping. */}
-          Payment methods and order submission are not enabled yet.
+          Ordering isn’t available in this portal.
         </p>
         <button
           type="button"

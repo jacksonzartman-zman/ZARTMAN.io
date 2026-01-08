@@ -39,7 +39,7 @@ export function OrderSummaryModal({
           <SectionHeader
             variant="label"
             title="Order summary"
-            subtitle="Preview the upcoming checkout flow—clear, fast, and trackable."
+            subtitle="Review the order flow—clear, fast, and easy to track."
             titleClassName="truncate text-sm font-semibold text-white"
             subtitleClassName="text-xs text-slate-400"
             className="min-w-0"
@@ -76,7 +76,7 @@ export function OrderSummaryModal({
                   <p className="mt-1 text-sm font-semibold text-slate-100">{quantity}</p>
                   <p className="mt-1 text-[11px] text-slate-500">
                     {/* TODO(checkout): replace placeholder with real per-part quantity. */}
-                    Placeholder
+                    Sample quantity
                   </p>
                 </div>
 
@@ -85,7 +85,7 @@ export function OrderSummaryModal({
                   <p className="mt-1 text-sm font-semibold text-slate-100">{priceLabel}</p>
                   <p className="mt-1 text-[11px] text-slate-500">
                     {/* TODO(checkout): compute taxes, shipping, and totals. */}
-                    Total pricing coming soon
+                    Taxes, shipping, and totals are finalized when the order is placed.
                   </p>
                 </div>
               </div>
@@ -104,7 +104,7 @@ export function OrderSummaryModal({
                 )}
               >
                 <p className="text-sm font-semibold text-slate-100">Credit Card</p>
-                <p className="mt-1 text-xs text-slate-400">Coming soon</p>
+                <p className="mt-1 text-xs text-slate-400">Not available in this portal</p>
                 {/* TODO(payments): integrate card payments (no Stripe yet). */}
               </button>
               <button
@@ -116,7 +116,7 @@ export function OrderSummaryModal({
                 )}
               >
                 <p className="text-sm font-semibold text-slate-100">PO Upload</p>
-                <p className="mt-1 text-xs text-slate-400">Coming soon</p>
+                <p className="mt-1 text-xs text-slate-400">Not available in this portal</p>
                 {/* TODO(payments): add PO upload flow + approval states. */}
               </button>
             </div>
@@ -124,7 +124,7 @@ export function OrderSummaryModal({
 
           <section className="space-y-3">
             <SectionHeader variant="label" title="What happens next" />
-            <p className="text-xs text-slate-400">Once checkout is live, you’ll:</p>
+            <p className="text-xs text-slate-400">In the order step, you’ll:</p>
             <ol className="space-y-2">
               <li className="flex gap-3">
                 <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-900/60 bg-slate-950/30 text-xs font-semibold text-slate-200">
@@ -168,7 +168,7 @@ export function OrderSummaryModal({
               Place Order
             </button>
             <p className="mt-2 text-center text-xs text-slate-400">
-              Preview mode — ordering will be enabled in a future release.
+              Preview only — ordering isn’t available in this portal.
             </p>
             {/* TODO(checkout): wire up submission once payments + order APIs exist. */}
             {/* NOTE: no API calls / no form submission logic in this scaffold. */}
