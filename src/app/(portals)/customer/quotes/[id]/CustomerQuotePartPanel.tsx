@@ -156,7 +156,7 @@ export function CustomerQuotePartPanel({
               data-proceed-to-order="true"
               className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
             >
-              Proceed to Order
+              Proceed to order
             </button>
           ) : null}
 

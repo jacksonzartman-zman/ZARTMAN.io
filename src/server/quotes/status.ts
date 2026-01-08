@@ -36,8 +36,8 @@ export const QUOTE_STATUS_HELPERS: Record<QuoteStatus, string> = {
   quoted:
     "Pricing is ready to review. Compare options and use Messages for questions or scope changes.",
   approved:
-    "Approved to award. Select a supplier to start kickoff tasks and confirm final details.",
-  won: "Supplier selected. Kickoff tasks and project updates are tracked in this workspace.",
+    "Approved to award. Select supplier to start kickoff tasks and confirm final details.",
+  won: "Selection confirmed. Kickoff tasks and project updates are tracked in this workspace.",
   lost: "Closed as lost. You can reopen if you’d like to request bids again.",
   cancelled: "Cancelled. Your files and timeline remain available.",
 };

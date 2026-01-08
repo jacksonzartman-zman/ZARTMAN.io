@@ -93,14 +93,14 @@ export function CustomerQuoteAwardPanel({
         <SectionHeader
           variant="card"
           kicker="Supplier decisions"
-          title="Review bids and choose a supplier"
+          title="Review bids and select a supplier"
           subtitle={
             <>
               <p className="text-sm text-slate-300">
-                Compare bids, choose the supplier that fits best, and we’ll record your selection.
+                Compare bids, select the supplier that fits best, and we’ll record your selection.
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                Choose a supplier only when price, lead time, and fit align. Your selection will show in Timeline and unlock kickoff steps.
+                Select supplier only when price, lead time, and fit align. Your selection will show in Timeline and unlock kickoff steps.
               </p>
             </>
           }
@@ -139,7 +139,7 @@ export function CustomerQuoteAwardPanel({
           <p className="flex items-start gap-2">
             <InlineStatusIcon tone="success" className="mt-0.5" />
             <span>
-              Selected supplier:{" "}
+              Selection confirmed:{" "}
               <span className="font-semibold text-white">{winnerSupplierName}</span>
             </span>
           </p>
@@ -152,11 +152,11 @@ export function CustomerQuoteAwardPanel({
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-black/20 px-5 py-4">
         <div className="space-y-1">
           <p className="text-sm font-semibold text-white">
-            Choose a supplier
+            Select supplier
           </p>
           <p className="text-xs text-slate-400">
             {selectionLocked
-              ? "A supplier is selected. Other bids are shown for reference."
+              ? "Selection confirmed. Other bids are shown for reference."
               : "Review the bids below, then select a supplier to confirm."}
           </p>
         </div>
@@ -220,7 +220,7 @@ export function CustomerQuoteAwardPanel({
                   </div>
                   {isWinner ? (
                     <TagPill size="md" tone="emerald">
-                      Selected
+                      Selection confirmed
                     </TagPill>
                   ) : null}
                 </div>
@@ -247,7 +247,7 @@ export function CustomerQuoteAwardPanel({
                     disabled
                     className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-400 opacity-70"
                   >
-                    {isWinner ? "Selected" : "Locked"}
+                    {isWinner ? "Selection confirmed" : "Locked"}
                   </button>
                 ) : (
                   <button
@@ -305,7 +305,7 @@ export function CustomerQuoteAwardPanel({
                 </ul>
                 <p className="text-slate-400">
                   You’re selecting{" "}
-                  <span className="font-semibold text-slate-200">{confirmingBid.supplierName}</span>. Changes after confirming may require help from the team—use Messages if you need to adjust.
+                  <span className="font-semibold text-slate-200">{confirmingBid.supplierName}</span>. If you need to adjust after confirming, use Messages.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -318,7 +318,7 @@ export function CustomerQuoteAwardPanel({
       ) : null}
 
       <div className="space-y-2 rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-4">
-        <p className="text-sm font-semibold text-slate-100">What happens after you choose?</p>
+        <p className="text-sm font-semibold text-slate-100">What happens after you select?</p>
         <ul className="list-disc space-y-1 pl-4 text-sm text-slate-300">
           <li>We notify your selected supplier to confirm scope.</li>
           <li>Your RFQ updates to Awarded for tracking.</li>
