@@ -122,8 +122,12 @@ export default async function CustomerQuotesPage({
       >
         <section className="space-y-3 rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
           <p className="text-sm text-slate-300">
-            We couldn&apos;t find a customer workspace linked to {user.email}. Complete your customer
-            profile to start tracking RFQs, supplier bids, and messages in one place.
+            We couldn&apos;t find a customer workspace linked to{" "}
+            <span className="break-anywhere font-medium text-slate-100">
+              {user.email}
+            </span>
+            . Complete your customer profile to start tracking RFQs, supplier bids, and messages in
+            one place.
           </p>
           <Link
             href="/customer"
@@ -308,8 +312,8 @@ export default async function CustomerQuotesPage({
                             </TagPill>
                           ) : null}
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                          <span className="truncate">
+                        <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                          <span className="min-w-0 max-w-full truncate">
                             <span className="text-slate-500">File:</span> {fileLabel}
                           </span>
                           <span className="text-slate-600">•</span>

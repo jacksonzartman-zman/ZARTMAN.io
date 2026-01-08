@@ -202,18 +202,6 @@ export function CustomerQuoteAwardPanel({
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <div className="flex flex-wrap justify-end gap-2">
-                    <TagPill
-                      size="md"
-                      tone="slate"
-                      borderStyle="dashed"
-                      className={clsx(
-                        dimNonWinner ? "text-slate-500/80" : "text-slate-400/80",
-                      )}
-                      title="Recommendation indicator"
-                      aria-label="Recommendation indicator"
-                    >
-                      Recommended
-                    </TagPill>
                     <TagPill size="md" tone={getBidStatusTone(bid.status)}>
                       {statusLabel}
                     </TagPill>
