@@ -77,6 +77,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
+import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
 
 export const dynamic = "force-dynamic";
 
@@ -945,6 +946,18 @@ export default async function CustomerQuoteDetailPage({
 
   const postMessageAction = postCustomerQuoteMessage.bind(null, quote.id);
 
+  const orderWorkspaceSection = (
+    <CustomerQuoteOrderWorkspace
+      files={quote.files}
+      previews={filePreviews}
+      partName={primaryFileName}
+      supplierName={winningSupplierName ?? null}
+      priceLabel={winningBidPriceLabel}
+      targetDate={derived.targetDateValue ?? null}
+      hasWinner={quoteHasWinner}
+    />
+  );
+
   const quoteDetailsSection = (
     <DisclosureSection
       id="details"
@@ -1458,6 +1471,7 @@ export default async function CustomerQuoteDetailPage({
       {receiptBanner}
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-5">
+          {orderWorkspaceSection}
           {decisionSection}
           {kickoffSection}
           {timelineSection}

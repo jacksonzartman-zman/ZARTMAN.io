@@ -8,6 +8,9 @@ export type CustomerCheckoutScaffoldCardProps = {
   partName: string;
   supplierName?: string | null;
   priceLabel: string;
+  quantity?: number;
+  canOpenOrderSummary?: boolean;
+  onOpenOrderSummary?: () => void;
   className?: string;
 };
 
@@ -15,14 +18,28 @@ export function CustomerCheckoutScaffoldCard({
   partName,
   supplierName,
   priceLabel,
+  quantity: quantityProp,
+  canOpenOrderSummary = true,
+  onOpenOrderSummary,
   className,
 }: CustomerCheckoutScaffoldCardProps) {
   const [open, setOpen] = useState(false);
 
   const quantity = useMemo(() => {
+    const normalized =
+      typeof quantityProp === "number" && Number.isFinite(quantityProp) ? quantityProp : 10;
     // TODO(checkout): replace with real quantity selection from parts.
-    return 10;
-  }, []);
+    return normalized;
+  }, [quantityProp]);
+
+  const handleOpenOrderSummary = () => {
+    if (!canOpenOrderSummary) return;
+    if (onOpenOrderSummary) {
+      onOpenOrderSummary();
+      return;
+    }
+    setOpen(true);
+  };
 
   return (
     <section
@@ -63,21 +80,29 @@ export function CustomerCheckoutScaffoldCard({
         </p>
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+          onClick={handleOpenOrderSummary}
+          disabled={!canOpenOrderSummary}
+          className={clsx(
+            "inline-flex items-center rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition focus-visible:outline focus-visible:outline-2",
+            canOpenOrderSummary
+              ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100 hover:border-emerald-300 hover:text-white focus-visible:outline-emerald-400"
+              : "border-slate-800 bg-slate-950/40 text-slate-500 opacity-70 cursor-not-allowed",
+          )}
         >
           View order summary
         </button>
       </div>
 
-      <OrderSummaryModal
-        open={open}
-        onClose={() => setOpen(false)}
-        partName={partName}
-        quantity={quantity}
-        priceLabel={priceLabel}
-        supplierName={supplierName}
-      />
+      {!onOpenOrderSummary ? (
+        <OrderSummaryModal
+          open={open}
+          onClose={() => setOpen(false)}
+          partName={partName}
+          quantity={quantity}
+          priceLabel={priceLabel}
+          supplierName={supplierName}
+        />
+      ) : null}
     </section>
   );
 }
