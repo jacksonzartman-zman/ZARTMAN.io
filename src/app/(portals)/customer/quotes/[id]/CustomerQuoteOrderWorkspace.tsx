@@ -6,6 +6,7 @@ import type { QuoteFileMeta } from "@/server/quotes/types";
 import { CustomerQuotePartPanel } from "./CustomerQuotePartPanel";
 import { CustomerCheckoutScaffoldCard } from "./CustomerCheckoutScaffoldCard";
 import { OrderSummaryModal } from "./OrderSummaryModal";
+import type { QuoteWorkspaceStatus } from "@/lib/quote/workspaceStatus";
 
 export type CustomerQuoteOrderWorkspaceProps = {
   files: QuoteFileMeta[];
@@ -15,6 +16,7 @@ export type CustomerQuoteOrderWorkspaceProps = {
   priceLabel: string;
   targetDate?: string | null;
   hasWinner: boolean;
+  workspaceStatus: QuoteWorkspaceStatus;
 };
 
 export function CustomerQuoteOrderWorkspace({
@@ -25,6 +27,7 @@ export function CustomerQuoteOrderWorkspace({
   priceLabel,
   targetDate,
   hasWinner,
+  workspaceStatus,
 }: CustomerQuoteOrderWorkspaceProps) {
   const [open, setOpen] = useState(false);
 
@@ -48,6 +51,7 @@ export function CustomerQuoteOrderWorkspace({
       <CustomerQuotePartPanel
         files={files}
         previews={previews}
+        workspaceStatus={workspaceStatus}
         targetDate={targetDate ?? null}
         onProceedToOrder={proceedHandler}
       />
