@@ -15,6 +15,13 @@
     /* only built-in Tailwind classes here */
     @apply bg-neutral-950 text-neutral-50 font-sans antialiased;
   }
+
+  /* Subtle visual continuity when navigating via in-page anchors (hash). */
+  .scroll-mt-24:target {
+    outline: 2px solid rgb(16 185 129 / 0.25);
+    outline-offset: 6px;
+    border-radius: 1rem;
+  }
 }
 
 /* ---------- Components layer: reusable shells ---------- */

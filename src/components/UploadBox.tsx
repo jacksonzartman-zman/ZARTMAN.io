@@ -341,6 +341,70 @@ const validateFormFields = (state: UploadState): FieldErrors => {
 const hasErrors = (fieldErrors: FieldErrors) =>
   Object.keys(fieldErrors).length > 0;
 
+type IntakeStepId = "attach" | "review" | "details" | "submit";
+
+function getScrollBehavior(): ScrollBehavior {
+  if (typeof window === "undefined") {
+    return "auto";
+  }
+  const prefersReducedMotion =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return prefersReducedMotion ? "auto" : "smooth";
+}
+
+function scrollToId(targetId: string) {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const el = window.document.getElementById(targetId);
+  if (!el) return false;
+  el.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
+  return true;
+}
+
+function StepHeader({
+  step,
+  title,
+  subtitle,
+  statusLabel,
+  statusTone = "muted",
+}: {
+  step: number;
+  title: string;
+  subtitle?: string;
+  statusLabel?: string;
+  statusTone?: "muted" | "active" | "done";
+}) {
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-border/60 bg-black/20 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Step {step}
+          </span>
+          <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        </div>
+        {subtitle ? <p className="mt-1 text-sm text-muted">{subtitle}</p> : null}
+      </div>
+      {statusLabel ? (
+        <span
+          className={clsx(
+            "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+            statusTone === "done"
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+              : statusTone === "active"
+                ? "border-accent/40 bg-accent/10 text-foreground"
+                : "border-border/60 bg-black/20 text-muted",
+          )}
+        >
+          {statusLabel}
+        </span>
+      ) : null}
+    </header>
+  );
+}
+
 export default function UploadBox({
   prefillContact,
   showExplainer = false,
@@ -467,6 +531,16 @@ export default function UploadBox({
     if (state.files.length === 0) return false;
     return state.files.every((entry) => uploadProgress[entry.id]?.status === "uploaded");
   }, [state.files, uploadProgress]);
+  const detailsRequiredComplete = Boolean(
+    state.firstName.trim() &&
+      state.lastName.trim() &&
+      state.email.trim() &&
+      state.manufacturingProcess &&
+      state.quantity.trim() &&
+      state.exportRestriction &&
+      state.itarAcknowledged &&
+      state.termsAccepted,
+  );
   const canSubmit = Boolean(
     hasFilesAttached &&
       state.firstName.trim() &&
@@ -1413,6 +1487,41 @@ export default function UploadBox({
     }
   };
 
+  const currentStep: IntakeStepId = useMemo(() => {
+    if (!hasFilesAttached) return "attach";
+    if (!allFilesUploaded) return "review";
+    if (!detailsRequiredComplete) return "details";
+    return "submit";
+  }, [allFilesUploaded, detailsRequiredComplete, hasFilesAttached]);
+
+  const lastAutoScrolledStepRef = useRef<IntakeStepId | null>(null);
+  const prevHasFilesRef = useRef<boolean>(hasFilesAttached);
+  const prevAllUploadedRef = useRef<boolean>(allFilesUploaded);
+
+  useEffect(() => {
+    const prev = prevHasFilesRef.current;
+    prevHasFilesRef.current = hasFilesAttached;
+    if (prev || !hasFilesAttached) return;
+
+    // When the first file is added, guide the user to the review step.
+    if (lastAutoScrolledStepRef.current !== "review") {
+      scrollToId("quote-intake-step-review");
+      lastAutoScrolledStepRef.current = "review";
+    }
+  }, [hasFilesAttached]);
+
+  useEffect(() => {
+    const prev = prevAllUploadedRef.current;
+    prevAllUploadedRef.current = allFilesUploaded;
+    if (prev || !allFilesUploaded) return;
+
+    // When uploads complete, guide the user into the details step.
+    if (lastAutoScrolledStepRef.current !== "details") {
+      scrollToId("quote-intake-step-details");
+      lastAutoScrolledStepRef.current = "details";
+    }
+  }, [allFilesUploaded]);
+
   return (
     <section
       aria-label="Upload CAD file"
@@ -1451,61 +1560,137 @@ export default function UploadBox({
             </ul>
           </div>
         ) : null}
-        {/* Drag & drop / file box */}
-        <div
-          className={clsx(
-            "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm sm:px-8 sm:py-12",
-            isDragging ? "border-accent/80 bg-accent/5" : "border-border/60",
-          )}
-          onDragEnter={handleDragEnter}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <p className="text-xs text-muted">
-            {CAD_FILE_TYPE_DESCRIPTION}. Drag in up to {MAX_FILES_PER_RFQ} files.
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Max {MAX_UPLOAD_SIZE_LABEL} per file (including ZIPs). For larger packages, split into multiple ZIPs.
-          </p>
-          <div className="mt-4 flex flex-col items-center gap-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center rounded-full border border-slate-300/40 px-6 py-2 text-sm font-semibold text-slate-50 hover:bg-slate-100/5"
-            >
-              Browse from device
-            </button>
-            <p className="text-[11px] text-muted">
-              …or drag &amp; drop files into this box
-            </p>
-            <p className="mt-1 text-[11px] text-muted">
-              {state.files.length === 0
-                ? "No files attached yet"
-                : `${state.files.length} file${state.files.length === 1 ? "" : "s"} attached`}
-            </p>
-            <p className="mt-3 text-[11px] text-muted">
-              Your CAD files and drawings stay private. We only share them with matched suppliers for quoting.
-            </p>
+
+        <div className="mb-6 rounded-2xl border border-white/5 bg-white/5 p-4 text-left shadow-[0_10px_30px_rgba(2,6,23,0.45)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Quote progress
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+              <span className={clsx(currentStep === "attach" && "text-foreground")}>
+                Attach
+              </span>
+              <span aria-hidden="true">→</span>
+              <span className={clsx(currentStep === "review" && "text-foreground")}>
+                Review
+              </span>
+              <span aria-hidden="true">→</span>
+              <span className={clsx(currentStep === "details" && "text-foreground")}>
+                Details
+              </span>
+              <span aria-hidden="true">→</span>
+              <span className={clsx(currentStep === "submit" && "text-foreground")}>
+                Submit
+              </span>
+            </div>
           </div>
-          <input
-            id="files"
-            name="files"
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFileChange}
-            accept={fileInputAccept}
-            ref={fileInputRef}
-          />
-          {fieldErrors.file && (
-            <p className="mt-3 text-xs text-red-400" role="alert">
-              {fieldErrors.file}
-            </p>
-          )}
+          <p className="mt-2 text-sm text-muted">
+            One continuous flow—no page changes. Each step unlocks the next.
+          </p>
         </div>
 
-        <div className="mt-8 grid gap-5 lg:grid-cols-5">
+        <div id="quote-intake-step-attach" className="scroll-mt-24 space-y-4">
+          <StepHeader
+            step={1}
+            title="Attach your CAD pack"
+            subtitle={`Add up to ${MAX_FILES_PER_RFQ} files (${CAD_FILE_TYPE_DESCRIPTION}).`}
+            statusLabel={
+              hasFilesAttached
+                ? `${state.files.length} attached`
+                : "Not started"
+            }
+            statusTone={
+              hasFilesAttached ? "done" : currentStep === "attach" ? "active" : "muted"
+            }
+          />
+
+          {/* Drag & drop / file box */}
+          <div
+            className={clsx(
+              "flex flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm sm:px-8 sm:py-12",
+              isDragging ? "border-accent/80 bg-accent/5" : "border-border/60",
+            )}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <p className="text-xs text-muted">
+              {CAD_FILE_TYPE_DESCRIPTION}. Drag in up to {MAX_FILES_PER_RFQ} files.
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              Max {MAX_UPLOAD_SIZE_LABEL} per file (including ZIPs). For larger packages, split into multiple ZIPs.
+            </p>
+            <div className="mt-4 flex flex-col items-center gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center rounded-full border border-slate-300/40 px-6 py-2 text-sm font-semibold text-slate-50 hover:bg-slate-100/5"
+              >
+                Browse from device
+              </button>
+              <p className="text-[11px] text-muted">
+                …or drag &amp; drop files into this box
+              </p>
+              <p className="mt-1 text-[11px] text-muted">
+                {state.files.length === 0
+                  ? "No files attached yet"
+                  : `${state.files.length} file${state.files.length === 1 ? "" : "s"} attached`}
+              </p>
+              <p className="mt-3 text-[11px] text-muted">
+                Your CAD files and drawings stay private. We only share them with matched suppliers for quoting.
+              </p>
+            </div>
+            <input
+              id="files"
+              name="files"
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+              accept={fileInputAccept}
+              ref={fileInputRef}
+            />
+            {fieldErrors.file && (
+              <p className="mt-3 text-xs text-red-400" role="alert">
+                {fieldErrors.file}
+              </p>
+            )}
+          </div>
+
+          {hasFilesAttached ? (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => scrollToId("quote-intake-step-review")}
+                className="rounded-full border border-border/60 bg-black/20 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-border"
+              >
+                Continue to review →
+              </button>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="my-8 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+        <div id="quote-intake-step-review" className="scroll-mt-24 space-y-4">
+          <StepHeader
+            step={2}
+            title="Review parts & uploads"
+            subtitle="We upload each file, then enable 3D preview + DFM on the selected part."
+            statusLabel={
+              !hasFilesAttached
+                ? "Waiting for files"
+                : allFilesUploaded
+                  ? "Uploads complete"
+                  : "Uploading…"
+            }
+            statusTone={
+              allFilesUploaded ? "done" : currentStep === "review" ? "active" : "muted"
+            }
+          />
+
+          <div className="grid gap-5 lg:grid-cols-5">
           <div className="rounded-2xl border border-white/5 bg-white/5 p-4 text-left shadow-[0_10px_30px_rgba(2,6,23,0.45)] lg:col-span-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -1967,7 +2152,42 @@ export default function UploadBox({
           </div>
         </div>
 
-        <div className="mt-8 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <p className="text-xs text-muted">
+              Tip: click a part to change the primary preview + DFM target.
+            </p>
+            {allFilesUploaded ? (
+              <button
+                type="button"
+                onClick={() => scrollToId("quote-intake-step-details")}
+                className="rounded-full border border-border/60 bg-black/20 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-border"
+              >
+                Continue to details →
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="my-8 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+        <div id="quote-intake-step-details" className="scroll-mt-24 space-y-4">
+          <StepHeader
+            step={3}
+            title="Project & contact details"
+            subtitle="These details help suppliers quote accurately (process, quantity, compliance)."
+            statusLabel={
+              detailsRequiredComplete ? "Required fields complete" : "Required fields missing"
+            }
+            statusTone={
+              detailsRequiredComplete
+                ? "done"
+                : currentStep === "details"
+                  ? "active"
+                  : "muted"
+            }
+          />
+
+          <div className="space-y-5">
           {prefillContact && (
             <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
               You&apos;re submitting as{" "}
@@ -2301,6 +2521,21 @@ export default function UploadBox({
             className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
           />
         </div>
+          </div>
+        </div>
+
+        <div className="my-8 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+        <div id="quote-intake-step-submit" className="scroll-mt-24 space-y-4">
+          <StepHeader
+            step={4}
+            title="Submit your RFQ"
+            subtitle="We’ll confirm receipt and follow up in your quote workspace."
+            statusLabel={canSubmit ? "Ready to submit" : "Not ready yet"}
+            statusTone={
+              canSubmit ? "done" : currentStep === "submit" ? "active" : "muted"
+            }
+          />
 
         <div className="space-y-3">
           <label className="flex items-start gap-3 text-sm text-foreground">
