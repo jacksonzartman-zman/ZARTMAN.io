@@ -297,7 +297,7 @@ export default async function CustomerQuoteDetailPage({
       ? "Upload files and request bids to move forward."
       : workspaceStatus === "in_review"
         ? "Bids are in—review options and select a supplier."
-        : "Supplier selected—confirm details and proceed to order.";
+        : "Selection confirmed—confirm details and proceed to order.";
   const latestKickoffNudgedAt =
     quoteHasWinner && winningSupplierId
       ? await getLatestKickoffNudgedAt({
@@ -315,7 +315,7 @@ export default async function CustomerQuoteDetailPage({
     ? customerKickoffSummary.isComplete
       ? "Kickoff complete"
       : "Kickoff in progress"
-    : "Select a winning supplier to start kickoff";
+    : "Select supplier to start kickoff";
   const kickoffChecklistSummaryLabel = quoteHasWinner
     ? customerKickoffSummary.totalTasks > 0
       ? `${customerKickoffSummary.completedTasks} / ${customerKickoffSummary.totalTasks} tasks completed`
@@ -579,8 +579,8 @@ export default async function CustomerQuoteDetailPage({
     : bidCount === 0
       ? "Waiting on suppliers to quote."
       : quoteHasWinner
-        ? "Supplier selected—kickoff tasks are unlocked."
-        : "Review pricing and pick a supplier to move forward.";
+        ? "Selection confirmed—kickoff tasks are unlocked."
+        : "Review pricing and select a supplier to move forward.";
   const winningBidPriceLabel =
     typeof winningBid?.amount === "number"
       ? formatCurrency(winningBid.amount, winningBid.currency ?? undefined)
@@ -690,7 +690,7 @@ export default async function CustomerQuoteDetailPage({
     <div className="rounded-xl border border-emerald-500/60 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
       <div className="flex flex-wrap items-center gap-2">
         <TagPill size="sm" tone="emerald">
-          Winner selected
+          Selection confirmed
         </TagPill>
         {awardedAtLabel ? (
           <span className="text-xs uppercase tracking-wide text-emerald-200">
@@ -699,7 +699,7 @@ export default async function CustomerQuoteDetailPage({
         ) : null}
       </div>
       <p className="mt-2 text-base font-semibold text-white">
-        {winningSupplierName ?? "Supplier selected"}
+        {winningSupplierName ?? "Selection confirmed"}
       </p>
       <p className="text-xs text-emerald-100">
         {winningBidPriceLabel} &middot; Lead time {winningBidLeadTimeLabel}
@@ -939,10 +939,10 @@ export default async function CustomerQuoteDetailPage({
   ) : (
     <PortalCard
       title="Project kickoff"
-      description="Add PO details and ship dates once you select a winning supplier."
+      description="Add PO details and ship dates once you select a supplier."
     >
       <p className="text-sm text-slate-300">
-        Select a winning supplier to unlock the kickoff form. We&apos;ll collect PO numbers, target ship
+        Select supplier to unlock the kickoff form. We&apos;ll collect PO numbers, target ship
         dates, and any final notes right here.
       </p>
     </PortalCard>
@@ -1125,7 +1125,7 @@ export default async function CustomerQuoteDetailPage({
       hashAliases={["award"]}
       className="scroll-mt-24"
       title="Decision"
-      description="Once bids arrive, compare options and select a winning supplier."
+      description="Once bids arrive, compare options and select a supplier."
       defaultOpen={bidCount > 0 && !quoteHasWinner}
       summary={
         quoteHasWinner ? (
@@ -1857,7 +1857,7 @@ function CustomerProjectSnapshotCard({
     : "Awaiting kickoff";
   const projectStatus = formatCustomerProjectStatus(project?.status);
   const nextStepMessage = deriveCustomerNextStep(kickoffSummaryStatus);
-  const supplierLabel = winningSupplierName?.trim() || "Supplier selected";
+  const supplierLabel = winningSupplierName?.trim() || "Selection confirmed";
 
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4 text-sm text-slate-200">
@@ -1890,7 +1890,7 @@ function CustomerProjectSnapshotCard({
         <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           Kickoff: {kickoffSummaryLabel}
         </TagPill>
-        <span>View supplier workspace (coming soon)</span>
+        <span>Supplier workspace link available after kickoff</span>
       </div>
     </section>
   );

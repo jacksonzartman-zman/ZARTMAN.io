@@ -141,7 +141,7 @@ export function CustomerQuoteJourneyHeaderAuto({
 
   const completedChipTexts = [
     nextStepTarget !== "uploads" && hasFiles === true ? "Uploads completed" : null,
-    nextStepTarget === "checkout" && winnerSelected === true ? "Decision confirmed" : null,
+    nextStepTarget === "checkout" && winnerSelected === true ? "Selection confirmed" : null,
     nextStepTarget === "checkout" && winnerSelected === true ? "Order preview available" : null,
   ].filter((value): value is string => typeof value === "string");
 
@@ -163,7 +163,7 @@ export function CustomerQuoteJourneyHeaderAuto({
           }
         : nextStepTarget === "checkout"
           ? {
-              label: "Proceed to Order",
+              label: "Proceed to order",
               onClick: () => {
                 // Reuse existing Proceed-to-Order handler by clicking the existing button.
                 const button = document.querySelector<HTMLButtonElement>(

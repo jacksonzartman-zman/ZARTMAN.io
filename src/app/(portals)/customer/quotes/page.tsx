@@ -205,7 +205,7 @@ export default async function CustomerQuotesPage({
               className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
             >
               <option value="">All</option>
-              <option value="yes">Selected</option>
+              <option value="yes">Selection confirmed</option>
               <option value="no">Not selected</option>
             </select>
           </label>
@@ -315,14 +315,14 @@ export default async function CustomerQuotesPage({
                           <span className="text-slate-600">•</span>
                           <span>
                             <span className="text-slate-500">
-                              {quote.hasWinner ? "Selected" : "Best"} price:
+                              {quote.hasWinner ? "Awarded" : "Best"} price:
                             </span>{" "}
                             <span className="font-semibold text-slate-200">{bestPriceLabel}</span>
                           </span>
                           <span className="text-slate-600">•</span>
                           <span>
                             <span className="text-slate-500">
-                              {quote.hasWinner ? "Selected" : "Best"} lead:
+                              {quote.hasWinner ? "Awarded" : "Best"} lead time:
                             </span>{" "}
                             <span className="font-semibold text-slate-200">{bestLeadLabel}</span>
                           </span>
