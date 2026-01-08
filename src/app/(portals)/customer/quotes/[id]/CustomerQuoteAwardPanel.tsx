@@ -257,7 +257,7 @@ export function CustomerQuoteAwardPanel({
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
                 Confirm award
               </p>
-              <h3 className="text-xl font-semibold text-white">
+              <h3 className="text-lg font-semibold text-white">
                 Award to {confirmingBid.supplierName}?
               </h3>
               <p className="text-sm text-slate-300">

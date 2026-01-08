@@ -36,14 +36,14 @@ export function CustomerQuoteJourneyHeader({
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
             Quote journey
           </p>
-          <h2 className="truncate text-2xl font-semibold text-white heading-tight">
+          <h2 className="truncate text-xl font-semibold text-white heading-tight">
             {partName}
           </h2>
-          <p className="text-sm text-slate-300">{nextStepText}</p>
+          <p className="text-sm text-slate-400">{nextStepText}</p>
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className={clsx("pill px-3 py-1 text-[11px] uppercase tracking-wide", statusPillClass)}>
+          <span className={clsx("pill px-3 py-1 uppercase tracking-wide", statusPillClass)}>
             {formatQuoteWorkspaceStatusLabel(status)}
           </span>
           {primaryAction ? (

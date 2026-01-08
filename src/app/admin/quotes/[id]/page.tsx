@@ -1257,7 +1257,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Quote actions
         </p>
-        <h2 className="mt-1 text-lg font-semibold text-slate-50">Update quote</h2>
+        <h2 className="mt-1 text-base font-semibold text-slate-50">Update quote</h2>
         <p className="mt-1 text-sm text-slate-400">
           Adjust status, pricing, currency, target date, and internal/DFM notes.
         </p>
@@ -1288,7 +1288,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             3D viewer workspace
           </p>
-          <h2 className="text-lg font-semibold text-slate-50">Interactive preview</h2>
+          <h2 className="text-base font-semibold text-slate-50">Interactive preview</h2>
           <p className="mt-1 text-sm text-slate-400">
             Pick a file below to launch the STL modal. Non-STL uploads will show
             the fallback message so you know why a preview is unavailable.
