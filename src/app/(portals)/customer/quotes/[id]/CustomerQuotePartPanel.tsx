@@ -24,6 +24,7 @@ type CustomerQuotePartPanelProps = {
   quantityHint?: string | number | null;
   targetDate?: string | null;
   className?: string;
+  onProceedToOrder?: () => void;
 };
 
 export function CustomerQuotePartPanel({
@@ -33,6 +34,7 @@ export function CustomerQuotePartPanel({
   quantityHint,
   targetDate,
   className,
+  onProceedToOrder,
 }: CustomerQuotePartPanelProps) {
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [geometryStatsMap, setGeometryStatsMap] = useState<
@@ -129,19 +131,15 @@ export function CustomerQuotePartPanel({
         </div>
 
         <aside className="space-y-4">
-          <button
-            type="button"
-            onClick={() => {
-              // TODO(order): wire this to the real checkout / order flow.
-              console.log("[quote] proceed to order", {
-                selectedFile: selectedFileLabel,
-                selectedIndex,
-              });
-            }}
-            className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
-          >
-            Proceed to Order
-          </button>
+          {onProceedToOrder ? (
+            <button
+              type="button"
+              onClick={onProceedToOrder}
+              className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+            >
+              Proceed to Order
+            </button>
+          ) : null}
 
           <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 p-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
