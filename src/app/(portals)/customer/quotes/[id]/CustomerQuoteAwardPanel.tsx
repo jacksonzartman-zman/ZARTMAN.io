@@ -250,10 +250,25 @@ export function CustomerQuoteAwardPanel({
                 </div>
               </header>
 
-              <dl className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-200">
-                <BidMetric label="Price" value={priceText} />
-                <BidMetric label="Lead time" value={leadTimeText} />
-              </dl>
+              <div className="mt-4 rounded-xl border border-slate-900/50 bg-slate-950/25 px-3 py-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  At a glance
+                </p>
+                <dl className="mt-1 grid grid-cols-[5.5rem_minmax(0,1fr)_6.5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 text-xs tabular-nums">
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Price
+                  </dt>
+                  <dd className="min-w-0 truncate text-right font-semibold text-white">
+                    {priceText}
+                  </dd>
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Lead time
+                  </dt>
+                  <dd className="min-w-0 truncate text-right font-semibold text-white">
+                    {leadTimeText}
+                  </dd>
+                </dl>
+              </div>
 
               <div className="mt-4 flex-1">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
@@ -350,17 +365,6 @@ export function CustomerQuoteAwardPanel({
         </ul>
       </div>
     </section>
-  );
-}
-
-function BidMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        {label}
-      </dt>
-      <dd className="mt-1 font-semibold text-white tabular-nums">{value}</dd>
-    </div>
   );
 }
 
