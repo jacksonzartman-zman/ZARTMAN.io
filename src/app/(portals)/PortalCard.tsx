@@ -25,7 +25,7 @@ export default function PortalCard({
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white heading-tight">{title}</h2>
+          <h2 className="text-lg font-semibold text-white heading-tight">{title}</h2>
           {description ? (
             <p className="mt-1 text-sm text-slate-400 heading-snug">{description}</p>
           ) : null}

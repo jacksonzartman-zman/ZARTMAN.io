@@ -291,17 +291,17 @@ export default async function CustomerQuotesPage({
                             {quote.rfqLabel}
                           </Link>
                           <span
-                            className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${inboxStatus.pillClassName}`}
+                            className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${inboxStatus.pillClassName}`}
                           >
                             {inboxStatus.label}
                           </span>
                           {unread > 0 ? (
-                            <span className="inline-flex items-center rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-100">
+                            <span className="inline-flex items-center rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-red-100">
                               {unread > 99 ? "99+" : unread} new
                             </span>
                           ) : null}
                           {quote.hasWinner ? (
-                            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${kickoff.className}`}>
+                            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${kickoff.className}`}>
                               {kickoff.label}
                             </span>
                           ) : null}
