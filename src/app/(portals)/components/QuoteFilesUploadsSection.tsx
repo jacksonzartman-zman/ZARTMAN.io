@@ -70,8 +70,9 @@ export function QuoteFilesUploadsSection({
         <QuoteFilesCard files={files} />
         {files.length === 0 ? (
           <EmptyStateCard
-            title="No uploads yet"
-            description="Add files above. Once uploaded, we’ll process them and show download links here."
+            title="Add files to start this RFQ"
+            description="Next, once you upload files, we’ll process them and start collecting supplier bids."
+            action={{ label: "Add files", href: "#uploads" }}
           />
         ) : null}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
 import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import type { QuoteFileMeta } from "@/server/quotes/types";
 import { CustomerQuotePartPanel } from "./CustomerQuotePartPanel";
@@ -58,10 +59,18 @@ export function CustomerQuoteOrderWorkspace({
 
       {!hasWinner ? (
         <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4 text-sm text-slate-200">
-          <p className="font-semibold text-white">Orders enabled after award</p>
+          <p className="font-semibold text-white">Checkout unlocks after you choose a supplier</p>
           <p className="mt-1 text-xs text-slate-400">
-            Select a winning supplier in the Decision section to unlock checkout.
+            Next, once you select a winning supplier in Decision, checkout will reflect the awarded price and lead time.
           </p>
+          <div className="mt-3">
+            <Link
+              href="#decision"
+              className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-black transition hover:bg-emerald-400"
+            >
+              Choose a supplier
+            </Link>
+          </div>
         </div>
       ) : null}
 

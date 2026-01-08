@@ -30,12 +30,10 @@ export function QuoteSectionRail({
   sections: QuoteSectionRailSection[];
   className?: string;
 }) {
-  if (!sections || sections.length === 0) {
-    return null;
-  }
-
+  const hasSections = Array.isArray(sections) && sections.length > 0;
   const [location, setLocation] = useState<CurrentLocation | null>(null);
   useEffect(() => {
+    if (!hasSections) return;
     const read = () =>
       setLocation({
         pathname: window.location.pathname,
@@ -50,12 +48,16 @@ export function QuoteSectionRail({
       window.removeEventListener("hashchange", read);
       window.removeEventListener("popstate", read);
     };
-  }, []);
+  }, [hasSections]);
 
   const defaultHashHref = useMemo(
-    () => sections.find((s) => s.href.startsWith("#"))?.href ?? null,
-    [sections],
+    () => (hasSections ? sections.find((s) => s.href.startsWith("#"))?.href ?? null : null),
+    [hasSections, sections],
   );
+
+  if (!hasSections) {
+    return null;
+  }
 
   return (
     <nav
