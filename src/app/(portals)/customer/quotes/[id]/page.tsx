@@ -7,6 +7,7 @@
 
 import clsx from "clsx";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
@@ -110,7 +111,15 @@ export default async function CustomerQuoteDetailPage({
     return (
       <PortalNoticeCard
         title="Complete your profile"
-        description="Finish the quick setup on /customer before opening quote workspaces."
+        description="Complete your customer profile before opening quote workspaces."
+        action={
+          <Link
+            href="/customer"
+            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
+          >
+            Go to customer dashboard
+          </Link>
+        }
       />
     );
   }
@@ -127,7 +136,15 @@ export default async function CustomerQuoteDetailPage({
     return (
       <PortalNoticeCard
         title="Quote not found"
-        description="We couldn’t find a quote with that reference. Double-check the link or contact support."
+        description="We couldn’t find a quote for that link. Double-check the URL, or return to your Quotes list."
+        action={
+          <Link
+            href="/customer/quotes"
+            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
+          >
+            Back to quotes
+          </Link>
+        }
       />
     );
   }
@@ -193,7 +210,15 @@ export default async function CustomerQuoteDetailPage({
     return (
       <PortalNoticeCard
         title="Access denied"
-        description="This quote is not linked to your account. Confirm you’re using the right workspace or request access from your admin."
+        description="This quote isn’t linked to your account. Confirm you’re signed into the right workspace, or request access from your admin."
+        action={
+          <Link
+            href="/customer/quotes"
+            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
+          >
+            Back to quotes
+          </Link>
+        }
       />
     );
   }
@@ -539,7 +564,7 @@ export default async function CustomerQuoteDetailPage({
       ? "No bids yet"
       : `${bidCount} bid${bidCount === 1 ? "" : "s"}`;
   const bidSummaryHelper = bidsUnavailable
-    ? "Supplier bidding isn't enabled in this environment."
+    ? "Bids aren’t available in this workspace right now."
     : bidCount === 0
       ? "Waiting on suppliers to quote."
       : quoteHasWinner
@@ -778,12 +803,12 @@ export default async function CustomerQuoteDetailPage({
         </div>
         {bidsUnavailable ? (
           <p className="text-xs text-slate-400">
-            Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
+            Bids aren’t available here right now, but your RFQ is still saved and in review. Check Messages for updates.
           </p>
         ) : bidCount === 0 ? (
           <EmptyStateCard
             title="No bids yet"
-            description="We’re reaching out to suppliers now. Check Messages for updates."
+            description="We’re reaching out to suppliers now. If we need any clarification, we’ll message you here."
             action={{ label: "Open messages", href: messagesHref }}
           />
         ) : (
@@ -1271,12 +1296,12 @@ export default async function CustomerQuoteDetailPage({
           </div>
           {bidsUnavailable ? (
             <p className="text-xs text-slate-400">
-              Supplier bidding isn&apos;t enabled in this environment yet. Your RFQ is still in review.
+            Bids aren’t available here right now, but your RFQ is still saved and in review. Check Messages for updates.
             </p>
           ) : bidCount === 0 ? (
             <EmptyStateCard
               title="No bids yet"
-              description="We’re reaching out to suppliers now. Check Messages for updates."
+            description="We’re reaching out to suppliers now. If we need any clarification, we’ll message you here."
               action={{ label: "Open messages", href: messagesHref }}
             />
           ) : (
@@ -1383,7 +1408,7 @@ export default async function CustomerQuoteDetailPage({
           </section>
         ) : (
           <p className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-4 text-sm text-slate-300">
-            No parts defined yet. Your Zartman team may add parts later.
+            No parts listed yet. If you uploaded a multi-part package, we’ll add parts as we review it.
           </p>
         )}
         {projectSnapshotCard}
@@ -1409,7 +1434,7 @@ export default async function CustomerQuoteDetailPage({
         quoteId={quote.id}
         actorRole="customer"
         actorUserId={user.id}
-        emptyState="No events yet. Activity will appear here as your RFQ progresses."
+        emptyState="No timeline updates yet. We’ll log key milestones here as your RFQ moves through review, bidding, award, and kickoff."
       />
     </DisclosureSection>
   );
@@ -1434,7 +1459,7 @@ export default async function CustomerQuoteDetailPage({
           {timelineSection}
           {messagesUnavailable ? (
             <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
-              Messages are temporarily unavailable. Refresh the page to try again.
+              Messages are temporarily unavailable right now. Your RFQ is still saved—refresh to try again.
             </p>
           ) : null}
           <DisclosureSection
@@ -1467,10 +1492,10 @@ export default async function CustomerQuoteDetailPage({
               helperText="Your note notifies your supplier and the Zartman admin team."
               disabledCopy={
                 readOnly
-                  ? "Messages are read-only while you are impersonating another customer."
+                  ? "You’re viewing this workspace in read-only mode, so messaging is disabled."
                   : undefined
               }
-              emptyStateCopy="Send the first message to align on next steps."
+              emptyStateCopy="Send a message to confirm requirements (materials, tolerances, timeline). We’ll notify everyone on this thread."
             />
           </DisclosureSection>
         </div>
@@ -1699,14 +1724,17 @@ function partsCoveragePillClasses(value: unknown): string {
 function PortalNoticeCard({
   title,
   description,
+  action,
 }: {
   title: string;
   description: string;
+  action?: ReactNode;
 }) {
   return (
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
       <h1 className="text-xl font-semibold text-white">{title}</h1>
       <p className="mt-2 text-sm text-slate-400">{description}</p>
+      {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
     </section>
   );
 }

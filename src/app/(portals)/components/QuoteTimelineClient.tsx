@@ -35,7 +35,7 @@ const PHASE_LABELS: Record<QuotePhase, string> = {
 export function QuoteTimelineClient({
   rawEvents,
   className,
-  emptyState = "No events yet. Activity will appear here as your RFQ progresses.",
+  emptyState = "No timeline updates yet. We’ll log key milestones here as your RFQ moves forward.",
 }: {
   rawEvents: QuoteEventRecord[];
   className?: string;

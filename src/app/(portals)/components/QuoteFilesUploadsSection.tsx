@@ -43,7 +43,7 @@ export function QuoteFilesUploadsSection({
   return (
     <CollapsibleCard
       title="Uploads"
-      description="RFQ files and download links. Link files to parts below."
+      description="Files for this RFQ (CAD, drawings, PDFs). Link files to parts below to clarify scope."
       defaultOpen={defaultOpen}
       summary={
         <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
@@ -57,21 +57,21 @@ export function QuoteFilesUploadsSection({
         ) : null}
         {filesMissingCanonical ? (
           <EmptyStateCard
-            title="Files missing (needs backfill/re-upload)"
+            title="Some files can’t be found"
             description={
               legacyList.length > 0
-                ? `This RFQ references legacy filenames, but the underlying file records are missing: ${legacyList.slice(0, 5).join(", ")}${
-                    legacyList.length > 5 ? "…" : ""
-                  }. Please re-upload the files, or contact support to backfill them.`
-                : "This RFQ references legacy filenames, but the underlying file records are missing. Please re-upload the files, or contact support to backfill them."
+                ? `This RFQ references older uploads, but we can’t locate the file records for: ${legacyList
+                    .slice(0, 5)
+                    .join(", ")}${legacyList.length > 5 ? "…" : ""}. Re-upload the missing files to continue, or contact support if you need help recovering them.`
+                : "This RFQ references older uploads, but we can’t locate the underlying file records. Re-upload the missing files to continue, or contact support if you need help recovering them."
             }
           />
         ) : null}
         <QuoteFilesCard files={files} />
         {files.length === 0 ? (
           <EmptyStateCard
-            title="No files attached"
-            description="Uploads will appear here once they’re processed."
+            title="No uploads yet"
+            description="Add files above. Once uploaded, we’ll process them and show download links here."
           />
         ) : null}
 

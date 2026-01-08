@@ -24,7 +24,7 @@ export async function QuoteTimeline({
   actorRole,
   actorUserId,
   className,
-  emptyState = "No events yet. Activity will appear here as your RFQ progresses.",
+  emptyState = "No timeline updates yet. We’ll log key milestones here as your RFQ moves forward.",
 }: QuoteTimelineProps) {
   const result = await getQuoteEventsForTimeline({
     quoteId,

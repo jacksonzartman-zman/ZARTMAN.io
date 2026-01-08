@@ -51,13 +51,20 @@ const formatStorageUploadError = (input: {
       ? err.message.trim()
       : typeof err?.error === "string" && err.error.trim()
         ? err.error.trim()
-        : "Storage upload failed.";
+        : "Upload failed.";
   const lower = message.toLowerCase();
-  const hint =
-    lower.includes("row-level security") || lower.includes("row level security")
-      ? " Likely missing Storage policy."
-      : "";
-  return `${message}\n\nbucket=${input.bucket}\npath=${input.path}${hint}`;
+
+  // Customer-facing summary: avoid internal bucket/path/policy details.
+  if (lower.includes("row-level security") || lower.includes("row level security")) {
+    return "Upload permission was denied. Please try again, or contact support if the issue persists.";
+  }
+
+  // Preserve any concrete message if it seems user-comprehensible; otherwise keep it generic.
+  if (message.length > 0 && message.length <= 140 && !lower.includes("bucket=") && !lower.includes("path=")) {
+    return message;
+  }
+
+  return "We couldn’t upload this file. Please try again.";
 };
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
@@ -1212,20 +1219,21 @@ export default function UploadBox({
             ...prev,
             [fileId]: { status: "failed", errorReason: message, step: "prepare" },
           }));
-          setError(`Upload failed: ${message}`);
+          setError(message);
           setSuccessMessage(null);
           return;
         }
 
         const target = prepared.targets.find((t) => t.clientFileId === fileId) ?? null;
         if (!target) {
-          const message = "Missing upload target.";
-          console.error("[intake-upload] failed", { step: "prepare", message, err: prepared });
+          const diagnostic = "Missing upload target.";
+          const message = "We couldn’t start the upload. Please try again.";
+          console.error("[intake-upload] failed", { step: "prepare", message: diagnostic, err: prepared });
           setUploadProgress((prev) => ({
             ...prev,
             [fileId]: { status: "failed", errorReason: message, step: "prepare" },
           }));
-          setError(`Upload failed: ${message}`);
+          setError(message);
           setSuccessMessage(null);
           return;
         }
@@ -1266,7 +1274,7 @@ export default function UploadBox({
             ...prev,
             [fileId]: { status: "failed", errorReason: formatted, step: "upload" },
           }));
-          setError(`Upload failed:\n\n${formatted}`);
+          setError(formatted);
           setSuccessMessage(null);
           return;
         }
@@ -1275,13 +1283,14 @@ export default function UploadBox({
 
         const proof = await runStorageProof({ fileId, bucket: target.bucketId, path: target.storagePath });
         if (!proof.ok) {
-          const message = proof.reason === "missing" ? "Storage proof: missing object after upload." : `Storage proof failed: ${proof.reason}`;
-          console.error("[intake-upload] failed", { step: "proof", message, err: proof });
+          const userMessage =
+            "Upload completed, but we couldn’t confirm it yet. Please try again.";
+          console.error("[intake-upload] failed", { step: "proof", reason: proof.reason, err: proof });
           setUploadProgress((prev) => ({
             ...prev,
-            [fileId]: { status: "failed", errorReason: message, step: "proof" },
+            [fileId]: { status: "failed", errorReason: userMessage, step: "proof" },
           }));
-          setError(`Upload failed: ${message}`);
+          setError(userMessage);
           setSuccessMessage(null);
           return;
         }
@@ -1297,13 +1306,14 @@ export default function UploadBox({
           prev.selectedFileId === fileId ? prev : { ...prev, selectedFileId: fileId },
         );
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error("[intake-upload] failed", { step: "upload", message, err: e });
+        const diagnostic = e instanceof Error ? e.message : String(e);
+        const message = "We couldn’t upload this file. Please try again.";
+        console.error("[intake-upload] failed", { step: "upload", message: diagnostic, err: e });
         setUploadProgress((prev) => ({
           ...prev,
           [fileId]: { status: "failed", errorReason: message, step: "upload" },
         }));
-        setError(`Upload failed: ${message}`);
+        setError(message);
         setSuccessMessage(null);
       } finally {
         uploadInFlightRef.current.delete(fileId);
@@ -1586,7 +1596,7 @@ export default function UploadBox({
                             {progress === "uploading"
                               ? "Uploading…"
                               : progress === "failed"
-                                ? `Upload failed: ${
+                                ? `Couldn’t upload: ${
                                     (uploadProgress[entry.id] as
                                       | { status: "failed"; errorReason: string }
                                       | undefined)?.errorReason ?? "Unknown error"
@@ -1639,7 +1649,7 @@ export default function UploadBox({
                   {selectedUploadStatus === "uploading"
                     ? "Uploading…"
                     : selectedUploadStatus === "failed"
-                      ? `Upload failed: ${
+                      ? `Couldn’t upload: ${
                           (uploadProgress[selectedPart.id] as
                             | { status: "failed"; errorReason: string }
                             | undefined)?.errorReason ?? "Unknown error"
@@ -1647,7 +1657,7 @@ export default function UploadBox({
                       : "Waiting to start upload…"}
                 </p>
                 <p className="mt-2 text-xs text-muted">
-                  We only start 3D preview + DFM after Storage proof is OK.
+                  We’ll start 3D preview + DFM after we confirm the upload.
                 </p>
               </div>
             ) : selectedPart && selectedUploadedRef?.token && selectedCadKind ? (

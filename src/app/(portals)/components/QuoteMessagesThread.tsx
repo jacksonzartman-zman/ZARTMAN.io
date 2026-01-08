@@ -56,10 +56,10 @@ export function QuoteMessagesThread({
   markRead = false,
   className,
   title = "Quote messages",
-  description = "Central thread for this RFQ between you and your supplier/buyer.",
+  description = "Central thread for this RFQ between you, your supplier, and the Zartman team.",
   helperText,
   disabledCopy,
-  emptyStateCopy = "No messages yet. Share the first update to kick things off.",
+  emptyStateCopy = "No messages yet. Send a note if you have questions or updates—we’ll notify everyone on the thread.",
 }: QuoteMessagesThreadProps) {
   const realtimeMessages = useQuoteMessagesRealtime(quoteId, messages);
   const sortedMessages = useMemo(
