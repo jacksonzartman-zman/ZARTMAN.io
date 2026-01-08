@@ -16,6 +16,8 @@ import {
   awardQuoteToBidAction,
   type AwardActionState,
 } from "./actions";
+import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
+import { TagPill } from "@/components/shared/primitives/TagPill";
 
 const INITIAL_AWARD_STATE: AwardActionState = { ok: true, message: null };
 
@@ -88,20 +90,21 @@ export function CustomerQuoteAwardPanel({
       className="space-y-5 rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5"
     >
       <header className="space-y-2">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-            Supplier decisions
-          </p>
-          <h2 className="text-2xl font-semibold text-white heading-tight">
-            Review bids & award a winner
-          </h2>
-        </div>
-        <p className="text-sm text-slate-300">
-          Compare bids, pick the supplier that feels right, and we’ll mark this RFQ as awarded.
-        </p>
-        <p className="text-xs text-slate-500">
-          You’re never obligated to award—move forward only when price, lead time, and fit align.
-        </p>
+        <SectionHeader
+          variant="hero"
+          kicker="Supplier decisions"
+          title="Review bids & award a winner"
+          subtitle={
+            <>
+              <p className="text-sm text-slate-300">
+                Compare bids, pick the supplier that feels right, and we’ll mark this RFQ as awarded.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                You’re never obligated to award—move forward only when price, lead time, and fit align.
+              </p>
+            </>
+          }
+        />
       </header>
 
       {state.ok && state.message ? (
@@ -142,16 +145,12 @@ export function CustomerQuoteAwardPanel({
               : "Review the bids below, then click Award to confirm your selection."}
           </p>
         </div>
-        <span
-          className={clsx(
-            "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
-            selectionLocked
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
-              : "border-slate-800 bg-slate-950/40 text-slate-200",
-          )}
+        <TagPill
+          size="md"
+          tone={selectionLocked ? "emerald" : "slate"}
         >
           {selectionLocked ? "Selection locked" : "Decision step"}
-        </span>
+        </TagPill>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -189,18 +188,18 @@ export function CustomerQuoteAwardPanel({
                 </div>
                 <div className="flex flex-col items-end gap-2">
                   <div className="flex flex-wrap justify-end gap-2">
-                    <span
+                    <TagPill
+                      size="md"
+                      tone="slate"
+                      borderStyle="dashed"
                       className={clsx(
-                        "inline-flex rounded-full border border-dashed bg-slate-950/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
-                        dimNonWinner
-                          ? "border-slate-800/60 text-slate-500/80"
-                          : "border-slate-700/70 text-slate-400/80",
+                        dimNonWinner ? "text-slate-500/80" : "text-slate-400/80",
                       )}
                       title="Recommendation badge placeholder (coming soon)"
                       aria-label="Recommended badge placeholder (coming soon)"
                     >
                       Recommended
-                    </span>
+                    </TagPill>
                     <span className={clsx("pill px-3 py-1 text-[11px]", statusClasses)}>
                       {statusLabel}
                     </span>

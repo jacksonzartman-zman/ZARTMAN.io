@@ -13,6 +13,9 @@ import {
   type QuoteWorkspaceStatus,
 } from "@/lib/quote/workspaceStatus";
 import { classifyCadFileType } from "@/lib/cadRendering";
+import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
+import { StatusPill } from "@/components/shared/primitives/StatusPill";
+import { TagPill } from "@/components/shared/primitives/TagPill";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
@@ -96,29 +99,34 @@ export function CustomerQuotePartPanel({
     >
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-            Quote workspace
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-50">
-            CAD preview
-          </h2>
-          <p className="mt-1 text-sm text-slate-300">
-            {files.length === 0
-              ? "No files attached yet."
-              : "Preview files and run instant DFM checks."}
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Preview renders may be simplified. The original upload is the source of truth.
-          </p>
+          <SectionHeader
+            kicker="Quote workspace"
+            title="CAD preview"
+            subtitle={
+              <>
+                <p>
+                  {files.length === 0
+                    ? "No files attached yet."
+                    : "Preview files and run instant DFM checks."}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Preview renders may be simplified. The original upload is the source of truth.
+                </p>
+              </>
+            }
+          />
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+          <TagPill tone="slate" size="md" className="border-slate-800 bg-slate-900/60 text-slate-300">
             {files.length} file{files.length === 1 ? "" : "s"}
-          </span>
-          <span className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-            Quote status: {formatQuoteWorkspaceStatusLabel(workspaceStatus)}
-          </span>
+          </TagPill>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Quote status:
+            </span>
+            <StatusPill status={workspaceStatus} />
+          </div>
         </div>
       </header>
 
@@ -271,9 +279,7 @@ export function CustomerQuotePartPanel({
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-[11px] uppercase tracking-wide text-slate-500">{`Part ${index + 1}`}</p>
                         <div className="flex flex-wrap gap-1.5">
-                          <span className="rounded-full border border-slate-800 bg-slate-950/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-200">
-                            {primaryTag}
-                          </span>
+                          <TagPill tone="slate">{primaryTag}</TagPill>
                         </div>
                       </div>
                       <p className="truncate text-sm font-semibold text-slate-100">
