@@ -78,6 +78,7 @@ import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/ad
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
+import { deriveQuoteWorkspaceStatus } from "@/lib/quote/workspaceStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -259,6 +260,10 @@ export default async function CustomerQuoteDetailPage({
     Boolean(quote.awarded_bid_id) ||
     Boolean(quote.awarded_supplier_id) ||
     Boolean(winningBidId);
+  const workspaceStatus = deriveQuoteWorkspaceStatus({
+    hasWinner: quoteHasWinner,
+    bidCount,
+  });
   const latestKickoffNudgedAt =
     quoteHasWinner && winningSupplierId
       ? await getLatestKickoffNudgedAt({
@@ -955,6 +960,7 @@ export default async function CustomerQuoteDetailPage({
       priceLabel={winningBidPriceLabel}
       targetDate={derived.targetDateValue ?? null}
       hasWinner={quoteHasWinner}
+      workspaceStatus={workspaceStatus}
     />
   );
 

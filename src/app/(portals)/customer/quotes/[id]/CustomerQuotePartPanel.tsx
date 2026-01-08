@@ -8,6 +8,10 @@ import type { CadViewerPanelProps } from "@/app/(portals)/components/CadViewerPa
 import { PartDfMPanel } from "@/app/(portals)/components/PartDfMPanel";
 import type { GeometryStats } from "@/lib/dfm/basicPartChecks";
 import type { QuoteFileMeta } from "@/server/quotes/types";
+import {
+  formatQuoteWorkspaceStatusLabel,
+  type QuoteWorkspaceStatus,
+} from "@/lib/quote/workspaceStatus";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
@@ -20,6 +24,7 @@ const CadViewerPanel = dynamic<CadViewerPanelProps>(
 type CustomerQuotePartPanelProps = {
   files: QuoteFileMeta[];
   previews: QuoteFileItem[];
+  workspaceStatus: QuoteWorkspaceStatus;
   processHint?: string | null;
   quantityHint?: string | number | null;
   targetDate?: string | null;
@@ -30,6 +35,7 @@ type CustomerQuotePartPanelProps = {
 export function CustomerQuotePartPanel({
   files,
   previews,
+  workspaceStatus,
   processHint,
   quantityHint,
   targetDate,
@@ -107,7 +113,7 @@ export function CustomerQuotePartPanel({
             {files.length} file{files.length === 1 ? "" : "s"}
           </span>
           <span className="rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-            Quote status: —
+            Quote status: {formatQuoteWorkspaceStatusLabel(workspaceStatus)}
           </span>
         </div>
       </header>
