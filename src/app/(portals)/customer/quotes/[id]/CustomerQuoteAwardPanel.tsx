@@ -131,9 +131,33 @@ export function CustomerQuoteAwardPanel({
         </p>
       ) : null}
 
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-black/20 px-5 py-4">
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-white">
+            Choose a supplier
+          </p>
+          <p className="text-xs text-slate-400">
+            {selectionLocked
+              ? "A winner has been selected. Other bids are shown for reference."
+              : "Review the bids below, then click Award to confirm your selection."}
+          </p>
+        </div>
+        <span
+          className={clsx(
+            "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+            selectionLocked
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+              : "border-slate-800 bg-slate-950/40 text-slate-200",
+          )}
+        >
+          {selectionLocked ? "Selection locked" : "Decision step"}
+        </span>
+      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {bids.map((bid) => {
           const isWinner = resolvedWinnerId === bid.id;
+          const dimNonWinner = selectionLocked && !isWinner;
           const submittedText =
             formatDateTime(bid.createdAt, { includeTime: true }) ?? "Just now";
           const statusLabel = formatBidStatusLabel(bid.status);
@@ -146,10 +170,12 @@ export function CustomerQuoteAwardPanel({
             <article
               key={bid.id}
               className={clsx(
-                "flex h-full flex-col rounded-2xl border px-5 py-4",
+                "flex h-full flex-col rounded-2xl border px-5 py-4 transition",
                 isWinner
-                  ? "border-emerald-500/40 bg-emerald-500/5"
-                  : "border-slate-900/60 bg-slate-950/40",
+                  ? "border-emerald-400/60 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-400/25"
+                  : dimNonWinner
+                    ? "border-slate-900/40 bg-slate-950/20 opacity-55"
+                    : "border-slate-900/60 bg-slate-950/40 hover:border-slate-700/70",
               )}
             >
               <header className="flex flex-wrap items-start justify-between gap-3">
@@ -164,7 +190,12 @@ export function CustomerQuoteAwardPanel({
                 <div className="flex flex-col items-end gap-2">
                   <div className="flex flex-wrap justify-end gap-2">
                     <span
-                      className="inline-flex rounded-full border border-dashed border-slate-700/70 bg-slate-950/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400/80"
+                      className={clsx(
+                        "inline-flex rounded-full border border-dashed bg-slate-950/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                        dimNonWinner
+                          ? "border-slate-800/60 text-slate-500/80"
+                          : "border-slate-700/70 text-slate-400/80",
+                      )}
                       title="Recommendation badge placeholder (coming soon)"
                       aria-label="Recommended badge placeholder (coming soon)"
                     >
