@@ -641,6 +641,8 @@ export default async function CustomerQuoteDetailPage({
         partName={primaryFileName}
         status={workspaceStatus}
         nextStepText={nextStepText}
+        fileCount={fileCount}
+        hasWinner={quoteHasWinner}
       />
       <QuoteSectionRail
         sections={buildCustomerQuoteSections({
