@@ -38,7 +38,7 @@ export function OrderSummaryModal({
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">Order summary</p>
             <p className="mt-1 text-xs text-slate-400">
-              Review items and payment options (checkout coming soon).
+              Preview the upcoming checkout flow—clear, fast, and trackable.
             </p>
           </div>
           <button
@@ -123,6 +123,45 @@ export function OrderSummaryModal({
             </div>
           </section>
 
+          <section className="space-y-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+              What happens next
+            </p>
+            <p className="text-xs text-slate-400">Once checkout is live, you’ll:</p>
+            <ol className="space-y-2">
+              <li className="flex gap-3">
+                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-900/60 bg-slate-950/30 text-xs font-semibold text-slate-200">
+                  1
+                </span>
+                <p className="text-sm text-slate-200">
+                  Confirm quantities, shipping details, and totals.
+                </p>
+              </li>
+              <li className="flex gap-3">
+                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-900/60 bg-slate-950/30 text-xs font-semibold text-slate-200">
+                  2
+                </span>
+                <p className="text-sm text-slate-200">Choose a payment method (card or PO).</p>
+              </li>
+              <li className="flex gap-3">
+                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-900/60 bg-slate-950/30 text-xs font-semibold text-slate-200">
+                  3
+                </span>
+                <p className="text-sm text-slate-200">
+                  Place the order to lock in the supplier and schedule.
+                </p>
+              </li>
+              <li className="flex gap-3">
+                <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-slate-900/60 bg-slate-950/30 text-xs font-semibold text-slate-200">
+                  4
+                </span>
+                <p className="text-sm text-slate-200">
+                  Track production and delivery updates here.
+                </p>
+              </li>
+            </ol>
+          </section>
+
           <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
             <button
               type="button"
@@ -132,7 +171,7 @@ export function OrderSummaryModal({
               Place Order
             </button>
             <p className="mt-2 text-center text-xs text-slate-400">
-              Checkout will be enabled soon
+              Preview mode — ordering will be enabled in a future release.
             </p>
             {/* TODO(checkout): wire up submission once payments + order APIs exist. */}
             {/* NOTE: no API calls / no form submission logic in this scaffold. */}
