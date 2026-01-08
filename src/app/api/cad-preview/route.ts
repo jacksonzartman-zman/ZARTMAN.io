@@ -177,30 +177,27 @@ async function resolveCanonicalStorageForQuoteFileId(
   if (!qfid) return { ok: false, reason: "missing_quote_file_id" };
 
   const tryLoad = async (table: "files_valid" | "files"): Promise<CanonicalQuoteFileRow | null> => {
-    try {
-      const { data, error } = await supabase
-        .from(table)
-        .select("id,quote_id,filename,storage_path,file_path,bucket_id,storage_bucket_id")
-        .eq("id", qfid)
-        .maybeSingle<CanonicalQuoteFileRow>();
-      if (error || !data?.id) return null;
-      return data;
-    } catch {
-      return null;
-    }
-  };
+  try {
+    // Minimal, schema-safe column set (works for your `files` table).
+    const { data, error } = await supabase
+      .from(table)
+      .select("id,quote_id,filename,storage_path,bucket_id")
+      .eq("id", qfid)
+      .maybeSingle<CanonicalQuoteFileRow>();
+
+    if (error || !data?.id) return null;
+    return data;
+  } catch {
+    return null;
+  }
+};
 
   const row = (await tryLoad("files_valid")) ?? (await tryLoad("files"));
   if (!row?.id) return { ok: false, reason: "quote_file_not_found" };
 
-  const bucketRaw =
-    (typeof row.storage_bucket_id === "string" && row.storage_bucket_id.trim()) ||
-    (typeof row.bucket_id === "string" && row.bucket_id.trim()) ||
-    "";
-  const pathRaw =
-    (typeof row.storage_path === "string" && row.storage_path.trim()) ||
-    (typeof row.file_path === "string" && row.file_path.trim()) ||
-    "";
+  const bucketRaw = (typeof row.bucket_id === "string" && row.bucket_id.trim()) || "";
+  const pathRaw = (typeof row.storage_path === "string" && row.storage_path.trim()) || "";
+
   const bucket = normalizeBucket(bucketRaw);
   const path = normalizeStorageObjectKey(bucket, pathRaw);
   if (!bucket || !path) return { ok: false, reason: "missing_storage_identity" };
