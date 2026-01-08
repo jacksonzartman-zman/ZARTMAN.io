@@ -19,6 +19,11 @@ function formatLastActivity(value: string | null): string {
   return formatRelativeTimeCompactFromTimestamp(toTimestamp(value)) ?? "—";
 }
 
+function formatUpdatedMicroline(value: string | null): string | null {
+  const label = formatRelativeTimeCompactFromTimestamp(toTimestamp(value));
+  return label ? `Updated ${label}` : null;
+}
+
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -286,6 +291,7 @@ export default async function CustomerQuotesPage({
                 const shouldShowOpenMessages =
                   quote.bidsCount === 0 && Boolean(quote.primaryFileName);
                 const messagesHref = `/customer/quotes/${quote.id}?tab=messages#messages`;
+                const updatedMicroline = formatUpdatedMicroline(quote.updatedAt ?? quote.createdAt);
 
                 return (
                   <li key={quote.id} className="hover:bg-slate-900/40">
@@ -312,6 +318,11 @@ export default async function CustomerQuotesPage({
                             </TagPill>
                           ) : null}
                         </div>
+                        {updatedMicroline ? (
+                          <p className="text-xs leading-tight text-slate-400">
+                            {updatedMicroline}
+                          </p>
+                        ) : null}
                         <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
                           <span className="min-w-0 max-w-full truncate">
                             <span className="text-slate-500">File:</span> {fileLabel}
@@ -329,11 +340,6 @@ export default async function CustomerQuotesPage({
                               {quote.hasWinner ? "Awarded" : "Best"} lead time:
                             </span>{" "}
                             <span className="font-semibold text-slate-200">{bestLeadLabel}</span>
-                          </span>
-                          <span className="text-slate-600">•</span>
-                          <span>
-                            <span className="text-slate-500">Updated:</span>{" "}
-                            {formatLastActivity(quote.lastActivityAt)}
                           </span>
                         </div>
                       </div>

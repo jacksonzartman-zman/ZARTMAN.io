@@ -19,6 +19,7 @@ import type { QuoteBidAggregate } from "@/server/quotes/bidAggregates";
 export type CustomerQuoteListRow = {
   id: string;
   createdAt: string;
+  updatedAt: string | null;
   rfqLabel: string; // short description/title
   status: string; // reuse existing quote status helper labels
   hasWinner: boolean;
@@ -225,6 +226,7 @@ export async function loadCustomerQuotesList(
       return {
         id: quote.id,
         createdAt,
+        updatedAt: quote.updated_at ?? null,
         rfqLabel,
         status: statusMeta.label,
         hasWinner,
