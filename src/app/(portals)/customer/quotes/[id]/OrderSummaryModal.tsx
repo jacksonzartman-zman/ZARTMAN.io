@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
 
 export type OrderSummaryModalProps = {
   open: boolean;
@@ -35,12 +36,14 @@ export function OrderSummaryModal({
     >
       <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
         <div className="flex items-start justify-between gap-3 border-b border-slate-900 px-6 py-4">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">Order summary</p>
-            <p className="mt-1 text-xs text-slate-400">
-              Preview the upcoming checkout flow—clear, fast, and trackable.
-            </p>
-          </div>
+          <SectionHeader
+            variant="label"
+            title="Order summary"
+            subtitle="Preview the upcoming checkout flow—clear, fast, and trackable."
+            titleClassName="truncate text-sm font-semibold text-white"
+            subtitleClassName="text-xs text-slate-400"
+            className="min-w-0"
+          />
           <button
             type="button"
             onClick={onClose}
@@ -52,9 +55,7 @@ export function OrderSummaryModal({
 
         <div className="space-y-6 p-6">
           <section className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Items
-            </p>
+            <SectionHeader variant="label" title="Items" />
             <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
               <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_120px_160px]">
                 <div className="min-w-0">
@@ -92,9 +93,7 @@ export function OrderSummaryModal({
           </section>
 
           <section className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Payment method
-            </p>
+            <SectionHeader variant="label" title="Payment method" />
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
@@ -124,9 +123,7 @@ export function OrderSummaryModal({
           </section>
 
           <section className="space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              What happens next
-            </p>
+            <SectionHeader variant="label" title="What happens next" />
             <p className="text-xs text-slate-400">Once checkout is live, you’ll:</p>
             <ol className="space-y-2">
               <li className="flex gap-3">

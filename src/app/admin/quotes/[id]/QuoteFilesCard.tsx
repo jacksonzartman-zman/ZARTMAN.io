@@ -6,6 +6,8 @@ import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { CadPreviewModal } from "@/components/shared/CadPreviewModal";
 import type { CadKind } from "@/components/ThreeCadViewer";
 import { classifyCadFileType } from "@/lib/cadRendering";
+import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
+import { TagPill } from "@/components/shared/primitives/TagPill";
 
 export type QuoteFileItem = {
   id: string;
@@ -73,17 +75,14 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Files
-          </p>
-          <p className="mt-1 text-[11px] text-slate-500">
-            Previews are for viewing only. Downloads keep the original upload.
-          </p>
-        </div>
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        <SectionHeader
+          variant="label"
+          title="Files"
+          subtitle="Previews are for viewing only. Downloads keep the original upload."
+        />
+        <TagPill tone="slate" size="md">
           {files.length} attached
-        </span>
+        </TagPill>
       </div>
 
       <div className="mt-4 space-y-2">
@@ -211,31 +210,6 @@ function formatPrimaryTag(input: {
     return `Preview ${kind ?? "file"} (auto-generated)`;
   }
   return `Original ${kind ?? "file"}`;
-}
-
-function TagPill({
-  children,
-  tone,
-}: {
-  children: string;
-  tone: "slate" | "blue" | "amber";
-}) {
-  const classes =
-    tone === "blue"
-      ? "border-blue-500/30 bg-blue-500/10 text-blue-100"
-      : tone === "amber"
-        ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
-        : "border-slate-800 bg-slate-950/40 text-slate-200";
-  return (
-    <span
-      className={clsx(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-        classes,
-      )}
-    >
-      {children}
-    </span>
-  );
 }
 
 type QuoteFileUnsupportedModalProps = {
