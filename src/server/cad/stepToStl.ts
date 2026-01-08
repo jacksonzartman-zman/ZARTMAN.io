@@ -4,6 +4,15 @@ import fs from "node:fs";
 import path from "node:path";
 import type { OcctImportModule, ReadStepResult } from "occt-import-js";
 
+function logOcctFilePresence(label: string, filePath: string) {
+  try {
+    const ok = fs.existsSync(filePath);
+    console.log("[cad-preview][occt]", { label, filePath, exists: ok });
+  } catch (e) {
+    console.log("[cad-preview][occt]", { label, filePath, exists: false, error: String(e) });
+  }
+}
+
 export type StepPreviewKey = {
   sourceBucket: string;
   sourcePath: string;
@@ -200,6 +209,7 @@ function resolveOcctPaths(): { jsEntry: string; distDir: string; wasmPath: strin
   const distDir = path.join(process.cwd(), "node_modules", "occt-import-js", "dist");
   const jsEntry = path.join(distDir, "occt-import-js.js");
   const wasmPath = path.join(distDir, "occt-import-js.wasm");
+  logOcctFilePresence("wasm", wasmPath);
   cachedOcctPaths = { jsEntry, distDir, wasmPath };
   return cachedOcctPaths;
 }
