@@ -93,14 +93,14 @@ export function CustomerQuoteAwardPanel({
         <SectionHeader
           variant="hero"
           kicker="Supplier decisions"
-          title="Review bids & award a winner"
+          title="Review bids and choose a supplier"
           subtitle={
             <>
               <p className="text-sm text-slate-300">
-                Compare bids, pick the supplier that feels right, and we’ll mark this RFQ as awarded.
+                Compare bids, choose the supplier that fits best, and we’ll record your selection.
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                You’re never obligated to award—move forward only when price, lead time, and fit align.
+                You’re in control—choose a supplier only when price, lead time, and fit align.
               </p>
             </>
           }
@@ -130,7 +130,7 @@ export function CustomerQuoteAwardPanel({
 
       {selectionLocked && winnerSupplierName ? (
         <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-3 text-sm text-emerald-100">
-          Winner selected: <span className="font-semibold text-white">{winnerSupplierName}</span>
+          Selected supplier: <span className="font-semibold text-white">{winnerSupplierName}</span>
         </p>
       ) : null}
 
@@ -141,15 +141,15 @@ export function CustomerQuoteAwardPanel({
           </p>
           <p className="text-xs text-slate-400">
             {selectionLocked
-              ? "A winner has been selected. Other bids are shown for reference."
-              : "Review the bids below, then click Award to confirm your selection."}
+              ? "A supplier is selected. Other bids are shown for reference."
+              : "Review the bids below, then select a supplier to confirm."}
           </p>
         </div>
         <TagPill
           size="md"
           tone={selectionLocked ? "emerald" : "slate"}
         >
-          {selectionLocked ? "Selection locked" : "Decision step"}
+          {selectionLocked ? "Selection confirmed" : "Decision"}
         </TagPill>
       </div>
 
@@ -195,8 +195,8 @@ export function CustomerQuoteAwardPanel({
                       className={clsx(
                         dimNonWinner ? "text-slate-500/80" : "text-slate-400/80",
                       )}
-                      title="Recommendation badge placeholder (coming soon)"
-                      aria-label="Recommended badge placeholder (coming soon)"
+                      title="Recommendation indicator"
+                      aria-label="Recommendation indicator"
                     >
                       Recommended
                     </TagPill>
@@ -206,7 +206,7 @@ export function CustomerQuoteAwardPanel({
                   </div>
                   {isWinner ? (
                     <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
-                      Winner selected
+                      Selected
                     </span>
                   ) : null}
                 </div>
@@ -233,7 +233,7 @@ export function CustomerQuoteAwardPanel({
                     disabled
                     className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-400 opacity-70"
                   >
-                    {isWinner ? "Winner selected" : "Locked"}
+                    {isWinner ? "Selected" : "Locked"}
                   </button>
                 ) : (
                   <button
@@ -241,7 +241,7 @@ export function CustomerQuoteAwardPanel({
                     onClick={() => setConfirmingBidId(bid.id)}
                     className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
                   >
-                    Award
+                    Select supplier
                   </button>
                 )}
               </div>
@@ -255,22 +255,22 @@ export function CustomerQuoteAwardPanel({
           <div className="w-full max-w-lg space-y-4 rounded-2xl border border-slate-800 bg-slate-950 px-6 py-5 shadow-xl">
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-                Confirm award
+                Confirm selection
               </p>
               <h3 className="text-lg font-semibold text-white">
-                Award to {confirmingBid.supplierName}?
+                Select {confirmingBid.supplierName}?
               </h3>
               <p className="text-sm text-slate-300">
-                This locks the RFQ and starts kickoff.
+                This confirms your selection and starts kickoff.
               </p>
             </div>
             <form action={formAction} className="space-y-3">
               <input type="hidden" name="quoteId" value={quoteId} />
               <input type="hidden" name="bidId" value={confirmingBid.id} />
               <p className="text-xs text-slate-400">
-                You’re awarding to{" "}
+                You’re selecting{" "}
                 <span className="font-semibold text-slate-200">{confirmingBid.supplierName}</span>. This can’t be
-                undone from the customer portal.
+                changed in the customer portal.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <ConfirmAwardButton />
@@ -282,11 +282,11 @@ export function CustomerQuoteAwardPanel({
       ) : null}
 
       <div className="space-y-2 rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-4">
-        <p className="text-sm font-semibold text-slate-100">What happens when you award?</p>
+        <p className="text-sm font-semibold text-slate-100">What happens after you choose?</p>
         <ul className="list-disc space-y-1 pl-4 text-sm text-slate-300">
-          <li>We notify your selected supplier so they can confirm scope.</li>
-          <li>Your RFQ status updates to Won / Awarded for tracking.</li>
-          <li>No purchase order or payment is triggered automatically.</li>
+          <li>We notify your selected supplier to confirm scope.</li>
+          <li>Your RFQ updates to Awarded for tracking.</li>
+          <li>No purchase order or payment is placed automatically.</li>
         </ul>
       </div>
     </section>
@@ -312,7 +312,7 @@ function ConfirmAwardButton() {
       disabled={pending}
       className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {pending ? "Awarding..." : "Confirm award"}
+      {pending ? "Confirming..." : "Confirm selection"}
     </button>
   );
 }
