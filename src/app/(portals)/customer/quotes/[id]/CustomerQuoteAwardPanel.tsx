@@ -17,7 +17,7 @@ import {
   type AwardActionState,
 } from "./actions";
 import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
-import { TagPill } from "@/components/shared/primitives/TagPill";
+import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
 
 const INITIAL_AWARD_STATE: AwardActionState = { ok: true, message: null };
 
@@ -87,11 +87,11 @@ export function CustomerQuoteAwardPanel({
   return (
     <section
       id={anchorId ?? undefined}
-      className="space-y-5 rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5"
+      className="space-y-6 rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5"
     >
       <header className="space-y-2">
         <SectionHeader
-          variant="hero"
+          variant="card"
           kicker="Supplier decisions"
           title="Review bids and choose a supplier"
           subtitle={
@@ -160,7 +160,6 @@ export function CustomerQuoteAwardPanel({
           const submittedText =
             formatDateTime(bid.createdAt, { includeTime: true }) ?? "Just now";
           const statusLabel = formatBidStatusLabel(bid.status);
-          const statusClasses = getStatusClasses(bid.status);
           const priceText = bid.priceDisplay ?? "Price pending";
           const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
           const awardDisabled = !canSubmit || selectionLocked;
@@ -200,14 +199,14 @@ export function CustomerQuoteAwardPanel({
                     >
                       Recommended
                     </TagPill>
-                    <span className={clsx("pill px-3 py-1 text-[11px]", statusClasses)}>
+                    <TagPill size="md" tone={getBidStatusTone(bid.status)}>
                       {statusLabel}
-                    </span>
+                    </TagPill>
                   </div>
                   {isWinner ? (
-                    <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
+                    <TagPill size="md" tone="emerald">
                       Selected
-                    </span>
+                    </TagPill>
                   ) : null}
                 </div>
               </header>
@@ -352,16 +351,16 @@ function formatBidStatusLabel(status?: string | null): string {
   }
 }
 
-function getStatusClasses(status?: string | null) {
+function getBidStatusTone(status?: string | null): TagPillTone {
   const value = typeof status === "string" ? status.trim().toLowerCase() : "";
   if (value === "won" || value === "accepted") {
-    return "pill-success";
+    return "emerald";
   }
   if (value === "lost" || value === "declined") {
-    return "pill-muted";
+    return "slate";
   }
   if (value === "withdrawn") {
-    return "pill-warning";
+    return "amber";
   }
-  return "pill-info";
+  return "blue";
 }

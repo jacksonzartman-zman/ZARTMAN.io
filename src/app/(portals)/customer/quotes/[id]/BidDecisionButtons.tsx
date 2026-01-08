@@ -101,7 +101,7 @@ function DecisionForm({
         {pending ? "Working..." : label}
       </button>
       {error ? (
-        <p className="text-[11px] text-red-300" role="alert">
+        <p className="text-xs text-red-300" role="alert">
           {error}
         </p>
       ) : null}

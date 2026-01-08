@@ -9,6 +9,7 @@ import {
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
+import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
 
@@ -24,23 +25,23 @@ function normalizeText(value: unknown): string {
 
 function formatKickoffPill(status: "not_started" | "in_progress" | "complete" | "n/a") {
   if (status === "n/a") {
-    return { label: "—", className: "text-slate-500" };
+    return { label: "—", tone: "slate" as const, className: "text-slate-500" };
   }
   if (status === "complete") {
     return {
       label: "Kickoff complete",
-      className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+      tone: "emerald" as const,
     };
   }
   if (status === "in_progress") {
     return {
       label: "Kickoff in progress",
-      className: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+      tone: "blue" as const,
     };
   }
   return {
     label: "Kickoff not started",
-    className: "border-slate-800 bg-slate-950/50 text-slate-300",
+    tone: "slate" as const,
   };
 }
 
@@ -52,7 +53,7 @@ function deriveInboxStatus(args: {
 }): {
   key: InboxStatus;
   label: string;
-  pillClassName: string;
+  tone: TagPillTone;
   actionLabel: string;
   actionHrefSuffix: string;
 } {
@@ -60,7 +61,7 @@ function deriveInboxStatus(args: {
     return {
       key: "awarded",
       label: "Awarded",
-      pillClassName: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+      tone: "emerald",
       actionLabel: "Proceed to order",
       actionHrefSuffix: "#checkout",
     };
@@ -69,7 +70,7 @@ function deriveInboxStatus(args: {
     return {
       key: "in_review",
       label: "In review",
-      pillClassName: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+      tone: "blue",
       actionLabel: "Review bids",
       actionHrefSuffix: "#decision",
     };
@@ -77,7 +78,7 @@ function deriveInboxStatus(args: {
   return {
     key: "draft",
     label: "Draft",
-    pillClassName: "border-slate-800 bg-slate-950/50 text-slate-300",
+    tone: "slate",
     actionLabel: "Complete request",
     actionHrefSuffix: "#uploads",
   };
@@ -290,20 +291,18 @@ export default async function CustomerQuotesPage({
                           >
                             {quote.rfqLabel}
                           </Link>
-                          <span
-                            className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${inboxStatus.pillClassName}`}
-                          >
+                          <TagPill size="sm" tone={inboxStatus.tone}>
                             {inboxStatus.label}
-                          </span>
+                          </TagPill>
                           {unread > 0 ? (
-                            <span className="inline-flex items-center rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-red-100">
+                            <TagPill size="sm" tone="red">
                               {unread > 99 ? "99+" : unread} new
-                            </span>
+                            </TagPill>
                           ) : null}
                           {quote.hasWinner ? (
-                            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${kickoff.className}`}>
+                            <TagPill size="sm" tone={kickoff.tone} className={kickoff.className}>
                               {kickoff.label}
-                            </span>
+                            </TagPill>
                           ) : null}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
