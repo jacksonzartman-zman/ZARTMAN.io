@@ -170,7 +170,7 @@ export function CustomerQuotePartPanel({
                   Part name
                 </dt>
                 <dd
-                  className="whitespace-normal break-words [overflow-wrap:anywhere] overflow-hidden font-medium text-slate-100"
+                  className="break-anywhere whitespace-normal overflow-hidden font-medium text-slate-100"
                   title={selectedFileLabel ?? undefined}
                 >
                   {selectedFileLabel ?? "—"}
@@ -217,9 +217,13 @@ export function CustomerQuotePartPanel({
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Files
               </p>
-              <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
+              <TagPill
+                tone="slate"
+                size="sm"
+                className="border-slate-800 bg-slate-950/50 text-slate-300"
+              >
                 {files.length}
-              </span>
+              </TagPill>
             </div>
 
             <div className="mt-3 space-y-2">

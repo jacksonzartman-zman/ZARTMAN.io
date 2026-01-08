@@ -1559,7 +1559,7 @@ export default async function CustomerQuoteDetailPage({
                   <dt className="text-[11px] uppercase tracking-wide text-slate-500">
                     Supplier
                   </dt>
-                  <dd className="text-slate-100">
+                  <dd className="break-anywhere text-slate-100">
                     {winningSupplierId ? (winningSupplierName ?? winningSupplierId) : "Supplier assignment pending."}
                   </dd>
                 </div>
@@ -1900,7 +1900,7 @@ function SnapshotItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
       <dt className="text-[11px] uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="text-slate-100">{value}</dd>
+      <dd className="break-anywhere text-slate-100">{value}</dd>
     </div>
   );
 }

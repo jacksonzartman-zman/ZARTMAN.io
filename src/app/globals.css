@@ -37,3 +37,12 @@
   }
 
 }
+
+/* ---------- Utilities layer: one-off helpers ---------- */
+@layer utilities {
+  /* Prevent long IDs/emails/filenames from forcing horizontal scroll. */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
