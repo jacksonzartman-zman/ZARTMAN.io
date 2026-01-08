@@ -1,10 +1,9 @@
 "use client";
-
-import clsx from "clsx";
 import {
   formatQuoteWorkspaceStatusLabel,
   type QuoteWorkspaceStatus,
 } from "@/lib/quote/workspaceStatus";
+import { StatusPill } from "@/components/shared/primitives/StatusPill";
 
 function getScrollBehavior(): ScrollBehavior {
   if (typeof window === "undefined") return "auto";
@@ -43,13 +42,6 @@ export function CustomerQuoteJourneyHeader({
   nextStepText: string;
   primaryAction?: CustomerQuoteJourneyHeaderPrimaryAction;
 }) {
-  const statusPillClass =
-    status === "awarded"
-      ? "pill-success"
-      : status === "in_review"
-        ? "pill-info"
-        : "pill-muted";
-
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -64,9 +56,7 @@ export function CustomerQuoteJourneyHeader({
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <span className={clsx("pill px-3 py-1 uppercase tracking-wide", statusPillClass)}>
-            {formatQuoteWorkspaceStatusLabel(status)}
-          </span>
+          <StatusPill status={status} aria-label={formatQuoteWorkspaceStatusLabel(status)} />
           {primaryAction ? (
             <button
               type="button"

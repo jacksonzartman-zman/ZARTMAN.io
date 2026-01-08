@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { QuoteAtAGlancePillTone } from "@/components/QuoteAtAGlanceBar";
+import { TagPill } from "@/components/shared/primitives/TagPill";
 
 export type QuoteSectionRailTone = "neutral" | "info" | "warning";
 
@@ -110,37 +111,33 @@ function SectionChip({
   isActive: boolean;
 }) {
   const tone: QuoteAtAGlancePillTone = mapRailToneToPillTone(section.tone);
-  const base =
-    "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold";
+  const base = "pill px-3 py-1 text-[11px] font-semibold";
   const classes =
     tone === "info"
       ? clsx(
-          "text-blue-100",
           isActive
-            ? "border-blue-400/55 bg-blue-500/15"
-            : "border-blue-500/30 bg-blue-500/10 hover:border-blue-400/50",
+            ? "pill-info border-blue-400/55 bg-blue-500/15"
+            : "pill-info hover:border-blue-400/50",
         )
       : tone === "warning"
         ? clsx(
-            "text-amber-100",
             isActive
-              ? "border-amber-400/55 bg-amber-500/15"
-              : "border-amber-500/30 bg-amber-500/10 hover:border-amber-400/50",
+              ? "pill-warning border-amber-400/55 bg-amber-500/15"
+              : "pill-warning hover:border-amber-400/50",
           )
         : clsx(
-            "text-slate-200",
             isActive
-              ? "border-slate-600/70 bg-slate-950/70 text-slate-50"
-              : "border-slate-800 bg-slate-950/50 hover:border-slate-700",
+              ? "pill-muted border-slate-600/70 bg-slate-950/70 text-slate-50"
+              : "pill-muted hover:border-slate-700",
           );
 
   const content: ReactNode = (
     <>
       <span className="whitespace-nowrap">{section.label}</span>
       {section.badge ? (
-        <span className="ml-1 inline-flex min-w-6 items-center justify-center rounded-full border border-slate-800 bg-black/30 px-2 py-0.5 text-[10px] font-semibold text-slate-200">
+        <TagPill size="sm" tone="slate" className="ml-1 min-w-6 justify-center bg-black/30">
           {section.badge}
-        </span>
+        </TagPill>
       ) : null}
     </>
   );

@@ -79,6 +79,7 @@ import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
 import { deriveQuoteWorkspaceStatus } from "@/lib/quote/workspaceStatus";
 import { CustomerQuoteJourneyHeaderAuto } from "./CustomerQuoteJourneyHeader";
+import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
 
 export const dynamic = "force-dynamic";
 
@@ -421,12 +422,18 @@ export default async function CustomerQuoteDetailPage({
       : "In progress";
   const canNudgeSupplier =
     quoteHasWinner && Boolean(winningSupplierId) && !kickoffProgressBasis.isComplete;
-  const kickoffSummaryTone =
+  const kickoffSummaryToneClass =
     kickoffSummaryStatus === "complete"
       ? "text-emerald-300"
       : kickoffSummaryStatus === "in-progress"
         ? "text-blue-200"
         : "text-slate-200";
+  const kickoffSummaryPillTone: TagPillTone =
+    kickoffSummaryStatus === "complete"
+      ? "emerald"
+      : kickoffSummaryStatus === "in-progress"
+        ? "blue"
+        : "slate";
   const showCustomerSupplierSection = bidCount > 0;
   const customerCanAward =
     bidCount > 0 && quoteAwardStatusAllowed && !quoteHasWinner && !readOnly;
@@ -653,7 +660,9 @@ export default async function CustomerQuoteDetailPage({
   const winningBidCallout = quoteHasWinner ? (
     <div className="rounded-xl border border-emerald-500/60 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="pill pill-success">Winner selected</span>
+        <TagPill size="sm" tone="emerald">
+          Winner selected
+        </TagPill>
         {awardedAtLabel ? (
           <span className="text-xs uppercase tracking-wide text-emerald-200">
             Awarded {awardedAtLabel}
@@ -681,9 +690,9 @@ export default async function CustomerQuoteDetailPage({
           </p>
           <p className="text-sm text-slate-300">{bidSummaryHelper}</p>
         </div>
-        <span className="rounded-full border border-slate-800 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-slate-200">
+        <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           {bidSummaryBadgeLabel}
-        </span>
+        </TagPill>
       </div>
       <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
         <div>
@@ -717,16 +726,16 @@ export default async function CustomerQuoteDetailPage({
         </p>
         <h2 className="text-lg font-semibold text-white">Project overview</h2>
       </header>
-      <div className="flex flex-wrap gap-2 text-xs font-semibold">
-        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+      <div className="flex flex-wrap gap-2">
+        <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
           Status: {quoteStatusLabel}
-        </span>
-        <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+        </TagPill>
+        <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           Target date: {targetDateChipText}
-        </span>
-        <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+        </TagPill>
+        <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           Estimate: {priceChipText}
-        </span>
+        </TagPill>
       </div>
       <WorkflowStatusCallout
         currentLabel={quoteStatusLabel}
@@ -750,7 +759,7 @@ export default async function CustomerQuoteDetailPage({
           <dt className="text-[11px] uppercase tracking-wide text-slate-500">
             Kickoff checklist
           </dt>
-          <dd className={clsx("font-medium", kickoffSummaryTone)}>
+          <dd className={clsx("font-medium", kickoffSummaryToneClass)}>
             {kickoffSummaryLabel}
           </dd>
         </div>
@@ -796,9 +805,9 @@ export default async function CustomerQuoteDetailPage({
             </p>
           </div>
           {bidCount > 0 ? (
-            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+            <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
               {bidCount} bid{bidCount === 1 ? "" : "s"} received
-            </span>
+            </TagPill>
           ) : null}
         </div>
         {bidsUnavailable ? (
@@ -946,22 +955,22 @@ export default async function CustomerQuoteDetailPage({
       description="Status, key dates, and workflow snapshot."
       defaultOpen={false}
       summary={
-        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+        <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           {quoteStatusLabel}
-        </span>
+        </TagPill>
       }
     >
       <div className="space-y-6">
-        <div className="flex flex-wrap gap-2 text-xs font-semibold">
-          <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+        <div className="flex flex-wrap gap-2">
+          <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
             Status: {quoteStatusLabel}
-          </span>
-          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+          </TagPill>
+          <TagPill size="md" tone="slate" className="normal-case tracking-normal">
             Target date: {targetDateChipText}
-          </span>
-          <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-slate-200">
+          </TagPill>
+          <TagPill size="md" tone="slate" className="normal-case tracking-normal">
             Estimate: {priceChipText}
-          </span>
+          </TagPill>
         </div>
 
         <WorkflowStatusCallout
@@ -1019,9 +1028,9 @@ export default async function CustomerQuoteDetailPage({
       description={`CAD and drawings are collected here. You can then link them to parts in the Parts section below. Max ${formatMaxUploadSize()} per file. Very large packages may need to be split into multiple uploads.`}
       defaultOpen={fileCount > 0}
       summary={
-        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+        <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           {fileCountText}
-        </span>
+        </TagPill>
       }
     >
       <div className="space-y-6">
@@ -1091,17 +1100,17 @@ export default async function CustomerQuoteDetailPage({
       defaultOpen={bidCount > 0 && !quoteHasWinner}
       summary={
         quoteHasWinner ? (
-          <span className="pill pill-success px-3 py-0.5 text-[11px] font-semibold">
+          <TagPill size="md" tone="emerald">
             Winner
-          </span>
+          </TagPill>
         ) : bidCount > 0 ? (
-          <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+          <TagPill size="md" tone="slate" className="normal-case tracking-normal">
             {bidCount} bid{bidCount === 1 ? "" : "s"}
-          </span>
+          </TagPill>
         ) : (
-          <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+          <TagPill size="md" tone="slate" className="normal-case tracking-normal">
             No bids
-          </span>
+          </TagPill>
         )
       }
     >
@@ -1134,9 +1143,9 @@ export default async function CustomerQuoteDetailPage({
                   Improving completeness can increase supplier response rate.
                 </p>
               </div>
-              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
+              <TagPill size="md" tone="amber" className="normal-case tracking-normal">
                 Quality score {rfqQualitySummary.score}
-              </span>
+              </TagPill>
             </div>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
               {rfqQualitySummary.missingCad || rfqQualitySummary.partsCoverage === "none" ? (
@@ -1216,19 +1225,19 @@ export default async function CustomerQuoteDetailPage({
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-base font-semibold text-white">{row.supplierName}</span>
                             {isRecommended ? (
-                              <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
+                              <TagPill size="md" tone="emerald">
                                 Recommended
-                              </span>
+                              </TagPill>
                             ) : null}
                             {isBestPrice ? (
-                              <span className="pill pill-info px-3 py-1 text-[11px] uppercase tracking-wide">
+                              <TagPill size="md" tone="blue">
                                 Best price
-                              </span>
+                              </TagPill>
                             ) : null}
                             {isFastest ? (
-                              <span className="pill pill-info px-3 py-1 text-[11px] uppercase tracking-wide">
+                              <TagPill size="md" tone="blue">
                                 Fastest lead
-                              </span>
+                              </TagPill>
                             ) : null}
                           </div>
                         </td>
@@ -1239,23 +1248,23 @@ export default async function CustomerQuoteDetailPage({
                           <span className="font-semibold text-white">{leadLabel}</span>
                         </td>
                         <td className="px-5 py-4 align-top">
-                          <span className={clsx("pill px-3 py-1 text-[11px]", matchHealthPillClasses(row.matchHealth))}>
+                          <TagPill size="md" tone={matchHealthPillTone(row.matchHealth)}>
                             {formatMatchHealthLabel(row.matchHealth)}
-                          </span>
+                          </TagPill>
                         </td>
                         <td className="px-5 py-4 align-top">
-                          <span className={clsx("pill px-3 py-1 text-[11px]", benchStatusPillClasses(row.benchStatus))}>
+                          <TagPill size="md" tone={benchStatusPillTone(row.benchStatus)}>
                             {formatBenchStatusLabel(row.benchStatus)}
-                          </span>
+                          </TagPill>
                         </td>
                         <td className="px-5 py-4 align-top">
-                          <span className={clsx("pill px-3 py-1 text-[11px]", partsCoveragePillClasses(row.partsCoverage))}>
+                          <TagPill size="md" tone={partsCoveragePillTone(row.partsCoverage)}>
                             {row.partsCoverage === "good"
                               ? "Good"
                               : row.partsCoverage === "needs_attention"
                                 ? "Needs attention"
                                 : "None"}
-                          </span>
+                          </TagPill>
                         </td>
                         <td className="px-5 py-4 align-top text-right">
                           <Link
@@ -1289,9 +1298,9 @@ export default async function CustomerQuoteDetailPage({
               </p>
             </div>
             {bidCount > 0 ? (
-              <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+              <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
                 {bidCount} bid{bidCount === 1 ? "" : "s"} received
-              </span>
+              </TagPill>
             ) : null}
           </div>
           {bidsUnavailable ? (
@@ -1374,9 +1383,9 @@ export default async function CustomerQuoteDetailPage({
       description="Project kickoff details and supplier checklist updates."
       defaultOpen={quoteHasWinner && !kickoffProgressBasis.isComplete}
       summary={
-        <span className={clsx("rounded-full border px-3 py-1", kickoffSummaryTone)}>
+        <TagPill size="md" tone={kickoffSummaryPillTone} className="normal-case tracking-normal">
           {kickoffSummaryLabel}
-        </span>
+        </TagPill>
       }
     >
       <div className="space-y-6">
@@ -1389,16 +1398,13 @@ export default async function CustomerQuoteDetailPage({
                 </p>
                 <p className="mt-1 text-sm text-slate-200">{partsCoverageSummaryLine}</p>
               </div>
-              <span
-                className={clsx(
-                  "rounded-full border px-3 py-1 text-[11px] font-semibold",
-                  partsCoverageSummary.allCovered
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
-                    : "border-amber-500/40 bg-amber-500/10 text-amber-100",
-                )}
+              <TagPill
+                size="md"
+                tone={partsCoverageSummary.allCovered ? "emerald" : "amber"}
+                className="normal-case tracking-normal"
               >
                 Coverage: {partsCoverageSummary.allCovered ? "Good" : "Needs attention"}
-              </span>
+              </TagPill>
             </div>
             {!partsCoverageSummary.allCovered ? (
               <p className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-100">
@@ -1470,13 +1476,13 @@ export default async function CustomerQuoteDetailPage({
             defaultOpen={tabParam === "messages"}
             summary={
               quoteMessages.length > 0 ? (
-                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                <TagPill size="md" tone="slate" className="normal-case tracking-normal">
                   {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
-                </span>
+                </TagPill>
               ) : (
-                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                <TagPill size="md" tone="slate" className="normal-case tracking-normal">
                   No messages
-                </span>
+                </TagPill>
               )
             }
           >
@@ -1673,17 +1679,17 @@ function formatMatchHealthLabel(value: unknown): string {
   return "Unknown";
 }
 
-function matchHealthPillClasses(value: unknown): string {
+function matchHealthPillTone(value: unknown): TagPillTone {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   switch (normalized) {
     case "good":
-      return "pill-success";
+      return "emerald";
     case "caution":
-      return "pill-warning";
+      return "amber";
     case "poor":
-      return "pill-danger";
+      return "red";
     default:
-      return "pill-muted";
+      return "slate";
   }
 }
 
@@ -1695,29 +1701,29 @@ function formatBenchStatusLabel(value: unknown): string {
   return "Unknown";
 }
 
-function benchStatusPillClasses(value: unknown): string {
+function benchStatusPillTone(value: unknown): TagPillTone {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   switch (normalized) {
     case "underused":
-      return "pill-info";
+      return "blue";
     case "balanced":
-      return "pill-success";
+      return "emerald";
     case "overused":
-      return "pill-warning";
+      return "amber";
     default:
-      return "pill-muted";
+      return "slate";
   }
 }
 
-function partsCoveragePillClasses(value: unknown): string {
+function partsCoveragePillTone(value: unknown): TagPillTone {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   switch (normalized) {
     case "good":
-      return "pill-success";
+      return "emerald";
     case "needs_attention":
-      return "pill-warning";
+      return "amber";
     default:
-      return "pill-muted";
+      return "slate";
   }
 }
 
@@ -1773,14 +1779,9 @@ function CustomerProjectSnapshotCard({
           <h2 className="text-lg font-semibold text-white">Kickoff snapshot</h2>
           <p className="text-xs text-slate-400">{nextStepMessage}</p>
         </div>
-        <span
-          className={clsx(
-            "rounded-full border px-4 py-1 text-xs font-semibold uppercase tracking-wide",
-            projectStatus.pillClasses,
-          )}
-        >
+        <TagPill size="md" tone={projectStatus.tone}>
           {projectStatus.label}
-        </span>
+        </TagPill>
       </header>
 
       {projectUnavailable ? (
@@ -1796,9 +1797,9 @@ function CustomerProjectSnapshotCard({
         <SnapshotItem label="Lead time" value={winningBidLeadTimeLabel} />
       </dl>
       <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
-        <span className="rounded-full border border-slate-800 bg-slate-950/70 px-3 py-1 text-slate-200">
+        <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           Kickoff: {kickoffSummaryLabel}
-        </span>
+        </TagPill>
         <span>View supplier workspace (coming soon)</span>
       </div>
     </section>
@@ -1816,7 +1817,7 @@ function SnapshotItem({ label, value }: { label: string; value: string }) {
 
 function formatCustomerProjectStatus(status?: string | null): {
   label: string;
-  pillClasses: string;
+  tone: TagPillTone;
 } {
   const normalized = typeof status === "string" ? status.trim().toLowerCase() : "";
   switch (normalized) {
@@ -1825,18 +1826,18 @@ function formatCustomerProjectStatus(status?: string | null): {
     case "in-progress":
       return {
         label: "Kickoff in progress",
-        pillClasses: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+        tone: "blue",
       };
     case "production":
     case "in_production":
       return {
         label: "In production",
-        pillClasses: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+        tone: "emerald",
       };
     default:
       return {
         label: "Planning",
-        pillClasses: "border-slate-700 bg-slate-900/40 text-slate-200",
+        tone: "slate",
       };
   }
 }
@@ -1866,12 +1867,8 @@ function CustomerKickoffPanel({
     ? `${summary.completedTasks} / ${summary.totalTasks}`
     : "—";
 
-  const pillTone =
-    summary?.isComplete
-      ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
-      : hasWinner
-        ? "border border-blue-500/40 bg-blue-500/10 text-blue-100"
-        : "border border-slate-800 bg-slate-900/60 text-slate-200";
+  const statusTone: TagPillTone =
+    summary?.isComplete ? "emerald" : hasWinner ? "blue" : "slate";
 
   return (
     <section
@@ -1890,9 +1887,9 @@ function CustomerKickoffPanel({
             Read-only progress from the awarded supplier.
           </p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${pillTone}`}>
+        <TagPill size="md" tone={statusTone} className="normal-case tracking-normal">
           {statusValue}
-        </span>
+        </TagPill>
       </header>
 
       <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-3">

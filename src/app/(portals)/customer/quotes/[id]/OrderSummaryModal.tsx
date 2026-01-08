@@ -59,7 +59,7 @@ export function OrderSummaryModal({
             <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
               <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_120px_160px]">
                 <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Part name
                   </p>
                   <p className="mt-1 truncate text-sm font-semibold text-white">{partName}</p>
@@ -72,7 +72,7 @@ export function OrderSummaryModal({
                 </div>
 
                 <div>
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Quantity</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Quantity</p>
                   <p className="mt-1 text-sm font-semibold text-slate-100">{quantity}</p>
                   <p className="mt-1 text-[11px] text-slate-500">
                     {/* TODO(checkout): replace placeholder with real per-part quantity. */}
@@ -81,7 +81,7 @@ export function OrderSummaryModal({
                 </div>
 
                 <div>
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Price</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Price</p>
                   <p className="mt-1 text-sm font-semibold text-slate-100">{priceLabel}</p>
                   <p className="mt-1 text-[11px] text-slate-500">
                     {/* TODO(checkout): compute taxes, shipping, and totals. */}
