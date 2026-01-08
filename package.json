@@ -5,8 +5,8 @@
   "scripts": {
     "backfill:files:dry": "tsx scripts/backfill-canonical-quote-files.ts --dryRun --limit 20 --verbose",
     "backfill:files": "tsx scripts/backfill-canonical-quote-files.ts --limit 500 --verbose",
-    "backfill:uploads:dry": "tsx scripts/backfill-canonical-files-from-uploads.ts --dryRun --limit 50 --verbose",
-    "backfill:uploads": "tsx scripts/backfill-canonical-files-from-uploads.ts --limit 500 --verbose",
+    "backfill:uploads:dry": "dotenv -e .env.local -- tsx scripts/backfill-canonical-files-from-uploads.ts --dryRun --limit 50 --verbose",
+    "backfill:uploads": "dotenv -e .env.local -- tsx scripts/backfill-canonical-files-from-uploads.ts --limit 500 --verbose",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -31,6 +31,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "autoprefixer": "^10.4.22",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.5.2",
     "postcss": "^8.5.6",
