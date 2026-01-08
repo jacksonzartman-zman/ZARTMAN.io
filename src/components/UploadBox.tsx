@@ -1494,6 +1494,38 @@ export default function UploadBox({
     return "submit";
   }, [allFilesUploaded, detailsRequiredComplete, hasFilesAttached]);
 
+  const stepToneFor = useMemo(() => {
+    return (stepId: IntakeStepId): "muted" | "active" | "done" => {
+      if (stepId === currentStep) return "active";
+      if (stepId === "attach") return hasFilesAttached ? "done" : "muted";
+      if (stepId === "review") return allFilesUploaded ? "done" : "muted";
+      if (stepId === "details") return detailsRequiredComplete ? "done" : "muted";
+      return canSubmit ? "done" : "muted";
+    };
+  }, [allFilesUploaded, canSubmit, currentStep, detailsRequiredComplete, hasFilesAttached]);
+
+  const stepPillClass = useMemo(() => {
+    return (stepId: IntakeStepId) =>
+      clsx(
+        "inline-flex items-center rounded-full border px-2.5 py-1",
+        stepToneFor(stepId) === "done"
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+          : stepToneFor(stepId) === "active"
+            ? "border-accent/35 bg-accent/10 text-foreground"
+            : "border-border/40 bg-black/10 text-muted",
+      );
+  }, [stepToneFor]);
+
+  const stepSectionClass = useMemo(() => {
+    return (stepId: IntakeStepId) =>
+      clsx(
+        "scroll-mt-24 space-y-4 rounded-2xl border p-4 sm:p-5",
+        stepId === currentStep
+          ? "border-accent/25 bg-accent/5"
+          : "border-border/35 bg-black/5",
+      );
+  }, [currentStep]);
+
   const lastAutoScrolledStepRef = useRef<IntakeStepId | null>(null);
   const prevHasFilesRef = useRef<boolean>(hasFilesAttached);
   const prevAllUploadedRef = useRef<boolean>(allFilesUploaded);
@@ -1567,21 +1599,19 @@ export default function UploadBox({
               Quote progress
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
-              <span className={clsx(currentStep === "attach" && "text-foreground")}>
-                Attach
+              <span className={stepPillClass("attach")}>Attach</span>
+              <span aria-hidden="true" className="text-muted/70">
+                →
               </span>
-              <span aria-hidden="true">→</span>
-              <span className={clsx(currentStep === "review" && "text-foreground")}>
-                Review
+              <span className={stepPillClass("review")}>Review</span>
+              <span aria-hidden="true" className="text-muted/70">
+                →
               </span>
-              <span aria-hidden="true">→</span>
-              <span className={clsx(currentStep === "details" && "text-foreground")}>
-                Details
+              <span className={stepPillClass("details")}>Details</span>
+              <span aria-hidden="true" className="text-muted/70">
+                →
               </span>
-              <span aria-hidden="true">→</span>
-              <span className={clsx(currentStep === "submit" && "text-foreground")}>
-                Submit
-              </span>
+              <span className={stepPillClass("submit")}>Submit</span>
             </div>
           </div>
           <p className="mt-2 text-sm text-muted">
@@ -1589,7 +1619,7 @@ export default function UploadBox({
           </p>
         </div>
 
-        <div id="quote-intake-step-attach" className="scroll-mt-24 space-y-4">
+        <div id="quote-intake-step-attach" className={stepSectionClass("attach")}>
           <StepHeader
             step={1}
             title="Attach your CAD pack"
@@ -1673,7 +1703,7 @@ export default function UploadBox({
 
         <div className="my-8 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-        <div id="quote-intake-step-review" className="scroll-mt-24 space-y-4">
+        <div id="quote-intake-step-review" className={stepSectionClass("review")}>
           <StepHeader
             step={2}
             title="Review parts & uploads"
@@ -2170,7 +2200,7 @@ export default function UploadBox({
 
         <div className="my-8 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-        <div id="quote-intake-step-details" className="scroll-mt-24 space-y-4">
+        <div id="quote-intake-step-details" className={stepSectionClass("details")}>
           <StepHeader
             step={3}
             title="Project & contact details"
@@ -2526,7 +2556,7 @@ export default function UploadBox({
 
         <div className="my-8 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-        <div id="quote-intake-step-submit" className="scroll-mt-24 space-y-4">
+        <div id="quote-intake-step-submit" className={stepSectionClass("submit")}>
           <StepHeader
             step={4}
             title="Submit your RFQ"
