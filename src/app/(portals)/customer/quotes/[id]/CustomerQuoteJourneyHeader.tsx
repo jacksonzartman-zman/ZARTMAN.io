@@ -6,6 +6,27 @@ import {
   type QuoteWorkspaceStatus,
 } from "@/lib/quote/workspaceStatus";
 
+function getScrollBehavior(): ScrollBehavior {
+  if (typeof window === "undefined") return "auto";
+  const prefersReducedMotion =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return prefersReducedMotion ? "auto" : "smooth";
+}
+
+function scrollToIdWithHash(id: string) {
+  if (typeof window === "undefined") return;
+  const nextHash = `#${id}`;
+  if (window.location.hash !== nextHash) {
+    window.history.replaceState(null, "", nextHash);
+    window.dispatchEvent(new Event("hashchange"));
+  }
+  document.getElementById(id)?.scrollIntoView({
+    behavior: getScrollBehavior(),
+    block: "start",
+  });
+}
+
 export type CustomerQuoteJourneyHeaderPrimaryAction = {
   label: string;
   onClick: () => void;
@@ -76,11 +97,7 @@ export function CustomerQuoteJourneyHeaderAuto({
           label: "Review bids",
           onClick: () => {
             // Reuse existing bid review navigation (Decision section anchor).
-            window.location.hash = "#decision";
-            document.getElementById("decision")?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            });
+            scrollToIdWithHash("decision");
           },
         }
       : status === "awarded"
@@ -95,11 +112,7 @@ export function CustomerQuoteJourneyHeaderAuto({
                 button.click();
                 return;
               }
-              window.location.hash = "#checkout";
-              document.getElementById("checkout")?.scrollIntoView({
-                behavior: "smooth",
-                block: "start",
-              });
+              scrollToIdWithHash("checkout");
             },
           }
         : undefined;
