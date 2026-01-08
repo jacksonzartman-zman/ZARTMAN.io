@@ -77,9 +77,13 @@ import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/ad
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
-import { deriveQuoteWorkspaceStatus } from "@/lib/quote/workspaceStatus";
+import {
+  deriveQuoteWorkspaceStatus,
+  type QuoteWorkspaceStatus,
+} from "@/lib/quote/workspaceStatus";
 import { CustomerQuoteJourneyHeaderAuto } from "./CustomerQuoteJourneyHeader";
 import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
+import { StatusPill } from "@/components/shared/primitives/StatusPill";
 
 export const dynamic = "force-dynamic";
 
@@ -588,6 +592,29 @@ export default async function CustomerQuoteDetailPage({
           winningBid.lead_time_days === 1 ? "" : "s"
         }`
       : leadTimeLabel;
+  const quoteSummarySelectedPriceLabel =
+    typeof winningBid?.amount === "number"
+      ? formatCurrency(winningBid.amount, winningBid.currency ?? undefined)
+      : null;
+  const quoteSummaryBestPriceLabel =
+    bestPriceValue != null
+      ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
+      : null;
+  const quoteSummaryPriceLabel = quoteHasWinner
+    ? quoteSummarySelectedPriceLabel ?? "—"
+    : quoteSummaryBestPriceLabel ?? "—";
+  const quoteSummarySelectedLeadTimeLabel =
+    typeof winningBid?.lead_time_days === "number" &&
+    Number.isFinite(winningBid.lead_time_days)
+      ? `${winningBid.lead_time_days} day${winningBid.lead_time_days === 1 ? "" : "s"}`
+      : null;
+  const quoteSummaryBestLeadTimeLabel =
+    fastestLeadTime != null
+      ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
+      : null;
+  const quoteSummaryLeadTimeLabel = quoteHasWinner
+    ? quoteSummarySelectedLeadTimeLabel ?? "—"
+    : quoteSummaryBestLeadTimeLabel ?? "—";
   const awardedAtLabel = quote.awarded_at
     ? formatDateTime(quote.awarded_at, { includeTime: true })
     : null;
@@ -1461,6 +1488,13 @@ export default async function CustomerQuoteDetailPage({
       {receiptBanner}
       <div className="space-y-8 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-8 lg:space-y-0">
         <div className="space-y-8">
+          <QuoteSummaryCard
+            className="lg:hidden"
+            status={workspaceStatus}
+            partName={primaryFileName}
+            priceLabel={quoteSummaryPriceLabel}
+            leadTimeLabel={quoteSummaryLeadTimeLabel}
+          />
           {orderWorkspaceSection}
           {decisionSection}
           {kickoffSection}
@@ -1508,6 +1542,13 @@ export default async function CustomerQuoteDetailPage({
           </DisclosureSection>
         </div>
         <div className="space-y-8">
+          <QuoteSummaryCard
+            className="hidden lg:block"
+            status={workspaceStatus}
+            partName={primaryFileName}
+            priceLabel={quoteSummaryPriceLabel}
+            leadTimeLabel={quoteSummaryLeadTimeLabel}
+          />
           {quoteIsWon ? (
             <PortalCard
               title="Project status"
@@ -1575,6 +1616,53 @@ export default async function CustomerQuoteDetailPage({
         </div>
       </div>
     </PortalShell>
+  );
+}
+
+function QuoteSummaryCard({
+  status,
+  partName,
+  priceLabel,
+  leadTimeLabel,
+  className,
+}: {
+  status: QuoteWorkspaceStatus;
+  partName: string;
+  priceLabel: string;
+  leadTimeLabel: string;
+  className?: string;
+}) {
+  return (
+    <section className={clsx("rounded-2xl border border-slate-800 bg-slate-950/60 p-5", className)}>
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Quote summary
+          </p>
+          <p className="mt-1 truncate text-base font-semibold text-white">{partName}</p>
+        </div>
+        <StatusPill status={status} />
+      </header>
+
+      <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Price
+          </dt>
+          <dd className="mt-1 text-base font-semibold text-white">{priceLabel}</dd>
+        </div>
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Lead time
+          </dt>
+          <dd className="mt-1 text-base font-semibold text-white">{leadTimeLabel}</dd>
+        </div>
+      </dl>
+
+      <p className="mt-3 text-xs text-slate-500">
+        Updates as bids arrive, messages clarify scope, and a winner is awarded.
+      </p>
+    </section>
   );
 }
 
