@@ -131,88 +131,93 @@ export function CustomerQuoteAwardPanel({
         </p>
       ) : null}
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-900/60 bg-slate-950/40">
-        <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-          <thead className="border-b border-slate-900/60 bg-slate-950/70">
-            <tr className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              <th className="px-5 py-3">Supplier</th>
-              <th className="px-5 py-3">Price</th>
-              <th className="px-5 py-3">Lead time</th>
-              <th className="px-5 py-3">Notes</th>
-              <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3 text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bids.map((bid) => {
-              const isWinner = resolvedWinnerId === bid.id;
-              const submittedText =
-                formatDateTime(bid.createdAt, { includeTime: true }) ?? "Just now";
-              const statusLabel = formatBidStatusLabel(bid.status);
-              const statusClasses = getStatusClasses(bid.status);
-              const priceText = bid.priceDisplay ?? "Price pending";
-              const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
-              const awardDisabled = !canSubmit || selectionLocked;
-              const rowClasses = clsx(
-                "border-b border-slate-900/60",
-                isWinner
-                  ? "bg-emerald-500/5"
-                  : "bg-transparent",
-              );
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {bids.map((bid) => {
+          const isWinner = resolvedWinnerId === bid.id;
+          const submittedText =
+            formatDateTime(bid.createdAt, { includeTime: true }) ?? "Just now";
+          const statusLabel = formatBidStatusLabel(bid.status);
+          const statusClasses = getStatusClasses(bid.status);
+          const priceText = bid.priceDisplay ?? "Price pending";
+          const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
+          const awardDisabled = !canSubmit || selectionLocked;
 
-              return (
-                <tr key={bid.id} className={rowClasses}>
-                  <td className="px-5 py-4 align-top">
-                    <p className="text-base font-semibold text-white">{bid.supplierName}</p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Submitted {submittedText}
-                    </p>
-                    {isWinner ? (
-                      <div className="mt-2">
-                        <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
-                          Winner selected
-                        </span>
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="px-5 py-4 align-top text-slate-100">
-                    <span className="font-semibold text-white">{priceText}</span>
-                  </td>
-                  <td className="px-5 py-4 align-top text-slate-100">
-                    <span className="font-semibold text-white">{leadTimeText}</span>
-                  </td>
-                  <td className="px-5 py-4 align-top text-slate-200">
-                    <span className="line-clamp-3">{bid.notes ?? "—"}</span>
-                  </td>
-                  <td className="px-5 py-4 align-top">
+          return (
+            <article
+              key={bid.id}
+              className={clsx(
+                "flex h-full flex-col rounded-2xl border px-5 py-4",
+                isWinner
+                  ? "border-emerald-500/40 bg-emerald-500/5"
+                  : "border-slate-900/60 bg-slate-950/40",
+              )}
+            >
+              <header className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-base font-semibold text-white">
+                    {bid.supplierName}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Submitted {submittedText}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <span
+                      className="inline-flex rounded-full border border-dashed border-slate-700/70 bg-slate-950/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400/80"
+                      title="Recommendation badge placeholder (coming soon)"
+                      aria-label="Recommended badge placeholder (coming soon)"
+                    >
+                      Recommended
+                    </span>
                     <span className={clsx("pill px-3 py-1 text-[11px]", statusClasses)}>
                       {statusLabel}
                     </span>
-                  </td>
-                  <td className="px-5 py-4 align-top text-right">
-                    {awardDisabled ? (
-                      <button
-                        type="button"
-                        disabled
-                        className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-400 opacity-70"
-                      >
-                        {isWinner ? "Winner selected" : "Locked"}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmingBidId(bid.id)}
-                        className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
-                      >
-                        Award
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                  {isWinner ? (
+                    <span className="pill pill-success px-3 py-1 text-[11px] uppercase tracking-wide">
+                      Winner selected
+                    </span>
+                  ) : null}
+                </div>
+              </header>
+
+              <dl className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-200">
+                <BidMetric label="Price" value={priceText} />
+                <BidMetric label="Lead time" value={leadTimeText} />
+              </dl>
+
+              <div className="mt-4 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  Notes
+                </p>
+                <p className="mt-2 line-clamp-3 text-sm text-slate-200">
+                  {bid.notes ?? "—"}
+                </p>
+              </div>
+
+              <div className="mt-auto flex items-center justify-end gap-2 pt-5">
+                {awardDisabled ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-400 opacity-70"
+                  >
+                    {isWinner ? "Winner selected" : "Locked"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingBidId(bid.id)}
+                    className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+                  >
+                    Award
+                  </button>
+                )}
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       {confirmingBid ? (
@@ -255,6 +260,17 @@ export function CustomerQuoteAwardPanel({
         </ul>
       </div>
     </section>
+  );
+}
+
+function BidMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </dt>
+      <dd className="mt-1 font-semibold text-white tabular-nums">{value}</dd>
+    </div>
   );
 }
 
