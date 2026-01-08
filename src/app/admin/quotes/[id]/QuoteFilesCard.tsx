@@ -26,6 +26,18 @@ type QuoteFilesCardProps = {
 export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
 
+  const orderedFiles = useMemo(() => {
+    const copy = Array.isArray(files) ? [...files] : [];
+    copy.sort((a, b) => {
+      const rank = fileSortRank(a) - fileSortRank(b);
+      if (rank !== 0) return rank;
+      const aName = (a.fileName ?? a.label ?? "").toLowerCase();
+      const bName = (b.fileName ?? b.label ?? "").toLowerCase();
+      return aName.localeCompare(bName);
+    });
+    return copy;
+  }, [files]);
+
   const activeFile = useMemo(
     () => files.find((file) => file.id === activeFileId) ?? null,
     [activeFileId, files],
@@ -48,102 +60,178 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
     }
   }, [activeFileId, files]);
 
-    return (
-      <section
-        id={id}
-        className={clsx(
-          "rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5",
-          className,
-        )}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Files
-            </p>
-            <p className="text-sm text-slate-400">
-              Click a file to open the 3D preview modal.
-            </p>
-          </div>
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            {files.length} attached
-          </span>
+  return (
+    <section
+      id={id}
+      className={clsx(
+        "rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5",
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Files
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Previews are for viewing only. Downloads keep the original upload.
+          </p>
         </div>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+          {files.length} attached
+        </span>
+      </div>
 
-        <div className="mt-4 space-y-2">
-          {files.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-900/70 bg-black/20 px-6 py-5 text-sm text-slate-500">
-              No files listed.
-            </p>
-          ) : (
-            files.map((file) => {
-              const name = file.fileName ?? file.label;
-              const classified = classifyCadFileType({ filename: name, extension: null });
-              const cadKind = file.cadKind ?? (classified.ok ? classified.type : null);
-              const canPreview = Boolean(file.storageSource && cadKind && file.signedUrl);
+      <div className="mt-4 space-y-2">
+        {files.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-900/70 bg-black/20 px-6 py-5 text-sm text-slate-500">
+            No files listed.
+          </p>
+        ) : (
+          orderedFiles.map((file) => {
+            const name = file.fileName ?? file.label;
+            const classified = classifyCadFileType({ filename: name, extension: null });
+            const cadKind = file.cadKind ?? (classified.ok ? classified.type : null);
+            const canPreview = Boolean(file.storageSource && cadKind && file.signedUrl);
 
-              const content = (
-                <>
-                  <div className="min-w-0">
+            const bucket = file.storageSource?.bucket ?? null;
+            const isAutoPreviewFile = bucket === "cad_previews";
+            const isStep = cadKind === "step";
+            const showGeneratedPreviewInfo = isStep && !isAutoPreviewFile;
+
+            const primaryTag = formatPrimaryTag({ cadKind, isAutoPreviewFile });
+            const previewTag = showGeneratedPreviewInfo ? "Preview STL (auto-generated)" : null;
+            const statusLine = showGeneratedPreviewInfo
+              ? "Preview STL (auto-generated)"
+              : canPreview
+                ? "3D preview available"
+                : file.fallbackMessage ?? "Preview not available";
+
+            const helperLine = showGeneratedPreviewInfo
+              ? "Preview is for viewing only. Download retains the original file."
+              : null;
+
+            const content = (
+              <>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate text-sm font-medium text-slate-100">
                       {file.label}
                     </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {canPreview
-                        ? "3D preview available"
-                        : file.fallbackMessage ?? "Preview not available"}
-                    </p>
-                  </div>
-                  {canPreview ? (
-                    <span
-                      className={clsx(
-                        secondaryCtaClasses,
-                        ctaSizeClasses.sm,
-                        "whitespace-nowrap",
-                      )}
-                    >
-                      View model
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <TagPill tone={isAutoPreviewFile ? "amber" : "slate"}>
+                        {primaryTag}
+                      </TagPill>
+                      {previewTag ? <TagPill tone="blue">{previewTag}</TagPill> : null}
                     </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">{statusLine}</p>
+                  {helperLine ? (
+                    <p className="mt-1 text-[11px] text-slate-600">{helperLine}</p>
                   ) : null}
-                </>
-              );
-
-              return canPreview ? (
-                <button
-                  key={file.id}
-                  type="button"
-                  onClick={() => setActiveFileId(file.id)}
-                  className="group flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/20 px-6 py-4 text-left transition hover:border-slate-800 hover:bg-slate-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70"
-                >
-                  {content}
-                </button>
-              ) : (
-                <div
-                  key={file.id}
-                  className="flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/10 px-6 py-4 text-left opacity-80"
-                >
-                  {content}
                 </div>
-              );
-            })
-          )}
-        </div>
+                {canPreview ? (
+                  <span
+                    className={clsx(
+                      secondaryCtaClasses,
+                      ctaSizeClasses.sm,
+                      "whitespace-nowrap",
+                    )}
+                  >
+                    View model
+                  </span>
+                ) : null}
+              </>
+            );
 
-        {activeFile ? (
-          activeFile.storageSource && activeCadKind ? (
-            <CadPreviewModal
-              storageSource={activeFile.storageSource}
-              filename={activeFile.fileName ?? activeFile.label}
-              cadKind={activeCadKind}
-              title="3D Preview"
-              onClose={closeModal}
-            />
-          ) : (
-            <QuoteFileUnsupportedModal file={activeFile} onClose={closeModal} />
-          )
-        ) : null}
-      </section>
-    );
+            return canPreview ? (
+              <button
+                key={file.id}
+                type="button"
+                onClick={() => setActiveFileId(file.id)}
+                className="group flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/20 px-6 py-4 text-left transition hover:border-slate-800 hover:bg-slate-900/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70"
+              >
+                {content}
+              </button>
+            ) : (
+              <div
+                key={file.id}
+                className="flex w-full items-center justify-between rounded-xl border border-slate-900/60 bg-slate-950/10 px-6 py-4 text-left opacity-80"
+              >
+                {content}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {activeFile ? (
+        activeFile.storageSource && activeCadKind ? (
+          <CadPreviewModal
+            storageSource={activeFile.storageSource}
+            filename={activeFile.fileName ?? activeFile.label}
+            cadKind={activeCadKind}
+            title="3D Preview"
+            onClose={closeModal}
+          />
+        ) : (
+          <QuoteFileUnsupportedModal file={activeFile} onClose={closeModal} />
+        )
+      ) : null}
+    </section>
+  );
+}
+
+function fileSortRank(file: QuoteFileItem): number {
+  const bucket = file.storageSource?.bucket ?? "";
+  if (bucket === "cad_uploads") return 0;
+  if (bucket === "cad_previews") return 1;
+  return 2;
+}
+
+function formatCadKindLabel(cadKind: CadKind | null): string | null {
+  if (!cadKind) return null;
+  if (cadKind === "step") return "STEP";
+  if (cadKind === "stl") return "STL";
+  if (cadKind === "obj") return "OBJ";
+  if (cadKind === "glb") return "GLB";
+  return String(cadKind).toUpperCase();
+}
+
+function formatPrimaryTag(input: {
+  cadKind: CadKind | null;
+  isAutoPreviewFile: boolean;
+}): string {
+  const kind = formatCadKindLabel(input.cadKind);
+  if (input.isAutoPreviewFile) {
+    return `Preview ${kind ?? "file"} (auto-generated)`;
+  }
+  return `Original ${kind ?? "file"}`;
+}
+
+function TagPill({
+  children,
+  tone,
+}: {
+  children: string;
+  tone: "slate" | "blue" | "amber";
+}) {
+  const classes =
+    tone === "blue"
+      ? "border-blue-500/30 bg-blue-500/10 text-blue-100"
+      : tone === "amber"
+        ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
+        : "border-slate-800 bg-slate-950/40 text-slate-200";
+  return (
+    <span
+      className={clsx(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        classes,
+      )}
+    >
+      {children}
+    </span>
+  );
 }
 
 type QuoteFileUnsupportedModalProps = {
