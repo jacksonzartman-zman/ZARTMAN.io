@@ -817,7 +817,7 @@ export default async function CustomerQuoteDetailPage({
         ) : bidCount === 0 ? (
           <EmptyStateCard
             title="No bids yet"
-            description="We’re reaching out to suppliers now. If we need any clarification, we’ll message you here."
+            description="Next, suppliers will review your files and we’ll message you here if anything needs clarification."
             action={{ label: "Open messages", href: messagesHref }}
           />
         ) : (
@@ -1096,7 +1096,7 @@ export default async function CustomerQuoteDetailPage({
       hashAliases={["award"]}
       className="scroll-mt-24"
       title="Decision"
-      description="Review supplier bids and select a winner."
+      description="Once bids arrive, compare options and select a winning supplier."
       defaultOpen={bidCount > 0 && !quoteHasWinner}
       summary={
         quoteHasWinner ? (
@@ -1310,7 +1310,7 @@ export default async function CustomerQuoteDetailPage({
           ) : bidCount === 0 ? (
             <EmptyStateCard
               title="No bids yet"
-            description="We’re reaching out to suppliers now. If we need any clarification, we’ll message you here."
+            description="Next, suppliers will review your files and we’ll message you here if anything needs clarification."
               action={{ label: "Open messages", href: messagesHref }}
             />
           ) : (
