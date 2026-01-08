@@ -6,10 +6,7 @@ import {
   loadCustomerQuotesList,
   type CustomerQuotesListFilters,
 } from "@/server/customer/quotesList";
-import {
-  getCustomerQuoteStatusMeta,
-  type CustomerQuoteListStatus,
-} from "@/server/quotes/customerSummary";
+import { formatCurrency } from "@/lib/formatCurrency";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import PortalCard from "../../PortalCard";
@@ -23,19 +20,6 @@ function formatLastActivity(value: string | null): string {
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function resolveStatusMeta(label: string) {
-  const normalized = normalizeText(label).toLowerCase();
-  const key: CustomerQuoteListStatus =
-    normalized === "bids received"
-      ? "bids_received"
-      : normalized === "awarded"
-        ? "awarded"
-        : normalized === "closed"
-          ? "closed"
-          : "submitted";
-  return getCustomerQuoteStatusMeta(key);
 }
 
 function formatKickoffPill(status: "not_started" | "in_progress" | "complete" | "n/a") {
@@ -58,6 +42,56 @@ function formatKickoffPill(status: "not_started" | "in_progress" | "complete" | 
     label: "Kickoff not started",
     className: "border-slate-800 bg-slate-950/50 text-slate-300",
   };
+}
+
+type InboxStatus = "draft" | "in_review" | "awarded";
+
+function deriveInboxStatus(args: {
+  hasWinner: boolean;
+  bidsCount: number;
+}): {
+  key: InboxStatus;
+  label: string;
+  pillClassName: string;
+  actionLabel: string;
+  actionHrefSuffix: string;
+} {
+  if (args.hasWinner) {
+    return {
+      key: "awarded",
+      label: "Awarded",
+      pillClassName: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+      actionLabel: "Proceed to order",
+      actionHrefSuffix: "#checkout",
+    };
+  }
+  if (args.bidsCount > 0) {
+    return {
+      key: "in_review",
+      label: "In review",
+      pillClassName: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+      actionLabel: "Review bids",
+      actionHrefSuffix: "#decision",
+    };
+  }
+  return {
+    key: "draft",
+    label: "Draft",
+    pillClassName: "border-slate-800 bg-slate-950/50 text-slate-300",
+    actionLabel: "Complete request",
+    actionHrefSuffix: "#uploads",
+  };
+}
+
+function formatLeadTime(days: number | null): string {
+  if (typeof days !== "number" || !Number.isFinite(days)) return "Pending";
+  if (days <= 0) return "Pending";
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
+function formatMoney(amount: number | null, currency: string | null): string {
+  if (typeof amount !== "number" || !Number.isFinite(amount)) return "Pending";
+  return formatCurrency(amount, currency ?? undefined);
 }
 
 type CustomerQuotesPageProps = {
@@ -226,106 +260,91 @@ export default async function CustomerQuotesPage({
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
-            <table className="min-w-full divide-y divide-slate-900/70 text-sm">
-              <thead className="bg-slate-900/60">
-                <tr>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    RFQ / Quote
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Status
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Bids
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Award / Kickoff
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Messages
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Last activity
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-900/70">
-                {quotes.map((quote) => {
-                  const statusMeta = resolveStatusMeta(quote.status);
-                  const kickoff = formatKickoffPill(quote.kickoffStatus);
-                  const unread = Math.max(0, Math.floor(quote.unreadMessagesCount ?? 0));
+            <ul className="divide-y divide-slate-900/70">
+              {quotes.map((quote) => {
+                const kickoff = formatKickoffPill(quote.kickoffStatus);
+                const unread = Math.max(0, Math.floor(quote.unreadMessagesCount ?? 0));
+                const inboxStatus = deriveInboxStatus({
+                  hasWinner: quote.hasWinner,
+                  bidsCount: quote.bidsCount,
+                });
 
-                  return (
-                    <tr key={quote.id} className="hover:bg-slate-900/50">
-                      <td className="px-5 py-4 align-middle">
-                        <div className="flex flex-col">
+                const fileLabel = quote.primaryFileName ?? "No files yet";
+                const bestPriceLabel =
+                  formatMoney(
+                    quote.selectedPriceAmount ?? quote.bestPriceAmount,
+                    quote.selectedPriceCurrency ?? quote.bestPriceCurrency,
+                  );
+                const bestLeadLabel =
+                  formatLeadTime(quote.selectedLeadTimeDays ?? quote.bestLeadTimeDays);
+                const actionHref = `/customer/quotes/${quote.id}${inboxStatus.actionHrefSuffix}`;
+
+                return (
+                  <li key={quote.id} className="hover:bg-slate-900/40">
+                    <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Link
                             href={`/customer/quotes/${quote.id}`}
-                            className="font-medium text-slate-100 underline-offset-4 transition hover:underline"
+                            className="min-w-0 truncate text-base font-semibold text-slate-100 underline-offset-4 transition hover:underline"
                           >
                             {quote.rfqLabel}
                           </Link>
-                          <span className="text-xs text-slate-500">
-                            Quote {quote.id.startsWith("Q-") ? quote.id : `#${quote.id.slice(0, 6)}`}
+                          <span
+                            className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${inboxStatus.pillClassName}`}
+                          >
+                            {inboxStatus.label}
                           </span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <span className={`pill pill-table ${statusMeta.pillClass}`}>
-                          {quote.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 align-middle text-slate-200">
-                        <span className="font-semibold text-slate-100">
-                          {quote.bidsCount}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        {quote.hasWinner ? (
-                          <div className="flex flex-col gap-2">
-                            <span className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${kickoff.className}`}>
-                              {kickoff.label}
-                            </span>
-                            <Link
-                              href={`/customer/quotes/${quote.id}#kickoff`}
-                              className="text-xs font-semibold text-emerald-200 hover:underline"
-                            >
-                              View project
-                            </Link>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-2">
-                            <span className="text-sm text-slate-400">No winner yet</span>
-                            <Link
-                              href={`/customer/quotes/${quote.id}#decision`}
-                              className="text-xs font-semibold text-emerald-200 hover:underline"
-                            >
-                              Review &amp; award
-                            </Link>
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <Link
-                          href={`/customer/quotes/${quote.id}?tab=messages`}
-                          className="inline-flex items-center gap-2 text-xs font-semibold text-slate-200 hover:text-white"
-                        >
-                          <span>Messages</span>
                           {unread > 0 ? (
-                            <span className="inline-flex min-w-[1.75rem] items-center justify-center rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-semibold text-red-100">
-                              {unread > 99 ? "99+" : unread}
+                            <span className="inline-flex items-center rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-100">
+                              {unread > 99 ? "99+" : unread} new
                             </span>
                           ) : null}
+                          {quote.hasWinner ? (
+                            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide ${kickoff.className}`}>
+                              {kickoff.label}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                          <span className="truncate">
+                            <span className="text-slate-500">File:</span> {fileLabel}
+                          </span>
+                          <span className="text-slate-600">•</span>
+                          <span>
+                            <span className="text-slate-500">
+                              {quote.hasWinner ? "Selected" : "Best"} price:
+                            </span>{" "}
+                            <span className="font-semibold text-slate-200">{bestPriceLabel}</span>
+                          </span>
+                          <span className="text-slate-600">•</span>
+                          <span>
+                            <span className="text-slate-500">
+                              {quote.hasWinner ? "Selected" : "Best"} lead:
+                            </span>{" "}
+                            <span className="font-semibold text-slate-200">{bestLeadLabel}</span>
+                          </span>
+                          <span className="text-slate-600">•</span>
+                          <span>
+                            <span className="text-slate-500">Updated:</span>{" "}
+                            {formatLastActivity(quote.lastActivityAt)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center justify-end gap-2">
+                        <Link
+                          href={actionHref}
+                          className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-black transition hover:bg-emerald-400"
+                        >
+                          {inboxStatus.actionLabel}
                         </Link>
-                      </td>
-                      <td className="px-5 py-4 align-middle text-slate-300">
-                        {formatLastActivity(quote.lastActivityAt)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         )}
       </PortalCard>
