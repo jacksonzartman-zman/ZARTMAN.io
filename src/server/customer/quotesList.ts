@@ -24,6 +24,13 @@ export type CustomerQuoteListRow = {
   hasWinner: boolean;
   kickoffStatus: "not_started" | "in_progress" | "complete" | "n/a";
   bidsCount: number;
+  primaryFileName: string | null;
+  bestPriceAmount: number | null;
+  bestPriceCurrency: string | null;
+  bestLeadTimeDays: number | null;
+  selectedPriceAmount: number | null;
+  selectedPriceCurrency: string | null;
+  selectedLeadTimeDays: number | null;
   unreadMessagesCount: number;
   lastActivityAt: string | null;
 };
@@ -182,6 +189,19 @@ export async function loadCustomerQuotesList(
       const statusMeta = getCustomerQuoteStatusMeta(listStatusKey);
       const hasWinner = isWinnerQuote(quote);
       const bidsCount = aggregate?.bidCount ?? 0;
+      const primaryFileName =
+        typeof files[0]?.filename === "string" && files[0].filename.trim().length > 0
+          ? files[0].filename.trim()
+          : null;
+      const bestPriceAmount = aggregate?.bestPriceAmount ?? null;
+      const bestPriceCurrency = aggregate?.bestPriceCurrency ?? null;
+      const bestLeadTimeDays = aggregate?.fastestLeadTimeDays ?? null;
+      const selectedPriceAmount =
+        hasWinner ? aggregate?.winningBidAmount ?? null : null;
+      const selectedPriceCurrency =
+        hasWinner ? aggregate?.winningBidCurrency ?? null : null;
+      const selectedLeadTimeDays =
+        hasWinner ? aggregate?.winningBidLeadTimeDays ?? null : null;
       const unread = unreadSummary[quote.id]?.unreadCount ?? 0;
       const lastMessageAt = unreadSummary[quote.id]?.lastMessage?.created_at ?? null;
       const lastEventAt = lastEventAtByQuoteId.get(quote.id) ?? null;
@@ -210,6 +230,13 @@ export async function loadCustomerQuotesList(
         hasWinner,
         kickoffStatus,
         bidsCount,
+        primaryFileName,
+        bestPriceAmount,
+        bestPriceCurrency,
+        bestLeadTimeDays,
+        selectedPriceAmount,
+        selectedPriceCurrency,
+        selectedLeadTimeDays,
         unreadMessagesCount: unread,
         lastActivityAt,
       };
