@@ -28,7 +28,7 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
     const tooLarge = files.filter((f) => isFileTooLarge(f));
     if (tooLarge.length > 0) {
       setLocalError(
-        `One or more files exceed the ${maxLabel} limit. Please upload smaller files or split large ZIPs.`,
+        `One or more files are over the ${maxLabel} limit. Please upload smaller files or split large ZIPs into multiple uploads.`,
       );
     } else {
       setLocalError(null);
@@ -43,7 +43,7 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
             Add files
           </p>
           <p className="mt-1 text-sm text-slate-300">
-            Upload additional CAD, drawings, PDFs, or ZIPs to this quote.
+            Upload CAD, drawings, PDFs, or ZIPs to this RFQ. After upload, files will appear below and can be linked to parts.
           </p>
         </div>
       </div>
@@ -56,7 +56,7 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
           if (tooLarge.length > 0) {
             e.preventDefault();
             setLocalError(
-              `One or more files exceed the ${maxLabel} limit. Please upload smaller files or split large ZIPs.`,
+              `One or more files are over the ${maxLabel} limit. Please upload smaller files or split large ZIPs into multiple uploads.`,
             );
             return;
           }
@@ -67,7 +67,7 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
           if (files.length === 0) {
             setState({
               status: "error",
-              message: "Please choose at least one file to upload.",
+              message: "Choose one or more files to upload.",
             });
             return;
           }
@@ -98,7 +98,7 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
             if (targets.length !== files.length) {
               setState({
                 status: "error",
-                message: "Upload preparation failed. Please try again.",
+                message: "We couldn’t prepare your upload. Please try again.",
               });
               return;
             }
@@ -120,7 +120,8 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
                 console.error("[customer uploads] storage upload failed", storageError);
                 setState({
                   status: "error",
-                  message: "Could not upload files. Please try again.",
+                  message:
+                    "We couldn’t upload one or more files. Nothing was changed—please try again.",
                 });
                 return;
               }
@@ -162,13 +163,13 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
 
         {state.status === "error" ? (
           <p className="text-sm text-red-200" role="alert">
-            {state.message ?? "Could not upload files."}
+            {state.message ?? "We couldn’t upload your files. Please try again."}
           </p>
         ) : null}
 
         {state.status === "success" ? (
           <p className="text-sm text-emerald-200" role="status">
-            {state.message ?? "Files uploaded."}
+            {state.message ?? "Files uploaded. They’ll appear below shortly."}
           </p>
         ) : null}
 

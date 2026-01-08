@@ -121,8 +121,8 @@ export default async function CustomerQuotesPage({
       >
         <section className="space-y-3 rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
           <p className="text-sm text-slate-300">
-            We couldn&apos;t find a customer workspace linked to {user.email}. Go back to your dashboard
-            and complete your profile to start tracking RFQs.
+            We couldn&apos;t find a customer workspace linked to {user.email}. Complete your customer
+            profile to start tracking RFQs, supplier bids, and messages in one place.
           </p>
           <Link
             href="/customer"
@@ -227,10 +227,10 @@ export default async function CustomerQuotesPage({
             {status || kickoff || hasWinner ? (
               <>
                 <p className="text-sm font-semibold text-slate-100">
-                  No quotes match these filters
+                  No RFQs match these filters
                 </p>
                 <p className="mt-2 text-sm text-slate-400">
-                  Try clearing filters to see all RFQs.
+                  Clear filters to see your full list of RFQs.
                 </p>
                 <div className="mt-4">
                   <Link
@@ -245,14 +245,14 @@ export default async function CustomerQuotesPage({
               <>
                 <p className="text-sm font-semibold text-slate-100">No RFQs yet</p>
                 <p className="mt-2 text-sm text-slate-400">
-                  You haven&apos;t submitted any RFQs yet. Start your first RFQ to get quotes from suppliers.
+                  When you submit an RFQ, we’ll route it to matching suppliers and you’ll see bids and updates here as they come in.
                 </p>
                 <div className="mt-4">
                   <Link
                     href="/quote"
                     className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
                   >
-                    Create an RFQ
+                    Start an RFQ
                   </Link>
                 </div>
               </>
