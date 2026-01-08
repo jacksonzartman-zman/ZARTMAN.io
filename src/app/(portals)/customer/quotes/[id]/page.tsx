@@ -79,11 +79,9 @@ import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
 import {
   deriveQuoteWorkspaceStatus,
-  type QuoteWorkspaceStatus,
 } from "@/lib/quote/workspaceStatus";
 import { CustomerQuoteJourneyHeaderAuto } from "./CustomerQuoteJourneyHeader";
 import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
-import { StatusPill } from "@/components/shared/primitives/StatusPill";
 
 export const dynamic = "force-dynamic";
 
@@ -1490,10 +1488,10 @@ export default async function CustomerQuoteDetailPage({
         <div className="space-y-8">
           <QuoteSummaryCard
             className="lg:hidden"
-            status={workspaceStatus}
             partName={primaryFileName}
             priceLabel={quoteSummaryPriceLabel}
             leadTimeLabel={quoteSummaryLeadTimeLabel}
+            updatedAtText={updatedAtText}
           />
           {orderWorkspaceSection}
           {decisionSection}
@@ -1544,10 +1542,10 @@ export default async function CustomerQuoteDetailPage({
         <div className="space-y-8">
           <QuoteSummaryCard
             className="hidden lg:block"
-            status={workspaceStatus}
             partName={primaryFileName}
             priceLabel={quoteSummaryPriceLabel}
             leadTimeLabel={quoteSummaryLeadTimeLabel}
+            updatedAtText={updatedAtText}
           />
           {quoteIsWon ? (
             <PortalCard
@@ -1620,48 +1618,67 @@ export default async function CustomerQuoteDetailPage({
 }
 
 function QuoteSummaryCard({
-  status,
   partName,
   priceLabel,
   leadTimeLabel,
+  updatedAtText,
   className,
 }: {
-  status: QuoteWorkspaceStatus;
   partName: string;
   priceLabel: string;
   leadTimeLabel: string;
+  updatedAtText?: string | null;
   className?: string;
 }) {
   return (
-    <section className={clsx("rounded-2xl border border-slate-800 bg-slate-950/60 p-5", className)}>
-      <header className="flex items-start justify-between gap-3">
+    <section
+      className={clsx(
+        "rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5",
+        className,
+      )}
+    >
+      <header className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Quote summary
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+            Quote snapshot
           </p>
-          <p className="mt-1 truncate text-base font-semibold text-white">{partName}</p>
+          <p
+            className="mt-1 truncate text-base font-semibold text-white"
+            title={partName}
+          >
+            {partName}
+          </p>
         </div>
-        <StatusPill status={status} />
       </header>
 
-      <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
-        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Price
-          </dt>
-          <dd className="mt-1 text-base font-semibold text-white">{priceLabel}</dd>
-        </div>
-        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Lead time
-          </dt>
-          <dd className="mt-1 text-base font-semibold text-white">{leadTimeLabel}</dd>
-        </div>
-      </dl>
-
-      <p className="mt-3 text-xs text-slate-500">
-        Updates as bids arrive, messages clarify scope, and a winner is awarded.
-      </p>
+      <div className="mt-4 rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+        <dl className="grid gap-y-2 text-sm">
+          <div className="grid grid-cols-[minmax(0,1fr),auto] items-baseline gap-x-3">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Price
+            </dt>
+            <dd className="break-anywhere tabular-nums text-base font-semibold text-white">
+              {priceLabel}
+            </dd>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr),auto] items-baseline gap-x-3 border-t border-slate-900/60 pt-2">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Lead time
+            </dt>
+            <dd className="break-anywhere tabular-nums text-base font-semibold text-white">
+              {leadTimeLabel}
+            </dd>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr),auto] items-baseline gap-x-3 border-t border-slate-900/60 pt-2">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Last updated
+            </dt>
+            <dd className="break-anywhere text-xs text-slate-300">
+              {updatedAtText ?? "—"}
+            </dd>
+          </div>
+        </dl>
+      </div>
     </section>
   );
 }
