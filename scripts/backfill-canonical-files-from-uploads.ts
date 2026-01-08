@@ -23,6 +23,7 @@ type Summary = {
     quoteId: string;
     uploadId: string;
     uploadFilePath: string | null;
+    uploadFileName: string | null;
     chosenObjectKey: string | null;
     plannedInserts: number;
     skippedExisting: number;
@@ -53,6 +54,24 @@ function maybeLog(verbose: boolean, ...parts: any[]) {
   if (verbose) console.log(...parts);
 }
 
+// Computes a "logical filename" for an upload without requiring
+// any optional/legacy name columns to exist in the uploads schema.
+function computeUploadLogicalFilename(upload: Record<string, any> | null | undefined): string | null {
+  if (!upload) return null;
+
+  // Prefer any present name-ish field (but do NOT rely on selecting them).
+  for (const k of ["filename", "file_name", "original_name", "name"]) {
+    const v = upload[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+
+  // Always fall back to the basename of file_path.
+  const fp = upload["file_path"];
+  if (typeof fp !== "string" || !fp.trim()) return null;
+  const base = fp.split("/").filter(Boolean).pop() ?? "";
+  return base.trim() || null;
+}
+
 function toPlainError(e: unknown) {
   if (!e || typeof e !== "object") return { message: String(e) };
   const obj: any = e;
@@ -70,11 +89,7 @@ async function detectCanonicalTable(supabase: SupabaseClient): Promise<Canonical
   const r2 = await supabase.from("files").select("id").limit(1);
   if (!r2.error) return "files";
   throw new Error(
-<<<<<<< HEAD
-    `[backfill] cannot read files tables: files_valid=${JSON.stringify(r1.error)} files=${JSON.stringify(r2.error)}`,
-=======
     `[backfill] cannot read files tables: files_valid=${JSON.stringify(r1.error)} files=${JSON.stringify(r2.error)}`
->>>>>>> a5e23f0 (backfill)
   );
 }
 
@@ -84,11 +99,7 @@ async function detectPathCol(supabase: SupabaseClient, table: CanonicalTable): P
   const r2 = await supabase.from(table).select("id,quote_id,bucket_id,file_path").limit(1);
   if (!r2.error) return "file_path";
   throw new Error(
-<<<<<<< HEAD
-    `[backfill] cannot determine path column: storage_path=${JSON.stringify(r1.error)} file_path=${JSON.stringify(r2.error)}`,
-=======
     `[backfill] cannot determine path column: storage_path=${JSON.stringify(r1.error)} file_path=${JSON.stringify(r2.error)}`
->>>>>>> a5e23f0 (backfill)
   );
 }
 
@@ -100,39 +111,23 @@ async function loadCandidateQuotes(supabase: SupabaseClient, quoteId: string | u
   return (res.data ?? []) as Array<{ id: string; upload_id: string }>;
 }
 
-<<<<<<< HEAD
-=======
 type UploadRow = {
   id: string;
   quote_id: string | null;
   file_path: string | null;
-  file_name: string | null;
-  mime_type: string | null;
   created_at: string | null;
 };
 
->>>>>>> a5e23f0 (backfill)
 async function loadUploadRow(supabase: SupabaseClient, uploadId: string) {
   const res = await supabase
     .from("uploads")
-    .select("id,quote_id,file_path,file_name,mime_type,created_at")
+    // Intentionally select only columns that are safe across schemas.
+    // Do NOT select uploads.filename (often does not exist).
+    .select("id,quote_id,file_path,created_at")
     .eq("id", uploadId)
     .maybeSingle();
   if (res.error) throw new Error(`[backfill] load upload failed: ${JSON.stringify(toPlainError(res.error))}`);
-<<<<<<< HEAD
-  return (res.data ?? null) as
-    | null
-    | {
-        id: string;
-        quote_id: string | null;
-        file_path: string | null;
-        file_name: string | null;
-        mime_type: string | null;
-        created_at: string | null;
-      };
-=======
   return (res.data ?? null) as UploadRow | null;
->>>>>>> a5e23f0 (backfill)
 }
 
 function basename(p: string | null): string | null {
@@ -144,77 +139,6 @@ function basename(p: string | null): string | null {
 function deriveMime(filename: string | null, fallback: string | null): string {
   const hinted = (fallback ?? "").trim();
   if (hinted) return hinted;
-<<<<<<< HEAD
-  const ext = (filename ?? "").toLowerCase();
-  if (ext.endsWith(".step") || ext.endsWith(".stp")) return "model/step";
-  if (ext.endsWith(".stl")) return "model/stl";
-  if (ext.endsWith(".pdf")) return "application/pdf";
-  return "application/octet-stream";
-}
-
-async function findStorageObjectKey(params: {
-  supabase: SupabaseClient;
-  uploadId: string;
-  uploadFilePath: string | null;
-  verbose: boolean;
-}) {
-  const { supabase, uploadId, uploadFilePath, verbose } = params;
-
-  // We expect actual keys to look like: uploads/intake/<upload_id>/<token>/<timestamp>-<filename>
-  const intakePrefix = `uploads/intake/${uploadId}/`;
-  const fileBase = basename(uploadFilePath);
-
-  // 1) exact match on uploadFilePath (rare but cheap)
-  if (uploadFilePath) {
-    const exact = await supabase
-      .schema("storage")
-      .from("objects")
-      .select("name,bucket_id,created_at")
-      .eq("bucket_id", "cad_uploads")
-      .eq("name", uploadFilePath)
-      .limit(1);
-    if (exact.error) throw new Error(`[backfill] storage exact lookup failed: ${JSON.stringify(toPlainError(exact.error))}`);
-    if ((exact.data ?? []).length > 0) return exact.data![0]!.name as string;
-  }
-
-  // 2) strict intake-prefix match
-  const pref = await supabase
-    .schema("storage")
-    .from("objects")
-    .select("name,bucket_id,created_at")
-    .eq("bucket_id", "cad_uploads")
-    .like("name", `${intakePrefix}%`)
-    .order("created_at", { ascending: false })
-    .limit(25);
-  if (pref.error) throw new Error(`[backfill] storage prefix lookup failed: ${JSON.stringify(toPlainError(pref.error))}`);
-
-  if (fileBase) {
-    const match = (pref.data ?? []).find((r: any) => String(r.name).toLowerCase().includes(fileBase.toLowerCase()));
-    if (match) return match.name as string;
-  }
-  if ((pref.data ?? []).length > 0) {
-    // If we have objects under the prefix but can't match basename, just take the newest
-    return pref.data![0]!.name as string;
-  }
-
-  // 3) fallback: filename ilike, but constrain to intake prefix (so we don’t grab some other quote’s file)
-  if (fileBase) {
-    const fb = await supabase
-      .schema("storage")
-      .from("objects")
-      .select("name,bucket_id,created_at")
-      .eq("bucket_id", "cad_uploads")
-      .ilike("name", `%${fileBase}%`)
-      .ilike("name", `${intakePrefix}%`)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (fb.error) throw new Error(`[backfill] storage ilike lookup failed: ${JSON.stringify(toPlainError(fb.error))}`);
-    if ((fb.data ?? []).length > 0) return fb.data![0]!.name as string;
-  }
-
-  maybeLog(verbose, "[backfill] no storage object found", { uploadId, uploadFilePath, intakePrefix, fileBase });
-  return null;
-=======
   const lower = (filename ?? "").toLowerCase();
   if (lower.endsWith(".step") || lower.endsWith(".stp")) return "model/step";
   if (lower.endsWith(".stl")) return "model/stl";
@@ -282,7 +206,6 @@ async function findStorageObjectKeyViaStorageApi(params: {
   // We must store full object key in files_valid/files.
   const fullKey = `${intakePrefix}/${chosen}`.replace(/\/+/g, "/");
   return fullKey;
->>>>>>> a5e23f0 (backfill)
 }
 
 async function loadExistingKeys(params: {
@@ -292,14 +215,10 @@ async function loadExistingKeys(params: {
   quoteId: string;
 }) {
   const { supabase, table, pathCol, quoteId } = params;
-<<<<<<< HEAD
-  const sel = pathCol === "storage_path" ? "id,quote_id,bucket_id,storage_path" : "id,quote_id,bucket_id,file_path";
-=======
   const sel =
     pathCol === "storage_path"
       ? "id,quote_id,bucket_id,storage_path"
       : "id,quote_id,bucket_id,file_path";
->>>>>>> a5e23f0 (backfill)
   const res = await supabase.from(table).select(sel).eq("quote_id", quoteId).limit(5000);
   if (res.error) throw new Error(`[backfill] load existing canonical rows failed: ${JSON.stringify(toPlainError(res.error))}`);
   const rows = (res.data ?? []) as any[];
@@ -356,22 +275,30 @@ async function main() {
     const quotes = await loadCandidateQuotes(supabase, args.quoteId, args.limit);
     summary.scannedQuotes = quotes.length;
 
+    let verbosePrintedComputedName = 0;
+
     for (const q of quotes) {
       const upload = await loadUploadRow(supabase, q.upload_id);
       if (!upload) continue;
 
       summary.eligibleQuotes += 1;
 
-<<<<<<< HEAD
-      const chosenKey = await findStorageObjectKey({
-=======
       const chosenKey = await findStorageObjectKeyViaStorageApi({
->>>>>>> a5e23f0 (backfill)
         supabase,
         uploadId: q.upload_id,
         uploadFilePath: upload.file_path,
         verbose: args.verbose,
       });
+
+      const uploadFileName = computeUploadLogicalFilename(upload);
+      if (args.verbose && verbosePrintedComputedName < 2) {
+        verbosePrintedComputedName += 1;
+        maybeLog(args.verbose, "[backfill] computed upload logical filename", {
+          uploadId: q.upload_id,
+          file_path: upload.file_path,
+          uploadFileName,
+        });
+      }
 
       if (!chosenKey) {
         summary.missingStorageObjects += 1;
@@ -380,6 +307,7 @@ async function main() {
             quoteId: q.id,
             uploadId: q.upload_id,
             uploadFilePath: upload.file_path,
+            uploadFileName,
             chosenObjectKey: null,
             plannedInserts: 0,
             skippedExisting: 0,
@@ -398,6 +326,7 @@ async function main() {
             quoteId: q.id,
             uploadId: q.upload_id,
             uploadFilePath: upload.file_path,
+            uploadFileName,
             chosenObjectKey: chosenKey,
             plannedInserts: 0,
             skippedExisting: 1,
@@ -407,15 +336,11 @@ async function main() {
       }
 
       const filename = basename(chosenKey) ?? chosenKey;
-      const mime = deriveMime(filename, upload.mime_type);
+      const mime = deriveMime(filename, null);
 
       if (!args.dryRun) {
         await insertCanonical({ supabase, table, pathCol, quoteId: q.id, key: chosenKey, filename, mime });
       }
-<<<<<<< HEAD
-=======
-
->>>>>>> a5e23f0 (backfill)
       summary.insertedRows += 1;
 
       if (args.verbose) {
@@ -423,6 +348,7 @@ async function main() {
           quoteId: q.id,
           uploadId: q.upload_id,
           uploadFilePath: upload.file_path,
+          uploadFileName,
           chosenObjectKey: chosenKey,
           plannedInserts: 1,
           skippedExisting: 0,
@@ -438,7 +364,3 @@ async function main() {
 }
 
 main().catch(() => process.exit(1));
-<<<<<<< HEAD
-
-=======
->>>>>>> a5e23f0 (backfill)
