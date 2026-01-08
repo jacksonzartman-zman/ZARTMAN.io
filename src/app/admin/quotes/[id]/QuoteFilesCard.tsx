@@ -26,6 +26,10 @@ type QuoteFilesCardProps = {
 export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
 
+  const hasCadPreviewFiles = useMemo(() => {
+    return files.some((file) => file.storageSource?.bucket === "cad_previews");
+  }, [files]);
+
   const orderedFiles = useMemo(() => {
     const copy = Array.isArray(files) ? [...files] : [];
     copy.sort((a, b) => {
@@ -97,19 +101,20 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
             const bucket = file.storageSource?.bucket ?? null;
             const isAutoPreviewFile = bucket === "cad_previews";
             const isStep = cadKind === "step";
-            const showGeneratedPreviewInfo = isStep && !isAutoPreviewFile;
+            const isOriginalStepWithoutPreviewFile = isStep && !isAutoPreviewFile && !hasCadPreviewFiles;
 
             const primaryTag = formatPrimaryTag({ cadKind, isAutoPreviewFile });
-            const previewTag = showGeneratedPreviewInfo ? "Preview STL (auto-generated)" : null;
-            const statusLine = showGeneratedPreviewInfo
-              ? "Preview STL (auto-generated)"
-              : canPreview
-                ? "3D preview available"
-                : file.fallbackMessage ?? "Preview not available";
+            const statusLine = canPreview
+              ? "3D preview available"
+              : file.fallbackMessage ?? "Preview not available";
 
-            const helperLine = showGeneratedPreviewInfo
-              ? "Preview is for viewing only. Download retains the original file."
-              : null;
+            const helperLine = isOriginalStepWithoutPreviewFile
+              ? canPreview
+                ? "Preview will be generated when viewed."
+                : "Preview unavailable (re-upload may be required)."
+              : isStep
+                ? "Preview is for viewing only. Download retains the original file."
+                : null;
 
             const content = (
               <>
@@ -122,7 +127,6 @@ export function QuoteFilesCard({ files, id, className }: QuoteFilesCardProps) {
                       <TagPill tone={isAutoPreviewFile ? "amber" : "slate"}>
                         {primaryTag}
                       </TagPill>
-                      {previewTag ? <TagPill tone="blue">{previewTag}</TagPill> : null}
                     </span>
                   </div>
                   <p className="mt-1 text-[11px] text-slate-500">{statusLine}</p>
