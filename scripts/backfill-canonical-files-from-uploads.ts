@@ -104,11 +104,15 @@ async function detectPathCol(supabase: SupabaseClient, table: CanonicalTable): P
 }
 
 async function loadCandidateQuotes(supabase: SupabaseClient, quoteId: string | undefined, limit: number) {
-  let q = supabase.from("quotes").select("id,upload_id").not("upload_id", "is", null).limit(limit);
+  let q = supabase
+    .from("quotes")
+    .select("id,upload_id,customer_id")
+    .not("upload_id", "is", null)
+    .limit(limit);
   if (quoteId) q = q.eq("id", quoteId);
   const res = await q;
   if (res.error) throw new Error(`[backfill] load quotes failed: ${JSON.stringify(toPlainError(res.error))}`);
-  return (res.data ?? []) as Array<{ id: string; upload_id: string }>;
+  return (res.data ?? []) as Array<{ id: string; upload_id: string; customer_id: string | null }>;
 }
 
 type UploadRow = {
@@ -175,37 +179,114 @@ function pickBestObjectKey(items: StorageListItem[], uploadFilePath: string | nu
   return scored[0]?.name ?? null;
 }
 
-async function findStorageObjectKeyViaStorageApi(params: {
+function normalizeKey(k: string): string {
+  return k.replace(/^\/+/, "").replace(/\/+/g, "/");
+}
+
+function uniqStrings(xs: Array<string | null | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const x of xs) {
+    if (typeof x !== "string") continue;
+    const v = x.trim();
+    if (!v) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
+function pickBestFullKey(fullKeys: string[], preferredBasenames: string[]): string | null {
+  if (fullKeys.length === 0) return null;
+  const lowers = fullKeys.map((k) => ({ k, base: (basename(k) ?? "").toLowerCase() }));
+
+  // Prefer exact basename match (case-insensitive), in the order we were given.
+  for (const b of preferredBasenames) {
+    const needle = b.toLowerCase();
+    const exact = lowers.find((x) => x.base === needle);
+    if (exact) return exact.k;
+  }
+
+  // Otherwise, allow basename containment (handles timestamp prefixes).
+  for (const b of preferredBasenames) {
+    const needle = b.toLowerCase();
+    if (!needle) continue;
+    const contains = lowers.find((x) => x.base.includes(needle));
+    if (contains) return contains.k;
+  }
+
+  // Otherwise, pick first (stable).
+  return fullKeys[0] ?? null;
+}
+
+async function listUnderPrefix(params: {
   supabase: SupabaseClient;
-  uploadId: string;
-  uploadFilePath: string | null;
-  verbose: boolean;
-}): Promise<string | null> {
-  const { supabase, uploadId, uploadFilePath, verbose } = params;
-
-  const bucketId = "cad_uploads";
-  const intakePrefix = `uploads/intake/${uploadId}`;
-
-  // Supabase Storage list() wants a path WITHOUT a trailing slash.
-  const res = await supabase.storage.from(bucketId).list(intakePrefix, { limit: 1000, sortBy: { column: "name", order: "asc" } });
-
+  bucketId: string;
+  prefix: string; // WITHOUT trailing slash
+}): Promise<StorageListItem[]> {
+  const { supabase, bucketId, prefix } = params;
+  const res = await supabase.storage
+    .from(bucketId)
+    .list(prefix, { limit: 1000, sortBy: { column: "name", order: "asc" } });
   if (res.error) {
     throw new Error(`[backfill] storage list failed: ${JSON.stringify(toPlainError(res.error))}`);
   }
+  return (res.data ?? []) as StorageListItem[];
+}
 
-  const items = (res.data ?? []) as StorageListItem[];
-  if (items.length === 0) {
-    maybeLog(verbose, "[backfill] storage list empty", { bucketId, intakePrefix });
-    return null;
+async function findStorageObjectKeyViaStorageApiLegacy(params: {
+  supabase: SupabaseClient;
+  uploadFilePath: string | null;
+  uploadFileName: string | null;
+  intakeRoots: string[];
+  verbose: boolean;
+}): Promise<string | null> {
+  const { supabase, uploadFilePath, uploadFileName, intakeRoots, verbose } = params;
+
+  const bucketId = "cad_uploads";
+
+  const preferredBasenames = uniqStrings([basename(uploadFilePath), uploadFileName]);
+  if (preferredBasenames.length === 0) return null;
+
+  for (const intakeRoot of intakeRoots) {
+    // Supabase Storage list() wants a path WITHOUT a trailing slash.
+    const rootPrefix = normalizeKey(`uploads/intake/${intakeRoot}`);
+    const rootItems = await listUnderPrefix({ supabase, bucketId, prefix: rootPrefix });
+
+    if (rootItems.length === 0) {
+      maybeLog(verbose, "[backfill] storage list empty", { bucketId, intakePrefix: `${rootPrefix}/` });
+      continue;
+    }
+
+    // Common shape is: uploads/intake/<userId>/<sessionId>/<filename>
+    // list() is not recursive, so we expand one additional level when we see session-like folders.
+    const fullKeys: string[] = [];
+    for (const it of rootItems) {
+      const childName = String(it.name ?? "").trim();
+      if (!childName) continue;
+
+      // If it looks like a file directly under root, include it.
+      if (childName.includes(".")) {
+        fullKeys.push(normalizeKey(`${rootPrefix}/${childName}`));
+        continue;
+      }
+
+      // Otherwise treat as a folder/prefix and list inside it.
+      const childPrefix = normalizeKey(`${rootPrefix}/${childName}`);
+      const childItems = await listUnderPrefix({ supabase, bucketId, prefix: childPrefix });
+      for (const ci of childItems) {
+        const leaf = String(ci.name ?? "").trim();
+        if (!leaf) continue;
+        fullKeys.push(normalizeKey(`${childPrefix}/${leaf}`));
+      }
+    }
+
+    const chosenFullKey = pickBestFullKey(fullKeys, preferredBasenames);
+    if (chosenFullKey) return chosenFullKey;
   }
 
-  const chosen = pickBestObjectKey(items, uploadFilePath);
-  if (!chosen) return null;
-
-  // list() returns names relative to the folder you listed.
-  // We must store full object key in files_valid/files.
-  const fullKey = `${intakePrefix}/${chosen}`.replace(/\/+/g, "/");
-  return fullKey;
+  return null;
 }
 
 async function loadExistingKeys(params: {
@@ -276,19 +357,31 @@ async function main() {
     summary.scannedQuotes = quotes.length;
 
     let verbosePrintedComputedName = 0;
+    const customerUserIdCache = new Map<string, string | null>();
+
+    const loadCustomerUserId = async (customerId: string | null): Promise<string | null> => {
+      if (!customerId) return null;
+      if (customerUserIdCache.has(customerId)) return customerUserIdCache.get(customerId) ?? null;
+      const res = await supabase.from("customers").select("user_id").eq("id", customerId).maybeSingle();
+      if (res.error) {
+        maybeLog(args.verbose, "[backfill] load customer user_id failed", {
+          customerId,
+          error: toPlainError(res.error),
+        });
+        customerUserIdCache.set(customerId, null);
+        return null;
+      }
+      const v = (res.data as any)?.user_id;
+      const userId = typeof v === "string" && v.trim() ? v.trim() : null;
+      customerUserIdCache.set(customerId, userId);
+      return userId;
+    };
 
     for (const q of quotes) {
       const upload = await loadUploadRow(supabase, q.upload_id);
       if (!upload) continue;
 
       summary.eligibleQuotes += 1;
-
-      const chosenKey = await findStorageObjectKeyViaStorageApi({
-        supabase,
-        uploadId: q.upload_id,
-        uploadFilePath: upload.file_path,
-        verbose: args.verbose,
-      });
 
       const uploadFileName = computeUploadLogicalFilename(upload);
       if (args.verbose && verbosePrintedComputedName < 2) {
@@ -297,6 +390,27 @@ async function main() {
           uploadId: q.upload_id,
           file_path: upload.file_path,
           uploadFileName,
+        });
+      }
+
+      const uploadFilePath =
+        typeof upload.file_path === "string" && upload.file_path.trim() ? upload.file_path.trim() : null;
+
+      // 1) Fast-path: uploads.file_path already contains the real storage key.
+      // If it points to intake, trust it and DO NOT hit storage.list().
+      let chosenKey: string | null = null;
+      if (uploadFilePath && uploadFilePath.startsWith("uploads/intake/")) {
+        chosenKey = normalizeKey(uploadFilePath);
+      } else {
+        // 2) Legacy fallback: scan storage under possible intake roots and match by basename.
+        const customerUserId = await loadCustomerUserId(q.customer_id);
+        const intakeRoots = uniqStrings([customerUserId]);
+        chosenKey = await findStorageObjectKeyViaStorageApiLegacy({
+          supabase,
+          uploadFilePath,
+          uploadFileName,
+          intakeRoots,
+          verbose: args.verbose,
         });
       }
 
