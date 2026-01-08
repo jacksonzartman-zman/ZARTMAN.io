@@ -169,7 +169,10 @@ export function CustomerQuotePartPanel({
                 <dt className="text-[11px] uppercase tracking-wide text-slate-500">
                   Part name
                 </dt>
-                <dd className="truncate font-medium text-slate-100">
+                <dd
+                  className="whitespace-normal break-words [overflow-wrap:anywhere] overflow-hidden font-medium text-slate-100"
+                  title={selectedFileLabel ?? undefined}
+                >
                   {selectedFileLabel ?? "—"}
                 </dd>
               </div>
