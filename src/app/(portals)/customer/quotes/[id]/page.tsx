@@ -60,8 +60,6 @@ import {
   resolveKickoffProgressBasis,
 } from "@/lib/quote/kickoffChecklist";
 import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
-import { QuoteAtAGlanceBar, type QuoteAtAGlancePill } from "@/components/QuoteAtAGlanceBar";
-import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
@@ -79,6 +77,7 @@ import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
 import { deriveQuoteWorkspaceStatus } from "@/lib/quote/workspaceStatus";
+import { CustomerQuoteJourneyHeaderAuto } from "./CustomerQuoteJourneyHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -204,7 +203,6 @@ export default async function CustomerQuoteDetailPage({
   const { customerName, companyName, intakeNotes } = derived;
   const normalizedQuoteStatus = normalizeQuoteStatus(quote.status ?? undefined);
   const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined);
-  const quoteStatusHelper = getQuoteStatusHelper(quote.status ?? undefined);
   const nextWorkflowState = getNextWorkflowState(normalizedQuoteStatus);
   const bidsUnavailable = !bidsResult.ok;
   const bids = bidsResult.ok && Array.isArray(bidsResult.data)
@@ -264,6 +262,12 @@ export default async function CustomerQuoteDetailPage({
     hasWinner: quoteHasWinner,
     bidCount,
   });
+  const nextStepText =
+    workspaceStatus === "draft"
+      ? "Upload files and request bids to move forward."
+      : workspaceStatus === "in_review"
+        ? "Bids are in—review options and select a supplier."
+        : "Supplier selected—confirm details and proceed to order.";
   const latestKickoffNudgedAt =
     quoteHasWinner && winningSupplierId
       ? await getLatestKickoffNudgedAt({
@@ -574,59 +578,6 @@ export default async function CustomerQuoteDetailPage({
       </Link>
     </div>
   );
-
-  const customerPrimaryAction = resolvePrimaryAction({
-    role: "customer",
-    quote: {
-      id: quote.id,
-      status: quote.status ?? null,
-      awarded_supplier_id: quote.awarded_supplier_id ?? null,
-      awarded_bid_id: quote.awarded_bid_id ?? null,
-      awarded_at: quote.awarded_at ?? null,
-      kickoff_completed_at:
-        (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ??
-        null,
-      primaryActionHints: {
-        canAward: customerCanAward,
-        hasWinner: quoteHasWinner,
-        kickoffComplete: kickoffProgressBasis.isComplete,
-      },
-    },
-  });
-
-  const bidsPillTone: "info" | "neutral" = bidCount > 0 ? "info" : "neutral";
-
-  const customerAtAGlancePills = [
-    { key: "rfq", label: "RFQ", value: primaryFileName },
-    { key: "files", label: "Files", value: fileCountText, href: "#uploads" },
-    {
-      key: "bids",
-      label: "Bids",
-      value: bidSummaryBadgeLabel,
-      tone: bidsPillTone,
-      href: "#decision",
-    },
-    {
-      key: "kickoff",
-      label: "Kickoff",
-      value: kickoffSummaryLabel,
-      tone: kickoffProgressBasis.isComplete
-        ? "success"
-        : quoteHasWinner
-          ? "info"
-          : "neutral",
-      href: "#kickoff",
-    },
-    {
-      key: "viewingAs",
-      label: "Viewing as",
-      value: identityEmailDisplay,
-      tone: readOnly ? "warning" : "neutral",
-    },
-    readOnly
-      ? { key: "mode", label: "Mode", value: "Read-only preview", tone: "warning" }
-      : { key: "mode", label: "Mode", value: "Full access", tone: "neutral" },
-  ] satisfies QuoteAtAGlancePill[];
   const createdAtDate = submittedAtRaw ? new Date(submittedAtRaw) : null;
   const quoteAgeInDays =
     createdAtDate && Number.isFinite(createdAtDate.getTime())
@@ -653,27 +604,25 @@ export default async function CustomerQuoteDetailPage({
   });
 
   const headerContent = (
-    <QuoteAtAGlanceBar
-      role="customer"
-      statusLabel={quoteStatusLabel}
-      whatsNext={quoteStatusHelper}
-      pills={[...customerAtAGlancePills]}
-      primaryAction={customerPrimaryAction}
-      below={
-        <QuoteSectionRail
-          sections={buildCustomerQuoteSections({
-            bidCount,
-            hasWinner: quoteHasWinner,
-            kickoffRatio: kickoffTasksRatio,
-            kickoffComplete: kickoffProgressBasis.isComplete,
-            messageCount: quoteMessages.length,
-            unreadCount: messagesUnreadCount,
-            fileCount,
-            messagesHref,
-          })}
-        />
-      }
-    />
+    <div className="space-y-4">
+      <CustomerQuoteJourneyHeaderAuto
+        partName={primaryFileName}
+        status={workspaceStatus}
+        nextStepText={nextStepText}
+      />
+      <QuoteSectionRail
+        sections={buildCustomerQuoteSections({
+          bidCount,
+          hasWinner: quoteHasWinner,
+          kickoffRatio: kickoffTasksRatio,
+          kickoffComplete: kickoffProgressBasis.isComplete,
+          messageCount: quoteMessages.length,
+          unreadCount: messagesUnreadCount,
+          fileCount,
+          messagesHref,
+        })}
+      />
+    </div>
   );
 
   const winningBidCallout = quoteHasWinner ? (
