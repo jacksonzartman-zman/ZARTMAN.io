@@ -14,7 +14,7 @@ export function TagPill({
   ...props
 }: {
   children: ReactNode;
-  tone?: TagPillTone;
+  tone?: TagPillTone | "muted";
   size?: TagPillSize;
   borderStyle?: TagPillBorderStyle;
   className?: string;
@@ -30,7 +30,9 @@ export function TagPill({
             ? "border-red-500/30 bg-red-500/10 text-red-100"
             : tone === "purple"
               ? "border-purple-500/30 bg-purple-500/10 text-purple-100"
-              : "border-slate-800 bg-slate-950/40 text-slate-200";
+              : tone === "muted"
+                ? "border-slate-900/70 bg-slate-950/20 text-slate-400"
+                : "border-slate-800 bg-slate-950/40 text-slate-200";
 
   const sizeClasses =
     size === "md" ? "px-3 py-1 text-[11px]" : "px-2 py-0.5 text-[10px]";

@@ -21,6 +21,14 @@ import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPil
 
 const INITIAL_AWARD_STATE: AwardActionState = { ok: true, message: null };
 
+function isFiniteNonNegativeNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function nearlyEqual(a: number, b: number) {
+  return Math.abs(a - b) < 1e-6;
+}
+
 export type CustomerQuoteAwardPanelProps = {
   quoteId: string;
   bids: CustomerQuoteBidSummary[];
@@ -60,6 +68,20 @@ export function CustomerQuoteAwardPanel({
     confirmingBidId && !selectionLocked
       ? bids.find((bid) => bid.id === confirmingBidId) ?? null
       : null;
+
+  const comparisonLeaders = useMemo(() => {
+    const prices = bids
+      .map((bid) => bid.priceValue)
+      .filter(isFiniteNonNegativeNumber);
+    const leadTimes = bids
+      .map((bid) => bid.leadTimeDays)
+      .filter(isFiniteNonNegativeNumber);
+
+    return {
+      bestPrice: prices.length > 0 ? Math.min(...prices) : null,
+      fastestLeadTimeDays: leadTimes.length > 0 ? Math.min(...leadTimes) : null,
+    };
+  }, [bids]);
 
   useEffect(() => {
     if (state.ok && state.selectedBidId) {
@@ -178,6 +200,14 @@ export function CustomerQuoteAwardPanel({
           const priceText = bid.priceDisplay ?? "Price pending";
           const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
           const awardDisabled = !canSubmit || selectionLocked;
+          const isBestPrice =
+            comparisonLeaders.bestPrice !== null &&
+            isFiniteNonNegativeNumber(bid.priceValue) &&
+            nearlyEqual(bid.priceValue, comparisonLeaders.bestPrice);
+          const isFastest =
+            comparisonLeaders.fastestLeadTimeDays !== null &&
+            isFiniteNonNegativeNumber(bid.leadTimeDays) &&
+            bid.leadTimeDays === comparisonLeaders.fastestLeadTimeDays;
 
           return (
             <article
@@ -205,6 +235,12 @@ export function CustomerQuoteAwardPanel({
                     <TagPill size="md" tone={getBidStatusTone(bid.status)}>
                       {statusLabel}
                     </TagPill>
+                    {isBestPrice ? (
+                      <TagPill tone="muted">Best price</TagPill>
+                    ) : null}
+                    {isFastest ? (
+                      <TagPill tone="muted">Fastest</TagPill>
+                    ) : null}
                   </div>
                   {isWinner ? (
                     <TagPill size="md" tone="emerald">
