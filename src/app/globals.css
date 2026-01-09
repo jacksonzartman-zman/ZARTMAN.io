@@ -18,9 +18,13 @@
 
   /* Subtle visual continuity when navigating via in-page anchors (hash). */
   .scroll-mt-24:target {
-    outline: 2px solid rgb(16 185 129 / 0.25);
+    outline: 2px solid rgb(16 185 129 / 0.35);
     outline-offset: 6px;
     border-radius: 1rem;
+    background-color: rgb(16 185 129 / 0.03);
+    box-shadow: 0 0 0 6px rgb(16 185 129 / 0.06);
+    transition: outline-color 200ms ease, box-shadow 200ms ease,
+      background-color 200ms ease;
   }
 }
 
