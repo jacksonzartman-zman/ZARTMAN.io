@@ -660,30 +660,6 @@ export default async function CustomerQuoteDetailPage({
     return flags.includes("very_large") || flags.includes("very_complex");
   });
 
-  const headerContent = (
-    <div className="space-y-5">
-      <CustomerQuoteJourneyHeaderAuto
-        partName={primaryFileName}
-        status={workspaceStatus}
-        nextStepText={nextStepText}
-        fileCount={fileCount}
-        hasWinner={quoteHasWinner}
-      />
-      <QuoteSectionRail
-        sections={buildCustomerQuoteSections({
-          bidCount,
-          hasWinner: quoteHasWinner,
-          kickoffRatio: kickoffTasksRatio,
-          kickoffComplete: kickoffProgressBasis.isComplete,
-          messageCount: quoteMessages.length,
-          unreadCount: messagesUnreadCount,
-          fileCount,
-          messagesHref,
-        })}
-      />
-    </div>
-  );
-
   const winningBidCallout = quoteHasWinner ? (
     <div className="rounded-xl border border-emerald-500/60 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
       <div className="flex flex-wrap items-center gap-2">
@@ -1392,16 +1368,35 @@ export default async function CustomerQuoteDetailPage({
     <PortalShell
       workspace="customer"
       title={headerTitle}
-      subtitle="Status updates, files, and shared messages for this RFQ."
-      headerContent={headerContent}
       actions={headerActions}
     >
       <FocusScroll enabled={focusParam === "award"} targetId="award" />
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
-      {receiptBanner}
       <div className="space-y-8 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-8 lg:space-y-0">
         <div className="space-y-8">
+          <div className="space-y-5">
+            <CustomerQuoteJourneyHeaderAuto
+              partName={primaryFileName}
+              status={workspaceStatus}
+              nextStepText={nextStepText}
+              fileCount={fileCount}
+              hasWinner={quoteHasWinner}
+            />
+            <QuoteSectionRail
+              sections={buildCustomerQuoteSections({
+                bidCount,
+                hasWinner: quoteHasWinner,
+                kickoffRatio: kickoffTasksRatio,
+                kickoffComplete: kickoffProgressBasis.isComplete,
+                messageCount: quoteMessages.length,
+                unreadCount: messagesUnreadCount,
+                fileCount,
+                messagesHref,
+              })}
+            />
+          </div>
+
           <QuoteSummaryCard
             className="lg:hidden"
             partName={primaryFileName}
@@ -1409,7 +1404,9 @@ export default async function CustomerQuoteDetailPage({
             leadTimeLabel={quoteSummaryLeadTimeLabel}
             updatedAtText={updatedAtText}
           />
+
           {orderWorkspaceSection}
+          {receiptBanner}
           {decisionSection}
           {kickoffSection}
           {timelineSection}
@@ -1455,6 +1452,7 @@ export default async function CustomerQuoteDetailPage({
             />
           </DisclosureSection>
         </div>
+
         <div className="space-y-8">
           <QuoteSummaryCard
             className="hidden lg:block"
@@ -1549,7 +1547,7 @@ function QuoteSummaryCard({
   return (
     <section
       className={clsx(
-        "rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5",
+        "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4 sm:px-6 sm:py-5",
         className,
       )}
     >

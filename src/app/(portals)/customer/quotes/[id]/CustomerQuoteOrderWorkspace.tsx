@@ -61,7 +61,7 @@ export function CustomerQuoteOrderWorkspace({
         <div className="rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4 text-sm text-slate-200">
           <p className="font-semibold text-white">Checkout unlocks after you select a supplier</p>
           <p className="mt-1 text-xs text-slate-400">
-            Next, once you select a supplier in Decision, checkout will reflect the awarded price and lead time.
+            Select a supplier in Decision to proceed to order.
           </p>
           <div className="mt-3">
             <Link
