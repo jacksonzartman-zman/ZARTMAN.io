@@ -82,6 +82,7 @@ import {
 } from "@/lib/quote/workspaceStatus";
 import { CustomerQuoteJourneyHeaderAuto } from "./CustomerQuoteJourneyHeader";
 import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
+import { RequestChangeScaffold } from "./RequestChangeScaffold";
 
 export const dynamic = "force-dynamic";
 
@@ -1443,6 +1444,19 @@ export default async function CustomerQuoteDetailPage({
               )
             }
           >
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
+              <div className="max-w-[46rem]">
+                <p className="text-sm font-semibold text-white">Need to request a change?</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Use this to draft a message in the shared thread (no submission yet).
+                </p>
+              </div>
+              <RequestChangeScaffold
+                quoteId={quote.id}
+                messagesHref={messagesHref}
+                disabled={readOnly}
+              />
+            </div>
             <QuoteMessagesThread
               quoteId={quote.id}
               messages={quoteMessages}
