@@ -808,7 +808,7 @@ export default async function CustomerQuoteDetailPage({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             DFM notes
           </p>
-          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+          <p className="mt-1 whitespace-pre-line break-words text-sm text-slate-200">
             {dfmNotes ?? "Engineering feedback will show up here once it’s ready."}
           </p>
         </div>
@@ -816,7 +816,7 @@ export default async function CustomerQuoteDetailPage({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Intake notes
           </p>
-          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+          <p className="mt-1 whitespace-pre-line break-words text-sm text-slate-200">
             {intakeNotes ?? "No additional notes captured during upload."}
           </p>
         </div>
@@ -1101,7 +1101,7 @@ export default async function CustomerQuoteDetailPage({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             DFM notes
           </p>
-          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+          <p className="mt-1 whitespace-pre-line break-words text-sm text-slate-200">
             {dfmNotes ?? "Engineering feedback will show up here once it’s ready."}
           </p>
         </div>
@@ -1109,7 +1109,7 @@ export default async function CustomerQuoteDetailPage({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Intake notes
           </p>
-          <p className="mt-1 whitespace-pre-line text-sm text-slate-200">
+          <p className="mt-1 whitespace-pre-line break-words text-sm text-slate-200">
             {intakeNotes ?? "No additional notes captured during upload."}
           </p>
         </div>
@@ -1314,90 +1314,6 @@ export default async function CustomerQuoteDetailPage({
             </div>
           </div>
         ) : null}
-        <div className="space-y-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Supplier bids
-              </p>
-              <p className="text-sm text-slate-300">
-                We collect bids from vetted suppliers, then review options before finalizing your quote.
-              </p>
-            </div>
-            {bidCount > 0 ? (
-              <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
-                {bidCount} bid{bidCount === 1 ? "" : "s"} received
-              </TagPill>
-            ) : null}
-          </div>
-          {bidsUnavailable ? (
-            <p className="text-xs text-slate-400">
-            Bids aren’t available here right now, but your RFQ is still saved and in review. Check Messages for updates.
-            </p>
-          ) : bidCount === 0 ? (
-            <EmptyStateCard
-              title="No bids yet"
-            description="Next, suppliers will review your files and we’ll message you here if anything needs clarification."
-              action={{ label: "Open messages", href: messagesHref }}
-            />
-          ) : (
-            <>
-              <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Best price
-                  </dt>
-                  <dd className="mt-1">
-                    {bestPriceValue != null
-                      ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
-                      : "Pending"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Fastest lead time
-                  </dt>
-                  <dd className="mt-1">
-                    {fastestLeadTime != null ? leadTimeLabel : "Pending"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Total bids
-                  </dt>
-                  <dd className="mt-1">
-                    {bidCount} bid{bidCount === 1 ? "" : "s"}
-                  </dd>
-                </div>
-              </dl>
-              {showCustomerSupplierSection ? (
-                customerAwardBidsReady ? (
-                  <>
-                    {partsCoverageSummary.anyParts && !partsCoverageSummary.allCovered ? (
-                      <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-5 py-3 text-xs text-slate-300">
-                        Note: Some parts are missing CAD or drawings. You can still award, but clarify scope in kickoff.
-                      </p>
-                    ) : null}
-                    <CustomerQuoteAwardPanel
-                      quoteId={quote.id}
-                      bids={customerBidSummaries}
-                      canSubmit={customerCanAward}
-                      disableReason={customerAwardDisabledReason}
-                      winningBidId={winningBidId}
-                      anchorId="award"
-                      preselectBidId={preselectAwardBidId}
-                    />
-                  </>
-                ) : (
-                  <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-xs text-yellow-100">
-                    {customerBidSummariesError ??
-                      "We couldn’t load supplier bid details. Refresh to try again."}
-                  </p>
-                )
-              ) : null}
-            </>
-          )}
-        </div>
       </div>
     </DisclosureSection>
   );
