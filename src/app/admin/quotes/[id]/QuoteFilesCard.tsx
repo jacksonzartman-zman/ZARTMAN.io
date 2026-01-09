@@ -257,12 +257,12 @@ function QuoteFileUnsupportedModal({ file, onClose }: QuoteFileUnsupportedModalP
         tabIndex={-1}
         className="relative z-10 w-full max-w-3xl rounded-3xl border border-slate-800 bg-slate-950/95 shadow-2xl outline-none"
       >
-        <div className="flex items-start justify-between border-b border-slate-900 px-6 py-4">
-          <div>
+        <div className="flex items-start justify-between gap-4 border-b border-slate-900 px-6 py-4">
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               File preview
             </p>
-            <h3 className="mt-1 text-lg font-semibold text-slate-50">
+            <h3 className="break-anywhere mt-1 text-lg font-semibold text-slate-50">
               {file.label}
             </h3>
           </div>
