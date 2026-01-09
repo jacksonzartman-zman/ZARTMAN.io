@@ -21,8 +21,6 @@ export function OrderSummaryModal({
   priceLabel,
   supplierName,
 }: OrderSummaryModalProps) {
-  if (!open) return null;
-
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
@@ -62,6 +60,8 @@ export function OrderSummaryModal({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
+
+  if (!open) return null;
 
   return (
     <div
