@@ -35,6 +35,11 @@ export type QuoteMessagesThreadProps = {
   className?: string;
   title?: string;
   description?: string;
+  /**
+   * Short guidance line shown under the section header.
+   * Example: "Use Messages for clarifications, change requests, and questions."
+   */
+  usageHint?: string;
   helperText?: string;
   disabledCopy?: string | null;
   emptyStateCopy?: string;
@@ -55,11 +60,12 @@ export function QuoteMessagesThread({
   currentUserId,
   markRead = false,
   className,
-  title = "Quote messages",
-  description = "Central thread for this RFQ between you, your supplier, and the Zartman team.",
+  title = "Messages",
+  description = "Shared thread with your supplier and the Zartman team.",
+  usageHint = "Use Messages for clarifications, change requests, and questions.",
   helperText,
   disabledCopy,
-  emptyStateCopy = "No messages yet. Send a note if you have questions or updates—we’ll notify everyone on the thread.",
+  emptyStateCopy = "No messages yet. Start the thread if you need clarification, want to request a change, or have a question—everyone on this workspace will be notified.",
 }: QuoteMessagesThreadProps) {
   const realtimeMessages = useQuoteMessagesRealtime(quoteId, messages);
   const sortedMessages = useMemo(
@@ -89,13 +95,14 @@ export function QuoteMessagesThread({
       )}
     >
       <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Shared thread
-        </p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Messages</p>
         <div>
           <h2 className="text-xl font-semibold text-white">{title}</h2>
           <p className="text-sm text-slate-400">{description}</p>
         </div>
+        {usageHint ? (
+          <p className="text-xs text-slate-500">{usageHint}</p>
+        ) : null}
       </header>
 
       <QuoteMessageList
@@ -140,7 +147,7 @@ function QuoteMessageList({
   }
 
   return (
-    <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+    <div className="min-w-0 max-h-[28rem] space-y-3 overflow-y-auto pr-1">
       {messages.map((message) => {
         const isCurrentUser =
           typeof currentUserId === "string" &&
@@ -163,12 +170,13 @@ function QuoteMessageList({
             )}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2">
                 <span
                   className={clsx(
-                    "rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                    "max-w-[70vw] truncate rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide sm:max-w-[18rem]",
                     resolveRoleClasses(isCurrentUser, message.sender_role),
                   )}
+                  title={displayLabel}
                 >
                   {displayLabel}
                 </span>
@@ -181,7 +189,7 @@ function QuoteMessageList({
                   "Just now"}
               </span>
             </div>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
+            <p className="break-anywhere mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
               {message.body}
             </p>
           </article>
