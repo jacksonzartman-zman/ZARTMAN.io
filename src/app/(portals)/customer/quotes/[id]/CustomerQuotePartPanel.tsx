@@ -148,7 +148,7 @@ export function CustomerQuotePartPanel({
           />
         </div>
 
-        <aside className="space-y-4">
+        <aside className="min-w-0 space-y-4">
           {onProceedToOrder ? (
             <button
               type="button"
@@ -164,13 +164,13 @@ export function CustomerQuotePartPanel({
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               Quote info
             </p>
-            <dl className="mt-3 grid gap-3 text-sm text-slate-200">
-              <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
+            <dl className="mt-3 grid min-w-0 gap-3 text-sm text-slate-200">
+              <div className="min-w-0 rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2">
                 <dt className="text-[11px] uppercase tracking-wide text-slate-500">
                   Part name
                 </dt>
                 <dd
-                  className="break-anywhere whitespace-normal overflow-hidden font-medium text-slate-100"
+                  className="truncate font-medium text-slate-100"
                   title={selectedFileLabel ?? undefined}
                 >
                   {selectedFileLabel ?? "—"}
