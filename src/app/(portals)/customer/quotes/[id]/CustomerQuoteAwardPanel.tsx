@@ -55,6 +55,7 @@ export function CustomerQuoteAwardPanel({
     INITIAL_AWARD_STATE,
   );
   const [confirmingBidId, setConfirmingBidId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"cards" | "compare">("cards");
   const didAutoPreselect = useRef(false);
 
   const resolvedWinnerId = state.selectedBidId ?? winningBidId ?? null;
@@ -182,126 +183,246 @@ export function CustomerQuoteAwardPanel({
               : "Review the bids below, then select a supplier to confirm."}
           </p>
         </div>
-        <TagPill
-          size="md"
-          tone={selectionLocked ? "emerald" : "slate"}
-        >
-          {selectionLocked ? "Selection confirmed" : "Decision"}
-        </TagPill>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {bids.map((bid) => {
-          const isWinner = resolvedWinnerId === bid.id;
-          const dimNonWinner = selectionLocked && !isWinner;
-          const submittedText =
-            formatDateTime(bid.createdAt, { includeTime: true }) ?? "Just now";
-          const statusLabel = formatBidStatusLabel(bid.status);
-          const priceText = bid.priceDisplay ?? "Price pending";
-          const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
-          const awardDisabled = !canSubmit || selectionLocked;
-          const isBestPrice =
-            comparisonLeaders.bestPrice !== null &&
-            isFiniteNonNegativeNumber(bid.priceValue) &&
-            nearlyEqual(bid.priceValue, comparisonLeaders.bestPrice);
-          const isFastest =
-            comparisonLeaders.fastestLeadTimeDays !== null &&
-            isFiniteNonNegativeNumber(bid.leadTimeDays) &&
-            bid.leadTimeDays === comparisonLeaders.fastestLeadTimeDays;
-
-          return (
-            <article
-              key={bid.id}
+        <div className="flex items-center gap-2">
+          <TagPill
+            size="md"
+            tone={selectionLocked ? "emerald" : "slate"}
+          >
+            {selectionLocked ? "Selection confirmed" : "Decision"}
+          </TagPill>
+          <div
+            role="group"
+            aria-label="Bid view mode"
+            className="inline-flex items-center rounded-full border border-slate-800/80 bg-slate-950/30 p-0.5"
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              aria-pressed={viewMode === "cards"}
               className={clsx(
-                "relative flex h-full flex-col rounded-2xl border px-5 py-4 transition",
-                isWinner
-                  ? "overflow-hidden border-emerald-300/70 bg-gradient-to-b from-emerald-500/15 to-slate-950/40 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400/30 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-emerald-400/60 before:content-['']"
-                  : dimNonWinner
-                    ? "border-slate-900/40 bg-slate-950/20 opacity-55"
-                    : "border-slate-900/60 bg-slate-950/40 hover:border-slate-700/70",
+                "rounded-full px-3 py-1 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-400",
+                viewMode === "cards"
+                  ? "bg-white/10 text-white"
+                  : "text-slate-300 hover:text-white",
               )}
             >
-              <header className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-base font-semibold text-white" title={bid.supplierName}>
-                    {bid.supplierName}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Submitted {submittedText}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <div className="flex flex-wrap justify-end gap-2">
-                    <TagPill size="md" tone={getBidStatusTone(bid.status)}>
-                      {statusLabel}
-                    </TagPill>
-                    {isBestPrice ? (
-                      <TagPill tone="muted">Best price</TagPill>
-                    ) : null}
-                    {isFastest ? (
-                      <TagPill tone="muted">Fastest</TagPill>
+              Cards
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("compare")}
+              aria-pressed={viewMode === "compare"}
+              className={clsx(
+                "rounded-full px-3 py-1 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-400",
+                viewMode === "compare"
+                  ? "bg-white/10 text-white"
+                  : "text-slate-300 hover:text-white",
+              )}
+            >
+              Compare
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {viewMode === "cards" ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {bids.map((bid) => {
+            const isWinner = resolvedWinnerId === bid.id;
+            const dimNonWinner = selectionLocked && !isWinner;
+            const submittedText =
+              formatDateTime(bid.createdAt, { includeTime: true }) ?? "Just now";
+            const statusLabel = formatBidStatusLabel(bid.status);
+            const priceText = bid.priceDisplay ?? "Price pending";
+            const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
+            const awardDisabled = !canSubmit || selectionLocked;
+            const isBestPrice =
+              comparisonLeaders.bestPrice !== null &&
+              isFiniteNonNegativeNumber(bid.priceValue) &&
+              nearlyEqual(bid.priceValue, comparisonLeaders.bestPrice);
+            const isFastest =
+              comparisonLeaders.fastestLeadTimeDays !== null &&
+              isFiniteNonNegativeNumber(bid.leadTimeDays) &&
+              bid.leadTimeDays === comparisonLeaders.fastestLeadTimeDays;
+
+            return (
+              <article
+                key={bid.id}
+                className={clsx(
+                  "relative flex h-full flex-col rounded-2xl border px-5 py-4 transition",
+                  isWinner
+                    ? "overflow-hidden border-emerald-300/70 bg-gradient-to-b from-emerald-500/15 to-slate-950/40 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400/30 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-emerald-400/60 before:content-['']"
+                    : dimNonWinner
+                      ? "border-slate-900/40 bg-slate-950/20 opacity-55"
+                      : "border-slate-900/60 bg-slate-950/40 hover:border-slate-700/70",
+                )}
+              >
+                <header className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-semibold text-white" title={bid.supplierName}>
+                      {bid.supplierName}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Submitted {submittedText}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <TagPill size="md" tone={getBidStatusTone(bid.status)}>
+                        {statusLabel}
+                      </TagPill>
+                      {isBestPrice ? (
+                        <TagPill tone="muted">Best price</TagPill>
+                      ) : null}
+                      {isFastest ? (
+                        <TagPill tone="muted">Fastest</TagPill>
+                      ) : null}
+                    </div>
+                    {isWinner ? (
+                      <TagPill size="md" tone="emerald">
+                        Selection confirmed
+                      </TagPill>
                     ) : null}
                   </div>
-                  {isWinner ? (
-                    <TagPill size="md" tone="emerald">
-                      Selection confirmed
-                    </TagPill>
-                  ) : null}
+                </header>
+
+                <div className="mt-4 rounded-xl border border-slate-900/50 bg-slate-950/25 px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    At a glance
+                  </p>
+                  <dl className="mt-1 grid grid-cols-[5.5rem_minmax(0,1fr)_6.5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 text-xs tabular-nums">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Price
+                    </dt>
+                    <dd className="min-w-0 truncate text-right font-semibold text-white">
+                      {priceText}
+                    </dd>
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Lead time
+                    </dt>
+                    <dd className="min-w-0 truncate text-right font-semibold text-white">
+                      {leadTimeText}
+                    </dd>
+                  </dl>
                 </div>
-              </header>
 
-              <div className="mt-4 rounded-xl border border-slate-900/50 bg-slate-950/25 px-3 py-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  At a glance
-                </p>
-                <dl className="mt-1 grid grid-cols-[5.5rem_minmax(0,1fr)_6.5rem_minmax(0,1fr)] items-baseline gap-x-3 gap-y-1 text-xs tabular-nums">
-                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Price
-                  </dt>
-                  <dd className="min-w-0 truncate text-right font-semibold text-white">
-                    {priceText}
-                  </dd>
-                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    Lead time
-                  </dt>
-                  <dd className="min-w-0 truncate text-right font-semibold text-white">
-                    {leadTimeText}
-                  </dd>
-                </dl>
-              </div>
+                <div className="mt-4 flex-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Notes
+                  </p>
+                  <p className="mt-2 line-clamp-3 text-sm text-slate-200">
+                    {bid.notes ?? "—"}
+                  </p>
+                </div>
 
-              <div className="mt-4 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Notes
-                </p>
-                <p className="mt-2 line-clamp-3 text-sm text-slate-200">
-                  {bid.notes ?? "—"}
-                </p>
+                <div className="mt-auto flex items-center justify-end gap-2 pt-5">
+                  {awardDisabled ? (
+                    <button
+                      type="button"
+                      disabled
+                      className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-400 opacity-70"
+                    >
+                      {isWinner ? "Selection confirmed" : "Locked"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingBidId(bid.id)}
+                      className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+                    >
+                      Select supplier
+                    </button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="overflow-x-auto rounded-2xl border border-slate-900/60 bg-slate-950/30">
+            <div className="min-w-[44rem]">
+              <div className="grid grid-cols-[minmax(12rem,1.4fr)_8.5rem_9.5rem_9rem_10.5rem] gap-3 border-b border-slate-900/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                <div>Supplier</div>
+                <div className="text-right">Price</div>
+                <div className="text-right">Lead time</div>
+                <div className="text-right">Status</div>
+                <div className="text-right">Action</div>
               </div>
+              <div className="divide-y divide-slate-900/60">
+                {bids.map((bid) => {
+                  const isWinner = resolvedWinnerId === bid.id;
+                  const dimNonWinner = selectionLocked && !isWinner;
+                  const statusLabel = formatBidStatusLabel(bid.status);
+                  const priceText = bid.priceDisplay ?? "Price pending";
+                  const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
+                  const awardDisabled = !canSubmit || selectionLocked;
 
-              <div className="mt-auto flex items-center justify-end gap-2 pt-5">
-                {awardDisabled ? (
-                  <button
-                    type="button"
-                    disabled
-                    className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-400 opacity-70"
-                  >
-                    {isWinner ? "Selection confirmed" : "Locked"}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingBidId(bid.id)}
-                    className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
-                  >
-                    Select supplier
-                  </button>
-                )}
+                  return (
+                    <div
+                      key={bid.id}
+                      className={clsx(
+                        "relative grid grid-cols-[minmax(12rem,1.4fr)_8.5rem_9.5rem_9rem_10.5rem] items-center gap-3 px-4 py-3 text-sm transition",
+                        isWinner
+                          ? "overflow-hidden bg-emerald-500/10 ring-2 ring-inset ring-emerald-400/30 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-emerald-400/60 before:content-['']"
+                          : dimNonWinner
+                            ? "opacity-55"
+                            : "hover:bg-white/[0.03]",
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-white" title={bid.supplierName}>
+                          {bid.supplierName}
+                        </p>
+                        {isWinner ? (
+                          <div className="mt-1">
+                            <TagPill size="md" tone="emerald">
+                              Selection confirmed
+                            </TagPill>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="truncate text-right font-semibold text-white tabular-nums">
+                        {priceText}
+                      </div>
+                      <div className="truncate text-right font-semibold text-white tabular-nums">
+                        {leadTimeText}
+                      </div>
+                      <div className="flex justify-end">
+                        <TagPill size="md" tone={getBidStatusTone(bid.status)}>
+                          {statusLabel}
+                        </TagPill>
+                      </div>
+                      <div className="flex justify-end">
+                        {awardDisabled ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-400 opacity-70"
+                          >
+                            {isWinner ? "Selection confirmed" : "Locked"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingBidId(bid.id)}
+                            className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+                          >
+                            Select supplier
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </article>
-          );
-        })}
-      </div>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500">
+            Compare mode shows the same bids in a compact grid for faster scanning.
+          </p>
+        </div>
+      )}
 
       {confirmingBid ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
