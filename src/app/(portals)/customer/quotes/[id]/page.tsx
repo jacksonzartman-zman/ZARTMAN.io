@@ -1226,22 +1226,31 @@ export default async function CustomerQuoteDetailPage({
                     return (
                       <tr key={row.supplierId} className={rowClasses}>
                         <td className="px-5 py-4 align-top">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-base font-semibold text-white">{row.supplierName}</span>
-                            {isRecommended ? (
-                              <TagPill size="md" tone="emerald">
-                                Recommended
-                              </TagPill>
-                            ) : null}
-                            {isBestPrice ? (
-                              <TagPill size="md" tone="blue">
-                                Best price
-                              </TagPill>
-                            ) : null}
-                            {isFastest ? (
-                              <TagPill size="md" tone="blue">
-                                Fastest lead
-                              </TagPill>
+                          <div className="min-w-0">
+                            <span
+                              className="block min-w-0 truncate text-base font-semibold text-white"
+                              title={row.supplierName}
+                            >
+                              {row.supplierName}
+                            </span>
+                            {isRecommended || isBestPrice || isFastest ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {isRecommended ? (
+                                  <TagPill size="md" tone="emerald">
+                                    Recommended
+                                  </TagPill>
+                                ) : null}
+                                {isBestPrice ? (
+                                  <TagPill size="md" tone="blue">
+                                    Best price
+                                  </TagPill>
+                                ) : null}
+                                {isFastest ? (
+                                  <TagPill size="md" tone="blue">
+                                    Fastest lead
+                                  </TagPill>
+                                ) : null}
+                              </div>
                             ) : null}
                           </div>
                         </td>
@@ -1375,8 +1384,8 @@ export default async function CustomerQuoteDetailPage({
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
       <div className="space-y-8 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-8 lg:space-y-0">
-        <div className="space-y-8">
-          <div className="space-y-5">
+        <div className="space-y-6">
+          <div className="space-y-4">
             <CustomerQuoteJourneyHeaderAuto
               partName={primaryFileName}
               status={workspaceStatus}

@@ -5,6 +5,7 @@ import {
 } from "@/lib/quote/workspaceStatus";
 import { StatusPill } from "@/components/shared/primitives/StatusPill";
 import { TagPill } from "@/components/shared/primitives/TagPill";
+import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 function getScrollBehavior(): ScrollBehavior {
   if (typeof window === "undefined") return "auto";
@@ -62,7 +63,10 @@ export function CustomerQuoteJourneyHeader({
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
             Quote journey
           </p>
-          <h2 className="truncate text-lg font-semibold text-white heading-tight sm:text-xl">
+          <h2
+            className="truncate text-lg font-semibold text-white heading-tight sm:text-xl"
+            title={partName}
+          >
             {partName}
           </h2>
           <p className="text-sm text-slate-300">{nextStepText}</p>
@@ -92,7 +96,7 @@ export function CustomerQuoteJourneyHeader({
             <button
               type="button"
               onClick={primaryAction.onClick}
-              className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
+              className={`${secondaryCtaClasses} ${ctaSizeClasses.sm}`}
             >
               {primaryAction.label}
             </button>
@@ -153,22 +157,7 @@ export function CustomerQuoteJourneyHeaderAuto({
               scrollToIdWithHash("decision");
             },
           }
-        : nextStepTarget === "checkout"
-          ? {
-              label: "Proceed to order",
-              onClick: () => {
-                // Reuse existing Proceed-to-Order handler by clicking the existing button.
-                const button = document.querySelector<HTMLButtonElement>(
-                  '[data-proceed-to-order="true"]',
-                );
-                if (button) {
-                  button.click();
-                  return;
-                }
-                scrollToIdWithHash("checkout");
-              },
-            }
-          : undefined;
+        : undefined;
 
   return (
     <CustomerQuoteJourneyHeader
