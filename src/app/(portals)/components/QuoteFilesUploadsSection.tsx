@@ -46,12 +46,12 @@ export function QuoteFilesUploadsSection({
       description="Files for this RFQ (CAD, drawings, PDFs). Link files to parts below to clarify scope."
       defaultOpen={defaultOpen}
       summary={
-        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold text-slate-200">
           {fileCountText}
         </span>
       }
     >
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         {uploadGroups && uploadGroups.length > 0 ? (
           <QuoteUploadsStructuredList uploadGroups={uploadGroups} />
         ) : null}
@@ -67,7 +67,9 @@ export function QuoteFilesUploadsSection({
             }
           />
         ) : null}
-        <QuoteFilesCard files={files} />
+        <div className="min-w-0 overflow-hidden">
+          <QuoteFilesCard files={files} />
+        </div>
         {files.length === 0 ? (
           <EmptyStateCard
             title="Add files to start this RFQ"
@@ -106,7 +108,14 @@ export function QuoteFilesUploadsSection({
                     key={part.partId}
                     className="grid grid-cols-[minmax(0,1.5fr)_90px_105px] gap-3 px-4 py-2 text-sm text-slate-200"
                   >
-                    <div className="min-w-0 truncate font-medium text-slate-100">
+                    <div
+                      className="min-w-0 truncate font-medium text-slate-100"
+                      title={
+                        part.partNumber
+                          ? `${part.partLabel} (${part.partNumber})`
+                          : part.partLabel
+                      }
+                    >
                       {part.partNumber ? `${part.partLabel} (${part.partNumber})` : part.partLabel}
                     </div>
                     <div className="text-right tabular-nums">{part.cadCount}</div>

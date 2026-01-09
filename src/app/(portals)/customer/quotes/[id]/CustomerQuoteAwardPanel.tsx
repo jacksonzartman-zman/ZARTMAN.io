@@ -223,7 +223,7 @@ export function CustomerQuoteAwardPanel({
             >
               <header className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-base font-semibold text-white">
+                  <p className="truncate text-base font-semibold text-white" title={bid.supplierName}>
                     {bid.supplierName}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
@@ -358,7 +358,7 @@ export function CustomerQuoteAwardPanel({
 
       <div className="space-y-2 rounded-2xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-4">
         <p className="text-sm font-semibold text-slate-100">What happens after you select?</p>
-        <ul className="list-disc space-y-1 pl-4 text-sm text-slate-300">
+        <ul className="list-disc space-y-1 pl-5 text-sm text-slate-300">
           <li>We notify your selected supplier to confirm scope.</li>
           <li>Your RFQ updates to Awarded for tracking.</li>
           <li>No purchase order or payment is placed automatically.</li>
@@ -374,7 +374,7 @@ function ConfirmAwardButton() {
     <button
       type="submit"
       disabled={pending}
-      className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? "Confirming..." : "Confirm selection"}
     </button>

@@ -93,7 +93,7 @@ export function CustomerQuotePartPanel({
   return (
     <section
       className={clsx(
-        "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4",
+        "rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-4 sm:px-5",
         className,
       )}
     >
@@ -104,7 +104,7 @@ export function CustomerQuotePartPanel({
             title="CAD preview"
             subtitle={
               <>
-                <p>
+                <p className="text-sm text-slate-300">
                   {files.length === 0
                     ? "No files attached yet."
                     : "Preview files and run instant DFM checks."}
@@ -133,7 +133,7 @@ export function CustomerQuotePartPanel({
       <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
           <CadViewerPanel
-            className="p-5"
+            className="p-4 sm:p-5"
             height={520}
             fileUrl={selectedPreview?.signedUrl ?? null}
             fileName={selectedFileLabel}
@@ -289,7 +289,10 @@ export function CustomerQuotePartPanel({
                           <TagPill tone="slate">{primaryTag}</TagPill>
                         </div>
                       </div>
-                      <p className="truncate text-sm font-semibold text-slate-100">
+                      <p
+                        className="truncate text-sm font-semibold text-slate-100"
+                        title={displayName}
+                      >
                         {displayName}
                       </p>
                       <p className="mt-1 text-[11px] text-slate-400">{previewStatus}</p>

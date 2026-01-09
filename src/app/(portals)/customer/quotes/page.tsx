@@ -220,7 +220,7 @@ export default async function CustomerQuotesPage({
           </label>
           <button
             type="submit"
-            className="inline-flex items-center rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-black transition hover:bg-emerald-400"
+            className="inline-flex w-full items-center justify-center rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-black transition hover:bg-emerald-400 sm:w-auto"
           >
             Apply
           </button>
@@ -301,6 +301,7 @@ export default async function CustomerQuotesPage({
                           <Link
                             href={`/customer/quotes/${quote.id}`}
                             className="min-w-0 truncate text-base font-semibold text-slate-100 underline-offset-4 transition hover:underline"
+                            title={quote.rfqLabel}
                           >
                             {quote.rfqLabel}
                           </Link>
@@ -324,17 +325,17 @@ export default async function CustomerQuotesPage({
                           </p>
                         ) : null}
                         <div className="min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                          <span className="min-w-0 max-w-full truncate">
+                          <span className="min-w-0 max-w-full truncate" title={fileLabel}>
                             <span className="text-slate-500">File:</span> {fileLabel}
                           </span>
-                          <span className="text-slate-600">•</span>
+                          <span className="hidden text-slate-600 sm:inline">•</span>
                           <span>
                             <span className="text-slate-500">
                               {quote.hasWinner ? "Awarded" : "Best"} price:
                             </span>{" "}
                             <span className="font-semibold text-slate-200">{bestPriceLabel}</span>
                           </span>
-                          <span className="text-slate-600">•</span>
+                          <span className="hidden text-slate-600 sm:inline">•</span>
                           <span>
                             <span className="text-slate-500">
                               {quote.hasWinner ? "Awarded" : "Best"} lead time:
@@ -344,17 +345,17 @@ export default async function CustomerQuotesPage({
                         </div>
                       </div>
 
-                      <div className="flex shrink-0 items-center justify-end gap-2">
+                      <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
                         <Link
                           href={actionHref}
-                          className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-black transition hover:bg-emerald-400"
+                          className="inline-flex w-full items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-black transition hover:bg-emerald-400 sm:w-auto"
                         >
                           {inboxStatus.actionLabel}
                         </Link>
                         {shouldShowOpenMessages ? (
                           <Link
                             href={messagesHref}
-                            className="inline-flex items-center justify-center rounded-full border border-slate-800 bg-slate-950/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-700 hover:text-white"
+                            className="inline-flex w-full items-center justify-center rounded-full border border-slate-800 bg-slate-950/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-700 hover:text-white sm:w-auto"
                           >
                             Open messages
                           </Link>
