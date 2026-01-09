@@ -213,9 +213,11 @@ function BidRow({
       )}
     >
       <td className="py-2 pr-3">
-        <div className="space-y-0.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-semibold text-slate-100">{supplierName}</p>
+        <div className="min-w-0 space-y-0.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="break-anywhere text-sm font-semibold text-slate-100">
+              {supplierName}
+            </p>
             {isRecommended ? (
               <span className="inline-flex rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-100">
                 Recommended
@@ -225,14 +227,14 @@ function BidRow({
           {supplierEmail ? (
             <a
               href={`mailto:${supplierEmail}`}
-              className="text-[11px] text-emerald-200 hover:underline"
+              className="break-anywhere text-[11px] text-emerald-200 hover:underline"
             >
               {supplierEmail}
             </a>
           ) : (
             <p className="text-[11px] text-slate-500">Email unavailable</p>
           )}
-          <p className="font-mono text-[11px] text-slate-500">
+          <p className="break-anywhere font-mono text-[11px] text-slate-500">
             {bid.supplier_id}
           </p>
         </div>

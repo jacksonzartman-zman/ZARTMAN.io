@@ -796,6 +796,34 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         : typeof winningBidRow?.supplier_id === "string" && winningBidRow.supplier_id.trim()
           ? winningBidRow.supplier_id.trim()
           : null) ?? null;
+
+    const selectionRecordedExists = Boolean(
+      (typeof quote.awarded_supplier_id === "string" && quote.awarded_supplier_id.trim()) ||
+        (typeof quote.awarded_bid_id === "string" && quote.awarded_bid_id.trim()) ||
+        quote.awarded_at,
+    );
+    const selectionSupplierDisplay = selectionRecordedExists
+      ? (winningSupplierName ?? awardedSupplierId ?? "Supplier selected")
+      : "—";
+    const lastUpdatedSummary =
+      quote.updated_at
+        ? (formatRelativeTimeFromTimestamp(toTimestamp(quote.updated_at)) ??
+          formatDateTime(quote.updated_at, { includeTime: true }) ??
+          quote.updated_at)
+        : null;
+    const stateSummaryItems = [
+      { label: "Status", value: statusLabel },
+      { label: "Selection", value: selectionSupplierDisplay },
+      ...(lastUpdatedSummary ? [{ label: "Last updated", value: lastUpdatedSummary }] : []),
+    ].slice(0, 3);
+    const selectionRecordedItems = selectionRecordedExists
+      ? [
+          { label: "Supplier", value: selectionSupplierDisplay },
+          { label: "Awarded price", value: winningBidAmountLabel },
+          { label: "Lead time", value: winningLeadTimeLabel },
+          ...(awardedAtLabel ? [{ label: "Recorded", value: awardedAtLabel }] : []),
+        ].slice(0, 4)
+      : null;
     const awardFeedback = awardedSupplierId
       ? await loadLatestAwardFeedbackForQuote({
           quoteId: quote.id,
@@ -803,30 +831,31 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         })
       : null;
 
-    const winningBidCallout = winningBidExists ? (
-      <div className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-100">
-        <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-emerald-200">
-          <span className="pill pill-success px-3 py-0.5 text-[11px] font-semibold">
-            Winning supplier
-          </span>
-          <span>Award locked in</span>
+    const winningBidCallout =
+      winningBidExists && !selectionRecordedExists ? (
+        <div className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-100">
+          <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-emerald-200">
+            <span className="pill pill-success px-3 py-0.5 text-[11px] font-semibold">
+              Winning supplier
+            </span>
+            <span>Selection detected</span>
+          </div>
+          <p className="break-anywhere mt-2 text-base font-semibold text-white">
+            {winningSupplierName ?? "Supplier selected"}
+          </p>
+          {winningSupplierEmail ? (
+            <a
+              href={`mailto:${winningSupplierEmail}`}
+              className="break-anywhere text-xs text-emerald-200 hover:underline"
+            >
+              {winningSupplierEmail}
+            </a>
+          ) : null}
+          <p className="mt-1 text-xs text-emerald-100">
+            {winningBidAmountLabel} • {winningLeadTimeLabel}
+          </p>
         </div>
-        <p className="mt-2 text-base font-semibold text-white">
-          {winningSupplierName ?? "Supplier selected"}
-        </p>
-        {winningSupplierEmail ? (
-          <a
-            href={`mailto:${winningSupplierEmail}`}
-            className="text-xs text-emerald-200 hover:underline"
-          >
-            {winningSupplierEmail}
-          </a>
-        ) : null}
-        <p className="mt-1 text-xs text-emerald-100">
-          {winningBidAmountLabel} • {winningLeadTimeLabel}
-        </p>
-      </div>
-    ) : null;
+      ) : null;
 
     const projectStatusKickoffLabel = !hasWinningBid
       ? "Waiting for winner"
@@ -1908,6 +1937,49 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             }
           />
 
+          {stateSummaryItems.length > 0 ? (
+            <section
+              aria-label="State summary"
+              className="rounded-2xl border border-slate-900 bg-slate-950/40 px-5 py-3"
+            >
+              <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-3">
+                {stateSummaryItems.map((item) => (
+                  <div key={item.label} className="min-w-0">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      {item.label}
+                    </dt>
+                    <dd className="break-anywhere mt-1 text-sm font-semibold text-slate-100">
+                      {item.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ) : null}
+
+          {selectionRecordedItems ? (
+            <section
+              aria-label="Selection recorded"
+              className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-5 py-4"
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-200">
+                Selection recorded
+              </p>
+              <dl className="mt-3 grid gap-3 sm:grid-cols-4">
+                {selectionRecordedItems.map((item) => (
+                  <div key={item.label} className="min-w-0">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wide text-emerald-200/80">
+                      {item.label}
+                    </dt>
+                    <dd className="break-anywhere mt-1 text-sm font-semibold text-emerald-50">
+                      {item.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ) : null}
+
           <DisclosureSection
             id="details"
             className="scroll-mt-24"
@@ -1923,12 +1995,12 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
               <span>
                 Quote ID:{" "}
-                <span className="font-mono text-slate-300">{quote.id}</span>
+                <span className="break-anywhere font-mono text-slate-300">{quote.id}</span>
               </span>
               {quote.upload_id && (
                 <span>
                   Upload ID:{" "}
-                  <span className="font-mono text-slate-300">
+                  <span className="break-anywhere font-mono text-slate-300">
                     {quote.upload_id}
                   </span>
                 </span>
@@ -1946,11 +2018,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
           <div className="space-y-3">
             <div className="flex flex-wrap gap-3 text-sm text-slate-300">
-              <span className="font-medium text-slate-50">{customerName}</span>
+              <span className="break-anywhere font-medium text-slate-50">{customerName}</span>
               {customerEmail && (
                 <a
                   href={`mailto:${customerEmail}`}
-                  className="text-emerald-300 hover:underline"
+                  className="break-anywhere text-emerald-300 hover:underline"
                 >
                   {customerEmail}
                 </a>
@@ -1958,13 +2030,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               {contactPhone && (
                 <a
                   href={`tel:${contactPhone}`}
-                  className="text-slate-400 hover:text-emerald-200"
+                  className="break-anywhere text-slate-400 hover:text-emerald-200"
                 >
                   {contactPhone}
                 </a>
               )}
               {companyName && (
-                <span className="text-slate-400">{companyName}</span>
+                <span className="break-anywhere text-slate-400">{companyName}</span>
               )}
             </div>
 
