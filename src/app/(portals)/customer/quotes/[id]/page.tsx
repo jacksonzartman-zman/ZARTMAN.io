@@ -522,6 +522,32 @@ export default async function CustomerQuoteDetailPage({
     quote.file_name ??
     quoteFiles[0]?.filename ??
     formatQuoteId(quote.id);
+  const intakeProcess =
+    typeof uploadMeta?.manufacturing_process === "string" &&
+    uploadMeta.manufacturing_process.trim().length > 0
+      ? uploadMeta.manufacturing_process.trim()
+      : null;
+  const intakeQuantity =
+    typeof uploadMeta?.quantity === "string" && uploadMeta.quantity.trim().length > 0
+      ? uploadMeta.quantity.trim()
+      : null;
+  const intakeTargetShipDateLabel = derived.targetDateValue
+    ? formatDateTime(derived.targetDateValue)
+    : null;
+  const intakeMaterial =
+    readOptionalUploadMetaString(uploadMeta, [
+      "material",
+      "material_type",
+      "material_name",
+    ]) ?? null;
+  const intakeFinish =
+    readOptionalUploadMetaString(uploadMeta, [
+      "finish",
+      "surface_finish",
+      "surfaceFinish",
+    ]) ?? null;
+  const intakeMaterialFinishLabel =
+    [intakeMaterial, intakeFinish].filter(Boolean).join(" · ") || null;
   const leadTimeLabel =
     fastestLeadTime != null
       ? `${fastestLeadTime} day${fastestLeadTime === 1 ? "" : "s"}`
@@ -1420,6 +1446,17 @@ export default async function CustomerQuoteDetailPage({
     </DisclosureSection>
   );
 
+  const sectionRailSections = buildCustomerQuoteSections({
+    bidCount,
+    hasWinner: quoteHasWinner,
+    kickoffRatio: kickoffTasksRatio,
+    kickoffComplete: kickoffProgressBasis.isComplete,
+    messageCount: quoteMessages.length,
+    unreadCount: messagesUnreadCount,
+    fileCount,
+    messagesHref,
+  });
+
   return (
     <PortalShell
       workspace="customer"
@@ -1441,16 +1478,8 @@ export default async function CustomerQuoteDetailPage({
               hasWinner={quoteHasWinner}
             />
             <QuoteSectionRail
-              sections={buildCustomerQuoteSections({
-                bidCount,
-                hasWinner: quoteHasWinner,
-                kickoffRatio: kickoffTasksRatio,
-                kickoffComplete: kickoffProgressBasis.isComplete,
-                messageCount: quoteMessages.length,
-                unreadCount: messagesUnreadCount,
-                fileCount,
-                messagesHref,
-              })}
+              className="lg:hidden"
+              sections={sectionRailSections}
             />
             <QuoteSummaryCard
               className="lg:hidden"
@@ -1534,6 +1563,63 @@ export default async function CustomerQuoteDetailPage({
             leadTimeLabel={quoteSummaryLeadTimeLabel}
             updatedAtText={updatedAtText}
           />
+          <PortalCard
+            title="Sections"
+            description="Jump to a section."
+            className="hidden px-5 py-4 lg:block"
+          >
+            <QuoteSectionRail sections={sectionRailSections} />
+          </PortalCard>
+          <PortalCard
+            title="Key details"
+            description="Compact intake details for reference."
+            className="hidden px-5 py-4 lg:block"
+          >
+            <dl className="space-y-3">
+              <CompactDlRow
+                label="Primary file"
+                value={primaryFileName}
+                title={primaryFileName}
+                truncate
+              />
+              <CompactDlRow label="Process" value={intakeProcess ?? "—"} />
+              <CompactDlRow label="Quantity" value={intakeQuantity ?? "—"} />
+              <CompactDlRow
+                label="Target ship date"
+                value={intakeTargetShipDateLabel ?? "—"}
+              />
+              <CompactDlRow
+                label="Material / finish"
+                value={intakeMaterialFinishLabel ?? "—"}
+              />
+            </dl>
+          </PortalCard>
+          <PortalCard
+            title="Uploads"
+            description="Files for suppliers to quote."
+            className="hidden px-5 py-4 lg:block"
+            action={
+              <Link
+                href="#uploads"
+                className="inline-flex items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+              >
+                Manage uploads
+              </Link>
+            }
+          >
+            <p className="text-sm text-slate-100">
+              <span className="font-semibold text-white">
+                {fileCount === 0
+                  ? "No files uploaded yet"
+                  : fileCount === 1
+                    ? "1 file uploaded"
+                    : `${fileCount} files uploaded`}
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Add CAD, drawings, and specs here. Link them to parts in the Uploads section.
+            </p>
+          </PortalCard>
           {quoteIsWon ? (
             <PortalCard
               title="Project status"
@@ -1666,6 +1752,50 @@ function QuoteSummaryCard({
       </div>
     </section>
   );
+}
+
+function CompactDlRow({
+  label,
+  value,
+  title,
+  truncate,
+}: {
+  label: string;
+  value: string;
+  title?: string;
+  truncate?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr),auto] items-baseline gap-x-4 gap-y-1">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        {label}
+      </dt>
+      <dd
+        className={clsx(
+          "min-w-0 text-right text-sm text-slate-100",
+          truncate ? "truncate" : "break-anywhere",
+        )}
+        title={title}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function readOptionalUploadMetaString(
+  uploadMeta: QuoteWorkspaceData["uploadMeta"],
+  keys: string[],
+): string | null {
+  if (!uploadMeta) return null;
+  const record = uploadMeta as unknown as Record<string, unknown>;
+  for (const key of keys) {
+    const raw = record[key];
+    if (typeof raw === "string" && raw.trim().length > 0) {
+      return raw.trim();
+    }
+  }
+  return null;
 }
 
 function buildCustomerQuoteSections(args: {
