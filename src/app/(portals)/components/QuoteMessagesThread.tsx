@@ -106,6 +106,7 @@ export function QuoteMessagesThread({
       </header>
 
       <QuoteMessageList
+        quoteId={quoteId}
         messages={sortedMessages}
         currentUserId={currentUserId}
         emptyStateCopy={emptyStateCopy}
@@ -128,10 +129,12 @@ export function QuoteMessagesThread({
 }
 
 function QuoteMessageList({
+  quoteId,
   messages,
   currentUserId,
   emptyStateCopy,
 }: {
+  quoteId: string;
   messages: QuoteMessageRecord[];
   currentUserId: string | null;
   emptyStateCopy: string;
@@ -142,6 +145,18 @@ function QuoteMessageList({
         title="No messages yet"
         description={emptyStateCopy}
         className="px-6 py-5"
+        footer={
+          <button
+            type="button"
+            className="inline-flex w-full items-center justify-center rounded-full bg-emerald-400 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-950 transition hover:bg-emerald-300 sm:w-auto"
+            aria-label="Write a message"
+            onClick={() => {
+              focusQuoteMessageComposerTextarea(quoteId);
+            }}
+          >
+            Write a message
+          </button>
+        }
       />
     );
   }
@@ -240,6 +255,7 @@ function QuoteMessageComposer({
           <p className="text-xs text-slate-500">{disabledCopy}</p>
         ) : null}
       </div>
+      <QuoteMessageSuggestionsRow quoteId={quoteId} />
       {!state.ok && state.error ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-200">
           {state.error}
@@ -275,6 +291,73 @@ function QuoteMessageComposer({
         </div>
         <ComposerSubmitButton />
       </form>
+    </div>
+  );
+}
+
+function QuoteMessageSuggestionsRow({ quoteId }: { quoteId: string }) {
+  const suggestions = useMemo(
+    () => [
+      {
+        key: "tolerance",
+        label: "Request tolerance change",
+        ariaLabel: "Insert a template to request a tolerance change",
+        template: [
+          "Could we adjust the tolerance on this part/feature?",
+          "",
+          "Current tolerance: ____",
+          "Requested tolerance: ____",
+          "",
+          "Please confirm feasibility and any impact on cost or lead time.",
+        ].join("\n"),
+      },
+      {
+        key: "material",
+        label: "Confirm material/finish",
+        ariaLabel: "Insert a template to confirm material and finish",
+        template: [
+          "Can you confirm the material and finish for this quote?",
+          "",
+          "Material: ____",
+          "Finish/coating: ____",
+          "",
+          "If there are recommended alternatives, please share them.",
+        ].join("\n"),
+      },
+      {
+        key: "lead-time",
+        label: "Ask about lead time",
+        ariaLabel: "Insert a template to ask about lead time",
+        template: [
+          "What lead time should we plan for from order to ship?",
+          "",
+          "If there are options to expedite (and the impact), please let us know.",
+        ].join("\n"),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+        Suggestions
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {suggestions.map((suggestion) => (
+          <button
+            key={suggestion.key}
+            type="button"
+            aria-label={suggestion.ariaLabel}
+            className="inline-flex items-center justify-center rounded-full border border-slate-800 bg-black/30 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-slate-600 hover:bg-black/40 hover:text-white"
+            onClick={() => {
+              prefillQuoteMessageComposerTextarea(quoteId, suggestion.template);
+            }}
+          >
+            {suggestion.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -345,6 +428,58 @@ function mergeMessages(
     ? existing.map((message) => (message.id === next.id ? next : message))
     : [...existing, next];
   return sortMessages(deduped);
+}
+
+function resolveQuoteMessageComposerTextareaId(quoteId: string) {
+  return `quote-message-body-${quoteId}`;
+}
+
+function focusQuoteMessageComposerTextarea(quoteId: string) {
+  if (typeof document === "undefined") return;
+  try {
+    const textarea = document.getElementById(
+      resolveQuoteMessageComposerTextareaId(quoteId),
+    ) as HTMLTextAreaElement | null;
+    textarea?.focus();
+  } catch {
+    // Fail silently (best-effort UI enhancement).
+  }
+}
+
+function prefillQuoteMessageComposerTextarea(quoteId: string, template: string) {
+  if (typeof document === "undefined") return;
+  try {
+    const textarea = document.getElementById(
+      resolveQuoteMessageComposerTextareaId(quoteId),
+    ) as HTMLTextAreaElement | null;
+    if (!textarea) return;
+
+    const currentValue = textarea.value ?? "";
+    const start = typeof textarea.selectionStart === "number" ? textarea.selectionStart : currentValue.length;
+    const end = typeof textarea.selectionEnd === "number" ? textarea.selectionEnd : currentValue.length;
+
+    const before = currentValue.slice(0, start);
+    const after = currentValue.slice(end);
+
+    const needsSpacerBefore = before.length > 0 && !before.endsWith("\n");
+    const needsSpacerAfter = after.length > 0 && !after.startsWith("\n");
+
+    const nextValue = [
+      before,
+      needsSpacerBefore ? "\n\n" : "",
+      template,
+      needsSpacerAfter ? "\n\n" : "",
+      after,
+    ].join("");
+
+    textarea.value = nextValue;
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    textarea.focus();
+    const cursor = before.length + (needsSpacerBefore ? 2 : 0) + template.length;
+    textarea.setSelectionRange(cursor, cursor);
+  } catch {
+    // Fail silently (best-effort UI enhancement).
+  }
 }
 
 function useQuoteMessagesRealtime(
