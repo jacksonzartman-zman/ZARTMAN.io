@@ -56,16 +56,16 @@ export function CustomerQuoteJourneyHeader({
     .filter(Boolean);
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4 sm:px-6 sm:py-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
             Quote journey
           </p>
-          <h2 className="truncate text-xl font-semibold text-white heading-tight">
+          <h2 className="truncate text-lg font-semibold text-white heading-tight sm:text-xl">
             {partName}
           </h2>
-          <p className="text-sm text-slate-400">{nextStepText}</p>
+          <p className="text-sm text-slate-300">{nextStepText}</p>
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -132,17 +132,9 @@ export function CustomerQuoteJourneyHeaderAuto({
             : "uploads"
           : "uploads";
 
-  const nextStepLabel =
-    nextStepTarget === "uploads"
-      ? "Next step: Uploads"
-      : nextStepTarget === "decision"
-        ? "Next step: Decision"
-        : "Next step: Checkout";
-
   const completedChipTexts = [
     nextStepTarget !== "uploads" && hasFiles === true ? "Uploads completed" : null,
     nextStepTarget === "checkout" && winnerSelected === true ? "Selection confirmed" : null,
-    nextStepTarget === "checkout" && winnerSelected === true ? "Order preview available" : null,
   ].filter((value): value is string => typeof value === "string");
 
   const primaryAction: CustomerQuoteJourneyHeaderPrimaryAction | undefined =
@@ -183,7 +175,6 @@ export function CustomerQuoteJourneyHeaderAuto({
       partName={partName}
       status={status}
       nextStepText={nextStepText}
-      nextStepChipText={nextStepLabel}
       completedChipTexts={completedChipTexts.length > 0 ? completedChipTexts : undefined}
       primaryAction={primaryAction}
     />
