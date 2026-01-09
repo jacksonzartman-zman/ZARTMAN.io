@@ -11,6 +11,7 @@ import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import type { CustomerQuoteBidSummary } from "@/server/customers/bids";
 import {
   awardQuoteToBidAction,
@@ -35,6 +36,7 @@ export type CustomerQuoteAwardPanelProps = {
   canSubmit: boolean;
   disableReason?: string | null;
   winningBidId?: string | null;
+  awardedAt?: string | null;
   anchorId?: string;
   preselectBidId?: string | null;
 };
@@ -45,6 +47,7 @@ export function CustomerQuoteAwardPanel({
   canSubmit,
   disableReason,
   winningBidId,
+  awardedAt,
   anchorId,
   preselectBidId,
 }: CustomerQuoteAwardPanelProps) {
@@ -61,10 +64,24 @@ export function CustomerQuoteAwardPanel({
   const resolvedWinnerId = state.selectedBidId ?? winningBidId ?? null;
   const selectionLocked = Boolean(resolvedWinnerId);
   const showDisableNotice = Boolean(disableReason) && (!canSubmit || selectionLocked);
+  const winningBid =
+    selectionLocked && resolvedWinnerId
+      ? bids.find((bid) => bid.id === resolvedWinnerId) ?? null
+      : null;
   const winnerSupplierName =
     selectionLocked && resolvedWinnerId
       ? bids.find((bid) => bid.id === resolvedWinnerId)?.supplierName ?? null
       : null;
+  const recordedTimestampLabel = useMemo(() => {
+    const relative = formatRelativeTimeFromTimestamp(toTimestamp(awardedAt ?? null));
+    if (relative) {
+      return `Recorded ${relative}`;
+    }
+    const raw = awardedAt
+      ? formatDateTime(awardedAt, { includeTime: true, fallback: "" })
+      : "";
+    return raw ? `Recorded ${raw}` : null;
+  }, [awardedAt]);
   const confirmingBid =
     confirmingBidId && !selectionLocked
       ? bids.find((bid) => bid.id === confirmingBidId) ?? null
@@ -224,6 +241,30 @@ export function CustomerQuoteAwardPanel({
           </div>
         </div>
       </div>
+
+      {selectionLocked && winnerSupplierName ? (
+        <div className="rounded-xl border border-slate-900/60 bg-slate-950/20 px-5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+              Selection recorded
+            </p>
+            {recordedTimestampLabel ? (
+              <p className="text-xs text-slate-500">{recordedTimestampLabel}</p>
+            ) : null}
+          </div>
+          <p className="mt-1 text-sm text-slate-200">
+            <span className="font-semibold text-white">{winnerSupplierName}</span>
+            <span className="text-slate-400"> &middot; </span>
+            <span className="tabular-nums">
+              {winningBid?.priceDisplay ?? "Price pending"}
+            </span>
+            <span className="text-slate-400"> &middot; </span>
+            <span>
+              Lead time {winningBid?.leadTimeDisplay ?? "pending"}
+            </span>
+          </p>
+        </div>
+      ) : null}
 
       {viewMode === "cards" ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

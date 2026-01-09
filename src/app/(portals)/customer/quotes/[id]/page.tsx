@@ -867,6 +867,7 @@ export default async function CustomerQuoteDetailPage({
                     canSubmit={customerCanAward}
                     disableReason={customerAwardDisabledReason}
                     winningBidId={winningBidId}
+                    awardedAt={quote.awarded_at ?? null}
                     anchorId="award"
                     preselectBidId={preselectAwardBidId}
                   />
