@@ -22,6 +22,7 @@ const CHANGE_TYPE_OPTIONS: Array<{ value: ChangeType; label: string }> = [
 export function RequestChangeScaffold({
   quoteId,
   messagesHref,
+  scrollToMessagesOnOpen = false,
   disabled = false,
 }: {
   quoteId: string;
@@ -30,6 +31,11 @@ export function RequestChangeScaffold({
    * We keep this as a plain href (no router dependency) so this stays lightweight.
    */
   messagesHref: string;
+  /**
+   * If true, jump to the Messages section before opening the modal.
+   * Useful when rendering this control outside the Messages section.
+   */
+  scrollToMessagesOnOpen?: boolean;
   /** Use to disable change requests when the workspace is read-only. */
   disabled?: boolean;
 }) {
@@ -90,7 +96,20 @@ export function RequestChangeScaffold({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          if (scrollToMessagesOnOpen && typeof window !== "undefined") {
+            window.location.hash = "#messages";
+            requestAnimationFrame(() => {
+              document
+                .getElementById("messages")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
+              setOpen(true);
+            });
+            return;
+          }
+
+          setOpen(true);
+        }}
         className="inline-flex items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
       >
         Request change
