@@ -16,6 +16,7 @@ import { classifyCadFileType } from "@/lib/cadRendering";
 import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
 import { StatusPill } from "@/components/shared/primitives/StatusPill";
 import { TagPill } from "@/components/shared/primitives/TagPill";
+import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 const CadViewerPanel = dynamic<CadViewerPanelProps>(
   () =>
@@ -49,6 +50,8 @@ export function CustomerQuotePartPanel({
   className,
   onProceedToOrder,
 }: CustomerQuotePartPanelProps) {
+  const PREVIEW_DISCLAIMER =
+    "Preview renders may be simplified. The original upload is the source of truth.";
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [geometryStatsMap, setGeometryStatsMap] = useState<
     Record<number, GeometryStats | null>
@@ -78,11 +81,39 @@ export function CustomerQuotePartPanel({
     selectedFileMeta?.filename ??
     null;
 
-  const cadFallbackMessage =
-    files.length === 0
-      ? "No files attached yet. Upload CAD in Uploads to preview here."
-      : selectedPreview?.fallbackMessage ??
-        "Preview isn’t ready yet. If it doesn’t appear shortly, ask the admin team to attach an STL.";
+  const selectedCadInfo = classifyCadFileType({
+    filename: selectedFileLabel ?? "",
+    extension: null,
+  });
+  const canRenderViewer = Boolean(selectedPreview?.signedUrl && selectedCadInfo.ok);
+
+  const downloadOriginalUrl = (() => {
+    // Prefer reusing the signed viewer URL when possible (swap disposition to attachment).
+    const signed = typeof selectedPreview?.signedUrl === "string" ? selectedPreview.signedUrl : "";
+    if (signed.trim().length > 0 && signed.startsWith("/api/")) {
+      try {
+        const url = new URL(signed, "http://local");
+        url.searchParams.set("disposition", "attachment");
+        const qs = url.searchParams.toString();
+        return qs ? `${url.pathname}?${qs}` : url.pathname;
+      } catch {
+        // Ignore and fall back to storageSource.
+      }
+    }
+
+    const source = selectedPreview?.storageSource ?? null;
+    const kind =
+      selectedPreview?.cadKind ?? (selectedCadInfo.ok ? selectedCadInfo.type : null);
+    if (!source || !kind) return null;
+
+    if (source.token) {
+      return `/api/cad-preview?token=${encodeURIComponent(source.token)}&kind=${encodeURIComponent(kind)}&disposition=attachment`;
+    }
+    if (source.bucket && source.path) {
+      return `/api/cad-preview?bucket=${encodeURIComponent(source.bucket)}&path=${encodeURIComponent(source.path)}&kind=${encodeURIComponent(kind)}&disposition=attachment`;
+    }
+    return null;
+  })();
 
   const handleGeometryStats = useCallback(
     (stats: GeometryStats | null) => {
@@ -119,7 +150,7 @@ export function CustomerQuotePartPanel({
                     : "Preview files and run instant DFM checks."}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  Preview renders may be simplified. The original upload is the source of truth.
+                  {PREVIEW_DISCLAIMER}
                 </p>
               </>
             }
@@ -141,14 +172,31 @@ export function CustomerQuotePartPanel({
 
       <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
-          <CadViewerPanel
-            className="p-4 sm:p-5"
-            height={520}
-            fileUrl={selectedPreview?.signedUrl ?? null}
-            fileName={selectedFileLabel}
-            fallbackMessage={cadFallbackMessage}
-            onGeometryStats={handleGeometryStats}
-          />
+          {canRenderViewer ? (
+            <CadViewerPanel
+              className="p-4 sm:p-5"
+              height={520}
+              fileUrl={selectedPreview?.signedUrl ?? null}
+              fileName={selectedFileLabel}
+              fallbackMessage={
+                selectedPreview?.fallbackMessage ??
+                "Preview isn’t available for this file right now."
+              }
+              onGeometryStats={handleGeometryStats}
+            />
+          ) : (
+            <CadPreviewEmptyState
+              height={520}
+              title={files.length === 0 ? "No CAD files yet" : "Preview unavailable"}
+              description={
+                files.length === 0
+                  ? "Upload CAD in the Uploads section to view it here."
+                  : selectedPreview?.fallbackMessage ??
+                    "We couldn’t load a 3D preview for this file. You can still download the original."
+              }
+              downloadUrl={downloadOriginalUrl}
+            />
+          )}
           <PartDfMPanel
             geometryStats={selectedGeometry}
             process={processHint}
@@ -272,13 +320,6 @@ export function CustomerQuotePartPanel({
                   const primaryTag = isAutoPreviewFile
                     ? `Preview ${kindLabel} (auto-generated)`
                     : `Original ${kindLabel}`;
-                  const helperLine = isOriginalStepWithoutPreviewFile
-                    ? preview?.signedUrl
-                      ? "Preview will be generated when viewed."
-                      : "Preview unavailable (re-upload may be required)."
-                    : isStep
-                      ? "Preview is for viewing only. Download retains the original file."
-                      : null;
 
                   return (
                     <button
@@ -305,8 +346,10 @@ export function CustomerQuotePartPanel({
                         {displayName}
                       </p>
                       <p className="mt-1 text-[11px] text-slate-400">{previewStatus}</p>
-                      {helperLine ? (
-                        <p className="mt-1 text-[11px] text-slate-500">{helperLine}</p>
+                      {isOriginalStepWithoutPreviewFile ? (
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          STEP previews may take longer to appear.
+                        </p>
                       ) : null}
                     </button>
                   );
@@ -331,6 +374,87 @@ function CadViewerPanelLoading({ height }: { height: number }) {
         style={{ height }}
       >
         Loading viewer…
+      </div>
+    </section>
+  );
+}
+
+function CadPreviewEmptyState({
+  height,
+  title,
+  description,
+  downloadUrl,
+}: {
+  height: number;
+  title: string;
+  description: string;
+  downloadUrl: string | null;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-900/60 bg-slate-950/60 p-4 sm:p-5">
+      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+        CAD preview
+      </p>
+      <div
+        className="mt-3 flex items-center justify-center rounded-xl border border-dashed border-slate-800/80 bg-slate-950/70 px-6"
+        style={{ height }}
+      >
+        <div className="w-full max-w-md text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-800 bg-slate-950/60">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-6 w-6 text-slate-400"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 2.75l8.5 4.9v8.7l-8.5 4.9-8.5-4.9v-8.7L12 2.75Z"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              />
+              <path
+                d="M8.25 11.5l3.25 1.9 4.25-2.45"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+
+          <p className="mt-4 text-sm font-semibold text-slate-100">{title}</p>
+          <p className="mt-1 text-sm text-slate-300">{description}</p>
+
+          <div className="mt-5 flex flex-col items-stretch justify-center gap-2 sm:flex-row sm:items-center">
+            {downloadUrl ? (
+              <a
+                href={downloadUrl}
+                className={clsx(primaryCtaClasses, ctaSizeClasses.sm, "w-full sm:w-auto")}
+              >
+                Download original
+              </a>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className={clsx(primaryCtaClasses, ctaSizeClasses.sm, "w-full sm:w-auto")}
+              >
+                Download original
+              </button>
+            )}
+            <button
+              type="button"
+              disabled
+              className={clsx(secondaryCtaClasses, ctaSizeClasses.sm, "w-full sm:w-auto")}
+            >
+              Regenerate preview
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Preview regeneration isn’t available yet.
+          </p>
+        </div>
       </div>
     </section>
   );
