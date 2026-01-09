@@ -1452,21 +1452,19 @@ export default async function CustomerQuoteDetailPage({
                 messagesHref,
               })}
             />
+            <QuoteSummaryCard
+              className="lg:hidden"
+              partName={primaryFileName}
+              priceLabel={quoteSummaryPriceLabel}
+              leadTimeLabel={quoteSummaryLeadTimeLabel}
+              updatedAtText={updatedAtText}
+            />
+            {receiptBanner}
           </div>
 
-          <QuoteSummaryCard
-            className="lg:hidden"
-            partName={primaryFileName}
-            priceLabel={quoteSummaryPriceLabel}
-            leadTimeLabel={quoteSummaryLeadTimeLabel}
-            updatedAtText={updatedAtText}
-          />
-
-          {receiptBanner}
+          {orderWorkspaceSection}
           {decisionSection}
           {kickoffSection}
-          {orderWorkspaceSection}
-          {timelineSection}
           {messagesUnavailable ? (
             <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
               Messages are temporarily unavailable right now. Your RFQ is still saved—refresh to try again.
@@ -1522,6 +1520,10 @@ export default async function CustomerQuoteDetailPage({
               emptyStateCopy="No messages yet. Start the thread if you need clarification, want to request a change, or have a question—everyone on this workspace will be notified."
             />
           </DisclosureSection>
+
+          {filesSection}
+          {quoteDetailsSection}
+          {timelineSection}
         </div>
 
         <div className="space-y-8">
@@ -1593,8 +1595,6 @@ export default async function CustomerQuoteDetailPage({
               </div>
             </PortalCard>
           ) : null}
-          {filesSection}
-          {quoteDetailsSection}
           {notesSection}
         </div>
       </div>
