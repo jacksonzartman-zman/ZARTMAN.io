@@ -213,9 +213,9 @@ export function CustomerQuoteAwardPanel({
             <article
               key={bid.id}
               className={clsx(
-                "flex h-full flex-col rounded-2xl border px-5 py-4 transition",
+                "relative flex h-full flex-col rounded-2xl border px-5 py-4 transition",
                 isWinner
-                  ? "border-emerald-400/60 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-400/25"
+                  ? "overflow-hidden border-emerald-300/70 bg-gradient-to-b from-emerald-500/15 to-slate-950/40 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400/30 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-emerald-400/60 before:content-['']"
                   : dimNonWinner
                     ? "border-slate-900/40 bg-slate-950/20 opacity-55"
                     : "border-slate-900/60 bg-slate-950/40 hover:border-slate-700/70",

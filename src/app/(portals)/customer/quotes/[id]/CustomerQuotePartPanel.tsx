@@ -22,7 +22,10 @@ const CadViewerPanel = dynamic<CadViewerPanelProps>(
     import("@/app/(portals)/components/CadViewerPanel").then(
       (mod) => mod.CadViewerPanel,
     ),
-  { ssr: false },
+  {
+    ssr: false,
+    loading: () => <CadViewerPanelLoading height={520} />,
+  },
 );
 
 type CustomerQuotePartPanelProps = {
@@ -74,6 +77,12 @@ export function CustomerQuotePartPanel({
     selectedPreview?.label ??
     selectedFileMeta?.filename ??
     null;
+
+  const cadFallbackMessage =
+    files.length === 0
+      ? "No files attached yet. Upload CAD in Uploads to preview here."
+      : selectedPreview?.fallbackMessage ??
+        "Preview isn’t ready yet. If it doesn’t appear shortly, ask the admin team to attach an STL.";
 
   const handleGeometryStats = useCallback(
     (stats: GeometryStats | null) => {
@@ -137,7 +146,7 @@ export function CustomerQuotePartPanel({
             height={520}
             fileUrl={selectedPreview?.signedUrl ?? null}
             fileName={selectedFileLabel}
-            fallbackMessage="Select a CAD file or ask the admin team to attach an STL."
+            fallbackMessage={cadFallbackMessage}
             onGeometryStats={handleGeometryStats}
           />
           <PartDfMPanel
@@ -306,6 +315,22 @@ export function CustomerQuotePartPanel({
             </div>
           </section>
         </aside>
+      </div>
+    </section>
+  );
+}
+
+function CadViewerPanelLoading({ height }: { height: number }) {
+  return (
+    <section className="rounded-2xl border border-slate-900/60 bg-slate-950/60 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+        CAD preview
+      </p>
+      <div
+        className="mt-3 flex animate-pulse items-center justify-center rounded-xl border border-dashed border-slate-800/80 bg-slate-950/70 px-6 text-center text-xs text-slate-400"
+        style={{ height }}
+      >
+        Loading viewer…
       </div>
     </section>
   );
