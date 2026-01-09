@@ -133,7 +133,7 @@ export function CustomerQuotePartPanel({
   return (
     <section
       className={clsx(
-        "rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-4 sm:px-5",
+        "rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4 sm:px-6 sm:py-5",
         className,
       )}
     >
@@ -211,7 +211,10 @@ export function CustomerQuotePartPanel({
               type="button"
               onClick={onProceedToOrder}
               data-proceed-to-order="true"
-              className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-emerald-950 shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+              className={clsx(
+                primaryCtaClasses,
+                "w-full rounded-2xl px-4 py-3 text-sm",
+              )}
             >
               Proceed to order
             </button>
