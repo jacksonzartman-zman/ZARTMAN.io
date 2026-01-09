@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import { useEffect, useRef } from "react";
 import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
 
 export type OrderSummaryModalProps = {
@@ -22,7 +23,45 @@ export function OrderSummaryModal({
 }: OrderSummaryModalProps) {
   if (!open) return null;
 
-  // TODO(checkout): add keyboard escape handler + focus trap for accessibility.
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const focusableSelector =
+      'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])';
+    const raf = window.requestAnimationFrame(() => {
+      const dialog = dialogRef.current;
+      const firstFocusable = dialog?.querySelector<HTMLElement>(focusableSelector) ?? null;
+      (firstFocusable ?? dialog)?.focus?.();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      const previous = previouslyFocusedRef.current;
+      if (previous && document.contains(previous)) {
+        previous.focus();
+      }
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
 
   return (
     <div
@@ -34,7 +73,11 @@ export function OrderSummaryModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-800 bg-slate-950"
+      >
         <div className="flex items-start justify-between gap-3 border-b border-slate-900 px-6 py-4">
           <SectionHeader
             variant="label"
@@ -47,6 +90,7 @@ export function OrderSummaryModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close order summary dialog"
             className="rounded-full border border-slate-700 bg-slate-900/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600"
           >
             Close

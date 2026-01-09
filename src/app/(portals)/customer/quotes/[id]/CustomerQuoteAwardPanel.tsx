@@ -60,6 +60,8 @@ export function CustomerQuoteAwardPanel({
   const [confirmingBidId, setConfirmingBidId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"cards" | "compare">("cards");
   const didAutoPreselect = useRef(false);
+  const confirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   const resolvedWinnerId = state.selectedBidId ?? winningBidId ?? null;
   const selectionLocked = Boolean(resolvedWinnerId);
@@ -86,6 +88,43 @@ export function CustomerQuoteAwardPanel({
     confirmingBidId && !selectionLocked
       ? bids.find((bid) => bid.id === confirmingBidId) ?? null
       : null;
+
+  useEffect(() => {
+    if (!confirmingBid) return;
+
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const focusableSelector =
+      'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])';
+    const raf = window.requestAnimationFrame(() => {
+      const dialog = confirmDialogRef.current;
+      const firstFocusable = dialog?.querySelector<HTMLElement>(focusableSelector) ?? null;
+      (firstFocusable ?? dialog)?.focus?.();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      const previous = previouslyFocusedRef.current;
+      if (previous && document.contains(previous)) {
+        previous.focus();
+      }
+    };
+  }, [confirmingBid]);
+
+  useEffect(() => {
+    if (!confirmingBid) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setConfirmingBidId(null);
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [confirmingBid]);
 
   const comparisonLeaders = useMemo(() => {
     const prices = bids
@@ -208,14 +247,18 @@ export function CustomerQuoteAwardPanel({
             {selectionLocked ? "Selection confirmed" : "Decision"}
           </TagPill>
           <div
-            role="group"
+            role="tablist"
             aria-label="Bid view mode"
             className="inline-flex items-center rounded-full border border-slate-800/80 bg-slate-950/30 p-0.5"
           >
             <button
               type="button"
               onClick={() => setViewMode("cards")}
-              aria-pressed={viewMode === "cards"}
+              id="bid-view-cards-tab"
+              role="tab"
+              aria-selected={viewMode === "cards"}
+              aria-controls="bid-view-cards-panel"
+              tabIndex={viewMode === "cards" ? 0 : -1}
               className={clsx(
                 "rounded-full px-3 py-1 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-400",
                 viewMode === "cards"
@@ -228,7 +271,11 @@ export function CustomerQuoteAwardPanel({
             <button
               type="button"
               onClick={() => setViewMode("compare")}
-              aria-pressed={viewMode === "compare"}
+              id="bid-view-compare-tab"
+              role="tab"
+              aria-selected={viewMode === "compare"}
+              aria-controls="bid-view-compare-panel"
+              tabIndex={viewMode === "compare" ? 0 : -1}
               className={clsx(
                 "rounded-full px-3 py-1 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-400",
                 viewMode === "compare"
@@ -267,7 +314,12 @@ export function CustomerQuoteAwardPanel({
       ) : null}
 
       {viewMode === "cards" ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div
+          id="bid-view-cards-panel"
+          role="tabpanel"
+          aria-labelledby="bid-view-cards-tab"
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        >
           {bids.map((bid) => {
             const isWinner = resolvedWinnerId === bid.id;
             const dimNonWinner = selectionLocked && !isWinner;
@@ -369,6 +421,7 @@ export function CustomerQuoteAwardPanel({
                     <button
                       type="button"
                       onClick={() => setConfirmingBidId(bid.id)}
+                      aria-label={`Select supplier ${bid.supplierName}`}
                       className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
                     >
                       Select supplier
@@ -380,7 +433,12 @@ export function CustomerQuoteAwardPanel({
           })}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div
+          id="bid-view-compare-panel"
+          role="tabpanel"
+          aria-labelledby="bid-view-compare-tab"
+          className="space-y-2"
+        >
           <div className="overflow-x-auto rounded-2xl border border-slate-900/60 bg-slate-950/30">
             <div className="min-w-[44rem]">
               <div className="grid grid-cols-[minmax(12rem,1.4fr)_8.5rem_9.5rem_9rem_10.5rem] gap-3 border-b border-slate-900/60 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
@@ -447,6 +505,7 @@ export function CustomerQuoteAwardPanel({
                           <button
                             type="button"
                             onClick={() => setConfirmingBidId(bid.id)}
+                            aria-label={`Select supplier ${bid.supplierName}`}
                             className="inline-flex items-center rounded-full border border-emerald-400/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
                           >
                             Select supplier
@@ -467,15 +526,23 @@ export function CustomerQuoteAwardPanel({
 
       {confirmingBid ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
-          <div className="w-full max-w-lg space-y-4 rounded-2xl border border-slate-800 bg-slate-950 px-6 py-5 shadow-xl">
+          <div
+            ref={confirmDialogRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-award-title"
+            aria-describedby="confirm-award-description"
+            className="w-full max-w-lg space-y-4 rounded-2xl border border-slate-800 bg-slate-950 px-6 py-5 shadow-xl"
+          >
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
                 Confirm selection
               </p>
-              <h3 className="text-lg font-semibold text-white">
+              <h3 id="confirm-award-title" className="text-lg font-semibold text-white">
                 Select {confirmingBid.supplierName}?
               </h3>
-              <p className="text-sm text-slate-300">
+              <p id="confirm-award-description" className="text-sm text-slate-300">
                 This records your selection and starts kickoff.
               </p>
             </div>
@@ -550,6 +617,7 @@ function CancelConfirmButton({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       disabled={pending}
+      aria-label="Cancel and close confirm selection dialog"
       className="inline-flex items-center rounded-full border border-slate-800/80 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-slate-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
     >
       Cancel
