@@ -83,6 +83,7 @@ import {
 import { CustomerQuoteJourneyHeaderAuto } from "./CustomerQuoteJourneyHeader";
 import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
 import { RequestChangeScaffold } from "./RequestChangeScaffold";
+import { DemoModeBanner } from "./DemoModeBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -108,8 +109,10 @@ export default async function CustomerQuoteDetailPage({
   const focusParam = getSearchParamValue(resolvedSearchParams, "focus");
   const tabParam = getSearchParamValue(resolvedSearchParams, "tab");
   const awardSupplierIdParam = getSearchParamValue(resolvedSearchParams, "awardSupplierId");
+  const demoParam = getSearchParamValue(resolvedSearchParams, "demo");
   const messagesHref = buildQuoteTabHref(resolvedSearchParams, "messages", "#messages");
   const customer = await getCustomerByUserId(user.id);
+  const showDemoModeBanner = demoParam === "1";
 
   if (!customer) {
     return (
@@ -1426,6 +1429,7 @@ export default async function CustomerQuoteDetailPage({
       <FocusScroll enabled={focusParam === "award"} targetId="award" />
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
+      {showDemoModeBanner ? <DemoModeBanner /> : null}
       <div className="space-y-8 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-8 lg:space-y-0">
         <div className="space-y-6">
           <div className="space-y-4">
