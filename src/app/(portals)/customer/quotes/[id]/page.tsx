@@ -1452,13 +1452,14 @@ export default async function CustomerQuoteDetailPage({
               markRead={tabParam === "messages"}
               title="Messages"
               description="Shared thread with your supplier and the Zartman admin team."
+              usageHint="Use Messages for clarifications, change requests, and questions."
               helperText="Your note notifies your supplier and the Zartman admin team."
               disabledCopy={
                 readOnly
                   ? "You’re viewing this workspace in read-only mode, so messaging is disabled."
                   : undefined
               }
-              emptyStateCopy="Send a message to confirm requirements (materials, tolerances, timeline). We’ll notify everyone on this thread."
+              emptyStateCopy="No messages yet. Start the thread if you need clarification, want to request a change, or have a question—everyone on this workspace will be notified."
             />
           </DisclosureSection>
         </div>
