@@ -1369,7 +1369,7 @@ export default async function CustomerQuoteDetailPage({
         quoteId={quote.id}
         actorRole="customer"
         actorUserId={user.id}
-        emptyState="No timeline updates yet. We’ll log key milestones here as your RFQ moves through review, bidding, award, and kickoff."
+        emptyState="Updates will appear here as files, bids, and selections progress."
       />
     </DisclosureSection>
   );

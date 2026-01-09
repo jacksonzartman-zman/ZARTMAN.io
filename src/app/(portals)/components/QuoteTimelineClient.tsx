@@ -35,7 +35,7 @@ const PHASE_LABELS: Record<QuotePhase, string> = {
 export function QuoteTimelineClient({
   rawEvents,
   className,
-  emptyState = "No timeline updates yet. We’ll log key milestones here as your RFQ moves forward.",
+  emptyState = "Updates will appear here as files, bids, and selections progress.",
 }: {
   rawEvents: QuoteEventRecord[];
   className?: string;
@@ -89,83 +89,102 @@ export function QuoteTimelineClient({
     [filteredEvents],
   );
 
-  const hasAny = filteredEvents.length > 0;
-  const dotClasses = "absolute left-0 top-2 h-2 w-2 rounded-full bg-emerald-400";
+  const hasAnyEvents = timelineEvents.length > 0;
+  const hasAnyFiltered = filteredEvents.length > 0;
 
   return (
-    <section className={clsx("space-y-3", className)}>
-      <div className="flex flex-wrap items-center gap-2">
-        <FilterPill
-          active={filter === "all"}
-          onClick={() => setFilter("all")}
-        >
-          All events
-        </FilterPill>
-        <FilterPill
-          active={filter === "messages"}
-          onClick={() => setFilter("messages")}
-        >
-          Messages only
-        </FilterPill>
-        <FilterPill
-          active={filter === "status"}
-          onClick={() => setFilter("status")}
-        >
-          Status changes
-        </FilterPill>
-        <FilterPill
-          active={filter === "kickoff"}
-          onClick={() => setFilter("kickoff")}
-        >
-          Kickoff only
-        </FilterPill>
-      </div>
+    <section className={clsx("space-y-4", className)}>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            Activity log
+          </p>
+          <p className="mt-1 text-sm text-slate-300">
+            {hasAnyEvents
+              ? `${filteredEvents.length} update${filteredEvents.length === 1 ? "" : "s"} shown`
+              : emptyState}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterPill active={filter === "all"} onClick={() => setFilter("all")}>
+            All
+          </FilterPill>
+          <FilterPill active={filter === "messages"} onClick={() => setFilter("messages")}>
+            Messages
+          </FilterPill>
+          <FilterPill active={filter === "status"} onClick={() => setFilter("status")}>
+            Status
+          </FilterPill>
+          <FilterPill active={filter === "kickoff"} onClick={() => setFilter("kickoff")}>
+            Kickoff
+          </FilterPill>
+        </div>
+      </header>
 
-      {!hasAny ? (
-        <p className="text-xs text-slate-400">{emptyState}</p>
+      {!hasAnyEvents ? null : !hasAnyFiltered ? (
+        <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-3 text-sm text-slate-300">
+          No updates match this filter.
+        </p>
       ) : (
         <div className="space-y-6">
           {PHASE_ORDER.map((phase) => {
             const events = eventsByPhase[phase] ?? [];
             if (events.length === 0) return null;
+
             return (
-              <div key={phase} className="space-y-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  {PHASE_LABELS[phase]}
-                </p>
-                <ol className="space-y-4 border-l border-slate-800">
-                  {events.map((event) => (
-                    <li key={event.id} className="relative pl-6">
-                      <span className={dotClasses} />
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <p className="text-sm font-medium text-slate-100">
-                          {event.title}
-                        </p>
-                        <p
-                          className="text-xs text-slate-400"
-                          title={formatDateTime(event.occurredAt, {
-                            includeTime: true,
-                          })}
-                        >
-                          {formatRelativeTimeFromTimestamp(
-                            toTimestamp(event.occurredAt),
-                          ) ?? "—"}
-                        </p>
-                      </div>
-                      {event.description ? (
-                        <p className="mt-1 text-xs text-slate-400">
-                          {event.description}
-                        </p>
-                      ) : null}
-                      {event.actorLabel ? (
-                        <p className="mt-1 text-[10px] uppercase tracking-wide text-slate-500">
-                          {event.actorLabel}
-                        </p>
-                      ) : null}
-                    </li>
-                  ))}
+              <section
+                key={phase}
+                className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30"
+              >
+                <div className="border-b border-slate-900/60 bg-slate-950/50 px-4 py-3 sm:px-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                    {PHASE_LABELS[phase]}
+                  </p>
+                </div>
+                <ol className="divide-y divide-slate-900/60">
+                  {events.map((event) => {
+                    const absoluteLabel =
+                      formatDateTime(event.occurredAt, { includeTime: true }) ??
+                      formatDateTime(event.occurredAt) ??
+                      "—";
+                    const relativeLabel =
+                      formatRelativeTimeFromTimestamp(toTimestamp(event.occurredAt)) ?? null;
+
+                    return (
+                      <li key={event.id} className="px-4 py-3 sm:px-5">
+                        <div className="grid gap-3 sm:grid-cols-[11rem_minmax(0,1fr)] sm:items-start">
+                          <div className="text-xs text-slate-400">
+                            <p className="whitespace-nowrap tabular-nums" title={absoluteLabel}>
+                              {absoluteLabel}
+                            </p>
+                            {relativeLabel ? (
+                              <p className="mt-1 whitespace-nowrap text-[11px] text-slate-500">
+                                {relativeLabel}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-slate-100">
+                              {event.title}
+                            </p>
+                            {event.description ? (
+                              <p className="mt-1 text-xs text-slate-400">
+                                {event.description}
+                              </p>
+                            ) : null}
+                            {event.actorLabel ? (
+                              <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                {event.actorLabel}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ol>
-              </div>
+              </section>
             );
           })}
         </div>
