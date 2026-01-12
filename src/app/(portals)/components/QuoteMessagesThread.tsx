@@ -383,6 +383,9 @@ function resolveRoleLabel(role: string | null | undefined): string {
   if (normalized === "supplier") {
     return "Supplier";
   }
+  if (normalized === "system") {
+    return "System";
+  }
   return "Admin";
 }
 
@@ -399,6 +402,9 @@ function resolveRoleClasses(
   }
   if (normalized === "supplier") {
     return "bg-purple-400/20 text-purple-200 border border-purple-400/40";
+  }
+  if (normalized === "system") {
+    return "bg-amber-400/15 text-amber-200 border border-amber-400/30";
   }
   return "bg-slate-800 text-slate-100 border border-slate-700";
 }

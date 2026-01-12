@@ -14,6 +14,9 @@ type ChangeType =
   | "shipping"
   | "revision";
 
+const SYSTEM_SENDER_ID = "00000000-0000-0000-0000-000000000000";
+const SYSTEM_SENDER_NAME = "System";
+
 const CHANGE_TYPE_LABELS: Record<ChangeType, string> = {
   tolerance: "Tolerance",
   material_finish: "Material / finish",
@@ -107,15 +110,14 @@ export async function POST(req: Request) {
     });
 
     const warnings: string[] = [];
-    const senderName =
-      access.customerName ?? access.customerEmail ?? user.email ?? "Customer";
-    const senderEmail = access.customerEmail ?? user.email ?? null;
+    const senderName = SYSTEM_SENDER_NAME;
+    const senderEmail = null;
 
     console.log("[change-requests] insert message payload", {
       quoteId,
       changeRequestId: changeRequest.id,
-      senderId: user.id,
-      senderRole: "customer",
+      senderId: SYSTEM_SENDER_ID,
+      senderRole: "system",
       senderName,
       senderEmail,
       label,
@@ -125,14 +127,11 @@ export async function POST(req: Request) {
 
     const messageResult = await createQuoteMessage({
       quoteId,
-      senderId: user.id,
-      // IMPORTANT: Must match the canonical customer insert shape. RLS/checks
-      // reject "system" roles here.
-      senderRole: "customer",
+      senderId: SYSTEM_SENDER_ID,
+      senderRole: "system",
       senderName,
       senderEmail,
       body: messageBody,
-      customerId: access.customerId,
       supabase: supabaseServer,
     });
 

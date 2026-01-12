@@ -11,6 +11,7 @@ export type QuoteMessageSenderRole =
   | "admin"
   | "customer"
   | "supplier"
+  | "system"
   | (string & {});
 
 export type QuoteMessageRecord = {
@@ -356,7 +357,12 @@ function normalizeRole(
   if (!trimmed) {
     return null;
   }
-  if (trimmed === "admin" || trimmed === "customer" || trimmed === "supplier") {
+  if (
+    trimmed === "admin" ||
+    trimmed === "customer" ||
+    trimmed === "supplier" ||
+    trimmed === "system"
+  ) {
     return trimmed;
   }
   return value.trim();
