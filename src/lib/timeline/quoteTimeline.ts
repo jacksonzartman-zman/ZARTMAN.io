@@ -134,6 +134,12 @@ function inferPhase(args: {
 }): QuotePhase {
   const type = normalizeEventType(args.eventType);
 
+  // Explicit overrides for events that should appear in a specific phase,
+  // even if their formatted group key would otherwise bucket them elsewhere.
+  if (type === "change_request_created") {
+    return "kickoff";
+  }
+
   if (
     type === "submitted" ||
     type === "supplier_invited" ||
