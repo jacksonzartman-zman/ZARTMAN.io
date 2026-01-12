@@ -5,6 +5,7 @@ import { requireAdminUser } from "@/server/auth";
 import {
   loadUserNotifications,
   markNotificationsRead,
+  refreshNotificationsForUser,
   type UserNotification,
 } from "@/server/notifications";
 
@@ -18,6 +19,10 @@ const DAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
 
 export default async function AdminNotificationsPage() {
   const admin = await requireAdminUser({ redirectTo: "/login" });
+
+  await refreshNotificationsForUser(admin.id, "admin").catch((error) => {
+    console.error("[notifications] refresh failed (admin)", { userId: admin.id, error });
+  });
 
   const notifications = await loadUserNotifications(admin.id, {
     onlyUnread: false,

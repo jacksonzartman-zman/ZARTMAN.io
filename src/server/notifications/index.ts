@@ -20,6 +20,7 @@ import { loadSystemHealth } from "@/server/admin/systemHealth";
 export type NotificationType =
   | "message_needs_reply"
   | "new_message"
+  | "change_request_submitted"
   | "new_bid_on_rfq"
   | "rfq_ready_to_award"
   | "kickoff_overdue"
@@ -239,6 +240,7 @@ function getManagedTypesForRole(role: NotificationAudienceRole): NotificationTyp
   }
   return [
     "message_needs_reply",
+    "change_request_submitted",
     "new_bid_on_rfq",
     "rfq_ready_to_award",
     "kickoff_overdue",
@@ -382,6 +384,11 @@ async function upsertNotificationsForUser(args: {
             error: serializeSupabaseError(error) ?? error,
           });
         }
+        // Best-effort: surface change-request notification insert failures without failing refresh.
+        logChangeRequestInAppNotificationInsertFailure(inserts);
+      } else {
+        // Best-effort: emit a specific log line when change-request notifications are inserted.
+        logChangeRequestInAppNotificationInsertSuccess(inserts);
       }
     }
 
@@ -425,6 +432,65 @@ async function upsertNotificationsForUser(args: {
   }
 }
 
+function extractQuoteIdFromAdminHref(href: string): string | null {
+  const normalized = typeof href === "string" ? href.trim() : "";
+  if (!normalized) return null;
+  const match = normalized.match(/\/admin\/quotes\/([^/?#]+)/);
+  return match?.[1] ? match[1] : null;
+}
+
+function logChangeRequestInAppNotificationInsertSuccess(
+  inserts: Array<{
+    user_id: string;
+    type: string;
+    entity_type: string;
+    entity_id: string;
+    title: string;
+    body: string;
+    href: string;
+    is_read: boolean;
+    created_at: string;
+  }>,
+) {
+  for (const insert of inserts) {
+    if (insert.type !== "change_request_submitted") continue;
+    const quoteId = extractQuoteIdFromAdminHref(insert.href);
+    const changeRequestId = normalizeId(insert.entity_id) || null;
+    console.log("[change-requests] admin in-app notification created", {
+      quoteId,
+      changeRequestId,
+    });
+  }
+}
+
+function logChangeRequestInAppNotificationInsertFailure(
+  inserts: Array<{
+    user_id: string;
+    type: string;
+    entity_type: string;
+    entity_id: string;
+    title: string;
+    body: string;
+    href: string;
+    is_read: boolean;
+    created_at: string;
+  }>,
+) {
+  const failures = inserts
+    .filter((insert) => insert.type === "change_request_submitted")
+    .map((insert) => ({
+      quoteId: extractQuoteIdFromAdminHref(insert.href),
+      changeRequestId: normalizeId(insert.entity_id) || null,
+    }));
+
+  if (failures.length === 0) return;
+
+  console.error("[change-requests] admin in-app notification failed", {
+    count: failures.length,
+    failures,
+  });
+}
+
 async function computeCustomerNotifications(userId: string): Promise<NotificationDescriptor[]> {
   const customer = await getCustomerByUserId(userId);
   const customerEmail = (customer?.email ?? "").trim();
@@ -457,19 +523,29 @@ async function computeAdminNotifications(userId: string): Promise<NotificationDe
   // Defense-in-depth: admin notifications are derived from admin-only signals.
   await requireAdminUser();
 
-  const [messageNeedsReply, rfqBids, rfqReady, kickoffOverdue, capacityStale, benchOverused, systemHealth] =
-    await Promise.all([
-      computeMessageNeedsReplyNotifications({ userId, role: "admin" }),
-      computeAdminNewBidNotifications({ userId }),
-      computeAdminRfqReadyToAwardNotifications({ userId }),
-      computeKickoffOverdueNotifications({ userId, role: "admin" }),
-      computeAdminCapacityStaleNotifications({ userId }),
-      computeAdminBenchOverusedNotifications({ userId }),
-      computeAdminSystemHealthNotifications({ userId }),
-    ]);
+  const [
+    messageNeedsReply,
+    changeRequests,
+    rfqBids,
+    rfqReady,
+    kickoffOverdue,
+    capacityStale,
+    benchOverused,
+    systemHealth,
+  ] = await Promise.all([
+    computeMessageNeedsReplyNotifications({ userId, role: "admin" }),
+    computeAdminChangeRequestSubmittedNotifications({ userId }),
+    computeAdminNewBidNotifications({ userId }),
+    computeAdminRfqReadyToAwardNotifications({ userId }),
+    computeKickoffOverdueNotifications({ userId, role: "admin" }),
+    computeAdminCapacityStaleNotifications({ userId }),
+    computeAdminBenchOverusedNotifications({ userId }),
+    computeAdminSystemHealthNotifications({ userId }),
+  ]);
 
   return [
     ...messageNeedsReply,
+    ...changeRequests,
     ...rfqBids,
     ...rfqReady,
     ...kickoffOverdue,
@@ -542,6 +618,167 @@ type CustomerQuoteLite = {
 type BidLite = { quote_id: string; updated_at: string | null; created_at: string | null };
 
 type NotificationSeenRow = Pick<NotificationRow, "entity_id" | "created_at" | "read_at" | "is_read" | "type" | "entity_type">;
+
+type ChangeRequestLite = {
+  id: string;
+  quote_id: string;
+  change_type: string;
+  notes: string;
+  status: string | null;
+  created_at: string | null;
+};
+
+type QuoteLabelRow = {
+  id: string;
+  file_name: string | null;
+  company: string | null;
+};
+
+function formatChangeRequestTypeLabel(value: string | null | undefined): string {
+  switch ((value ?? "").trim().toLowerCase()) {
+    case "tolerance":
+      return "Tolerance";
+    case "material_finish":
+      return "Material / finish";
+    case "lead_time":
+      return "Lead time";
+    case "shipping":
+      return "Shipping";
+    case "revision":
+      return "Revision";
+    default:
+      return "Change request";
+  }
+}
+
+function truncateOneLine(value: string | null | undefined, maxLen: number): string | null {
+  const normalized = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  if (!normalized) return null;
+  if (normalized.length <= maxLen) return normalized;
+  if (maxLen <= 1) return normalized.slice(0, Math.max(0, maxLen));
+  return `${normalized.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+function quoteLabelFromRow(row: QuoteLabelRow | null, quoteId: string): string {
+  return row?.file_name ?? row?.company ?? `Quote ${quoteId.slice(0, 6)}`;
+}
+
+async function computeAdminChangeRequestSubmittedNotifications(args: {
+  userId: string;
+}): Promise<NotificationDescriptor[]> {
+  const LOOKBACK_DAYS = 30;
+  const LIMIT = 25;
+
+  try {
+    // Defense-in-depth: keep this admin-only.
+    await requireAdminUser();
+
+    const { data, error } = await supabaseServer
+      .from("quote_change_requests")
+      .select("id,quote_id,change_type,notes,status,created_at")
+      .gte("created_at", daysAgoIso(LOOKBACK_DAYS))
+      .order("created_at", { ascending: false })
+      .limit(150)
+      .returns<ChangeRequestLite[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return [];
+      console.error("[notifications] admin change-requests query failed", {
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return [];
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    const changeRequestIds = rows.map((r) => normalizeId(r.id)).filter(Boolean);
+    const quoteIds = Array.from(
+      new Set(rows.map((r) => normalizeId(r.quote_id)).filter(Boolean)),
+    );
+
+    if (rows.length === 0 || changeRequestIds.length === 0 || quoteIds.length === 0) {
+      return [];
+    }
+
+    const [{ data: quoteRows, error: quoteError }, { data: seenRows, error: seenError }] =
+      await Promise.all([
+        supabaseServer
+          .from("quotes")
+          .select("id,file_name,company")
+          .in("id", quoteIds)
+          .limit(500)
+          .returns<QuoteLabelRow[]>(),
+        supabaseServer
+          .from(NOTIFICATIONS_TABLE)
+          .select("entity_id")
+          .eq("user_id", args.userId)
+          .eq("type", "change_request_submitted")
+          .eq("entity_type", "change_request")
+          .in("entity_id", changeRequestIds)
+          .limit(5000)
+          .returns<Array<{ entity_id: string }>>(),
+      ]);
+
+    if (quoteError && !isMissingTableOrColumnError(quoteError)) {
+      console.warn("[notifications] admin change-requests quote label load failed", {
+        error: serializeSupabaseError(quoteError) ?? quoteError,
+      });
+    }
+
+    if (seenError && !isMissingTableOrColumnError(seenError)) {
+      console.warn("[notifications] admin change-requests seen lookup failed", {
+        error: serializeSupabaseError(seenError) ?? seenError,
+      });
+    }
+
+    const quoteMap = new Map(
+      (Array.isArray(quoteRows) ? quoteRows : [])
+        .filter((row) => Boolean(row?.id))
+        .map((row) => [row.id, row]),
+    );
+
+    const seen = new Set(
+      (Array.isArray(seenRows) ? seenRows : [])
+        .map((row) => normalizeId(row.entity_id))
+        .filter(Boolean),
+    );
+
+    const out: NotificationDescriptor[] = [];
+
+    for (const row of rows) {
+      const changeRequestId = normalizeId(row.id);
+      const quoteId = normalizeId(row.quote_id);
+      if (!changeRequestId || !quoteId) continue;
+      if (seen.has(changeRequestId)) continue;
+
+      const typeLabel = formatChangeRequestTypeLabel(row.change_type);
+      const notesExcerpt = truncateOneLine(row.notes, 140);
+      const quoteLabel = quoteLabelFromRow(quoteMap.get(quoteId) ?? null, quoteId);
+
+      out.push({
+        userId: args.userId,
+        type: "change_request_submitted",
+        entityType: "change_request",
+        entityId: changeRequestId,
+        title: "Change request submitted",
+        body: `Quote ${quoteLabel} · Type: ${typeLabel}${
+          notesExcerpt ? ` · ${notesExcerpt}` : ""
+        }`,
+        href: `/admin/quotes/${quoteId}#change-requests`,
+        createdAt: safeIso(row.created_at) ?? nowIso(),
+      });
+
+      if (out.length >= LIMIT) break;
+    }
+
+    return out;
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return [];
+    console.error("[notifications] computeAdminChangeRequestSubmittedNotifications crashed", {
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return [];
+  }
+}
 
 function isWinnerQuoteLite(row: CustomerQuoteLite): boolean {
   const status = normalizeQuoteStatus(row.status ?? undefined);

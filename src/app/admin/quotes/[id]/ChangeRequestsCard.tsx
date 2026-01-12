@@ -77,7 +77,7 @@ export default async function ChangeRequestsCard({
   const countLabel = `${totalCount ?? rows.length} total`;
 
   return (
-    <section className={cardClasses} aria-label="Change requests">
+    <section id="change-requests" className={cardClasses} aria-label="Change requests">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
