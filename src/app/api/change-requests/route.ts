@@ -95,7 +95,10 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log("[change-requests] insert change request success");
+    console.log("[change-requests] insert change request success", {
+      quoteId,
+      changeRequestId: changeRequest.id,
+    });
 
     const label = CHANGE_TYPE_LABELS[normalizedChangeType];
     const messageBody = buildSystemMessageBody({
@@ -103,12 +106,31 @@ export async function POST(req: Request) {
       notes,
     });
 
+    const warnings: string[] = [];
+    const senderName =
+      access.customerName ?? access.customerEmail ?? user.email ?? "Customer";
+    const senderEmail = access.customerEmail ?? user.email ?? null;
+
+    console.log("[change-requests] insert message payload", {
+      quoteId,
+      changeRequestId: changeRequest.id,
+      senderId: user.id,
+      senderRole: "customer",
+      senderName,
+      senderEmail,
+      label,
+      notesLen: notes.length,
+      body: `Change request created: ${label}. Notes: <redacted>`,
+    });
+
     const messageResult = await createQuoteMessage({
       quoteId,
       senderId: user.id,
-      senderRole: "system",
-      senderName: null,
-      senderEmail: null,
+      // IMPORTANT: Must match the canonical customer insert shape. RLS/checks
+      // reject "system" roles here.
+      senderRole: "customer",
+      senderName,
+      senderEmail,
       body: messageBody,
       customerId: access.customerId,
       supabase: supabaseServer,
@@ -120,13 +142,14 @@ export async function POST(req: Request) {
         userId: user.id,
         error: messageResult.error ?? messageResult.reason ?? "unknown",
       });
-      return NextResponse.json(
-        { ok: false, error: "message_insert_failed" },
-        { status: 500 },
-      );
+      warnings.push("message_insert_failed");
+    } else {
+      console.log("[change-requests] insert message success", {
+        quoteId,
+        changeRequestId: changeRequest.id,
+        messageId: messageResult.message?.id ?? null,
+      });
     }
-
-    console.log("[change-requests] insert message success");
 
     const eventResult = await emitQuoteEvent({
       quoteId,
@@ -156,7 +179,11 @@ export async function POST(req: Request) {
 
     console.log("[change-requests] event success");
 
-    return NextResponse.json({ ok: true, changeRequestId: changeRequest.id });
+    return NextResponse.json({
+      ok: true,
+      changeRequestId: changeRequest.id,
+      ...(warnings.length ? { warnings } : null),
+    });
   } catch (err: unknown) {
     if (err instanceof UnauthorizedError) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
@@ -170,7 +197,12 @@ async function assertCustomerCanAccessQuote(args: {
   quoteId: string;
   userId: string;
   email: string | null;
-}): Promise<{ quoteId: string; customerId: string | null; customerEmail: string | null }> {
+}): Promise<{
+  quoteId: string;
+  customerId: string | null;
+  customerEmail: string | null;
+  customerName: string | null;
+}> {
   const quoteId = normalizeId(args.quoteId);
   const userId = normalizeId(args.userId);
   const userEmail = normalizeEmailInput(args.email ?? null);
@@ -180,11 +212,19 @@ async function assertCustomerCanAccessQuote(args: {
   }
 
   const customer = await getCustomerByUserId(userId);
-  const customerFallback = !customer && userEmail ? await getCustomerByEmail(userEmail) : null;
+  const customerFallback =
+    !customer && userEmail ? await getCustomerByEmail(userEmail) : null;
   const customerId = normalizeId(customer?.id ?? customerFallback?.id ?? null) || null;
   const customerEmail = normalizeEmailInput(
     customer?.email ?? customerFallback?.email ?? userEmail,
   );
+  const customerName =
+    customer?.company_name ??
+    customer?.email ??
+    customerFallback?.company_name ??
+    customerFallback?.email ??
+    userEmail ??
+    null;
 
   if (!customerEmail && !customerId) {
     throw new Error("access_denied");
@@ -235,7 +275,7 @@ async function assertCustomerCanAccessQuote(args: {
     throw new Error("access_denied");
   }
 
-  return { quoteId, customerId, customerEmail };
+  return { quoteId, customerId, customerEmail, customerName };
 }
 
 function buildSystemMessageBody(args: { label: string; notes: string }): string {
