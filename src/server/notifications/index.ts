@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import { createAuthClient, createReadOnlyAuthClient, requireAdminUser } from "@/server/auth";
+import { requireAdminUser } from "@/server/auth";
 import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -59,7 +59,7 @@ type NotificationRow = {
   href: string;
   is_read: boolean;
   created_at: string;
-  read_at: string | null;
+  updated_at: string;
 };
 
 type NotificationDescriptor = {
@@ -105,7 +105,8 @@ function toUserNotification(row: NotificationRow): UserNotification {
     href: row.href,
     isRead: Boolean(row.is_read),
     createdAt: row.created_at,
-    readAt: row.read_at ?? null,
+    // This table does not store an explicit read timestamp; approximate with updated_at when marked read.
+    readAt: row.is_read ? row.updated_at : null,
   };
 }
 
@@ -119,12 +120,10 @@ export async function loadUserNotifications(
   const limit = Math.max(1, Math.min(200, Math.floor(options?.limit ?? 100)));
 
   try {
-    const supabase = await createReadOnlyAuthClient();
-
-    let query = supabase
+    let query = supabaseServer
       .from(NOTIFICATIONS_TABLE)
       .select(
-        "id,user_id,type,entity_type,entity_id,title,body,href,is_read,created_at,read_at",
+        "id,user_id,type,entity_type,entity_id,title,body,href,is_read,created_at,updated_at",
       )
       .eq("user_id", normalizedUserId)
       .order("created_at", { ascending: false })
@@ -171,10 +170,9 @@ export async function markNotificationsRead(
   if (!normalizedUserId || ids.length === 0) return;
 
   try {
-    const supabase = createAuthClient();
-    const { error } = await supabase
+    const { error } = await supabaseServer
       .from(NOTIFICATIONS_TABLE)
-      .update({ is_read: true, read_at: nowIso() })
+      .update({ is_read: true })
       .eq("user_id", normalizedUserId)
       .in("id", ids);
 
@@ -291,7 +289,7 @@ async function upsertNotificationsForUser(args: {
     const { data, error } = await supabaseServer
       .from(NOTIFICATIONS_TABLE)
       .select(
-        "id,user_id,type,entity_type,entity_id,title,body,href,is_read,created_at,read_at",
+        "id,user_id,type,entity_type,entity_id,title,body,href,is_read,created_at,updated_at",
       )
       .eq("user_id", userId)
       .eq("is_read", false)
@@ -427,7 +425,7 @@ async function upsertNotificationsForUser(args: {
     if (obsoleteIds.length > 0) {
       const { error } = await supabaseServer
         .from(NOTIFICATIONS_TABLE)
-        .update({ is_read: true, read_at: now })
+        .update({ is_read: true })
         .eq("user_id", userId)
         .in("id", obsoleteIds);
 
@@ -646,7 +644,10 @@ type CustomerQuoteLite = {
 
 type BidLite = { quote_id: string; updated_at: string | null; created_at: string | null };
 
-type NotificationSeenRow = Pick<NotificationRow, "entity_id" | "created_at" | "read_at" | "is_read" | "type" | "entity_type">;
+type NotificationSeenRow = Pick<
+  NotificationRow,
+  "entity_id" | "created_at" | "updated_at" | "is_read" | "type" | "entity_type"
+>;
 
 type ChangeRequestLite = {
   id: string;
@@ -887,7 +888,7 @@ async function computeCustomerBidAndAwardNotifications(args: {
     // Determine last "seen" timestamp for new_bid_on_rfq per quote.
     const { data: seenRows, error: seenError } = await supabaseServer
       .from(NOTIFICATIONS_TABLE)
-      .select("type,entity_type,entity_id,created_at,read_at,is_read")
+      .select("type,entity_type,entity_id,created_at,updated_at,is_read")
       .eq("user_id", args.userId)
       .eq("type", "new_bid_on_rfq")
       .eq("entity_type", "quote")
@@ -906,7 +907,7 @@ async function computeCustomerBidAndAwardNotifications(args: {
     for (const row of Array.isArray(seenRows) ? seenRows : []) {
       const quoteId = normalizeId(row.entity_id);
       if (!quoteId) continue;
-      const seenAt = safeIso(row.read_at) ?? safeIso(row.created_at);
+      const seenAt = safeIso(row.updated_at) ?? safeIso(row.created_at);
       if (!seenAt) continue;
       const prev = latestSeenByQuoteId.get(quoteId) ?? null;
       if (!prev || seenAt > prev) {
@@ -1227,7 +1228,7 @@ async function computeAdminNewBidNotifications(args: {
 
     const { data: seenRows, error: seenError } = await supabaseServer
       .from(NOTIFICATIONS_TABLE)
-      .select("type,entity_type,entity_id,created_at,read_at,is_read")
+      .select("type,entity_type,entity_id,created_at,updated_at,is_read")
       .eq("user_id", args.userId)
       .eq("type", "new_bid_on_rfq")
       .eq("entity_type", "quote")
@@ -1246,7 +1247,7 @@ async function computeAdminNewBidNotifications(args: {
     for (const row of Array.isArray(seenRows) ? seenRows : []) {
       const quoteId = normalizeId(row.entity_id);
       if (!quoteId) continue;
-      const seenAt = safeIso(row.read_at) ?? safeIso(row.created_at);
+      const seenAt = safeIso(row.updated_at) ?? safeIso(row.created_at);
       if (!seenAt) continue;
       const prev = latestSeenByQuoteId.get(quoteId) ?? null;
       if (!prev || seenAt > prev) {
