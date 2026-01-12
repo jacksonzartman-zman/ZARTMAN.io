@@ -1536,7 +1536,7 @@ export default async function CustomerQuoteDetailPage({
               <div className="max-w-[46rem]">
                 <p className="text-sm font-semibold text-white">Need to request a change?</p>
                 <p className="mt-1 text-xs text-slate-400">
-                  Use this to draft a message in the shared thread (no submission yet).
+                  Submit a change request and we’ll coordinate next steps here in Messages.
                 </p>
               </div>
               <RequestChangeScaffold
