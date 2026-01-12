@@ -139,6 +139,9 @@ function inferPhase(args: {
   if (type === "change_request_created") {
     return "kickoff";
   }
+  if (type === "change_request_resolved") {
+    return "kickoff";
+  }
 
   if (
     type === "submitted" ||

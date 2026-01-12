@@ -62,6 +62,16 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     };
   }
 
+  if (type === "change_request_resolved") {
+    return {
+      groupKey: "kickoff",
+      groupLabel: "Kickoff",
+      title: "Change request resolved",
+      subtitle: "Resolved by admin",
+      actorLabel,
+    };
+  }
+
   if (type === "award_feedback_recorded") {
     const reason =
       formatAwardFeedbackReasonLabel(readString(metadata, "reason")) ??
