@@ -169,24 +169,50 @@ async function insertCanonicalQuoteFiles(params: {
   if (!quoteId) return { ok: false, inserted: 0, table: null };
   if (inputFiles.length === 0) return { ok: true, inserted: 0, table: null };
 
+  const isMissingColumn = (error: unknown, column: string): boolean => {
+    if (!isMissingTableOrColumnError(error)) return false;
+    const serialized = serializeSupabaseError(error);
+    const text = `${serialized.message ?? ""} ${serialized.details ?? ""} ${serialized.hint ?? ""}`.toLowerCase();
+    return text.includes(column.toLowerCase());
+  };
+
   // Avoid duplicates without relying on schema constraints.
   const existing = new Set<string>();
   const loadExisting = async (table: "files_valid" | "files") => {
     try {
-      const { data, error } = await supabase
-        .from(table)
-        .select("bucket_id,storage_bucket_id,storage_path,file_path")
-        .eq("quote_id", quoteId)
-        .returns<
-          Array<{
-            bucket_id?: string | null;
-            storage_bucket_id?: string | null;
-            storage_path?: string | null;
-            file_path?: string | null;
-          }>
-        >();
+      const loadWith = async (cols: string) => {
+        const { data, error } = await supabase
+          .from(table)
+          .select(cols as any)
+          .eq("quote_id", quoteId)
+          .returns<
+            Array<{
+              bucket_id?: string | null;
+              storage_bucket_id?: string | null;
+              storage_path?: string | null;
+              file_path?: string | null;
+            }>
+          >();
+        return { data: data ?? [], error: error ?? null };
+      };
+
+      // Prefer the common schema (`bucket_id`) and only attempt `storage_bucket_id`
+      // when we have strong evidence `bucket_id` is missing.
+      let result = await loadWith("bucket_id,storage_path,file_path");
+      if (result.error && isMissingColumn(result.error, "bucket_id")) {
+        result = await loadWith("storage_bucket_id,storage_path,file_path");
+      }
+
+      const { data, error } = result;
 
       if (error) {
+        if (table === "files_valid") {
+          const serialized = serializeSupabaseError(error);
+          console.warn("[files_valid] load failed", {
+            code: serialized.code ?? null,
+            message: serialized.message ?? null,
+          });
+        }
         if (isMissingTableOrColumnError(error)) return;
         console.warn("[canonical quote files] failed to enumerate existing rows", {
           quoteId,
@@ -215,6 +241,13 @@ async function insertCanonicalQuoteFiles(params: {
         existing.add(`${bucket}:${key}`);
       }
     } catch (error) {
+      if (table === "files_valid") {
+        const serialized = serializeSupabaseError(error);
+        console.warn("[files_valid] load failed", {
+          code: serialized.code ?? null,
+          message: serialized.message ?? null,
+        });
+      }
       if (isMissingTableOrColumnError(error)) return;
       console.warn("[canonical quote files] enumerate crashed", {
         quoteId,

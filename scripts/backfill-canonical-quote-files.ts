@@ -160,10 +160,12 @@ async function detectCanonicalColumns(
   supabase: SupabaseClient,
   table: CanonicalTable,
 ): Promise<CanonicalColumns> {
+  // Avoid probing `storage_bucket_id` directly. If `bucket_id` is missing, we infer
+  // the alternate schema uses `storage_bucket_id`.
   const bucketCol: CanonicalColumns["bucketCol"] = await (async () => {
-    const q = await supabase.from(table).select("storage_bucket_id", { head: true }).limit(1);
-    if (!q.error) return "storage_bucket_id";
-    if (isMissingColumnError(q.error)) return "bucket_id";
+    const q = await supabase.from(table).select("bucket_id", { head: true }).limit(1);
+    if (!q.error) return "bucket_id";
+    if (isMissingColumnError(q.error)) return "storage_bucket_id";
     throw q.error;
   })();
 
