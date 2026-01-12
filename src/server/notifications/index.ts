@@ -203,16 +203,27 @@ export async function refreshNotificationsForUser(
   const normalizedUserId = normalizeId(userId);
   if (!normalizedUserId) return;
 
+  console.log("[notifications] refresh start", { userId: normalizedUserId, role });
+
   try {
     const managedTypes = getManagedTypesForRole(role);
 
-    const descriptors = (
-      await Promise.allSettled([
-        role === "customer" ? computeCustomerNotifications(normalizedUserId) : Promise.resolve([]),
-        role === "supplier" ? computeSupplierNotifications(normalizedUserId) : Promise.resolve([]),
-        role === "admin" ? computeAdminNotifications(normalizedUserId) : Promise.resolve([]),
-      ])
-    )
+    const computeResults = await Promise.allSettled([
+      role === "customer" ? computeCustomerNotifications(normalizedUserId) : Promise.resolve([]),
+      role === "supplier" ? computeSupplierNotifications(normalizedUserId) : Promise.resolve([]),
+      role === "admin" ? computeAdminNotifications(normalizedUserId) : Promise.resolve([]),
+    ]);
+
+    for (const result of computeResults) {
+      if (result.status === "rejected") {
+        console.error("[notifications] compute failed", {
+          type: "refreshNotificationsForUser",
+          error: serializeSupabaseError(result.reason) ?? result.reason,
+        });
+      }
+    }
+
+    const descriptors = computeResults
       .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
       .filter((d): d is NotificationDescriptor => Boolean(d));
 
@@ -373,6 +384,8 @@ async function upsertNotificationsForUser(args: {
     }
   }
 
+  console.log("[notifications] upsert start", { userId, count: inserts.length });
+
   try {
     if (inserts.length > 0) {
       const { error } = await supabaseServer.from(NOTIFICATIONS_TABLE).insert(inserts);
@@ -387,9 +400,12 @@ async function upsertNotificationsForUser(args: {
         // Best-effort: surface change-request notification insert failures without failing refresh.
         logChangeRequestInAppNotificationInsertFailure(inserts);
       } else {
+        console.log("[notifications] upsert success", { userId, inserted: inserts.length });
         // Best-effort: emit a specific log line when change-request notifications are inserted.
         logChangeRequestInAppNotificationInsertSuccess(inserts);
       }
+    } else {
+      console.log("[notifications] upsert success", { userId, inserted: 0 });
     }
 
     for (const update of updates) {
@@ -523,36 +539,49 @@ async function computeAdminNotifications(userId: string): Promise<NotificationDe
   // Defense-in-depth: admin notifications are derived from admin-only signals.
   await requireAdminUser();
 
-  const [
-    messageNeedsReply,
-    changeRequests,
-    rfqBids,
-    rfqReady,
-    kickoffOverdue,
-    capacityStale,
-    benchOverused,
-    systemHealth,
-  ] = await Promise.all([
-    computeMessageNeedsReplyNotifications({ userId, role: "admin" }),
-    computeAdminChangeRequestSubmittedNotifications({ userId }),
-    computeAdminNewBidNotifications({ userId }),
-    computeAdminRfqReadyToAwardNotifications({ userId }),
-    computeKickoffOverdueNotifications({ userId, role: "admin" }),
-    computeAdminCapacityStaleNotifications({ userId }),
-    computeAdminBenchOverusedNotifications({ userId }),
-    computeAdminSystemHealthNotifications({ userId }),
-  ]);
-
-  return [
-    ...messageNeedsReply,
-    ...changeRequests,
-    ...rfqBids,
-    ...rfqReady,
-    ...kickoffOverdue,
-    ...capacityStale,
-    ...benchOverused,
-    ...systemHealth,
+  const computes: Array<{
+    type: string;
+    run: () => Promise<NotificationDescriptor[]>;
+  }> = [
+    {
+      type: "computeMessageNeedsReplyNotifications(admin)",
+      run: () => computeMessageNeedsReplyNotifications({ userId, role: "admin" }),
+    },
+    {
+      type: "computeAdminChangeRequestSubmittedNotifications",
+      run: () => computeAdminChangeRequestSubmittedNotifications({ userId }),
+    },
+    { type: "computeAdminNewBidNotifications", run: () => computeAdminNewBidNotifications({ userId }) },
+    {
+      type: "computeAdminRfqReadyToAwardNotifications",
+      run: () => computeAdminRfqReadyToAwardNotifications({ userId }),
+    },
+    {
+      type: "computeKickoffOverdueNotifications(admin)",
+      run: () => computeKickoffOverdueNotifications({ userId, role: "admin" }),
+    },
+    { type: "computeAdminCapacityStaleNotifications", run: () => computeAdminCapacityStaleNotifications({ userId }) },
+    { type: "computeAdminBenchOverusedNotifications", run: () => computeAdminBenchOverusedNotifications({ userId }) },
+    { type: "computeAdminSystemHealthNotifications", run: () => computeAdminSystemHealthNotifications({ userId }) },
   ];
+
+  const results = await Promise.allSettled(computes.map((c) => c.run()));
+  const out: NotificationDescriptor[] = [];
+
+  for (let i = 0; i < results.length; i += 1) {
+    const result = results[i];
+    const type = computes[i]?.type ?? "unknown";
+    if (result?.status === "fulfilled") {
+      out.push(...(Array.isArray(result.value) ? result.value : []));
+      continue;
+    }
+    console.error("[notifications] compute failed", {
+      type,
+      error: serializeSupabaseError(result.reason) ?? result.reason,
+    });
+  }
+
+  return out;
 }
 
 async function computeMessageNeedsReplyNotifications(args: {
