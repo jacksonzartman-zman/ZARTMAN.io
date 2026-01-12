@@ -39,15 +39,24 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
       readString(metadata, "changeRequestId") ?? readString(metadata, "change_request_id");
 
     const typeLabel = formatChangeRequestTypeLabel(changeType);
-    const subtitle = joinSubtitle(
-      typeLabel ? `Type: ${typeLabel}.` : null,
-      changeRequestId ? `Request: ${formatShortId(changeRequestId)}.` : null,
+    const notes = truncateForTimeline(readString(metadata, "notes"), 80);
+    const baseSubtitle = joinSubtitle(
+      typeLabel ? `Type: ${typeLabel}` : null,
+      notes ? `Notes: ${notes}` : null,
     );
+    const showInternalId =
+      normalizeEventType(event.actor_role) === "admin" || process.env.NODE_ENV !== "production";
+    const subtitle = showInternalId
+      ? joinSubtitle(
+          baseSubtitle,
+          changeRequestId ? `ID: ${formatShortId(changeRequestId)}` : null,
+        )
+      : baseSubtitle;
 
     return {
       groupKey: "messages",
       groupLabel: "Messages",
-      title: "Change request created",
+      title: "Change request submitted",
       subtitle: subtitle ?? undefined,
       actorLabel,
     };
