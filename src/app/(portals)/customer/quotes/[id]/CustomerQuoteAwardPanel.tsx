@@ -295,9 +295,17 @@ export function CustomerQuoteAwardPanel({
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Selection recorded
             </p>
-            {recordedTimestampLabel ? (
-              <p className="text-xs text-slate-500">{recordedTimestampLabel}</p>
-            ) : null}
+            <div className="flex items-center gap-3">
+              {recordedTimestampLabel ? (
+                <p className="text-xs text-slate-500">{recordedTimestampLabel}</p>
+              ) : null}
+              <a
+                href="#kickoff"
+                className="text-xs font-semibold text-slate-400 hover:text-white hover:underline"
+              >
+                Next: Kickoff
+              </a>
+            </div>
           </div>
           <p className="mt-1 text-sm text-slate-200">
             <span className="font-semibold text-white">{winnerSupplierName}</span>
@@ -346,7 +354,7 @@ export function CustomerQuoteAwardPanel({
                   isWinner
                     ? "overflow-hidden border-emerald-300/70 bg-gradient-to-b from-emerald-500/15 to-slate-950/40 shadow-lg shadow-emerald-500/15 ring-2 ring-emerald-400/30 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-emerald-400/60 before:content-['']"
                     : dimNonWinner
-                      ? "border-slate-900/40 bg-slate-950/20 opacity-55"
+                      ? "border-slate-900/40 bg-slate-950/20 opacity-70"
                       : "border-slate-900/60 bg-slate-950/40 hover:border-slate-700/70",
                 )}
               >
@@ -360,22 +368,22 @@ export function CustomerQuoteAwardPanel({
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <TagPill size="md" tone={getBidStatusTone(bid.status)}>
-                        {statusLabel}
-                      </TagPill>
-                      {isBestPrice ? (
-                        <TagPill tone="muted">Best price</TagPill>
-                      ) : null}
-                      {isFastest ? (
-                        <TagPill tone="muted">Fastest</TagPill>
-                      ) : null}
-                    </div>
                     {isWinner ? (
                       <TagPill size="md" tone="emerald">
                         Selection confirmed
                       </TagPill>
                     ) : null}
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <TagPill size="md" tone={getBidStatusTone(bid.status)}>
+                        {statusLabel}
+                      </TagPill>
+                      {!isWinner && isBestPrice ? (
+                        <TagPill tone="muted">Best price</TagPill>
+                      ) : null}
+                      {!isWinner && isFastest ? (
+                        <TagPill tone="muted">Fastest</TagPill>
+                      ) : null}
+                    </div>
                   </div>
                 </header>
 
@@ -456,6 +464,14 @@ export function CustomerQuoteAwardPanel({
                   const priceText = bid.priceDisplay ?? "Price pending";
                   const leadTimeText = bid.leadTimeDisplay ?? "Lead time pending";
                   const awardDisabled = !canSubmit || selectionLocked;
+                  const isBestPrice =
+                    comparisonLeaders.bestPrice !== null &&
+                    isFiniteNonNegativeNumber(bid.priceValue) &&
+                    nearlyEqual(bid.priceValue, comparisonLeaders.bestPrice);
+                  const isFastest =
+                    comparisonLeaders.fastestLeadTimeDays !== null &&
+                    isFiniteNonNegativeNumber(bid.leadTimeDays) &&
+                    bid.leadTimeDays === comparisonLeaders.fastestLeadTimeDays;
 
                   return (
                     <div
@@ -465,7 +481,7 @@ export function CustomerQuoteAwardPanel({
                         isWinner
                           ? "overflow-hidden bg-emerald-500/10 ring-2 ring-inset ring-emerald-400/30 before:absolute before:inset-y-0 before:left-0 before:w-1 before:bg-emerald-400/60 before:content-['']"
                           : dimNonWinner
-                            ? "opacity-55"
+                            ? "opacity-70"
                             : "hover:bg-white/[0.03]",
                       )}
                     >
@@ -473,11 +489,19 @@ export function CustomerQuoteAwardPanel({
                         <p className="truncate font-semibold text-white" title={bid.supplierName}>
                           {bid.supplierName}
                         </p>
-                        {isWinner ? (
-                          <div className="mt-1">
-                            <TagPill size="md" tone="emerald">
-                              Selection confirmed
-                            </TagPill>
+                        {isWinner || isBestPrice || isFastest ? (
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {isWinner ? (
+                              <TagPill size="md" tone="emerald">
+                                Selection confirmed
+                              </TagPill>
+                            ) : null}
+                            {!isWinner && isBestPrice ? (
+                              <TagPill tone="muted">Best price</TagPill>
+                            ) : null}
+                            {!isWinner && isFastest ? (
+                              <TagPill tone="muted">Fastest</TagPill>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
