@@ -7,12 +7,14 @@ const AUTHOR_BADGE_VARIANTS: Record<QuoteMessageSenderRole, string> = {
   admin: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
   customer: "border-sky-500/40 bg-sky-500/10 text-sky-300",
   supplier: "border-amber-500/40 bg-amber-500/10 text-amber-200",
+  system: "border-slate-500/30 bg-slate-500/10 text-slate-300",
 };
 
 export const QUOTE_AUTHOR_LABELS: Record<QuoteMessageSenderRole, string> = {
   admin: "Admin",
   customer: "Customer",
   supplier: "Supplier",
+  system: "System",
 };
 
 const MESSAGE_BUBBLE_VARIANTS: Record<QuoteMessageSenderRole, string> = {
@@ -20,6 +22,7 @@ const MESSAGE_BUBBLE_VARIANTS: Record<QuoteMessageSenderRole, string> = {
     "bg-emerald-400 text-slate-950 border border-emerald-300/70 shadow-lift-sm",
   customer: "bg-slate-900 text-slate-100 border border-slate-800/80",
   supplier: "bg-blue-500/80 text-slate-950 border border-blue-300/70",
+  system: "bg-slate-900/60 text-slate-200 border border-slate-700/60",
 };
 
 export function getAuthorBadgeClasses(type: QuoteMessageSenderRole): string {
