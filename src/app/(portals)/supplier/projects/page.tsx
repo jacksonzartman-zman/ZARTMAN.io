@@ -45,6 +45,7 @@ function formatMessageSenderLabel(senderRole: string | null | undefined): string
   const normalized = (senderRole ?? "").trim().toLowerCase();
   if (normalized === "supplier") return "Supplier";
   if (normalized === "customer") return "Customer";
+  if (normalized === "system") return "System";
   return "Admin";
 }
 
