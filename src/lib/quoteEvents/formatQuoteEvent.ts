@@ -32,6 +32,27 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
   const metadata = resolveEventMetadata(event);
   const actorLabel = formatActorLabel(event.actor_role, metadata);
 
+  if (type === "change_request_created") {
+    const changeType =
+      readString(metadata, "changeType") ?? readString(metadata, "change_type");
+    const changeRequestId =
+      readString(metadata, "changeRequestId") ?? readString(metadata, "change_request_id");
+
+    const typeLabel = formatChangeRequestTypeLabel(changeType);
+    const subtitle = joinSubtitle(
+      typeLabel ? `Type: ${typeLabel}.` : null,
+      changeRequestId ? `Request: ${formatShortId(changeRequestId)}.` : null,
+    );
+
+    return {
+      groupKey: "messages",
+      groupLabel: "Messages",
+      title: "Change request created",
+      subtitle: subtitle ?? undefined,
+      actorLabel,
+    };
+  }
+
   if (type === "award_feedback_recorded") {
     const reason =
       formatAwardFeedbackReasonLabel(readString(metadata, "reason")) ??
@@ -488,5 +509,16 @@ function formatStatusTransitionSubtitle(
   const toStatus = readString(metadata, "toStatus") ?? readString(metadata, "to_status");
   if (!fromStatus || !toStatus) return null;
   return `From ${humanizeFallback(fromStatus)} \u2192 ${humanizeFallback(toStatus)}.`; // →
+}
+
+function formatChangeRequestTypeLabel(value: string | null): string | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!normalized) return null;
+  if (normalized === "tolerance") return "Tolerance";
+  if (normalized === "material_finish") return "Material / finish";
+  if (normalized === "lead_time") return "Lead time";
+  if (normalized === "shipping") return "Shipping";
+  if (normalized === "revision") return "Revision";
+  return humanizeFallback(normalized);
 }
 
