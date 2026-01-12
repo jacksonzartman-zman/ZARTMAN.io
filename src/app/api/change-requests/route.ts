@@ -6,6 +6,10 @@ import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { getCustomerByEmail, getCustomerByUserId } from "@/server/customers";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import { emitQuoteEvent } from "@/server/quotes/events";
+import {
+  notifyOnChangeRequestSubmitted,
+  type ChangeRequestSubmittedNotificationResult,
+} from "@/server/quotes/notifications";
 
 type ChangeType =
   | "tolerance"
@@ -24,6 +28,9 @@ const CHANGE_TYPE_LABELS: Record<ChangeType, string> = {
   shipping: "Shipping",
   revision: "Revision",
 };
+
+const CHANGE_REQUEST_NOTIFICATION_DEDUPE_EVENT_TYPE =
+  "change_request_notification_sent";
 
 export async function GET() {
   return NextResponse.json({ ok: true, route: "change-requests" });
@@ -178,6 +185,19 @@ export async function POST(req: Request) {
 
     console.log("[change-requests] event success");
 
+    const notificationOutcome = await maybeDispatchChangeRequestNotifications({
+      quoteId,
+      changeRequestId: changeRequest.id,
+      changeType: normalizedChangeType,
+      notes,
+      requesterEmail: user.email ?? null,
+      requesterUserId: user.id,
+    });
+
+    if (notificationOutcome?.warning) {
+      warnings.push(notificationOutcome.warning);
+    }
+
     return NextResponse.json({
       ok: true,
       changeRequestId: changeRequest.id,
@@ -190,6 +210,152 @@ export async function POST(req: Request) {
     console.error("[change-requests] unexpected error", err);
     return NextResponse.json({ ok: false, error: "unknown" }, { status: 500 });
   }
+}
+
+async function maybeDispatchChangeRequestNotifications(args: {
+  quoteId: string;
+  changeRequestId: string;
+  changeType: string;
+  notes: string;
+  requesterEmail: string | null;
+  requesterUserId: string;
+}): Promise<
+  | { ok: true; warning: string | null; result: ChangeRequestSubmittedNotificationResult | null }
+  | { ok: false; warning: string; result: null }
+> {
+  console.log("[change-requests] notify start", {
+    quoteId: args.quoteId,
+    changeRequestId: args.changeRequestId,
+    notesLen: args.notes.length,
+  });
+
+  let dedupeHit = false;
+  try {
+    dedupeHit = await hasChangeRequestNotificationDedupeMarker({
+      quoteId: args.quoteId,
+      changeRequestId: args.changeRequestId,
+    });
+  } catch (error) {
+    console.warn("[change-requests] notification dedupe check failed", {
+      quoteId: args.quoteId,
+      changeRequestId: args.changeRequestId,
+      error,
+    });
+  }
+
+  if (dedupeHit) {
+    console.log("[change-requests] notification dedupe hit", {
+      changeRequestId: args.changeRequestId,
+    });
+    return { ok: true, warning: null, result: null };
+  }
+
+  let result: ChangeRequestSubmittedNotificationResult | null = null;
+
+  try {
+    result = await notifyOnChangeRequestSubmitted({
+      quoteId: args.quoteId,
+      changeRequestId: args.changeRequestId,
+      changeType: args.changeType,
+      notes: args.notes,
+      requesterEmail: args.requesterEmail,
+      requesterUserId: args.requesterUserId,
+    });
+  } catch (error) {
+    console.error("[change-requests] notify failed", {
+      quoteId: args.quoteId,
+      changeRequestId: args.changeRequestId,
+      error,
+      notesLen: args.notes.length,
+    });
+    return { ok: false, warning: "notification_failed", result: null };
+  }
+
+  console.log("[change-requests] notify result", {
+    quoteId: args.quoteId,
+    changeRequestId: args.changeRequestId,
+    admin: result.admin,
+    customer: result.customer,
+    customerSkipReason: result.customerSkipReason,
+    notesLen: args.notes.length,
+  });
+
+  const marker = await emitQuoteEvent({
+    quoteId: args.quoteId,
+    eventType: CHANGE_REQUEST_NOTIFICATION_DEDUPE_EVENT_TYPE,
+    actorRole: "system",
+    actorUserId: args.requesterUserId,
+    metadata: {
+      changeRequestId: args.changeRequestId,
+      changeType: args.changeType,
+      audiences: {
+        admin: result.admin,
+        customer: result.customer,
+      },
+      skips: {
+        customer: result.customerSkipReason,
+      },
+      // Back-compat keys
+      change_request_id: args.changeRequestId,
+      change_type: args.changeType,
+    },
+  });
+
+  if (!marker.ok) {
+    console.warn("[change-requests] notification marker insert failed", {
+      quoteId: args.quoteId,
+      changeRequestId: args.changeRequestId,
+      error: marker.error,
+    });
+    return { ok: true, warning: "notification_marker_failed", result };
+  }
+
+  return { ok: true, warning: null, result };
+}
+
+async function hasChangeRequestNotificationDedupeMarker(args: {
+  quoteId: string;
+  changeRequestId: string;
+}): Promise<boolean> {
+  const quoteId = normalizeId(args.quoteId);
+  const changeRequestId = normalizeId(args.changeRequestId);
+  if (!quoteId || !changeRequestId) return false;
+
+  const { data, error } = await supabaseServer
+    .from("quote_events")
+    .select("id,metadata,payload,created_at")
+    .eq("quote_id", quoteId)
+    .eq("event_type", CHANGE_REQUEST_NOTIFICATION_DEDUPE_EVENT_TYPE)
+    .order("created_at", { ascending: false })
+    .limit(25)
+    .returns<
+      Array<{
+        id: string;
+        metadata?: unknown;
+        payload?: unknown;
+        created_at: string;
+      }>
+    >();
+
+  if (error) {
+    throw error;
+  }
+
+  for (const row of data ?? []) {
+    const metadata = isRecord(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : isRecord(row.payload)
+        ? (row.payload as Record<string, unknown>)
+        : {};
+    const markerId =
+      readString(metadata, "changeRequestId") ??
+      readString(metadata, "change_request_id");
+    if (markerId && markerId === changeRequestId) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 async function assertCustomerCanAccessQuote(args: {
@@ -292,6 +458,20 @@ function buildSystemMessageBody(args: { label: string; notes: string }): string 
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readString(
+  metadata: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = metadata[key];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function isAllowedChangeType(value: string): value is ChangeType {
