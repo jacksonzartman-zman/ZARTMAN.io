@@ -19,6 +19,29 @@ const CHANGE_TYPE_OPTIONS: Array<{ value: ChangeType; label: string }> = [
   { value: "other", label: "Other" },
 ];
 
+function getScrollBehavior(): ScrollBehavior {
+  if (typeof window === "undefined") return "auto";
+  const prefersReducedMotion =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return prefersReducedMotion ? "auto" : "smooth";
+}
+
+function scrollToIdWithHash(id: string) {
+  if (typeof window === "undefined") return;
+  const nextHash = `#${id}`;
+  if (window.location.hash !== nextHash) {
+    window.history.replaceState(null, "", nextHash);
+    // `replaceState` doesn't emit `hashchange`, but some components (e.g.
+    // collapsible panels) may rely on it to react to deep links.
+    window.dispatchEvent(new Event("hashchange"));
+  }
+  document.getElementById(id)?.scrollIntoView({
+    behavior: getScrollBehavior(),
+    block: "start",
+  });
+}
+
 export function RequestChangeScaffold({
   quoteId,
   messagesHref,
@@ -46,9 +69,8 @@ export function RequestChangeScaffold({
   const [open, setOpen] = useState(false);
   const [changeType, setChangeType] = useState<ChangeType>("design");
   const [notes, setNotes] = useState("");
-  const [composerAvailable, setComposerAvailable] = useState<boolean>(false);
-
-  const composerTextareaId = useMemo(() => `quote-message-body-${quoteId}`, [quoteId]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const changeTypeLabel = useMemo(() => {
     return (
@@ -69,27 +91,68 @@ export function RequestChangeScaffold({
   }, [changeTypeLabel, notes]);
 
   useEffect(() => {
-    if (typeof document === "undefined") return;
-    setComposerAvailable(Boolean(document.getElementById(composerTextareaId)));
-  }, [composerTextareaId, open]);
-
-  useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (submitting) return;
         setOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, submitting]);
+
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
   }, [open]);
 
-  const primaryDisabled = disabled || !composerAvailable;
-  const primaryDisabledReason = disabled
-    ? "Change requests are unavailable while viewing this quote in read-only mode."
-    : !composerAvailable
-      ? "Open Messages to draft this request."
-      : null;
+  const handleSubmit = async () => {
+    if (disabled) return;
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+
+    console.log("[change-request] submit", {
+      quoteId,
+      changeType,
+      notesLen: notes?.length ?? 0,
+    });
+
+    try {
+      const res = await fetch("/api/change-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quoteId, changeType, notes }),
+      });
+
+      let data: unknown = null;
+      try {
+        data = await res.json();
+      } catch {
+        // ignore parse errors, handled below
+      }
+
+      const ok = (data as { ok?: unknown } | null)?.ok === true;
+      if (!res.ok || !ok) {
+        setError(
+          "We couldn’t submit that change request. Please double-check the details and try again.",
+        );
+        return;
+      }
+
+      setOpen(false);
+      // After a successful submission, take the customer back to Messages.
+      requestAnimationFrame(() => {
+        scrollToIdWithHash("messages");
+      });
+    } catch (e) {
+      console.error("[change-request] submit failed", e);
+      setError("We couldn’t submit that change request. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <>
@@ -98,13 +161,8 @@ export function RequestChangeScaffold({
         disabled={disabled}
         onClick={() => {
           if (scrollToMessagesOnOpen && typeof window !== "undefined") {
-            window.location.hash = "#messages";
-            requestAnimationFrame(() => {
-              document
-                .getElementById("messages")
-                ?.scrollIntoView({ behavior: "smooth", block: "start" });
-              setOpen(true);
-            });
+            scrollToIdWithHash("messages");
+            requestAnimationFrame(() => setOpen(true));
             return;
           }
 
@@ -127,7 +185,10 @@ export function RequestChangeScaffold({
             type="button"
             className="absolute inset-0 bg-black/70"
             aria-label="Close modal"
-            onClick={() => setOpen(false)}
+            onClick={() => {
+              if (submitting) return;
+              setOpen(false);
+            }}
           />
 
           <div className="relative w-full max-w-xl rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-2xl">
@@ -139,7 +200,7 @@ export function RequestChangeScaffold({
                 Request change
               </p>
               <p className="text-sm text-slate-300" id={bodyId}>
-                This creates a draft message for the shared thread. It does not submit anything yet.
+                Submit a change request, and we’ll coordinate next steps in Messages.
               </p>
             </header>
 
@@ -194,6 +255,7 @@ export function RequestChangeScaffold({
               <button
                 type="button"
                 onClick={() => setOpen(false)}
+                disabled={submitting}
                 className="inline-flex items-center justify-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
               >
                 Cancel
@@ -209,42 +271,22 @@ export function RequestChangeScaffold({
 
               <button
                 type="button"
-                disabled={primaryDisabled}
-                onClick={() => {
-                  // UI-only scaffold:
-                  // - No API call, no DB write.
-                  // - We only prefill the existing message composer (if present).
-                  //
-                  // TODO(customer-change-request): replace this with a real "create change request" flow:
-                  // - persist a structured change request record
-                  // - optionally auto-post into the thread (server action)
-                  // - attach relevant metadata (quote parts/files) and notify assigned admins/suppliers
-                  const textarea = document.getElementById(
-                    composerTextareaId,
-                  ) as HTMLTextAreaElement | null;
-
-                  // Ensure the Messages section is opened (DisclosureSection listens to hash changes).
-                  if (typeof window !== "undefined") {
-                    window.location.hash = "#messages";
-                    document.getElementById("messages")?.scrollIntoView({ behavior: "smooth" });
-                  }
-
-                  if (textarea) {
-                    textarea.value = draftBody;
-                    textarea.dispatchEvent(new Event("input", { bubbles: true }));
-                    textarea.focus();
-                  }
-
-                  setOpen(false);
-                }}
+                disabled={disabled || submitting}
+                onClick={handleSubmit}
                 className="inline-flex items-center justify-center rounded-full bg-emerald-400 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Draft message in thread
+                {submitting ? "Submitting…" : "Request change"}
               </button>
             </div>
 
-            {primaryDisabledReason ? (
-              <p className="mt-2 text-xs text-slate-500">{primaryDisabledReason}</p>
+            {error ? (
+              <p className="mt-2 text-xs text-rose-200" role="alert">
+                {error}
+              </p>
+            ) : disabled ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Change requests are unavailable while viewing this quote in read-only mode.
+              </p>
             ) : null}
           </div>
         </div>
