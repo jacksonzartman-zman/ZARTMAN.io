@@ -390,37 +390,108 @@ async function upsertNotificationsForUser(args: {
     }
   }
 
-  console.log("[notifications] upsert start", { userId, count: inserts.length });
+  const insertIdentityKey = (row: {
+    type: string;
+    entity_type: string;
+    entity_id: string;
+  }): string => `${row.type}::${row.entity_type}::${row.entity_id}`;
 
   try {
+    // Snapshot writes must be idempotent: table enforces unique(user_id,type,entity_type,entity_id).
+    // We cannot rely on insert onConflict options due to supabase-js typings; instead, prefetch and filter.
+    const uniqueEntityIds = Array.from(new Set(inserts.map((r) => normalizeId(r.entity_id)).filter(Boolean)));
+    const uniqueTypes = Array.from(new Set(inserts.map((r) => (r.type ?? "").trim()).filter(Boolean)));
+    const uniqueEntityTypes = Array.from(
+      new Set(inserts.map((r) => (r.entity_type ?? "").trim()).filter(Boolean)),
+    );
+
+    let filteredInserts = inserts;
+
     if (inserts.length > 0) {
-      const { error, count } = await supabaseServer.from(NOTIFICATIONS_TABLE).insert(inserts, {
-        onConflict: "user_id,type,entity_type,entity_id",
-        ignoreDuplicates: true,
-        count: "exact",
-      });
+      try {
+        if (uniqueEntityIds.length === 0) {
+          console.warn("[notifications] upsert: insert identity set empty", { userId, attempted: inserts.length });
+          return;
+        }
+
+        let query = supabaseServer
+          .from(NOTIFICATIONS_TABLE)
+          .select("entity_id,type,entity_type")
+          .eq("user_id", userId)
+          .in("entity_id", uniqueEntityIds);
+
+        if (uniqueTypes.length > 0) {
+          query = query.in("type", uniqueTypes);
+        }
+        if (uniqueEntityTypes.length > 0) {
+          query = query.in("entity_type", uniqueEntityTypes);
+        }
+
+        const { data, error } = await query
+          .limit(5000)
+          .returns<Array<Pick<NotificationRow, "entity_id" | "type" | "entity_type">>>();
+
+        if (error) {
+          if (isMissingTableOrColumnError(error)) return;
+          console.error("[notifications] upsert: existing identity lookup failed", {
+            userId,
+            attempted: inserts.length,
+            error: serializeSupabaseError(error) ?? error,
+          });
+          // Best-effort: do not risk duplicate-key inserts; keep refresh from crashing.
+          return;
+        }
+
+        const existingIdentityKeys = new Set(
+          (Array.isArray(data) ? data : []).map((row) => insertIdentityKey(row)),
+        );
+
+        filteredInserts = inserts.filter((row) => !existingIdentityKeys.has(insertIdentityKey(row)));
+      } catch (error) {
+        if (isMissingTableOrColumnError(error)) return;
+        console.error("[notifications] upsert: existing identity lookup crashed", {
+          userId,
+          attempted: inserts.length,
+          error: serializeSupabaseError(error) ?? error,
+        });
+        // Best-effort: do not risk duplicate-key inserts; keep refresh from crashing.
+        return;
+      }
+    }
+
+    console.log("[notifications] upsert start", {
+      userId,
+      attempted: inserts.length,
+      newCount: filteredInserts.length,
+    });
+
+    if (filteredInserts.length > 0) {
+      const { error, count } = await supabaseServer
+        .from(NOTIFICATIONS_TABLE)
+        .insert(filteredInserts, { count: "exact" });
+
       if (error) {
         if (!isMissingTableOrColumnError(error)) {
           console.error("[notifications] upsert: insert failed", {
             userId,
-            count: inserts.length,
+            count: filteredInserts.length,
             error: errorCodeAndMessage(error),
           });
         }
         // Best-effort: surface change-request notification insert failures without failing refresh.
-        logChangeRequestInAppNotificationInsertFailure(inserts);
+        logChangeRequestInAppNotificationInsertFailure(filteredInserts);
       } else {
-        if (typeof count === "number" && count === 0) {
-          console.log("[notifications] upsert: duplicates ignored", { userId, attempted: inserts.length });
-        }
         console.log("[notifications] upsert success", {
           userId,
-          inserted: typeof count === "number" ? count : inserts.length,
+          inserted: typeof count === "number" ? count : filteredInserts.length,
         });
         // Best-effort: emit a specific log line when change-request notifications are inserted.
-        logChangeRequestInAppNotificationInsertSuccess(inserts);
+        logChangeRequestInAppNotificationInsertSuccess(filteredInserts);
       }
     } else {
+      if (inserts.length > 0) {
+        console.log("[notifications] upsert: no new rows", { userId });
+      }
       console.log("[notifications] upsert success", { userId, inserted: 0 });
     }
 
