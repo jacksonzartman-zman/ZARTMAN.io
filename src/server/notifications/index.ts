@@ -235,6 +235,14 @@ export async function refreshNotificationsForUser(
   }
 }
 
+function errorCodeAndMessage(error: unknown): { code?: string; message?: string } {
+  const serialized = serializeSupabaseError(error);
+  return {
+    code: serialized.code,
+    message: serialized.message,
+  };
+}
+
 function getManagedTypesForRole(role: NotificationAudienceRole): NotificationType[] {
   if (role === "customer") {
     return [
@@ -386,19 +394,29 @@ async function upsertNotificationsForUser(args: {
 
   try {
     if (inserts.length > 0) {
-      const { error } = await supabaseServer.from(NOTIFICATIONS_TABLE).insert(inserts);
+      const { error, count } = await supabaseServer.from(NOTIFICATIONS_TABLE).insert(inserts, {
+        onConflict: "user_id,type,entity_type,entity_id",
+        ignoreDuplicates: true,
+        count: "exact",
+      });
       if (error) {
         if (!isMissingTableOrColumnError(error)) {
           console.error("[notifications] upsert: insert failed", {
             userId,
             count: inserts.length,
-            error: serializeSupabaseError(error) ?? error,
+            error: errorCodeAndMessage(error),
           });
         }
         // Best-effort: surface change-request notification insert failures without failing refresh.
         logChangeRequestInAppNotificationInsertFailure(inserts);
       } else {
-        console.log("[notifications] upsert success", { userId, inserted: inserts.length });
+        if (typeof count === "number" && count === 0) {
+          console.log("[notifications] upsert: duplicates ignored", { userId, attempted: inserts.length });
+        }
+        console.log("[notifications] upsert success", {
+          userId,
+          inserted: typeof count === "number" ? count : inserts.length,
+        });
         // Best-effort: emit a specific log line when change-request notifications are inserted.
         logChangeRequestInAppNotificationInsertSuccess(inserts);
       }
@@ -490,18 +508,12 @@ function logChangeRequestInAppNotificationInsertFailure(
     created_at: string;
   }>,
 ) {
-  const failures = inserts
-    .filter((insert) => insert.type === "change_request_submitted")
-    .map((insert) => ({
-      quoteId: extractQuoteIdFromAdminHref(insert.href),
-      changeRequestId: normalizeId(insert.entity_id) || null,
-    }));
+  const failures = inserts.filter((insert) => insert.type === "change_request_submitted");
 
   if (failures.length === 0) return;
 
   console.error("[change-requests] admin in-app notification failed", {
     count: failures.length,
-    failures,
   });
 }
 
