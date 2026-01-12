@@ -1,8 +1,11 @@
 import { formatCurrency } from "@/lib/formatCurrency";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { formatShortId } from "@/lib/awards";
 import { getCustomerByEmail } from "@/server/customers";
 import type { CustomerRow } from "@/server/customers";
-import { dispatchEmailNotification } from "@/server/notifications/dispatcher";
+import { dispatchEmailNotification, dispatchNotification } from "@/server/notifications/dispatcher";
+import { sendNotificationEmail } from "@/server/notifications/email";
+import { shouldSendNotification } from "@/server/notifications/preferences";
 import {
   loadQuoteNotificationContext,
   type QuoteNotificationContext,
@@ -115,6 +118,171 @@ const ADMIN_NOTIFICATION_EMAIL =
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ??
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+type ChangeRequestNotificationStatus = "sent" | "skipped" | "failed";
+
+export type ChangeRequestSubmittedNotificationArgs = {
+  quoteId: string;
+  changeRequestId: string;
+  changeType: string;
+  notes: string;
+  requesterEmail: string | null;
+  requesterUserId: string | null;
+};
+
+export type ChangeRequestSubmittedNotificationResult = {
+  admin: Exclude<ChangeRequestNotificationStatus, "skipped">;
+  customer: ChangeRequestNotificationStatus;
+  customerSkipReason:
+    | "non_production"
+    | "missing_recipient"
+    | "compliance_mode"
+    | "preference_disabled"
+    | "self_recipient"
+    | null;
+};
+
+export async function notifyOnChangeRequestSubmitted(
+  args: ChangeRequestSubmittedNotificationArgs,
+): Promise<ChangeRequestSubmittedNotificationResult> {
+  const quoteId = typeof args.quoteId === "string" ? args.quoteId.trim() : "";
+  const changeRequestId =
+    typeof args.changeRequestId === "string" ? args.changeRequestId.trim() : "";
+  const changeType = typeof args.changeType === "string" ? args.changeType.trim() : "";
+  const notes = typeof args.notes === "string" ? args.notes.trim() : "";
+  const requesterEmail =
+    typeof args.requesterEmail === "string" ? args.requesterEmail.trim().toLowerCase() : null;
+  const requesterUserId =
+    typeof args.requesterUserId === "string" ? args.requesterUserId.trim() : null;
+
+  const typeLabel = formatChangeRequestTypeLabel(changeType) ?? "Change request";
+  const notesExcerpt = truncateCopy(notes, 200);
+  const safeNotesExcerpt = sanitizeCopy(notesExcerpt) ?? "Not provided";
+
+  const adminQuoteHref = buildPortalLink(`/admin/quotes/${quoteId}`);
+  const customerQuoteHref = buildPortalLink(`/customer/quotes/${quoteId}`);
+  const customerMessagesHref = buildPortalLink(`/customer/quotes/${quoteId}#messages`);
+
+  const payload = {
+    quoteId,
+    changeRequestId,
+    changeType,
+    notesExcerpt,
+    requesterEmail,
+    links: {
+      adminQuote: adminQuoteHref,
+      customerQuote: customerQuoteHref,
+      customerMessages: customerMessagesHref,
+    },
+  };
+
+  const adminSubject = `Change request submitted — ${typeLabel} — Quote ${formatShortId(
+    quoteId,
+  )}`;
+  const adminPreviewText = `${requesterEmail ?? "A customer"} submitted a ${typeLabel} change request.`;
+  const adminHtml = buildAdminChangeRequestSubmittedHtml({
+    typeLabel,
+    requesterEmail,
+    notesExcerpt: safeNotesExcerpt,
+    adminQuoteHref,
+    customerMessagesHref,
+    customerQuoteHref,
+  });
+
+  const adminSent = await dispatchNotification(
+    {
+      eventType: "change_request_submitted",
+      quoteId,
+      recipientEmail: ADMIN_NOTIFICATION_EMAIL,
+      recipientRole: "admin",
+      audience: "admin",
+      payload,
+    },
+    () =>
+      sendNotificationEmail({
+        to: ADMIN_NOTIFICATION_EMAIL,
+        subject: adminSubject,
+        previewText: adminPreviewText,
+        html: adminHtml,
+      }),
+  );
+
+  const adminStatus: ChangeRequestSubmittedNotificationResult["admin"] = adminSent
+    ? "sent"
+    : "failed";
+
+  const customerEmail =
+    typeof requesterEmail === "string" && requesterEmail.trim() ? requesterEmail : null;
+
+  if (!customerEmail) {
+    return {
+      admin: adminStatus,
+      customer: "skipped",
+      customerSkipReason: "missing_recipient",
+    };
+  }
+
+  if (!isProductionNotificationEmail()) {
+    return {
+      admin: adminStatus,
+      customer: "skipped",
+      customerSkipReason: "non_production",
+    };
+  }
+
+  const gate = await shouldSendNotification({
+    eventType: "change_request_submitted",
+    quoteId,
+    channel: "email",
+    recipientRole: "customer",
+    recipientUserId: requesterUserId,
+    actorUserId: null,
+  });
+
+  if (!gate.allow) {
+    return {
+      admin: adminStatus,
+      customer: "skipped",
+      customerSkipReason: gate.reason,
+    };
+  }
+
+  const customerSubject = `Change request received — ${typeLabel}`;
+  const customerPreviewText = `We received your ${typeLabel} change request.`;
+  const customerHtml = buildCustomerChangeRequestReceivedHtml({
+    typeLabel,
+    notesExcerpt: safeNotesExcerpt,
+    customerMessagesHref,
+    customerQuoteHref,
+  });
+
+  const customerSent = await dispatchNotification(
+    {
+      eventType: "change_request_submitted",
+      quoteId,
+      recipientEmail: customerEmail,
+      recipientUserId: requesterUserId,
+      recipientRole: "customer",
+      actorRole: "system",
+      actorUserId: null,
+      audience: "customer",
+      payload,
+    },
+    () =>
+      sendNotificationEmail({
+        to: customerEmail,
+        subject: customerSubject,
+        previewText: customerPreviewText,
+        html: customerHtml,
+      }),
+  );
+
+  return {
+    admin: adminStatus,
+    customer: customerSent ? "sent" : "failed",
+    customerSkipReason: null,
+  };
+}
 
 export async function notifyOnNewQuoteMessage(
   message: QuoteMessageRecord,
@@ -572,6 +740,74 @@ function getQuoteTitle(quote: QuoteContactInfo) {
 
 function buildPortalLink(path: string) {
   return `${SITE_URL}${path}`;
+}
+
+function isProductionNotificationEmail(): boolean {
+  const nodeEnv = process.env.NODE_ENV ?? "development";
+  const vercelEnv = process.env.VERCEL_ENV ?? null;
+  if (nodeEnv !== "production") return false;
+  if (vercelEnv && vercelEnv !== "production") return false;
+  return true;
+}
+
+function truncateCopy(value: string, maxLen: number): string {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return "";
+  if (normalized.length <= maxLen) return normalized;
+  if (maxLen <= 1) return normalized.slice(0, Math.max(0, maxLen));
+  return `${normalized.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+function formatChangeRequestTypeLabel(value: string | null): string | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!normalized) return null;
+  if (normalized === "tolerance") return "Tolerance";
+  if (normalized === "material_finish") return "Material / finish";
+  if (normalized === "lead_time") return "Lead time";
+  if (normalized === "shipping") return "Shipping";
+  if (normalized === "revision") return "Revision";
+  return normalized.replace(/[_-]+/g, " ").trim().replace(/^\w/, (c) => c.toUpperCase());
+}
+
+function buildAdminChangeRequestSubmittedHtml(args: {
+  typeLabel: string;
+  requesterEmail: string | null;
+  notesExcerpt: string;
+  adminQuoteHref: string;
+  customerMessagesHref: string;
+  customerQuoteHref: string;
+}): string {
+  const requester = sanitizeCopy(args.requesterEmail) ?? "Not provided";
+  const typeLabel = sanitizeCopy(args.typeLabel) ?? "Change request";
+  return `
+    <p>A customer submitted a change request.</p>
+    <p><strong>Type:</strong> ${typeLabel}<br/>
+    <strong>Requester:</strong> ${requester}</p>
+    <p><strong>Notes (excerpt):</strong></p>
+    <blockquote style="border-left:4px solid #94a3b8;padding:0.5rem 1rem;color:#0f172a;">${args.notesExcerpt}</blockquote>
+    <p><a href="${args.adminQuoteHref}">Open in admin</a></p>
+    <p style="margin-top:12px;">
+      <a href="${args.customerMessagesHref}">Open customer messages</a> ·
+      <a href="${args.customerQuoteHref}">Open customer quote</a>
+    </p>
+  `;
+}
+
+function buildCustomerChangeRequestReceivedHtml(args: {
+  typeLabel: string;
+  notesExcerpt: string;
+  customerMessagesHref: string;
+  customerQuoteHref: string;
+}): string {
+  const typeLabel = sanitizeCopy(args.typeLabel) ?? "Change request";
+  return `
+    <p>We received your change request.</p>
+    <p><strong>Type:</strong> ${typeLabel}</p>
+    <p><strong>Notes (excerpt):</strong></p>
+    <blockquote style="border-left:4px solid #94a3b8;padding:0.5rem 1rem;color:#0f172a;">${args.notesExcerpt}</blockquote>
+    <p><a href="${args.customerMessagesHref}">Open Messages</a> to coordinate next steps.</p>
+    <p style="margin-top:12px;"><a href="${args.customerQuoteHref}">View quote overview</a></p>
+  `;
 }
 
 function coerceNumber(value: number | string | null) {
