@@ -49,6 +49,7 @@ import { loadBidsForQuote } from "@/server/bids";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import { listSupplierBidsForQuote } from "@/server/suppliers/bids";
 import { SupplierBidsCard, type AdminSupplierBidRow } from "./SupplierBidsCard";
+import ChangeRequestsCard from "./ChangeRequestsCard";
 import {
   loadQuoteProjectForQuote,
   type QuoteProjectRecord,
@@ -2042,36 +2043,40 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)]">
               {bidSummaryPanel}
-              <DisclosureSection
-                id="signals"
-                title="Signals"
-                description="Thread SLA, kickoff status, routing health, and capacity."
-                defaultOpen
-                summary={
-                  threadSla?.needsReplyFrom ? (
-                    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
-                      Needs reply
-                    </span>
-                  ) : (
-                    <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold text-slate-200">
-                      No reply needed
-                    </span>
-                  )
-                }
-              >
-                <div className="space-y-4">
-                  {threadSla?.usingFallback ? (
-                    <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
-                      SLA signal unavailable; using basic staleness.
-                    </p>
-                  ) : null}
-                  {threadStatusPanel}
-                  {kickoffStatusPanel}
-                  {partsCoveragePanel}
-                  {routingSuggestionPanel}
-                  {capacityPanel}
-                </div>
-              </DisclosureSection>
+              <div className="space-y-4">
+                <DisclosureSection
+                  id="signals"
+                  title="Signals"
+                  description="Thread SLA, kickoff status, routing health, and capacity."
+                  defaultOpen
+                  summary={
+                    threadSla?.needsReplyFrom ? (
+                      <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                        Needs reply
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold text-slate-200">
+                        No reply needed
+                      </span>
+                    )
+                  }
+                >
+                  <div className="space-y-4">
+                    {threadSla?.usingFallback ? (
+                      <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-xs text-slate-300">
+                        SLA signal unavailable; using basic staleness.
+                      </p>
+                    ) : null}
+                    {threadStatusPanel}
+                    {kickoffStatusPanel}
+                    {partsCoveragePanel}
+                    {routingSuggestionPanel}
+                    {capacityPanel}
+                  </div>
+                </DisclosureSection>
+
+                <ChangeRequestsCard quoteId={quote.id} messagesHref="#messages" />
+              </div>
             </div>
           </div>
 
