@@ -62,6 +62,7 @@ export const CUSTOMER_VISIBLE_TIMELINE_EVENT_TYPES = [
   "bid_received",
   "awarded",
   "change_request_created",
+  "change_request_resolved",
   "kickoff_started",
   "kickoff_completed",
   "kickoff_updated",
