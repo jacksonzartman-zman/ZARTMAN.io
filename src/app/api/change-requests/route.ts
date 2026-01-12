@@ -311,6 +311,8 @@ function normalizeAndMapChangeType(value: string): ChangeType | null {
   if (isAllowedChangeType(normalized)) return normalized;
 
   // Back-compat: older UI options map into the canonical change request types.
+  // The customer UI should send canonical values only, but we keep this mapping
+  // for safety with stale clients.
   if (normalized === "timeline") return "lead_time";
   if (normalized === "design") return "revision";
   if (normalized === "quantity") return "revision";

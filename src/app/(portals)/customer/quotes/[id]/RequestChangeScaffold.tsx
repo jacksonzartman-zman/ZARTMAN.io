@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 
-type ChangeType =
+type UiChangeType =
   | "design"
   | "quantity"
   | "timeline"
@@ -10,7 +10,31 @@ type ChangeType =
   | "files"
   | "other";
 
-const CHANGE_TYPE_OPTIONS: Array<{ value: ChangeType; label: string }> = [
+type ApiChangeType =
+  | "tolerance"
+  | "material_finish"
+  | "lead_time"
+  | "shipping"
+  | "revision";
+
+function mapUiChangeTypeToApi(changeType: UiChangeType): ApiChangeType {
+  // The API only accepts a canonical enum. Keep the UI labels friendly, but
+  // only send values that the API validates.
+  switch (changeType) {
+    case "shipping":
+      return "shipping";
+    case "timeline":
+      return "lead_time";
+    case "design":
+    case "quantity":
+    case "files":
+    case "other":
+    default:
+      return "revision";
+  }
+}
+
+const CHANGE_TYPE_OPTIONS: Array<{ value: UiChangeType; label: string }> = [
   { value: "design", label: "Design / spec change" },
   { value: "quantity", label: "Quantity change" },
   { value: "timeline", label: "Timeline / lead time change" },
@@ -67,7 +91,7 @@ export function RequestChangeScaffold({
   const bodyId = `${dialogId}-body`;
 
   const [open, setOpen] = useState(false);
-  const [changeType, setChangeType] = useState<ChangeType>("design");
+  const [changeType, setChangeType] = useState<UiChangeType>("design");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,9 +137,11 @@ export function RequestChangeScaffold({
     setSubmitting(true);
     setError(null);
 
+    const apiChangeType = mapUiChangeTypeToApi(changeType);
     console.log("[change-request] submit", {
       quoteId,
-      changeType,
+      changeType: apiChangeType,
+      ...(apiChangeType !== changeType ? { uiChangeType: changeType } : null),
       notesLen: notes?.length ?? 0,
     });
 
@@ -123,7 +149,7 @@ export function RequestChangeScaffold({
       const res = await fetch("/api/change-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quoteId, changeType, notes }),
+        body: JSON.stringify({ quoteId, changeType: apiChangeType, notes }),
       });
 
       let data: unknown = null;
@@ -212,7 +238,7 @@ export function RequestChangeScaffold({
                 <select
                   id={`${dialogId}-type`}
                   value={changeType}
-                  onChange={(e) => setChangeType(e.target.value as ChangeType)}
+                  onChange={(e) => setChangeType(e.target.value as UiChangeType)}
                   className="w-full rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none"
                 >
                   {CHANGE_TYPE_OPTIONS.map((opt) => (
