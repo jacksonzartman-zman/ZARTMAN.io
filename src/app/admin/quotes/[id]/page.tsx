@@ -234,6 +234,23 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     });
   }
 
+  let openChangeRequestCount: number | null = null;
+  try {
+    const { count, error } = await supabaseServer
+      .from("quote_change_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("quote_id", quote.id)
+      .eq("status", "open");
+    if (!error && typeof count === "number") {
+      openChangeRequestCount = count;
+    }
+  } catch (error) {
+    console.warn("[admin quote] open change request count lookup crashed", {
+      quoteId: quote.id,
+      error,
+    });
+  }
+
   let assignedSupplierEmail: string | null = null;
   let assignedSupplierName: string | null = null;
   try {
@@ -812,6 +829,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           formatDateTime(quote.updated_at, { includeTime: true }) ??
           quote.updated_at)
         : null;
+    const changeRequestsSummaryValue =
+      typeof openChangeRequestCount === "number" && openChangeRequestCount > 0
+        ? `Open ${openChangeRequestCount}`
+        : "—";
     const stateSummaryItems = [
       { label: "Status", value: statusLabel },
       { label: "Selection", value: selectionSupplierDisplay },
@@ -1943,17 +1964,31 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               aria-label="State summary"
               className="rounded-2xl border border-slate-900 bg-slate-950/40 px-5 py-3"
             >
-              <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-3">
+              <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
                 {stateSummaryItems.map((item) => (
                   <div key={item.label} className="min-w-0">
                     <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       {item.label}
                     </dt>
-                    <dd className="break-anywhere mt-1 text-sm font-semibold text-slate-100">
+                    <dd
+                      className="break-anywhere mt-1 min-w-0 text-sm font-semibold text-slate-100 lg:truncate"
+                      title={item.value}
+                    >
                       {item.value}
                     </dd>
                   </div>
                 ))}
+                <div key="Change requests" className="min-w-0 hidden lg:block">
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Change requests
+                  </dt>
+                  <dd
+                    className="break-anywhere mt-1 min-w-0 text-sm font-semibold text-slate-100 lg:truncate"
+                    title={changeRequestsSummaryValue}
+                  >
+                    {changeRequestsSummaryValue}
+                  </dd>
+                </div>
               </dl>
             </section>
           ) : null}
