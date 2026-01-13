@@ -8,6 +8,11 @@ export type EmailSendRequest = {
   html?: string;
   replyTo: string;
   metadata?: Record<string, string>;
+  /**
+   * Optional extra headers (provider-agnostic shape).
+   * Used primarily for threading (In-Reply-To / References).
+   */
+  headers?: Record<string, string>;
   attachments?: Array<{
     filename: string;
     contentType: string;
@@ -133,6 +138,20 @@ export function getEmailSender(): EmailSender {
       }
 
       try {
+        const headersInput = req.headers && typeof req.headers === "object" ? req.headers : null;
+        const postmarkHeaders =
+          headersInput && Object.keys(headersInput).length > 0
+            ? Object.entries(headersInput)
+                .map(([k, v]) => {
+                  const name = normalizeString(k);
+                  const value = normalizeString(v);
+                  if (!name || !value) return null;
+                  // Keep headers bounded; avoid huge values.
+                  return { Name: name.slice(0, 200), Value: value.slice(0, 2000) };
+                })
+                .filter(Boolean)
+            : undefined;
+
         const attachments = Array.isArray(req.attachments) ? req.attachments : [];
         const postmarkAttachments =
           attachments.length > 0
@@ -167,6 +186,7 @@ export function getEmailSender(): EmailSender {
             ReplyTo: replyTo,
             Metadata: req.metadata ?? undefined,
             Attachments: postmarkAttachments,
+            Headers: postmarkHeaders,
             // Avoid tracking/PII; callers can pass explicit Metadata.
           }),
         });

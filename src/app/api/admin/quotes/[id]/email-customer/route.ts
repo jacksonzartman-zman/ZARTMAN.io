@@ -94,6 +94,12 @@ export async function POST(req: Request, context: { params: Promise<{ id?: strin
       return NextResponse.json({ ok: false, error: "disabled" }, { status: 200 });
     }
 
+    // Threading: best-effort set In-Reply-To/References when we have prior inbound provider ids.
+    const threadingHeaders = await loadLatestInboundThreadingHeaders({ quoteId, senderRole: "customer" });
+    if (threadingHeaders) {
+      emailReq.headers = threadingHeaders;
+    }
+
     const attachmentsResult = hasAttachmentFileIdsField
       ? await resolveOutboundAttachments({
           quoteId,
@@ -412,5 +418,101 @@ function normalizeEmail(value: unknown): string | null {
 function isUuidLike(value: string): boolean {
   const v = typeof value === "string" ? value.trim() : "";
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+async function loadLatestInboundThreadingHeaders(args: {
+  quoteId: string;
+  senderRole: "supplier" | "customer";
+}): Promise<Record<string, string> | null> {
+  const supported = await schemaGate({
+    enabled: true,
+    relation: QUOTE_MESSAGES_RELATION,
+    requiredColumns: ["quote_id", "sender_role", "metadata"],
+    warnPrefix: WARN_PREFIX,
+    warnKey: "email_outbound_customer:quote_messages_threading_meta",
+  });
+  if (!supported) return null;
+
+  const pickString = (meta: unknown, key: string): string | null => {
+    if (!meta || typeof meta !== "object") return null;
+    const v = (meta as any)?.[key];
+    const s = typeof v === "string" ? v.trim() : "";
+    return s ? s : null;
+  };
+
+  const readProviderMessageId = (meta: unknown): string | null => {
+    return pickString(meta, "providerMessageId") ?? pickString(meta, "messageId");
+  };
+
+  const readReferences = (meta: unknown): string[] => {
+    if (!meta || typeof meta !== "object") return [];
+    const raw = (meta as any)?.references;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((v: unknown) => (typeof v === "string" ? v.trim() : ""))
+      .filter(Boolean)
+      .slice(0, 25);
+  };
+
+  const buildReferencesHeader = (messageId: string, refs: string[]): string => {
+    const uniq: string[] = [];
+    const seen = new Set<string>();
+    for (const r of [...refs, messageId]) {
+      const s = typeof r === "string" ? r.trim() : "";
+      if (!s) continue;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      uniq.push(s);
+      if (uniq.length >= 25) break;
+    }
+    let joined = uniq.join(" ");
+    if (joined.length > 1800) {
+      joined = joined.slice(0, 1800);
+    }
+    return joined;
+  };
+
+  try {
+    let query = supabaseServer
+      .from(QUOTE_MESSAGES_RELATION)
+      .select("id,metadata,created_at")
+      .eq("quote_id", args.quoteId)
+      .eq("sender_role", args.senderRole)
+      .order("created_at", { ascending: false })
+      .limit(25) as any;
+
+    let result = (await query) as { data?: any[]; error?: unknown };
+    if (result.error && isMissingTableOrColumnError(result.error)) {
+      const fallbackQuery = supabaseServer
+        .from(QUOTE_MESSAGES_RELATION)
+        .select("id,metadata")
+        .eq("quote_id", args.quoteId)
+        .eq("sender_role", args.senderRole)
+        .order("id", { ascending: false })
+        .limit(25) as any;
+      result = (await fallbackQuery) as { data?: any[]; error?: unknown };
+    }
+
+    if (result.error) {
+      return null;
+    }
+
+    const rows = Array.isArray(result.data) ? result.data : [];
+    for (const row of rows) {
+      const meta = row?.metadata && typeof row.metadata === "object" ? row.metadata : null;
+      const messageId = readProviderMessageId(meta);
+      if (!messageId) continue;
+
+      const refs = readReferences(meta);
+      return {
+        "In-Reply-To": messageId,
+        References: refs.length > 0 ? buildReferencesHeader(messageId, refs) : messageId,
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 

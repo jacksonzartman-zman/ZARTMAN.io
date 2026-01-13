@@ -34,6 +34,37 @@ function stringOrNull(value: unknown): string | null {
   return s ? s : null;
 }
 
+function readHeadersMap(payload: Record<string, unknown>): Record<string, string> {
+  // Postmark inbound "Headers" is an array of { Name, Value }.
+  const raw = Array.isArray(payload.Headers) ? (payload.Headers as unknown[]) : [];
+  const map: Record<string, string> = {};
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const obj = item as Record<string, unknown>;
+    const name = normalizeString(obj.Name).toLowerCase();
+    const value = normalizeString(obj.Value);
+    if (!name || !value) continue;
+    // First one wins (avoid weird duplication).
+    if (!(name in map)) map[name] = value;
+  }
+  return map;
+}
+
+function parseReferencesHeader(value: string | null): string[] | null {
+  const raw = normalizeString(value);
+  if (!raw) return null;
+  // RFC-style message-id tokens are often wrapped like <...>. We'll accept both wrapped and bare.
+  const tokens = raw
+    .split(/\s+/g)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => t.replace(/^<|>$/g, ""))
+    .filter(Boolean);
+  if (tokens.length === 0) return null;
+  // Cap to keep metadata small.
+  return tokens.slice(0, 50);
+}
+
 function readEmailFromObject(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const obj = value as Record<string, unknown>;
@@ -75,6 +106,19 @@ function coercePostmarkInboundEmail(payload: unknown): InboundEmail | null {
     readEmailListFromFull(obj.CcFull).length > 0 ? readEmailListFromFull(obj.CcFull) : splitCommaSeparatedEmails(obj.Cc);
 
   if (!from || to.length === 0) return null;
+
+  const headers = readHeadersMap(obj);
+  const messageId = stringOrNull(obj.MessageID);
+  const inReplyTo =
+    stringOrNull(obj.InReplyTo) ??
+    (headers["in-reply-to"] ? normalizeString(headers["in-reply-to"]) : null);
+  const references =
+    Array.isArray(obj.References)
+      ? (obj.References as unknown[])
+          .map((v) => normalizeString(v))
+          .filter(Boolean)
+          .slice(0, 50)
+      : parseReferencesHeader(headers["references"] ?? null);
 
   const rawAttachments = Array.isArray(obj.Attachments) ? (obj.Attachments as unknown[]) : [];
   let attachmentsCapped = false;
@@ -128,6 +172,8 @@ function coercePostmarkInboundEmail(payload: unknown): InboundEmail | null {
   }
 
   return {
+    provider: "postmark",
+    providerMessageId: messageId,
     from,
     to,
     cc: cc.length > 0 ? cc : undefined,
@@ -135,7 +181,9 @@ function coercePostmarkInboundEmail(payload: unknown): InboundEmail | null {
     text: stringOrNull(obj.TextBody),
     html: stringOrNull(obj.HtmlBody),
     date: stringOrNull(obj.Date),
-    messageId: stringOrNull(obj.MessageID),
+    messageId,
+    inReplyTo,
+    references,
     attachments: mappedAttachments.length > 0 ? mappedAttachments : undefined,
   };
 }
