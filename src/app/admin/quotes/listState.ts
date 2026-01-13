@@ -20,6 +20,8 @@ export const ADMIN_QUOTES_LIST_STATE_CONFIG: ListStateConfig<
 > = {
   // Keep existing URLs stable for admin pages.
   qParam: "search",
+  // Drill-downs from /admin/bench-health
+  supplierIdParam: "supplierId",
 
   defaultPageSize: 25,
   pageSizeOptions: [10, 25, 50, 100],

@@ -3,11 +3,13 @@ import { requireAdminUser } from "@/server/auth";
 import {
   type SafeQuoteWithUploadsField,
 } from "@/server/suppliers/types";
+import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 import {
   isMissingSchemaError,
   logAdminQuotesError,
   logAdminQuotesWarn,
   serializeSupabaseError,
+  warnOnce,
 } from "@/server/admin/logging";
 import type { AdminLoaderResult } from "@/server/admin/types";
 
@@ -23,6 +25,7 @@ export type AdminQuotesInboxFilter = {
   hasBids?: boolean | null;
   awarded?: boolean | null;
   search?: string | null;
+  supplierId?: string | null;
 };
 
 export type AdminQuotesInboxArgs = {
@@ -206,6 +209,26 @@ export async function getAdminQuotesInbox(
       .from(ADMIN_QUOTES_INBOX_TABLE)
       .select(ADMIN_QUOTES_INBOX_SELECT_STRING, { count: "exact" })
       .range(rangeFrom, rangeTo);
+
+    if (filter.supplierId) {
+      const quoteIds = await loadQuoteIdsForSupplierFilter({
+        supabase,
+        supplierId: filter.supplierId,
+      });
+
+      if (quoteIds === null) {
+        warnOnce(
+          "admin_quotes:supplier_filter_unavailable",
+          "[admin quotes] supplier filter unavailable; skipping",
+          { supplierId: filter.supplierId },
+        );
+      } else if (quoteIds.length === 0) {
+        // No associations found; return an empty list deterministically.
+        query = query.in("id", ["00000000-0000-0000-0000-000000000000"]);
+      } else {
+        query = query.in("id", quoteIds);
+      }
+    }
 
     if (filter.status) {
       query = query.eq("status", filter.status);
@@ -445,13 +468,109 @@ function normalizeFilter(raw?: AdminQuotesInboxFilter): Required<AdminQuotesInbo
     typeof raw?.search === "string"
       ? raw.search.trim().toLowerCase().replace(/\s+/g, " ")
       : null;
+  const supplierId =
+    typeof raw?.supplierId === "string" && raw.supplierId.trim().length > 0
+      ? raw.supplierId.trim()
+      : null;
 
   return {
     status,
     hasBids,
     awarded,
     search: search && search.length > 0 ? search : null,
+    supplierId,
   };
+}
+
+async function loadQuoteIdsForSupplierFilter(args: {
+  supabase: SupabaseClient;
+  supplierId: string;
+}): Promise<string[] | null> {
+  const supplierId = typeof args.supplierId === "string" ? args.supplierId.trim() : "";
+  if (!supplierId) return null;
+
+  // Preferred association: quotes.awarded_supplier_id (if present in this schema).
+  const canUseAwardedSupplierId = await hasColumns("quotes", ["awarded_supplier_id"]);
+
+  // Fallback association: supplier_bids (quote_id,supplier_id).
+  const canUseSupplierBids = await schemaGate({
+    enabled: true,
+    relation: "supplier_bids",
+    requiredColumns: ["quote_id", "supplier_id"],
+    warnPrefix: "[admin quotes]",
+    warnKey: "admin_quotes:supplier_filter:supplier_bids",
+  });
+
+  if (!canUseAwardedSupplierId && !canUseSupplierBids) {
+    return null;
+  }
+
+  const ids = new Set<string>();
+  let loadedAny = false;
+
+  if (canUseAwardedSupplierId) {
+    try {
+      const { data, error } = await args.supabase
+        .from("quotes")
+        .select("id")
+        .eq("awarded_supplier_id", supplierId)
+        .limit(5000)
+        .returns<Array<{ id: string | null }>>();
+
+      if (error) {
+        logAdminQuotesWarn("awarded supplier association query failed; skipping", {
+          supplierId,
+          supabaseError: serializeSupabaseError(error),
+        });
+      } else {
+        loadedAny = true;
+        for (const row of data ?? []) {
+          const quoteId = typeof row?.id === "string" ? row.id.trim() : "";
+          if (quoteId) ids.add(quoteId);
+        }
+      }
+    } catch (error) {
+      logAdminQuotesWarn("awarded supplier association query crashed; skipping", {
+        supplierId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  }
+
+  if (canUseSupplierBids) {
+    try {
+      const { data, error } = await args.supabase
+        .from("supplier_bids")
+        .select("quote_id")
+        .eq("supplier_id", supplierId)
+        .limit(10000)
+        .returns<Array<{ quote_id: string | null }>>();
+
+      if (error) {
+        logAdminQuotesWarn("supplier_bids association query failed; skipping", {
+          supplierId,
+          supabaseError: serializeSupabaseError(error),
+        });
+      } else {
+        loadedAny = true;
+        for (const row of data ?? []) {
+          const quoteId = typeof row?.quote_id === "string" ? row.quote_id.trim() : "";
+          if (quoteId) ids.add(quoteId);
+        }
+      }
+    } catch (error) {
+      logAdminQuotesWarn("supplier_bids association query crashed; skipping", {
+        supplierId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  }
+
+  if (!loadedAny) {
+    return null;
+  }
+
+  return Array.from(ids);
 }
 
 function applySort<T>(query: T, sort: AdminQuotesInboxSort): T {

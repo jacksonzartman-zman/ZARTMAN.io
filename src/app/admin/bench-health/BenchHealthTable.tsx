@@ -4,6 +4,8 @@ import { formatDateTime } from "@/lib/formatDate";
 import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
 import type { SupplierBenchHealth } from "@/server/admin/benchHealth";
 
+type AdminQuotesMessageFilter = "needs_reply" | "overdue";
+
 function formatHealthLabel(value: SupplierBenchHealth["health"]): string {
   switch (value) {
     case "healthy":
@@ -53,6 +55,16 @@ function renderReasons(reasons: string[]) {
       ) : null}
     </div>
   );
+}
+
+function buildQuotesDrilldownHref(args: {
+  supplierId: string;
+  msg: AdminQuotesMessageFilter;
+}): string {
+  const params = new URLSearchParams();
+  params.set("msg", args.msg);
+  params.set("supplierId", args.supplierId);
+  return `/admin/quotes?${params.toString()}`;
 }
 
 export default function BenchHealthTable({ rows }: { rows: SupplierBenchHealth[] }) {
@@ -113,20 +125,61 @@ export default function BenchHealthTable({ rows }: { rows: SupplierBenchHealth[]
                 </div>
               </td>
               <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-                <span
-                  className={clsx(
-                    "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
-                    healthPillClasses(row.health),
-                  )}
-                >
-                  {formatHealthLabel(row.health)}
-                </span>
+                {(() => {
+                  const pillMsg: AdminQuotesMessageFilter | null =
+                    row.overdueThreadCount > 0
+                      ? "overdue"
+                      : (row.health === "at_risk" || row.health === "unresponsive") &&
+                          row.overdueThreadCount === 0 &&
+                          Boolean(row.lastInboundAt)
+                        ? "needs_reply"
+                        : null;
+                  const pillHref =
+                    pillMsg && row.supplierId
+                      ? buildQuotesDrilldownHref({
+                          supplierId: row.supplierId,
+                          msg: pillMsg,
+                        })
+                      : null;
+
+                  const pill = (
+                    <span
+                      className={clsx(
+                        "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition",
+                        healthPillClasses(row.health),
+                        pillHref ? "cursor-pointer hover:brightness-110" : null,
+                      )}
+                    >
+                      {formatHealthLabel(row.health)}
+                    </span>
+                  );
+
+                  return pillHref ? (
+                    <Link href={pillHref} className="inline-flex">
+                      {pill}
+                    </Link>
+                  ) : (
+                    pill
+                  );
+                })()}
               </td>
               <td className={clsx(adminTableCellClass, "px-5 py-4")}>
                 {renderReasons(row.reasons)}
               </td>
               <td className={clsx(adminTableCellClass, "px-5 py-4 text-right tabular-nums")}>
-                {row.overdueThreadCount.toLocaleString()}
+                {row.overdueThreadCount > 0 ? (
+                  <Link
+                    href={buildQuotesDrilldownHref({
+                      supplierId: row.supplierId,
+                      msg: "overdue",
+                    })}
+                    className="font-semibold text-slate-100 underline decoration-slate-600/40 underline-offset-2 transition hover:text-emerald-200 hover:decoration-emerald-400/70"
+                  >
+                    {row.overdueThreadCount.toLocaleString()}
+                  </Link>
+                ) : (
+                  row.overdueThreadCount.toLocaleString()
+                )}
               </td>
               <td className={clsx(adminTableCellClass, "px-5 py-4 text-right text-slate-400")}>
                 {formatDateTime(row.lastActivityAt, { includeTime: true }) ?? "—"}
