@@ -100,7 +100,12 @@ import { loadQuoteUploadGroups } from "@/server/quotes/uploadFiles";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
-import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
+import {
+  handleMissingSupabaseRelation,
+  isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
+  serializeSupabaseError,
+} from "@/server/admin/logging";
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadSupplierReputationForSuppliers } from "@/server/suppliers/reputation";
 import { ensureCadFeaturesForQuote, loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
@@ -425,28 +430,48 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     let rfqFeedbackSchemaMissing = false;
     const supplierNameById = new Map<string, string>();
     try {
-      const { data, error } = await supabaseServer
-        .from("quote_rfq_feedback")
-        .select("supplier_id,categories,note,created_at")
-        .eq("quote_id", quote.id)
-        .order("created_at", { ascending: false })
-        .limit(50)
-        .returns<QuoteRfqFeedbackAdminRow[]>();
-
-      if (error) {
-        if (isMissingTableOrColumnError(error)) {
-          rfqFeedbackSchemaMissing = true;
-        } else {
-          console.error("[admin quote] failed to load rfq feedback", {
-            quoteId: quote.id,
-            error: serializeSupabaseError(error) ?? error,
-          });
-        }
+      if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
+        rfqFeedbackSchemaMissing = true;
       } else {
-        rfqFeedbackRows = Array.isArray(data) ? data : [];
+        const { data, error } = await supabaseServer
+          .from("quote_rfq_feedback")
+          .select("supplier_id,categories,note,created_at")
+          .eq("quote_id", quote.id)
+          .order("created_at", { ascending: false })
+          .limit(50)
+          .returns<QuoteRfqFeedbackAdminRow[]>();
+
+        if (error) {
+          if (
+            handleMissingSupabaseRelation({
+              relation: "quote_rfq_feedback",
+              error,
+              warnPrefix: "[rfq_feedback]",
+            })
+          ) {
+            rfqFeedbackSchemaMissing = true;
+          } else if (isMissingTableOrColumnError(error)) {
+            rfqFeedbackSchemaMissing = true;
+          } else {
+            console.error("[admin quote] failed to load rfq feedback", {
+              quoteId: quote.id,
+              error: serializeSupabaseError(error) ?? error,
+            });
+          }
+        } else {
+          rfqFeedbackRows = Array.isArray(data) ? data : [];
+        }
       }
     } catch (error) {
-      if (isMissingTableOrColumnError(error)) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_rfq_feedback",
+          error,
+          warnPrefix: "[rfq_feedback]",
+        })
+      ) {
+        rfqFeedbackSchemaMissing = true;
+      } else if (isMissingTableOrColumnError(error)) {
         rfqFeedbackSchemaMissing = true;
       } else {
         console.error("[admin quote] rfq feedback load crashed", {

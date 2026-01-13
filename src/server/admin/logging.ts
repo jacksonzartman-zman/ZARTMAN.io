@@ -118,6 +118,118 @@ export function serializeSupabaseError(error: unknown): SerializedSupabaseError 
   };
 }
 
+function readStringProp(obj: unknown, key: string): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  return key in obj && typeof (obj as any)[key] === "string" ? ((obj as any)[key] as string) : null;
+}
+
+function readNumberProp(obj: unknown, key: string): number | null {
+  if (!obj || typeof obj !== "object") return null;
+  return key in obj && typeof (obj as any)[key] === "number" ? ((obj as any)[key] as number) : null;
+}
+
+/**
+ * PostgREST can surface missing relations as either:
+ * - PostgrestError with code (ex: PGRST205 / 42P01), or
+ * - a 404-ish error shape where the "status" may be present, but code is not.
+ *
+ * We treat this as "feature not enabled" and fail-soft.
+ */
+export function isMissingSupabaseRelationError(error: unknown): boolean {
+  const source = extractSupabaseSource(error);
+  if (!source || typeof source !== "object") return false;
+
+  const code = readStringProp(source, "code");
+  const message = readStringProp(source, "message");
+  const details = readStringProp(source, "details");
+
+  // Common "missing resource" variants.
+  if (code === "42P01") return true; // undefined_table / undefined_relation
+  if (code === "PGRST205") {
+    const blob = `${message ?? ""} ${details ?? ""}`.toLowerCase();
+    return (
+      blob.includes("schema cache") ||
+      blob.includes("could not find") ||
+      blob.includes("table") ||
+      blob.includes("view") ||
+      blob.includes("relation")
+    );
+  }
+
+  // Some adapters attach an HTTP status without exposing a PostgREST code.
+  const status =
+    readNumberProp(source, "status") ?? readNumberProp(source, "statusCode") ?? null;
+  if (status === 404) {
+    const blob = `${message ?? ""} ${details ?? ""}`.toLowerCase();
+    return (
+      blob.includes("schema cache") ||
+      blob.includes("could not find") ||
+      blob.includes("table") ||
+      blob.includes("view") ||
+      blob.includes("relation") ||
+      blob.includes("does not exist")
+    );
+  }
+
+  // Fall back to a strict message heuristic (only when it clearly indicates a missing relation).
+  const blob = `${message ?? ""} ${details ?? ""}`.toLowerCase();
+  return (
+    blob.includes("schema cache") &&
+    (blob.includes("could not find") || blob.includes("not found"))
+  );
+}
+
+const WARN_ONCE_KEYS = new Set<string>();
+
+export function warnOnce(key: string, message: string, context?: LogContext) {
+  if (WARN_ONCE_KEYS.has(key)) return;
+  WARN_ONCE_KEYS.add(key);
+  const payload = sanitizeContext(context);
+  if (payload && Object.keys(payload).length > 0) {
+    console.warn(message, payload);
+  } else {
+    console.warn(message);
+  }
+}
+
+const MISSING_RELATIONS = new Set<string>();
+
+export function isSupabaseRelationMarkedMissing(relation: string): boolean {
+  const normalized = typeof relation === "string" ? relation.trim() : "";
+  if (!normalized) return false;
+  return MISSING_RELATIONS.has(normalized);
+}
+
+export function markSupabaseRelationMissing(relation: string) {
+  const normalized = typeof relation === "string" ? relation.trim() : "";
+  if (!normalized) return;
+  MISSING_RELATIONS.add(normalized);
+}
+
+/**
+ * Shared helper to:
+ * - detect missing-relation errors,
+ * - cache the relation as missing (so we stop querying it),
+ * - emit a single stable warning line (no payload).
+ */
+export function handleMissingSupabaseRelation(args: {
+  relation: string;
+  error: unknown;
+  warnPrefix: string;
+}): boolean {
+  if (!isMissingSupabaseRelationError(args.error)) return false;
+
+  markSupabaseRelationMissing(args.relation);
+
+  const serialized = serializeSupabaseError(args.error);
+  warnOnce(`missing_relation:${args.relation}`, `${args.warnPrefix} missing relation; skipping`, {
+    code: serialized.code,
+    message: serialized.message,
+  });
+
+  return true;
+}
+
 // Missing schema drift codes:
 // - PGRST205: PostgREST schema cache / missing relation/column
 // - 42703: undefined_column
@@ -136,10 +248,10 @@ export function isMissingTableOrColumnError(error: unknown): boolean {
       : null;
 
   if (!code) {
-    return false;
+    return isMissingSupabaseRelationError(error);
   }
 
-  return MISSING_SCHEMA_CODES.has(code);
+  return MISSING_SCHEMA_CODES.has(code) || isMissingSupabaseRelationError(error);
 }
 
 // Alias for clarity when guarding admin-only views / RPCs.

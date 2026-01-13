@@ -26,7 +26,12 @@ import { computeFairnessBoost } from "@/lib/fairness";
 import { approvalsEnabled } from "./flags";
 import { QUOTE_OPEN_STATUSES, isOpenQuoteStatus } from "@/server/quotes/status";
 import type { SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
-import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
+import {
+  handleMissingSupabaseRelation,
+  isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
+  serializeSupabaseError,
+} from "@/server/admin/logging";
 
 const DEFAULT_MATCH_LIMIT = 20;
 const DEFAULT_OPEN_QUOTE_FETCH_LIMIT = 50;
@@ -348,6 +353,7 @@ async function safeLoadQuoteRfqFeedbackSummaryByQuoteId(
     map.set(id, { totalDeclines: 0, byCategory: {} });
   }
   if (ids.length === 0) return map;
+  if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return map;
 
   try {
     const { data, error } = await supabaseServer
@@ -357,6 +363,15 @@ async function safeLoadQuoteRfqFeedbackSummaryByQuoteId(
       .returns<QuoteRfqFeedbackRowLite[]>();
 
     if (error) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_rfq_feedback",
+          error,
+          warnPrefix: "[rfq_feedback]",
+        })
+      ) {
+        return map;
+      }
       if (isMissingTableOrColumnError(error)) return map;
       console.error("[supplier activity] quote_rfq_feedback load failed", {
         quoteCount: ids.length,
@@ -382,6 +397,15 @@ async function safeLoadQuoteRfqFeedbackSummaryByQuoteId(
       map.set(quoteId, summary);
     }
   } catch (error) {
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_rfq_feedback",
+        error,
+        warnPrefix: "[rfq_feedback]",
+      })
+    ) {
+      return map;
+    }
     if (isMissingTableOrColumnError(error)) return map;
     console.error("[supplier activity] quote_rfq_feedback load crashed", {
       quoteCount: ids.length,
