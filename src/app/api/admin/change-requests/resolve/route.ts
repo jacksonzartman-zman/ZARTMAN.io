@@ -51,6 +51,37 @@ export async function POST(req: Request) {
       );
     }
 
+    try {
+      const { error: notificationError, count } = await supabaseServer
+        .from("user_notifications")
+        .update(
+          { is_read: true, updated_at: new Date().toISOString() },
+          { count: "exact" },
+        )
+        .eq("type", "change_request_submitted")
+        .eq("entity_type", "change_request")
+        .eq("entity_id", changeRequestId);
+
+      if (notificationError) {
+        console.warn("[change-requests] resolve notification update failed", {
+          changeRequestId,
+          code: (notificationError as { code?: string } | null)?.code,
+          message: (notificationError as { message?: string } | null)?.message,
+        });
+      } else {
+        console.log("[change-requests] resolve notification updated", {
+          changeRequestId,
+          updatedCount: typeof count === "number" ? count : 0,
+        });
+      }
+    } catch (error: unknown) {
+      console.warn("[change-requests] resolve notification update failed", {
+        changeRequestId,
+        code: (error as { code?: string } | null)?.code,
+        message: (error as { message?: string } | null)?.message,
+      });
+    }
+
     const event = await emitQuoteEvent({
       quoteId: updated.quote_id,
       eventType: "change_request_resolved",
