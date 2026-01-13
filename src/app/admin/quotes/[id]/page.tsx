@@ -36,6 +36,7 @@ import QuoteUpdateForm from "../QuoteUpdateForm";
 import { QuoteMessagesThread } from "@/app/(portals)/components/QuoteMessagesThread";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { QuoteFilesCard } from "./QuoteFilesCard";
+import { ReplyNowButton } from "./ReplyNowButton";
 import { QuoteUploadsStructuredList } from "@/components/QuoteUploadsStructuredList";
 import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { QuoteAtAGlanceBar } from "@/components/QuoteAtAGlanceBar";
@@ -1055,14 +1056,17 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   ? "border-slate-800 bg-slate-950/50 text-slate-300"
                   : "border-slate-800 bg-slate-900/40 text-slate-200";
             return (
-              <span
-                className={clsx(
-                  "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
-                  pillClasses,
-                )}
-              >
-                {label}
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span
+                  className={clsx(
+                    "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+                    pillClasses,
+                  )}
+                >
+                  {label}
+                </span>
+                {adminNeedsReply ? <ReplyNowButton quoteId={quote.id} /> : null}
+              </div>
             );
           })()}
         </header>
