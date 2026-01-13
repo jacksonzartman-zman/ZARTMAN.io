@@ -89,6 +89,13 @@ import { DemoModeBanner } from "./DemoModeBanner";
 
 export const dynamic = "force-dynamic";
 
+type ChangeRequestsChecklistSummary = {
+  label: string;
+  value: string;
+  status: "Pending" | "Captured";
+  tone: TagPillTone;
+};
+
 type CustomerQuotePageProps = {
   params: Promise<{ id: string }>;
   searchParams?: Promise<SearchParamsLike>;
@@ -392,6 +399,74 @@ export default async function CustomerQuoteDetailPage({
         error: serializeSupabaseError(error) ?? error,
       });
     }
+  }
+
+  let changeRequestsChecklistSummary: ChangeRequestsChecklistSummary | null = null;
+  try {
+    const { data, error } = await supabaseServer
+      .from("quote_change_requests")
+      .select("id,status,created_at,resolved_at")
+      .eq("quote_id", quote.id)
+      .order("created_at", { ascending: false })
+      .limit(10)
+      .returns<
+        Array<{
+          id: string;
+          status: string | null;
+          created_at: string | null;
+          resolved_at: string | null;
+        }>
+      >();
+
+    if (error) {
+      console.warn("[customer quote] quote_change_requests load failed", {
+        quoteId: quote.id,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    } else {
+      const rows = Array.isArray(data) ? data : [];
+      const hasOpen = rows.some(
+        (row) => (row.status ?? "").trim().toLowerCase() === "open",
+      );
+      const hasResolved = rows.some(
+        (row) =>
+          (row.status ?? "").trim().toLowerCase() === "resolved" ||
+          Boolean(row.resolved_at),
+      );
+
+      if (hasOpen) {
+        changeRequestsChecklistSummary = {
+          label: "Change requests",
+          value: "Open",
+          status: "Pending",
+          tone: "slate",
+        };
+      } else if (rows.length === 0) {
+        changeRequestsChecklistSummary = {
+          label: "Change requests",
+          value: "None",
+          status: "Captured",
+          tone: "emerald",
+        };
+      } else if (hasResolved) {
+        changeRequestsChecklistSummary = {
+          label: "Change requests",
+          value: "Resolved",
+          status: "Captured",
+          tone: "emerald",
+        };
+      } else {
+        // Fail-soft: unexpected status values; keep existing behavior.
+        changeRequestsChecklistSummary = null;
+      }
+    }
+  } catch (error) {
+    console.warn("[customer quote] quote_change_requests load crashed", {
+      quoteId: quote.id,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    // Fail-soft: keep existing behavior.
+    changeRequestsChecklistSummary = null;
   }
 
   const customerFeedbackAdvisories = customerFeedbackCategoriesToShow
@@ -1432,6 +1507,7 @@ export default async function CustomerQuoteDetailPage({
             messagesHref={messagesHref}
             workspaceStatus={workspaceStatus}
             selectedSupplierName={winningSupplierName ?? null}
+            changeRequestsChecklistSummary={changeRequestsChecklistSummary}
             materialFinish={intakeMaterialFinishLabel}
             tolerances={kickoffTolerances}
             shipDate={intakeTargetShipDateLabel}
@@ -1775,6 +1851,7 @@ function KickoffChecklistCard({
   messagesHref,
   workspaceStatus,
   selectedSupplierName,
+  changeRequestsChecklistSummary,
   materialFinish,
   tolerances,
   shipDate,
@@ -1787,6 +1864,7 @@ function KickoffChecklistCard({
   messagesHref: string;
   workspaceStatus: "draft" | "in_review" | "awarded";
   selectedSupplierName: string | null;
+  changeRequestsChecklistSummary: ChangeRequestsChecklistSummary | null;
   materialFinish: string | null;
   tolerances: string | null;
   shipDate: string | null;
@@ -1794,7 +1872,12 @@ function KickoffChecklistCard({
   poOrPaymentMethod: string | null;
   revisionOrVersion: string | null;
 }) {
-  const checklistItems: Array<{ label: string; value: string | null }> = [
+  const checklistItems: Array<{
+    label: string;
+    value: string | null;
+    status?: "Pending" | "Captured";
+    tone?: TagPillTone;
+  }> = [
     { label: "Material / finish", value: materialFinish },
     { label: "Tolerances", value: tolerances },
     { label: "Ship date", value: shipDate },
@@ -1802,6 +1885,15 @@ function KickoffChecklistCard({
     { label: "PO / payment method", value: poOrPaymentMethod },
     { label: "Revision / version", value: revisionOrVersion },
   ];
+
+  if (changeRequestsChecklistSummary) {
+    checklistItems.unshift({
+      label: changeRequestsChecklistSummary.label,
+      value: changeRequestsChecklistSummary.value,
+      status: changeRequestsChecklistSummary.status,
+      tone: changeRequestsChecklistSummary.tone,
+    });
+  }
 
   return (
     <PortalCard
@@ -1829,8 +1921,9 @@ function KickoffChecklistCard({
         <ul className="mt-3 divide-y divide-slate-900/60 overflow-hidden rounded-xl border border-slate-900/60 bg-slate-950/30">
           {checklistItems.map((item) => {
             const value = item.value?.trim() ? item.value.trim() : null;
-            const status = value ? "Captured" : "Pending";
-            const statusTone: TagPillTone = value ? "emerald" : "slate";
+            const status = item.status ?? (value ? "Captured" : "Pending");
+            const statusTone: TagPillTone =
+              item.tone ?? (value ? "emerald" : "slate");
             const displayValue = value ?? "—";
 
             return (
