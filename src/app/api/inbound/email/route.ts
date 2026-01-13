@@ -30,11 +30,16 @@ function coerceInboundEmail(payload: unknown): InboundEmail | null {
     .map((a) => (a && typeof a === "object" ? (a as Record<string, unknown>) : null))
     .filter(Boolean)
     .map((a) => ({
-      filename: normalizeString(a?.filename),
-      contentType: normalizeString(a?.contentType),
-      sizeBytes: typeof a?.sizeBytes === "number" && Number.isFinite(a.sizeBytes) ? a.sizeBytes : undefined,
+      name: normalizeString(a?.name ?? a?.filename),
+      contentType: normalizeString(a?.contentType) || null,
+      contentLength:
+        typeof a?.contentLength === "number" && Number.isFinite(a.contentLength)
+          ? a.contentLength
+          : typeof a?.sizeBytes === "number" && Number.isFinite(a.sizeBytes)
+            ? a.sizeBytes
+            : null,
     }))
-    .filter((a) => a.filename && a.contentType);
+    .filter((a) => a.name);
 
   return {
     from,
