@@ -15,6 +15,7 @@ import { isSupplierMismatchLogsEnabled } from "@/server/admin/supplierMismatchSu
 
 export type SupplierBenchHealth = {
   supplierId: string;
+  supplierName: string | null;
   health: "healthy" | "at_risk" | "unresponsive";
   reasons: string[];
   overdueThreadCount: number;
@@ -123,6 +124,7 @@ export async function loadBenchHealthDirectory(args?: {
 
   const base: SupplierBenchHealth[] = suppliers.map((row) => ({
     supplierId: row.supplierId,
+    supplierName: row.supplierName ?? null,
     health: "healthy",
     reasons: [],
     overdueThreadCount: 0,

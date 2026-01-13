@@ -100,12 +100,17 @@ export default function BenchHealthTable({ rows }: { rows: SupplierBenchHealth[]
               className="border-b border-slate-800/60 bg-slate-950/40 transition hover:bg-slate-900/40"
             >
               <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-                <Link
-                  href={`/admin/suppliers/${row.supplierId}`}
-                  className="text-sm font-semibold text-emerald-100 hover:text-emerald-300"
-                >
-                  {row.supplierId}
-                </Link>
+                <div className="space-y-2">
+                  <Link
+                    href={`/admin/suppliers/${row.supplierId}`}
+                    className="text-sm font-semibold text-emerald-100 hover:text-emerald-300"
+                  >
+                    {row.supplierName ?? row.supplierId}
+                  </Link>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[11px] text-slate-500">{row.supplierId}</span>
+                  </div>
+                </div>
               </td>
               <td className={clsx(adminTableCellClass, "px-5 py-4")}>
                 <span
