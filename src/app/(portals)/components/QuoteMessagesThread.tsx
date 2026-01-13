@@ -37,8 +37,7 @@ export type QuoteMessagesThreadProps = {
   markRead?: boolean;
   /**
    * Used to enforce masked identities:
-   * - Admin can see sender_email when present
-   * - Customer/supplier must never see the other party's email address
+   * - NEVER display real email addresses (admin included)
    */
   viewerRole?: "admin" | "customer" | "supplier" | (string & {}) | null;
   className?: string;
@@ -222,9 +221,9 @@ function QuoteMessageList({
           isCurrentUser,
           roleLabel,
           senderName: message.sender_name,
-          senderEmail: message.sender_email,
-          viewerRole,
         });
+        const emailProvenance = isEmailProvenance(message);
+        const attachments = readMessageAttachments(message);
 
         return (
           <article
@@ -258,6 +257,14 @@ function QuoteMessageList({
                     Change request
                   </span>
                 ) : null}
+                {emailProvenance ? (
+                  <span
+                    className="rounded-full border border-slate-700/70 bg-slate-900/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-200"
+                    title="Received via email"
+                  >
+                    Email
+                  </span>
+                ) : null}
               </div>
               <span>
                 {formatDateTime(message.created_at, { includeTime: true }) ??
@@ -267,6 +274,31 @@ function QuoteMessageList({
             <p className="break-anywhere mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
               {message.body}
             </p>
+            {attachments.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {attachments.map((a, idx) => {
+                  const label = a.filename || "Attachment";
+                  const href = a.downloadUrl || null;
+                  return href ? (
+                    <a
+                      key={`${message.id}-att-${idx}`}
+                      href={href}
+                      className="inline-flex items-center rounded-full border border-slate-800 bg-black/30 px-3 py-1 text-[11px] font-semibold text-slate-200 transition hover:border-slate-600 hover:text-white"
+                    >
+                      {label}
+                    </a>
+                  ) : (
+                    <span
+                      key={`${message.id}-att-${idx}`}
+                      className="inline-flex items-center rounded-full border border-slate-900 bg-black/20 px-3 py-1 text-[11px] font-semibold text-slate-500"
+                      title="Attachment available, but download is unavailable."
+                    >
+                      {label}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
           </article>
         );
       })}
@@ -278,22 +310,12 @@ function resolveDisplayLabel(args: {
   isCurrentUser: boolean;
   roleLabel: string;
   senderName: string | null;
-  senderEmail: string | null;
-  viewerRole: QuoteMessagesThreadProps["viewerRole"];
 }): string {
   if (args.isCurrentUser) return "You";
 
-  const viewer = typeof args.viewerRole === "string" ? args.viewerRole.trim().toLowerCase() : "";
-  const isAdminViewer = viewer === "admin";
-
   const name = typeof args.senderName === "string" ? args.senderName.trim() : "";
-  if (name && (isAdminViewer || !looksLikeEmail(name))) {
+  if (name && !looksLikeEmail(name)) {
     return name;
-  }
-
-  const email = typeof args.senderEmail === "string" ? args.senderEmail.trim() : "";
-  if (email && isAdminViewer) {
-    return email;
   }
 
   return args.roleLabel;
@@ -304,6 +326,33 @@ function looksLikeEmail(value: string): boolean {
   if (!v) return false;
   // Conservative: any @-containing label is treated as an email-ish identifier.
   return v.includes("@");
+}
+
+function isEmailProvenance(message: QuoteMessageRecord): boolean {
+  const meta = (message as any)?.metadata;
+  if (!meta || typeof meta !== "object") return false;
+  const via = (meta as any)?.via;
+  const normalized = typeof via === "string" ? via.trim().toLowerCase() : "";
+  return normalized.includes("email");
+}
+
+function readMessageAttachments(message: QuoteMessageRecord): Array<{ filename: string; downloadUrl?: string | null }> {
+  const meta = (message as any)?.metadata;
+  if (!meta || typeof meta !== "object") return [];
+  const raw = (meta as any)?.attachments;
+  if (!Array.isArray(raw)) return [];
+  const out: Array<{ filename: string; downloadUrl?: string | null }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const filename = typeof (item as any).filename === "string" ? (item as any).filename.trim() : "";
+    const downloadUrl =
+      typeof (item as any).downloadUrl === "string" && (item as any).downloadUrl.trim()
+        ? ((item as any).downloadUrl as string)
+        : null;
+    if (!filename) continue;
+    out.push({ filename, downloadUrl });
+  }
+  return out;
 }
 
 function QuoteMessageComposer({

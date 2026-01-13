@@ -2,8 +2,20 @@ import crypto from "node:crypto";
 
 import { supabaseServer } from "@/lib/supabaseServer";
 import { schemaGate } from "@/server/db/schemaContract";
-import { serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
+import { isMissingTableOrColumnError, serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
 import { isCustomerEmailOptedIn } from "@/server/quotes/customerEmailPrefs";
+
+export type InboundEmailAttachment = {
+  name: string;
+  contentType: string | null;
+  contentLength: number | null;
+  /**
+   * Provider-specific availability.
+   * - Postmark inbound includes base64 content
+   * - Other providers may omit this field
+   */
+  contentBase64?: string;
+};
 
 export type InboundEmail = {
   from: string;
@@ -16,7 +28,7 @@ export type InboundEmail = {
   messageId?: string | null;
   inReplyTo?: string | null;
   references?: string[];
-  attachments?: { filename: string; contentType: string; sizeBytes?: number }[];
+  attachments?: InboundEmailAttachment[];
 };
 
 type ReplyTokenParts = {
@@ -27,6 +39,7 @@ type ReplyTokenParts = {
 
 const WARN_PREFIX = "[email_bridge]";
 const QUOTE_MESSAGES_RELATION = "quote_messages";
+const EMAIL_ATTACHMENTS_BUCKET = "cad_uploads";
 
 // Keep the local-part token reasonably short for common provider limits.
 const SIG_HEX_LEN = 16; // 8 bytes -> 16 hex chars
@@ -251,6 +264,322 @@ function sanitizeBody(inbound: InboundEmail): string | null {
   return stripped.length > 2000 ? stripped.slice(0, 2000) : stripped;
 }
 
+type StoredInboundAttachment = {
+  filename: string;
+  storageBucketId: string;
+  storagePath: string;
+  sizeBytes: number | null;
+  mime: string | null;
+  /**
+   * Populated when we can also create canonical file rows (files_valid/files).
+   * Used only for UX; never required.
+   */
+  quoteFileId?: string | null;
+};
+
+function sanitizeAttachmentFileName(input: unknown): string {
+  const raw = typeof input === "string" ? input.trim() : "";
+  // Strip any directory components (avoid traversal / weird provider values).
+  const basename = raw.replace(/\\/g, "/").split("/").filter(Boolean).slice(-1)[0] ?? "";
+  const normalized = basename
+    .normalize("NFKD")
+    .replace(/[^\w.\- ]+/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/-+/g, "-")
+    .replace(/^\.+/, "")
+    .trim();
+
+  const clipped = normalized.slice(0, 120);
+  return clipped || "attachment";
+}
+
+function isoDateStamp(): string {
+  const d = new Date();
+  const yyyy = String(d.getUTCFullYear());
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function buildEmailAttachmentStoragePath(args: {
+  quoteId: string;
+  role: "supplier" | "customer";
+  filename: string;
+}): string {
+  const qid = normalizeString(args.quoteId) || "unknown-quote";
+  const role = args.role;
+  const date = isoDateStamp();
+  const random = crypto.randomBytes(8).toString("hex");
+  const safeName = sanitizeAttachmentFileName(args.filename);
+  // Preferred prefix (new): uploads/email/<quoteId>/<role>/<yyyy-mm-dd>/<random>/<filename>
+  return `uploads/email/${qid}/${role}/${date}/${random}/${safeName}`;
+}
+
+async function uploadInboundEmailAttachments(args: {
+  quoteId: string;
+  role: "supplier" | "customer";
+  attachments: InboundEmailAttachment[];
+}): Promise<{
+  ok: boolean;
+  stored: StoredInboundAttachment[];
+  storageUnavailable?: boolean;
+}> {
+  const quoteId = normalizeString(args.quoteId);
+  const role = args.role;
+  const attachments = Array.isArray(args.attachments) ? args.attachments : [];
+  if (!quoteId) return { ok: false, stored: [] };
+  if (attachments.length === 0) return { ok: true, stored: [] };
+
+  const stored: StoredInboundAttachment[] = [];
+
+  for (const [index, attachment] of attachments.entries()) {
+    const name = sanitizeAttachmentFileName(attachment?.name);
+    const contentType =
+      typeof attachment?.contentType === "string" && attachment.contentType.trim()
+        ? attachment.contentType.trim()
+        : null;
+    const contentLength =
+      typeof attachment?.contentLength === "number" && Number.isFinite(attachment.contentLength)
+        ? attachment.contentLength
+        : null;
+    const base64 =
+      typeof attachment?.contentBase64 === "string" && attachment.contentBase64.trim()
+        ? attachment.contentBase64.trim()
+        : "";
+    if (!base64) {
+      // Provider may omit content; do not fail the whole email.
+      continue;
+    }
+
+    const bytes = Buffer.from(base64, "base64");
+    if (bytes.byteLength <= 0) continue;
+
+    const storagePath = buildEmailAttachmentStoragePath({
+      quoteId,
+      role,
+      filename: name,
+    });
+
+    try {
+      const { error: uploadError } = await supabaseServer.storage
+        .from(EMAIL_ATTACHMENTS_BUCKET)
+        .upload(storagePath, bytes, {
+          contentType: contentType ?? undefined,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        // Missing bucket / storage config should not block inbound email.
+        if (isMissingTableOrColumnError(uploadError)) {
+          warnOnce(
+            "email_bridge:attachments_storage_missing",
+            `${WARN_PREFIX} attachments skipped; storage unavailable`,
+          );
+          return { ok: true, stored, storageUnavailable: true };
+        }
+
+        warnOnce(
+          "email_bridge:attachments_storage_failed",
+          `${WARN_PREFIX} attachments upload failed; continuing without attachments`,
+          { code: serializeSupabaseError(uploadError).code ?? null },
+        );
+        continue;
+      }
+
+      stored.push({
+        filename: name,
+        storageBucketId: EMAIL_ATTACHMENTS_BUCKET,
+        storagePath,
+        sizeBytes: bytes.byteLength,
+        mime: contentType ?? null,
+      });
+    } catch (error) {
+      warnOnce(
+        "email_bridge:attachments_storage_crashed",
+        `${WARN_PREFIX} attachments upload crashed; continuing without attachments`,
+        { code: serializeSupabaseError(error).code ?? null },
+      );
+      // Best-effort: skip this attachment.
+      continue;
+    }
+  }
+
+  return { ok: true, stored };
+}
+
+async function tryInsertCanonicalFilesForAttachments(args: {
+  quoteId: string;
+  attachments: StoredInboundAttachment[];
+}): Promise<{ ok: boolean; stored: StoredInboundAttachment[] }> {
+  const quoteId = normalizeString(args.quoteId);
+  const input = Array.isArray(args.attachments) ? args.attachments : [];
+  if (!quoteId || input.length === 0) return { ok: true, stored: input };
+
+  // Prefer files_valid, fall back to files.
+  const tables = ["files_valid", "files"] as const;
+
+  const tryInsertInto = async (table: (typeof tables)[number]) => {
+    try {
+      // Most common canonical schema columns. If this fails due to drift, we silently
+      // fall back to message-only metadata links.
+      const { data, error } = await supabaseServer
+        .from(table)
+        .insert(
+          input.map((a) => ({
+            quote_id: quoteId,
+            filename: a.filename,
+            mime: a.mime ?? "application/octet-stream",
+            storage_path: a.storagePath,
+            bucket_id: a.storageBucketId,
+            size_bytes: a.sizeBytes,
+          })),
+        )
+        .select("id,storage_path")
+        .returns<Array<{ id: string; storage_path: string | null }>>();
+
+      if (error) {
+        if (isMissingTableOrColumnError(error)) {
+          return { ok: true as const, inserted: [] as Array<{ id: string; storage_path: string | null }> };
+        }
+        warnOnce(
+          `email_bridge:attachments_files_insert_failed:${table}`,
+          `${WARN_PREFIX} attachment file row insert failed; continuing without file ids`,
+          { code: serializeSupabaseError(error).code ?? null },
+        );
+        return { ok: false as const, inserted: [] as Array<{ id: string; storage_path: string | null }> };
+      }
+
+      return { ok: true as const, inserted: Array.isArray(data) ? data : [] };
+    } catch (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return { ok: true as const, inserted: [] as Array<{ id: string; storage_path: string | null }> };
+      }
+      warnOnce(
+        `email_bridge:attachments_files_insert_crashed:${table}`,
+        `${WARN_PREFIX} attachment file row insert crashed; continuing without file ids`,
+        { code: serializeSupabaseError(error).code ?? null },
+      );
+      return { ok: false as const, inserted: [] as Array<{ id: string; storage_path: string | null }> };
+    }
+  };
+
+  for (const table of tables) {
+    const result = await tryInsertInto(table);
+    if (!result.ok) {
+      // Non-missing failure; don't keep retrying.
+      return { ok: false, stored: input };
+    }
+    if (result.inserted.length > 0) {
+      const idByPath = new Map<string, string>();
+      for (const row of result.inserted) {
+        const id = typeof row?.id === "string" ? row.id.trim() : "";
+        const path = typeof row?.storage_path === "string" ? row.storage_path.trim() : "";
+        if (id && path) idByPath.set(path, id);
+      }
+      const enriched = input.map((a) => ({
+        ...a,
+        quoteFileId: idByPath.get(a.storagePath) ?? null,
+      }));
+      return { ok: true, stored: enriched };
+    }
+  }
+
+  return { ok: true, stored: input };
+}
+
+async function isLikelyDuplicateInboundMessage(args: {
+  quoteId: string;
+  senderRole: "supplier" | "customer";
+  senderId: string;
+  body: string;
+  providerMessageId: string | null;
+}): Promise<boolean> {
+  const quoteId = normalizeString(args.quoteId);
+  const senderRole = args.senderRole;
+  const senderId = normalizeString(args.senderId);
+  const body = normalizeString(args.body);
+  const providerMessageId = normalizeString(args.providerMessageId) || null;
+  if (!quoteId || !senderId || !body) return false;
+
+  // Best-effort only. Avoid heavy queries and tolerate drift.
+  try {
+    // Try to load a tiny recent window.
+    let query = supabaseServer
+      .from(QUOTE_MESSAGES_RELATION)
+      .select("id,body,created_at,metadata")
+      .eq("quote_id", quoteId)
+      .eq("sender_role", senderRole)
+      .eq("sender_id", senderId)
+      .order("created_at", { ascending: false })
+      .limit(5) as any;
+
+    let result = (await query) as { data?: any[]; error?: unknown };
+    if (result.error && isMissingTableOrColumnError(result.error)) {
+      // Fallback: created_at might be missing on some schemas; retry ordering by id.
+      const fallbackQuery = supabaseServer
+        .from(QUOTE_MESSAGES_RELATION)
+        .select("id,body,metadata")
+        .eq("quote_id", quoteId)
+        .eq("sender_role", senderRole)
+        .eq("sender_id", senderId)
+        .order("id", { ascending: false })
+        .limit(5) as any;
+      result = (await fallbackQuery) as { data?: any[]; error?: unknown };
+    }
+
+    if (result.error) {
+      if (!isMissingTableOrColumnError(result.error)) {
+        warnOnce("email_bridge:dedupe_check_failed", `${WARN_PREFIX} dedupe check failed; skipping`, {
+          code: serializeSupabaseError(result.error).code ?? null,
+        });
+      }
+      return false;
+    }
+
+    const rows = Array.isArray(result.data) ? result.data : [];
+    const nowMs = Date.now();
+    const windowMs = 5 * 60 * 1000;
+
+    for (const row of rows) {
+      const rowBody = typeof row?.body === "string" ? row.body.trim() : "";
+      if (!rowBody || rowBody !== body) continue;
+
+      const createdAt = typeof row?.created_at === "string" ? row.created_at : null;
+      if (createdAt) {
+        const ms = Date.parse(createdAt);
+        if (Number.isFinite(ms) && nowMs - ms > windowMs) {
+          continue;
+        }
+      }
+
+      if (providerMessageId) {
+        const meta = row?.metadata && typeof row.metadata === "object" ? (row.metadata as any) : null;
+        const prevId =
+          typeof meta?.providerMessageId === "string"
+            ? meta.providerMessageId
+            : typeof meta?.messageId === "string"
+              ? meta.messageId
+              : null;
+        if (prevId && normalizeString(prevId) === providerMessageId) {
+          return true;
+        }
+      }
+
+      // Body match within the window is enough for best-effort dedupe.
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error)) {
+      warnOnce("email_bridge:dedupe_check_crashed", `${WARN_PREFIX} dedupe check crashed; skipping`, {
+        code: serializeSupabaseError(error).code ?? null,
+      });
+    }
+    return false;
+  }
+}
+
 type InboundHandleResult =
   | { ok: true }
   | { ok: false; error: string; httpStatus: 200 | 400 | 401 };
@@ -320,28 +649,80 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
     return { ok: false, error: "unsupported", httpStatus: 200 };
   }
 
+  const providerMessageId = normalizeString(inbound.messageId) || null;
+  const isDuplicate = await isLikelyDuplicateInboundMessage({
+    quoteId,
+    senderRole: "supplier",
+    senderId: supplierId,
+    body,
+    providerMessageId,
+  });
+  if (isDuplicate) {
+    return { ok: true };
+  }
+
+  const inboundAttachments = Array.isArray(inbound.attachments) ? inbound.attachments : [];
+  const uploadedAttachmentsResult =
+    inboundAttachments.length > 0
+      ? await uploadInboundEmailAttachments({
+          quoteId,
+          role: "supplier",
+          attachments: inboundAttachments,
+        })
+      : { ok: true as const, stored: [] as StoredInboundAttachment[] };
+
+  const canonicalFilesResult =
+    uploadedAttachmentsResult.ok && uploadedAttachmentsResult.stored.length > 0
+      ? await tryInsertCanonicalFilesForAttachments({
+          quoteId,
+          attachments: uploadedAttachmentsResult.stored,
+        })
+      : { ok: true as const, stored: uploadedAttachmentsResult.stored ?? [] };
+
+  const storedAttachments = canonicalFilesResult.stored;
+
   // Try the extended payload first (newer schemas). If it fails due to missing columns,
   // retry with the minimal schema-compatible payload to avoid noisy drift errors.
   const basePayload: Record<string, unknown> = {
     quote_id: quoteId,
     sender_role: "supplier",
     sender_id: supplierId,
-    sender_name: null,
-    sender_email: normalizeString(inbound.from).toLowerCase().slice(0, 240) || null,
+    sender_name: "Supplier",
+    // IMPORTANT: Do not store or log inbound From (PII). Attribute solely via reply token.
+    sender_email: null,
     body,
   };
+
+  const attachSuffixLine =
+    inboundAttachments.length > 0 &&
+    (uploadedAttachmentsResult as any)?.storageUnavailable &&
+    storedAttachments.length === 0
+      ? "\n\n(Attachments received; storage unavailable)"
+      : "";
 
   const extendedPayload: Record<string, unknown> = {
     ...basePayload,
     supplier_id: supplierId,
     metadata: {
-      from: normalizeString(inbound.from),
+      via: "email_inbound_supplier",
       subject: normalizeString(inbound.subject) || null,
-      messageId: normalizeString(inbound.messageId) || null,
+      provider: "postmark",
+      providerMessageId,
       inReplyTo: normalizeString(inbound.inReplyTo) || null,
       references: Array.isArray(inbound.references) ? inbound.references.slice(0, 50) : null,
-      attachments: Array.isArray(inbound.attachments) ? inbound.attachments.slice(0, 25) : null,
+      attachments:
+        storedAttachments.length > 0
+          ? storedAttachments.map((a) => ({
+              filename: a.filename,
+              storageBucketId: a.storageBucketId,
+              storagePath: a.storagePath,
+              sizeBytes: a.sizeBytes,
+              mime: a.mime,
+              quoteFileId: a.quoteFileId ?? null,
+            }))
+          : null,
     },
+    body: `${body}${attachSuffixLine}`,
   };
 
   try {
@@ -357,7 +738,10 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
       message: serialized.message,
     });
 
-    const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(basePayload);
+    const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert({
+      ...basePayload,
+      body: `${body}${attachSuffixLine}`,
+    });
     if (baseError) {
       console.error(`${WARN_PREFIX} insert failed`, { error: serializeSupabaseError(baseError) ?? baseError });
       return { ok: false, error: "write_failed", httpStatus: 200 };
@@ -412,6 +796,38 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
     return { ok: false, error: "unsupported", httpStatus: 200 };
   }
 
+  const providerMessageId = normalizeString(inbound.messageId) || null;
+  const isDuplicate = await isLikelyDuplicateInboundMessage({
+    quoteId,
+    senderRole: "customer",
+    senderId: customerId,
+    body,
+    providerMessageId,
+  });
+  if (isDuplicate) {
+    return { ok: true };
+  }
+
+  const inboundAttachments = Array.isArray(inbound.attachments) ? inbound.attachments : [];
+  const uploadedAttachmentsResult =
+    inboundAttachments.length > 0
+      ? await uploadInboundEmailAttachments({
+          quoteId,
+          role: "customer",
+          attachments: inboundAttachments,
+        })
+      : { ok: true as const, stored: [] as StoredInboundAttachment[] };
+
+  const canonicalFilesResult =
+    uploadedAttachmentsResult.ok && uploadedAttachmentsResult.stored.length > 0
+      ? await tryInsertCanonicalFilesForAttachments({
+          quoteId,
+          attachments: uploadedAttachmentsResult.stored,
+        })
+      : { ok: true as const, stored: uploadedAttachmentsResult.stored ?? [] };
+
+  const storedAttachments = canonicalFilesResult.stored;
+
   // IMPORTANT: Do not store or log inbound From (PII). Attribute solely via reply token.
   const basePayload: Record<string, unknown> = {
     quote_id: quoteId,
@@ -422,17 +838,36 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
     body,
   };
 
+  const attachSuffixLine =
+    inboundAttachments.length > 0 &&
+    (uploadedAttachmentsResult as any)?.storageUnavailable &&
+    storedAttachments.length === 0
+      ? "\n\n(Attachments received; storage unavailable)"
+      : "";
+
   const extendedPayload: Record<string, unknown> = {
     ...basePayload,
     customer_id: customerId,
     metadata: {
       via: "email_inbound_customer",
       subject: normalizeString(inbound.subject) || null,
-      messageId: normalizeString(inbound.messageId) || null,
+      provider: "postmark",
+      providerMessageId,
       inReplyTo: normalizeString(inbound.inReplyTo) || null,
       references: Array.isArray(inbound.references) ? inbound.references.slice(0, 50) : null,
-      attachments: Array.isArray(inbound.attachments) ? inbound.attachments.slice(0, 25) : null,
+      attachments:
+        storedAttachments.length > 0
+          ? storedAttachments.map((a) => ({
+              filename: a.filename,
+              storageBucketId: a.storageBucketId,
+              storagePath: a.storagePath,
+              sizeBytes: a.sizeBytes,
+              mime: a.mime,
+              quoteFileId: a.quoteFileId ?? null,
+            }))
+          : null,
     },
+    body: `${body}${attachSuffixLine}`,
   };
 
   try {
@@ -448,7 +883,10 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
       message: serialized.message,
     });
 
-    const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(basePayload);
+    const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert({
+      ...basePayload,
+      body: `${body}${attachSuffixLine}`,
+    });
     if (baseError) {
       console.error(`${WARN_PREFIX} insert failed`, { error: serializeSupabaseError(baseError) ?? baseError });
       return { ok: false, error: "write_failed", httpStatus: 200 };

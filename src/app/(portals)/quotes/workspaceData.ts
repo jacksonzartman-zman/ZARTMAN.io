@@ -81,6 +81,10 @@ type LoadQuoteWorkspaceOptions = {
    * This enables portal users (non-admin) to render previews via `/api/cad-preview`.
    */
   viewerUserId?: string | null;
+  /**
+   * When provided, message attachment download links can be tokenized for this user.
+   */
+  viewerRole?: "admin" | "customer" | "supplier" | (string & {}) | null;
 };
 
 type SafeQuoteRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
@@ -250,7 +254,11 @@ export async function loadQuoteWorkspaceData(
       fileCount,
     };
 
-    const messagesResult = await loadQuoteMessages(enrichedQuote.id);
+    const messagesResult = await loadQuoteMessages({
+      quoteId: enrichedQuote.id,
+      viewerUserId: options?.viewerUserId ?? null,
+      viewerRole: options?.viewerRole ?? null,
+    });
     const messages: QuoteMessageRecord[] = messagesResult.messages;
     const messagesError = messagesResult.ok
       ? null

@@ -167,6 +167,7 @@ export default async function SupplierQuoteDetailPage({
 
   const workspaceResult = await loadQuoteWorkspaceData(quoteId, {
     viewerUserId: user.id,
+    viewerRole: "supplier",
   });
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[supplier quote] load failed", {
@@ -278,7 +279,11 @@ export default async function SupplierQuoteDetailPage({
     }
   }
 
-  const messagesResult = await loadQuoteMessages(quoteId);
+  const messagesResult = await loadQuoteMessages({
+    quoteId,
+    viewerUserId: user.id,
+    viewerRole: "supplier",
+  });
   if (!messagesResult.ok) {
     console.error("[supplier quote] messages load failed", {
       quoteId,
