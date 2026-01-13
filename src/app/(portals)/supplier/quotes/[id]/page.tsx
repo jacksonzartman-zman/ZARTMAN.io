@@ -959,7 +959,7 @@ function SupplierQuoteWorkspace({
 
   const replyToResult = getSupplierReplyToAddress({
     quoteId: quote.id,
-    supplierId: profile.supplier.id,
+    supplierId,
   });
   const replyToAddress = replyToResult.ok ? replyToResult.address : "";
   const replyToStatusCopy = replyToResult.ok
