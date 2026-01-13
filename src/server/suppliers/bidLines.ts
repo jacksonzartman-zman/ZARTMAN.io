@@ -1,8 +1,7 @@
-import { supabaseServer } from "@/lib/supabaseServer";
 import {
-  isMissingTableOrColumnError,
-  serializeSupabaseError,
-} from "@/server/admin/logging";
+  loadSupplierBidDraft as loadBidDraftRecord,
+  saveSupplierBidDraft as saveBidDraftRecord,
+} from "@/server/quotes/bidDrafts";
 
 export type SupplierBidLineInput = {
   partId: string;
@@ -15,8 +14,6 @@ export type SupplierBidDraft = {
   bidLines: SupplierBidLineInput[];
   notes?: string | null;
 };
-
-const DRAFTS_TABLE = "quote_supplier_bid_drafts";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -113,50 +110,15 @@ export async function upsertSupplierBidDraft(
   };
 
   const payload = {
-    quote_id: normalizedQuoteId,
-    supplier_id: normalizedSupplierId,
+    quoteId: normalizedQuoteId,
+    supplierId: normalizedSupplierId,
     draft: merged,
-    updated_at: new Date().toISOString(),
   };
 
-  try {
-    const { error } = await supabaseServer
-      .from(DRAFTS_TABLE)
-      .upsert(payload, { onConflict: "quote_id,supplier_id" });
-
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        console.warn("[bid draft] missing schema; skipping persist", {
-          quoteId: normalizedQuoteId,
-          supplierId: normalizedSupplierId,
-          error: serializeSupabaseError(error),
-        });
-        return;
-      }
-
-      console.error("[bid draft] upsert failed", {
-        quoteId: normalizedQuoteId,
-        supplierId: normalizedSupplierId,
-        error: serializeSupabaseError(error),
-      });
-      throw error;
-    }
-  } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      console.warn("[bid draft] missing schema; skipping persist", {
-        quoteId: normalizedQuoteId,
-        supplierId: normalizedSupplierId,
-        error: serializeSupabaseError(error),
-      });
-      return;
-    }
-
-    console.error("[bid draft] upsert crashed", {
-      quoteId: normalizedQuoteId,
-      supplierId: normalizedSupplierId,
-      error: serializeSupabaseError(error) ?? error,
-    });
-    throw error;
+  const result = await saveBidDraftRecord(payload);
+  if (!result.ok) {
+    // Missing relation + feature-disabled paths are handled inside the helper.
+    throw result.error;
   }
 }
 
@@ -170,39 +132,9 @@ export async function loadSupplierBidDraft(
     return null;
   }
 
-  try {
-    const { data, error } = await supabaseServer
-      .from(DRAFTS_TABLE)
-      .select("draft")
-      .eq("quote_id", normalizedQuoteId)
-      .eq("supplier_id", normalizedSupplierId)
-      .maybeSingle<{ draft: unknown }>();
-
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        return null;
-      }
-
-      console.error("[bid draft] load failed", {
-        quoteId: normalizedQuoteId,
-        supplierId: normalizedSupplierId,
-        error: serializeSupabaseError(error),
-      });
-      return null;
-    }
-
-    const typed = coerceDraft(data?.draft);
-    return typed;
-  } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      return null;
-    }
-
-    console.error("[bid draft] load crashed", {
-      quoteId: normalizedQuoteId,
-      supplierId: normalizedSupplierId,
-      error: serializeSupabaseError(error) ?? error,
-    });
-    return null;
-  }
+  const { draft } = await loadBidDraftRecord({
+    quoteId: normalizedQuoteId,
+    supplierId: normalizedSupplierId,
+  });
+  return coerceDraft(draft);
 }
