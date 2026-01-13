@@ -17,8 +17,10 @@ import {
 } from "@/lib/quote/kickoffChecklist";
 
 const TABLE_NAME = "quote_kickoff_tasks";
-const SELECT_COLUMNS =
+const SELECT_COLUMNS_V1 =
   "id,quote_id,supplier_id,task_key,title,description,completed,sort_order,updated_at";
+const SELECT_COLUMNS_V2 =
+  "id,quote_id,supplier_id,task_key,title,description,completed,completed_at,completed_by_user_id,completed_by_role,sort_order,updated_at";
 
 export type SupplierKickoffTasksResult = {
   ok: boolean;
@@ -38,6 +40,9 @@ export type ToggleSupplierKickoffTaskPayload = {
   title: string;
   description: string | null;
   completed: boolean;
+  completedAt?: string | null;
+  completedByUserId?: string | null;
+  completedByRole?: "admin" | "supplier" | "system" | null;
   sortOrder: number | null;
 };
 
@@ -55,6 +60,9 @@ type QuoteKickoffTaskRow = {
   title: string | null;
   description: string | null;
   completed: boolean | null;
+  completed_at?: string | null;
+  completed_by_user_id?: string | null;
+  completed_by_role?: string | null;
   sort_order: number | null;
   updated_at: string | null;
 };
@@ -200,7 +208,7 @@ export async function toggleSupplierKickoffTask(
   const supabase = options?.supabase ?? supabaseServer;
 
   try {
-    const updatePayload = {
+    const baseUpdatePayload: Record<string, unknown> = {
       title: payload.title,
       description: payload.description,
       completed: Boolean(payload.completed),
@@ -208,17 +216,45 @@ export async function toggleSupplierKickoffTask(
       updated_at: now,
     };
 
+    const completedAt =
+      typeof payload.completedAt === "string" && payload.completedAt.trim().length > 0
+        ? payload.completedAt
+        : null;
+    const completedByUserId =
+      typeof payload.completedByUserId === "string" && payload.completedByUserId.trim().length > 0
+        ? payload.completedByUserId
+        : null;
+    const completedByRole =
+      typeof payload.completedByRole === "string" && payload.completedByRole.trim().length > 0
+        ? payload.completedByRole
+        : null;
+
+    const updatePayloadWithCompletion = {
+      ...baseUpdatePayload,
+      completed_at: Boolean(payload.completed) ? completedAt ?? now : null,
+      completed_by_user_id: Boolean(payload.completed) ? completedByUserId : null,
+      completed_by_role: Boolean(payload.completed) ? completedByRole : null,
+    };
+
     // Prefer UPDATE to avoid INSERT RLS checks for existing rows.
-    const {
-      data: updatedRows,
-      error: updateError,
-    } = await supabase
-      .from(TABLE_NAME)
-      .update(updatePayload)
-      .eq("quote_id", quoteId)
-      .eq("supplier_id", supplierId)
-      .eq("task_key", taskKey)
-      .select("id");
+    const updateAttempt = async (updatePayload: Record<string, unknown>) =>
+      supabase
+        .from(TABLE_NAME)
+        .update(updatePayload)
+        .eq("quote_id", quoteId)
+        .eq("supplier_id", supplierId)
+        .eq("task_key", taskKey)
+        .select("id");
+
+    const attemptV2 = await updateAttempt(updatePayloadWithCompletion);
+    let updatedRows = attemptV2.data;
+    let updateError = attemptV2.error;
+
+    if (updateError && isMissingTableOrColumnError(updateError)) {
+      const attemptV1 = await updateAttempt(baseUpdatePayload);
+      updatedRows = attemptV1.data;
+      updateError = attemptV1.error;
+    }
 
     if (updateError) {
       const serialized = serializeSupabaseError(updateError);
@@ -253,12 +289,29 @@ export async function toggleSupplierKickoffTask(
     }
 
     // Fallback: row wasn't present (should be rare if tasks were seeded). Insert explicitly.
-    const { error: insertError } = await supabase.from(TABLE_NAME).insert({
+    const insertPayloadWithCompletion = {
       quote_id: quoteId,
       supplier_id: supplierId,
       task_key: taskKey,
-      ...updatePayload,
-    });
+      ...updatePayloadWithCompletion,
+    };
+    const insertPayloadWithoutCompletion = {
+      quote_id: quoteId,
+      supplier_id: supplierId,
+      task_key: taskKey,
+      ...baseUpdatePayload,
+    };
+
+    const insertAttempt = async (insertPayload: Record<string, unknown>) =>
+      supabase.from(TABLE_NAME).insert(insertPayload);
+
+    const attemptInsertV2 = await insertAttempt(insertPayloadWithCompletion);
+    let insertError = attemptInsertV2.error;
+
+    if (insertError && isMissingTableOrColumnError(insertError)) {
+      const attemptInsertV1 = await insertAttempt(insertPayloadWithoutCompletion);
+      insertError = attemptInsertV1.error;
+    }
 
     if (insertError) {
       const serialized = serializeSupabaseError(insertError);
@@ -392,14 +445,25 @@ async function fetchKickoffTaskRows(
   supplierId: string,
 ): Promise<KickoffTaskRowsResult> {
   try {
-    const { data, error } = await supabaseServer
-      .from(TABLE_NAME)
-      .select(SELECT_COLUMNS)
-      .eq("quote_id", quoteId)
-      .eq("supplier_id", supplierId)
-      .order("sort_order", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true, nullsFirst: true })
-      .returns<QuoteKickoffTaskRow[]>();
+    const selectAttempt = async (columns: string) =>
+      supabaseServer
+        .from(TABLE_NAME)
+        .select(columns)
+        .eq("quote_id", quoteId)
+        .eq("supplier_id", supplierId)
+        .order("sort_order", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true, nullsFirst: true })
+        .returns<QuoteKickoffTaskRow[]>();
+
+    const attemptV2 = await selectAttempt(SELECT_COLUMNS_V2);
+    let data = attemptV2.data;
+    let error = attemptV2.error;
+
+    if (error && isMissingTableOrColumnError(error)) {
+      const attemptV1 = await selectAttempt(SELECT_COLUMNS_V1);
+      data = attemptV1.data;
+      error = attemptV1.error;
+    }
 
     if (error) {
       const serialized = serializeSupabaseError(error);
@@ -855,6 +919,18 @@ function mapRowToTask(row: QuoteKickoffTaskRow): SupplierKickoffTask | null {
         ? row.description.trim()
         : null,
     completed: Boolean(row.completed),
+    completedAt:
+      typeof row.completed_at === "string" && row.completed_at.trim().length > 0
+        ? row.completed_at
+        : null,
+    completedByUserId:
+      typeof row.completed_by_user_id === "string" && row.completed_by_user_id.trim().length > 0
+        ? row.completed_by_user_id
+        : null,
+    completedByRole:
+      typeof row.completed_by_role === "string" && row.completed_by_role.trim().length > 0
+        ? (row.completed_by_role.trim().toLowerCase() as SupplierKickoffTask["completedByRole"])
+        : null,
     sortOrder:
       typeof row.sort_order === "number" && Number.isFinite(row.sort_order)
         ? row.sort_order
