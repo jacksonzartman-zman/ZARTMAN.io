@@ -6,6 +6,23 @@ import { schemaGate } from "@/server/db/schemaContract";
 import { isMissingTableOrColumnError, serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
 import { buildSupplierThreadEmail, getEmailOutboundStatus, getEmailSender } from "@/server/quotes/emailOutbound";
 
+/**
+ * Phase 19.3.2 verification (outbound supplier email bridge)
+ *
+ * Required env vars:
+ * - EMAIL_PROVIDER
+ * - EMAIL_FROM
+ * - EMAIL_REPLY_DOMAIN
+ * - EMAIL_BRIDGE_SECRET
+ * - POSTMARK_SERVER_TOKEN (when EMAIL_PROVIDER=postmark)
+ *
+ * Expected behaviors (fail-soft; do not hard-fail when disabled/unsupported):
+ * - Disabled/unsupported config: { ok:false, error:"disabled" | "unsupported" } with HTTP 200
+ * - Missing recipient: { ok:false, error:"missing_recipient" } with HTTP 200
+ * - Unsupported association (no awarded supplier): { ok:false, error:"unsupported" } with HTTP 200
+ * - Success: { ok:true, sent:true, threadStored:<bool> } with HTTP 200
+ * - If `quote_messages` is missing/unavailable: still sends email and returns threadStored:false
+ */
 const WARN_PREFIX = "[email_outbound_api]";
 
 const QUOTE_MESSAGES_RELATION = "quote_messages";
