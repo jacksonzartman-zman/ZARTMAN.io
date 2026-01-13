@@ -8,11 +8,12 @@ import { ctaSizeClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ct
 type Result =
   | { kind: "idle" }
   | { kind: "sending" }
-  | { kind: "sent"; threadStored: boolean }
+  | { kind: "sent"; threadStored: boolean; attachmentsSent: number }
   | { kind: "error"; message: string };
 
 export function EmailCustomerForm(props: { quoteId: string; enabled: boolean }) {
   const [draft, setDraft] = useState("");
+  const [includeLatestAttachments, setIncludeLatestAttachments] = useState(false);
   const [result, setResult] = useState<Result>({ kind: "idle" });
 
   const helpCopy = useMemo(() => {
@@ -27,8 +28,12 @@ export function EmailCustomerForm(props: { quoteId: string; enabled: boolean }) 
   const statusCopy =
     result.kind === "sent"
       ? result.threadStored
-        ? "Sent."
-        : "Sent (thread storage unavailable)."
+        ? result.attachmentsSent > 0
+          ? `Sent (${result.attachmentsSent} attachment${result.attachmentsSent === 1 ? "" : "s"}).`
+          : "Sent."
+        : result.attachmentsSent > 0
+          ? `Sent (${result.attachmentsSent} attachment${result.attachmentsSent === 1 ? "" : "s"}, thread storage unavailable).`
+          : "Sent (thread storage unavailable)."
       : result.kind === "error"
         ? result.message
         : null;
@@ -65,6 +70,17 @@ export function EmailCustomerForm(props: { quoteId: string; enabled: boolean }) 
           maxLength={5000}
         />
 
+        <label className={clsx("flex items-center gap-2 text-xs text-slate-400", !props.enabled && "opacity-70")}>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={includeLatestAttachments}
+            disabled={!props.enabled || result.kind === "sending"}
+            onChange={(e) => setIncludeLatestAttachments(e.target.checked)}
+          />
+          Include latest email attachments (up to 5)
+        </label>
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p
             className={clsx(
@@ -88,7 +104,7 @@ export function EmailCustomerForm(props: { quoteId: string; enabled: boolean }) 
                 const res = await fetch(`/api/admin/quotes/${props.quoteId}/email-customer`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ message }),
+                  body: JSON.stringify(includeLatestAttachments ? { message, attachmentFileIds: [] } : { message }),
                 });
                 const payload = (await res.json().catch(() => null)) as any;
                 if (!payload || payload.ok !== true) {
@@ -108,6 +124,7 @@ export function EmailCustomerForm(props: { quoteId: string; enabled: boolean }) 
                 setResult({
                   kind: "sent",
                   threadStored: Boolean(payload?.threadStored),
+                  attachmentsSent: typeof payload?.attachmentsSent === "number" ? payload.attachmentsSent : 0,
                 });
               } catch {
                 setResult({ kind: "error", message: "Could not send email. Try again." });
