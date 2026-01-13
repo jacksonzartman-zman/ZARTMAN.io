@@ -7,11 +7,13 @@ import { serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
 export type InboundEmail = {
   from: string;
   to: string[];
-  subject?: string;
-  text?: string;
-  html?: string;
-  messageId?: string;
-  inReplyTo?: string;
+  cc?: string[];
+  subject?: string | null;
+  text?: string | null;
+  html?: string | null;
+  date?: string | null;
+  messageId?: string | null;
+  inReplyTo?: string | null;
   references?: string[];
   attachments?: { filename: string; contentType: string; sizeBytes?: number }[];
 };
