@@ -16,6 +16,7 @@ import {
   serializeSupabaseError,
   warnOnce,
 } from "@/server/admin/logging";
+import { isMessageReadsEnabled } from "@/server/quotes/messageReads";
 
 export type AdminThreadMessageAuthorRole = "customer" | "supplier" | "admin";
 export type AdminThreadNeedsReplyFrom = "supplier" | "customer";
@@ -95,6 +96,9 @@ export async function loadAdminThreadSlaForQuotes(input: {
 
   // Query 2 (best-effort): reads for the admin user to flag unread threads.
   if (adminUserId) {
+    if (!isMessageReadsEnabled()) {
+      return result;
+    }
     if (isSupabaseRelationMarkedMissing("quote_message_reads")) {
       return result;
     }
