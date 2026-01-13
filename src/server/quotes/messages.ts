@@ -6,6 +6,7 @@ import {
 } from "@/server/admin/logging";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { emitQuoteEvent } from "@/server/quotes/events";
+import { signPreviewToken } from "@/server/cadPreviewToken";
 
 export type QuoteMessageSenderRole =
   | "admin"
@@ -24,6 +25,8 @@ export type QuoteMessageRecord = {
   body: string;
   created_at: string;
   updated_at: string | null;
+  // Optional across schema variants.
+  metadata?: unknown;
 };
 
 export type LoadQuoteMessagesResult = {
@@ -42,6 +45,8 @@ export type LoadQuoteMessagesInput =
        * via RLS (for authed clients) or via admin service role.
        */
       viewer?: unknown;
+      viewerUserId?: string | null;
+      viewerRole?: "admin" | "customer" | "supplier" | (string & {}) | null;
       limit?: number;
     };
 
@@ -78,6 +83,117 @@ type CreateQuoteMessageParams = {
 
 const MESSAGE_COLUMNS =
   "id,quote_id,sender_id,sender_role,sender_name,sender_email,body,created_at,updated_at";
+const MESSAGE_COLUMNS_WITH_METADATA = `${MESSAGE_COLUMNS},metadata`;
+
+type AttachmentMeta = {
+  filename: string;
+  storageBucketId: string;
+  storagePath: string;
+  sizeBytes?: number | null;
+  mime?: string | null;
+  quoteFileId?: string | null;
+  downloadUrl?: string;
+};
+
+function normalizePath(value?: string | null): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  return raw.replace(/^\/+/, "");
+}
+
+function safeDownloadUrlForViewer(args: {
+  viewerRole: string | null;
+  viewerUserId: string | null;
+  bucket: string;
+  path: string;
+  filename: string;
+}): string | null {
+  const role = typeof args.viewerRole === "string" ? args.viewerRole.trim().toLowerCase() : "";
+  const bucket = normalizeId(args.bucket);
+  const path = normalizePath(args.path);
+  const filename = (args.filename ?? "").trim() || "file";
+  if (!bucket || !path) return null;
+
+  // Admin can use direct bucket/path (API enforces admin).
+  if (role === "admin") {
+    const qs = new URLSearchParams();
+    qs.set("bucket", bucket);
+    qs.set("path", path);
+    qs.set("disposition", "attachment");
+    qs.set("filename", filename);
+    return `/api/storage-download?${qs.toString()}`;
+  }
+
+  const viewerUserId = normalizeId(args.viewerUserId);
+  if (!viewerUserId) return null;
+
+  try {
+    const exp = Math.floor(Date.now() / 1000) + 60 * 60;
+    const token = signPreviewToken({ userId: viewerUserId, bucket, path, exp });
+    const qs = new URLSearchParams();
+    qs.set("token", token);
+    qs.set("disposition", "attachment");
+    qs.set("filename", filename);
+    return `/api/storage-download?${qs.toString()}`;
+  } catch {
+    return null;
+  }
+}
+
+function decorateMessagesForViewer(
+  messages: QuoteMessageRecord[],
+  viewer: { viewerRole: string | null; viewerUserId: string | null },
+): QuoteMessageRecord[] {
+  const role = typeof viewer.viewerRole === "string" ? viewer.viewerRole : null;
+  const viewerUserId = typeof viewer.viewerUserId === "string" ? viewer.viewerUserId : null;
+  if (!role && !viewerUserId) return messages;
+
+  return messages.map((message) => {
+    const meta = message?.metadata;
+    if (!meta || typeof meta !== "object") return message;
+
+    const record = meta as Record<string, unknown>;
+    const attachmentsRaw = record.attachments;
+    if (!Array.isArray(attachmentsRaw) || attachmentsRaw.length === 0) return message;
+
+    const attachments: AttachmentMeta[] = [];
+    for (const item of attachmentsRaw) {
+      if (!item || typeof item !== "object") continue;
+      const a = item as Record<string, unknown>;
+      const filename = typeof a.filename === "string" ? a.filename.trim() : "";
+      const storageBucketId = typeof a.storageBucketId === "string" ? a.storageBucketId.trim() : "";
+      const storagePath = typeof a.storagePath === "string" ? a.storagePath.trim() : "";
+      if (!filename || !storageBucketId || !storagePath) continue;
+
+      const downloadUrl = safeDownloadUrlForViewer({
+        viewerRole: role,
+        viewerUserId,
+        bucket: storageBucketId,
+        path: storagePath,
+        filename,
+      });
+
+      attachments.push({
+        filename,
+        storageBucketId,
+        storagePath,
+        sizeBytes: typeof a.sizeBytes === "number" ? a.sizeBytes : null,
+        mime: typeof a.mime === "string" ? a.mime : null,
+        quoteFileId: typeof a.quoteFileId === "string" ? a.quoteFileId : null,
+        ...(downloadUrl ? { downloadUrl } : {}),
+      });
+    }
+
+    if (attachments.length === 0) return message;
+
+    return {
+      ...message,
+      metadata: {
+        ...record,
+        attachments,
+      },
+    };
+  });
+}
 
 export async function loadQuoteMessages(
   input: LoadQuoteMessagesInput,
@@ -88,6 +204,14 @@ export async function loadQuoteMessages(
     typeof input === "object" && input !== null && "limit" in input
       ? normalizeLimit((input as { limit?: number }).limit)
       : 50;
+  const viewerRole =
+    typeof input === "object" && input !== null && "viewerRole" in input
+      ? ((input as { viewerRole?: string | null }).viewerRole ?? null)
+      : null;
+  const viewerUserId =
+    typeof input === "object" && input !== null && "viewerUserId" in input
+      ? ((input as { viewerUserId?: string | null }).viewerUserId ?? null)
+      : null;
 
   if (!normalizedQuoteId) {
     return {
@@ -99,12 +223,25 @@ export async function loadQuoteMessages(
   }
 
   try {
-    const { data, error } = await supabaseServer
-      .from("quote_messages")
-      .select(MESSAGE_COLUMNS)
-      .eq("quote_id", normalizedQuoteId)
-      .order("created_at", { ascending: true })
-      .limit(limit);
+    const run = async (columns: string) => {
+      const { data, error } = await supabaseServer
+        .from("quote_messages")
+        .select(columns)
+        .eq("quote_id", normalizedQuoteId)
+        .order("created_at", { ascending: true })
+        .limit(limit);
+      return { data, error };
+    };
+
+    const attempt1 = await run(MESSAGE_COLUMNS_WITH_METADATA);
+    let data = attempt1.data;
+    let error = attempt1.error;
+
+    if (error && isMissingTableOrColumnError(error)) {
+      const attempt2 = await run(MESSAGE_COLUMNS);
+      data = attempt2.data;
+      error = attempt2.error;
+    }
 
     if (error) {
       const serialized = serializeSupabaseError(error);
@@ -125,10 +262,14 @@ export async function loadQuoteMessages(
     }
 
     const rows = (data ?? []) as QuoteMessageRecord[];
+    const decorated = decorateMessagesForViewer(rows, {
+      viewerRole: typeof viewerRole === "string" ? viewerRole : null,
+      viewerUserId: typeof viewerUserId === "string" ? viewerUserId : null,
+    });
 
     return {
       ok: true,
-      messages: rows,
+      messages: decorated,
     };
   } catch (error) {
     console.error("[quote messages] load failed", {

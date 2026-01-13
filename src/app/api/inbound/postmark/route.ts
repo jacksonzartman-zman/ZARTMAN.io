@@ -4,7 +4,9 @@
  * - Bad auth → 403 { ok:false, error:"unauthorized" }
  * - Good auth but malformed payload → 400 { ok:false, error:"invalid_payload" }
  * - Good auth + valid payload but EMAIL_BRIDGE_SECRET missing → 200 { ok:false, error:"disabled" } (from handler)
- * - Good auth + valid payload + valid token → inserts quote_messages supplier message when supported
+ * - Good auth + valid payload + valid token → inserts quote_messages supplier/customer message when supported
+ * - Inbound with attachments → attachments uploaded + linked under message (best-effort)
+ * - Replay same webhook twice → dedupe prevents duplicate message insert (best-effort)
  */
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
@@ -17,6 +19,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const WARN_PREFIX = "[postmark_inbound]";
+const MAX_ATTACHMENTS = 5;
+const MAX_TOTAL_BYTES = 15 * 1024 * 1024; // 15MB
+const MAX_SINGLE_BYTES = 10 * 1024 * 1024; // 10MB
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -69,6 +74,57 @@ function coercePostmarkInboundEmail(payload: unknown): InboundEmail | null {
 
   if (!from || to.length === 0) return null;
 
+  const rawAttachments = Array.isArray(obj.Attachments) ? (obj.Attachments as unknown[]) : [];
+  let attachmentsCapped = false;
+  let totalDecoded = 0;
+  const mappedAttachments: NonNullable<InboundEmail["attachments"]> = [];
+
+  for (const entry of rawAttachments) {
+    if (!entry || typeof entry !== "object") continue;
+    const item = entry as Record<string, unknown>;
+    const name = normalizeString(item.Name);
+    const contentType = normalizeString(item.ContentType) || null;
+    const contentLength =
+      typeof item.ContentLength === "number" && Number.isFinite(item.ContentLength)
+        ? item.ContentLength
+        : null;
+    const contentBase64 = normalizeString(item.Content);
+    if (!name || !contentBase64) continue;
+
+    // Enforce caps (best-effort). We decode to get an actual size without trusting ContentLength.
+    const decoded = Buffer.from(contentBase64, "base64");
+    const decodedBytes = decoded.byteLength;
+    if (decodedBytes <= 0) continue;
+
+    if (mappedAttachments.length >= MAX_ATTACHMENTS) {
+      attachmentsCapped = true;
+      continue;
+    }
+    if (decodedBytes > MAX_SINGLE_BYTES) {
+      attachmentsCapped = true;
+      continue;
+    }
+    if (totalDecoded + decodedBytes > MAX_TOTAL_BYTES) {
+      attachmentsCapped = true;
+      continue;
+    }
+
+    totalDecoded += decodedBytes;
+    mappedAttachments.push({
+      name,
+      contentType,
+      contentLength: contentLength ?? decodedBytes,
+      contentBase64,
+    });
+  }
+
+  if (attachmentsCapped) {
+    warnOnce(
+      "postmark_inbound:attachments_capped",
+      `${WARN_PREFIX} attachments capped`,
+    );
+  }
+
   return {
     from,
     to,
@@ -78,6 +134,7 @@ function coercePostmarkInboundEmail(payload: unknown): InboundEmail | null {
     html: stringOrNull(obj.HtmlBody),
     date: stringOrNull(obj.Date),
     messageId: stringOrNull(obj.MessageID),
+    attachments: mappedAttachments.length > 0 ? mappedAttachments : undefined,
   };
 }
 
@@ -155,11 +212,7 @@ export async function POST(req: Request) {
     if (result.error === "token_invalid") {
       return NextResponse.json({ ok: false, error: "token_invalid" }, { status: 401 });
     }
-    if (result.error === "token_missing_or_malformed") {
-      return NextResponse.json({ ok: false, error: "token_missing_or_malformed" }, { status: 400 });
-    }
-
-    // Fail-soft: operational errors return 200 to avoid retries spam.
+    // Fail-soft: everything else returns 200 to avoid retries spam.
     return NextResponse.json({ ok: false, error: result.error || "unknown" }, { status: 200 });
   } catch {
     warnOnce("postmark_inbound:unknown", `${WARN_PREFIX} unknown error`);

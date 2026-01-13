@@ -567,7 +567,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       quote.internal_notes.trim().length > 0
         ? quote.internal_notes
         : null;
-    const messagesResult = await loadQuoteMessages(quote.id);
+    const messagesResult = await loadQuoteMessages({
+      quoteId: quote.id,
+      viewerRole: "admin",
+    });
     if (!messagesResult.ok) {
       console.error("Failed to load quote messages", {
         quoteId: quote.id,
