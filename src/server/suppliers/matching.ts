@@ -33,6 +33,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
+import { schemaGate } from "@/server/db/schemaContract";
 
 const DEFAULT_MATCH_LIMIT = 20;
 const DEFAULT_OPEN_QUOTE_FETCH_LIMIT = 50;
@@ -355,6 +356,13 @@ async function safeLoadQuoteRfqFeedbackSummaryByQuoteId(
   }
   if (ids.length === 0) return map;
   if (!isRfqFeedbackEnabled()) return map;
+  const hasSchema = await schemaGate({
+    enabled: true,
+    relation: "quote_rfq_feedback",
+    requiredColumns: ["quote_id", "supplier_id", "categories", "created_at"],
+    warnPrefix: "[rfq_feedback]",
+  });
+  if (!hasSchema) return map;
   if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return map;
 
   try {

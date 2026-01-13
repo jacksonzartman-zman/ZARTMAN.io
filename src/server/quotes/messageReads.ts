@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { schemaGate } from "@/server/db/schemaContract";
 import {
   handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
@@ -43,6 +44,16 @@ export async function markQuoteMessagesRead(input: {
   const userId = normalizeId(input.userId);
   if (!quoteId || !userId) {
     return { ok: false, reason: "invalid_input" };
+  }
+
+  const hasSchema = await schemaGate({
+    enabled: true,
+    relation: "quote_message_reads",
+    requiredColumns: ["quote_id", "user_id", "last_read_at"],
+    warnPrefix: "[message_reads]",
+  });
+  if (!hasSchema) {
+    return { ok: true };
   }
 
   if (isSupabaseRelationMarkedMissing("quote_message_reads")) {
@@ -141,8 +152,15 @@ export async function loadUnreadMessageSummary(input: {
   // at 0 but still surface last-message previews from `quote_messages`.
   type ReadRow = { quote_id: string; user_id: string; last_read_at: string };
   let reads: ReadRow[] = [];
-  let readsAvailable =
-    isMessageReadsEnabled() && !isSupabaseRelationMarkedMissing("quote_message_reads");
+  let readsAvailable = await schemaGate({
+    enabled: isMessageReadsEnabled(),
+    relation: "quote_message_reads",
+    requiredColumns: ["quote_id", "user_id", "last_read_at"],
+    warnPrefix: "[message_reads]",
+  });
+  if (readsAvailable && isSupabaseRelationMarkedMissing("quote_message_reads")) {
+    readsAvailable = false;
+  }
   try {
     if (readsAvailable) {
       const { data, error } = await supabaseServer

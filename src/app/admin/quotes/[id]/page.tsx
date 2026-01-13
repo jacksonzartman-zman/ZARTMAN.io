@@ -108,6 +108,7 @@ import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
+import { schemaGate } from "@/server/db/schemaContract";
 import {
   handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
@@ -443,6 +444,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       } else if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
         rfqFeedbackSchemaMissing = true;
       } else {
+        const hasSchema = await schemaGate({
+          enabled: true,
+          relation: "quote_rfq_feedback",
+          requiredColumns: ["quote_id", "supplier_id", "categories", "note", "created_at"],
+          warnPrefix: "[rfq_feedback]",
+        });
+        if (!hasSchema) {
+          rfqFeedbackSchemaMissing = true;
+        } else {
         const { data, error } = await supabaseServer
           .from("quote_rfq_feedback")
           .select("supplier_id,categories,note,created_at")
@@ -470,6 +480,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           }
         } else {
           rfqFeedbackRows = Array.isArray(data) ? data : [];
+        }
         }
       }
     } catch (error) {

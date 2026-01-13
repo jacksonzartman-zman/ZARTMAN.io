@@ -7,6 +7,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type SupplierReputationLabel =
   | "excellent"
@@ -627,6 +628,13 @@ async function safeLoadFeedbackBySupplierIds(args: {
   const ids = args.supplierIds;
   if (ids.length === 0) return new Map();
   if (!isRfqFeedbackEnabled()) return null;
+  const hasSchema = await schemaGate({
+    enabled: true,
+    relation: "quote_rfq_feedback",
+    requiredColumns: ["quote_id", "supplier_id", "categories", "created_at"],
+    warnPrefix: "[rfq_feedback]",
+  });
+  if (!hasSchema) return null;
   if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return null;
   const cutoffIso = new Date(Date.now() - args.lookbackDays * 24 * 60 * 60 * 1000).toISOString();
 

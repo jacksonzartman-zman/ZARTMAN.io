@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { classifyCadFileType } from "@/lib/cadRendering";
+import { requireSchema, schemaGate } from "@/server/db/schemaContract";
 import {
   handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
@@ -195,6 +196,15 @@ export async function loadCadFeaturesForQuote(
   const normalizedQuoteId = normalizeId(quoteId);
   if (!normalizedQuoteId) return {};
 
+  const uploadFilesSchema = await requireSchema({
+    relation: "quote_upload_files",
+    requiredColumns: ["quote_id", "id", "filename", "extension", "size_bytes", "created_at"],
+    warnPrefix: "[quote_upload_files]",
+    warnKey: "schema_contract:quote_upload_files:cad_features_load",
+  });
+  if (!uploadFilesSchema.ok && uploadFilesSchema.reason === "missing_relation") {
+    return {};
+  }
   if (isSupabaseRelationMarkedMissing("quote_upload_files")) return {};
 
   type UploadFileLite = {
@@ -207,73 +217,79 @@ export async function loadCadFeaturesForQuote(
   };
 
   let uploadFiles: Array<Record<string, unknown>> = [];
+  let shouldFallback = !uploadFilesSchema.ok;
 
   // Strategy:
   // - Attempt 1: safe select (no nested joins, no path)
   // - Attempt 2: select("*") if schema variant rejects attempt 1
   try {
-    const attempt1 = await supabaseServer
-      .from("quote_upload_files")
-      .select("id,quote_id,filename,extension,size_bytes,created_at")
-      .eq("quote_id", normalizedQuoteId)
-      .returns<UploadFileLite[]>();
+    if (uploadFilesSchema.ok) {
+      const attempt1 = await supabaseServer
+        .from("quote_upload_files")
+        .select("id,quote_id,filename,extension,size_bytes,created_at")
+        .eq("quote_id", normalizedQuoteId)
+        .returns<UploadFileLite[]>();
 
-    if (attempt1.error) {
-      if (
-        handleMissingSupabaseRelation({
-          relation: "quote_upload_files",
-          error: attempt1.error,
-          warnPrefix: "[quote_upload_files]",
-        })
-      ) {
-        return {};
-      }
-
-      if (isSupabaseSelectIncompatibleError(attempt1.error)) {
-        const serialized = serializeSupabaseError(attempt1.error);
-        warnOnce(
-          "quote_upload_files:select_incompatible",
-          "[quote_upload_files] select incompatible; falling back",
-          { code: serialized.code, message: serialized.message },
-        );
-
-        const attempt2 = await supabaseServer
-          .from("quote_upload_files")
-          .select("*")
-          .eq("quote_id", normalizedQuoteId);
-
-        if (attempt2.error) {
-          if (
-            handleMissingSupabaseRelation({
-              relation: "quote_upload_files",
-              error: attempt2.error,
-              warnPrefix: "[quote_upload_files]",
-            }) ||
-            isMissingTableOrColumnError(attempt2.error)
-          ) {
-            return {};
-          }
-
-          console.warn("[cad-features] quote_upload_files fallback load failed", {
-            quoteId: normalizedQuoteId,
-            error: serializeSupabaseError(attempt2.error) ?? attempt2.error,
-          });
+      if (!attempt1.error) {
+        uploadFiles = Array.isArray(attempt1.data)
+          ? (attempt1.data as unknown as Array<Record<string, unknown>>)
+          : [];
+      } else {
+        if (
+          handleMissingSupabaseRelation({
+            relation: "quote_upload_files",
+            error: attempt1.error,
+            warnPrefix: "[quote_upload_files]",
+          })
+        ) {
           return {};
         }
 
-        uploadFiles = Array.isArray(attempt2.data)
-          ? (attempt2.data as Array<Record<string, unknown>>)
-          : [];
-      } else {
-        console.warn("[cad-features] quote_upload_files load failed", {
+        if (isSupabaseSelectIncompatibleError(attempt1.error)) {
+          const serialized = serializeSupabaseError(attempt1.error);
+          warnOnce(
+            "quote_upload_files:select_incompatible",
+            "[quote_upload_files] select incompatible; falling back",
+            { code: serialized.code, message: serialized.message },
+          );
+          shouldFallback = true;
+        } else {
+          console.warn("[cad-features] quote_upload_files load failed", {
+            quoteId: normalizedQuoteId,
+            error: serializeSupabaseError(attempt1.error) ?? attempt1.error,
+          });
+          return {};
+        }
+      }
+    }
+
+    if (shouldFallback) {
+      const attempt2 = await supabaseServer
+        .from("quote_upload_files")
+        .select("*")
+        .eq("quote_id", normalizedQuoteId);
+
+      if (attempt2.error) {
+        if (
+          handleMissingSupabaseRelation({
+            relation: "quote_upload_files",
+            error: attempt2.error,
+            warnPrefix: "[quote_upload_files]",
+          }) ||
+          isMissingTableOrColumnError(attempt2.error)
+        ) {
+          return {};
+        }
+
+        console.warn("[cad-features] quote_upload_files fallback load failed", {
           quoteId: normalizedQuoteId,
-          error: serializeSupabaseError(attempt1.error) ?? attempt1.error,
+          error: serializeSupabaseError(attempt2.error) ?? attempt2.error,
         });
         return {};
       }
-    } else {
-      uploadFiles = Array.isArray(attempt1.data)
-        ? (attempt1.data as unknown as Array<Record<string, unknown>>)
+
+      uploadFiles = Array.isArray(attempt2.data)
+        ? (attempt2.data as Array<Record<string, unknown>>)
         : [];
     }
   } catch (error) {
@@ -299,6 +315,25 @@ export async function loadCadFeaturesForQuote(
     ),
   );
   if (fileIds.length === 0) return {};
+  const cadFeaturesSchema = await schemaGate({
+    enabled: true,
+    relation: "quote_cad_features",
+    requiredColumns: [
+      "quote_upload_file_id",
+      "file_size_bytes",
+      "cad_kind",
+      "triangle_count",
+      "bbox_min",
+      "bbox_max",
+      "approx_volume_mm3",
+      "approx_surface_area_mm2",
+      "complexity_score",
+      "dfm_flags",
+      "created_at",
+    ],
+    warnPrefix: "[cad-features]",
+  });
+  if (!cadFeaturesSchema) return {};
   if (isSupabaseRelationMarkedMissing("quote_cad_features")) return {};
 
   let featureRows: CadFeaturesRow[] = [];
@@ -384,6 +419,34 @@ export async function ensureCadFeaturesForQuote(
   const normalizedQuoteId = normalizeId(quoteId);
   if (!normalizedQuoteId) return;
 
+  const canUseUploads = await schemaGate({
+    enabled: true,
+    relation: "quote_upload_files",
+    requiredColumns: ["quote_id", "id", "filename", "extension", "size_bytes", "is_from_archive"],
+    warnPrefix: "[quote_upload_files]",
+  });
+  if (!canUseUploads) return;
+
+  const canUseCadFeatures = await schemaGate({
+    enabled: true,
+    relation: "quote_cad_features",
+    requiredColumns: [
+      "quote_upload_file_id",
+      "file_size_bytes",
+      "cad_kind",
+      "triangle_count",
+      "bbox_min",
+      "bbox_max",
+      "approx_volume_mm3",
+      "approx_surface_area_mm2",
+      "complexity_score",
+      "dfm_flags",
+      "created_at",
+    ],
+    warnPrefix: "[cad-features]",
+  });
+  if (!canUseCadFeatures) return;
+
   const cap =
     typeof opts?.maxNew === "number" && Number.isFinite(opts.maxNew)
       ? Math.max(0, Math.min(25, Math.floor(opts.maxNew)))
@@ -395,7 +458,7 @@ export async function ensureCadFeaturesForQuote(
       .from("quote_upload_files")
       .select("id,quote_id,path,filename,extension,size_bytes,is_from_archive")
       .eq("quote_id", normalizedQuoteId)
-      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .returns<QuoteUploadFileRow[]>();
 
     if (error) {

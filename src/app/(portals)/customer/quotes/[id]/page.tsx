@@ -73,6 +73,7 @@ import { loadCachedAiPartSuggestions } from "@/server/quotes/aiPartsSuggestions"
 import { formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { computeRfqQualitySummary, type SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
+import { schemaGate } from "@/server/db/schemaContract";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
   handleMissingSupabaseRelation,
@@ -371,6 +372,15 @@ export default async function CustomerQuoteDetailPage({
   ];
   try {
     if (isRfqFeedbackEnabled() && !isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
+      const hasSchema = await schemaGate({
+        enabled: true,
+        relation: "quote_rfq_feedback",
+        requiredColumns: ["quote_id", "supplier_id", "categories", "created_at"],
+        warnPrefix: "[rfq_feedback]",
+      });
+      if (!hasSchema) {
+        // Feature not enabled; keep empty counts.
+      } else {
       const { data, error } = await supabaseServer
         .from("quote_rfq_feedback")
         .select("categories,created_at")
@@ -406,6 +416,7 @@ export default async function CustomerQuoteDetailPage({
             customerFeedbackCounts[cat] = (customerFeedbackCounts[cat] ?? 0) + 1;
           }
         }
+      }
       }
     }
   } catch (error) {

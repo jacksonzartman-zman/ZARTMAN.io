@@ -21,6 +21,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
+import { schemaGate } from "@/server/db/schemaContract";
 import {
   buildUploadTargetForQuote,
   isAllowedQuoteUploadFileName,
@@ -443,6 +444,17 @@ export async function supplierDeclineRfqWithFeedbackAction(
     const supabase = createAuthClient();
     if (!isRfqFeedbackEnabled()) {
       // Feature disabled; don't attempt to persist.
+      revalidatePath("/supplier/rfqs");
+      revalidatePath("/supplier/quotes");
+      return { ok: true, message: "Thanks — feedback sent." };
+    }
+    const hasSchema = await schemaGate({
+      enabled: true,
+      relation: "quote_rfq_feedback",
+      requiredColumns: ["quote_id", "supplier_id", "categories", "note", "created_at"],
+      warnPrefix: "[rfq_feedback]",
+    });
+    if (!hasSchema) {
       revalidatePath("/supplier/rfqs");
       revalidatePath("/supplier/quotes");
       return { ok: true, message: "Thanks — feedback sent." };

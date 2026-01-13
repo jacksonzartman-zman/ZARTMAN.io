@@ -17,6 +17,7 @@ import {
   warnOnce,
 } from "@/server/admin/logging";
 import { isMessageReadsEnabled } from "@/server/quotes/messageReads";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type AdminThreadMessageAuthorRole = "customer" | "supplier" | "admin";
 export type AdminThreadNeedsReplyFrom = "supplier" | "customer";
@@ -96,7 +97,17 @@ export async function loadAdminThreadSlaForQuotes(input: {
 
   // Query 2 (best-effort): reads for the admin user to flag unread threads.
   if (adminUserId) {
-    if (!isMessageReadsEnabled()) {
+    const readsEnabled = isMessageReadsEnabled();
+    if (!readsEnabled) {
+      return result;
+    }
+    const hasReadsSchema = await schemaGate({
+      enabled: readsEnabled,
+      relation: "quote_message_reads",
+      requiredColumns: ["quote_id", "user_id", "last_read_at"],
+      warnPrefix: "[message_reads]",
+    });
+    if (!hasReadsSchema) {
       return result;
     }
     if (isSupabaseRelationMarkedMissing("quote_message_reads")) {
