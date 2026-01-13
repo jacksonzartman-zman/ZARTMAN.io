@@ -658,7 +658,7 @@ async function computeAdminNotifications(userId: string): Promise<NotificationDe
     }
     console.error("[notifications] compute failed", {
       type,
-      error: serializeSupabaseError(result.reason) ?? result.reason,
+      error: result.reason,
     });
   }
 
