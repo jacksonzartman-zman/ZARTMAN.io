@@ -141,10 +141,15 @@ function getServiceRoleSupabaseClient(): SupabaseClient | null {
 
 export async function getAdminQuotesInbox(
   args: AdminQuotesInboxArgs = {},
+  ctx?: { authenticatedAdminUserId?: string },
 ): Promise<AdminLoaderResult<AdminQuotesInboxData>> {
   // Defense-in-depth: admin routes are already gated in `src/app/admin/layout.tsx`,
   // but keep this here so service-role backed data can't be queried accidentally.
-  await requireAdminUser();
+  const authenticatedAdminUserId =
+    typeof ctx?.authenticatedAdminUserId === "string" ? ctx.authenticatedAdminUserId.trim() : "";
+  if (!authenticatedAdminUserId) {
+    await requireAdminUser();
+  }
 
   const page = normalizePage(args.page);
   const pageSize = normalizePageSize(args.pageSize);

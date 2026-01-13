@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminOverviewPage() {
   const admin = await requireAdminUser();
-  void refreshNotificationsForUser(admin.id, "admin").catch((error) => {
+  void refreshNotificationsForUser(admin.id, "admin", { authenticatedAdminUserId: admin.id }).catch((error) => {
     console.error("[notifications] refresh failed (admin)", { userId: admin.id, error });
   });
   const summary = await loadAdminOverview();

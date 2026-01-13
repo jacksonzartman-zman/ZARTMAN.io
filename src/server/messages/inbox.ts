@@ -631,9 +631,13 @@ export async function loadSupplierInbox(supplierUserId: string): Promise<InboxRo
   });
 }
 
-export async function loadAdminInbox(): Promise<InboxRow[]> {
-  const adminUser = await requireAdminUser();
-  const adminUserId = normalizeId(adminUser?.id);
+export async function loadAdminInbox(options?: {
+  authenticatedAdminUserId?: string;
+}): Promise<InboxRow[]> {
+  const authenticatedAdminUserId = normalizeId(options?.authenticatedAdminUserId);
+  const adminUser =
+    authenticatedAdminUserId ? null : await requireAdminUser();
+  const adminUserId = authenticatedAdminUserId || normalizeId(adminUser?.id);
   if (!adminUserId) return [];
 
   let quoteRows: QuoteRow[] = [];
