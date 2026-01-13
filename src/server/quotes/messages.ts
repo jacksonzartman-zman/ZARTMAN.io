@@ -314,11 +314,14 @@ export async function loadQuoteMessages(
     const run = async (columns: string) => {
       const { data, error } = await supabaseServer
         .from(QUOTE_MESSAGES_RELATION)
-        .select(columns)
+        .select(columns as any)
         .eq("quote_id", normalizedQuoteId)
         .order("created_at", { ascending: true })
         .limit(limit);
-      return { data, error };
+      return {
+        data: (Array.isArray(data) ? data : []) as unknown as Array<Record<string, unknown>>,
+        error,
+      };
     };
 
     // Strategy:
