@@ -4,6 +4,7 @@ import { requireAdminUser } from "@/server/auth";
 import { loadAdminSupplierDetail } from "@/server/admin/supplierDetail";
 import { loadBenchHealthForSupplier, type SupplierBenchHealth } from "@/server/admin/benchHealth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import SupplierTakeAction from "@/app/admin/suppliers/[id]/SupplierTakeAction";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +92,10 @@ export default async function AdminSupplierDetailPage({
   const overdueThreadCount =
     benchHealth?.healthBreakdown?.overdueThreadCount ?? benchHealth?.overdueThreadCount ?? 0;
   const needsReplyThreadCount = benchHealth?.healthBreakdown?.needsReplyThreadCount ?? 0;
+  const recommendedQuoteId = benchHealth?.recommendedQuoteId ?? null;
+  const supplierStatus = benchHealth?.supplierStatus ?? "unknown";
+  const statusSupported = Boolean(benchHealth?.statusSupported);
+  const supportsQuoteMessages = Boolean(benchHealth?.supportsQuoteMessages);
 
   return (
     <AdminDashboardShell
@@ -258,6 +263,16 @@ export default async function AdminSupplierDetailPage({
               >
                 View needs reply
               </Link>
+            </div>
+
+            <div className="mt-4">
+              <SupplierTakeAction
+                supplierId={detail.supplierId}
+                supplierStatus={supplierStatus}
+                statusSupported={statusSupported}
+                recommendedQuoteId={recommendedQuoteId}
+                supportsQuoteMessages={supportsQuoteMessages}
+              />
             </div>
           </div>
 

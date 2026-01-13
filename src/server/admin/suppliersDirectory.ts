@@ -17,6 +17,11 @@ export type AdminSupplierDirectoryRow = {
   capabilitySummary: string | null;
   lastActivityAt: string | null;
   status: AdminSupplierDirectoryStatus;
+  /**
+   * True when `suppliers.status` exists in this environment.
+   * Used for admin-only controls that must hide when unsupported.
+   */
+  statusSupported: boolean;
   mismatchCount: number | null;
   lastMismatchAt: string | null;
 };
@@ -118,8 +123,9 @@ export async function loadAdminSuppliersDirectory(args?: {
       : "all";
 
   // Core `suppliers` relation is not schema-gated. If `status` doesn't exist, we fall back
-  // to unfiltered results instead of emitting schemaContract warnings.
-  let canUseStatusColumn = statusFilter !== "all";
+  // without emitting schemaContract warnings. Prefer selecting `status` when available so
+  // downstream admin UIs can show pause/unpause controls safely.
+  let canUseStatusColumn = true;
 
   // Capability filter gate (optional).
   const canUseCapabilities = await schemaGate({
@@ -238,6 +244,7 @@ export async function loadAdminSuppliersDirectory(args?: {
           capabilitySummary: capabilityBySupplierId.get(supplierId) ?? null,
           lastActivityAt: lastActivityBySupplierId.get(supplierId) ?? null,
           status: computedStatus,
+          statusSupported: canUseStatusColumn,
           mismatchCount: mismatch ? mismatch.mismatchCount : null,
           lastMismatchAt: mismatch ? mismatch.lastMismatchAt : null,
         };
