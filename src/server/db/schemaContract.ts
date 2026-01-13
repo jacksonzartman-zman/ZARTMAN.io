@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
+  extractSupabaseSource,
   isMissingSupabaseRelationError,
   isMissingTableOrColumnError,
   isRowLevelSecurityDeniedError,
@@ -63,6 +64,13 @@ function normalizeErrorText(error: unknown): string {
   return parts.join(" ");
 }
 
+function readSupabaseErrorStatus(error: unknown): number | null {
+  const source = extractSupabaseSource(error);
+  if (!source || typeof source !== "object") return null;
+  const rawStatus = (source as any).status ?? (source as any).statusCode ?? null;
+  return typeof rawStatus === "number" && Number.isFinite(rawStatus) ? rawStatus : null;
+}
+
 function isMissingColumnSignal(error: unknown): boolean {
   const serialized = serializeSupabaseError(error);
   if (serialized.code === "42703") return true; // undefined_column
@@ -79,66 +87,55 @@ function isMissingColumnSignal(error: unknown): boolean {
 
 async function probeRelationExists(args: {
   relation: string;
-}): Promise<{ ok: true } | { ok: false; reason: ProbeFailReason }> {
+}): Promise<{ ok: true } | { ok: false; reason: ProbeFailReason; error?: unknown }> {
   try {
-    // Fast path: most tables have an `id` column.
-    const { error: idError } = await supabaseServer
+    // Column-agnostic existence probe: do not assume `id` is present.
+    const { error } = await supabaseServer
       .from(args.relation)
-      .select("id" as any, { head: true, count: "exact" })
+      .select("*" as any, { head: true, count: "exact" })
       .limit(1);
 
-    if (!idError) return { ok: true };
+    if (!error) return { ok: true };
 
-    if (isMissingSupabaseRelationError(idError)) {
-      return { ok: false, reason: "missing_relation" };
+    if (isMissingSupabaseRelationError(error)) {
+      return { ok: false, reason: "missing_relation", error };
     }
 
-    if (isRowLevelSecurityDeniedError(idError)) {
+    if (isRowLevelSecurityDeniedError(error)) {
       // Relation exists, but RLS/privileges block probing. Do not mark missing.
       return { ok: true };
     }
 
-    // If `id` isn't a column here, fall back to a minimal head-select.
-    if (isMissingColumnSignal(idError)) {
-      const { error: starError } = await supabaseServer
-        .from(args.relation)
-        .select("*" as any, { head: true, count: "exact" })
-        .limit(1);
-
-      if (!starError) return { ok: true };
-      if (isMissingSupabaseRelationError(starError)) {
-        return { ok: false, reason: "missing_relation" };
-      }
-      if (isRowLevelSecurityDeniedError(starError)) {
-        return { ok: true };
-      }
-      return { ok: false, reason: "unknown" };
-    }
-
-    return { ok: false, reason: "unknown" };
+    return { ok: false, reason: "unknown", error };
   } catch (error) {
     if (isMissingSupabaseRelationError(error)) {
-      return { ok: false, reason: "missing_relation" };
+      return { ok: false, reason: "missing_relation", error };
     }
     if (isRowLevelSecurityDeniedError(error)) {
       return { ok: true };
     }
-    return { ok: false, reason: "unknown" };
+    return { ok: false, reason: "unknown", error };
   }
 }
 
 async function probeColumnsExist(args: {
   relation: string;
   requiredColumns: string[];
-}): Promise<{ ok: true } | { ok: false; reason: ProbeFailReason; missing?: string[] }> {
+}): Promise<{ ok: true } | { ok: false; reason: ProbeFailReason; missing?: string[]; error?: unknown }> {
   if (args.requiredColumns.length === 0) {
     return await probeRelationExists({ relation: args.relation });
+  }
+
+  // First, do a column-agnostic relation existence probe.
+  const relationProbe = await probeRelationExists({ relation: args.relation });
+  if (!relationProbe.ok) {
+    return relationProbe;
   }
 
   const select = args.requiredColumns.join(",");
 
   const probeIndividually = async (): Promise<
-    { ok: true } | { ok: false; reason: ProbeFailReason; missing?: string[] }
+    { ok: true } | { ok: false; reason: ProbeFailReason; missing?: string[]; error?: unknown }
   > => {
     const missing: string[] = [];
     for (const col of args.requiredColumns) {
@@ -150,7 +147,7 @@ async function probeColumnsExist(args: {
 
         if (!colError) continue;
         if (isMissingSupabaseRelationError(colError)) {
-          return { ok: false, reason: "missing_relation" };
+          return { ok: false, reason: "missing_relation", error: colError };
         }
         if (isRowLevelSecurityDeniedError(colError)) {
           // If RLS blocks the probe, treat as "exists" for schema gating.
@@ -161,15 +158,15 @@ async function probeColumnsExist(args: {
           continue;
         }
         // Unknown error for this column; don't mark missing.
-        return { ok: false, reason: "unknown" };
+        return { ok: false, reason: "unknown", error: colError };
       } catch (colError) {
         if (isMissingSupabaseRelationError(colError)) {
-          return { ok: false, reason: "missing_relation" };
+          return { ok: false, reason: "missing_relation", error: colError };
         }
         if (isRowLevelSecurityDeniedError(colError)) {
           return { ok: true };
         }
-        return { ok: false, reason: "unknown" };
+        return { ok: false, reason: "unknown", error: colError };
       }
     }
 
@@ -193,7 +190,7 @@ async function probeColumnsExist(args: {
     }
 
     if (isMissingSupabaseRelationError(error)) {
-      return { ok: false, reason: "missing_relation" };
+      return { ok: false, reason: "missing_relation", error };
     }
 
     if (isRowLevelSecurityDeniedError(error)) {
@@ -204,21 +201,29 @@ async function probeColumnsExist(args: {
     // Deterministic missing-column classification: fall back to per-column probes
     // when we get a column-missing signal but can't reliably extract which one.
     if (isMissingColumnSignal(error) || isMissingTableOrColumnError(error)) {
-      return await probeIndividually();
+      const perCol = await probeIndividually();
+      if (!perCol.ok) {
+        return { ...perCol, error: perCol.error ?? error };
+      }
+      return perCol;
     }
 
-    return { ok: false, reason: "unknown" };
+    return { ok: false, reason: "unknown", error };
   } catch (error) {
     if (isMissingSupabaseRelationError(error)) {
-      return { ok: false, reason: "missing_relation" };
+      return { ok: false, reason: "missing_relation", error };
     }
     if (isRowLevelSecurityDeniedError(error)) {
       return { ok: true };
     }
     if (isMissingColumnSignal(error) || isMissingTableOrColumnError(error)) {
-      return await probeIndividually();
+      const perCol = await probeIndividually();
+      if (!perCol.ok) {
+        return { ...perCol, error: perCol.error ?? error };
+      }
+      return perCol;
     }
-    return { ok: false, reason: "unknown" };
+    return { ok: false, reason: "unknown", error };
   }
 }
 
@@ -309,10 +314,15 @@ export async function requireSchema(opts: RequireSchemaOpts): Promise<RelationPr
     };
 
     const warnKey = `${opts.warnKey ?? `schema_contract:${relation}`}:${result.reason}`;
+    const serialized = head.reason === "unknown" ? serializeSupabaseError(head.error) : null;
+    const status = head.reason === "unknown" ? readSupabaseErrorStatus(head.error) : null;
     warnOnce(warnKey, `${opts.warnPrefix} missing schema`, {
       relation,
       reason: result.reason,
       missing: result.missing,
+      code: head.reason === "unknown" ? serialized?.code : undefined,
+      message: head.reason === "unknown" ? serialized?.message : undefined,
+      status: head.reason === "unknown" ? status : undefined,
     });
 
     return result;
