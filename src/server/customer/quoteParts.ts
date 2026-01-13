@@ -4,6 +4,7 @@ import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { createAuthClient } from "@/server/auth";
 import { getCustomerByEmail, getCustomerByUserId } from "@/server/customers";
 import { serializeSupabaseError } from "@/server/admin/logging";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type CustomerQuotePartInput = {
   label: string;
@@ -214,6 +215,17 @@ export async function customerUpdateQuotePartFiles(args: {
   const uploadFilesById = new Map<string, QuoteUploadFileRow>();
 
   if (touchedFileIds.length > 0) {
+    const hasUploadsSchema = await schemaGate({
+      enabled: true,
+      relation: "quote_upload_files",
+      requiredColumns: ["id", "quote_id", "filename", "extension"],
+      warnPrefix: "[quote_upload_files]",
+    });
+    if (!hasUploadsSchema) {
+      // Optional feature: if upload-file metadata isn't present in this env, skip linking.
+      return;
+    }
+
     const { data: uploadFiles, error: uploadFilesError } = await supabase
       .from("quote_upload_files")
       .select("id,filename,extension")

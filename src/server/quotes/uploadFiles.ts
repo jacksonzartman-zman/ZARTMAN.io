@@ -2,6 +2,7 @@ import AdmZip from "adm-zip";
 import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { requireSchema, schemaGate } from "@/server/db/schemaContract";
 import { createAuthClient } from "@/server/auth";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { MAX_UPLOAD_BYTES } from "@/lib/uploads/uploadLimits";
@@ -818,6 +819,17 @@ async function appendFilesToQuoteUploadWithClient(args: {
     throw new Error("quote_upload_files_missing_paths");
   }
 
+  const canLoadIds = await schemaGate({
+    enabled: true,
+    relation: "quote_upload_files",
+    requiredColumns: ["quote_id", "upload_id", "path", "id"],
+    warnPrefix: "[quote_upload_files]",
+  });
+  if (!canLoadIds) {
+    // Optional feature: if the relation/schema isn't present, keep the upload but skip per-file ids.
+    return { uploadId, uploadFileIds: [] };
+  }
+
   const { data: uploadedEntries, error: uploadedEntriesError } = await supabase
     .from("quote_upload_files")
     .select("id,path")
@@ -864,6 +876,24 @@ export async function recordQuoteUploadFiles(args: {
 
   const rows = buildQuoteUploadFileRows({ quoteId, uploadId, storedFiles });
   if (rows.length === 0) {
+    return { ok: true, recorded: false };
+  }
+
+  const canRecord = await schemaGate({
+    enabled: true,
+    relation: "quote_upload_files",
+    requiredColumns: [
+      "quote_id",
+      "upload_id",
+      "path",
+      "filename",
+      "extension",
+      "size_bytes",
+      "is_from_archive",
+    ],
+    warnPrefix: "[quote_upload_files]",
+  });
+  if (!canRecord) {
     return { ok: true, recorded: false };
   }
 
@@ -959,83 +989,108 @@ export async function loadQuoteUploadGroups(
 
   const normalizedQuoteId = quoteId.trim();
 
+  const attempt1Schema = await requireSchema({
+    relation: "quote_upload_files",
+    requiredColumns: [
+      "quote_id",
+      "id",
+      "upload_id",
+      "filename",
+      "extension",
+      "size_bytes",
+      "is_from_archive",
+      "created_at",
+    ],
+    warnPrefix: "[quote_upload_files]",
+    warnKey: "schema_contract:quote_upload_files:load_groups",
+  });
+  if (!attempt1Schema.ok && attempt1Schema.reason === "missing_relation") {
+    return [];
+  }
+
   // Strategy:
   // - Attempt 1: minimal safe select (no nested joins, no path)
   // - Attempt 2: select("*") when schema variant rejects attempt 1
   let rows: Array<Record<string, unknown>> = [];
+  let shouldFallback = !attempt1Schema.ok;
   try {
-    const attempt1 = await supabaseServer
-      .from("quote_upload_files")
-      .select("id,upload_id,filename,extension,size_bytes,is_from_archive,created_at")
-      .eq("quote_id", normalizedQuoteId)
-      .returns<
-        Array<{
-          id: string;
-          upload_id: string;
-          filename: string | null;
-          extension: string | null;
-          size_bytes: number | null;
-          is_from_archive: boolean;
-          created_at: string | null;
-        }>
-      >();
+    if (attempt1Schema.ok) {
+      const attempt1 = await supabaseServer
+        .from("quote_upload_files")
+        .select("id,upload_id,filename,extension,size_bytes,is_from_archive,created_at")
+        .eq("quote_id", normalizedQuoteId)
+        .returns<
+          Array<{
+            id: string;
+            upload_id: string;
+            filename: string | null;
+            extension: string | null;
+            size_bytes: number | null;
+            is_from_archive: boolean;
+            created_at: string | null;
+          }>
+        >();
 
-    if (attempt1.error) {
-      if (
-        handleMissingSupabaseRelation({
-          relation: "quote_upload_files",
-          error: attempt1.error,
-          warnPrefix: "[quote_upload_files]",
-        })
-      ) {
-        return [];
-      }
-
-      if (isSupabaseSelectIncompatibleError(attempt1.error)) {
-        const serialized = serializeSupabaseError(attempt1.error);
-        warnOnce(
-          "quote_upload_files:select_incompatible",
-          "[quote_upload_files] select incompatible; falling back",
-          { code: serialized.code, message: serialized.message },
-        );
-
-        const attempt2 = await supabaseServer
-          .from("quote_upload_files")
-          .select("*")
-          .eq("quote_id", normalizedQuoteId);
-
-        if (attempt2.error) {
-          if (
-            handleMissingSupabaseRelation({
-              relation: "quote_upload_files",
-              error: attempt2.error,
-              warnPrefix: "[quote_upload_files]",
-            }) ||
-            isMissingTableOrColumnError(attempt2.error)
-          ) {
-            return [];
-          }
-
-          console.error("[quote upload files] fallback load failed", {
-            quoteId: normalizedQuoteId,
-            error: serializeSupabaseError(attempt2.error) ?? attempt2.error,
-          });
+      if (!attempt1.error) {
+        rows = Array.isArray(attempt1.data)
+          ? (attempt1.data as unknown as Array<Record<string, unknown>>)
+          : [];
+      } else {
+        if (
+          handleMissingSupabaseRelation({
+            relation: "quote_upload_files",
+            error: attempt1.error,
+            warnPrefix: "[quote_upload_files]",
+          })
+        ) {
           return [];
         }
 
-        rows = Array.isArray(attempt2.data)
-          ? (attempt2.data as Array<Record<string, unknown>>)
-          : [];
-      } else {
-        console.error("[quote upload files] failed to load entries", {
+        if (isSupabaseSelectIncompatibleError(attempt1.error)) {
+          const serialized = serializeSupabaseError(attempt1.error);
+          warnOnce(
+            "quote_upload_files:select_incompatible",
+            "[quote_upload_files] select incompatible; falling back",
+            { code: serialized.code, message: serialized.message },
+          );
+          shouldFallback = true;
+        } else {
+          console.error("[quote upload files] failed to load entries", {
+            quoteId: normalizedQuoteId,
+            error: serializeSupabaseError(attempt1.error) ?? attempt1.error,
+          });
+          return [];
+        }
+      }
+    }
+
+    if (shouldFallback) {
+      const attempt2 = await supabaseServer
+        .from("quote_upload_files")
+        .select("*")
+        .eq("quote_id", normalizedQuoteId);
+
+      if (attempt2.error) {
+        if (
+          handleMissingSupabaseRelation({
+            relation: "quote_upload_files",
+            error: attempt2.error,
+            warnPrefix: "[quote_upload_files]",
+          }) ||
+          isMissingTableOrColumnError(attempt2.error)
+        ) {
+          return [];
+        }
+
+        console.error("[quote upload files] fallback load failed", {
           quoteId: normalizedQuoteId,
-          error: serializeSupabaseError(attempt1.error) ?? attempt1.error,
+          error: serializeSupabaseError(attempt2.error) ?? attempt2.error,
         });
         return [];
       }
-    } else {
-      rows = Array.isArray(attempt1.data)
-        ? (attempt1.data as unknown as Array<Record<string, unknown>>)
+
+      rows = Array.isArray(attempt2.data)
+        ? (attempt2.data as Array<Record<string, unknown>>)
         : [];
     }
   } catch (error) {

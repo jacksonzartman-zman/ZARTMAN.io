@@ -4,6 +4,7 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type AdminQuotePartInput = {
   label: string;
@@ -128,6 +129,17 @@ export async function adminUpdateQuotePartFiles(args: {
   await assertPartBelongsToQuote({ quoteId, quotePartId });
 
   if (addFileIds.length > 0) {
+    const hasUploadsSchema = await schemaGate({
+      enabled: true,
+      relation: "quote_upload_files",
+      requiredColumns: ["id", "quote_id", "filename", "extension"],
+      warnPrefix: "[quote_upload_files]",
+    });
+    if (!hasUploadsSchema) {
+      // Optional feature: if upload-file metadata isn't present, skip linking.
+      return;
+    }
+
     let uploadFiles: QuoteUploadFileRow[] = [];
     try {
       const { data, error } = await supabaseServer

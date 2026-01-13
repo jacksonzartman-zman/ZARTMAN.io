@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { schemaGate } from "@/server/db/schemaContract";
 import { classifyUploadFileType } from "@/lib/uploads/classifyFileType";
 
 export type AiPartSuggestion = {
@@ -253,11 +254,21 @@ export async function generateAiPartSuggestionsForQuote(
       return { suggestions: [], modelVersion: "error" };
     }
 
+    const hasUploadsSchema = await schemaGate({
+      enabled: true,
+      relation: "quote_upload_files",
+      requiredColumns: ["quote_id", "id", "upload_id", "path", "filename", "extension", "is_from_archive", "size_bytes"],
+      warnPrefix: "[quote_upload_files]",
+    });
+    if (!hasUploadsSchema) {
+      return { suggestions: [], modelVersion };
+    }
+
     const { data: uploadFiles, error: uploadFilesError } = await supabaseServer
       .from("quote_upload_files")
       .select("id,upload_id,path,filename,extension,is_from_archive,size_bytes")
       .eq("quote_id", normalizedQuoteId)
-      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .returns<QuoteUploadFileRow[]>();
 
     if (uploadFilesError) {

@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type StepPreviewInfo = {
   quoteUploadFileId: string;
@@ -49,6 +50,16 @@ export async function ensureStepPreviewForFile(
 ): Promise<StepPreviewInfo | null> {
   const id = normalizeId(quoteUploadFileId);
   if (!id) return null;
+
+  const hasUploadsSchema = await schemaGate({
+    enabled: true,
+    relation: "quote_upload_files",
+    requiredColumns: ["id", "upload_id", "filename", "extension", "is_from_archive", "path"],
+    warnPrefix: "[quote_upload_files]",
+  });
+  if (!hasUploadsSchema) {
+    return null;
+  }
 
   const requestId = `step-preview-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 10)}`;
 

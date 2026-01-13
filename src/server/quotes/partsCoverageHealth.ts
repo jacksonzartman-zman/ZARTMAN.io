@@ -9,6 +9,7 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { schemaGate } from "@/server/db/schemaContract";
 
 type QuotePartRow = {
   id: string;
@@ -153,32 +154,40 @@ export async function loadPartsCoverageSignalsForQuotes(
 
   const uploadFilesById = new Map<string, QuoteUploadFileRow>();
   if (uploadFileIds.length > 0) {
-    try {
-      const { data, error } = await supabaseServer
-        .from("quote_upload_files")
-        .select("id,quote_id,path,filename,extension,size_bytes,is_from_archive")
-        .in("id", uploadFileIds)
-        .returns<QuoteUploadFileRow[]>();
+    const hasUploadsSchema = await schemaGate({
+      enabled: true,
+      relation: "quote_upload_files",
+      requiredColumns: ["id", "quote_id", "path", "filename", "extension", "size_bytes", "is_from_archive"],
+      warnPrefix: "[quote_upload_files]",
+    });
+    if (hasUploadsSchema) {
+      try {
+        const { data, error } = await supabaseServer
+          .from("quote_upload_files")
+          .select("id,quote_id,path,filename,extension,size_bytes,is_from_archive")
+          .in("id", uploadFileIds)
+          .returns<QuoteUploadFileRow[]>();
 
-      if (error) {
+        if (error) {
+          if (!isMissingTableOrColumnError(error)) {
+            console.error("[parts coverage] failed to load quote_upload_files", {
+              uploadFileIdsCount: uploadFileIds.length,
+              error: serializeSupabaseError(error),
+            });
+          }
+        } else if (Array.isArray(data)) {
+          for (const row of data) {
+            const id = normalizeId(row?.id);
+            if (id) uploadFilesById.set(id, row);
+          }
+        }
+      } catch (error) {
         if (!isMissingTableOrColumnError(error)) {
-          console.error("[parts coverage] failed to load quote_upload_files", {
+          console.error("[parts coverage] quote_upload_files load crashed", {
             uploadFileIdsCount: uploadFileIds.length,
             error: serializeSupabaseError(error),
           });
         }
-      } else if (Array.isArray(data)) {
-        for (const row of data) {
-          const id = normalizeId(row?.id);
-          if (id) uploadFilesById.set(id, row);
-        }
-      }
-    } catch (error) {
-      if (!isMissingTableOrColumnError(error)) {
-        console.error("[parts coverage] quote_upload_files load crashed", {
-          uploadFileIdsCount: uploadFileIds.length,
-          error: serializeSupabaseError(error),
-        });
       }
     }
   }

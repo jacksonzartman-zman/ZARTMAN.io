@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { schemaGate } from "@/server/db/schemaContract";
 import {
   handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
@@ -216,6 +217,13 @@ async function safeLoadMatchHealthBySupplierIds(
 
 async function safeLoadQuoteRfqFeedback(quoteId: string): Promise<QuoteRfqFeedbackRowLite[]> {
   if (!isRfqFeedbackEnabled()) return [];
+  const hasSchema = await schemaGate({
+    enabled: true,
+    relation: "quote_rfq_feedback",
+    requiredColumns: ["quote_id", "supplier_id", "categories", "note", "created_at"],
+    warnPrefix: "[rfq_feedback]",
+  });
+  if (!hasSchema) return [];
   if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return [];
   try {
     const { data, error } = await supabaseServer

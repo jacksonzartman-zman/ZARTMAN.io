@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { schemaGate } from "@/server/db/schemaContract";
 import {
   isMissingTableOrColumnError,
   isMissingSupabaseRelationError,
@@ -43,6 +44,23 @@ export async function loadQuoteMessageRollups(
     new Set((Array.isArray(quoteIds) ? quoteIds : []).map(normalizeId).filter(Boolean)),
   );
   if (ids.length === 0) return {};
+
+  const hasSchema = await schemaGate({
+    enabled: true,
+    relation: RELATION,
+    requiredColumns: [
+      "quote_id",
+      "last_admin_at",
+      "last_customer_at",
+      "last_supplier_at",
+      "last_system_at",
+      "last_message_at",
+    ],
+    warnPrefix: "[message_state]",
+  });
+  if (!hasSchema) {
+    return {};
+  }
 
   if (isSupabaseRelationMarkedMissing(RELATION)) {
     return {};

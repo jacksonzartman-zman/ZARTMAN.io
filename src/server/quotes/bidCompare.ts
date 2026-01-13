@@ -10,6 +10,7 @@ import {
 } from "@/server/admin/logging";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type BidComparisonRow = {
   quoteId: string;
@@ -326,6 +327,15 @@ export async function loadBidComparisonSummary(
   try {
     if (!isRfqFeedbackEnabled()) {
       // Feature disabled; keep defaults.
+    } else if (
+      !(await schemaGate({
+        enabled: true,
+        relation: "quote_rfq_feedback",
+        requiredColumns: ["quote_id", "supplier_id", "categories", "created_at"],
+        warnPrefix: "[rfq_feedback]",
+      }))
+    ) {
+      // Feature not enabled in this env; keep defaults.
     } else if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
       // Feature not enabled; keep defaults.
     } else {

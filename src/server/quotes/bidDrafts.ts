@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { schemaGate } from "@/server/db/schemaContract";
 import {
   handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
@@ -31,6 +32,16 @@ export async function loadSupplierBidDraft(input: {
 
   if (!isBidDraftsEnabled()) {
     // Feature disabled; do not query Supabase.
+    return { draft: null };
+  }
+
+  const hasSchema = await schemaGate({
+    enabled: true,
+    relation: RELATION,
+    requiredColumns: ["quote_id", "supplier_id", "draft"],
+    warnPrefix: "[bid_drafts]",
+  });
+  if (!hasSchema) {
     return { draft: null };
   }
 
@@ -116,6 +127,16 @@ export async function saveSupplierBidDraft(input: {
     return { ok: true };
   }
 
+  const hasSchema = await schemaGate({
+    enabled: true,
+    relation: RELATION,
+    requiredColumns: ["quote_id", "supplier_id", "draft"],
+    warnPrefix: "[bid_drafts]",
+  });
+  if (!hasSchema) {
+    return { ok: true };
+  }
+
   if (isSupabaseRelationMarkedMissing(RELATION)) {
     // Feature not enabled in this env; skip entirely.
     return { ok: true };
@@ -125,7 +146,6 @@ export async function saveSupplierBidDraft(input: {
     quote_id: quoteId,
     supplier_id: supplierId,
     draft: input.draft ?? null,
-    updated_at: new Date().toISOString(),
   };
 
   try {
