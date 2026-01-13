@@ -153,8 +153,9 @@ export async function loadAdminSuppliersDirectory(args?: {
   const select = canUseStatusColumn ? `${selectBase},status` : selectBase;
 
   try {
-    // Note: avoid `.returns<T>()` here so we can use `.or(...)` with current supabase-js typings.
-    let query = supabaseServer.from("suppliers").select(select);
+    // Note: `select()` typing expects a string literal; use `as any` for dynamic selects.
+    // Also avoid `.returns<T>()` here so we can use `.or(...)` with current supabase-js typings.
+    let query = supabaseServer.from("suppliers").select(select as any);
 
     if (q) {
       // Keep it simple and schema-stable: name/email search only.
@@ -183,7 +184,7 @@ export async function loadAdminSuppliersDirectory(args?: {
       return [];
     }
 
-    const suppliers = (Array.isArray(data) ? data : []) as SupplierBaseRow[];
+    const suppliers = (Array.isArray(data) ? (data as unknown) : []) as SupplierBaseRow[];
     const supplierIds = suppliers.map((row) => normalizeId(row?.id)).filter(Boolean);
 
     const [capabilityBySupplierId, lastActivityBySupplierId, mismatchBySupplierId] =
