@@ -10,6 +10,13 @@ import {
 } from "@/server/admin/logging";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export function isMessageReadsEnabled(): boolean {
+  const raw = process.env.MESSAGE_READS_ENABLED;
+  if (!raw) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
 export type QuoteMessageLastPreview = {
   body: string;
   created_at: string;
@@ -28,6 +35,10 @@ export async function markQuoteMessagesRead(input: {
   userId: string;
   supabase?: SupabaseClient;
 }): Promise<{ ok: true } | { ok: false; reason: string; error?: unknown }> {
+  if (!isMessageReadsEnabled()) {
+    return { ok: true };
+  }
+
   const quoteId = normalizeId(input.quoteId);
   const userId = normalizeId(input.userId);
   if (!quoteId || !userId) {
@@ -130,7 +141,8 @@ export async function loadUnreadMessageSummary(input: {
   // at 0 but still surface last-message previews from `quote_messages`.
   type ReadRow = { quote_id: string; user_id: string; last_read_at: string };
   let reads: ReadRow[] = [];
-  let readsAvailable = !isSupabaseRelationMarkedMissing("quote_message_reads");
+  let readsAvailable =
+    isMessageReadsEnabled() && !isSupabaseRelationMarkedMissing("quote_message_reads");
   try {
     if (readsAvailable) {
       const { data, error } = await supabaseServer
