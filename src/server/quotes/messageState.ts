@@ -129,3 +129,9 @@ export function computeAdminNeedsReply(rollup: QuoteMessageRollup): boolean {
   return externalMs > adminMs;
 }
 
+/**
+ * Quick verification (manual):
+ * - Customer or supplier sends a message → admin sees "Needs reply" (quotes list + quote detail) and a "message_needs_reply" notification.
+ * - Admin replies (admin/system sender_role) → "Needs reply" disappears on refresh and notification stops generating.
+ */
+

@@ -51,6 +51,7 @@ export type QuoteRow = {
   threadNeedsReplyFrom: AdminThreadNeedsReplyFrom | null;
   threadStalenessBucket: AdminThreadStalenessBucket;
   threadUnreadForAdmin: boolean;
+  adminNeedsReply: boolean;
   bidSummary: string;
   bidCountLabel: string;
   bestPriceLabel: string;
@@ -255,6 +256,11 @@ export default function QuotesTable({
                           ) : null}
                           {threadLabel}
                         </span>
+                        {row.adminNeedsReply ? (
+                          <span className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-100">
+                            Needs reply
+                          </span>
+                        ) : null}
                         {row.threadStalenessBucket === "very_stale" ? (
                           <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/60 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200">
                             Stale
