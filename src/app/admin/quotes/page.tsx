@@ -48,6 +48,10 @@ import {
 import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
 import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
 import { loadPartsCoverageSignalsForQuotes } from "@/server/quotes/partsCoverageHealth";
+import {
+  computeAdminNeedsReply,
+  loadQuoteMessageRollups,
+} from "@/server/quotes/messageState";
 
 export const dynamic = "force-dynamic";
 
@@ -91,10 +95,14 @@ export default async function AdminQuotesPage({
   const quoteIdsOnPage = baseRows
     .map((row) => (typeof row?.id === "string" ? row.id.trim() : ""))
     .filter(Boolean);
-  const threadSlaByQuoteId =
-    quoteIdsOnPage.length > 0 ? await loadAdminThreadSlaForQuotes({ quoteIds: quoteIdsOnPage }) : {};
-  const partsCoverageByQuoteId =
-    quoteIdsOnPage.length > 0 ? await loadPartsCoverageSignalsForQuotes(quoteIdsOnPage) : new Map();
+  const [threadSlaByQuoteId, partsCoverageByQuoteId, messageRollupsByQuoteId] =
+    quoteIdsOnPage.length > 0
+      ? await Promise.all([
+          loadAdminThreadSlaForQuotes({ quoteIds: quoteIdsOnPage }),
+          loadPartsCoverageSignalsForQuotes(quoteIdsOnPage),
+          loadQuoteMessageRollups(quoteIdsOnPage),
+        ])
+      : [{}, new Map(), {}];
 
   const nextWeekStartDateIso = getNextWeekStartDateIso();
 
@@ -168,6 +176,8 @@ export default async function AdminQuotesPage({
 
   const enrichedRows: QuoteRow[] = baseRows.map((row) => {
     const threadSla = threadSlaByQuoteId[row.id] ?? null;
+    const messageRollup = messageRollupsByQuoteId[row.id] ?? null;
+    const adminNeedsReply = messageRollup ? computeAdminNeedsReply(messageRollup) : false;
     const partsSignal = partsCoverageByQuoteId.get(row.id) ?? {
       partsCoverageHealth: "none" as const,
       partsCount: 0,
@@ -214,10 +224,11 @@ export default async function AdminQuotesPage({
       statusLabel: statusMeta.label,
       statusHelper: statusMeta.helper,
       statusClassName: statusMeta.pillClass,
-      threadLastMessageAt: threadSla?.lastMessageAt ?? null,
+      threadLastMessageAt: messageRollup?.lastMessageAt ?? threadSla?.lastMessageAt ?? null,
       threadNeedsReplyFrom: threadSla?.needsReplyFrom ?? null,
       threadStalenessBucket: threadSla?.stalenessBucket ?? "none",
       threadUnreadForAdmin: Boolean(threadSla?.unreadForAdmin),
+      adminNeedsReply,
       bidSummary: formatAdminBidSummary(aggregate),
       bidCountLabel,
       bestPriceLabel,

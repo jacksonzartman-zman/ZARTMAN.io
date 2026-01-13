@@ -3,7 +3,15 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
-import { loadCustomerInbox, loadSupplierInbox, loadAdminInbox } from "@/server/messages/inbox";
+import {
+  computeAdminNeedsReply,
+  loadQuoteMessageRollups,
+} from "@/server/quotes/messageState";
+import {
+  formatRelativeTimeCompactFromTimestamp,
+  toTimestamp,
+} from "@/lib/relativeTime";
+import { loadCustomerInbox, loadSupplierInbox } from "@/server/messages/inbox";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
@@ -685,40 +693,112 @@ async function computeMessageNeedsReplyNotifications(args: {
   role: "customer" | "supplier" | "admin";
 }): Promise<NotificationDescriptor[]> {
   try {
-    const rows =
-      args.role === "customer"
-        ? await loadCustomerInbox({ userId: args.userId, email: null })
-        : args.role === "supplier"
-          ? await loadSupplierInbox(args.userId)
-          : await loadAdminInbox({ authenticatedAdminUserId: args.userId });
+    if (args.role !== "admin") {
+      const rows =
+        args.role === "customer"
+          ? await loadCustomerInbox({ userId: args.userId, email: null })
+          : await loadSupplierInbox(args.userId);
 
-    const needs = args.role;
-    return (rows ?? [])
-      .filter((row) => row.needsReplyFrom === needs)
-      .slice(0, 50)
-      .map((row) => {
-        const quoteId = row.quoteId;
-        const title = "Message needs your reply";
-        const body = `${row.rfqLabel}: ${row.lastMessagePreview}`;
+      const needs = args.role;
+      return (rows ?? [])
+        .filter((row) => row.needsReplyFrom === needs)
+        .slice(0, 50)
+        .map((row) => {
+          const quoteId = row.quoteId;
+          const title = "Message needs your reply";
+          const body = `${row.rfqLabel}: ${row.lastMessagePreview}`;
 
-        const href =
-          args.role === "customer"
-            ? `/customer/quotes/${quoteId}?tab=messages#messages`
-            : args.role === "supplier"
-              ? `/supplier/quotes/${quoteId}?tab=messages#messages`
-              : `/admin/quotes/${quoteId}#messages`;
+          const href =
+            args.role === "customer"
+              ? `/customer/quotes/${quoteId}?tab=messages#messages`
+              : `/supplier/quotes/${quoteId}?tab=messages#messages`;
 
-        return {
-          userId: args.userId,
-          type: "message_needs_reply" as const,
-          entityType: "quote",
-          entityId: quoteId,
-          title,
-          body,
-          href,
-          createdAt: row.lastMessageAt,
-        };
+          return {
+            userId: args.userId,
+            type: "message_needs_reply" as const,
+            entityType: "quote",
+            entityId: quoteId,
+            title,
+            body,
+            href,
+            createdAt: row.lastMessageAt,
+          };
+        });
+    }
+
+    // Admin: compute "needs reply" from the rollup view (fail-soft if missing).
+    const LOOKBACK_DAYS = 60;
+    const CANDIDATE_LIMIT = 800;
+    const OUTPUT_LIMIT = 50;
+
+    type QuoteCandidateRow = {
+      id: string;
+      file_name: string | null;
+      company: string | null;
+      created_at: string | null;
+    };
+
+    let candidates: QuoteCandidateRow[] = [];
+    try {
+      const { data, error } = await supabaseServer
+        .from("quotes")
+        .select("id,file_name,company,created_at")
+        .gte("created_at", daysAgoIso(LOOKBACK_DAYS))
+        .order("created_at", { ascending: false })
+        .limit(CANDIDATE_LIMIT)
+        .returns<QuoteCandidateRow[]>();
+
+      if (error) {
+        if (isMissingTableOrColumnError(error)) return [];
+        console.error("[notifications] admin message candidates query failed", {
+          error: serializeSupabaseError(error) ?? error,
+        });
+        return [];
+      }
+      candidates = Array.isArray(data) ? data : [];
+    } catch (error) {
+      if (isMissingTableOrColumnError(error)) return [];
+      console.error("[notifications] admin message candidates query crashed", {
+        error: serializeSupabaseError(error) ?? error,
       });
+      return [];
+    }
+
+    const quoteIds = candidates.map((row) => normalizeId(row.id)).filter(Boolean);
+    if (quoteIds.length === 0) return [];
+
+    const rollupsByQuoteId = await loadQuoteMessageRollups(quoteIds);
+
+    const out: NotificationDescriptor[] = [];
+
+    for (const candidate of candidates) {
+      if (out.length >= OUTPUT_LIMIT) break;
+
+      const quoteId = normalizeId(candidate.id);
+      if (!quoteId) continue;
+
+      const rollup = rollupsByQuoteId[quoteId] ?? null;
+      if (!rollup) continue;
+      if (!computeAdminNeedsReply(rollup)) continue;
+
+      const quoteLabel = quoteLabelFromRow(candidate, quoteId);
+      const lastMessageAt = rollup.lastMessageAt;
+      const lastMessageTs = toTimestamp(lastMessageAt);
+      const rel = formatRelativeTimeCompactFromTimestamp(lastMessageTs);
+
+      out.push({
+        userId: args.userId,
+        type: "message_needs_reply",
+        entityType: "quote",
+        entityId: quoteId,
+        title: "Message needs reply",
+        body: `Quote ${quoteLabel}${rel ? ` · Last message ${rel}` : ""}`,
+        href: `/admin/quotes/${quoteId}#messages`,
+        createdAt: lastMessageAt ?? nowIso(),
+      });
+    }
+
+    return out;
   } catch (error) {
     console.error("[notifications] computeMessageNeedsReply failed", {
       role: args.role,

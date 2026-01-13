@@ -79,6 +79,10 @@ import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime
 import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
 import {
+  computeAdminNeedsReply,
+  loadQuoteMessageRollups,
+} from "@/server/quotes/messageState";
+import {
   getCapacitySnapshotsForSupplierWeek,
   type AdminCapacityLevel,
   type AdminCapacitySnapshotRow,
@@ -557,6 +561,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
     const threadSlaByQuoteId = await loadAdminThreadSlaForQuotes({ quoteIds: [quote.id] });
     const threadSla = threadSlaByQuoteId[quote.id] ?? null;
+    const messageRollupsByQuoteId = await loadQuoteMessageRollups([quote.id]);
+    const messageRollup = messageRollupsByQuoteId[quote.id] ?? null;
+    const adminNeedsReply = messageRollup ? computeAdminNeedsReply(messageRollup) : false;
+    const lastMessageAtForState =
+      messageRollup?.lastMessageAt ?? threadSla?.lastMessageAt ?? null;
     const lastMessage = quoteMessages.length > 0 ? quoteMessages[quoteMessages.length - 1] : null;
     const lastMessagePreview = lastMessage ? truncateThreadPreview(lastMessage.body, 80) : null;
     const bidsResult = await loadBidsForQuote(quote.id);
@@ -1038,16 +1047,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </p>
           </div>
           {(() => {
-            const needsReplyFrom = threadSla?.needsReplyFrom ?? "none";
-            const label = resolveThreadStatusLabel("admin", needsReplyFrom);
+            const label = adminNeedsReply ? "Needs reply" : "Up to date";
             const pillClasses =
-              label === "Needs your reply"
+              label === "Needs reply"
                 ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
                 : label === "Up to date"
                   ? "border-slate-800 bg-slate-950/50 text-slate-300"
-                  : label === "Status unknown"
-                    ? "border-slate-800 bg-slate-950/50 text-slate-400"
-                    : "border-slate-800 bg-slate-900/40 text-slate-200";
+                  : "border-slate-800 bg-slate-900/40 text-slate-200";
             return (
               <span
                 className={clsx(
@@ -1064,8 +1070,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         <div className="mt-4 space-y-2">
           <p className="text-xs text-slate-400">
             Last message{" "}
-            {threadSla?.lastMessageAt
-              ? formatRelativeTimeFromTimestamp(toTimestamp(threadSla.lastMessageAt)) ?? "—"
+            {lastMessageAtForState
+              ? formatRelativeTimeFromTimestamp(toTimestamp(lastMessageAtForState)) ?? "—"
               : "—"}
             {threadSla?.stalenessBucket === "very_stale" ? (
               <span className="ml-2 inline-flex rounded-full border border-slate-800 bg-slate-900/60 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-200">
@@ -1981,7 +1987,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   kickoffRatio: kickoffProgressRatio,
                   kickoffComplete: kickoffProgressBasis.isComplete,
                   messageCount: quoteMessages.length,
-                  needsReply: Boolean(threadSla?.needsReplyFrom),
+                  needsReply: adminNeedsReply,
                   fileCount: filePreviews.length,
                 })}
               />
@@ -2114,7 +2120,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   description="Thread SLA, kickoff status, routing health, and capacity."
                   defaultOpen
                   summary={
-                    threadSla?.needsReplyFrom ? (
+                    adminNeedsReply ? (
                       <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
                         Needs reply
                       </span>
@@ -2309,11 +2315,18 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               hashAliases={["messages-panel"]}
               title="Messages"
               description="Shared customer + supplier thread for this RFQ."
-              defaultOpen={Boolean(threadSla?.needsReplyFrom)}
+              defaultOpen={adminNeedsReply}
               summary={
-                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
-                  {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {adminNeedsReply ? (
+                    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
+                      Needs reply
+                    </span>
+                  ) : null}
+                  <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                    {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
+                  </span>
+                </div>
               }
             >
               {messagesContent}
