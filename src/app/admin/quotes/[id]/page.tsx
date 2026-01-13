@@ -18,6 +18,7 @@ import {
   type QuoteMessageRecord,
 } from "@/server/quotes/messages";
 import { getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
+import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
@@ -125,6 +126,7 @@ import {
   updateQuotePartFilesForQuoteAction,
 } from "./actions";
 import { AdminPartsFilesSection } from "./AdminPartsFilesSection";
+import { EmailSupplierForm } from "./EmailSupplierForm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1366,6 +1368,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
     const messagesUnavailable = Boolean(quoteMessagesError);
     const postMessageAction = postAdminQuoteMessage.bind(null, quote.id);
+    const outboundEmailEnabled = getEmailOutboundStatus().enabled;
     const messagesContent = (
       <div className="space-y-3">
         {supplierReplyToResult ? (
@@ -1388,6 +1391,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </p>
           </div>
         ) : null}
+        <EmailSupplierForm quoteId={quote.id} enabled={outboundEmailEnabled} />
         {messagesUnavailable ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
             Messages are temporarily unavailable. Refresh the page to try again.
