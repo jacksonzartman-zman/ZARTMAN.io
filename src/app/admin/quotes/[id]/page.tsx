@@ -81,6 +81,7 @@ import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
 import {
   computeAdminNeedsReply,
+  computeAdminThreadSla,
   loadQuoteMessageRollups,
 } from "@/server/quotes/messageState";
 import {
@@ -564,7 +565,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const threadSla = threadSlaByQuoteId[quote.id] ?? null;
     const messageRollupsByQuoteId = await loadQuoteMessageRollups([quote.id]);
     const messageRollup = messageRollupsByQuoteId[quote.id] ?? null;
-    const adminNeedsReply = messageRollup ? computeAdminNeedsReply(messageRollup) : false;
+    const adminThreadSla = messageRollup ? computeAdminThreadSla(messageRollup) : null;
+    const adminNeedsReply = adminThreadSla
+      ? adminThreadSla.status !== "clear"
+      : messageRollup
+        ? computeAdminNeedsReply(messageRollup)
+        : false;
+    const adminOverdue = adminThreadSla?.status === "overdue";
     const lastMessageAtForState =
       messageRollup?.lastMessageAt ?? threadSla?.lastMessageAt ?? null;
     const lastMessage = quoteMessages.length > 0 ? quoteMessages[quoteMessages.length - 1] : null;
@@ -1048,10 +1055,12 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </p>
           </div>
           {(() => {
-            const label = adminNeedsReply ? "Needs reply" : "Up to date";
+            const label = adminOverdue ? "Overdue" : adminNeedsReply ? "Needs reply" : "Up to date";
             const pillClasses =
-              label === "Needs reply"
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+              label === "Overdue"
+                ? "border-red-500/40 bg-red-500/10 text-red-100"
+                : label === "Needs reply"
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
                 : label === "Up to date"
                   ? "border-slate-800 bg-slate-950/50 text-slate-300"
                   : "border-slate-800 bg-slate-900/40 text-slate-200";
@@ -1065,7 +1074,16 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 >
                   {label}
                 </span>
-                {adminNeedsReply ? <ReplyNowButton quoteId={quote.id} /> : null}
+                {adminNeedsReply ? (
+                  <ReplyNowButton
+                    quoteId={quote.id}
+                    className={
+                      adminOverdue
+                        ? "bg-red-400 hover:bg-red-300 text-slate-950"
+                        : undefined
+                    }
+                  />
+                ) : null}
               </div>
             );
           })()}
@@ -2124,7 +2142,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   description="Thread SLA, kickoff status, routing health, and capacity."
                   defaultOpen
                   summary={
-                    adminNeedsReply ? (
+                    adminOverdue ? (
+                      <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-semibold text-red-100">
+                        Overdue
+                      </span>
+                    ) : adminNeedsReply ? (
                       <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
                         Needs reply
                       </span>
@@ -2322,7 +2344,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               defaultOpen={adminNeedsReply}
               summary={
                 <div className="flex flex-wrap items-center gap-2">
-                  {adminNeedsReply ? (
+                  {adminOverdue ? (
+                    <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-semibold text-red-100">
+                      Overdue
+                    </span>
+                  ) : adminNeedsReply ? (
                     <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-100">
                       Needs reply
                     </span>

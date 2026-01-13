@@ -16,6 +16,7 @@ import {
 } from "./listState";
 
 const SORT_OPTIONS: Array<{ value: AdminQuotesSortKey; label: string }> = [
+  { value: "inbox", label: "Inbox" },
   { value: "newest_rfq", label: "Newest RFQ" },
   { value: "latest_bid_activity", label: "Latest bid activity" },
   { value: "awarded_recently", label: "Awarded recently" },
@@ -45,6 +46,17 @@ export default function AdminQuotesInboxControls({
   const hasBids = Boolean(listState.hasBids);
   const awarded = Boolean(listState.awarded);
   const status = listState.status ?? "";
+
+  const messageFilter = (() => {
+    const raw = (searchParams.get("msg") ?? "").trim().toLowerCase();
+    switch (raw) {
+      case "needs_reply":
+      case "overdue":
+        return raw;
+      default:
+        return "all";
+    }
+  })();
 
   const partsCoverage = (() => {
     const raw = (searchParams.get("partsCoverage") ?? "").trim().toLowerCase();
@@ -76,6 +88,45 @@ export default function AdminQuotesInboxControls({
   return (
     <div className={clsx("flex flex-col gap-3", className)}>
       <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-300">Messages</span>
+          <div className="flex overflow-hidden rounded-full border border-slate-800 bg-slate-950/60">
+            {[
+              { value: "all", label: "All" },
+              { value: "needs_reply", label: "Needs reply" },
+              { value: "overdue", label: "Overdue" },
+            ].map((opt) => {
+              const active = messageFilter === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    const nextParams = new URLSearchParams(searchParams.toString());
+                    if (opt.value === "all") {
+                      nextParams.delete("msg");
+                    } else {
+                      nextParams.set("msg", opt.value);
+                    }
+                    navigateRawParams(nextParams);
+                  }}
+                  className={clsx(
+                    "px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition",
+                    active
+                      ? opt.value === "overdue"
+                        ? "bg-red-500/15 text-red-100"
+                        : "bg-amber-500/15 text-amber-100"
+                      : "text-slate-300 hover:bg-slate-900/50 hover:text-slate-100",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
           Sort
           <select

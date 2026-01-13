@@ -12,6 +12,7 @@ import {
 import type { AdminLoaderResult } from "@/server/admin/types";
 
 export type AdminQuotesInboxSort =
+  | "inbox"
   | "newest_rfq"
   | "latest_bid_activity"
   | "awarded_recently"
@@ -106,7 +107,7 @@ export type AdminQuotesInboxData = {
 
 export const ADMIN_QUOTES_INBOX_PAGE_SIZES = [10, 25, 50, 100] as const;
 const DEFAULT_PAGE_SIZE: (typeof ADMIN_QUOTES_INBOX_PAGE_SIZES)[number] = 25;
-const DEFAULT_SORT: AdminQuotesInboxSort = "newest_rfq";
+const DEFAULT_SORT: AdminQuotesInboxSort = "inbox";
 
 let warnedMissingAdminInboxSchema = false;
 let warnedMissingServiceRoleKey = false;
@@ -422,6 +423,7 @@ function normalizePageSize(value: unknown): number {
 function normalizeSort(value: unknown): AdminQuotesInboxSort {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   switch (normalized) {
+    case "inbox":
     case "latest_bid_activity":
     case "awarded_recently":
     case "most_bids":
@@ -462,6 +464,11 @@ function applySort<T>(query: T, sort: AdminQuotesInboxSort): T {
   };
 
   switch (sort) {
+    case "inbox":
+      // Phase 18.3.3: "inbox" ordering (overdue/needs-reply + last message) is applied
+      // in the page layer after message rollups are loaded (fail-soft when rollup missing).
+      q.order("created_at", { ascending: false });
+      return query;
     case "latest_bid_activity":
       q.order("latest_bid_at", { ascending: false, nullsFirst: false });
       q.order("created_at", { ascending: false });
