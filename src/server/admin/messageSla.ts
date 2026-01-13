@@ -7,10 +7,14 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import {
+  handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
   logAdminQuotesInfo,
   logAdminQuotesWarn,
+  markSupabaseRelationMissing,
   serializeSupabaseError,
+  warnOnce,
 } from "@/server/admin/logging";
 
 export type AdminThreadMessageAuthorRole = "customer" | "supplier" | "admin";
@@ -91,6 +95,9 @@ export async function loadAdminThreadSlaForQuotes(input: {
 
   // Query 2 (best-effort): reads for the admin user to flag unread threads.
   if (adminUserId) {
+    if (isSupabaseRelationMarkedMissing("quote_message_reads")) {
+      return result;
+    }
     try {
       type ReadRow = { quote_id: string; last_read_at: string | null };
       const { data, error } = await supabaseServer
@@ -101,6 +108,24 @@ export async function loadAdminThreadSlaForQuotes(input: {
         .returns<ReadRow[]>();
 
       if (error) {
+        if (
+          handleMissingSupabaseRelation({
+            relation: "quote_message_reads",
+            error,
+            warnPrefix: "[message_reads]",
+          })
+        ) {
+          return result;
+        }
+        if (isMissingTableOrColumnError(error)) {
+          markSupabaseRelationMissing("quote_message_reads");
+          const serialized = serializeSupabaseError(error);
+          warnOnce("missing_relation:quote_message_reads", "[message_reads] missing relation; skipping", {
+            code: serialized.code,
+            message: serialized.message,
+          });
+          return result;
+        }
         if (!isMissingTableOrColumnError(error)) {
           logAdminQuotesWarn("thread SLA query failed (reads)", {
             quoteIdsCount: normalizedQuoteIds.length,
@@ -132,6 +157,24 @@ export async function loadAdminThreadSlaForQuotes(input: {
         sla.unreadForAdmin = !lastReadAt ? true : sla.lastMessageAt > lastReadAt;
       }
     } catch (error) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_message_reads",
+          error,
+          warnPrefix: "[message_reads]",
+        })
+      ) {
+        return result;
+      }
+      if (isMissingTableOrColumnError(error)) {
+        markSupabaseRelationMissing("quote_message_reads");
+        const serialized = serializeSupabaseError(error);
+        warnOnce("missing_relation:quote_message_reads", "[message_reads] missing relation; skipping", {
+          code: serialized.code,
+          message: serialized.message,
+        });
+        return result;
+      }
       if (!isMissingTableOrColumnError(error)) {
         logAdminQuotesWarn("thread SLA query crashed (reads)", {
           quoteIdsCount: normalizedQuoteIds.length,

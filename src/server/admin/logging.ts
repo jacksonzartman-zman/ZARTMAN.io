@@ -259,6 +259,60 @@ export function isMissingSchemaError(error: unknown): boolean {
   return isMissingTableOrColumnError(error);
 }
 
+function normalizeSupabaseErrorText(error: unknown): string {
+  const serialized: SerializedSupabaseError = serializeSupabaseError(error);
+  const parts = [serialized.message, serialized.details, serialized.hint].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  return parts.join(" ").toLowerCase();
+}
+
+/**
+ * PostgREST select syntax / embedded resource parsing failures.
+ * (Most commonly shows up as `PGRST100` "failed to parse select".)
+ */
+export function isSupabaseSelectParseError(error: unknown): boolean {
+  const serialized = serializeSupabaseError(error);
+  const code = typeof serialized?.code === "string" ? serialized.code : null;
+  if (code === "PGRST100") return true;
+
+  const text = normalizeSupabaseErrorText(error);
+  return (
+    text.includes("failed to parse") ||
+    (text.includes("parse") && text.includes("select")) ||
+    text.includes("unexpected") ||
+    text.includes("syntax error")
+  );
+}
+
+/**
+ * "Unknown relationship" / "could not find foreign key relationship" errors when
+ * using embedded resources in a `select(...)`.
+ */
+export function isSupabaseUnknownRelationshipError(error: unknown): boolean {
+  const serialized = serializeSupabaseError(error);
+  const code = typeof serialized?.code === "string" ? serialized.code : null;
+  if (code === "PGRST200" || code === "PGRST201") return true;
+
+  const text = normalizeSupabaseErrorText(error);
+  return (
+    text.includes("relationship") &&
+    (text.includes("could not find") || text.includes("not found") || text.includes("unknown"))
+  );
+}
+
+/**
+ * Conservative guard for "this select string won't work on this schema variant".
+ * Used to implement safe fallbacks that avoid nested joins / brittle columns.
+ */
+export function isSupabaseSelectIncompatibleError(error: unknown): boolean {
+  return (
+    isSupabaseSelectParseError(error) ||
+    isSupabaseUnknownRelationshipError(error) ||
+    isMissingTableOrColumnError(error)
+  );
+}
+
 const RLS_DENIED_CODES = new Set([
   // Postgres: insufficient_privilege (commonly returned for RLS violations)
   "42501",

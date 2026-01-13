@@ -1,5 +1,13 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { classifyCadFileType } from "@/lib/cadRendering";
+import {
+  handleMissingSupabaseRelation,
+  isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
+  isSupabaseSelectIncompatibleError,
+  serializeSupabaseError,
+  warnOnce,
+} from "@/server/admin/logging";
 
 export type CadKind = "stl" | "obj" | "glb" | "step" | "unknown";
 
@@ -187,60 +195,186 @@ export async function loadCadFeaturesForQuote(
   const normalizedQuoteId = normalizeId(quoteId);
   if (!normalizedQuoteId) return {};
 
+  if (isSupabaseRelationMarkedMissing("quote_upload_files")) return {};
+
+  type UploadFileLite = {
+    id: string;
+    quote_id: string;
+    filename: string | null;
+    extension: string | null;
+    size_bytes: number | null;
+    created_at?: string | null;
+  };
+
+  let uploadFiles: Array<Record<string, unknown>> = [];
+
+  // Strategy:
+  // - Attempt 1: safe select (no nested joins, no path)
+  // - Attempt 2: select("*") if schema variant rejects attempt 1
+  try {
+    const attempt1 = await supabaseServer
+      .from("quote_upload_files")
+      .select("id,quote_id,filename,extension,size_bytes,created_at")
+      .eq("quote_id", normalizedQuoteId)
+      .returns<UploadFileLite[]>();
+
+    if (attempt1.error) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_upload_files",
+          error: attempt1.error,
+          warnPrefix: "[quote_upload_files]",
+        })
+      ) {
+        return {};
+      }
+
+      if (isSupabaseSelectIncompatibleError(attempt1.error)) {
+        const serialized = serializeSupabaseError(attempt1.error);
+        warnOnce(
+          "quote_upload_files:select_incompatible",
+          "[quote_upload_files] select incompatible; falling back",
+          { code: serialized.code, message: serialized.message },
+        );
+
+        const attempt2 = await supabaseServer
+          .from("quote_upload_files")
+          .select("*")
+          .eq("quote_id", normalizedQuoteId);
+
+        if (attempt2.error) {
+          if (
+            handleMissingSupabaseRelation({
+              relation: "quote_upload_files",
+              error: attempt2.error,
+              warnPrefix: "[quote_upload_files]",
+            }) ||
+            isMissingTableOrColumnError(attempt2.error)
+          ) {
+            return {};
+          }
+
+          console.warn("[cad-features] quote_upload_files fallback load failed", {
+            quoteId: normalizedQuoteId,
+            error: serializeSupabaseError(attempt2.error) ?? attempt2.error,
+          });
+          return {};
+        }
+
+        uploadFiles = Array.isArray(attempt2.data)
+          ? (attempt2.data as Array<Record<string, unknown>>)
+          : [];
+      } else {
+        console.warn("[cad-features] quote_upload_files load failed", {
+          quoteId: normalizedQuoteId,
+          error: serializeSupabaseError(attempt1.error) ?? attempt1.error,
+        });
+        return {};
+      }
+    } else {
+      uploadFiles = Array.isArray(attempt1.data)
+        ? (attempt1.data as unknown as Array<Record<string, unknown>>)
+        : [];
+    }
+  } catch (error) {
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_upload_files",
+        error,
+        warnPrefix: "[quote_upload_files]",
+      }) ||
+      isMissingTableOrColumnError(error)
+    ) {
+      return {};
+    }
+    console.warn("[cad-features] quote_upload_files load crashed", { quoteId: normalizedQuoteId, error });
+    return {};
+  }
+
+  const fileIds = Array.from(
+    new Set(
+      uploadFiles
+        .map((row) => normalizeId((row as any)?.id))
+        .filter(Boolean),
+    ),
+  );
+  if (fileIds.length === 0) return {};
+  if (isSupabaseRelationMarkedMissing("quote_cad_features")) return {};
+
+  let featureRows: CadFeaturesRow[] = [];
   try {
     const { data, error } = await supabaseServer
-      .from("quote_upload_files")
+      .from("quote_cad_features")
       .select(
-        [
-          "id",
-          "quote_id",
-          "path",
-          "filename",
-          "extension",
-          "size_bytes",
-          "is_from_archive",
-          "quote_cad_features(quote_upload_file_id,file_size_bytes,cad_kind,triangle_count,bbox_min,bbox_max,approx_volume_mm3,approx_surface_area_mm2,complexity_score,dfm_flags,created_at)",
-        ].join(","),
+        "quote_upload_file_id,file_size_bytes,cad_kind,triangle_count,bbox_min,bbox_max,approx_volume_mm3,approx_surface_area_mm2,complexity_score,dfm_flags,created_at",
       )
-      .eq("quote_id", normalizedQuoteId)
-      .order("created_at", { ascending: true })
-      .returns<Array<QuoteUploadFileRow & { quote_cad_features?: CadFeaturesRow[] | CadFeaturesRow | null }>>();
+      .in("quote_upload_file_id", fileIds)
+      .returns<CadFeaturesRow[]>();
 
     if (error) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_cad_features",
+          error,
+          warnPrefix: "[cad-features]",
+        }) ||
+        isMissingTableOrColumnError(error)
+      ) {
+        return {};
+      }
+
+      console.warn("[cad-features] quote_cad_features load failed", {
+        quoteId: normalizedQuoteId,
+        error: serializeSupabaseError(error) ?? error,
+      });
       return {};
     }
 
-    const out: Record<string, CadFeatureSummary> = {};
-    for (const row of data ?? []) {
-      const fileId = normalizeId(row?.id);
-      if (!fileId) continue;
-
-      const joined = (row as any)?.quote_cad_features;
-      const feature: CadFeaturesRow | null = Array.isArray(joined) ? (joined[0] ?? null) : joined ?? null;
-      if (!feature?.quote_upload_file_id) continue;
-
-      const dfmFlags = toStringArray(feature.dfm_flags);
-
-      out[fileId] = {
-        quoteUploadFileId: fileId,
-        fileSizeBytes: toFiniteNumber(feature.file_size_bytes) ?? 0,
-        cadKind: toCadKind(feature.cad_kind),
-        triangleCount: toFiniteNumber(feature.triangle_count),
-        bboxMin: toCadVec3(feature.bbox_min),
-        bboxMax: toCadVec3(feature.bbox_max),
-        approxVolumeMm3: toFiniteNumber(feature.approx_volume_mm3),
-        approxSurfaceAreaMm2: toFiniteNumber(feature.approx_surface_area_mm2),
-        complexityScore: toFiniteNumber(feature.complexity_score),
-        dfmFlags,
-        createdAt: typeof feature.created_at === "string" ? feature.created_at : null,
-      };
-    }
-
-    return out;
+    featureRows = Array.isArray(data) ? data : [];
   } catch (error) {
-    console.warn("[cad-features] load crashed", { quoteId: normalizedQuoteId, error });
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_cad_features",
+        error,
+        warnPrefix: "[cad-features]",
+      }) ||
+      isMissingTableOrColumnError(error)
+    ) {
+      return {};
+    }
+    console.warn("[cad-features] quote_cad_features load crashed", { quoteId: normalizedQuoteId, error });
     return {};
   }
+
+  const featureByFileId = new Map<string, CadFeaturesRow>();
+  for (const row of featureRows) {
+    const fileId = normalizeId(row?.quote_upload_file_id);
+    if (!fileId) continue;
+    // First row wins (we expect one per file due to unique constraint).
+    if (!featureByFileId.has(fileId)) {
+      featureByFileId.set(fileId, row);
+    }
+  }
+
+  const out: Record<string, CadFeatureSummary> = {};
+  for (const [fileId, feature] of featureByFileId.entries()) {
+    const dfmFlags = toStringArray(feature.dfm_flags);
+    out[fileId] = {
+      quoteUploadFileId: fileId,
+      fileSizeBytes: toFiniteNumber(feature.file_size_bytes) ?? 0,
+      cadKind: toCadKind(feature.cad_kind),
+      triangleCount: toFiniteNumber(feature.triangle_count),
+      bboxMin: toCadVec3(feature.bbox_min),
+      bboxMax: toCadVec3(feature.bbox_max),
+      approxVolumeMm3: toFiniteNumber(feature.approx_volume_mm3),
+      approxSurfaceAreaMm2: toFiniteNumber(feature.approx_surface_area_mm2),
+      complexityScore: toFiniteNumber(feature.complexity_score),
+      dfmFlags,
+      createdAt: typeof feature.created_at === "string" ? feature.created_at : null,
+    };
+  }
+
+  return out;
 }
 
 export async function ensureCadFeaturesForQuote(

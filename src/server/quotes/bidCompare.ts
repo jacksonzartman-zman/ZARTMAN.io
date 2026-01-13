@@ -9,6 +9,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
+import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 
 export type BidComparisonRow = {
   quoteId: string;
@@ -323,56 +324,57 @@ export async function loadBidComparisonSummary(
 
   // Supplier feedback on this quote
   try {
-    if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
+    if (!isRfqFeedbackEnabled()) {
+      // Feature disabled; keep defaults.
+    } else if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
       // Feature not enabled; keep defaults.
     } else {
-    const { data, error } = await supabaseServer
-      .from("quote_rfq_feedback")
-      .select("supplier_id,categories,created_at")
-      .eq("quote_id", normalizedQuoteId)
-      .order("created_at", { ascending: false })
-      .limit(100)
-      .returns<QuoteRfqFeedbackRow[]>();
+      const { data, error } = await supabaseServer
+        .from("quote_rfq_feedback")
+        .select("supplier_id,categories,created_at")
+        .eq("quote_id", normalizedQuoteId)
+        .order("created_at", { ascending: false })
+        .limit(100)
+        .returns<QuoteRfqFeedbackRow[]>();
 
-    if (error) {
-      if (
-        handleMissingSupabaseRelation({
-          relation: "quote_rfq_feedback",
-          error,
-          warnPrefix: "[rfq_feedback]",
-        })
-      ) {
-        // Feature not enabled; keep defaults.
-      } else
-      if (!isMissingTableOrColumnError(error)) {
-        console.warn("[bid compare] rfq feedback load failed", {
-          quoteId: normalizedQuoteId,
-          error: serializeSupabaseError(error) ?? error,
-        });
-      }
-    } else {
-      const bySupplier = new Map<string, Set<string>>();
-      const hasFeedback = new Set<string>();
-      for (const row of data ?? []) {
-        const supplierId = normalizeId(row?.supplier_id);
-        if (!supplierId) continue;
-        hasFeedback.add(supplierId);
-        if (!bySupplier.has(supplierId)) bySupplier.set(supplierId, new Set<string>());
-        for (const cat of Array.isArray(row?.categories) ? row.categories : []) {
-          if (typeof cat !== "string") continue;
-          const trimmed = cat.trim();
-          if (trimmed) bySupplier.get(supplierId)!.add(trimmed);
+      if (error) {
+        if (
+          handleMissingSupabaseRelation({
+            relation: "quote_rfq_feedback",
+            error,
+            warnPrefix: "[rfq_feedback]",
+          })
+        ) {
+          // Feature not enabled; keep defaults.
+        } else if (!isMissingTableOrColumnError(error)) {
+          console.warn("[bid compare] rfq feedback load failed", {
+            quoteId: normalizedQuoteId,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      } else {
+        const bySupplier = new Map<string, Set<string>>();
+        const hasFeedback = new Set<string>();
+        for (const row of data ?? []) {
+          const supplierId = normalizeId(row?.supplier_id);
+          if (!supplierId) continue;
+          hasFeedback.add(supplierId);
+          if (!bySupplier.has(supplierId)) bySupplier.set(supplierId, new Set<string>());
+          for (const cat of Array.isArray(row?.categories) ? row.categories : []) {
+            if (typeof cat !== "string") continue;
+            const trimmed = cat.trim();
+            if (trimmed) bySupplier.get(supplierId)!.add(trimmed);
+          }
+        }
+
+        for (const row of rows) {
+          if (!hasFeedback.has(row.supplierId)) continue;
+          row.declinedWithReasons = true;
+          row.declineCategories = Array.from(
+            bySupplier.get(row.supplierId) ?? new Set<string>(),
+          ).sort();
         }
       }
-
-      for (const row of rows) {
-        if (!hasFeedback.has(row.supplierId)) continue;
-        row.declinedWithReasons = true;
-        row.declineCategories = Array.from(
-          bySupplier.get(row.supplierId) ?? new Set<string>(),
-        ).sort();
-      }
-    }
     }
   } catch (error) {
     if (

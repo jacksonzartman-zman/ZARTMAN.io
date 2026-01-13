@@ -72,6 +72,7 @@ import { CustomerUploadsForm } from "./CustomerUploadsForm";
 import { loadCachedAiPartSuggestions } from "@/server/quotes/aiPartsSuggestions";
 import { formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { computeRfqQualitySummary, type SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
+import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
   handleMissingSupabaseRelation,
@@ -369,7 +370,7 @@ export default async function CustomerQuoteDetailPage({
     "timeline_unrealistic",
   ];
   try {
-    if (!isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
+    if (isRfqFeedbackEnabled() && !isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
       const { data, error } = await supabaseServer
         .from("quote_rfq_feedback")
         .select("categories,created_at")
