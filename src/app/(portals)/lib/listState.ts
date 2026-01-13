@@ -10,6 +10,11 @@ export type ListState<Sort extends string = string, Status extends string = stri
   status?: Status;
   hasBids?: boolean;
   awarded?: boolean;
+  /**
+   * Optional, list-specific filter key.
+   * (Used by /admin/quotes drill-downs from bench health.)
+   */
+  supplierId?: string;
   q: string;
 };
 
@@ -22,6 +27,7 @@ export type ListStateConfig<Sort extends string = string, Status extends string 
   qParam?: string;
   hasBidsParam?: string;
   awardedParam?: string;
+  supplierIdParam?: string;
 
   /** Defaults + validation */
   defaultPageSize?: PageSizeOption;
@@ -119,6 +125,7 @@ export function parseListState<Sort extends string = string, Status extends stri
     qParam = "q",
     hasBidsParam = "hasBids",
     awardedParam = "awarded",
+    supplierIdParam,
     pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
     defaultPageSize = 25,
     defaultSort,
@@ -140,6 +147,7 @@ export function parseListState<Sort extends string = string, Status extends stri
 
   const rawHasBids = readParam(searchParams, hasBidsParam);
   const rawAwarded = readParam(searchParams, awardedParam);
+  const rawSupplierId = supplierIdParam ? readParam(searchParams, supplierIdParam) : undefined;
 
   const page = normalizePage(rawPage);
   const pageSize = normalizePageSize(rawPageSize, pageSizeOptions, defaultPageSize);
@@ -148,6 +156,10 @@ export function parseListState<Sort extends string = string, Status extends stri
   const status = normalizeEnumValue(rawStatus, allowedStatuses, undefined);
 
   const q = typeof rawQ === "string" ? rawQ.trim() : "";
+  const supplierId =
+    typeof rawSupplierId === "string" && rawSupplierId.trim().length > 0
+      ? rawSupplierId.trim()
+      : undefined;
 
   return {
     page,
@@ -156,6 +168,7 @@ export function parseListState<Sort extends string = string, Status extends stri
     status,
     hasBids: normalizeBooleanFlag(rawHasBids),
     awarded: normalizeBooleanFlag(rawAwarded),
+    supplierId,
     q,
   };
 }
@@ -172,6 +185,7 @@ export function buildListQuery<Sort extends string = string, Status extends stri
     qParam = "q",
     hasBidsParam = "hasBids",
     awardedParam = "awarded",
+    supplierIdParam,
     defaultPageSize = 25,
     defaultSort,
   } = config;
@@ -189,6 +203,14 @@ export function buildListQuery<Sort extends string = string, Status extends stri
 
   if (state.hasBids) params.set(hasBidsParam, "1");
   if (state.awarded) params.set(awardedParam, "1");
+
+  if (supplierIdParam) {
+    const supplierId =
+      typeof state.supplierId === "string" ? state.supplierId.trim() : "";
+    if (supplierId.length > 0) {
+      params.set(supplierIdParam, supplierId);
+    }
+  }
 
   return params.toString();
 }
