@@ -46,11 +46,15 @@ import {
   type CapacityLevel,
 } from "@/server/admin/capacity";
 import { getNextWeekStartDateIso } from "@/lib/dates/weekStart";
-import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
-import { loadPartsCoverageSignalsForQuotes } from "@/server/quotes/partsCoverageHealth";
+import { loadAdminThreadSlaForQuotes, type AdminThreadSla } from "@/server/admin/messageSla";
+import {
+  loadPartsCoverageSignalsForQuotes,
+  type QuotePartsCoverageSignal,
+} from "@/server/quotes/partsCoverageHealth";
 import {
   computeAdminNeedsReply,
   loadQuoteMessageRollups,
+  type QuoteMessageRollup,
 } from "@/server/quotes/messageState";
 
 export const dynamic = "force-dynamic";
@@ -95,14 +99,20 @@ export default async function AdminQuotesPage({
   const quoteIdsOnPage = baseRows
     .map((row) => (typeof row?.id === "string" ? row.id.trim() : ""))
     .filter(Boolean);
+  const emptyThreadSlaByQuoteId: Record<string, AdminThreadSla> = {};
+  const emptyPartsCoverageByQuoteId = new Map<string, QuotePartsCoverageSignal>();
+  const emptyMessageRollupsByQuoteId: Record<string, QuoteMessageRollup> = {};
+
+  const enrichmentPromises = [
+    loadAdminThreadSlaForQuotes({ quoteIds: quoteIdsOnPage }),
+    loadPartsCoverageSignalsForQuotes(quoteIdsOnPage),
+    loadQuoteMessageRollups(quoteIdsOnPage),
+  ] as const;
+
   const [threadSlaByQuoteId, partsCoverageByQuoteId, messageRollupsByQuoteId] =
     quoteIdsOnPage.length > 0
-      ? await Promise.all([
-          loadAdminThreadSlaForQuotes({ quoteIds: quoteIdsOnPage }),
-          loadPartsCoverageSignalsForQuotes(quoteIdsOnPage),
-          loadQuoteMessageRollups(quoteIdsOnPage),
-        ])
-      : [{}, new Map(), {}];
+      ? await Promise.all(enrichmentPromises)
+      : [emptyThreadSlaByQuoteId, emptyPartsCoverageByQuoteId, emptyMessageRollupsByQuoteId];
 
   const nextWeekStartDateIso = getNextWeekStartDateIso();
 
