@@ -64,6 +64,8 @@ import {
   loadQuoteMessages,
   type QuoteMessageRecord,
 } from "@/server/quotes/messages";
+import { getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
+import { CopyTextButton } from "@/components/CopyTextButton";
 import {
   loadQuoteKickoffTasksForSupplier,
   type SupplierKickoffTasksResult,
@@ -955,6 +957,17 @@ function SupplierQuoteWorkspace({
     </DisclosureSection>
   );
 
+  const replyToResult = getSupplierReplyToAddress({
+    quoteId: quote.id,
+    supplierId: profile.supplier.id,
+  });
+  const replyToAddress = replyToResult.ok ? replyToResult.address : "";
+  const replyToStatusCopy = replyToResult.ok
+    ? "Reply via email to update the thread."
+    : replyToResult.reason === "disabled"
+      ? "Email reply not configured."
+      : "Email reply address unavailable.";
+
   const capacityLevelsByCapability = new Map<string, string>();
   const capacityUniverse = ["cnc_mill", "cnc_lathe", "mjp", "sla"] as const;
   const universeSet = new Set<string>(capacityUniverse);
@@ -1099,6 +1112,21 @@ function SupplierQuoteWorkspace({
                   ) : null}
                 </div>
               </div>
+            </div>
+          </PortalCard>
+          <PortalCard title="Email this thread" description="Reply via email to post a supplier message.">
+            <div className="space-y-3">
+              <p className="text-xs text-slate-400">{replyToStatusCopy}</p>
+              <div className="flex flex-col gap-2">
+                <p className="break-anywhere rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2 text-xs text-slate-100">
+                  {replyToAddress || "Not configured"}
+                </p>
+                <CopyTextButton text={replyToAddress} idleLabel="Copy email address" logPrefix="[email_bridge]" />
+              </div>
+              <p className="text-xs text-slate-500">
+                Tip: keep the <span className="font-semibold text-slate-300">To</span> address unchanged so we can
+                attach your reply to this RFQ.
+              </p>
             </div>
           </PortalCard>
           {filesSection}
