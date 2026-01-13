@@ -1,6 +1,10 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import { schemaGate } from "@/server/db/schemaContract";
+import {
+  handleMissingSupabaseSchema,
+  isSupabaseRelationMarkedMissing,
+} from "@/server/admin/logging";
 
 export type SupplierMismatchSummary = {
   mismatchCount: number;
@@ -11,6 +15,13 @@ type MismatchLogRow = {
   supplier_id: string | null;
   created_at: string | null;
 };
+
+export function isSupplierMismatchLogsEnabled(): boolean {
+  const raw = process.env.SUPPLIER_MISMATCH_LOGS_ENABLED;
+  if (!raw) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -24,6 +35,11 @@ function normalizeId(value: unknown): string {
 export async function loadSupplierMismatchSummary(
   supplierIds: readonly (string | null | undefined)[],
 ): Promise<Record<string, SupplierMismatchSummary>> {
+  // Default-off: when disabled, make ZERO Supabase requests (no schema probe, no relation query).
+  if (!isSupplierMismatchLogsEnabled()) {
+    return {};
+  }
+
   await requireAdminUser();
 
   const ids = Array.from(
@@ -35,6 +51,12 @@ export async function loadSupplierMismatchSummary(
 
   // Roadmap-dependent table: only query if present.
   const RELATION = "supplier_capability_mismatch_logs";
+
+  // If we've already detected the relation is missing in this process, skip entirely (no probe, no query).
+  if (isSupabaseRelationMarkedMissing(RELATION)) {
+    return {};
+  }
+
   const enabled = await schemaGate({
     enabled: true,
     relation: RELATION,
@@ -57,6 +79,15 @@ export async function loadSupplierMismatchSummary(
       .returns<MismatchLogRow[]>();
 
     if (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: RELATION,
+          error,
+          warnPrefix: "[supplier_mismatch]",
+        })
+      ) {
+        return {};
+      }
       return {};
     }
 
@@ -80,7 +111,16 @@ export async function loadSupplierMismatchSummary(
     }
 
     return output;
-  } catch {
+  } catch (error) {
+    if (
+      handleMissingSupabaseSchema({
+        relation: RELATION,
+        error,
+        warnPrefix: "[supplier_mismatch]",
+      })
+    ) {
+      return {};
+    }
     return {};
   }
 }
