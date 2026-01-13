@@ -480,6 +480,7 @@ function filterAndSanitizeTimelineEvents(
       "capacity_updated",
       "capacity_update_requested",
       "kickoff_nudged",
+      "kickoff_task_completed",
     ]);
     const supplierId = normalizeId(viewer.supplierId) || null;
     const supplierEmail =
@@ -508,6 +509,7 @@ function filterAndSanitizeTimelineEvents(
           type === "bid_received" ||
           type === "kickoff_updated" ||
           type === "kickoff_nudged" ||
+          type === "kickoff_task_completed" ||
           type === "bid_won" ||
           type === "capacity_updated" ||
           type === "capacity_update_requested"

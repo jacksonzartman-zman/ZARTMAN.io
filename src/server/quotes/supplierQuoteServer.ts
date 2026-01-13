@@ -829,6 +829,7 @@ export async function completeKickoffTaskImpl(
     }
 
     const supabase = createAuthClient();
+    const now = new Date().toISOString();
     const result = await toggleSupplierKickoffTask(
       {
       quoteId,
@@ -838,6 +839,9 @@ export async function completeKickoffTaskImpl(
       title,
       description,
       sortOrder,
+      completedAt: completed ? now : null,
+      completedByUserId: completed ? user.id : null,
+      completedByRole: completed ? "supplier" : null,
       },
       { supabase },
     );
@@ -915,6 +919,18 @@ export async function completeKickoffTaskImpl(
         total_count: kickoffSummary?.totalCount ?? null,
       },
     });
+
+    if (completed) {
+      void emitQuoteEvent({
+        quoteId,
+        eventType: "kickoff_task_completed",
+        actorRole: "supplier",
+        actorUserId: user.id,
+        actorSupplierId: resolvedSupplierId,
+        metadata: { taskKey, supplier_id: resolvedSupplierId },
+        createdAt: now,
+      });
+    }
 
     revalidatePath(`/supplier/quotes/${quoteId}`);
     revalidatePath("/supplier");

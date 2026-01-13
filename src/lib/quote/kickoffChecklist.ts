@@ -14,6 +14,9 @@ export type SupplierKickoffTask = {
   title: string;
   description: string | null;
   completed: boolean;
+  completedAt?: string | null;
+  completedByUserId?: string | null;
+  completedByRole?: "admin" | "supplier" | "system" | null;
   sortOrder: number | null;
   updatedAt: string | null;
 };
@@ -32,38 +35,38 @@ export type KickoffTasksSummary = {
 
 export const DEFAULT_SUPPLIER_KICKOFF_TASKS: KickoffChecklistTaskDefinition[] = [
   {
-    taskKey: "review-rfq",
-    title: "Review the RFQ and final drawings",
+    taskKey: "confirm_lead_time",
+    title: "Confirm lead time + ship date",
     description:
-      "Double-check geometry, tolerances, and any redlines before cutting chips.",
+      "Confirm lead time and the target ship date so everyone can plan.",
     sortOrder: 1,
   },
   {
-    taskKey: "confirm-material",
-    title: "Confirm material and finishing plan",
+    taskKey: "confirm_material_finish",
+    title: "Confirm material + finish plan",
     description:
-      "Lock in stock availability, finishing partners, and any outside processes.",
+      "Align on material availability, finishing, and any outside processes.",
     sortOrder: 2,
   },
   {
-    taskKey: "confirm-start-date",
-    title: "Confirm your internal start date",
+    taskKey: "confirm_drawing_rev",
+    title: "Confirm drawing revision / redlines",
     description:
-      "Align with programming and machine scheduling so we can communicate a firm kickoff.",
+      "Confirm the correct drawing revision and any redlines before production.",
     sortOrder: 3,
   },
   {
-    taskKey: "acknowledge-delivery",
-    title: "Acknowledge the delivery window and ship method",
+    taskKey: "confirm_qty_pricing",
+    title: "Confirm quantity + final price",
     description:
-      "Make sure packaging, transit time, and carrier preferences are locked down.",
+      "Confirm quantities, pricing, and any final commercial details.",
     sortOrder: 4,
   },
   {
-    taskKey: "share-dfm-clarifications",
-    title: "Share any DFM clarifications or open questions",
+    taskKey: "confirm_shipping",
+    title: "Confirm ship-to, incoterms, packaging",
     description:
-      "Tell us about tooling tweaks, risk areas, or anything the customer should know before PO release.",
+      "Confirm ship-to address, incoterms, packaging, and carrier details.",
     sortOrder: 5,
   },
 ];

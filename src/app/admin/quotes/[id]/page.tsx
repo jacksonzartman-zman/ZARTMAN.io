@@ -61,6 +61,7 @@ import {
   formatKickoffSummaryLabel,
   type SupplierKickoffTasksResult,
 } from "@/server/quotes/kickoffTasks";
+import { AdminKickoffTasksCard } from "./AdminKickoffTasksCard";
 import {
   resolveKickoffProgressBasis,
   formatKickoffTasksRatio,
@@ -2289,6 +2290,17 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 projectUnavailable={projectUnavailable}
                 className={cardClasses}
               />
+              <div className="mt-4">
+                <AdminKickoffTasksCard
+                  hasWinner={hasWinningBid}
+                  tasks={
+                    supplierKickoffTasksResult?.ok
+                      ? supplierKickoffTasksResult.tasks
+                      : []
+                  }
+                  unavailable={hasWinningBid && !(supplierKickoffTasksResult?.ok ?? false)}
+                />
+              </div>
             </DisclosureSection>
 
             <DisclosureSection

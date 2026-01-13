@@ -15,7 +15,6 @@ import {
   type SupplierKickoffTask,
 } from "@/lib/quote/kickoffChecklist";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
-import { completeKickoffTask } from "./actions";
 import type { SupplierKickoffFormState } from "@/server/quotes/supplierQuoteServer";
 
 type SupplierKickoffChecklistCardProps = {
@@ -63,6 +62,10 @@ export function SupplierKickoffChecklistCard({
     if (readOnly) {
       return;
     }
+    if (nextCompleted !== true) {
+      // MVP: completion-only UI (no "mark incomplete" action).
+      return;
+    }
     setResult(null);
     setPendingTaskKey(task.taskKey);
     setLocalTasks((current) =>
@@ -74,31 +77,35 @@ export function SupplierKickoffChecklistCard({
     );
 
     startTransition(() => {
-      completeKickoffTask({
-        quoteId,
-        taskKey: task.taskKey,
-        completed: nextCompleted,
-        title: task.title,
-        description: task.description,
-        sortOrder: task.sortOrder,
+      fetch(`/api/supplier/quotes/${quoteId}/kickoff-tasks/${task.taskKey}/complete`, {
+        method: "POST",
       })
-        .then((actionResult) => {
-          setResult(actionResult);
-          if (!actionResult.ok) {
+        .then(async (res) => {
+          const payload = (await res.json().catch(() => null)) as
+            | { ok?: boolean; error?: string }
+            | null;
+          const ok = Boolean(payload?.ok);
+          if (!ok) {
+            setResult({
+              ok: false,
+              error: "We couldn’t update that task. Try again or refresh the page.",
+            });
             setLocalTasks((current) =>
               current.map((entry) =>
                 entry.taskKey === task.taskKey
-                  ? { ...entry, completed: !nextCompleted }
+                  ? { ...entry, completed: false }
                   : entry,
               ),
             );
             return;
           }
+
+          setResult({ ok: true, message: "Marked task complete." });
           // Keep the rail + at-a-glance pills in sync.
           router.refresh();
         })
         .catch((error) => {
-          console.error("[supplier kickoff tasks] action crashed", {
+          console.error("[supplier kickoff tasks] complete crashed", {
             quoteId,
             taskKey: task.taskKey,
             error,
@@ -110,7 +117,7 @@ export function SupplierKickoffChecklistCard({
           setLocalTasks((current) =>
             current.map((entry) =>
               entry.taskKey === task.taskKey
-                ? { ...entry, completed: !nextCompleted }
+                ? { ...entry, completed: false }
                 : entry,
             ),
           );
@@ -128,10 +135,10 @@ export function SupplierKickoffChecklistCard({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Kickoff checklist
+              Kickoff tasks
             </p>
             <h2 className="text-lg font-semibold text-white">
-              Align on the five go-live checks
+              Confirm the five go-live checks
             </h2>
           </div>
           {summary ? (
@@ -181,7 +188,6 @@ export function SupplierKickoffChecklistCard({
       ) : (
         <ul className="mt-4 space-y-3">
           {localTasks.map((task) => {
-            const checkboxId = `kickoff-task-${task.taskKey}`;
             const disabled =
               readOnly ||
               isPending ||
@@ -192,28 +198,27 @@ export function SupplierKickoffChecklistCard({
                 key={task.taskKey}
                 className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"
               >
-                <div className="pt-0.5">
-                  <input
-                    id={checkboxId}
-                    type="checkbox"
-                    className="size-4 rounded border-slate-700 bg-slate-900 text-emerald-400 focus:ring-emerald-500"
-                    checked={task.completed}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      handleToggle(task, event.currentTarget.checked)
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label
-                    htmlFor={checkboxId}
-                    className="text-sm font-semibold text-white"
-                  >
-                    {task.title}
-                  </label>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-sm font-semibold text-white">{task.title}</p>
                   {task.description ? (
                     <p className="text-sm text-slate-300">{task.description}</p>
                   ) : null}
+                </div>
+                <div className="shrink-0">
+                  {task.completed ? (
+                    <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100">
+                      Complete
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => handleToggle(task, true)}
+                      className="rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Mark complete
+                    </button>
+                  )}
                 </div>
               </li>
             );
