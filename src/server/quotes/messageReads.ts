@@ -1,8 +1,12 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
+  handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
   isRowLevelSecurityDeniedError,
+  isSupabaseRelationMarkedMissing,
+  markSupabaseRelationMissing,
   serializeSupabaseError,
+  warnOnce,
 } from "@/server/admin/logging";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -30,6 +34,10 @@ export async function markQuoteMessagesRead(input: {
     return { ok: false, reason: "invalid_input" };
   }
 
+  if (isSupabaseRelationMarkedMissing("quote_message_reads")) {
+    return { ok: true };
+  }
+
   const client = input.supabase ?? supabaseServer;
 
   try {
@@ -41,8 +49,23 @@ export async function markQuoteMessagesRead(input: {
       );
 
     if (error) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_message_reads",
+          error,
+          warnPrefix: "[message_reads]",
+        })
+      ) {
+        return { ok: true };
+      }
       if (isMissingTableOrColumnError(error)) {
-        // Failure-safe: missing table in older environments.
+        // Failure-safe: missing table/columns in older environments.
+        markSupabaseRelationMissing("quote_message_reads");
+        const serialized = serializeSupabaseError(error);
+        warnOnce("missing_relation:quote_message_reads", "[message_reads] missing relation; skipping", {
+          code: serialized.code,
+          message: serialized.message,
+        });
         return { ok: true };
       }
       if (isRowLevelSecurityDeniedError(error)) {
@@ -58,7 +81,22 @@ export async function markQuoteMessagesRead(input: {
 
     return { ok: true };
   } catch (error) {
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_message_reads",
+        error,
+        warnPrefix: "[message_reads]",
+      })
+    ) {
+      return { ok: true };
+    }
     if (isMissingTableOrColumnError(error)) {
+      markSupabaseRelationMissing("quote_message_reads");
+      const serialized = serializeSupabaseError(error);
+      warnOnce("missing_relation:quote_message_reads", "[message_reads] missing relation; skipping", {
+        code: serialized.code,
+        message: serialized.message,
+      });
       return { ok: true };
     }
     console.error("[quote message reads] upsert crashed", {
@@ -92,31 +130,61 @@ export async function loadUnreadMessageSummary(input: {
   // at 0 but still surface last-message previews from `quote_messages`.
   type ReadRow = { quote_id: string; user_id: string; last_read_at: string };
   let reads: ReadRow[] = [];
-  let readsAvailable = true;
+  let readsAvailable = !isSupabaseRelationMarkedMissing("quote_message_reads");
   try {
-    const { data, error } = await supabaseServer
-      .from("quote_message_reads")
-      .select("quote_id,user_id,last_read_at")
-      .eq("user_id", userId)
-      .in("quote_id", quoteIds)
-      .returns<ReadRow[]>();
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        readsAvailable = false;
+    if (readsAvailable) {
+      const { data, error } = await supabaseServer
+        .from("quote_message_reads")
+        .select("quote_id,user_id,last_read_at")
+        .eq("user_id", userId)
+        .in("quote_id", quoteIds)
+        .returns<ReadRow[]>();
+      if (error) {
+        if (
+          handleMissingSupabaseRelation({
+            relation: "quote_message_reads",
+            error,
+            warnPrefix: "[message_reads]",
+          })
+        ) {
+          readsAvailable = false;
+        } else if (isMissingTableOrColumnError(error)) {
+          readsAvailable = false;
+          markSupabaseRelationMissing("quote_message_reads");
+          const serialized = serializeSupabaseError(error);
+          warnOnce("missing_relation:quote_message_reads", "[message_reads] missing relation; skipping", {
+            code: serialized.code,
+            message: serialized.message,
+          });
+        } else {
+          readsAvailable = false;
+          console.error("[quote message reads] load reads failed", {
+            userId,
+            quoteCount: quoteIds.length,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
       } else {
-        readsAvailable = false;
-        console.error("[quote message reads] load reads failed", {
-          userId,
-          quoteCount: quoteIds.length,
-          error: serializeSupabaseError(error) ?? error,
-        });
+        reads = (data ?? []) as ReadRow[];
       }
-    } else {
-      reads = (data ?? []) as ReadRow[];
     }
   } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_message_reads",
+        error,
+        warnPrefix: "[message_reads]",
+      })
+    ) {
       readsAvailable = false;
+    } else if (isMissingTableOrColumnError(error)) {
+      readsAvailable = false;
+      markSupabaseRelationMissing("quote_message_reads");
+      const serialized = serializeSupabaseError(error);
+      warnOnce("missing_relation:quote_message_reads", "[message_reads] missing relation; skipping", {
+        code: serialized.code,
+        message: serialized.message,
+      });
     } else {
       readsAvailable = false;
       console.error("[quote message reads] load reads crashed", {

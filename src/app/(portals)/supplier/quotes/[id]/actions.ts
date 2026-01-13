@@ -20,6 +20,7 @@ import {
   isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import {
   buildUploadTargetForQuote,
   isAllowedQuoteUploadFileName,
@@ -440,6 +441,12 @@ export async function supplierDeclineRfqWithFeedbackAction(
 
   try {
     const supabase = createAuthClient();
+    if (!isRfqFeedbackEnabled()) {
+      // Feature disabled; don't attempt to persist.
+      revalidatePath("/supplier/rfqs");
+      revalidatePath("/supplier/quotes");
+      return { ok: true, message: "Thanks — feedback sent." };
+    }
     if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
       // Feature not enabled; don't attempt to persist.
       revalidatePath("/supplier/rfqs");

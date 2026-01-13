@@ -6,8 +6,12 @@ import { createAuthClient } from "@/server/auth";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { MAX_UPLOAD_BYTES } from "@/lib/uploads/uploadLimits";
 import {
+  handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
+  isSupabaseSelectIncompatibleError,
   serializeSupabaseError,
+  warnOnce,
 } from "@/server/admin/logging";
 
 export type UploadTarget = {
@@ -951,36 +955,170 @@ export async function loadQuoteUploadGroups(
     return [];
   }
 
-  let fileEntries: QuoteUploadFileEntry[] = [];
-  try {
-    const { data, error } = await supabaseServer
-      .from("quote_upload_files")
-      .select(
-        "id,upload_id,path,filename,extension,size_bytes,is_from_archive,created_at",
-      )
-      .eq("quote_id", quoteId)
-      .order("created_at", { ascending: true })
-      .returns<QuoteUploadFileEntry[]>();
+  if (isSupabaseRelationMarkedMissing("quote_upload_files")) return [];
 
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
+  const normalizedQuoteId = quoteId.trim();
+
+  // Strategy:
+  // - Attempt 1: minimal safe select (no nested joins, no path)
+  // - Attempt 2: select("*") when schema variant rejects attempt 1
+  let rows: Array<Record<string, unknown>> = [];
+  try {
+    const attempt1 = await supabaseServer
+      .from("quote_upload_files")
+      .select("id,upload_id,filename,extension,size_bytes,is_from_archive,created_at")
+      .eq("quote_id", normalizedQuoteId)
+      .returns<
+        Array<{
+          id: string;
+          upload_id: string;
+          filename: string | null;
+          extension: string | null;
+          size_bytes: number | null;
+          is_from_archive: boolean;
+          created_at: string | null;
+        }>
+      >();
+
+    if (attempt1.error) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_upload_files",
+          error: attempt1.error,
+          warnPrefix: "[quote_upload_files]",
+        })
+      ) {
         return [];
       }
-      console.error("[quote upload files] failed to load entries", {
-        quoteId,
-        error: serializeSupabaseError(error),
-      });
+
+      if (isSupabaseSelectIncompatibleError(attempt1.error)) {
+        const serialized = serializeSupabaseError(attempt1.error);
+        warnOnce(
+          "quote_upload_files:select_incompatible",
+          "[quote_upload_files] select incompatible; falling back",
+          { code: serialized.code, message: serialized.message },
+        );
+
+        const attempt2 = await supabaseServer
+          .from("quote_upload_files")
+          .select("*")
+          .eq("quote_id", normalizedQuoteId);
+
+        if (attempt2.error) {
+          if (
+            handleMissingSupabaseRelation({
+              relation: "quote_upload_files",
+              error: attempt2.error,
+              warnPrefix: "[quote_upload_files]",
+            }) ||
+            isMissingTableOrColumnError(attempt2.error)
+          ) {
+            return [];
+          }
+
+          console.error("[quote upload files] fallback load failed", {
+            quoteId: normalizedQuoteId,
+            error: serializeSupabaseError(attempt2.error) ?? attempt2.error,
+          });
+          return [];
+        }
+
+        rows = Array.isArray(attempt2.data)
+          ? (attempt2.data as Array<Record<string, unknown>>)
+          : [];
+      } else {
+        console.error("[quote upload files] failed to load entries", {
+          quoteId: normalizedQuoteId,
+          error: serializeSupabaseError(attempt1.error) ?? attempt1.error,
+        });
+        return [];
+      }
+    } else {
+      rows = Array.isArray(attempt1.data)
+        ? (attempt1.data as unknown as Array<Record<string, unknown>>)
+        : [];
+    }
+  } catch (error) {
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_upload_files",
+        error,
+        warnPrefix: "[quote_upload_files]",
+      }) ||
+      isMissingTableOrColumnError(error)
+    ) {
       return [];
     }
-
-    fileEntries = Array.isArray(data) ? data : [];
-  } catch (error) {
     console.error("[quote upload files] load crashed", {
-      quoteId,
-      error: serializeSupabaseError(error),
+      quoteId: normalizedQuoteId,
+      error: serializeSupabaseError(error) ?? error,
     });
     return [];
   }
+
+  const fileEntries: QuoteUploadFileEntry[] = rows
+    .map((row): QuoteUploadFileEntry | null => {
+      const id = typeof (row as any)?.id === "string" ? ((row as any).id as string).trim() : "";
+      const uploadId =
+        typeof (row as any)?.upload_id === "string" ? ((row as any).upload_id as string).trim() : "";
+      if (!id || !uploadId) return null;
+
+      const rawPath =
+        (row as any)?.path ??
+        (row as any)?.storage_path ??
+        (row as any)?.file_path ??
+        (row as any)?.storagePath ??
+        (row as any)?.filePath ??
+        null;
+      const path = typeof rawPath === "string" ? rawPath : "";
+
+      const filenameRaw = (row as any)?.filename;
+      const filename =
+        typeof filenameRaw === "string" && filenameRaw.trim().length > 0
+          ? filenameRaw.trim()
+          : path
+            ? path.split("/").filter(Boolean).slice(-1)[0] ?? ""
+            : "";
+
+      const extensionRaw = (row as any)?.extension;
+      const extension =
+        typeof extensionRaw === "string" && extensionRaw.trim().length > 0
+          ? extensionRaw.trim()
+          : (() => {
+              const parts = filename.split(".");
+              return parts.length > 1 ? (parts[parts.length - 1] ?? "").toLowerCase() : null;
+            })();
+
+      const sizeBytesRaw = (row as any)?.size_bytes;
+      const sizeBytes =
+        typeof sizeBytesRaw === "number" && Number.isFinite(sizeBytesRaw) ? sizeBytesRaw : null;
+
+      const isFromArchiveRaw = (row as any)?.is_from_archive;
+      const isFromArchive = Boolean(isFromArchiveRaw);
+
+      const createdAtRaw = (row as any)?.created_at;
+      const createdAt = typeof createdAtRaw === "string" ? createdAtRaw : null;
+
+      return {
+        id,
+        upload_id: uploadId,
+        path,
+        filename,
+        extension,
+        size_bytes: sizeBytes,
+        is_from_archive: isFromArchive,
+        created_at: createdAt,
+      };
+    })
+    .filter((row): row is QuoteUploadFileEntry => Boolean(row));
+
+  // Best-effort stable ordering (avoid `.order(...)` to reduce schema coupling).
+  fileEntries.sort((a, b) => {
+    const aKey = a.created_at ?? "";
+    const bKey = b.created_at ?? "";
+    if (aKey && bKey && aKey !== bKey) return aKey.localeCompare(bKey);
+    return a.id.localeCompare(b.id);
+  });
 
   const uploadIds = Array.from(
     new Set(

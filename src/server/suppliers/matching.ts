@@ -32,6 +32,7 @@ import {
   isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 
 const DEFAULT_MATCH_LIMIT = 20;
 const DEFAULT_OPEN_QUOTE_FETCH_LIMIT = 50;
@@ -353,6 +354,7 @@ async function safeLoadQuoteRfqFeedbackSummaryByQuoteId(
     map.set(id, { totalDeclines: 0, byCategory: {} });
   }
   if (ids.length === 0) return map;
+  if (!isRfqFeedbackEnabled()) return map;
   if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return map;
 
   try {

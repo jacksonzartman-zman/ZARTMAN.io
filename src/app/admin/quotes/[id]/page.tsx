@@ -100,6 +100,7 @@ import { loadQuoteUploadGroups } from "@/server/quotes/uploadFiles";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
+import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import {
   handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
@@ -430,7 +431,9 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     let rfqFeedbackSchemaMissing = false;
     const supplierNameById = new Map<string, string>();
     try {
-      if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
+      if (!isRfqFeedbackEnabled()) {
+        rfqFeedbackSchemaMissing = true;
+      } else if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
         rfqFeedbackSchemaMissing = true;
       } else {
         const { data, error } = await supabaseServer

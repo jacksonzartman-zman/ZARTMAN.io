@@ -5,6 +5,7 @@ import {
   isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { loadQuoteMessages } from "@/server/quotes/messages";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
@@ -214,6 +215,7 @@ async function safeLoadMatchHealthBySupplierIds(
 }
 
 async function safeLoadQuoteRfqFeedback(quoteId: string): Promise<QuoteRfqFeedbackRowLite[]> {
+  if (!isRfqFeedbackEnabled()) return [];
   if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return [];
   try {
     const { data, error } = await supabaseServer
