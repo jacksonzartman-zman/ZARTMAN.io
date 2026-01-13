@@ -4,6 +4,7 @@ import {
 } from "@/app/(portals)/lib/listState";
 
 export type AdminQuotesSortKey =
+  | "inbox"
   | "newest_rfq"
   | "latest_bid_activity"
   | "awarded_recently"
@@ -23,8 +24,9 @@ export const ADMIN_QUOTES_LIST_STATE_CONFIG: ListStateConfig<
   defaultPageSize: 25,
   pageSizeOptions: [10, 25, 50, 100],
 
-  defaultSort: "newest_rfq",
+  defaultSort: "inbox",
   allowedSorts: [
+    "inbox",
     "newest_rfq",
     "latest_bid_activity",
     "awarded_recently",

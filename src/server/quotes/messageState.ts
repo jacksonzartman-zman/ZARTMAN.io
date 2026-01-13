@@ -133,11 +133,65 @@ export function computeAdminNeedsReply(rollup: QuoteMessageRollup): boolean {
   return externalMs > adminMs;
 }
 
+export type AdminThreadSlaStatus = "clear" | "needs_reply" | "overdue";
+
+export type AdminThreadSla = {
+  status: AdminThreadSlaStatus;
+  lastInboundAt: Date | null;
+  lastAdminAt: Date | null;
+};
+
+const ADMIN_REPLY_SLA_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function maxNullable(a: number | null, b: number | null): number | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.max(a, b);
+}
+
+/**
+ * Admin reply SLA classification (Phase 18.3.3 MVP):
+ * - status="clear": no reply needed
+ * - status="needs_reply": needs reply and inbound age <= 24h
+ * - status="overdue": needs reply and inbound age > 24h
+ *
+ * Notes:
+ * - "Inbound" means customer or supplier (system does not clear needs-reply).
+ * - Fail-soft: invalid/missing timestamps yield a conservative "clear" result.
+ */
+export function computeAdminThreadSla(
+  rollup: QuoteMessageRollup,
+  now: Date = new Date(),
+): AdminThreadSla {
+  const needsReply = computeAdminNeedsReply(rollup);
+
+  const inboundMs = maxNullable(ms(rollup.lastCustomerAt), ms(rollup.lastSupplierAt));
+  const adminMs = ms(rollup.lastAdminAt);
+
+  const lastInboundAt = inboundMs === null ? null : new Date(inboundMs);
+  const lastAdminAt = adminMs === null ? null : new Date(adminMs);
+
+  if (!needsReply) {
+    return { status: "clear", lastInboundAt, lastAdminAt };
+  }
+
+  if (!lastInboundAt || !Number.isFinite(now.getTime())) {
+    // Defensive: needsReply should imply inbound exists, but keep behavior safe under schema drift.
+    return { status: "needs_reply", lastInboundAt, lastAdminAt };
+  }
+
+  const ageMs = now.getTime() - lastInboundAt.getTime();
+  const overdue = Number.isFinite(ageMs) && ageMs > ADMIN_REPLY_SLA_MS;
+
+  return { status: overdue ? "overdue" : "needs_reply", lastInboundAt, lastAdminAt };
+}
+
 /**
  * Quick verification (manual):
  * - Customer or supplier sends a message → admin sees "Needs reply" (quotes list + quote detail) and a "message_needs_reply" notification.
  * - Admin replies (sender_role='admin') → "Needs reply" disappears on refresh and notification stops generating.
  * - System messages (sender_role='system') do NOT clear "Needs reply".
+ * - If an inbound message is older than 24h → admin sees "Overdue" (quotes list + quote detail), and notification body indicates overdue.
  *
  * Unit-ish sanity checks:
  * - lastAdminAt is null, customer/supplier exists → needsReply = true

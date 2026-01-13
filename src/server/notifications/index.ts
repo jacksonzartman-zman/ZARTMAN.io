@@ -4,7 +4,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import {
-  computeAdminNeedsReply,
+  computeAdminThreadSla,
   loadQuoteMessageRollups,
 } from "@/server/quotes/messageState";
 import {
@@ -729,7 +729,7 @@ async function computeMessageNeedsReplyNotifications(args: {
     // Admin: compute "needs reply" from the rollup view (fail-soft if missing).
     const LOOKBACK_DAYS = 60;
     const CANDIDATE_LIMIT = 800;
-    const OUTPUT_LIMIT = 50;
+    const OUTPUT_LIMIT = 250;
 
     type QuoteCandidateRow = {
       id: string;
@@ -779,12 +779,13 @@ async function computeMessageNeedsReplyNotifications(args: {
 
       const rollup = rollupsByQuoteId[quoteId] ?? null;
       if (!rollup) continue;
-      if (!computeAdminNeedsReply(rollup)) continue;
+      const sla = computeAdminThreadSla(rollup);
+      if (sla.status === "clear") continue;
 
       const quoteLabel = quoteLabelFromRow(candidate, quoteId);
-      const lastMessageAt = rollup.lastMessageAt;
-      const lastMessageTs = toTimestamp(lastMessageAt);
-      const rel = formatRelativeTimeCompactFromTimestamp(lastMessageTs);
+      const lastAt = sla.lastInboundAt?.toISOString() ?? rollup.lastMessageAt;
+      const rel = formatRelativeTimeCompactFromTimestamp(toTimestamp(lastAt));
+      const prefix = sla.status === "overdue" ? "Overdue" : "Needs reply";
 
       out.push({
         userId: args.userId,
@@ -792,9 +793,9 @@ async function computeMessageNeedsReplyNotifications(args: {
         entityType: "quote",
         entityId: quoteId,
         title: "Message needs reply",
-        body: `Quote ${quoteLabel}${rel ? ` · Last message ${rel}` : ""}`,
+        body: `Quote ${quoteLabel} · ${prefix}${rel ? ` · Last message ${rel}` : ""}`,
         href: `/admin/quotes/${quoteId}#messages`,
-        createdAt: lastMessageAt ?? nowIso(),
+        createdAt: lastAt ?? nowIso(),
       });
     }
 

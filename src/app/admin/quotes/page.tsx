@@ -53,6 +53,7 @@ import {
 } from "@/server/quotes/partsCoverageHealth";
 import {
   computeAdminNeedsReply,
+  computeAdminThreadSla,
   loadQuoteMessageRollups,
   type QuoteMessageRollup,
 } from "@/server/quotes/messageState";
@@ -68,8 +69,9 @@ export default async function AdminQuotesPage({
   const listState = parseListState(usp, ADMIN_QUOTES_LIST_STATE_CONFIG);
   const currentView = normalizeAdminQuotesView(usp.get("view") ?? null);
   const partsCoverageFilter = normalizePartsCoverageFilter(usp.get("partsCoverage"));
+  const messageFilter = normalizeAdminMessageFilter(usp.get("msg"));
 
-  const sort = listState.sort ?? null;
+  const sort = listState.sort ?? ADMIN_QUOTES_LIST_STATE_CONFIG.defaultSort ?? null;
   const status = listState.status ?? null;
   const hasBids = Boolean(listState.hasBids);
   const awarded = Boolean(listState.awarded);
@@ -80,10 +82,16 @@ export default async function AdminQuotesPage({
   const page = listState.page;
   const pageSize = listState.pageSize;
 
+  const wantsInboxOrdering = sort === "inbox" || messageFilter !== "all";
+  const candidatePageSize = wantsInboxOrdering
+    ? Math.min(1000, page * pageSize + 200)
+    : pageSize;
+  const candidatePage = wantsInboxOrdering ? 1 : page;
+
   const inboxResult = await getAdminQuotesInbox({
     sort,
-    page,
-    pageSize,
+    page: candidatePage,
+    pageSize: candidatePageSize,
     filter: {
       status: status?.trim() || null,
       search: normalizedSearch || null,
@@ -93,8 +101,8 @@ export default async function AdminQuotesPage({
   });
 
   const baseRows = inboxResult.data.rows ?? [];
-  const totalCount = inboxResult.data.count ?? baseRows.length;
-  const hasMore = Boolean(inboxResult.data.hasMore);
+  const baseTotalCount = inboxResult.data.count ?? baseRows.length;
+  const baseHasMore = Boolean(inboxResult.data.hasMore);
 
   const quoteIdsOnPage = baseRows
     .map((row) => (typeof row?.id === "string" ? row.id.trim() : ""))
@@ -187,7 +195,9 @@ export default async function AdminQuotesPage({
   const enrichedRows: QuoteRow[] = baseRows.map((row) => {
     const threadSla = threadSlaByQuoteId[row.id] ?? null;
     const messageRollup = messageRollupsByQuoteId[row.id] ?? null;
-    const adminNeedsReply = messageRollup ? computeAdminNeedsReply(messageRollup) : false;
+    const sla = messageRollup ? computeAdminThreadSla(messageRollup) : null;
+    const adminNeedsReply = sla ? sla.status !== "clear" : messageRollup ? computeAdminNeedsReply(messageRollup) : false;
+    const adminOverdue = sla?.status === "overdue";
     const partsSignal = partsCoverageByQuoteId.get(row.id) ?? {
       partsCoverageHealth: "none" as const,
       partsCount: 0,
@@ -239,6 +249,7 @@ export default async function AdminQuotesPage({
       threadStalenessBucket: threadSla?.stalenessBucket ?? "none",
       threadUnreadForAdmin: Boolean(threadSla?.unreadForAdmin),
       adminNeedsReply,
+      adminOverdue,
       bidSummary: formatAdminBidSummary(aggregate),
       bidCountLabel,
       bestPriceLabel,
@@ -262,7 +273,29 @@ export default async function AdminQuotesPage({
     .filter((row) => {
       if (partsCoverageFilter === "all") return true;
       return row.partsCoverageHealth === partsCoverageFilter;
+    })
+    .filter((row) => {
+      if (messageFilter === "all") return true;
+      if (messageFilter === "overdue") return Boolean(row.adminOverdue);
+      return Boolean(row.adminNeedsReply);
     });
+
+  const sortedQuotes = wantsInboxOrdering
+    ? [...filteredQuotes].sort(compareInboxPriority)
+    : filteredQuotes;
+
+  const pagedQuotes = wantsInboxOrdering
+    ? (() => {
+        const start = (page - 1) * pageSize;
+        const end = start + pageSize;
+        return sortedQuotes.slice(start, end);
+      })()
+    : sortedQuotes;
+
+  const effectiveTotalCount = wantsInboxOrdering ? sortedQuotes.length : baseTotalCount;
+  const effectiveHasMore = wantsInboxOrdering
+    ? sortedQuotes.length > page * pageSize
+    : baseHasMore;
 
   return (
     <AdminDashboardShell title="Quotes" description="Recent quotes created from uploads.">
@@ -301,8 +334,8 @@ export default async function AdminQuotesPage({
         <div className="mt-6 overflow-x-auto">
           <div className="inline-block min-w-full align-middle">
             <QuotesTable
-              quotes={filteredQuotes}
-              totalCount={totalCount}
+              quotes={pagedQuotes}
+              totalCount={effectiveTotalCount}
               currentView={currentView as AdminQuotesView}
               searchTerm={normalizedSearch}
             />
@@ -310,9 +343,9 @@ export default async function AdminQuotesPage({
               basePath="/admin/quotes"
               page={page}
               pageSize={pageSize}
-              hasMore={hasMore}
-              totalCount={inboxResult.data.count}
-              rowsOnPage={filteredQuotes.length}
+              hasMore={effectiveHasMore}
+              totalCount={effectiveTotalCount}
+              rowsOnPage={pagedQuotes.length}
               listStateConfig={ADMIN_QUOTES_LIST_STATE_CONFIG}
             />
           </div>
@@ -354,6 +387,39 @@ function normalizePartsCoverageFilter(value: unknown): PartsCoverageFilter {
     default:
       return "all";
   }
+}
+
+type AdminMessageFilter = "all" | "needs_reply" | "overdue";
+
+function normalizeAdminMessageFilter(value: unknown): AdminMessageFilter {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  switch (normalized) {
+    case "needs_reply":
+    case "overdue":
+      return normalized;
+    default:
+      return "all";
+  }
+}
+
+function toMs(value: string | null | undefined): number {
+  if (!value) return -1;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : -1;
+}
+
+function compareInboxPriority(a: QuoteRow, b: QuoteRow): number {
+  const aPriority = a.adminOverdue ? 2 : a.adminNeedsReply ? 1 : 0;
+  const bPriority = b.adminOverdue ? 2 : b.adminNeedsReply ? 1 : 0;
+  if (aPriority !== bPriority) return bPriority - aPriority;
+
+  const aLastMsg = toMs(a.threadLastMessageAt);
+  const bLastMsg = toMs(b.threadLastMessageAt);
+  if (aLastMsg !== bLastMsg) return bLastMsg - aLastMsg;
+
+  const aCreated = toMs(a.createdAt);
+  const bCreated = toMs(b.createdAt);
+  return bCreated - aCreated;
 }
 
 function buildEmptyCapacitySummary(

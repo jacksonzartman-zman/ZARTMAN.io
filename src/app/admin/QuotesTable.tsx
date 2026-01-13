@@ -52,6 +52,7 @@ export type QuoteRow = {
   threadStalenessBucket: AdminThreadStalenessBucket;
   threadUnreadForAdmin: boolean;
   adminNeedsReply: boolean;
+  adminOverdue?: boolean;
   bidSummary: string;
   bidCountLabel: string;
   bestPriceLabel: string;
@@ -256,7 +257,11 @@ export default function QuotesTable({
                           ) : null}
                           {threadLabel}
                         </span>
-                        {row.adminNeedsReply ? (
+                        {row.adminOverdue ? (
+                          <span className="inline-flex rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-red-100">
+                            Overdue
+                          </span>
+                        ) : row.adminNeedsReply ? (
                           <span className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-100">
                             Needs reply
                           </span>
