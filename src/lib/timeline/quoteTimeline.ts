@@ -31,6 +31,7 @@ const STATUS_CHANGE_EVENT_TYPES = new Set<string>([
   "submitted",
   "supplier_invited",
   "bid_received",
+  "quote_awarded",
   "awarded",
   "quote_won",
   "bid_won",
@@ -158,7 +159,7 @@ function inferPhase(args: {
     return "bidding";
   }
 
-  if (type === "awarded" || type === "quote_won" || type === "bid_won") {
+  if (type === "quote_awarded" || type === "awarded" || type === "quote_won" || type === "bid_won") {
     return "award";
   }
 
