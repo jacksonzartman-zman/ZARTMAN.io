@@ -10,6 +10,7 @@ import clsx from "clsx";
  * withWordmark/subLabel toggle the adjacent label stack.
  */
 export type BrandMarkProps = {
+  href?: string;
   size?: number;
   withWordmark?: boolean;
   subLabel?: string;
@@ -17,6 +18,7 @@ export type BrandMarkProps = {
 };
 
 export function BrandMark({
+  href = "/",
   size = 32,
   withWordmark = false,
   subLabel,
@@ -24,7 +26,7 @@ export function BrandMark({
 }: BrandMarkProps) {
   return (
     <Link
-      href="/"
+      href={href}
       aria-label="Zartman.io home"
       className={clsx(
         "inline-flex items-center gap-2 text-inherit transition-colors hover:opacity-80",

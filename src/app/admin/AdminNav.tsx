@@ -1,36 +1,34 @@
-"use client";
+import AdminNavClient, { type AdminHeaderUser } from "./AdminNavClient";
+import { createAuthClient, getServerAuthUser } from "@/server/auth";
+import { redirect } from "next/navigation";
 
-import { usePathname } from "next/navigation";
-import {
-  PortalNavTabs,
-  type PortalNavLink,
-} from "@/app/(portals)/components/PortalNavTabs";
-import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
-import { NotificationsTray } from "@/components/notifications/NotificationsTray";
+export default async function AdminNav() {
+  const { user } = await getServerAuthUser();
 
-const ADMIN_NAV_LINKS: PortalNavLink[] = [
-  { label: "Overview", href: "/admin/overview" },
-  { label: "Notifications", href: "/admin/notifications" },
-  { label: "Analytics", href: "/admin/analytics" },
-  { label: "Uploads", href: "/admin/uploads" },
-  { label: "Quotes", href: "/admin/quotes" },
-  { label: "Messages", href: "/admin/messages" },
-  { label: "Activity", href: "/admin/activity" },
-  { label: "Capacity", href: "/admin/capacity" },
-  { label: "Supplier discovery", href: "/admin/suppliers/discover" },
-  { label: "Bench health", href: "/admin/suppliers/bench-health" },
-  { label: "System health", href: "/admin/system-health" },
-];
-
-export default function AdminNav() {
-  const pathname = usePathname() ?? "/admin/quotes";
+  const headerUser: AdminHeaderUser | null = user
+    ? {
+        email: user.email ?? null,
+        displayName:
+          (user.user_metadata?.company as string | undefined) ??
+          (user.user_metadata?.full_name as string | undefined) ??
+          user.email ??
+          null,
+      }
+    : null;
 
   return (
-    <div className="border-b border-slate-900 bg-slate-950/60">
-      <PortalContainer className="flex items-center justify-between gap-3 py-3">
-        <PortalNavTabs links={ADMIN_NAV_LINKS} currentPath={pathname} />
-        <NotificationsTray viewAllHref="/admin/notifications" />
-      </PortalContainer>
-    </div>
+    <AdminNavClient user={headerUser} signOutAction={user ? handleSignOut : undefined} />
   );
+}
+
+async function handleSignOut() {
+  "use server";
+
+  const supabase = createAuthClient();
+  try {
+    await supabase.auth.signOut();
+  } catch (error) {
+    console.error("AdminNav: sign out failed", error);
+  }
+  redirect("/");
 }
