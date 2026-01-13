@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import type { InboundEmail } from "@/server/quotes/emailBridge";
-import { handleInboundSupplierEmail } from "@/server/quotes/emailBridge";
+import { handleInboundEmailBridge } from "@/server/quotes/emailBridge";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "invalid_payload" }, { status: 400 });
   }
 
-  const result = await handleInboundSupplierEmail(inbound);
+  const result = await handleInboundEmailBridge(inbound);
   if (result.ok) {
     return NextResponse.json({ ok: true }, { status: 200 });
   }

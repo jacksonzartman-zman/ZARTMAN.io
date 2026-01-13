@@ -333,12 +333,9 @@ export async function postQuoteMessage(
     }
 
     const senderName =
-      customer.company_name ??
-      customer.email ??
-      user.email ??
-      "Customer";
-    const senderEmail =
-      customer.email ?? user.email ?? normalizeEmailInput(customer.email) ?? "customer@zartman.io";
+      customer.company_name?.trim() ? customer.company_name.trim() : "Customer";
+    // Masked identities: do not store customer email in shared thread rows.
+    const senderEmail = null;
 
     const supabase = createAuthClient();
     const result = await createQuoteMessage({

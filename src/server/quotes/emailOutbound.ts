@@ -1,4 +1,4 @@
-import { createReplyToken } from "@/server/quotes/emailBridge";
+import { createCustomerReplyToken, createReplyToken } from "@/server/quotes/emailBridge";
 import { warnOnce } from "@/server/db/schemaErrors";
 
 export type EmailSendRequest = {
@@ -176,6 +176,12 @@ export type SupplierThreadContextMessage = {
   createdAt?: string | null;
 };
 
+export type CustomerThreadContextMessage = {
+  senderRole?: string | null;
+  body?: string | null;
+  createdAt?: string | null;
+};
+
 export function buildSupplierThreadEmail(args: {
   quoteId: string;
   supplierId: string;
@@ -251,6 +257,95 @@ export function buildSupplierThreadEmail(args: {
     metadata: {
       quoteId,
       supplierId,
+    },
+  };
+}
+
+export function buildCustomerThreadEmail(args: {
+  quoteId: string;
+  customerId: string;
+  toEmail: string;
+  adminMessageText: string;
+  context?: {
+    shortQuoteLabel?: string | null;
+    recentMessages?: CustomerThreadContextMessage[] | null;
+  };
+}): EmailSendRequest | null {
+  const quoteId = normalizeString(args.quoteId);
+  const customerId = normalizeString(args.customerId);
+  const toEmail = normalizeString(args.toEmail);
+  const adminMessageText = normalizeString(args.adminMessageText);
+
+  if (!quoteId || !customerId || !looksLikeEmail(toEmail) || !adminMessageText) {
+    return null;
+  }
+
+  const replyDomain = normalizeString(process.env.EMAIL_REPLY_DOMAIN);
+  const secret = normalizeString(process.env.EMAIL_BRIDGE_SECRET);
+  if (!replyDomain || !secret) {
+    warnOnce("email_outbound:customer_reply_to_disabled", `${WARN_PREFIX} reply-to disabled; missing config`);
+    return null;
+  }
+
+  const sigToken = createCustomerReplyToken({ quoteId, customerId, secret });
+  if (!sigToken) {
+    warnOnce("email_outbound:customer_reply_to_token_failed", `${WARN_PREFIX} customer reply-to token generation failed`);
+    return null;
+  }
+
+  const replyTo = `reply+${sigToken}@${replyDomain}`;
+
+  const shortQuoteLabel = normalizeString(args.context?.shortQuoteLabel) || quoteId;
+  const subject = `Quote ${shortQuoteLabel}: Update from Zartman Team`;
+
+  const excerptLines: string[] = [];
+  const recent = Array.isArray(args.context?.recentMessages) ? args.context?.recentMessages : [];
+  for (const msg of recent.slice(0, 3)) {
+    const role = normalizeLower(msg?.senderRole) || "unknown";
+    const label =
+      role === "supplier"
+        ? "Supplier"
+        : role === "customer"
+          ? "Customer"
+          : role === "admin"
+            ? "Zartman Team"
+            : role === "system"
+              ? "System"
+              : "Unknown";
+    const body = sanitizeExcerpt(msg?.body ?? "", 420);
+    if (!body) continue;
+    excerptLines.push(`[${label}] ${body}`);
+  }
+
+  const contextBlock =
+    excerptLines.length > 0
+      ? `\n\n---\nRecent thread:\n${excerptLines.join("\n\n")}\n`
+      : "";
+
+  const text = `${adminMessageText}${contextBlock}\n\nReply to this email to respond.\n`;
+  const html = `<div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height: 1.4;">
+  <p style="white-space: pre-wrap; margin: 0 0 12px 0;">${escapeHtml(adminMessageText)}</p>
+  ${
+    excerptLines.length > 0
+      ? `<hr style="border: 0; border-top: 1px solid rgba(148, 163, 184, 0.35); margin: 16px 0;" />
+  <p style="margin: 0 0 8px 0; font-size: 12px; color: rgba(148, 163, 184, 1);">Recent thread:</p>
+  <div style="white-space: pre-wrap; font-size: 13px; color: rgba(226, 232, 240, 1);">${escapeHtml(
+        excerptLines.join("\n\n"),
+      )}</div>`
+      : ""
+  }
+  <p style="margin: 16px 0 0 0; font-size: 13px;"><strong>Reply to this email to respond.</strong></p>
+</div>`;
+
+  return {
+    to: toEmail,
+    subject,
+    text: text.length > 15000 ? text.slice(0, 15000) : text,
+    html,
+    replyTo,
+    metadata: {
+      quoteId,
+      customerId,
     },
   };
 }

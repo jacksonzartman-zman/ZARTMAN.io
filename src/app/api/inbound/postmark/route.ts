@@ -10,7 +10,7 @@ import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 
 import type { InboundEmail } from "@/server/quotes/emailBridge";
-import { handleInboundSupplierEmail } from "@/server/quotes/emailBridge";
+import { handleInboundEmailBridge } from "@/server/quotes/emailBridge";
 import { warnOnce } from "@/server/db/schemaErrors";
 
 export const runtime = "nodejs";
@@ -141,13 +141,16 @@ export async function POST(req: Request) {
   try {
     console.log(`${WARN_PREFIX} received`);
 
-    const result = await handleInboundSupplierEmail(inbound);
+    const result = await handleInboundEmailBridge(inbound);
     if (result.ok) {
       return NextResponse.json({ ok: true }, { status: 200 });
     }
 
     if (result.error === "unsupported") {
       return NextResponse.json({ ok: false, error: "unsupported" }, { status: 200 });
+    }
+    if (result.error === "not_opted_in") {
+      return NextResponse.json({ ok: false, error: "not_opted_in" }, { status: 200 });
     }
     if (result.error === "token_invalid") {
       return NextResponse.json({ ok: false, error: "token_invalid" }, { status: 401 });
