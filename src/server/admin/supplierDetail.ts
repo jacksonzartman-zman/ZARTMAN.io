@@ -1,6 +1,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import { schemaGate } from "@/server/db/schemaContract";
+import { handleMissingSupabaseSchema, isMissingSupabaseRelationError } from "@/server/db/schemaErrors";
 import { loadSupplierMismatchSummary, type SupplierMismatchSummary } from "./supplierMismatchSummary";
 
 export type AdminSupplierDetail = {
@@ -112,9 +113,27 @@ async function loadSupplierLite(supplierId: string): Promise<SupplierRowLite | n
       .select("id,company_name,primary_email,country,created_at")
       .eq("id", supplierId)
       .maybeSingle<SupplierRowLite>();
-    if (error) return null;
+    if (error) {
+      if (isMissingSupabaseRelationError(error)) {
+        handleMissingSupabaseSchema({
+          relation: "suppliers",
+          error,
+          warnPrefix: "[admin suppliers]",
+          warnKey: "admin_suppliers:suppliers_detail_missing_relation",
+        });
+      }
+      return null;
+    }
     return data ?? null;
-  } catch {
+  } catch (error) {
+    if (isMissingSupabaseRelationError(error)) {
+      handleMissingSupabaseSchema({
+        relation: "suppliers",
+        error,
+        warnPrefix: "[admin suppliers]",
+        warnKey: "admin_suppliers:suppliers_detail_missing_relation",
+      });
+    }
     return null;
   }
 }

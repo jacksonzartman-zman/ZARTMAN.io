@@ -1,6 +1,11 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import { schemaGate } from "@/server/db/schemaContract";
+import {
+  handleMissingSupabaseSchema,
+  isMissingColumnError,
+  isMissingSupabaseRelationError,
+} from "@/server/db/schemaErrors";
 import { loadSupplierMismatchSummary } from "@/server/admin/supplierMismatchSummary";
 
 export type AdminSupplierDirectoryStatus = "active" | "paused" | "pending" | "unknown";
@@ -112,14 +117,9 @@ export async function loadAdminSuppliersDirectory(args?: {
       ? args.status
       : "all";
 
-  // Optional status column gate: only needed when filtering for non-default states.
-  const canUseStatusColumn = await schemaGate({
-    enabled: statusFilter !== "all",
-    relation: "suppliers",
-    requiredColumns: ["status"],
-    warnPrefix: "[admin suppliers]",
-    warnKey: "admin_suppliers:suppliers_status_column",
-  });
+  // Core `suppliers` relation is not schema-gated. If `status` doesn't exist, we fall back
+  // to unfiltered results instead of emitting schemaContract warnings.
+  let canUseStatusColumn = statusFilter !== "all";
 
   // Capability filter gate (optional).
   const canUseCapabilities = await schemaGate({
@@ -150,37 +150,62 @@ export async function loadAdminSuppliersDirectory(args?: {
   }
 
   const selectBase = "id,company_name,primary_email,country,created_at";
-  const select = canUseStatusColumn ? `${selectBase},status` : selectBase;
 
   try {
-    // Note: `select()` typing expects a string literal; use `as any` for dynamic selects.
-    // Also avoid `.returns<T>()` here so we can use `.or(...)` with current supabase-js typings.
-    let query = supabaseServer.from("suppliers").select(select as any);
+    const buildQuery = (withStatus: boolean) => {
+      const select = withStatus ? `${selectBase},status` : selectBase;
 
-    if (q) {
-      // Keep it simple and schema-stable: name/email search only.
-      query = query.or(`company_name.ilike.%${q}%,primary_email.ilike.%${q}%`);
+      // Note: `select()` typing expects a string literal; use `as any` for dynamic selects.
+      // Also avoid `.returns<T>()` here so we can use `.or(...)` with current supabase-js typings.
+      let query = supabaseServer.from("suppliers").select(select as any);
+
+      if (q) {
+        // Keep it simple and schema-stable: name/email search only.
+        query = query.or(`company_name.ilike.%${q}%,primary_email.ilike.%${q}%`);
+      }
+
+      if (supplierIdsByCapability && supplierIdsByCapability.length === 0) {
+        return null;
+      }
+      if (supplierIdsByCapability && supplierIdsByCapability.length > 0) {
+        query = query.in("id", supplierIdsByCapability);
+      }
+
+      if (withStatus && (statusFilter === "paused" || statusFilter === "pending")) {
+        query = query.eq("status", statusFilter);
+      }
+      if (withStatus && statusFilter === "active") {
+        // "Active" means "not explicitly paused/pending" (also includes nulls/unknowns).
+        query = query.not("status", "in", "(paused,pending)");
+      }
+
+      query = query.order("created_at", { ascending: false }).limit(limit);
+      return query;
+    };
+
+    let data: unknown = null;
+    let error: unknown = null;
+
+    const first = buildQuery(canUseStatusColumn);
+    if (!first) return [];
+    ({ data, error } = await first);
+
+    if (error && canUseStatusColumn && isMissingColumnError(error, "status")) {
+      canUseStatusColumn = false;
+      const retry = buildQuery(false);
+      if (!retry) return [];
+      ({ data, error } = await retry);
     }
 
-    if (supplierIdsByCapability && supplierIdsByCapability.length === 0) {
-      return [];
-    }
-    if (supplierIdsByCapability && supplierIdsByCapability.length > 0) {
-      query = query.in("id", supplierIdsByCapability);
-    }
-
-    if (canUseStatusColumn && (statusFilter === "paused" || statusFilter === "pending")) {
-      query = query.eq("status", statusFilter);
-    }
-    if (canUseStatusColumn && statusFilter === "active") {
-      // "Active" means "not explicitly paused/pending" (also includes nulls/unknowns).
-      query = query.not("status", "in", "(paused,pending)");
-    }
-
-    query = query.order("created_at", { ascending: false }).limit(limit);
-
-    const { data, error } = await query;
     if (error) {
+      if (isMissingSupabaseRelationError(error)) {
+        handleMissingSupabaseSchema({
+          relation: "suppliers",
+          error,
+          warnPrefix: "[admin suppliers]",
+          warnKey: "admin_suppliers:suppliers_directory_missing_relation",
+        });
+      }
       return [];
     }
 
