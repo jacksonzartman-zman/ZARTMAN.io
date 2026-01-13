@@ -20,6 +20,38 @@ BEGIN
     RETURN;
   END IF;
 
+  -- If the view already exists with Phase 18.3.1 column names, rename them in-place first.
+  -- (Postgres cannot change view column names via CREATE OR REPLACE VIEW.)
+  IF to_regclass('public.quote_message_rollup') IS NOT NULL THEN
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'quote_message_rollup'
+        AND column_name = 'last_customer_message_at'
+    ) THEN
+      EXECUTE 'ALTER VIEW public.quote_message_rollup RENAME COLUMN last_customer_message_at TO last_customer_at';
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'quote_message_rollup'
+        AND column_name = 'last_supplier_message_at'
+    ) THEN
+      EXECUTE 'ALTER VIEW public.quote_message_rollup RENAME COLUMN last_supplier_message_at TO last_supplier_at';
+    END IF;
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'quote_message_rollup'
+        AND column_name = 'last_admin_message_at'
+    ) THEN
+      EXECUTE 'ALTER VIEW public.quote_message_rollup RENAME COLUMN last_admin_message_at TO last_admin_at';
+    END IF;
+  END IF;
+
   -- Support schema variants: prefer sender_role, fall back to author_type.
   IF EXISTS (
     SELECT 1
@@ -46,11 +78,11 @@ BEGIN
     CREATE OR REPLACE VIEW public.quote_message_rollup AS
     SELECT
       quote_id,
-      max(created_at) FILTER (WHERE lower(%1$I) = 'admin') AS last_admin_at,
-      max(created_at) FILTER (WHERE lower(%1$I) = 'system') AS last_system_at,
       max(created_at) FILTER (WHERE lower(%1$I) = 'customer') AS last_customer_at,
       max(created_at) FILTER (WHERE lower(%1$I) = 'supplier') AS last_supplier_at,
-      max(created_at) AS last_message_at
+      max(created_at) FILTER (WHERE lower(%1$I) = 'admin') AS last_admin_at,
+      max(created_at) AS last_message_at,
+      max(created_at) FILTER (WHERE lower(%1$I) = 'system') AS last_system_at
     FROM public.quote_messages
     GROUP BY quote_id
   $f$, role_col);
