@@ -7,7 +7,7 @@
 -- - Idempotent: CREATE OR REPLACE VIEW.
 --
 -- Notes:
--- - We treat sender_role in ('admin','system') as "admin-side" for last_admin_message_at.
+-- - Phase 18.3.2: "system" is NOT treated as admin; track it separately.
 -- - Reads happen via service role in app code; view doesn't change RLS expectations.
 
 DO $$
@@ -46,9 +46,10 @@ BEGIN
     CREATE OR REPLACE VIEW public.quote_message_rollup AS
     SELECT
       quote_id,
-      max(created_at) FILTER (WHERE %1$I = 'customer') AS last_customer_message_at,
-      max(created_at) FILTER (WHERE %1$I = 'supplier') AS last_supplier_message_at,
-      max(created_at) FILTER (WHERE %1$I IN ('admin','system')) AS last_admin_message_at,
+      max(created_at) FILTER (WHERE lower(%1$I) = 'admin') AS last_admin_at,
+      max(created_at) FILTER (WHERE lower(%1$I) = 'system') AS last_system_at,
+      max(created_at) FILTER (WHERE lower(%1$I) = 'customer') AS last_customer_at,
+      max(created_at) FILTER (WHERE lower(%1$I) = 'supplier') AS last_supplier_at,
       max(created_at) AS last_message_at
     FROM public.quote_messages
     GROUP BY quote_id
