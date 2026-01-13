@@ -28,7 +28,7 @@ export default function BenchHealthActionsCell(props: {
     ? `/admin/quotes/${props.recommendedQuoteId}#messages`
     : null;
 
-  const statusAction = useMemo(() => {
+  const statusAction = useMemo<{ next: "active" | "paused"; label: string }>(() => {
     const next = status === "paused" ? "active" : "paused";
     const label = status === "paused" ? "Unpause" : "Pause";
     return { next, label };
