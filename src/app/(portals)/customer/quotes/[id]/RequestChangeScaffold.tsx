@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 
+const CHANGE_REQUEST_SUBMITTED_EVENT = "zartman:change-request-submitted";
+
 type UiChangeType =
   | "design"
   | "quantity"
@@ -168,6 +170,10 @@ export function RequestChangeScaffold({
       }
 
       setOpen(false);
+      // Notify the Messages thread to show a transient success banner (client-only).
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event(CHANGE_REQUEST_SUBMITTED_EVENT));
+      }
       // After a successful submission, take the customer back to Messages.
       requestAnimationFrame(() => {
         scrollToIdWithHash("messages");
