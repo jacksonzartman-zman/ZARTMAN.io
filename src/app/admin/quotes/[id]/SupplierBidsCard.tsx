@@ -6,7 +6,7 @@ import type { QuoteStatus } from "@/server/quotes/status";
 import type { SupplierRow } from "@/server/suppliers/types";
 import type { SupplierReputationLabel } from "@/server/suppliers/reputation";
 import clsx from "clsx";
-import { BidAwardForm } from "./BidAwardForm";
+import { AwardBidButton } from "./AwardBidButton";
 
 /**
  * Phase 1 Polish checklist
@@ -210,6 +210,7 @@ function BidRow({
         "border-b border-slate-900/60 last:border-0",
         isWinner ? "bg-emerald-500/5" : null,
         !isWinner && isRecommended ? "bg-emerald-500/5" : null,
+        hasWinner && !isWinner ? "opacity-70" : null,
       )}
     >
       <td className="py-2 pr-3">
@@ -439,7 +440,7 @@ function BidActionCell({
   if (isWinner) {
     return (
       <span className="inline-flex rounded-full border border-emerald-500/60 bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-100">
-        Winner
+        Awarded
       </span>
     );
   }
@@ -461,6 +462,6 @@ function BidActionCell({
   }
 
   return (
-    <BidAwardForm quoteId={quoteId} bidId={bidId} supplierName={supplierName} />
+    <AwardBidButton quoteId={quoteId} bidId={bidId} supplierName={supplierName} />
   );
 }

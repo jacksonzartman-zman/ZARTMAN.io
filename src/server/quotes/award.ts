@@ -565,10 +565,10 @@ async function emitAwardTimelineEvents({
     awarded_by_role: actorRole,
   };
 
-  // Existing award timeline entry.
+  // Canonical award timeline entry.
   void emitQuoteEvent({
     quoteId,
-    eventType: "awarded",
+    eventType: "quote_awarded",
     actorRole,
     actorUserId,
     metadata,

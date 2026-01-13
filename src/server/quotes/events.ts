@@ -10,6 +10,7 @@ export type QuoteEventType =
   | "submitted"
   | "supplier_invited"
   | "bid_received"
+  | "quote_awarded"
   | "awarded"
   | "reopened"
   | "archived"
@@ -60,6 +61,7 @@ export const CUSTOMER_VISIBLE_TIMELINE_EVENT_TYPES = [
   "submitted",
   "supplier_invited",
   "bid_received",
+  "quote_awarded",
   "awarded",
   "change_request_created",
   "change_request_resolved",
@@ -558,7 +560,7 @@ function redactEventForSupplierViewer(
   }
   const metadata = event.metadata as Record<string, unknown>;
 
-  if (type !== "awarded" && type !== "quote_won") {
+  if (type !== "awarded" && type !== "quote_awarded" && type !== "quote_won") {
     return event;
   }
 

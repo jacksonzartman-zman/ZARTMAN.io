@@ -176,14 +176,12 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     };
   }
 
-  if (type === "awarded") {
-    const supplierName = readString(metadata, "supplier_name");
-    const bidId = readString(metadata, "bid_id");
+  if (type === "quote_awarded" || type === "awarded") {
     return {
       groupKey: "award",
       groupLabel: "Award",
-      title: supplierName ? `Awarded to ${supplierName}` : "Awarded",
-      subtitle: bidId ? `Winning bid: ${formatShortId(bidId)}` : undefined,
+      title: "Supplier awarded",
+      subtitle: "Kickoff can begin.",
       actorLabel,
     };
   }
