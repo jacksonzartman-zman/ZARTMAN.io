@@ -19,6 +19,8 @@ export type RelationProbeResult =
       missing?: string[];
     };
 
+type ProbeFailReason = "missing_relation" | "missing_column" | "unknown";
+
 type RequireSchemaOpts = {
   relation: RelationName;
   requiredColumns?: ColumnName[];
@@ -85,7 +87,7 @@ async function probeViaInformationSchema(args: {
 async function probeViaPostgrestHead(args: {
   relation: string;
   requiredColumns: string[];
-}): Promise<{ ok: true } | { ok: false; reason: RelationProbeResult["reason"]; missing?: string[] }> {
+}): Promise<{ ok: true } | { ok: false; reason: ProbeFailReason; missing?: string[] }> {
   try {
     const select =
       args.requiredColumns.length > 0 ? args.requiredColumns.join(",") : "*";
