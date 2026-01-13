@@ -153,7 +153,8 @@ export async function loadAdminSuppliersDirectory(args?: {
   const select = canUseStatusColumn ? `${selectBase},status` : selectBase;
 
   try {
-    let query = supabaseServer.from("suppliers").select(select).returns<SupplierBaseRow[]>();
+    // Note: avoid `.returns<T>()` here so we can use `.or(...)` with current supabase-js typings.
+    let query = supabaseServer.from("suppliers").select(select);
 
     if (q) {
       // Keep it simple and schema-stable: name/email search only.
@@ -182,7 +183,7 @@ export async function loadAdminSuppliersDirectory(args?: {
       return [];
     }
 
-    const suppliers = Array.isArray(data) ? data : [];
+    const suppliers = (Array.isArray(data) ? data : []) as SupplierBaseRow[];
     const supplierIds = suppliers.map((row) => normalizeId(row?.id)).filter(Boolean);
 
     const [capabilityBySupplierId, lastActivityBySupplierId, mismatchBySupplierId] =
