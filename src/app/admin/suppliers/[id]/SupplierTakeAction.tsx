@@ -5,6 +5,14 @@ import Link from "next/link";
 
 type SupplierStatus = "active" | "paused" | "pending" | "unknown";
 
+function normalizeSupplierStatus(value: unknown): SupplierStatus {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (raw === "paused") return "paused";
+  if (raw === "pending") return "pending";
+  if (raw === "active") return "active";
+  return "unknown";
+}
+
 export default function SupplierTakeAction(props: {
   supplierId: string;
   supplierStatus: SupplierStatus;
@@ -57,13 +65,14 @@ export default function SupplierTakeAction(props: {
         body: JSON.stringify({ status: statusAction.next }),
       });
       const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string; status?: SupplierStatus }
+        | { ok?: boolean; error?: string; status?: unknown }
         | null;
       if (!res.ok || !json?.ok) {
         setNote(json?.error === "unsupported" ? "Status unsupported" : "Update failed");
         return;
       }
-      setStatus(json.status ?? statusAction.next);
+      const nextStatus = normalizeSupplierStatus(json.status);
+      setStatus(nextStatus === "unknown" ? statusAction.next : nextStatus);
       setNote(statusAction.next === "paused" ? "Supplier paused" : "Supplier unpaused");
     } finally {
       setPending(null);
