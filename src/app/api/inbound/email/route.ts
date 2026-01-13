@@ -23,6 +23,8 @@ function coerceInboundEmail(payload: unknown): InboundEmail | null {
 
   if (!from || to.length === 0) return null;
 
+  const cc = normalizeStringArray(obj.cc);
+
   const attachmentsRaw = Array.isArray(obj.attachments) ? obj.attachments : [];
   const attachments = attachmentsRaw
     .map((a) => (a && typeof a === "object" ? (a as Record<string, unknown>) : null))
@@ -37,9 +39,11 @@ function coerceInboundEmail(payload: unknown): InboundEmail | null {
   return {
     from,
     to,
+    cc: cc.length > 0 ? cc : undefined,
     subject: normalizeString(obj.subject) || undefined,
     text: normalizeString(obj.text) || undefined,
     html: normalizeString(obj.html) || undefined,
+    date: normalizeString(obj.date) || undefined,
     messageId: normalizeString(obj.messageId) || undefined,
     inReplyTo: normalizeString(obj.inReplyTo) || undefined,
     references: normalizeStringArray(obj.references),
