@@ -261,7 +261,7 @@ export async function loadQuoteMessages(
       };
     }
 
-    const rows = (data ?? []) as QuoteMessageRecord[];
+    const rows = (Array.isArray(data) ? data : []) as unknown as QuoteMessageRecord[];
     const decorated = decorateMessagesForViewer(rows, {
       viewerRole: typeof viewerRole === "string" ? viewerRole : null,
       viewerUserId: typeof viewerUserId === "string" ? viewerUserId : null,
