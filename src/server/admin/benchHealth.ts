@@ -16,11 +16,16 @@ import { isSupplierMismatchLogsEnabled } from "@/server/admin/supplierMismatchSu
 export type SupplierBenchHealth = {
   supplierId: string;
   supplierName: string | null;
+  supplierStatus?: "active" | "paused" | "pending" | "unknown";
+  statusSupported?: boolean;
   health: "healthy" | "at_risk" | "unresponsive";
   reasons: string[];
   overdueThreadCount: number;
   lastActivityAt: string | null;
   lastInboundAt: string | null; // max supplier/customer inbound on quotes tied to supplier, if available
+  recommendedQuoteId?: string | null;
+  recommendedReason?: "overdue" | "needs_reply" | "recent_inbound" | null;
+  supportsQuoteMessages?: boolean;
   mismatchCountLast30d?: number;
   healthBreakdown?: {
     overdueThreadCount: number;
@@ -40,6 +45,7 @@ type BenchHealthSort = "health" | "overdue" | "activity";
 const ROLLUP_RELATION = "quote_message_rollup";
 const MISMATCH_RELATION = "supplier_capability_mismatch_logs";
 const MAX_BREAKDOWN_QUOTE_IDS = 10;
+const QUOTE_MESSAGES_RELATION = "quote_messages";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -49,6 +55,15 @@ function normalizeText(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeSupplierStatus(value: unknown): SupplierBenchHealth["supplierStatus"] {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (raw === "paused") return "paused";
+  if (raw === "pending") return "pending";
+  if (raw === "active") return "active";
+  if (!raw) return "unknown";
+  return "active";
 }
 
 function coerceLimit(value: unknown): number {
@@ -127,6 +142,14 @@ export async function loadBenchHealthDirectory(args?: {
   const statusFilter = normalizeStatusFilter(args?.status);
   const sort = normalizeSort(args?.sort);
 
+  const supportsQuoteMessages = await schemaGate({
+    enabled: true,
+    relation: QUOTE_MESSAGES_RELATION,
+    requiredColumns: ["quote_id", "sender_id", "sender_role", "body", "created_at"],
+    warnPrefix: "[bench_health]",
+    warnKey: "bench_health:quote_messages",
+  });
+
   const suppliers = await loadAdminSuppliersDirectory({
     q,
     status: "all",
@@ -136,11 +159,16 @@ export async function loadBenchHealthDirectory(args?: {
   const base: SupplierBenchHealth[] = suppliers.map((row) => ({
     supplierId: row.supplierId,
     supplierName: row.supplierName ?? null,
+    supplierStatus: row.status,
+    statusSupported: row.statusSupported,
     health: "healthy",
     reasons: [],
     overdueThreadCount: 0,
     lastActivityAt: row.lastActivityAt ?? null,
     lastInboundAt: null,
+    recommendedQuoteId: null,
+    recommendedReason: null,
+    supportsQuoteMessages,
     healthBreakdown: {
       overdueThreadCount: 0,
       needsReplyThreadCount: 0,
@@ -206,15 +234,32 @@ export async function loadBenchHealthForSupplier(
     id: string;
     company_name: string | null;
     primary_email: string | null;
+    status?: string | null;
   };
 
   let supplier: SupplierLiteRow | null = null;
+  let statusSupported = true;
   try {
-    const { data } = await supabaseServer
-      .from("suppliers")
-      .select("id,company_name,primary_email")
-      .eq("id", supplierId)
-      .maybeSingle<SupplierLiteRow>();
+    const selectBase = "id,company_name,primary_email";
+    const attempt = async (withStatus: boolean) => {
+      const select = withStatus ? `${selectBase},status` : selectBase;
+      return await supabaseServer
+        .from("suppliers")
+        .select(select as any)
+        .eq("id", supplierId)
+        .maybeSingle<SupplierLiteRow>();
+    };
+
+    let data: SupplierLiteRow | null = null;
+    let error: unknown = null;
+
+    ({ data, error } = await attempt(true));
+    if (error && isMissingTableOrColumnError(error)) {
+      // If `status` is missing, fall back silently.
+      statusSupported = false;
+      ({ data } = await attempt(false));
+    }
+
     supplier = data ?? null;
   } catch {
     supplier = null;
@@ -226,15 +271,28 @@ export async function loadBenchHealthForSupplier(
     normalizeText(supplier.company_name) ?? normalizeText(supplier.primary_email) ?? supplierId;
   const lastActivityAt = await loadLastActivityForSupplierId(supplierId);
 
+  const supportsQuoteMessages = await schemaGate({
+    enabled: true,
+    relation: QUOTE_MESSAGES_RELATION,
+    requiredColumns: ["quote_id", "sender_id", "sender_role", "body", "created_at"],
+    warnPrefix: "[bench_health]",
+    warnKey: "bench_health:quote_messages",
+  });
+
   const base: SupplierBenchHealth[] = [
     {
       supplierId,
       supplierName,
+      supplierStatus: statusSupported ? normalizeSupplierStatus(supplier.status) : "active",
+      statusSupported,
       health: "healthy",
       reasons: [],
       overdueThreadCount: 0,
       lastActivityAt,
       lastInboundAt: null,
+      recommendedQuoteId: null,
+      recommendedReason: null,
+      supportsQuoteMessages,
       healthBreakdown: {
         overdueThreadCount: 0,
         needsReplyThreadCount: 0,
@@ -311,6 +369,9 @@ async function enrichBenchHealthRows(
     let lastInboundAt: string | null = null;
     const overdueQuoteIds: string[] = [];
     const needsReplyQuoteIds: string[] = [];
+    let bestOverdue: { quoteId: string; inboundMs: number | null } | null = null;
+    let bestNeedsReply: { quoteId: string; inboundMs: number | null } | null = null;
+    let bestInbound: { quoteId: string; inboundMs: number } | null = null;
 
     for (const quoteId of quoteIds) {
       const rollup = rollupsByQuoteId.get(quoteId) ?? null;
@@ -318,14 +379,34 @@ async function enrichBenchHealthRows(
 
       const inboundAt = maxIso(rollup.lastCustomerAt, rollup.lastSupplierAt);
       lastInboundAt = maxIso(lastInboundAt, inboundAt);
+      const inboundMs = ms(inboundAt);
+      if (inboundMs !== null) {
+        if (!bestInbound || inboundMs > bestInbound.inboundMs) {
+          bestInbound = { quoteId, inboundMs };
+        }
+      }
 
       const sla = computeAdminThreadSla(rollup, now);
       if (sla.status === "overdue") {
         overdue += 1;
         if (overdueQuoteIds.length < MAX_BREAKDOWN_QUOTE_IDS) overdueQuoteIds.push(quoteId);
+        if (!bestOverdue) {
+          bestOverdue = { quoteId, inboundMs };
+        } else {
+          const a = bestOverdue.inboundMs ?? -1;
+          const b = inboundMs ?? -1;
+          if (b > a) bestOverdue = { quoteId, inboundMs };
+        }
       } else if (sla.status === "needs_reply") {
         needsReply += 1;
         if (needsReplyQuoteIds.length < MAX_BREAKDOWN_QUOTE_IDS) needsReplyQuoteIds.push(quoteId);
+        if (!bestNeedsReply) {
+          bestNeedsReply = { quoteId, inboundMs };
+        } else {
+          const a = bestNeedsReply.inboundMs ?? -1;
+          const b = inboundMs ?? -1;
+          if (b > a) bestNeedsReply = { quoteId, inboundMs };
+        }
       }
     }
 
@@ -348,6 +429,24 @@ async function enrichBenchHealthRows(
       lastInboundAt,
       lastActivityAt: current.lastActivityAt ?? null,
     };
+
+    // Phase 19.2.3: "Take action" recommended quote (best-effort, no extra queries).
+    const recommendedOverdue = bestOverdue?.quoteId ?? null;
+    const recommendedNeedsReply = bestNeedsReply?.quoteId ?? null;
+    const recommendedInbound = bestInbound?.quoteId ?? null;
+    if (recommendedOverdue) {
+      current.recommendedQuoteId = recommendedOverdue;
+      current.recommendedReason = "overdue";
+    } else if (recommendedNeedsReply) {
+      current.recommendedQuoteId = recommendedNeedsReply;
+      current.recommendedReason = "needs_reply";
+    } else if (recommendedInbound) {
+      current.recommendedQuoteId = recommendedInbound;
+      current.recommendedReason = "recent_inbound";
+    } else {
+      current.recommendedQuoteId = null;
+      current.recommendedReason = null;
+    }
 
     const reasons: string[] = [];
     if (overdue >= 3) {

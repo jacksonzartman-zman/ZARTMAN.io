@@ -4,6 +4,7 @@ import { formatDateTime } from "@/lib/formatDate";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
 import type { SupplierBenchHealth } from "@/server/admin/benchHealth";
+import BenchHealthActionsCell from "@/app/admin/bench-health/BenchHealthActionsCell";
 
 type AdminQuotesMessageFilter = "needs_reply" | "overdue";
 
@@ -126,12 +127,15 @@ export default function BenchHealthTable({ rows }: { rows: SupplierBenchHealth[]
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Details
           </th>
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Actions
+          </th>
         </tr>
       }
       body={
         isEmpty ? (
           <tr>
-            <td colSpan={7} className="px-6 py-12 text-center text-base text-slate-300">
+            <td colSpan={8} className="px-6 py-12 text-center text-base text-slate-300">
               <p className="font-medium text-slate-100">No suppliers match this filter.</p>
               <p className="mt-2 text-sm text-slate-400">
                 Try clearing filters or broadening your search.
@@ -288,6 +292,15 @@ export default function BenchHealthTable({ rows }: { rows: SupplierBenchHealth[]
                     </details>
                   );
                 })()}
+              </td>
+              <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                <BenchHealthActionsCell
+                  supplierId={row.supplierId}
+                  supplierStatus={row.supplierStatus ?? "unknown"}
+                  statusSupported={Boolean(row.statusSupported)}
+                  recommendedQuoteId={row.recommendedQuoteId ?? null}
+                  supportsQuoteMessages={Boolean(row.supportsQuoteMessages)}
+                />
               </td>
             </tr>
           ))
