@@ -1,12 +1,17 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
+  handleMissingSupabaseSchema,
   isMissingTableOrColumnError,
   isRowLevelSecurityDeniedError,
+  isSupabaseRelationMarkedMissing,
+  isSupabaseSelectIncompatibleError,
   serializeSupabaseError,
+  warnOnce,
 } from "@/server/admin/logging";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import { signPreviewToken } from "@/server/cadPreviewToken";
+import { hasColumns } from "@/server/db/schemaContract";
 
 export type QuoteMessageSenderRole =
   | "admin"
@@ -80,10 +85,6 @@ type CreateQuoteMessageParams = {
   customerId?: string | null;
   supabase?: SupabaseClient;
 };
-
-const MESSAGE_COLUMNS =
-  "id,quote_id,sender_id,sender_role,sender_name,sender_email,body,created_at,updated_at";
-const MESSAGE_COLUMNS_WITH_METADATA = `${MESSAGE_COLUMNS},metadata`;
 
 type AttachmentMeta = {
   filename: string;
@@ -195,6 +196,89 @@ function decorateMessagesForViewer(
   });
 }
 
+const QUOTE_MESSAGES_RELATION = "quote_messages";
+
+// Process-level escape hatch:
+// - If this deployment rejects our "minimal safe select" (PostgREST schema cache drift,
+//   select parser issues, relationship embedding issues), we stop retrying it and go
+//   straight to `select("*")` on subsequent calls to avoid repeated 400 spam.
+let forceFallbackSelectAll = false;
+
+const QUOTE_MESSAGES_COLUMN_CACHE = new Map<string, boolean>();
+
+async function hasQuoteMessagesColumn(column: string): Promise<boolean> {
+  const key = typeof column === "string" ? column.trim() : "";
+  if (!key) return false;
+  const cached = QUOTE_MESSAGES_COLUMN_CACHE.get(key);
+  if (typeof cached === "boolean") return cached;
+  const ok = await hasColumns(QUOTE_MESSAGES_RELATION, [key]);
+  QUOTE_MESSAGES_COLUMN_CACHE.set(key, ok);
+  return ok;
+}
+
+async function buildQuoteMessagesMinimalSelect(): Promise<string> {
+  // Core columns (most likely to exist).
+  const cols: string[] = ["id", "quote_id", "sender_id", "sender_role", "body", "created_at"];
+
+  // Optional columns (schema drift tolerant).
+  if (await hasQuoteMessagesColumn("updated_at")) cols.push("updated_at");
+  if (await hasQuoteMessagesColumn("sender_name")) cols.push("sender_name");
+  if (await hasQuoteMessagesColumn("metadata")) cols.push("metadata");
+  if (await hasQuoteMessagesColumn("provider_message_id")) cols.push("provider_message_id");
+
+  // Intentionally excluded:
+  // - sender_email (do not select by default; do not expose to UI models)
+  return cols.join(",");
+}
+
+/**
+ * Manual verification checklist:
+ * - Deployment where quote_messages.sender_email is missing: no repeated 400s; thread still renders.
+ * - Attachments render when metadata.attachments exists.
+ * - "Email" badge renders when metadata.via === "email".
+ * - No emails are displayed anywhere (admin/customer/supplier portals).
+ */
+function normalizeQuoteMessageRow(row: Record<string, unknown>): QuoteMessageRecord | null {
+  const id = typeof row.id === "string" ? row.id.trim() : "";
+  const quoteId = typeof row.quote_id === "string" ? row.quote_id.trim() : "";
+  const senderId = typeof row.sender_id === "string" ? row.sender_id.trim() : "";
+  const senderRole =
+    typeof row.sender_role === "string" && row.sender_role.trim()
+      ? (row.sender_role.trim() as QuoteMessageSenderRole)
+      : ("system" as QuoteMessageSenderRole);
+  const body = typeof row.body === "string" ? row.body : "";
+  const createdAt = typeof row.created_at === "string" ? row.created_at : "";
+
+  if (!id || !quoteId || !senderId || !createdAt) return null;
+
+  const senderNameRaw = (row as any).sender_name;
+  const senderName =
+    typeof senderNameRaw === "string" && senderNameRaw.trim().length > 0
+      ? senderNameRaw.trim()
+      : null;
+
+  const updatedAtRaw = (row as any).updated_at;
+  const updatedAt =
+    typeof updatedAtRaw === "string" && updatedAtRaw.trim().length > 0 ? updatedAtRaw : null;
+
+  // Metadata is optional. Keep it null-safe and do NOT assume it's an object.
+  const metadata = "metadata" in row ? ((row as any).metadata ?? null) : undefined;
+
+  return {
+    id,
+    quote_id: quoteId,
+    sender_id: senderId,
+    sender_role: senderRole,
+    sender_name: senderName,
+    // Enforce "no email leakage": never surface sender_email into the UI model.
+    sender_email: null,
+    body,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    ...(typeof metadata === "undefined" ? {} : { metadata }),
+  };
+}
+
 export async function loadQuoteMessages(
   input: LoadQuoteMessagesInput,
 ): Promise<LoadQuoteMessagesResult> {
@@ -222,47 +306,96 @@ export async function loadQuoteMessages(
     };
   }
 
+  if (isSupabaseRelationMarkedMissing(QUOTE_MESSAGES_RELATION)) {
+    return { ok: true, messages: [] };
+  }
+
   try {
     const run = async (columns: string) => {
       const { data, error } = await supabaseServer
-        .from("quote_messages")
-        .select(columns)
+        .from(QUOTE_MESSAGES_RELATION)
+        .select(columns as any)
         .eq("quote_id", normalizedQuoteId)
         .order("created_at", { ascending: true })
         .limit(limit);
-      return { data, error };
+      return {
+        data: (Array.isArray(data) ? data : []) as unknown as Array<Record<string, unknown>>,
+        error,
+      };
     };
 
-    const attempt1 = await run(MESSAGE_COLUMNS_WITH_METADATA);
-    let data = attempt1.data;
-    let error = attempt1.error;
+    // Strategy:
+    // - Attempt 1: minimal safe select (built dynamically via hasColumns)
+    // - Attempt 2: select("*") when schema variant rejects attempt 1
+    let rows: Array<Record<string, unknown>> = [];
+    let shouldFallback = forceFallbackSelectAll;
 
-    if (error && isMissingTableOrColumnError(error)) {
-      const attempt2 = await run(MESSAGE_COLUMNS);
-      data = attempt2.data;
-      error = attempt2.error;
+    if (!shouldFallback) {
+      const select = await buildQuoteMessagesMinimalSelect();
+      const attempt1 = await run(select);
+      if (!attempt1.error) {
+        rows = Array.isArray(attempt1.data)
+          ? (attempt1.data as Array<Record<string, unknown>>)
+          : [];
+      } else if (isSupabaseSelectIncompatibleError(attempt1.error)) {
+        const serialized = serializeSupabaseError(attempt1.error);
+        warnOnce(
+          "quote_messages:select_incompatible",
+          "[quote_messages] select incompatible; falling back",
+          { code: serialized.code, message: serialized.message },
+        );
+        forceFallbackSelectAll = true;
+        shouldFallback = true;
+      } else if (
+        handleMissingSupabaseSchema({
+          relation: QUOTE_MESSAGES_RELATION,
+          error: attempt1.error,
+          warnPrefix: "[quote_messages]",
+          warnKey: "quote_messages:missing_schema",
+        })
+      ) {
+        return { ok: true, messages: [] };
+      } else {
+        const serialized = serializeSupabaseError(attempt1.error);
+        warnOnce("quote_messages:load_failed", "[quote_messages] load failed", {
+          code: serialized.code,
+          message: serialized.message,
+        });
+        return { ok: false, messages: [], reason: "unknown", error: serialized ?? attempt1.error };
+      }
     }
 
-    if (error) {
-      const serialized = serializeSupabaseError(error);
-      const reason = isMissingTableOrColumnError(error)
-        ? "schema_error"
-        : "unknown";
-      console.error("[quote messages] load failed", {
-        quoteId: normalizedQuoteId,
-        error: serialized ?? error,
-        reason,
-      });
-      return {
-        ok: false,
-        messages: [],
-        reason,
-        error: serialized ?? error,
-      };
+    if (shouldFallback) {
+      const attempt2 = await run("*" as any);
+      if (attempt2.error) {
+        if (
+          handleMissingSupabaseSchema({
+            relation: QUOTE_MESSAGES_RELATION,
+            error: attempt2.error,
+            warnPrefix: "[quote_messages]",
+            warnKey: "quote_messages:missing_schema",
+          })
+        ) {
+          return { ok: true, messages: [] };
+        }
+        const serialized = serializeSupabaseError(attempt2.error);
+        warnOnce("quote_messages:load_failed_fallback", "[quote_messages] fallback load failed", {
+          code: serialized.code,
+          message: serialized.message,
+        });
+        return { ok: false, messages: [], reason: "unknown", error: serialized ?? attempt2.error };
+      }
+
+      rows = Array.isArray(attempt2.data)
+        ? (attempt2.data as Array<Record<string, unknown>>)
+        : [];
     }
 
-    const rows = (Array.isArray(data) ? data : []) as unknown as QuoteMessageRecord[];
-    const decorated = decorateMessagesForViewer(rows, {
+    const normalized = rows
+      .map((row) => (row && typeof row === "object" ? normalizeQuoteMessageRow(row) : null))
+      .filter((row): row is QuoteMessageRecord => Boolean(row));
+
+    const decorated = decorateMessagesForViewer(normalized, {
       viewerRole: typeof viewerRole === "string" ? viewerRole : null,
       viewerUserId: typeof viewerUserId === "string" ? viewerUserId : null,
     });
@@ -272,15 +405,27 @@ export async function loadQuoteMessages(
       messages: decorated,
     };
   } catch (error) {
-    console.error("[quote messages] load failed", {
-      quoteId: normalizedQuoteId,
-      error,
+    if (
+      handleMissingSupabaseSchema({
+        relation: QUOTE_MESSAGES_RELATION,
+        error,
+        warnPrefix: "[quote_messages]",
+        warnKey: "quote_messages:missing_schema",
+      }) ||
+      isMissingTableOrColumnError(error)
+    ) {
+      return { ok: true, messages: [] };
+    }
+    const serialized = serializeSupabaseError(error);
+    warnOnce("quote_messages:load_crashed", "[quote_messages] load crashed", {
+      code: serialized.code,
+      message: serialized.message,
     });
     return {
       ok: false,
       messages: [],
       reason: "unknown",
-      error,
+      error: serialized ?? error,
     };
   }
 }
@@ -319,20 +464,25 @@ export async function createQuoteMessage(
 
   try {
     const supabase = params.supabase ?? supabaseServer;
-    const payload = {
+    const payload: Record<string, unknown> = {
       quote_id: normalizedQuoteId,
       sender_id: normalizedSenderId,
       sender_role: normalizedSenderRole,
       sender_name: normalizedSenderName,
-      sender_email: normalizedSenderEmail,
       body: trimmedBody,
     };
 
+    // Drift-tolerant: only include sender_email when the column exists.
+    if (await hasQuoteMessagesColumn("sender_email")) {
+      payload.sender_email = normalizedSenderEmail;
+    }
+
+    const select = await buildQuoteMessagesMinimalSelect();
     const { data, error } = await supabase
-      .from("quote_messages")
+      .from(QUOTE_MESSAGES_RELATION)
       .insert(payload)
-      .select(MESSAGE_COLUMNS)
-      .single<QuoteMessageRecord>();
+      .select(select)
+      .single<Record<string, unknown>>();
 
     if (error || !data) {
       const serialized = serializeSupabaseError(error);
@@ -370,6 +520,16 @@ export async function createQuoteMessage(
       };
     }
 
+    const normalizedRow =
+      data && typeof data === "object" ? normalizeQuoteMessageRow(data as Record<string, unknown>) : null;
+    if (!normalizedRow) {
+      warnOnce("quote_messages:insert_unexpected_shape", "[quote_messages] insert returned unexpected shape", {
+        code: null,
+        message: null,
+      });
+      return { ok: false, message: null, reason: "unknown", error: "insert_return_shape" };
+    }
+
     // Durable audit trail (service role write).
     void emitQuoteEvent({
       quoteId: normalizedQuoteId,
@@ -380,7 +540,7 @@ export async function createQuoteMessage(
         normalizedSenderRole === "supplier" ? normalizedSupplierId : null,
       metadata: {
         // New canonical keys.
-        messageId: data.id,
+        messageId: normalizedRow.id,
         actorRole: normalizedSenderRole,
         supplierId:
           normalizedSenderRole === "supplier" ? normalizedSupplierId : null,
@@ -388,17 +548,17 @@ export async function createQuoteMessage(
           normalizedSenderRole === "customer" ? normalizedCustomerId : null,
 
         // Back-compat keys.
-        message_id: data.id,
+        message_id: normalizedRow.id,
         sender_role: normalizedSenderRole,
-        sender_name: data.sender_name ?? null,
-        sender_email: data.sender_email ?? null,
+        sender_name: normalizedRow.sender_name ?? null,
+        sender_email: null,
       },
-      createdAt: data.created_at,
+      createdAt: normalizedRow.created_at,
     });
 
     return {
       ok: true,
-      message: data,
+      message: normalizedRow,
     };
   } catch (error) {
     if (isRowLevelSecurityDeniedError(error)) {

@@ -350,26 +350,23 @@ function formatActorLabel(
     readString(metadata, "sender_name") ??
     readString(metadata, "actor_name") ??
     readString(metadata, "name");
-  const actorEmail =
-    readString(metadata, "sender_email") ??
-    readString(metadata, "actor_email") ??
-    readString(metadata, "email");
 
   if (normalized === "supplier") {
     const supplierName = readString(metadata, "supplier_name");
-    const identifier = supplierName ?? readString(metadata, "supplier_email") ?? actorName ?? actorEmail;
+    // Enforce "no email leakage": never surface email-like identifiers in timeline labels.
+    const identifier = supplierName ?? actorName ?? readString(metadata, "supplier_id");
     return identifier ? `Supplier · ${identifier}` : "Supplier";
   }
   if (normalized === "customer") {
     const identifier =
       readString(metadata, "customer_name") ??
-      readString(metadata, "customer_email") ??
       actorName ??
-      actorEmail;
+      readString(metadata, "customer_id");
     return identifier ? `Customer · ${identifier}` : "Customer";
   }
   if (normalized === "admin") {
-    const identifier = readString(metadata, "admin_email") ?? actorEmail ?? actorName;
+    // Do not surface admin_email / actor_email.
+    const identifier = actorName;
     return identifier ? `Admin · ${identifier}` : "Admin";
   }
   return undefined;
@@ -446,8 +443,6 @@ function formatSupplierIdentifier(
 ): string | null {
   const supplierName = readString(metadata, "supplier_name");
   if (supplierName) return supplierName;
-  const supplierEmail = readString(metadata, "supplier_email");
-  if (supplierEmail) return supplierEmail;
   const supplierId = readString(metadata, "supplier_id");
   if (supplierId) return supplierId;
   return null;

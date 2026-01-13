@@ -665,7 +665,12 @@ function useQuoteMessagesRealtime(
           if (!next || next.quote_id !== quoteId) {
             return;
           }
-          setMessages((current) => mergeMessages(current, next));
+          // Defense-in-depth: never allow real emails into the UI model.
+          const sanitized: QuoteMessageRecord = {
+            ...next,
+            sender_email: null,
+          };
+          setMessages((current) => mergeMessages(current, sanitized));
         },
       );
 

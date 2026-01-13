@@ -47,7 +47,7 @@ export async function loadRecentCustomerActivity(
 ): Promise<QuoteActivityEvent[]> {
   console.info("[customer activity] load start", {
     customerId,
-    emailOverride: options?.emailOverride ?? null,
+    hasEmailOverride: Boolean(options?.emailOverride),
   });
   const overrideEmail = normalizeEmailInput(options?.emailOverride ?? null);
   if (!customerId && !overrideEmail) {
@@ -160,7 +160,6 @@ export async function fetchQuotesByEmail(
         : "[customer activity] quote query failed";
     console.error(message, {
       customerId: context?.customerId ?? null,
-      email: normalizedEmail,
       error,
     });
     return [];
@@ -209,7 +208,6 @@ export async function loadCustomerQuotesTable(
 
   console.info("[customer quotes] load result", {
     customerId,
-    email: emailToUse,
     quoteCount: quotes.length,
   });
 
@@ -276,7 +274,6 @@ export async function loadCustomerQuotesTablePage(
   if (error) {
     console.error("[customer quotes] paged query failed", {
       customerId,
-      email: emailToUse,
       page,
       pageSize,
       sort,
@@ -308,7 +305,7 @@ async function fetchQuoteMessages(
   }
   const { data, error } = await supabaseServer
     .from("quote_messages")
-    .select("id,quote_id,sender_role,sender_name,sender_email,body,created_at")
+    .select("id,quote_id,sender_role,sender_name,body,created_at")
     .in("quote_id", quoteIds)
     .order("created_at", { ascending: false })
     .limit(EVENT_LIMIT * 4);
@@ -387,7 +384,6 @@ function buildMessageEvent(
         : "Zartman admin";
   const displayName =
     message.sender_name?.trim() ||
-    message.sender_email?.trim() ||
     roleLabel;
   return {
     id: `message:${message.id}`,

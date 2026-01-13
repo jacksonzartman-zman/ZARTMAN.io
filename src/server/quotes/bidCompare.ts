@@ -10,7 +10,7 @@ import {
 } from "@/server/admin/logging";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
-import { schemaGate } from "@/server/db/schemaContract";
+import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 
 export type BidComparisonRow = {
   quoteId: string;
@@ -65,11 +65,13 @@ type SupplierBidCompareRow = {
         id: string;
         company_name: string | null;
         primary_email: string | null;
+        user_id?: string | null;
       }
     | Array<{
         id: string;
         company_name: string | null;
         primary_email: string | null;
+        user_id?: string | null;
       }>;
 };
 
@@ -81,12 +83,6 @@ type QuoteRfqFeedbackRow = {
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeEmail(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim().toLowerCase();
-  return trimmed.length > 0 ? trimmed : null;
 }
 
 function normalizeCurrency(value: unknown): string | null {
@@ -108,14 +104,17 @@ function normalizeLeadTime(value: unknown): number | null {
 
 function resolveSupplierRecord(
   raw: SupplierBidCompareRow["supplier"],
-): { name: string; email: string | null } {
+): { name: string; userId: string | null } {
   const record = Array.isArray(raw) ? raw[0] : raw;
   const name =
     typeof record?.company_name === "string" && record.company_name.trim()
       ? record.company_name.trim()
       : "Supplier partner";
-  const email = normalizeEmail(record?.primary_email);
-  return { name, email };
+  const userId =
+    typeof (record as any)?.user_id === "string" && String((record as any).user_id).trim()
+      ? String((record as any).user_id).trim()
+      : null;
+  return { name, userId };
 }
 
 function rankAsc(values: Array<number | null>): Array<number | null> {
@@ -183,10 +182,12 @@ export async function loadBidComparisonSummary(
 
   let bids: SupplierBidCompareRow[] = [];
   try {
+    const suppliersHasUserId = await hasColumns("suppliers", ["user_id"]);
+    const supplierSelect = `supplier:suppliers(id,company_name,primary_email${suppliersHasUserId ? ",user_id" : ""})`;
     const { data, error } = await supabaseServer
       .from("supplier_bids")
       .select(
-        "id,quote_id,supplier_id,unit_price,currency,lead_time_days,status,created_at,updated_at,supplier:suppliers(id,company_name,primary_email)",
+        `id,quote_id,supplier_id,unit_price,currency,lead_time_days,status,created_at,updated_at,${supplierSelect}`,
       )
       .eq("quote_id", normalizedQuoteId)
       .order("created_at", { ascending: false })
@@ -283,28 +284,26 @@ export async function loadBidComparisonSummary(
     }
   }
 
-  // Messages (best-effort: match supplier messages by sender_email = supplier.primary_email)
+  // Messages (best-effort, no PII):
+  // - Prefer matching supplier messages by sender_id == suppliers.user_id.
   try {
     const messagesResult = await loadQuoteMessages(normalizedQuoteId);
     const messages = messagesResult.ok ? messagesResult.messages : [];
-    const supplierEmailById = new Map<string, string | null>();
+    const supplierUserIdById = new Map<string, string | null>();
     for (const bid of bids) {
       const supplierId = normalizeId(bid?.supplier_id);
-      if (!supplierId || supplierEmailById.has(supplierId)) continue;
-      supplierEmailById.set(
-        supplierId,
-        resolveSupplierRecord(bid?.supplier ?? null).email,
-      );
+      if (!supplierId || supplierUserIdById.has(supplierId)) continue;
+      supplierUserIdById.set(supplierId, resolveSupplierRecord(bid?.supplier ?? null).userId);
     }
 
     for (const row of rows) {
-      const supplierEmail = supplierEmailById.get(row.supplierId) ?? null;
-      if (!supplierEmail) continue;
+      const supplierUserId = supplierUserIdById.get(row.supplierId) ?? null;
+      if (!supplierUserId) continue;
       const last = messages
         .filter(
           (msg) =>
             msg.sender_role === "supplier" &&
-            normalizeEmail(msg.sender_email) === supplierEmail,
+            msg.sender_id === supplierUserId,
         )
         .reduce<string | null>((acc, msg) => {
           const ts = typeof msg?.created_at === "string" ? msg.created_at : null;

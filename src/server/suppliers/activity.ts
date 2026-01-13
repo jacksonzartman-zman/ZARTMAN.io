@@ -30,7 +30,7 @@ export async function loadRecentSupplierActivity(
 ): Promise<QuoteActivityEvent[]> {
   console.info("[supplier activity] load start", {
     supplierId,
-    supplierEmail: options?.emailOverride ?? null,
+    hasEmailOverride: Boolean(options?.emailOverride),
   });
   if (!supplierId) {
     return [];
@@ -141,7 +141,7 @@ async function fetchExternalMessages(
   }
   const { data, error } = await supabaseServer
     .from("quote_messages")
-    .select("id,quote_id,sender_role,sender_name,sender_email,body,created_at")
+    .select("id,quote_id,sender_role,sender_name,body,created_at")
     .in("quote_id", quoteIds)
     .in("sender_role", ["admin", "customer"])
     .order("created_at", { ascending: false })
@@ -184,7 +184,6 @@ function buildSupplierMessageEvent(
     senderRole === "customer" ? "Customer" : "Zartman admin";
   const displayName =
     message.sender_name?.trim() ||
-    message.sender_email?.trim() ||
     actor;
   return {
     id: `supplier-message:${message.id}`,
