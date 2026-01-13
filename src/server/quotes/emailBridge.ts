@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { schemaGate } from "@/server/db/schemaContract";
 import { serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
+import { isCustomerEmailOptedIn } from "@/server/quotes/customerEmailPrefs";
 
 export type InboundEmail = {
   from: string;
@@ -20,7 +21,7 @@ export type InboundEmail = {
 
 type ReplyTokenParts = {
   quoteId: string;
-  supplierId: string;
+  partyId: string;
   sig: string;
 };
 
@@ -29,6 +30,7 @@ const QUOTE_MESSAGES_RELATION = "quote_messages";
 
 // Keep the local-part token reasonably short for common provider limits.
 const SIG_HEX_LEN = 16; // 8 bytes -> 16 hex chars
+type ReplyTokenScope = "supplier" | "customer";
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -46,10 +48,23 @@ function safeEquals(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
-function computeSigHex(args: { secret: string; quoteId: string; supplierId: string }): string {
+function computeSigHexLegacySupplier(args: { secret: string; quoteId: string; supplierId: string }): string {
   const hmac = crypto
     .createHmac("sha256", args.secret)
     .update(`${args.quoteId}:${args.supplierId}`, "utf8")
+    .digest("hex");
+  return hmac.slice(0, SIG_HEX_LEN);
+}
+
+function computeSigHexScoped(args: {
+  secret: string;
+  scope: ReplyTokenScope;
+  quoteId: string;
+  partyId: string;
+}): string {
+  const hmac = crypto
+    .createHmac("sha256", args.secret)
+    .update(`${args.scope}:${args.quoteId}:${args.partyId}`, "utf8")
     .digest("hex");
   return hmac.slice(0, SIG_HEX_LEN);
 }
@@ -63,7 +78,8 @@ export function createReplyToken(args: { quoteId: string; supplierId: string; se
   if (!quoteId || !supplierId) return null;
   if (!isSafeTokenComponent(quoteId) || !isSafeTokenComponent(supplierId)) return null;
 
-  const sig = computeSigHex({ secret, quoteId, supplierId });
+  // New scoped tokens (supplier:<quoteId>:<supplierId>); verify maintains back-compat.
+  const sig = computeSigHexScoped({ secret, scope: "supplier", quoteId, partyId: supplierId });
   return `${quoteId}.${supplierId}.${sig}`;
 }
 
@@ -78,7 +94,47 @@ export function verifyReplyToken(args: { quoteId: string; supplierId: string; si
   if (!isSafeTokenComponent(quoteId) || !isSafeTokenComponent(supplierId)) return false;
   if (!/^[a-f0-9]{8,64}$/.test(sig)) return false;
 
-  const expected = computeSigHex({ secret, quoteId, supplierId }).toLowerCase();
+  // Backward compatibility: accept both scoped and legacy tokens.
+  const expectedScoped = computeSigHexScoped({ secret, scope: "supplier", quoteId, partyId: supplierId }).toLowerCase();
+  if (safeEquals(expectedScoped, sig)) return true;
+
+  const expectedLegacy = computeSigHexLegacySupplier({ secret, quoteId, supplierId }).toLowerCase();
+  return safeEquals(expectedLegacy, sig);
+}
+
+export function createCustomerReplyToken(args: {
+  quoteId: string;
+  customerId: string;
+  secret?: string;
+}): string | null {
+  const quoteId = normalizeString(args.quoteId);
+  const customerId = normalizeString(args.customerId);
+  const secret = normalizeString(args.secret ?? process.env.EMAIL_BRIDGE_SECRET);
+  if (!secret) return null;
+  if (!quoteId || !customerId) return null;
+  if (!isSafeTokenComponent(quoteId) || !isSafeTokenComponent(customerId)) return null;
+
+  const sig = computeSigHexScoped({ secret, scope: "customer", quoteId, partyId: customerId });
+  return `${quoteId}.${customerId}.${sig}`;
+}
+
+export function verifyCustomerReplyToken(args: {
+  quoteId: string;
+  customerId: string;
+  sig: string;
+  secret?: string;
+}): boolean {
+  const quoteId = normalizeString(args.quoteId);
+  const customerId = normalizeString(args.customerId);
+  const sig = normalizeString(args.sig).toLowerCase();
+  const secret = normalizeString(args.secret ?? process.env.EMAIL_BRIDGE_SECRET);
+
+  if (!secret) return false;
+  if (!quoteId || !customerId || !sig) return false;
+  if (!isSafeTokenComponent(quoteId) || !isSafeTokenComponent(customerId)) return false;
+  if (!/^[a-f0-9]{8,64}$/.test(sig)) return false;
+
+  const expected = computeSigHexScoped({ secret, scope: "customer", quoteId, partyId: customerId }).toLowerCase();
   return safeEquals(expected, sig);
 }
 
@@ -149,16 +205,16 @@ export function parseReplyToTokenFromRecipients(
     if (!local.toLowerCase().startsWith("reply+")) continue;
 
     const token = local.slice("reply+".length);
-    const [quoteId, supplierId, sig, ...rest] = token.split(".");
+    const [quoteId, partyId, sig, ...rest] = token.split(".");
     if (rest.length > 0) return { ok: false, reason: "malformed" };
 
     const q = normalizeString(quoteId);
-    const s = normalizeString(supplierId);
+    const s = normalizeString(partyId);
     const g = normalizeString(sig);
     if (!q || !s || !g) return { ok: false, reason: "malformed" };
     if (!isSafeTokenComponent(q) || !isSafeTokenComponent(s)) return { ok: false, reason: "malformed" };
 
-    return { ok: true, parts: { quoteId: q, supplierId: s, sig: g } };
+    return { ok: true, parts: { quoteId: q, partyId: s, sig: g } };
   }
   return { ok: false, reason: "missing" };
 }
@@ -199,6 +255,32 @@ type InboundHandleResult =
   | { ok: true }
   | { ok: false; error: string; httpStatus: 200 | 400 | 401 };
 
+export function getCustomerReplyToAddress(args: {
+  quoteId: string;
+  customerId: string;
+}): { ok: true; address: string } | { ok: false; reason: "disabled" | "missing_domain" } {
+  const secret = normalizeString(process.env.EMAIL_BRIDGE_SECRET);
+  if (!secret) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  const replyDomain = normalizeString(process.env.EMAIL_REPLY_DOMAIN);
+  if (!replyDomain) {
+    return { ok: false, reason: "missing_domain" };
+  }
+
+  const token = createCustomerReplyToken({
+    quoteId: args.quoteId,
+    customerId: args.customerId,
+    secret,
+  });
+  if (!token) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  return { ok: true, address: `reply+${token}@${replyDomain}` };
+}
+
 export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise<InboundHandleResult> {
   console.log(`${WARN_PREFIX} inbound received`);
 
@@ -214,7 +296,7 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
     return { ok: false, error: "token_missing_or_malformed", httpStatus: 400 };
   }
 
-  const { quoteId, supplierId, sig } = tokenResult.parts;
+  const { quoteId, partyId: supplierId, sig } = tokenResult.parts;
   const valid = verifyReplyToken({ quoteId, supplierId, sig, secret });
   if (!valid) {
     console.warn(`${WARN_PREFIX} token invalid`, { reason: "bad_sig" });
@@ -287,5 +369,129 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
     console.error(`${WARN_PREFIX} insert crashed`, { error });
     return { ok: false, error: "write_failed", httpStatus: 200 };
   }
+}
+
+export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise<InboundHandleResult> {
+  const secret = normalizeString(process.env.EMAIL_BRIDGE_SECRET);
+  if (!secret) {
+    return { ok: false, error: "disabled", httpStatus: 200 };
+  }
+
+  const to = Array.isArray(inbound?.to) ? inbound.to : [];
+  const tokenResult = parseReplyToTokenFromRecipients(to);
+  if (!tokenResult.ok) {
+    return { ok: false, error: "token_missing_or_malformed", httpStatus: 400 };
+  }
+
+  const { quoteId, partyId: customerId, sig } = tokenResult.parts;
+  const valid = verifyCustomerReplyToken({ quoteId, customerId, sig, secret });
+  if (!valid) {
+    return { ok: false, error: "token_invalid", httpStatus: 401 };
+  }
+
+  // Safe-by-default: even when outbound exists, inbound customer replies are ignored unless opted in.
+  const optedIn = await isCustomerEmailOptedIn({ quoteId, customerId });
+  if (!optedIn) {
+    return { ok: false, error: "not_opted_in", httpStatus: 200 };
+  }
+
+  const body = sanitizeBody(inbound);
+  if (!body) {
+    return { ok: false, error: "empty_body", httpStatus: 400 };
+  }
+
+  const supported = await schemaGate({
+    enabled: true,
+    relation: QUOTE_MESSAGES_RELATION,
+    requiredColumns: ["quote_id", "sender_role", "sender_id", "body"],
+    warnPrefix: WARN_PREFIX,
+    warnKey: "email_bridge:quote_messages_customer",
+  });
+  if (!supported) {
+    warnOnce("email_bridge:unsupported_customer", `${WARN_PREFIX} unsupported; quote_messages missing`);
+    return { ok: false, error: "unsupported", httpStatus: 200 };
+  }
+
+  // IMPORTANT: Do not store or log inbound From (PII). Attribute solely via reply token.
+  const basePayload: Record<string, unknown> = {
+    quote_id: quoteId,
+    sender_role: "customer",
+    sender_id: customerId,
+    sender_name: "Customer",
+    sender_email: null,
+    body,
+  };
+
+  const extendedPayload: Record<string, unknown> = {
+    ...basePayload,
+    customer_id: customerId,
+    metadata: {
+      via: "email_inbound_customer",
+      subject: normalizeString(inbound.subject) || null,
+      messageId: normalizeString(inbound.messageId) || null,
+      inReplyTo: normalizeString(inbound.inReplyTo) || null,
+      references: Array.isArray(inbound.references) ? inbound.references.slice(0, 50) : null,
+      attachments: Array.isArray(inbound.attachments) ? inbound.attachments.slice(0, 25) : null,
+    },
+  };
+
+  try {
+    const { error: extendedError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(extendedPayload);
+    if (!extendedError) {
+      console.log(`${WARN_PREFIX} wrote customer msg`, { quoteId, customerId, via: "email" });
+      return { ok: true };
+    }
+
+    const serialized = serializeSupabaseError(extendedError);
+    warnOnce("email_bridge:customer_insert_extended_failed", `${WARN_PREFIX} insert degraded; retrying minimal`, {
+      code: serialized.code,
+      message: serialized.message,
+    });
+
+    const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(basePayload);
+    if (baseError) {
+      console.error(`${WARN_PREFIX} insert failed`, { error: serializeSupabaseError(baseError) ?? baseError });
+      return { ok: false, error: "write_failed", httpStatus: 200 };
+    }
+
+    console.log(`${WARN_PREFIX} wrote customer msg`, { quoteId, customerId, via: "email", degraded: true });
+    return { ok: true };
+  } catch (error) {
+    console.error(`${WARN_PREFIX} insert crashed`, { error });
+    return { ok: false, error: "write_failed", httpStatus: 200 };
+  }
+}
+
+/**
+ * Shared inbound router (supplier + customer).
+ * - Extracts the reply token from recipients
+ * - Validates supplier token first (back-compat), then customer token
+ * - Returns 401 for bad signatures to stop provider retries
+ */
+export async function handleInboundEmailBridge(inbound: InboundEmail): Promise<InboundHandleResult> {
+  const secret = normalizeString(process.env.EMAIL_BRIDGE_SECRET);
+  if (!secret) {
+    return { ok: false, error: "disabled", httpStatus: 200 };
+  }
+
+  const to = Array.isArray(inbound?.to) ? inbound.to : [];
+  const tokenResult = parseReplyToTokenFromRecipients(to);
+  if (!tokenResult.ok) {
+    return { ok: false, error: "token_missing_or_malformed", httpStatus: 400 };
+  }
+
+  const { quoteId, partyId, sig } = tokenResult.parts;
+
+  // Try supplier first (existing tokens).
+  if (verifyReplyToken({ quoteId, supplierId: partyId, sig, secret })) {
+    return handleInboundSupplierEmail(inbound);
+  }
+
+  // Then customer scope.
+  if (verifyCustomerReplyToken({ quoteId, customerId: partyId, sig, secret })) {
+    return handleInboundCustomerEmail(inbound);
+  }
+
+  return { ok: false, error: "token_invalid", httpStatus: 401 };
 }
 

@@ -17,7 +17,7 @@ import {
   loadQuoteMessages,
   type QuoteMessageRecord,
 } from "@/server/quotes/messages";
-import { getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
+import { getCustomerReplyToAddress, getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
 import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
@@ -127,6 +127,7 @@ import {
 } from "./actions";
 import { AdminPartsFilesSection } from "./AdminPartsFilesSection";
 import { EmailSupplierForm } from "./EmailSupplierForm";
+import { EmailCustomerForm } from "./EmailCustomerForm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -890,6 +891,25 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             ? "Email reply address unavailable."
             : "";
 
+    const customerId =
+      typeof (quote as { customer_id?: unknown })?.customer_id === "string" &&
+      ((quote as { customer_id?: string }).customer_id ?? "").trim().length > 0
+        ? ((quote as { customer_id?: string }).customer_id ?? "").trim()
+        : null;
+    const customerReplyToResult = customerId
+      ? getCustomerReplyToAddress({ quoteId: quote.id, customerId })
+      : null;
+    const customerReplyToAddress =
+      customerReplyToResult && customerReplyToResult.ok ? customerReplyToResult.address : "";
+    const customerReplyToStatusCopy =
+      customerReplyToResult && customerReplyToResult.ok
+        ? "Customer can reply via email to update the thread (opt-in required)."
+        : customerReplyToResult?.reason === "disabled"
+          ? "Email reply not configured."
+          : customerReplyToResult
+            ? "Email reply address unavailable."
+            : "";
+
     const selectionRecordedExists = Boolean(
       (typeof quote.awarded_supplier_id === "string" && quote.awarded_supplier_id.trim()) ||
         (typeof quote.awarded_bid_id === "string" && quote.awarded_bid_id.trim()) ||
@@ -1391,7 +1411,28 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </p>
           </div>
         ) : null}
+        {customerReplyToResult ? (
+          <div className="rounded-2xl border border-slate-900 bg-slate-950/40 px-5 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Customer reply-to
+                </p>
+                <p className="mt-1 text-xs text-slate-400">{customerReplyToStatusCopy}</p>
+              </div>
+              <CopyTextButton
+                text={customerReplyToAddress}
+                idleLabel="Copy email address"
+                logPrefix="[email_bridge]"
+              />
+            </div>
+            <p className="break-anywhere mt-3 rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2 text-xs text-slate-100">
+              {customerReplyToAddress || "Not configured"}
+            </p>
+          </div>
+        ) : null}
         <EmailSupplierForm quoteId={quote.id} enabled={outboundEmailEnabled} />
+        <EmailCustomerForm quoteId={quote.id} enabled={outboundEmailEnabled} />
         {messagesUnavailable ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
             Messages are temporarily unavailable. Refresh the page to try again.
@@ -1403,6 +1444,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           canPost
           postAction={postMessageAction}
           currentUserId={null}
+          viewerRole="admin"
           title="Customer & supplier messages"
           description="One shared conversation across portals."
           helperText="Replies notify the customer inbox immediately."

@@ -35,6 +35,12 @@ export type QuoteMessagesThreadProps = {
    * Intended for use when the `tab=messages` view is opened.
    */
   markRead?: boolean;
+  /**
+   * Used to enforce masked identities:
+   * - Admin can see sender_email when present
+   * - Customer/supplier must never see the other party's email address
+   */
+  viewerRole?: "admin" | "customer" | "supplier" | (string & {}) | null;
   className?: string;
   title?: string;
   description?: string;
@@ -62,6 +68,7 @@ export function QuoteMessagesThread({
   postAction,
   currentUserId,
   markRead = false,
+  viewerRole = null,
   className,
   title = "Messages",
   description = "Shared thread with your supplier and the Zartman team.",
@@ -145,6 +152,7 @@ export function QuoteMessagesThread({
         quoteId={quoteId}
         messages={sortedMessages}
         currentUserId={currentUserId}
+        viewerRole={viewerRole}
         emptyStateCopy={emptyStateCopy}
       />
 
@@ -168,11 +176,13 @@ function QuoteMessageList({
   quoteId,
   messages,
   currentUserId,
+  viewerRole,
   emptyStateCopy,
 }: {
   quoteId: string;
   messages: QuoteMessageRecord[];
   currentUserId: string | null;
+  viewerRole: QuoteMessagesThreadProps["viewerRole"];
   emptyStateCopy: string;
 }) {
   if (messages.length === 0) {
@@ -208,11 +218,13 @@ function QuoteMessageList({
           normalizedRole === "system" &&
           (message.body ?? "").trimStart().startsWith(CHANGE_REQUEST_CREATED_PREFIX);
         const roleLabel = resolveRoleLabel(message.sender_role);
-        const displayLabel = isCurrentUser
-          ? "You"
-          : message.sender_name?.trim() ||
-            message.sender_email?.trim() ||
-            roleLabel;
+        const displayLabel = resolveDisplayLabel({
+          isCurrentUser,
+          roleLabel,
+          senderName: message.sender_name,
+          senderEmail: message.sender_email,
+          viewerRole,
+        });
 
         return (
           <article
@@ -260,6 +272,38 @@ function QuoteMessageList({
       })}
     </div>
   );
+}
+
+function resolveDisplayLabel(args: {
+  isCurrentUser: boolean;
+  roleLabel: string;
+  senderName: string | null;
+  senderEmail: string | null;
+  viewerRole: QuoteMessagesThreadProps["viewerRole"];
+}): string {
+  if (args.isCurrentUser) return "You";
+
+  const viewer = typeof args.viewerRole === "string" ? args.viewerRole.trim().toLowerCase() : "";
+  const isAdminViewer = viewer === "admin";
+
+  const name = typeof args.senderName === "string" ? args.senderName.trim() : "";
+  if (name && (isAdminViewer || !looksLikeEmail(name))) {
+    return name;
+  }
+
+  const email = typeof args.senderEmail === "string" ? args.senderEmail.trim() : "";
+  if (email && isAdminViewer) {
+    return email;
+  }
+
+  return args.roleLabel;
+}
+
+function looksLikeEmail(value: string): boolean {
+  const v = typeof value === "string" ? value.trim() : "";
+  if (!v) return false;
+  // Conservative: any @-containing label is treated as an email-ish identifier.
+  return v.includes("@");
 }
 
 function QuoteMessageComposer({

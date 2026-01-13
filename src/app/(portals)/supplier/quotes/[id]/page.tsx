@@ -1061,6 +1061,7 @@ function SupplierQuoteWorkspace({
               canPost={messagingUnlocked}
               postAction={postMessageAction}
               currentUserId={currentUserId}
+              viewerRole="supplier"
               markRead={tabParam === "messages"}
               title="Messages"
               description="Customer, supplier, and admin updates for this RFQ."

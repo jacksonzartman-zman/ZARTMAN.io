@@ -93,6 +93,9 @@ import { StatusPill } from "@/components/shared/primitives/StatusPill";
 import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
 import { RequestChangeScaffold } from "./RequestChangeScaffold";
 import { DemoModeBanner } from "./DemoModeBanner";
+import { CustomerEmailRepliesCard } from "./CustomerEmailRepliesCard";
+import { isCustomerEmailBridgeEnabled, isCustomerEmailOptedIn } from "@/server/quotes/customerEmailPrefs";
+import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
 
 export const dynamic = "force-dynamic";
 
@@ -249,6 +252,15 @@ export default async function CustomerQuoteDetailPage({
   const readOnly = usingOverride;
   const derived = deriveQuotePresentation(quote, uploadMeta);
   const { customerName, companyName, intakeNotes } = derived;
+
+  const customerEmailBridgeEnabled = isCustomerEmailBridgeEnabled();
+  const customerReplyToResult = customerEmailBridgeEnabled
+    ? getCustomerReplyToAddress({ quoteId: quote.id, customerId: customer.id })
+    : null;
+  const customerReplyToAddress = customerReplyToResult?.ok ? customerReplyToResult.address : "";
+  const customerEmailOptedIn = customerEmailBridgeEnabled
+    ? await isCustomerEmailOptedIn({ quoteId: quote.id, customerId: customer.id })
+    : false;
   const normalizedQuoteStatus = normalizeQuoteStatus(quote.status ?? undefined);
   const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined);
   const nextWorkflowState = getNextWorkflowState(normalizedQuoteStatus);
@@ -298,9 +310,7 @@ export default async function CustomerQuoteDetailPage({
     ? await loadSupplierById(winningSupplierId)
     : null;
   const winningSupplierName =
-    winningSupplierProfile?.company_name?.trim() ||
-    winningSupplierProfile?.primary_email ||
-    winningSupplierId;
+    winningSupplierProfile?.company_name?.trim() || "Supplier";
   const quoteHasWinner =
     Boolean(quote.awarded_at) ||
     Boolean(quote.awarded_bid_id) ||
@@ -1643,6 +1653,12 @@ export default async function CustomerQuoteDetailPage({
               )
             }
           >
+            <CustomerEmailRepliesCard
+              quoteId={quote.id}
+              initialOptedIn={customerEmailOptedIn}
+              bridgeEnabled={customerEmailBridgeEnabled}
+              replyToAddress={customerReplyToAddress}
+            />
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
               <div className="max-w-[46rem]">
                 <p className="text-sm font-semibold text-white">Need to request a change?</p>
@@ -1662,6 +1678,7 @@ export default async function CustomerQuoteDetailPage({
               canPost={!readOnly}
               postAction={postMessageAction}
               currentUserId={user.id}
+              viewerRole="customer"
               markRead={tabParam === "messages"}
               title="Messages"
               description="Shared thread with your supplier and the Zartman admin team."
