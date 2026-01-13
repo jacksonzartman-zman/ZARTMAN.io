@@ -1,6 +1,8 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
+  handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { loadQuoteMessages } from "@/server/quotes/messages";
@@ -212,6 +214,7 @@ async function safeLoadMatchHealthBySupplierIds(
 }
 
 async function safeLoadQuoteRfqFeedback(quoteId: string): Promise<QuoteRfqFeedbackRowLite[]> {
+  if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return [];
   try {
     const { data, error } = await supabaseServer
       .from("quote_rfq_feedback")
@@ -220,6 +223,15 @@ async function safeLoadQuoteRfqFeedback(quoteId: string): Promise<QuoteRfqFeedba
       .returns<QuoteRfqFeedbackRowLite[]>();
 
     if (error) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_rfq_feedback",
+          error,
+          warnPrefix: "[rfq_feedback]",
+        })
+      ) {
+        return [];
+      }
       if (isMissingTableOrColumnError(error)) return [];
       console.error("[rfq quality] quote_rfq_feedback load failed", {
         quoteId,
@@ -230,6 +242,15 @@ async function safeLoadQuoteRfqFeedback(quoteId: string): Promise<QuoteRfqFeedba
 
     return Array.isArray(data) ? data : [];
   } catch (error) {
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_rfq_feedback",
+        error,
+        warnPrefix: "[rfq_feedback]",
+      })
+    ) {
+      return [];
+    }
     if (isMissingTableOrColumnError(error)) return [];
     console.error("[rfq quality] quote_rfq_feedback load crashed", {
       quoteId,

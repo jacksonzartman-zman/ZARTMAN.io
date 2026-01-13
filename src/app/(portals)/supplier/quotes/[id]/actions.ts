@@ -15,7 +15,9 @@ import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import type { SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
 import {
+  handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import {
@@ -438,6 +440,12 @@ export async function supplierDeclineRfqWithFeedbackAction(
 
   try {
     const supabase = createAuthClient();
+    if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
+      // Feature not enabled; don't attempt to persist.
+      revalidatePath("/supplier/rfqs");
+      revalidatePath("/supplier/quotes");
+      return { ok: true, message: "Thanks — feedback sent." };
+    }
     const { error } = await supabase.from("quote_rfq_feedback").insert({
       quote_id: normalizedQuoteId,
       supplier_id: supplierId,
@@ -446,12 +454,15 @@ export async function supplierDeclineRfqWithFeedbackAction(
     });
 
     if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        console.warn("[rfq feedback] schema missing; skipping persist", {
-          quoteId: normalizedQuoteId,
-          supplierId,
-          error: serializeSupabaseError(error) ?? error,
-        });
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_rfq_feedback",
+          error,
+          warnPrefix: "[rfq_feedback]",
+        }) ||
+        isMissingTableOrColumnError(error)
+      ) {
+        // Feature not enabled; skip persist.
       } else {
         console.error("[rfq feedback] insert failed", {
           quoteId: normalizedQuoteId,
@@ -461,12 +472,15 @@ export async function supplierDeclineRfqWithFeedbackAction(
       }
     }
   } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      console.warn("[rfq feedback] schema missing; skipping persist", {
-        quoteId: normalizedQuoteId,
-        supplierId,
-        error: serializeSupabaseError(error) ?? error,
-      });
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_rfq_feedback",
+        error,
+        warnPrefix: "[rfq_feedback]",
+      }) ||
+      isMissingTableOrColumnError(error)
+    ) {
+      // Feature not enabled; skip persist.
     } else {
       console.error("[rfq feedback] insert crashed", {
         quoteId: normalizedQuoteId,

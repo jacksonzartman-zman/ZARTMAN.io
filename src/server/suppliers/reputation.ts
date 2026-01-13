@@ -1,7 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import {
+  handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
 
@@ -623,6 +625,7 @@ async function safeLoadFeedbackBySupplierIds(args: {
 }): Promise<Map<string, Record<string, number>> | null> {
   const ids = args.supplierIds;
   if (ids.length === 0) return new Map();
+  if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return null;
   const cutoffIso = new Date(Date.now() - args.lookbackDays * 24 * 60 * 60 * 1000).toISOString();
 
   try {
@@ -635,6 +638,15 @@ async function safeLoadFeedbackBySupplierIds(args: {
       .returns<QuoteRfqFeedbackLite[]>();
 
     if (error) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_rfq_feedback",
+          error,
+          warnPrefix: "[rfq_feedback]",
+        })
+      ) {
+        return null;
+      }
       if (isMissingTableOrColumnError(error)) return null;
       console.error("[supplier reputation] quote_rfq_feedback load failed", {
         supplierCount: ids.length,
@@ -663,6 +675,15 @@ async function safeLoadFeedbackBySupplierIds(args: {
 
     return out;
   } catch (error) {
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_rfq_feedback",
+        error,
+        warnPrefix: "[rfq_feedback]",
+      })
+    ) {
+      return null;
+    }
     if (isMissingTableOrColumnError(error)) return null;
     console.error("[supplier reputation] quote_rfq_feedback load crashed", {
       supplierCount: ids.length,

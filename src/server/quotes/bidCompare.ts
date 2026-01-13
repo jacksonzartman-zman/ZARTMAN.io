@@ -3,7 +3,9 @@ import { loadQuoteMessages } from "@/server/quotes/messages";
 import { loadBenchHealthBySupplierIds } from "@/server/suppliers/benchHealth";
 import { UnauthorizedError } from "@/server/auth";
 import {
+  handleMissingSupabaseRelation,
   isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
@@ -321,6 +323,9 @@ export async function loadBidComparisonSummary(
 
   // Supplier feedback on this quote
   try {
+    if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
+      // Feature not enabled; keep defaults.
+    } else {
     const { data, error } = await supabaseServer
       .from("quote_rfq_feedback")
       .select("supplier_id,categories,created_at")
@@ -330,6 +335,15 @@ export async function loadBidComparisonSummary(
       .returns<QuoteRfqFeedbackRow[]>();
 
     if (error) {
+      if (
+        handleMissingSupabaseRelation({
+          relation: "quote_rfq_feedback",
+          error,
+          warnPrefix: "[rfq_feedback]",
+        })
+      ) {
+        // Feature not enabled; keep defaults.
+      } else
       if (!isMissingTableOrColumnError(error)) {
         console.warn("[bid compare] rfq feedback load failed", {
           quoteId: normalizedQuoteId,
@@ -359,8 +373,17 @@ export async function loadBidComparisonSummary(
         ).sort();
       }
     }
+    }
   } catch (error) {
-    if (!isMissingTableOrColumnError(error)) {
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_rfq_feedback",
+        error,
+        warnPrefix: "[rfq_feedback]",
+      })
+    ) {
+      // Feature not enabled; keep defaults.
+    } else if (!isMissingTableOrColumnError(error)) {
       console.warn("[bid compare] rfq feedback load crashed", {
         quoteId: normalizedQuoteId,
         error: serializeSupabaseError(error) ?? error,

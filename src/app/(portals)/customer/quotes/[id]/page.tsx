@@ -73,7 +73,12 @@ import { loadCachedAiPartSuggestions } from "@/server/quotes/aiPartsSuggestions"
 import { formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { computeRfqQualitySummary, type SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
+import {
+  handleMissingSupabaseRelation,
+  isMissingTableOrColumnError,
+  isSupabaseRelationMarkedMissing,
+  serializeSupabaseError,
+} from "@/server/admin/logging";
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
@@ -364,36 +369,54 @@ export default async function CustomerQuoteDetailPage({
     "timeline_unrealistic",
   ];
   try {
-    const { data, error } = await supabaseServer
-      .from("quote_rfq_feedback")
-      .select("categories,created_at")
-      .eq("quote_id", quote.id)
-      .order("created_at", { ascending: false })
-      .limit(50)
-      .returns<Array<{ categories: string[] | null; created_at: string | null }>>();
+    if (!isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
+      const { data, error } = await supabaseServer
+        .from("quote_rfq_feedback")
+        .select("categories,created_at")
+        .eq("quote_id", quote.id)
+        .order("created_at", { ascending: false })
+        .limit(50)
+        .returns<Array<{ categories: string[] | null; created_at: string | null }>>();
 
-    if (error) {
-      if (!isMissingTableOrColumnError(error)) {
-        console.warn("[customer quote] quote_rfq_feedback load failed", {
-          quoteId: quote.id,
-          error: serializeSupabaseError(error) ?? error,
-        });
-      }
-    } else {
-      for (const row of data ?? []) {
-        const cats = new Set(
-          (Array.isArray(row?.categories) ? row.categories : [])
-            .map((value) => (typeof value === "string" ? value.trim() : ""))
-            .filter(Boolean) as SupplierFeedbackCategory[],
-        );
-        for (const cat of cats) {
-          if (!customerFeedbackCategoriesToShow.includes(cat)) continue;
-          customerFeedbackCounts[cat] = (customerFeedbackCounts[cat] ?? 0) + 1;
+      if (error) {
+        if (
+          handleMissingSupabaseRelation({
+            relation: "quote_rfq_feedback",
+            error,
+            warnPrefix: "[rfq_feedback]",
+          })
+        ) {
+          // Feature not enabled; keep empty counts.
+        } else if (!isMissingTableOrColumnError(error)) {
+          console.warn("[customer quote] quote_rfq_feedback load failed", {
+            quoteId: quote.id,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      } else {
+        for (const row of data ?? []) {
+          const cats = new Set(
+            (Array.isArray(row?.categories) ? row.categories : [])
+              .map((value) => (typeof value === "string" ? value.trim() : ""))
+              .filter(Boolean) as SupplierFeedbackCategory[],
+          );
+          for (const cat of cats) {
+            if (!customerFeedbackCategoriesToShow.includes(cat)) continue;
+            customerFeedbackCounts[cat] = (customerFeedbackCounts[cat] ?? 0) + 1;
+          }
         }
       }
     }
   } catch (error) {
-    if (!isMissingTableOrColumnError(error)) {
+    if (
+      handleMissingSupabaseRelation({
+        relation: "quote_rfq_feedback",
+        error,
+        warnPrefix: "[rfq_feedback]",
+      })
+    ) {
+      // Feature not enabled; keep empty counts.
+    } else if (!isMissingTableOrColumnError(error)) {
       console.warn("[customer quote] quote_rfq_feedback load crashed", {
         quoteId: quote.id,
         error: serializeSupabaseError(error) ?? error,
