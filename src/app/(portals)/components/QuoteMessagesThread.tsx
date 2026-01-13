@@ -18,6 +18,9 @@ import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 
+const CHANGE_REQUEST_SUBMITTED_EVENT = "zartman:change-request-submitted";
+const CHANGE_REQUEST_CREATED_PREFIX = "Change request created:";
+
 export type QuoteMessagesThreadProps = {
   quoteId: string;
   messages: QuoteMessageRecord[];
@@ -73,6 +76,30 @@ export function QuoteMessagesThread({
     [realtimeMessages],
   );
   const composerEnabled = Boolean(postAction) && canPost;
+  const [showChangeRequestBanner, setShowChangeRequestBanner] = useState(false);
+  const bannerTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const onSubmitted = () => {
+      setShowChangeRequestBanner(true);
+      if (bannerTimeoutRef.current) {
+        window.clearTimeout(bannerTimeoutRef.current);
+      }
+      bannerTimeoutRef.current = window.setTimeout(() => {
+        setShowChangeRequestBanner(false);
+        bannerTimeoutRef.current = null;
+      }, 6000);
+    };
+
+    window.addEventListener(CHANGE_REQUEST_SUBMITTED_EVENT, onSubmitted);
+    return () => {
+      window.removeEventListener(CHANGE_REQUEST_SUBMITTED_EVENT, onSubmitted);
+      if (bannerTimeoutRef.current) {
+        window.clearTimeout(bannerTimeoutRef.current);
+        bannerTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!markRead) return;
@@ -100,6 +127,15 @@ export function QuoteMessagesThread({
           <h2 className="text-xl font-semibold text-white">{title}</h2>
           <p className="text-sm text-slate-400">{description}</p>
         </div>
+        {showChangeRequestBanner ? (
+          <p
+            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100"
+            role="status"
+            aria-live="polite"
+          >
+            Change request submitted. We'll coordinate updates in Messages.
+          </p>
+        ) : null}
         {usageHint ? (
           <p className="text-xs text-slate-500">{usageHint}</p>
         ) : null}
@@ -167,6 +203,10 @@ function QuoteMessageList({
         const isCurrentUser =
           typeof currentUserId === "string" &&
           message.sender_id === currentUserId;
+        const normalizedRole = (message.sender_role ?? "").toLowerCase();
+        const isChangeRequestSystemMessage =
+          normalizedRole === "system" &&
+          (message.body ?? "").trimStart().startsWith(CHANGE_REQUEST_CREATED_PREFIX);
         const roleLabel = resolveRoleLabel(message.sender_role);
         const displayLabel = isCurrentUser
           ? "You"
@@ -182,6 +222,9 @@ function QuoteMessageList({
               isCurrentUser
                 ? "border-emerald-500/40 bg-emerald-500/10"
                 : "border-slate-900/70 bg-slate-950/40",
+              isChangeRequestSystemMessage
+                ? "border-l-4 border-l-emerald-400/50"
+                : null,
             )}
           >
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
@@ -197,6 +240,11 @@ function QuoteMessageList({
                 </span>
                 {!isCurrentUser ? (
                   <span className="text-slate-500">{roleLabel}</span>
+                ) : null}
+                {isChangeRequestSystemMessage ? (
+                  <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-200">
+                    Change request
+                  </span>
                 ) : null}
               </div>
               <span>
