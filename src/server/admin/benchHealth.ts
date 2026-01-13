@@ -22,6 +22,16 @@ export type SupplierBenchHealth = {
   lastActivityAt: string | null;
   lastInboundAt: string | null; // max supplier/customer inbound on quotes tied to supplier, if available
   mismatchCountLast30d?: number;
+  healthBreakdown?: {
+    overdueThreadCount: number;
+    overdueQuoteIds?: string[]; // best effort, optional
+    needsReplyThreadCount: number; // best effort
+    needsReplyQuoteIds?: string[]; // best effort, optional
+    lastInboundAt: string | null;
+    lastActivityAt: string | null;
+    mismatchCount?: number | null; // only if mismatch logs enabled & present
+    lastMismatchAt?: string | null;
+  };
 };
 
 type BenchHealthStatusFilter = SupplierBenchHealth["health"] | "all";
@@ -29,6 +39,7 @@ type BenchHealthSort = "health" | "overdue" | "activity";
 
 const ROLLUP_RELATION = "quote_message_rollup";
 const MISMATCH_RELATION = "supplier_capability_mismatch_logs";
+const MAX_BREAKDOWN_QUOTE_IDS = 10;
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -130,6 +141,12 @@ export async function loadBenchHealthDirectory(args?: {
     overdueThreadCount: 0,
     lastActivityAt: row.lastActivityAt ?? null,
     lastInboundAt: null,
+    healthBreakdown: {
+      overdueThreadCount: 0,
+      needsReplyThreadCount: 0,
+      lastInboundAt: null,
+      lastActivityAt: row.lastActivityAt ?? null,
+    },
   }));
 
   const supplierIds = base.map((r) => r.supplierId).filter(Boolean);
@@ -137,109 +154,8 @@ export async function loadBenchHealthDirectory(args?: {
     return [];
   }
 
-  const rollupEnabled = await schemaGate({
-    enabled: true,
-    relation: ROLLUP_RELATION,
-    requiredColumns: [
-      "quote_id",
-      "last_admin_at",
-      "last_customer_at",
-      "last_supplier_at",
-      "last_system_at",
-      "last_message_at",
-    ],
-    // Intentionally baked-in message to meet Phase 19.2 requirement.
-    warnPrefix: "[bench_health] missing rollup; skipping",
-    warnKey: "bench_health:quote_message_rollup",
-  });
-
-  // If the rollup view is missing/unavailable, we must fail-soft to the neutral output shape.
-  if (!rollupEnabled || isSupabaseRelationMarkedMissing(ROLLUP_RELATION)) {
-    return applyDirectorySortingAndFiltering(base, { statusFilter, sort });
-  }
-
-  const quoteIdsBySupplierId =
-    (await loadQuoteAssociationsBySupplierIds(supplierIds)) ?? new Map<string, Set<string>>();
-
-  const allQuoteIds: string[] = [];
-  for (const set of quoteIdsBySupplierId.values()) {
-    for (const id of set) allQuoteIds.push(id);
-  }
-
-  const uniqueQuoteIds = Array.from(new Set(allQuoteIds));
-  if (uniqueQuoteIds.length === 0) {
-    // No known quote associations; still allow mismatch reason enrichment.
-    const withMismatch = await applyMismatchSignals(base, supplierIds);
-    return applyDirectorySortingAndFiltering(withMismatch, { statusFilter, sort });
-  }
-
-  const rollupsByQuoteId = await loadBenchRollups(uniqueQuoteIds);
-  const mismatchEnriched = await applyMismatchSignals(base, supplierIds);
-
-  const bySupplierId = new Map<string, SupplierBenchHealth>(
-    mismatchEnriched.map((row) => [row.supplierId, row]),
-  );
-
-  for (const supplierId of supplierIds) {
-    const current = bySupplierId.get(supplierId);
-    if (!current) continue;
-
-    const quoteIds = Array.from(quoteIdsBySupplierId.get(supplierId) ?? []);
-    if (quoteIds.length === 0) continue;
-
-    let overdue = 0;
-    let lastInboundAt: string | null = null;
-    const now = new Date();
-
-    for (const quoteId of quoteIds) {
-      const rollup = rollupsByQuoteId.get(quoteId) ?? null;
-      if (!rollup) continue;
-
-      const inboundAt = maxIso(rollup.lastCustomerAt, rollup.lastSupplierAt);
-      lastInboundAt = maxIso(lastInboundAt, inboundAt);
-
-      const sla = computeAdminThreadSla(rollup, now);
-      if (sla.status === "overdue") {
-        overdue += 1;
-      }
-    }
-
-    current.overdueThreadCount = overdue;
-    current.lastInboundAt = lastInboundAt;
-
-    const reasons: string[] = [];
-    if (overdue >= 3) {
-      current.health = "unresponsive";
-      reasons.push("Multiple overdue threads");
-    } else if (overdue >= 1) {
-      current.health = "at_risk";
-      reasons.push("Overdue threads");
-    } else {
-      current.health = "healthy";
-    }
-
-    if (current.lastInboundAt) {
-      const inboundMs = ms(current.lastInboundAt);
-      if (inboundMs !== null) {
-        const ageDays = (Date.now() - inboundMs) / (24 * 60 * 60 * 1000);
-        if (ageDays >= 14) {
-          reasons.push("No inbound in 14d");
-          // Escalate slightly when there is no signal of inbound for a long time.
-          if (current.health === "healthy") {
-            current.health = "at_risk";
-          }
-        }
-      }
-    }
-
-    if (typeof current.mismatchCountLast30d === "number" && current.mismatchCountLast30d >= 5) {
-      reasons.push("Mismatch logs elevated (30d)");
-    }
-
-    current.reasons = reasons;
-  }
-
-  return applyDirectorySortingAndFiltering(Array.from(bySupplierId.values()), { statusFilter, sort });
+  const enriched = await enrichBenchHealthRows(base, supplierIds);
+  return applyDirectorySortingAndFiltering(enriched, { statusFilter, sort });
 }
 
 function applyDirectorySortingAndFiltering(
@@ -276,6 +192,229 @@ function applyDirectorySortingAndFiltering(
   });
 
   return sorted;
+}
+
+export async function loadBenchHealthForSupplier(
+  supplierIdInput: string,
+): Promise<SupplierBenchHealth | null> {
+  await requireAdminUser();
+
+  const supplierId = normalizeId(supplierIdInput);
+  if (!supplierId) return null;
+
+  type SupplierLiteRow = {
+    id: string;
+    company_name: string | null;
+    primary_email: string | null;
+  };
+
+  let supplier: SupplierLiteRow | null = null;
+  try {
+    const { data } = await supabaseServer
+      .from("suppliers")
+      .select("id,company_name,primary_email")
+      .eq("id", supplierId)
+      .maybeSingle<SupplierLiteRow>();
+    supplier = data ?? null;
+  } catch {
+    supplier = null;
+  }
+
+  if (!supplier) return null;
+
+  const supplierName =
+    normalizeText(supplier.company_name) ?? normalizeText(supplier.primary_email) ?? supplierId;
+  const lastActivityAt = await loadLastActivityForSupplierId(supplierId);
+
+  const base: SupplierBenchHealth[] = [
+    {
+      supplierId,
+      supplierName,
+      health: "healthy",
+      reasons: [],
+      overdueThreadCount: 0,
+      lastActivityAt,
+      lastInboundAt: null,
+      healthBreakdown: {
+        overdueThreadCount: 0,
+        needsReplyThreadCount: 0,
+        lastInboundAt: null,
+        lastActivityAt,
+      },
+    },
+  ];
+
+  const [row] = await enrichBenchHealthRows(base, [supplierId]);
+  return row ?? null;
+}
+
+async function enrichBenchHealthRows(
+  base: SupplierBenchHealth[],
+  supplierIds: string[],
+): Promise<SupplierBenchHealth[]> {
+  const ids = Array.from(new Set((supplierIds ?? []).map(normalizeId).filter(Boolean)));
+  if (ids.length === 0) return base;
+
+  const rollupEnabled = await schemaGate({
+    enabled: true,
+    relation: ROLLUP_RELATION,
+    requiredColumns: [
+      "quote_id",
+      "last_admin_at",
+      "last_customer_at",
+      "last_supplier_at",
+      "last_system_at",
+      "last_message_at",
+    ],
+    // Intentionally baked-in message to meet Phase 19.2 requirement.
+    warnPrefix: "[bench_health] missing rollup; skipping",
+    warnKey: "bench_health:quote_message_rollup",
+  });
+
+  // Always allow mismatch enrichment (env + schema gated), even when rollups are missing.
+  const mismatchEnriched = await applyMismatchSignals(base, ids);
+
+  // If the rollup view is missing/unavailable, we must fail-soft to the neutral output shape.
+  if (!rollupEnabled || isSupabaseRelationMarkedMissing(ROLLUP_RELATION)) {
+    return mismatchEnriched;
+  }
+
+  const quoteIdsBySupplierId =
+    (await loadQuoteAssociationsBySupplierIds(ids)) ?? new Map<string, Set<string>>();
+
+  const allQuoteIds: string[] = [];
+  for (const set of quoteIdsBySupplierId.values()) {
+    for (const id of set) allQuoteIds.push(id);
+  }
+
+  const uniqueQuoteIds = Array.from(new Set(allQuoteIds));
+  if (uniqueQuoteIds.length === 0) {
+    return mismatchEnriched;
+  }
+
+  const rollupsByQuoteId = await loadBenchRollups(uniqueQuoteIds);
+  const bySupplierId = new Map<string, SupplierBenchHealth>(
+    mismatchEnriched.map((row) => [row.supplierId, row]),
+  );
+
+  const now = new Date();
+
+  for (const supplierId of ids) {
+    const current = bySupplierId.get(supplierId);
+    if (!current) continue;
+
+    const quoteIds = Array.from(quoteIdsBySupplierId.get(supplierId) ?? []);
+    if (quoteIds.length === 0) continue;
+
+    let overdue = 0;
+    let needsReply = 0;
+    let lastInboundAt: string | null = null;
+    const overdueQuoteIds: string[] = [];
+    const needsReplyQuoteIds: string[] = [];
+
+    for (const quoteId of quoteIds) {
+      const rollup = rollupsByQuoteId.get(quoteId) ?? null;
+      if (!rollup) continue;
+
+      const inboundAt = maxIso(rollup.lastCustomerAt, rollup.lastSupplierAt);
+      lastInboundAt = maxIso(lastInboundAt, inboundAt);
+
+      const sla = computeAdminThreadSla(rollup, now);
+      if (sla.status === "overdue") {
+        overdue += 1;
+        if (overdueQuoteIds.length < MAX_BREAKDOWN_QUOTE_IDS) overdueQuoteIds.push(quoteId);
+      } else if (sla.status === "needs_reply") {
+        needsReply += 1;
+        if (needsReplyQuoteIds.length < MAX_BREAKDOWN_QUOTE_IDS) needsReplyQuoteIds.push(quoteId);
+      }
+    }
+
+    current.overdueThreadCount = overdue;
+    current.lastInboundAt = lastInboundAt;
+
+    const prior = current.healthBreakdown ?? {
+      overdueThreadCount: 0,
+      needsReplyThreadCount: 0,
+      lastInboundAt: null,
+      lastActivityAt: current.lastActivityAt ?? null,
+    };
+
+    current.healthBreakdown = {
+      ...prior,
+      overdueThreadCount: overdue,
+      overdueQuoteIds: overdueQuoteIds.length > 0 ? overdueQuoteIds : undefined,
+      needsReplyThreadCount: needsReply,
+      needsReplyQuoteIds: needsReplyQuoteIds.length > 0 ? needsReplyQuoteIds : undefined,
+      lastInboundAt,
+      lastActivityAt: current.lastActivityAt ?? null,
+    };
+
+    const reasons: string[] = [];
+    if (overdue >= 3) {
+      current.health = "unresponsive";
+      reasons.push("Multiple overdue threads");
+    } else if (overdue >= 1) {
+      current.health = "at_risk";
+      reasons.push("Overdue threads");
+    } else if (needsReply >= 1) {
+      current.health = "at_risk";
+      reasons.push("Needs reply");
+    } else {
+      current.health = "healthy";
+    }
+
+    if (current.lastInboundAt) {
+      const inboundMs = ms(current.lastInboundAt);
+      if (inboundMs !== null) {
+        const ageDays = (Date.now() - inboundMs) / (24 * 60 * 60 * 1000);
+        if (ageDays >= 14) {
+          reasons.push("No inbound in 14d");
+          // Escalate slightly when there is no signal of inbound for a long time.
+          if (current.health === "healthy") {
+            current.health = "at_risk";
+          }
+        }
+      }
+    }
+
+    if (typeof current.mismatchCountLast30d === "number" && current.mismatchCountLast30d >= 5) {
+      reasons.push("Mismatch logs elevated (30d)");
+    }
+
+    current.reasons = reasons;
+  }
+
+  return Array.from(bySupplierId.values());
+}
+
+async function loadLastActivityForSupplierId(supplierId: string): Promise<string | null> {
+  const id = normalizeId(supplierId);
+  if (!id) return null;
+
+  const enabled = await schemaGate({
+    enabled: true,
+    relation: "supplier_bids",
+    requiredColumns: ["supplier_id", "updated_at", "created_at"],
+    warnPrefix: "[bench_health]",
+    warnKey: "bench_health:supplier_bids_last_activity",
+  });
+  if (!enabled || isSupabaseRelationMarkedMissing("supplier_bids")) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("supplier_bids")
+      .select("supplier_id,updated_at,created_at")
+      .eq("supplier_id", id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ supplier_id: string | null; updated_at: string | null; created_at: string | null }>();
+    if (error) return null;
+    return normalizeText(data?.updated_at) ?? normalizeText(data?.created_at);
+  } catch {
+    return null;
+  }
 }
 
 async function loadQuoteAssociationsBySupplierIds(
@@ -532,16 +671,35 @@ async function applyMismatchSignals(
     }
 
     const countBySupplierId = new Map<string, number>();
+    const lastMismatchAtBySupplierId = new Map<string, string | null>();
     for (const row of data ?? []) {
       const supplierId = normalizeId(row?.supplier_id);
       if (!supplierId) continue;
       countBySupplierId.set(supplierId, (countBySupplierId.get(supplierId) ?? 0) + 1);
+      if (!lastMismatchAtBySupplierId.has(supplierId)) {
+        lastMismatchAtBySupplierId.set(supplierId, normalizeText(row?.created_at));
+      }
     }
 
-    return base.map((row) => ({
-      ...row,
-      mismatchCountLast30d: countBySupplierId.get(row.supplierId) ?? 0,
-    }));
+    return base.map((row) => {
+      const mismatchCount = countBySupplierId.get(row.supplierId) ?? 0;
+      const lastMismatchAt = lastMismatchAtBySupplierId.get(row.supplierId) ?? null;
+      const breakdown = row.healthBreakdown ?? {
+        overdueThreadCount: row.overdueThreadCount ?? 0,
+        needsReplyThreadCount: 0,
+        lastInboundAt: row.lastInboundAt ?? null,
+        lastActivityAt: row.lastActivityAt ?? null,
+      };
+      return {
+        ...row,
+        mismatchCountLast30d: mismatchCount,
+        healthBreakdown: {
+          ...breakdown,
+          mismatchCount,
+          lastMismatchAt,
+        },
+      };
+    });
   } catch (error) {
     if (
       handleMissingSupabaseSchema({
