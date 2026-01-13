@@ -17,6 +17,8 @@ import {
   loadQuoteMessages,
   type QuoteMessageRecord,
 } from "@/server/quotes/messages";
+import { getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
+import { CopyTextButton } from "@/components/CopyTextButton";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
 import {
@@ -872,6 +874,20 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           ? winningBidRow.supplier_id.trim()
           : null) ?? null;
 
+    const supplierReplyToResult = awardedSupplierId
+      ? getSupplierReplyToAddress({ quoteId: quote.id, supplierId: awardedSupplierId })
+      : null;
+    const supplierReplyToAddress =
+      supplierReplyToResult && supplierReplyToResult.ok ? supplierReplyToResult.address : "";
+    const supplierReplyToStatusCopy =
+      supplierReplyToResult && supplierReplyToResult.ok
+        ? "Supplier can reply via email to update the thread."
+        : supplierReplyToResult?.reason === "disabled"
+          ? "Email reply not configured."
+          : supplierReplyToResult
+            ? "Email reply address unavailable."
+            : "";
+
     const selectionRecordedExists = Boolean(
       (typeof quote.awarded_supplier_id === "string" && quote.awarded_supplier_id.trim()) ||
         (typeof quote.awarded_bid_id === "string" && quote.awarded_bid_id.trim()) ||
@@ -1352,6 +1368,26 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const postMessageAction = postAdminQuoteMessage.bind(null, quote.id);
     const messagesContent = (
       <div className="space-y-3">
+        {supplierReplyToResult ? (
+          <div className="rounded-2xl border border-slate-900 bg-slate-950/40 px-5 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Supplier reply-to
+                </p>
+                <p className="mt-1 text-xs text-slate-400">{supplierReplyToStatusCopy}</p>
+              </div>
+              <CopyTextButton
+                text={supplierReplyToAddress}
+                idleLabel="Copy email address"
+                logPrefix="[email_bridge]"
+              />
+            </div>
+            <p className="break-anywhere mt-3 rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2 text-xs text-slate-100">
+              {supplierReplyToAddress || "Not configured"}
+            </p>
+          </div>
+        ) : null}
         {messagesUnavailable ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
             Messages are temporarily unavailable. Refresh the page to try again.
