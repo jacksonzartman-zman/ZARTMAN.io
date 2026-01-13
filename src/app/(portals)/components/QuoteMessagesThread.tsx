@@ -133,7 +133,7 @@ export function QuoteMessagesThread({
             role="status"
             aria-live="polite"
           >
-            Change request submitted. We'll coordinate updates in Messages.
+            Change request submitted. We&apos;ll coordinate updates in Messages.
           </p>
         ) : null}
         {usageHint ? (
