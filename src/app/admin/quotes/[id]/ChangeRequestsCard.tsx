@@ -4,6 +4,8 @@ import { formatDateTime } from "@/lib/formatDate";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { supabaseServer } from "@/lib/supabaseServer";
+import ResolveChangeRequestButton from "@/app/admin/change-requests/ResolveChangeRequestButton";
+import { TagPill } from "@/components/shared/primitives/TagPill";
 
 type QuoteChangeRequestRow = {
   id: string;
@@ -13,6 +15,8 @@ type QuoteChangeRequestRow = {
   created_at: string;
   created_by_user_id: string | null;
   created_by_role: string;
+  status: string | null;
+  resolved_at: string | null;
 };
 
 export type ChangeRequestsCardProps = {
@@ -52,7 +56,7 @@ export default async function ChangeRequestsCard({
     const result = await supabaseServer
       .from("quote_change_requests")
       .select(
-        "id,quote_id,change_type,notes,created_at,created_by_user_id,created_by_role",
+        "id,quote_id,change_type,notes,created_at,created_by_user_id,created_by_role,status,resolved_at",
         { count: "exact" },
       )
       .eq("quote_id", quoteId)
@@ -120,6 +124,12 @@ export default async function ChangeRequestsCard({
                 fallback: "—",
               });
 
+              const normalizedStatus = (row.status ?? "").trim().toLowerCase();
+              const isOpen = normalizedStatus === "open";
+              const isResolved = normalizedStatus === "resolved" || Boolean(row.resolved_at);
+              const statusLabel = isOpen ? "Open" : isResolved ? "Resolved" : "—";
+              const statusTone = isOpen ? "amber" : isResolved ? "emerald" : "muted";
+
               return (
                 <li key={row.id} className="px-4 py-3">
                   <div className="grid grid-cols-[minmax(0,150px)_minmax(0,1fr)_minmax(0,170px)] gap-3">
@@ -148,6 +158,17 @@ export default async function ChangeRequestsCard({
                       <p className="whitespace-nowrap text-xs text-slate-500">
                         {createdAtRelative}
                       </p>
+                      <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                        <TagPill tone={statusTone} className="shrink-0">
+                          {statusLabel}
+                        </TagPill>
+                        {isOpen ? (
+                          <ResolveChangeRequestButton
+                            changeRequestId={row.id}
+                            className="max-w-full"
+                          />
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
