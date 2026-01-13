@@ -113,9 +113,16 @@ function toIntOrZero(value: unknown): number {
   return 0;
 }
 
-export async function loadAdminSupplierBenchHealth(): Promise<SupplierBenchHealthRow[]> {
+export async function loadAdminSupplierBenchHealth(ctx?: {
+  authenticatedAdminUserId?: string;
+}): Promise<SupplierBenchHealthRow[]> {
   // Defense-in-depth: this reads admin-only views using the service role key.
-  await requireAdminUser();
+  // For admin notification refresh we can skip the auth check, since the entrypoint already validated admin.
+  const authenticatedAdminUserId =
+    typeof ctx?.authenticatedAdminUserId === "string" ? ctx.authenticatedAdminUserId.trim() : "";
+  if (!authenticatedAdminUserId) {
+    await requireAdminUser();
+  }
 
   try {
     const [matchResult, benchResult] = await Promise.all([

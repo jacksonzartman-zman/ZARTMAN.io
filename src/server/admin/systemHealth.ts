@@ -174,9 +174,19 @@ async function checkAuthJwt(): Promise<HealthCheckResult> {
   }
 }
 
-export async function loadSystemHealth(): Promise<SystemHealthSummary> {
+export async function loadSystemHealth(options?: {
+  authenticatedAdminUserId?: string;
+  includeAuthJwtCheck?: boolean;
+}): Promise<SystemHealthSummary> {
   // Defense-in-depth: admin-only diagnostics uses service-role Supabase client.
-  await requireAdminUser();
+  // For admin notification refresh we can skip the auth check, since the entrypoint already validated admin.
+  const authenticatedAdminUserId =
+    typeof options?.authenticatedAdminUserId === "string" ? options.authenticatedAdminUserId.trim() : "";
+  if (!authenticatedAdminUserId) {
+    await requireAdminUser();
+  }
+
+  const includeAuthJwtCheck = options?.includeAuthJwtCheck ?? true;
 
   const checks = await Promise.all<HealthCheckResult>([
     (async (): Promise<HealthCheckResult> => {
@@ -432,7 +442,7 @@ export async function loadSystemHealth(): Promise<SystemHealthSummary> {
       }
     })(),
 
-    checkAuthJwt(),
+    ...(includeAuthJwtCheck ? [checkAuthJwt()] : []),
 
     (async (): Promise<HealthCheckResult> => {
       const id: HealthCheckId = "events_stream";

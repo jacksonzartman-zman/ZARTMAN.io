@@ -1,5 +1,4 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import { requireAdminUser } from "@/server/auth";
 import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -47,6 +46,8 @@ export type UserNotification = {
 };
 
 const NOTIFICATIONS_TABLE = "user_notifications" as const;
+
+type RefreshNotificationsContext = { authenticatedAdminUserId?: string };
 
 type NotificationRow = {
   id: string;
@@ -197,13 +198,30 @@ export async function markNotificationsRead(
 export async function refreshNotificationsForUser(
   userId: string,
   role: NotificationAudienceRole,
+  ctx?: RefreshNotificationsContext,
 ): Promise<void> {
   const normalizedUserId = normalizeId(userId);
   if (!normalizedUserId) return;
 
-  console.log("[notifications] refresh start", { userId: normalizedUserId, role });
+  console.log("[notifications] refresh ctx", {
+    userId: normalizedUserId,
+    role,
+    hasAdminCtx: Boolean(ctx?.authenticatedAdminUserId),
+  });
 
   try {
+    if (role === "admin") {
+      const authenticatedAdminUserId = normalizeId(ctx?.authenticatedAdminUserId);
+      if (!authenticatedAdminUserId || authenticatedAdminUserId !== normalizedUserId) {
+        console.warn("[notifications] admin refresh blocked: missing/mismatched ctx", {
+          userId: normalizedUserId,
+          role,
+          hasAdminCtx: Boolean(ctx?.authenticatedAdminUserId),
+        });
+        return;
+      }
+    }
+
     const managedTypes = getManagedTypesForRole(role);
 
     const computeResults = await Promise.allSettled([
@@ -617,9 +635,6 @@ async function computeSupplierNotifications(userId: string): Promise<Notificatio
 }
 
 async function computeAdminNotifications(userId: string): Promise<NotificationDescriptor[]> {
-  // Defense-in-depth: admin notifications are derived from admin-only signals.
-  await requireAdminUser();
-
   const computes: Array<{
     type: string;
     run: () => Promise<NotificationDescriptor[]>;
@@ -675,7 +690,7 @@ async function computeMessageNeedsReplyNotifications(args: {
         ? await loadCustomerInbox({ userId: args.userId, email: null })
         : args.role === "supplier"
           ? await loadSupplierInbox(args.userId)
-          : await loadAdminInbox();
+          : await loadAdminInbox({ authenticatedAdminUserId: args.userId });
 
     const needs = args.role;
     return (rows ?? [])
@@ -783,9 +798,6 @@ async function computeAdminChangeRequestSubmittedNotifications(args: {
   const LIMIT = 25;
 
   try {
-    // Defense-in-depth: keep this admin-only.
-    await requireAdminUser();
-
     const { data, error } = await supabaseServer
       .from("quote_change_requests")
       .select("id,quote_id,change_type,notes,status,created_at")
@@ -1261,7 +1273,7 @@ async function computeAdminCapacityStaleNotifications(args: {
   const cutoff = daysAgoIso(STALE_DAYS);
 
   try {
-    const rows = await loadAdminSupplierBenchHealth();
+    const rows = await loadAdminSupplierBenchHealth({ authenticatedAdminUserId: args.userId });
 
     const stale = rows
       .filter((row) => {
@@ -1299,7 +1311,7 @@ async function computeAdminNewBidNotifications(args: {
       pageSize: 100,
       sort: "latest_bid_activity",
       filter: { hasBids: true, awarded: false },
-    });
+    }, { authenticatedAdminUserId: args.userId });
 
     const rows = result.ok ? result.data.rows : [];
     const out: NotificationDescriptor[] = [];
@@ -1380,7 +1392,7 @@ async function computeAdminRfqReadyToAwardNotifications(args: {
       pageSize: 200,
       sort: "newest_rfq",
       filter: { awarded: false },
-    });
+    }, { authenticatedAdminUserId: args.userId });
 
     const rows = result.ok ? result.data.rows : [];
 
@@ -1421,7 +1433,7 @@ async function computeAdminBenchOverusedNotifications(args: {
   userId: string;
 }): Promise<NotificationDescriptor[]> {
   try {
-    const rows = await loadAdminSupplierBenchHealth();
+    const rows = await loadAdminSupplierBenchHealth({ authenticatedAdminUserId: args.userId });
     const overused = rows.filter((row) => row.benchStatus === "overused" && (row.awardsLast30d ?? 0) > 0);
     if (overused.length === 0) return [];
 
@@ -1449,7 +1461,10 @@ async function computeAdminSystemHealthNotifications(args: {
   userId: string;
 }): Promise<NotificationDescriptor[]> {
   try {
-    const health = await loadSystemHealth();
+    const health = await loadSystemHealth({
+      authenticatedAdminUserId: args.userId,
+      includeAuthJwtCheck: false,
+    });
     if (health.status === "ok") return [];
 
     return [
