@@ -10,6 +10,7 @@ import {
   warnOnce,
 } from "@/server/db/schemaErrors";
 import { buildCustomerThreadEmail, getEmailOutboundStatus, getEmailSender } from "@/server/quotes/emailOutbound";
+import { resolveOutboundAttachments } from "@/server/quotes/emailAttachments";
 
 /**
  * Phase 19.3.4 verification (outbound customer email bridge)
@@ -39,6 +40,7 @@ export const runtime = "nodejs";
 type PostBody = {
   toEmail?: string;
   message?: string;
+  attachmentFileIds?: string[];
 };
 
 export async function POST(req: Request, context: { params: Promise<{ id?: string }> }) {
@@ -57,6 +59,12 @@ export async function POST(req: Request, context: { params: Promise<{ id?: strin
     if (!message || message.length > 5000) {
       return NextResponse.json({ ok: false, error: "invalid_message" }, { status: 400 });
     }
+
+    const hasAttachmentFileIdsField =
+      Boolean(body) && typeof body === "object" && body !== null && "attachmentFileIds" in (body as any);
+    const attachmentFileIds = Array.isArray(body?.attachmentFileIds)
+      ? body!.attachmentFileIds.map((v) => (typeof v === "string" ? v.trim() : "")).filter(Boolean).slice(0, 25)
+      : null;
 
     const status = getEmailOutboundStatus();
     if (!status.enabled) {
@@ -86,6 +94,21 @@ export async function POST(req: Request, context: { params: Promise<{ id?: strin
       return NextResponse.json({ ok: false, error: "disabled" }, { status: 200 });
     }
 
+    const attachmentsResult = hasAttachmentFileIdsField
+      ? await resolveOutboundAttachments({
+          quoteId,
+          fileIds: attachmentFileIds,
+        })
+      : { attachments: [] };
+    const attachments = attachmentsResult.attachments;
+    if (attachments.length > 0) {
+      emailReq.attachments = attachments.map((a) => ({
+        filename: a.filename,
+        contentType: a.contentType,
+        contentBase64: a.contentBase64,
+      }));
+    }
+
     console.log(`${WARN_PREFIX} sending`, { quoteId, customerId: resolved.customerId });
     const sendResult = await getEmailSender().send(emailReq);
     if (!sendResult.ok) {
@@ -98,9 +121,23 @@ export async function POST(req: Request, context: { params: Promise<{ id?: strin
       adminUserId: admin.id,
       adminEmail: admin.email ?? null,
       body: message,
+      attachmentsMeta:
+        attachments.length > 0
+          ? attachments.map((a) => ({
+              fileId: typeof a.fileId === "string" ? a.fileId : null,
+              filename: a.filename,
+              sizeBytes: a.sizeBytes,
+            }))
+          : null,
     });
 
-    return NextResponse.json({ ok: true, sent: true, threadStored }, { status: 200 });
+    const requestedCount = hasAttachmentFileIdsField
+      ? Math.max(Array.isArray(attachmentFileIds) ? attachmentFileIds.length : 0, attachments.length)
+      : 0;
+    return NextResponse.json(
+      { ok: true, sent: true, threadStored, attachmentsSent: attachments.length, attachmentsRequested: requestedCount },
+      { status: 200 },
+    );
   } catch (err: unknown) {
     if (err instanceof UnauthorizedError) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
@@ -294,6 +331,7 @@ async function tryStoreAdminThreadMessage(args: {
   adminUserId: string;
   adminEmail: string | null;
   body: string;
+  attachmentsMeta: Array<{ fileId: string | null; filename: string; sizeBytes: number }> | null;
 }): Promise<boolean> {
   const supported = await schemaGate({
     enabled: true,
@@ -318,7 +356,11 @@ async function tryStoreAdminThreadMessage(args: {
     sender_name: null,
     sender_email: args.adminEmail ? String(args.adminEmail).toLowerCase().slice(0, 240) : null,
     customer_id: args.customerId,
-    metadata: { via: "email_outbound_customer" },
+    metadata: {
+      via: "email",
+      outbound: true,
+      ...(args.attachmentsMeta && args.attachmentsMeta.length > 0 ? { attachments: args.attachmentsMeta } : {}),
+    },
   };
 
   try {

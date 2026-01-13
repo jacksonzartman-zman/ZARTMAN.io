@@ -8,6 +8,11 @@ export type EmailSendRequest = {
   html?: string;
   replyTo: string;
   metadata?: Record<string, string>;
+  attachments?: Array<{
+    filename: string;
+    contentType: string;
+    contentBase64: string;
+  }>;
 };
 
 export type EmailSender = {
@@ -128,6 +133,24 @@ export function getEmailSender(): EmailSender {
       }
 
       try {
+        const attachments = Array.isArray(req.attachments) ? req.attachments : [];
+        const postmarkAttachments =
+          attachments.length > 0
+            ? attachments
+                .map((a) => {
+                  const filename = normalizeString(a?.filename) || "attachment";
+                  const contentType = normalizeString(a?.contentType) || "application/octet-stream";
+                  const contentBase64 = normalizeString(a?.contentBase64);
+                  if (!contentBase64) return null;
+                  return {
+                    Name: filename,
+                    Content: contentBase64,
+                    ContentType: contentType,
+                  };
+                })
+                .filter(Boolean)
+            : undefined;
+
         const res = await fetch("https://api.postmarkapp.com/email", {
           method: "POST",
           headers: {
@@ -143,6 +166,7 @@ export function getEmailSender(): EmailSender {
             HtmlBody: req.html ? String(req.html) : undefined,
             ReplyTo: replyTo,
             Metadata: req.metadata ?? undefined,
+            Attachments: postmarkAttachments,
             // Avoid tracking/PII; callers can pass explicit Metadata.
           }),
         });
