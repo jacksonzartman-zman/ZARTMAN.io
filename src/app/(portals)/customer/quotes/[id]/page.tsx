@@ -1654,12 +1654,14 @@ export default async function CustomerQuoteDetailPage({
               )
             }
           >
-            <CustomerEmailRepliesCard
-              quoteId={quote.id}
-              initialOptedIn={customerEmailOptedIn}
-              bridgeEnabled={customerEmailBridgeEnabled}
-              replyToAddress={customerReplyToAddress}
-            />
+            <div id="email-replies">
+              <CustomerEmailRepliesCard
+                quoteId={quote.id}
+                initialOptedIn={customerEmailOptedIn}
+                bridgeEnabled={customerEmailBridgeEnabled}
+                replyToAddress={customerReplyToAddress}
+              />
+            </div>
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
               <div className="max-w-[46rem]">
                 <p className="text-sm font-semibold text-white">Need to request a change?</p>
@@ -1684,6 +1686,18 @@ export default async function CustomerQuoteDetailPage({
               title="Messages"
               description="Shared thread with your supplier and the Zartman admin team."
               usageHint="Use Messages for clarifications, change requests, and questions."
+              emailReplyIndicator={
+                customerEmailBridgeEnabled && customerEmailOptedIn && customerReplyToAddress
+                  ? { state: "enabled", replyTo: customerReplyToAddress }
+                  : customerEmailBridgeEnabled && customerReplyToAddress
+                    ? {
+                        state: "off",
+                        cta: { label: "Manage email replies", href: "#email-replies" },
+                      }
+                    : customerEmailBridgeEnabled
+                      ? { state: "off" }
+                      : { state: "off", helper: "Email replies disabled on this environment." }
+              }
               helperText="Your note notifies your supplier and the Zartman admin team."
               disabledCopy={
                 readOnly

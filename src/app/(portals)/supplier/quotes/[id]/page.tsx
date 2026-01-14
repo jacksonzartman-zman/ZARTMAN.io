@@ -1070,6 +1070,11 @@ function SupplierQuoteWorkspace({
               markRead={tabParam === "messages"}
               title="Messages"
               description="Customer, supplier, and admin updates for this RFQ."
+              emailReplyIndicator={
+                replyToAddress
+                  ? { state: "enabled", replyTo: replyToAddress }
+                  : { state: "off", helper: "Reply-by-email not configured." }
+              }
               helperText="Your note notifies the customer and the Zartman team."
               disabledCopy={messagingDisabledReason ?? undefined}
               emptyStateCopy="Send the first message to align on scope and timing."

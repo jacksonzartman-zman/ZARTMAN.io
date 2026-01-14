@@ -128,6 +128,7 @@ import {
 import { AdminPartsFilesSection } from "./AdminPartsFilesSection";
 import { EmailSupplierForm } from "./EmailSupplierForm";
 import { EmailCustomerForm } from "./EmailCustomerForm";
+import { InviteEmailThreadButton } from "./InviteEmailThreadButton";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1403,11 +1404,14 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 </p>
                 <p className="mt-1 text-xs text-slate-400">{supplierReplyToStatusCopy}</p>
               </div>
-              <CopyTextButton
-                text={supplierReplyToAddress}
-                idleLabel="Copy email address"
-                logPrefix="[email_bridge]"
-              />
+              <div className="flex flex-wrap items-start justify-end gap-2">
+                <CopyTextButton
+                  text={supplierReplyToAddress}
+                  idleLabel="Copy email address"
+                  logPrefix="[email_bridge]"
+                />
+                <InviteEmailThreadButton quoteId={quote.id} kind="supplier" enabled={outboundEmailEnabled} />
+              </div>
             </div>
             <p className="break-anywhere mt-3 rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2 text-xs text-slate-100">
               {supplierReplyToAddress || "Not configured"}
@@ -1423,11 +1427,14 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 </p>
                 <p className="mt-1 text-xs text-slate-400">{customerReplyToStatusCopy}</p>
               </div>
-              <CopyTextButton
-                text={customerReplyToAddress}
-                idleLabel="Copy email address"
-                logPrefix="[email_bridge]"
-              />
+              <div className="flex flex-wrap items-start justify-end gap-2">
+                <CopyTextButton
+                  text={customerReplyToAddress}
+                  idleLabel="Copy email address"
+                  logPrefix="[email_bridge]"
+                />
+                <InviteEmailThreadButton quoteId={quote.id} kind="customer" enabled={outboundEmailEnabled} />
+              </div>
             </div>
             <p className="break-anywhere mt-3 rounded-xl border border-slate-900/60 bg-slate-950/30 px-3 py-2 text-xs text-slate-100">
               {customerReplyToAddress || "Not configured"}
