@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { CUSTOMER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
 import { CustomerNotificationSettingsForm } from "./CustomerNotificationSettingsForm";
+import { CustomerEmailRepliesDefaultsCard } from "./CustomerEmailRepliesDefaultsCard";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadNotificationPreferencesMap } from "@/server/notifications/preferences";
+import { getCustomerEmailDefaultOptIn } from "@/server/quotes/customerEmailDefaults";
+import { isCustomerEmailBridgeEnabled } from "@/server/quotes/customerEmailPrefs";
 import type { Org } from "@/types/org";
 import {
   deriveOrgFromSession,
@@ -29,6 +32,23 @@ export default async function CustomerSettingsPage() {
     role: "customer",
     eventTypes: CUSTOMER_NOTIFICATION_OPTIONS.map((option) => option.eventType),
   });
+
+  const bridgeEnabled = isCustomerEmailBridgeEnabled();
+  const emailDefaultsResult =
+    customer && bridgeEnabled ? await getCustomerEmailDefaultOptIn(customer.id) : null;
+  const emailDefaultsAvailability = !customer
+    ? { kind: "missing_profile" as const, message: "Complete your customer profile to manage email replies." }
+    : !bridgeEnabled
+      ? { kind: "disabled" as const, message: "Email bridge not configured." }
+      : !emailDefaultsResult
+        ? { kind: "unsupported" as const, message: "Not available on this deployment." }
+        : emailDefaultsResult.ok
+          ? { kind: "ready" as const }
+          : emailDefaultsResult.reason === "disabled"
+            ? { kind: "disabled" as const, message: "Email bridge not configured." }
+            : { kind: "unsupported" as const, message: "Not available on this deployment." };
+  const emailDefaultsEnabled =
+    emailDefaultsResult && emailDefaultsResult.ok ? emailDefaultsResult.optedIn : false;
 
   return (
     <div className="space-y-6">
@@ -71,6 +91,11 @@ export default async function CustomerSettingsPage() {
           </Link>
         </div>
       </section>
+
+      <CustomerEmailRepliesDefaultsCard
+        initialEnabled={emailDefaultsEnabled}
+        availability={emailDefaultsAvailability}
+      />
 
       <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
         <h2 className="text-lg font-semibold text-white">Company profile</h2>
