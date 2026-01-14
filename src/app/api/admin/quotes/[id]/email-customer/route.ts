@@ -137,11 +137,23 @@ export async function POST(req: Request, context: { params: Promise<{ id?: strin
           : null,
     });
 
+    const attachmentsMode: "none" | "latest_inbound" | "explicit" = hasAttachmentFileIdsField
+      ? Array.isArray(attachmentFileIds) && attachmentFileIds.length > 0
+        ? "explicit"
+        : "latest_inbound"
+      : "none";
     const requestedCount = hasAttachmentFileIdsField
       ? Math.max(Array.isArray(attachmentFileIds) ? attachmentFileIds.length : 0, attachments.length)
       : 0;
     return NextResponse.json(
-      { ok: true, sent: true, threadStored, attachmentsSent: attachments.length, attachmentsRequested: requestedCount },
+      {
+        ok: true,
+        sent: true,
+        threadStored,
+        attachmentsSent: attachments.length,
+        attachmentsRequested: requestedCount,
+        attachmentsMode,
+      },
       { status: 200 },
     );
   } catch (err: unknown) {

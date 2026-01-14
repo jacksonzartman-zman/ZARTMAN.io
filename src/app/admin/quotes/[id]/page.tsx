@@ -19,6 +19,7 @@ import {
 } from "@/server/quotes/messages";
 import { getCustomerReplyToAddress, getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
 import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
+import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
@@ -1393,6 +1394,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const messagesUnavailable = Boolean(quoteMessagesError);
     const postMessageAction = postAdminQuoteMessage.bind(null, quote.id);
     const outboundEmailEnabled = getEmailOutboundStatus().enabled;
+    const outboundFileOptions = await loadOutboundFileOptions({ quoteId: quote.id, limit: 50 });
     const messagesContent = (
       <div className="space-y-3">
         {supplierReplyToResult ? (
@@ -1441,8 +1443,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             </p>
           </div>
         ) : null}
-        <EmailSupplierForm quoteId={quote.id} enabled={outboundEmailEnabled} />
-        <EmailCustomerForm quoteId={quote.id} enabled={outboundEmailEnabled} />
+        <EmailSupplierForm quoteId={quote.id} enabled={outboundEmailEnabled} fileOptions={outboundFileOptions} />
+        <EmailCustomerForm quoteId={quote.id} enabled={outboundEmailEnabled} fileOptions={outboundFileOptions} />
         {messagesUnavailable ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
             Messages are temporarily unavailable. Refresh the page to try again.
