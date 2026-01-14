@@ -231,6 +231,7 @@ export function buildSupplierThreadEmail(args: {
   supplierId: string;
   toEmail: string;
   adminMessageText: string;
+  subjectOverride?: string | null;
   context?: {
     shortQuoteLabel?: string | null;
     recentMessages?: SupplierThreadContextMessage[] | null;
@@ -260,8 +261,9 @@ export function buildSupplierThreadEmail(args: {
 
   const replyTo = `reply+${sigToken}@${replyDomain}`;
 
+  const subjectOverride = normalizeString(args.subjectOverride);
   const shortQuoteLabel = normalizeString(args.context?.shortQuoteLabel) || quoteId;
-  const subject = `Quote update: ${shortQuoteLabel}`;
+  const subject = subjectOverride || `Quote update: ${shortQuoteLabel}`;
 
   const excerptLines: string[] = [];
   const recent = Array.isArray(args.context?.recentMessages) ? args.context?.recentMessages : [];
@@ -310,6 +312,7 @@ export function buildCustomerThreadEmail(args: {
   customerId: string;
   toEmail: string;
   adminMessageText: string;
+  subjectOverride?: string | null;
   context?: {
     shortQuoteLabel?: string | null;
     recentMessages?: CustomerThreadContextMessage[] | null;
@@ -339,8 +342,9 @@ export function buildCustomerThreadEmail(args: {
 
   const replyTo = `reply+${sigToken}@${replyDomain}`;
 
+  const subjectOverride = normalizeString(args.subjectOverride);
   const shortQuoteLabel = normalizeString(args.context?.shortQuoteLabel) || quoteId;
-  const subject = `Quote ${shortQuoteLabel}: Update from Zartman Team`;
+  const subject = subjectOverride || `Quote ${shortQuoteLabel}: Update from Zartman Team`;
 
   const excerptLines: string[] = [];
   const recent = Array.isArray(args.context?.recentMessages) ? args.context?.recentMessages : [];

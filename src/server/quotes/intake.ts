@@ -21,6 +21,10 @@ import {
   registerUploadedObjectsForExistingUpload,
 } from "@/server/quotes/uploadFiles";
 import { applyCustomerEmailDefaultToNewQuote } from "@/server/quotes/customerEmailDefaults";
+import { getCustomerEmailOptInStatus, isCustomerEmailBridgeEnabled } from "@/server/quotes/customerEmailPrefs";
+import { sendCustomerInviteEmail } from "@/server/quotes/emailInvites";
+import { markInviteSent, wasInviteSent } from "@/server/quotes/emailInviteMarkers";
+import { warnOnce } from "@/server/db/schemaErrors";
 
 const CANONICAL_CAD_BUCKET = "cad_uploads";
 
@@ -263,6 +267,9 @@ export async function persistQuoteIntakeDirectUpload(params: {
         // Never block quote creation.
       }
     }
+
+    // Phase 19.3.14: best-effort customer invite email on quote creation.
+    void autoSendCustomerInviteAfterQuoteCreate({ quoteId, customerId });
 
     const targets = filesMeta.map((f) =>
       buildUploadTargetForQuote({
@@ -521,6 +528,9 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
         // Never block quote creation.
       }
     }
+
+    // Phase 19.3.14: best-effort customer invite email on quote creation.
+    void autoSendCustomerInviteAfterQuoteCreate({ quoteId, customerId });
 
     const { data: uploadRow, error: uploadError } = await supabaseServer
       .from("uploads")
@@ -915,6 +925,9 @@ export async function persistQuoteIntake(
       }
     }
 
+    // Phase 19.3.14: best-effort customer invite email on quote creation.
+    void autoSendCustomerInviteAfterQuoteCreate({ quoteId, customerId });
+
     void emitQuoteEvent({
       quoteId,
       eventType: "submitted",
@@ -1141,4 +1154,35 @@ export function normalizeEmailInput(value?: string | null): string | null {
   }
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
+}
+
+async function autoSendCustomerInviteAfterQuoteCreate(args: {
+  quoteId: string;
+  customerId: string | null;
+}): Promise<void> {
+  const quoteId = typeof args.quoteId === "string" ? args.quoteId.trim() : "";
+  const customerId = typeof args.customerId === "string" ? args.customerId.trim() : "";
+  if (!quoteId || !customerId) return;
+
+  // Per requirements: if env flag is off, do not probe DB at all.
+  if (!isCustomerEmailBridgeEnabled()) return;
+
+  try {
+    // Only send when the customer default is enabled/active on this quote.
+    const optIn = await getCustomerEmailOptInStatus({ quoteId, customerId });
+    if (!optIn.ok || !optIn.optedIn) return;
+
+    const already = await wasInviteSent({ quoteId, role: "customer" });
+    if (already) return;
+
+    const sent = await sendCustomerInviteEmail({ quoteId, customerId });
+    if (sent.ok) {
+      await markInviteSent({ quoteId, role: "customer" });
+    }
+  } catch (error) {
+    // Fail-soft: never block quote creation.
+    warnOnce("quote_intake:auto_invite_customer_crashed", "[quote intake] auto invite crashed; skipping", {
+      error: String(error),
+    });
+  }
 }

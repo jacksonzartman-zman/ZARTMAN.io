@@ -12,6 +12,9 @@ import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications"
 import { loadSupplierById } from "@/server/suppliers/profile";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import { ensureKickoffTasksForAwardedSupplier } from "@/server/quotes/kickoffTasks";
+import { sendSupplierInviteEmail } from "@/server/quotes/emailInvites";
+import { markInviteSent, wasInviteSent } from "@/server/quotes/emailInviteMarkers";
+import { warnOnce } from "@/server/db/schemaErrors";
 
 const CUSTOMER_AWARD_ALLOWED_STATUSES = new Set([
   "submitted",
@@ -278,6 +281,12 @@ export async function performAwardFlow(
           });
         }
 
+        // Phase 19.3.14: best-effort supplier invite email after award backfill.
+        void autoSendSupplierInviteAfterAward({
+          quoteId,
+          supplierId: backfilled.awarded_supplier_id ?? null,
+        });
+
         return {
           ok: true,
           awardedBidId: backfilled.awarded_bid_id ?? bidId,
@@ -392,6 +401,9 @@ export async function performAwardFlow(
       error: finalization.error,
     };
   }
+
+  // Phase 19.3.14: best-effort supplier invite email after award.
+  void autoSendSupplierInviteAfterAward({ quoteId, supplierId: winningSupplierId });
 
   return {
     ok: true,
@@ -964,6 +976,30 @@ function normalizeEmail(value?: string | null): string | null {
   }
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
+}
+
+async function autoSendSupplierInviteAfterAward(args: {
+  quoteId: string;
+  supplierId: string | null;
+}): Promise<void> {
+  const quoteId = typeof args.quoteId === "string" ? args.quoteId.trim() : "";
+  const supplierId = typeof args.supplierId === "string" ? args.supplierId.trim() : "";
+  if (!quoteId || !supplierId) return;
+
+  try {
+    const already = await wasInviteSent({ quoteId, role: "supplier" });
+    if (already) return;
+
+    const sent = await sendSupplierInviteEmail({ quoteId, supplierId });
+    if (sent.ok) {
+      await markInviteSent({ quoteId, role: "supplier" });
+    }
+  } catch (error) {
+    // Fail-soft: never block award.
+    warnOnce("award:auto_invite_supplier_crashed", "[award] auto invite crashed; skipping", {
+      error: String(error),
+    });
+  }
 }
 
 function mapRpcErrorToReason(message?: string | null): AwardFailureReason {
