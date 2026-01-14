@@ -92,6 +92,8 @@ import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import { loadSupplierBidDraft, type SupplierBidDraft } from "@/server/suppliers";
 import { loadCadFeaturesForQuote, type CadFeatureSummary } from "@/server/quotes/cadFeatures";
+import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
+import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 
 export const dynamic = "force-dynamic";
 
@@ -210,6 +212,16 @@ export default async function SupplierQuoteDetailPage({
     supplierId: profile.supplier.id,
   });
   const isWinningSupplier = awardedToSupplier;
+  const outboundStatus = getEmailOutboundStatus();
+  const portalEmailEnabled = outboundStatus.enabled && awardedToSupplier;
+  const portalEmailDisabledCopy = !outboundStatus.enabled
+    ? "Email not configured."
+    : !awardedToSupplier
+      ? "Email is available after this RFQ is awarded to you."
+      : null;
+  const portalEmailFileOptions = portalEmailEnabled
+    ? await loadOutboundFileOptions({ quoteId, limit: 50 })
+    : [];
 
   let project: QuoteProjectRecord | null = null;
   let projectUnavailable = false;
@@ -1070,6 +1082,12 @@ function SupplierQuoteWorkspace({
               markRead={tabParam === "messages"}
               title="Messages"
               description="Customer, supplier, and admin updates for this RFQ."
+              portalEmail={{
+                enabled: portalEmailEnabled,
+                recipientRole: "customer",
+                fileOptions: portalEmailFileOptions,
+                disabledCopy: portalEmailDisabledCopy,
+              }}
               emailReplyIndicator={
                 replyToAddress
                   ? { state: "enabled", replyTo: replyToAddress }

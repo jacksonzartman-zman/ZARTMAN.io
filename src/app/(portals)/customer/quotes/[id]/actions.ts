@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { createQuoteMessage } from "@/server/quotes/messages";
+import { sendEmailToSupplierFromCustomer } from "@/server/quotes/emailPortalSend";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
@@ -79,6 +80,10 @@ const CUSTOMER_MESSAGE_GENERIC_ERROR =
   "Unable to send your message right now. Please try again.";
 const CUSTOMER_MESSAGE_EMPTY_ERROR = "Message can’t be empty.";
 const CUSTOMER_MESSAGE_LENGTH_ERROR = "Message is too long. Try shortening or splitting it.";
+const CUSTOMER_EMAIL_LENGTH_ERROR = "Email message is too long. Keep it under 5,000 characters.";
+const CUSTOMER_EMAIL_DISABLED_ERROR = "Email not configured.";
+const CUSTOMER_EMAIL_MISSING_RECIPIENT_ERROR = "Supplier email is missing for this quote.";
+const CUSTOMER_EMAIL_SEND_FAILED_ERROR = "We couldn’t send that email right now. Please try again.";
 const CUSTOMER_PROJECT_GENERIC_ERROR =
   "We couldn’t save your project details. Please retry.";
 const CUSTOMER_PROJECT_SUCCESS_MESSAGE = "Project details saved.";
@@ -276,7 +281,22 @@ export async function postQuoteMessage(
     };
   }
 
-  if (trimmedBody.length > 2000) {
+  const sendViaEmail = (() => {
+    const v = formData.get("sendViaEmail");
+    if (typeof v !== "string") return false;
+    const normalized = v.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "on" || normalized === "yes";
+  })();
+
+  if (sendViaEmail) {
+    if (trimmedBody.length > 5000) {
+      return {
+        ok: false,
+        error: CUSTOMER_EMAIL_LENGTH_ERROR,
+        fieldErrors: { body: CUSTOMER_EMAIL_LENGTH_ERROR },
+      };
+    }
+  } else if (trimmedBody.length > 2000) {
     return {
       ok: false,
       error: CUSTOMER_MESSAGE_LENGTH_ERROR,
@@ -336,6 +356,43 @@ export async function postQuoteMessage(
       customer.company_name?.trim() ? customer.company_name.trim() : "Customer";
     // Masked identities: do not store customer email in shared thread rows.
     const senderEmail = null;
+
+    if (sendViaEmail) {
+      const attachmentFileIds = formData
+        .getAll("attachmentFileIds")
+        .map((v) => (typeof v === "string" ? v.trim() : ""))
+        .filter(Boolean)
+        .slice(0, 5);
+
+      const emailResult = await sendEmailToSupplierFromCustomer({
+        quoteId: normalizedQuoteId,
+        customerId: customer.id,
+        message: trimmedBody,
+        attachmentFileIds: attachmentFileIds.length > 0 ? attachmentFileIds : undefined,
+      });
+
+      if (!emailResult.ok) {
+        const message =
+          emailResult.error === "missing_recipient"
+            ? CUSTOMER_EMAIL_MISSING_RECIPIENT_ERROR
+            : emailResult.error === "disabled" || emailResult.error === "unsupported"
+              ? CUSTOMER_EMAIL_DISABLED_ERROR
+              : CUSTOMER_EMAIL_SEND_FAILED_ERROR;
+        return { ok: false, error: message, fieldErrors: {} };
+      }
+
+      revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+      revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+      revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+      return {
+        ok: true,
+        message:
+          emailResult.attachmentsSent > 0
+            ? `Email sent. (${emailResult.attachmentsSent} attachment${emailResult.attachmentsSent === 1 ? "" : "s"})`
+            : "Email sent.",
+      };
+    }
 
     const supabase = createAuthClient();
     const result = await createQuoteMessage({
