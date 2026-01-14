@@ -96,6 +96,8 @@ import { DemoModeBanner } from "./DemoModeBanner";
 import { CustomerEmailRepliesCard } from "./CustomerEmailRepliesCard";
 import { isCustomerEmailBridgeEnabled, isCustomerEmailOptedIn } from "@/server/quotes/customerEmailPrefs";
 import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
+import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
+import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 
 export const dynamic = "force-dynamic";
 
@@ -1153,6 +1155,17 @@ export default async function CustomerQuoteDetailPage({
 
   const postMessageAction = postCustomerQuoteMessage.bind(null, quote.id);
 
+  const outboundStatus = getEmailOutboundStatus();
+  const portalEmailEnabled = outboundStatus.enabled && quoteHasWinner;
+  const portalEmailDisabledCopy = !outboundStatus.enabled
+    ? "Email not configured."
+    : !quoteHasWinner
+      ? "Email is available after a supplier is selected."
+      : null;
+  const portalEmailFileOptions = portalEmailEnabled
+    ? await loadOutboundFileOptions({ quoteId: quote.id, limit: 50 })
+    : [];
+
   const orderWorkspaceSection = (
     <CustomerQuoteOrderWorkspace
       files={quote.files}
@@ -1686,6 +1699,12 @@ export default async function CustomerQuoteDetailPage({
               title="Messages"
               description="Shared thread with your supplier and the Zartman admin team."
               usageHint="Use Messages for clarifications, change requests, and questions."
+              portalEmail={{
+                enabled: portalEmailEnabled,
+                recipientRole: "supplier",
+                fileOptions: portalEmailFileOptions,
+                disabledCopy: portalEmailDisabledCopy,
+              }}
               emailReplyIndicator={
                 customerEmailBridgeEnabled && customerEmailOptedIn && customerReplyToAddress
                   ? { state: "enabled", replyTo: customerReplyToAddress }

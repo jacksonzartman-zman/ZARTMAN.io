@@ -16,6 +16,7 @@ import { formatDateTime } from "@/lib/formatDate";
 import { sbBrowser } from "@/lib/supabase";
 import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
+import type { OutboundFileOption } from "@/server/quotes/outboundFilePicker";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { CopyTextButton } from "@/components/CopyTextButton";
 
@@ -59,6 +60,26 @@ export type QuoteMessagesThreadProps = {
         helper?: string | null;
         cta?: { label: string; href: string } | null;
       };
+  /**
+   * Optional "send this message as email" enhancer (customer/supplier portals only).
+   * When enabled, the submit action may route to outbound email instead of creating
+   * an in-portal message (handled server-side by the provided `postAction`).
+   */
+  portalEmail?: {
+    enabled: boolean;
+    /**
+     * Who the email will be sent to (do NOT display any real addresses).
+     */
+    recipientRole: "supplier" | "customer";
+    /**
+     * Optional file options to attach (max 5 enforced server-side).
+     */
+    fileOptions?: OutboundFileOption[];
+    /**
+     * Optional reason shown when email sending is disabled.
+     */
+    disabledCopy?: string | null;
+  } | null;
 };
 
 const DEFAULT_FORM_STATE: QuoteMessageFormState = {
@@ -84,6 +105,7 @@ export function QuoteMessagesThread({
   disabledCopy,
   emptyStateCopy = "No messages yet. Start the thread if you need clarification, want to request a change, or have a question—everyone on this workspace will be notified.",
   emailReplyIndicator,
+  portalEmail = null,
 }: QuoteMessagesThreadProps) {
   const realtimeMessages = useQuoteMessagesRealtime(quoteId, messages);
   const sortedMessages = useMemo(
@@ -205,6 +227,8 @@ export function QuoteMessagesThread({
           postAction={postAction}
           helperText={helperText}
           disabledCopy={canPost ? null : disabledCopy}
+          viewerRole={viewerRole}
+          portalEmail={portalEmail}
         />
       ) : !canPost && disabledCopy ? (
         <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-3 text-xs text-slate-400">
@@ -404,6 +428,8 @@ function QuoteMessageComposer({
   postAction,
   helperText,
   disabledCopy,
+  viewerRole,
+  portalEmail,
 }: {
   quoteId: string;
   postAction: (
@@ -412,10 +438,14 @@ function QuoteMessageComposer({
   ) => Promise<QuoteMessageFormState>;
   helperText?: string;
   disabledCopy?: string | null;
+  viewerRole: QuoteMessagesThreadProps["viewerRole"];
+  portalEmail: QuoteMessagesThreadProps["portalEmail"];
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [state, formAction] = useFormState(postAction, DEFAULT_FORM_STATE);
+  const [sendViaEmail, setSendViaEmail] = useState(false);
+  const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!state.ok || !state.message) {
@@ -425,9 +455,24 @@ function QuoteMessageComposer({
     if (textareaRef.current) {
       textareaRef.current.value = "";
     }
+    setSendViaEmail(false);
+    setSelectedAttachmentIds([]);
   }, [state.ok, state.message]);
 
   const bodyError = state.fieldErrors?.body;
+  const portalEmailVisible =
+    Boolean(portalEmail) &&
+    (viewerRole === "customer" || viewerRole === "supplier");
+  const portalEmailEnabled = Boolean(portalEmailVisible && portalEmail?.enabled);
+  const portalEmailDisabledCopy =
+    portalEmailVisible && !portalEmailEnabled
+      ? portalEmail?.disabledCopy ?? "Email not configured."
+      : null;
+  const fileOptions = portalEmailVisible && Array.isArray(portalEmail?.fileOptions)
+    ? (portalEmail!.fileOptions as OutboundFileOption[])
+    : [];
+  const maxLen = sendViaEmail ? 5000 : 2000;
+  const selectedCount = selectedAttachmentIds.length;
 
   return (
     <div className="space-y-3 border-t border-slate-900/60 pt-4">
@@ -452,6 +497,123 @@ function QuoteMessageComposer({
         </p>
       ) : null}
       <form ref={formRef} action={formAction} className="space-y-3">
+        {portalEmailVisible ? (
+          <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">Send via email</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Sends a masked email through this thread. Replies stay private and return here.
+                </p>
+              </div>
+              <label
+                className={clsx(
+                  "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide",
+                  portalEmailEnabled
+                    ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100 hover:border-emerald-300"
+                    : "border-slate-800/80 bg-black/20 text-slate-500 cursor-not-allowed",
+                )}
+                title={
+                  portalEmailEnabled
+                    ? "Send this message as email"
+                    : portalEmailDisabledCopy ?? "Email not configured."
+                }
+              >
+                <input
+                  type="checkbox"
+                  name="sendViaEmail"
+                  value="1"
+                  checked={sendViaEmail}
+                  disabled={!portalEmailEnabled}
+                  onChange={(e) => {
+                    const next = Boolean(e.target.checked);
+                    setSendViaEmail(next);
+                    if (!next) {
+                      setSelectedAttachmentIds([]);
+                    }
+                  }}
+                />
+                Send this message as email
+              </label>
+            </div>
+            {!portalEmailEnabled && portalEmailDisabledCopy ? (
+              <p className="mt-2 text-xs text-slate-500">{portalEmailDisabledCopy}</p>
+            ) : sendViaEmail ? (
+              <div className="mt-4 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Attach files (optional)
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {selectedCount}/5 selected
+                  </p>
+                </div>
+                {fileOptions.length === 0 ? (
+                  <p className="text-xs text-slate-500">No files available to attach.</p>
+                ) : (
+                  <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-900/60 bg-black/20 p-3">
+                    <div className="space-y-2">
+                      {fileOptions.slice(0, 50).map((opt) => {
+                        const id = typeof opt?.id === "string" ? opt.id : "";
+                        if (!id) return null;
+                        const filename =
+                          typeof opt?.filename === "string" && opt.filename.trim()
+                            ? opt.filename.trim()
+                            : "File";
+                        const checked = selectedAttachmentIds.includes(id);
+                        const disablePick = !checked && selectedAttachmentIds.length >= 5;
+                        return (
+                          <label
+                            key={id}
+                            className={clsx(
+                              "flex items-start gap-3 rounded-lg border px-3 py-2",
+                              checked
+                                ? "border-emerald-500/30 bg-emerald-500/10"
+                                : "border-slate-900/60 bg-slate-950/20",
+                              disablePick ? "opacity-60 cursor-not-allowed" : "cursor-pointer",
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              name="attachmentFileIds"
+                              value={id}
+                              checked={checked}
+                              disabled={disablePick}
+                              onChange={(e) => {
+                                const nextChecked = Boolean(e.target.checked);
+                                setSelectedAttachmentIds((current) => {
+                                  const set = new Set(current);
+                                  if (nextChecked) {
+                                    if (set.size >= 5) return current;
+                                    set.add(id);
+                                  } else {
+                                    set.delete(id);
+                                  }
+                                  return Array.from(set).slice(0, 5);
+                                });
+                              }}
+                            />
+                            <span className="min-w-0">
+                              <span
+                                className="block truncate text-xs font-semibold text-slate-100"
+                                title={filename}
+                              >
+                                {filename}
+                              </span>
+                              <span className="block text-[11px] text-slate-500">
+                                Selected files will be sent within provider limits.
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <div className="space-y-1">
           <label
             htmlFor={`quote-message-body-${quoteId}`}
@@ -464,7 +626,7 @@ function QuoteMessageComposer({
             name="body"
             ref={textareaRef}
             rows={4}
-            maxLength={2000}
+            maxLength={maxLen}
             placeholder="Share updates, blockers, or questions with the group..."
             className="w-full rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none"
           />

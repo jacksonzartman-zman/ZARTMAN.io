@@ -11,6 +11,7 @@ import {
 import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import { notifyAdminOnBidSubmitted } from "@/server/quotes/notifications";
+import { sendEmailToCustomerFromSupplier } from "@/server/quotes/emailPortalSend";
 import type { QuoteWithUploadsRow } from "@/server/quotes/types";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import {
@@ -67,6 +68,13 @@ export const SUPPLIER_MESSAGE_GENERIC_ERROR =
   "We couldn’t send your message. Please try again.";
 export const SUPPLIER_MESSAGE_DENIED_ERROR =
   "You don’t have access to this RFQ.";
+export const SUPPLIER_EMAIL_DISABLED_ERROR = "Email not configured.";
+export const SUPPLIER_EMAIL_NOT_AWARDED_ERROR =
+  "Email is available after this RFQ is awarded to you.";
+export const SUPPLIER_EMAIL_MISSING_RECIPIENT_ERROR =
+  "Customer email is missing for this quote.";
+export const SUPPLIER_EMAIL_SEND_FAILED_ERROR =
+  "We couldn’t send that email right now. Please try again.";
 
 export const BID_SUBMIT_ERROR = "We couldn't submit your bid. Please try again.";
 export const BID_ENV_DISABLED_ERROR =
@@ -238,6 +246,12 @@ export async function postSupplierMessageImpl(
     typeof bodyValue === "string"
       ? bodyValue.trim()
       : String(bodyValue ?? "").trim();
+  const sendViaEmail = (() => {
+    const v = formData.get("sendViaEmail");
+    if (typeof v !== "string") return false;
+    const normalized = v.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "on" || normalized === "yes";
+  })();
 
   if (!trimmedQuoteId) {
     return {
@@ -255,12 +269,21 @@ export async function postSupplierMessageImpl(
     };
   }
 
-  if (body.length > 2000) {
+  if (!sendViaEmail && body.length > 2000) {
     return {
       ok: false,
       error: "Message is too long.",
       fieldErrors: {
         body: "Keep messages under 2,000 characters.",
+      },
+    };
+  }
+  if (sendViaEmail && body.length > 5000) {
+    return {
+      ok: false,
+      error: "Email message is too long.",
+      fieldErrors: {
+        body: "Keep email messages under 5,000 characters.",
       },
     };
   }
@@ -305,6 +328,73 @@ export async function postSupplierMessageImpl(
         ok: false,
         error: SUPPLIER_MESSAGE_DENIED_ERROR,
         reason: "access_denied",
+        fieldErrors: {},
+      };
+    }
+
+    if (sendViaEmail) {
+      // Supplier portal outbound email is restricted to the awarded supplier.
+      try {
+        const { data: quoteRow, error: quoteError } = await supabaseServer
+          .from("quotes")
+          .select("id,awarded_supplier_id")
+          .eq("id", trimmedQuoteId)
+          .maybeSingle<{ id: string; awarded_supplier_id: string | null }>();
+        const awardedSupplierId =
+          typeof quoteRow?.awarded_supplier_id === "string"
+            ? quoteRow.awarded_supplier_id.trim()
+            : "";
+        if (quoteError || !awardedSupplierId || awardedSupplierId !== supplierId) {
+          return {
+            ok: false,
+            error: SUPPLIER_EMAIL_NOT_AWARDED_ERROR,
+            reason: "access_denied",
+            fieldErrors: {},
+          };
+        }
+      } catch {
+        return {
+          ok: false,
+          error: SUPPLIER_EMAIL_NOT_AWARDED_ERROR,
+          reason: "access_denied",
+          fieldErrors: {},
+        };
+      }
+
+      const attachmentFileIds = formData
+        .getAll("attachmentFileIds")
+        .map((v) => (typeof v === "string" ? v.trim() : ""))
+        .filter(Boolean)
+        .slice(0, 5);
+
+      const emailResult = await sendEmailToCustomerFromSupplier({
+        quoteId: trimmedQuoteId,
+        supplierId,
+        message: body,
+        attachmentFileIds: attachmentFileIds.length > 0 ? attachmentFileIds : undefined,
+      });
+
+      if (!emailResult.ok) {
+        const message =
+          emailResult.error === "missing_recipient"
+            ? SUPPLIER_EMAIL_MISSING_RECIPIENT_ERROR
+            : emailResult.error === "disabled" || emailResult.error === "unsupported"
+              ? SUPPLIER_EMAIL_DISABLED_ERROR
+              : SUPPLIER_EMAIL_SEND_FAILED_ERROR;
+        return { ok: false, error: message, reason: "unknown", fieldErrors: {} };
+      }
+
+      revalidatePath(`/supplier/quotes/${trimmedQuoteId}`);
+      revalidatePath(`/customer/quotes/${trimmedQuoteId}`);
+      revalidatePath(`/admin/quotes/${trimmedQuoteId}`);
+
+      return {
+        ok: true,
+        message:
+          emailResult.attachmentsSent > 0
+            ? `Email sent. (${emailResult.attachmentsSent} attachment${emailResult.attachmentsSent === 1 ? "" : "s"})`
+            : "Email sent.",
+        error: "",
         fieldErrors: {},
       };
     }
