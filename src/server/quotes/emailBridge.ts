@@ -18,6 +18,17 @@ export type InboundEmailAttachment = {
 };
 
 export type InboundEmail = {
+  /**
+   * Provider source (best-effort).
+   * - postmark: `src/app/api/inbound/postmark/route.ts`
+   * - generic: `src/app/api/inbound/email/route.ts`
+   */
+  provider?: "postmark" | "generic";
+  /**
+   * Provider-specific message id for deterministic dedupe + threading.
+   * - Postmark inbound: payload.MessageID
+   */
+  providerMessageId?: string | null;
   from: string;
   to: string[];
   cc?: string[];
@@ -25,9 +36,13 @@ export type InboundEmail = {
   text?: string | null;
   html?: string | null;
   date?: string | null;
+  /**
+   * Legacy / provider-agnostic message id (kept for compatibility).
+   * Prefer `providerMessageId` when present.
+   */
   messageId?: string | null;
   inReplyTo?: string | null;
-  references?: string[];
+  references?: string[] | null;
   attachments?: InboundEmailAttachment[];
 };
 
@@ -201,6 +216,47 @@ function tryExtractEmail(raw: string): string | null {
   const candidate = angleMatch ? angleMatch[1] : trimmed;
   const cleaned = candidate.replace(/[,\s]+$/g, "").trim();
   return cleaned.includes("@") ? cleaned : null;
+}
+
+function normalizeEmailForCompare(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const extracted = tryExtractEmail(raw);
+  if (!extracted) return null;
+  const trimmed = extracted.trim().toLowerCase();
+  if (!trimmed) return null;
+  // Conservative: avoid accepting obviously non-email values.
+  if (!trimmed.includes("@") || trimmed.includes(" ") || trimmed.length > 320) return null;
+  return trimmed;
+}
+
+function parseCsvEnvList(value: unknown): string[] {
+  const raw = normalizeString(value);
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function isInternalInboundSender(inboundFrom: unknown): boolean {
+  const from = normalizeEmailForCompare(inboundFrom);
+  if (!from) return false;
+
+  const emailFrom = normalizeEmailForCompare(process.env.EMAIL_FROM ?? "");
+  if (emailFrom && from === emailFrom) {
+    return true;
+  }
+
+  // Optional allowlist for "internal sender" suppression (comma-separated).
+  // Intentionally flexible naming to reduce config friction.
+  const allowlist = [
+    ...parseCsvEnvList(process.env.EMAIL_INTERNAL_SENDER_ALLOWLIST),
+    ...parseCsvEnvList(process.env.EMAIL_INTERNAL_SENDERS),
+  ]
+    .map((v) => normalizeEmailForCompare(v))
+    .filter(Boolean) as string[];
+
+  return allowlist.some((a) => a === from);
 }
 
 export function parseReplyToTokenFromRecipients(
@@ -492,18 +548,79 @@ async function isLikelyDuplicateInboundMessage(args: {
   senderRole: "supplier" | "customer";
   senderId: string;
   body: string;
+  subject: string | null;
+  inboundDate: string | null;
   providerMessageId: string | null;
-}): Promise<boolean> {
+}): Promise<{ deduped: boolean; fingerprint: string | null }> {
   const quoteId = normalizeString(args.quoteId);
   const senderRole = args.senderRole;
   const senderId = normalizeString(args.senderId);
   const body = normalizeString(args.body);
+  const subject = normalizeString(args.subject) || null;
+  const inboundDate = normalizeString(args.inboundDate) || null;
   const providerMessageId = normalizeString(args.providerMessageId) || null;
-  if (!quoteId || !senderId || !body) return false;
+  if (!quoteId || !senderId || !body) return { deduped: false, fingerprint: null };
 
   // Best-effort only. Avoid heavy queries and tolerate drift.
   try {
-    // Try to load a tiny recent window.
+    const MAX_SCAN = 25;
+
+    const computeHourBucket = (dateStr: string | null): string => {
+      const d = dateStr ? new Date(dateStr) : new Date();
+      const yyyy = String(d.getUTCFullYear());
+      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const dd = String(d.getUTCDate()).padStart(2, "0");
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}-${hh}`;
+    };
+
+    const normalizeSubjectForFingerprint = (value: string | null): string => {
+      const raw = normalizeString(value).toLowerCase();
+      if (!raw) return "";
+      // Strip repeated reply/forward prefixes.
+      let s = raw;
+      for (let i = 0; i < 5; i++) {
+        const next = s.replace(/^(re|fw|fwd)\s*:\s*/i, "");
+        if (next === s) break;
+        s = next;
+      }
+      return s.replace(/\s+/g, " ").trim();
+    };
+
+    const normalizeBodyForFingerprint = (value: string): string => {
+      return normalizeString(value)
+        .toLowerCase()
+        .replace(/\r\n/g, "\n")
+        .replace(/[ \t]+/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    };
+
+    const computeFingerprint = (): string => {
+      const bucket = computeHourBucket(inboundDate);
+      const normalizedSubject = normalizeSubjectForFingerprint(subject);
+      const normalizedBody = normalizeBodyForFingerprint(body);
+      const payload = `${senderRole}|${quoteId}|${senderId}|${normalizedSubject}|${normalizedBody}|${bucket}`;
+      return crypto.createHash("sha256").update(payload, "utf8").digest("hex");
+    };
+
+    const fingerprint = computeFingerprint();
+
+    const readMetaString = (meta: unknown, key: string): string | null => {
+      if (!meta || typeof meta !== "object") return null;
+      const v = (meta as any)?.[key];
+      const s = typeof v === "string" ? v.trim() : "";
+      return s ? s : null;
+    };
+
+    const readMetaProviderMessageId = (meta: unknown): string | null => {
+      // Back-compat: previous phases sometimes used `messageId`.
+      return readMetaString(meta, "providerMessageId") ?? readMetaString(meta, "messageId");
+    };
+
+    const readMetaFingerprint = (meta: unknown): string | null => readMetaString(meta, "fingerprint");
+
+    // Try to load a small recent window with metadata. If schema drifts, fall back.
     let query = supabaseServer
       .from(QUOTE_MESSAGES_RELATION)
       .select("id,body,created_at,metadata")
@@ -511,14 +628,14 @@ async function isLikelyDuplicateInboundMessage(args: {
       .eq("sender_role", senderRole)
       .eq("sender_id", senderId)
       .order("created_at", { ascending: false })
-      .limit(5) as any;
+      .limit(MAX_SCAN) as any;
 
     let result = (await query) as { data?: any[]; error?: unknown };
     if (result.error && isMissingTableOrColumnError(result.error)) {
-      // Fallback: created_at might be missing on some schemas; retry ordering by id.
+      // Fallback: metadata/created_at might be missing on some schemas; retry with minimal columns.
       const fallbackQuery = supabaseServer
         .from(QUOTE_MESSAGES_RELATION)
-        .select("id,body,metadata")
+        .select("id,body,created_at")
         .eq("quote_id", quoteId)
         .eq("sender_role", senderRole)
         .eq("sender_id", senderId)
@@ -533,7 +650,7 @@ async function isLikelyDuplicateInboundMessage(args: {
           code: serializeSupabaseError(result.error).code ?? null,
         });
       }
-      return false;
+      return { deduped: false, fingerprint: null };
     }
 
     const rows = Array.isArray(result.data) ? result.data : [];
@@ -541,6 +658,23 @@ async function isLikelyDuplicateInboundMessage(args: {
     const windowMs = 5 * 60 * 1000;
 
     for (const row of rows) {
+      const rowMeta = row?.metadata && typeof row.metadata === "object" ? (row.metadata as any) : null;
+
+      // Priority A: provider message id match (deterministic).
+      if (providerMessageId) {
+        const prevId = readMetaProviderMessageId(rowMeta);
+        if (prevId && normalizeString(prevId) === providerMessageId) {
+          return { deduped: true, fingerprint };
+        }
+      }
+
+      // Priority B: fingerprint match (deterministic fallback).
+      const prevFingerprint = readMetaFingerprint(rowMeta);
+      if (prevFingerprint && prevFingerprint === fingerprint) {
+        return { deduped: true, fingerprint };
+      }
+
+      // Fail-soft fallback: body match within the short window.
       const rowBody = typeof row?.body === "string" ? row.body.trim() : "";
       if (!rowBody || rowBody !== body) continue;
 
@@ -552,36 +686,22 @@ async function isLikelyDuplicateInboundMessage(args: {
         }
       }
 
-      if (providerMessageId) {
-        const meta = row?.metadata && typeof row.metadata === "object" ? (row.metadata as any) : null;
-        const prevId =
-          typeof meta?.providerMessageId === "string"
-            ? meta.providerMessageId
-            : typeof meta?.messageId === "string"
-              ? meta.messageId
-              : null;
-        if (prevId && normalizeString(prevId) === providerMessageId) {
-          return true;
-        }
-      }
-
-      // Body match within the window is enough for best-effort dedupe.
-      return true;
+      return { deduped: true, fingerprint };
     }
 
-    return false;
+    return { deduped: false, fingerprint };
   } catch (error) {
     if (!isMissingTableOrColumnError(error)) {
       warnOnce("email_bridge:dedupe_check_crashed", `${WARN_PREFIX} dedupe check crashed; skipping`, {
         code: serializeSupabaseError(error).code ?? null,
       });
     }
-    return false;
+    return { deduped: false, fingerprint: null };
   }
 }
 
 type InboundHandleResult =
-  | { ok: true }
+  | { ok: true; deduped?: true }
   | { ok: false; error: string; httpStatus: 200 | 400 | 401 };
 
 export function getCustomerReplyToAddress(args: {
@@ -611,11 +731,15 @@ export function getCustomerReplyToAddress(args: {
 }
 
 export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise<InboundHandleResult> {
-  console.log(`${WARN_PREFIX} inbound received`);
-
   const secret = normalizeString(process.env.EMAIL_BRIDGE_SECRET);
   if (!secret) {
     return { ok: false, error: "disabled", httpStatus: 200 };
+  }
+
+  // Loop prevention: refuse to ingest messages that appear to originate from our own system.
+  // Comparison is performed in-memory only; do not log addresses.
+  if (isInternalInboundSender(inbound?.from)) {
+    return { ok: false, error: "ignored_internal_sender", httpStatus: 200 };
   }
 
   const to = Array.isArray(inbound?.to) ? inbound.to : [];
@@ -649,16 +773,19 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
     return { ok: false, error: "unsupported", httpStatus: 200 };
   }
 
-  const providerMessageId = normalizeString(inbound.messageId) || null;
-  const isDuplicate = await isLikelyDuplicateInboundMessage({
+  const providerMessageId =
+    normalizeString(inbound.providerMessageId) || normalizeString(inbound.messageId) || null;
+  const dedupeResult = await isLikelyDuplicateInboundMessage({
     quoteId,
     senderRole: "supplier",
     senderId: supplierId,
     body,
+    subject: normalizeString(inbound.subject) || null,
+    inboundDate: normalizeString(inbound.date) || null,
     providerMessageId,
   });
-  if (isDuplicate) {
-    return { ok: true };
+  if (dedupeResult.deduped) {
+    return { ok: true, deduped: true };
   }
 
   const inboundAttachments = Array.isArray(inbound.attachments) ? inbound.attachments : [];
@@ -704,12 +831,12 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
     ...basePayload,
     supplier_id: supplierId,
     metadata: {
-      via: "email_inbound_supplier",
-      subject: normalizeString(inbound.subject) || null,
-      provider: "postmark",
+      via: "email",
+      provider: normalizeString(inbound.provider) === "postmark" ? "postmark" : "generic",
       providerMessageId,
       inReplyTo: normalizeString(inbound.inReplyTo) || null,
-      references: Array.isArray(inbound.references) ? inbound.references.slice(0, 50) : null,
+      referencesCount: Array.isArray(inbound.references) ? inbound.references.length : 0,
+      fingerprint: dedupeResult.fingerprint,
       attachments:
         storedAttachments.length > 0
           ? storedAttachments.map((a) => ({
@@ -728,7 +855,6 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
   try {
     const { error: extendedError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(extendedPayload);
     if (!extendedError) {
-      console.log(`${WARN_PREFIX} wrote supplier msg`, { quoteId, supplierId, via: "email" });
       return { ok: true };
     }
 
@@ -747,7 +873,6 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
       return { ok: false, error: "write_failed", httpStatus: 200 };
     }
 
-    console.log(`${WARN_PREFIX} wrote supplier msg`, { quoteId, supplierId, via: "email", degraded: true });
     return { ok: true };
   } catch (error) {
     console.error(`${WARN_PREFIX} insert crashed`, { error });
@@ -759,6 +884,12 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
   const secret = normalizeString(process.env.EMAIL_BRIDGE_SECRET);
   if (!secret) {
     return { ok: false, error: "disabled", httpStatus: 200 };
+  }
+
+  // Loop prevention: refuse to ingest messages that appear to originate from our own system.
+  // Comparison is performed in-memory only; do not log addresses.
+  if (isInternalInboundSender(inbound?.from)) {
+    return { ok: false, error: "ignored_internal_sender", httpStatus: 200 };
   }
 
   const to = Array.isArray(inbound?.to) ? inbound.to : [];
@@ -796,16 +927,19 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
     return { ok: false, error: "unsupported", httpStatus: 200 };
   }
 
-  const providerMessageId = normalizeString(inbound.messageId) || null;
-  const isDuplicate = await isLikelyDuplicateInboundMessage({
+  const providerMessageId =
+    normalizeString(inbound.providerMessageId) || normalizeString(inbound.messageId) || null;
+  const dedupeResult = await isLikelyDuplicateInboundMessage({
     quoteId,
     senderRole: "customer",
     senderId: customerId,
     body,
+    subject: normalizeString(inbound.subject) || null,
+    inboundDate: normalizeString(inbound.date) || null,
     providerMessageId,
   });
-  if (isDuplicate) {
-    return { ok: true };
+  if (dedupeResult.deduped) {
+    return { ok: true, deduped: true };
   }
 
   const inboundAttachments = Array.isArray(inbound.attachments) ? inbound.attachments : [];
@@ -849,12 +983,12 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
     ...basePayload,
     customer_id: customerId,
     metadata: {
-      via: "email_inbound_customer",
-      subject: normalizeString(inbound.subject) || null,
-      provider: "postmark",
+      via: "email",
+      provider: normalizeString(inbound.provider) === "postmark" ? "postmark" : "generic",
       providerMessageId,
       inReplyTo: normalizeString(inbound.inReplyTo) || null,
-      references: Array.isArray(inbound.references) ? inbound.references.slice(0, 50) : null,
+      referencesCount: Array.isArray(inbound.references) ? inbound.references.length : 0,
+      fingerprint: dedupeResult.fingerprint,
       attachments:
         storedAttachments.length > 0
           ? storedAttachments.map((a) => ({
@@ -873,7 +1007,6 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
   try {
     const { error: extendedError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(extendedPayload);
     if (!extendedError) {
-      console.log(`${WARN_PREFIX} wrote customer msg`, { quoteId, customerId, via: "email" });
       return { ok: true };
     }
 
@@ -892,7 +1025,6 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
       return { ok: false, error: "write_failed", httpStatus: 200 };
     }
 
-    console.log(`${WARN_PREFIX} wrote customer msg`, { quoteId, customerId, via: "email", degraded: true });
     return { ok: true };
   } catch (error) {
     console.error(`${WARN_PREFIX} insert crashed`, { error });

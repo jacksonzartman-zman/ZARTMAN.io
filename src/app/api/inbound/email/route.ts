@@ -24,6 +24,7 @@ function coerceInboundEmail(payload: unknown): InboundEmail | null {
   if (!from || to.length === 0) return null;
 
   const cc = normalizeStringArray(obj.cc);
+  const messageId = normalizeString(obj.messageId) || null;
 
   const attachmentsRaw = Array.isArray(obj.attachments) ? obj.attachments : [];
   const attachments = attachmentsRaw
@@ -42,6 +43,8 @@ function coerceInboundEmail(payload: unknown): InboundEmail | null {
     .filter((a) => a.name);
 
   return {
+    provider: "generic",
+    providerMessageId: messageId,
     from,
     to,
     cc: cc.length > 0 ? cc : undefined,
@@ -49,7 +52,7 @@ function coerceInboundEmail(payload: unknown): InboundEmail | null {
     text: normalizeString(obj.text) || undefined,
     html: normalizeString(obj.html) || undefined,
     date: normalizeString(obj.date) || undefined,
-    messageId: normalizeString(obj.messageId) || undefined,
+    messageId,
     inReplyTo: normalizeString(obj.inReplyTo) || undefined,
     references: normalizeStringArray(obj.references),
     attachments: attachments.length > 0 ? attachments : undefined,
