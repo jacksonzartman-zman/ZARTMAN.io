@@ -93,6 +93,7 @@ import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import { loadSupplierBidDraft, type SupplierBidDraft } from "@/server/suppliers";
 import { loadCadFeaturesForQuote, type CadFeatureSummary } from "@/server/quotes/cadFeatures";
 import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
+import { canSupplierEmailCustomer, isCustomerEmailBridgeEnabled } from "@/server/quotes/customerEmailPrefs";
 import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 
 export const dynamic = "force-dynamic";
@@ -213,12 +214,34 @@ export default async function SupplierQuoteDetailPage({
   });
   const isWinningSupplier = awardedToSupplier;
   const outboundStatus = getEmailOutboundStatus();
-  const portalEmailEnabled = outboundStatus.enabled && awardedToSupplier;
-  const portalEmailDisabledCopy = !outboundStatus.enabled
-    ? "Email not configured."
-    : !awardedToSupplier
-      ? "Email is available after this RFQ is awarded to you."
-      : null;
+  let portalEmailEnabled = false;
+  let portalEmailDisabledCopy: string | null = null;
+  if (!outboundStatus.enabled) {
+    portalEmailDisabledCopy = "Email not configured.";
+  } else if (!awardedToSupplier) {
+    portalEmailDisabledCopy = "Email is available after this RFQ is awarded to you.";
+  } else if (!isCustomerEmailBridgeEnabled()) {
+    portalEmailDisabledCopy = "Customer email replies are off.";
+  } else {
+    const customerId =
+      typeof workspaceData.quote.customer_id === "string"
+        ? workspaceData.quote.customer_id.trim()
+        : "";
+    const policy = customerId
+      ? await canSupplierEmailCustomer({ quoteId, customerId })
+      : ({ ok: false, reason: "unsupported" } as const);
+    if (!policy.ok) {
+      portalEmailDisabledCopy =
+        policy.reason === "unsupported"
+          ? "Email replies unavailable for this quote."
+          : "Customer email replies are off.";
+    } else if (!policy.allowed) {
+      portalEmailDisabledCopy = "Customer has email replies turned off.";
+    } else {
+      portalEmailEnabled = true;
+      portalEmailDisabledCopy = null;
+    }
+  }
   const portalEmailFileOptions = portalEmailEnabled
     ? await loadOutboundFileOptions({ quoteId, limit: 50 })
     : [];

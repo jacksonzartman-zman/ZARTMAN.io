@@ -32,6 +32,11 @@ export type CustomerEmailOptInStatus =
   | { ok: true; optedIn: boolean }
   | { ok: false; error: "disabled" | "unsupported" };
 
+export type CanSupplierEmailCustomerResult =
+  | { ok: true; allowed: true }
+  | { ok: true; allowed: false; reason: "not_opted_in" }
+  | { ok: false; reason: "disabled" | "unsupported" };
+
 /**
  * Detailed opt-in probe for customer email replies.
  * - Distinguishes env-disabled vs schema-unsupported vs opted-out.
@@ -255,5 +260,30 @@ export async function setCustomerEmailOptIn(args: {
     });
     return { ok: false, error: "unsupported" };
   }
+}
+
+/**
+ * Policy wrapper for supplier -> customer outbound email from the portal.
+ *
+ * Safe-by-default:
+ * - If CUSTOMER_EMAIL_BRIDGE_ENABLED is off, do not probe DB and treat as disabled.
+ * - If the prefs relation is missing/unsupported, treat as unsupported (warnOnce via probe).
+ * - If opted out, return ok:true + allowed:false (so callers can distinguish policy vs infra).
+ */
+export async function canSupplierEmailCustomer(args: {
+  quoteId: string;
+  customerId: string;
+}): Promise<CanSupplierEmailCustomerResult> {
+  // If disabled by env, do not query DB for prefs.
+  if (!isCustomerEmailBridgeEnabled()) return { ok: false, reason: "disabled" };
+
+  const quoteId = normalizeString(args.quoteId);
+  const customerId = normalizeString(args.customerId);
+  if (!quoteId || !customerId) return { ok: false, reason: "unsupported" };
+
+  const status = await getCustomerEmailOptInStatus({ quoteId, customerId });
+  if (!status.ok) return { ok: false, reason: status.error };
+
+  return status.optedIn ? { ok: true, allowed: true } : { ok: true, allowed: false, reason: "not_opted_in" };
 }
 

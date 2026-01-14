@@ -6,13 +6,14 @@ import {
   serializeSupabaseError,
   warnOnce,
 } from "@/server/db/schemaErrors";
+import { canSupplierEmailCustomer, isCustomerEmailBridgeEnabled } from "@/server/quotes/customerEmailPrefs";
 import { createCustomerReplyToken, createReplyToken } from "@/server/quotes/emailBridge";
 import { resolveOutboundAttachments } from "@/server/quotes/emailAttachments";
 import { getEmailOutboundStatus, getEmailSender, type EmailSendRequest } from "@/server/quotes/emailOutbound";
 
 type PortalSendResult =
   | { ok: true; sent: true; attachmentsSent: number }
-  | { ok: false; error: "disabled" | "unsupported" | "missing_recipient" | "send_failed" };
+  | { ok: false; error: "disabled" | "unsupported" | "not_opted_in" | "missing_recipient" | "send_failed" };
 
 const WARN_PREFIX = "[email_portal_send]";
 
@@ -436,8 +437,17 @@ export async function sendEmailToCustomerFromSupplier(args: {
   const message = normalizeString(args.message);
   if (!isUuidLike(quoteId) || !supplierId || !message) return { ok: false, error: "unsupported" };
 
+  // Safe-by-default: if customer email bridge is off, do not attempt supplier -> customer email.
+  if (!isCustomerEmailBridgeEnabled()) {
+    return { ok: false, error: "disabled" };
+  }
+
   const recipient = await resolveCustomerRecipient({ quoteId });
   if (!recipient.ok) return { ok: false, error: recipient.error };
+
+  const policy = await canSupplierEmailCustomer({ quoteId, customerId: recipient.customerId });
+  if (!policy.ok) return { ok: false, error: policy.reason };
+  if (!policy.allowed) return { ok: false, error: "not_opted_in" };
 
   const replyDomain = normalizeString(process.env.EMAIL_REPLY_DOMAIN);
   const secret = normalizeString(process.env.EMAIL_BRIDGE_SECRET);
