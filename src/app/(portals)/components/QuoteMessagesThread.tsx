@@ -17,6 +17,7 @@ import { sbBrowser } from "@/lib/supabase";
 import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { CopyTextButton } from "@/components/CopyTextButton";
 
 const CHANGE_REQUEST_SUBMITTED_EVENT = "zartman:change-request-submitted";
 const CHANGE_REQUEST_CREATED_PREFIX = "Change request created:";
@@ -51,6 +52,13 @@ export type QuoteMessagesThreadProps = {
   helperText?: string;
   disabledCopy?: string | null;
   emptyStateCopy?: string;
+  emailReplyIndicator?:
+    | { state: "enabled"; replyTo: string }
+    | {
+        state: "off";
+        helper?: string | null;
+        cta?: { label: string; href: string } | null;
+      };
 };
 
 const DEFAULT_FORM_STATE: QuoteMessageFormState = {
@@ -75,6 +83,7 @@ export function QuoteMessagesThread({
   helperText,
   disabledCopy,
   emptyStateCopy = "No messages yet. Start the thread if you need clarification, want to request a change, or have a question—everyone on this workspace will be notified.",
+  emailReplyIndicator,
 }: QuoteMessagesThreadProps) {
   const realtimeMessages = useQuoteMessagesRealtime(quoteId, messages);
   const sortedMessages = useMemo(
@@ -144,6 +153,41 @@ export function QuoteMessagesThread({
         ) : null}
         {usageHint ? (
           <p className="text-xs text-slate-500">{usageHint}</p>
+        ) : null}
+        {emailReplyIndicator ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {emailReplyIndicator.state === "enabled" ? (
+              <>
+                <span className="text-emerald-200">Email replies enabled</span>
+                <span
+                  className="break-anywhere rounded-md border border-slate-900/60 bg-slate-950/30 px-2 py-1 font-mono text-[11px] text-slate-100"
+                  title={emailReplyIndicator.replyTo}
+                >
+                  {emailReplyIndicator.replyTo}
+                </span>
+                <CopyTextButton
+                  text={emailReplyIndicator.replyTo}
+                  idleLabel="Copy reply-to"
+                  logPrefix="[email_bridge]"
+                />
+              </>
+            ) : (
+              <>
+                <span className="text-slate-500">Email replies off</span>
+                {emailReplyIndicator.helper ? (
+                  <span className="text-slate-500">{emailReplyIndicator.helper}</span>
+                ) : null}
+                {emailReplyIndicator.cta?.href && emailReplyIndicator.cta?.label ? (
+                  <a
+                    href={emailReplyIndicator.cta.href}
+                    className="font-semibold text-emerald-200 underline-offset-4 hover:underline"
+                  >
+                    {emailReplyIndicator.cta.label}
+                  </a>
+                ) : null}
+              </>
+            )}
+          </div>
         ) : null}
       </header>
 

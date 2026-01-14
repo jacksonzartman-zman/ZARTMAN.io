@@ -28,6 +28,86 @@ export function isCustomerEmailBridgeEnabled(): boolean {
   return normalizeBool(process.env.CUSTOMER_EMAIL_BRIDGE_ENABLED) === true;
 }
 
+export type CustomerEmailOptInStatus =
+  | { ok: true; optedIn: boolean }
+  | { ok: false; error: "disabled" | "unsupported" };
+
+/**
+ * Detailed opt-in probe for customer email replies.
+ * - Distinguishes env-disabled vs schema-unsupported vs opted-out.
+ * - Fail-soft: never throws; defaults to disabled when uncertain.
+ */
+export async function getCustomerEmailOptInStatus(args: {
+  quoteId: string;
+  customerId: string;
+}): Promise<CustomerEmailOptInStatus> {
+  const quoteId = normalizeString(args.quoteId);
+  const customerId = normalizeString(args.customerId);
+  if (!quoteId || !customerId) return { ok: false, error: "unsupported" };
+
+  // When disabled by env, do not query DB.
+  if (!isCustomerEmailBridgeEnabled()) return { ok: false, error: "disabled" };
+
+  const hasSchema = await schemaGate({
+    enabled: true,
+    relation: RELATION,
+    requiredColumns: ["quote_id", "customer_id", "customer_email_enabled"],
+    warnPrefix: WARN_PREFIX,
+    warnKey: "email_prefs:quote_email_prefs",
+  });
+  if (!hasSchema) {
+    warnOnce("email_prefs:missing_relation", `${WARN_PREFIX} missing relation; skipping`);
+    return { ok: false, error: "unsupported" };
+  }
+
+  if (isSupabaseRelationMarkedMissing(RELATION)) {
+    return { ok: false, error: "unsupported" };
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(RELATION)
+      .select("customer_email_enabled")
+      .eq("quote_id", quoteId)
+      .eq("customer_id", customerId)
+      .maybeSingle<{ customer_email_enabled: boolean | null }>();
+
+    if (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: RELATION,
+          error,
+          warnPrefix: WARN_PREFIX,
+          warnKey: "email_prefs:missing_relation_runtime",
+        })
+      ) {
+        return { ok: false, error: "unsupported" };
+      }
+      warnOnce("email_prefs:select_failed", `${WARN_PREFIX} prefs lookup failed; defaulting disabled`, {
+        code: serializeSupabaseError(error).code,
+      });
+      return { ok: true, optedIn: false };
+    }
+
+    return { ok: true, optedIn: Boolean(data?.customer_email_enabled) };
+  } catch (error) {
+    if (
+      handleMissingSupabaseSchema({
+        relation: RELATION,
+        error,
+        warnPrefix: WARN_PREFIX,
+        warnKey: "email_prefs:missing_relation_crash",
+      })
+    ) {
+      return { ok: false, error: "unsupported" };
+    }
+    warnOnce("email_prefs:select_crash", `${WARN_PREFIX} prefs lookup crashed; defaulting disabled`, {
+      error: String(error),
+    });
+    return { ok: true, optedIn: false };
+  }
+}
+
 export async function isCustomerEmailOptedIn(args: {
   quoteId: string;
   customerId: string;
