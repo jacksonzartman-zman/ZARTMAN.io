@@ -20,6 +20,7 @@ import {
   type UploadTarget,
   registerUploadedObjectsForExistingUpload,
 } from "@/server/quotes/uploadFiles";
+import { applyCustomerEmailDefaultToNewQuote } from "@/server/quotes/customerEmailDefaults";
 
 const CANONICAL_CAD_BUCKET = "cad_uploads";
 
@@ -252,6 +253,17 @@ export async function persistQuoteIntakeDirectUpload(params: {
     }
 
     const quoteId = quoteInsert.data.id;
+
+    // Phase 19.3.13: best-effort default email replies for new quotes.
+    // Safe-by-default: helper does not probe when the bridge env flag is off.
+    if (customerId) {
+      try {
+        await applyCustomerEmailDefaultToNewQuote({ quoteId, customerId });
+      } catch {
+        // Never block quote creation.
+      }
+    }
+
     const targets = filesMeta.map((f) =>
       buildUploadTargetForQuote({
         quoteId,
@@ -499,6 +511,16 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     }
 
     const quoteId = quoteInsert.data.id;
+
+    // Phase 19.3.13: best-effort default email replies for new quotes.
+    // Safe-by-default: helper does not probe when the bridge env flag is off.
+    if (customerId) {
+      try {
+        await applyCustomerEmailDefaultToNewQuote({ quoteId, customerId });
+      } catch {
+        // Never block quote creation.
+      }
+    }
 
     const { data: uploadRow, error: uploadError } = await supabaseServer
       .from("uploads")
@@ -882,6 +904,16 @@ export async function persistQuoteIntake(
     }
 
     const quoteId = quoteInsert.data.id;
+
+    // Phase 19.3.13: best-effort default email replies for new quotes.
+    // Safe-by-default: helper does not probe when the bridge env flag is off.
+    if (customerId) {
+      try {
+        await applyCustomerEmailDefaultToNewQuote({ quoteId, customerId });
+      } catch {
+        // Never block quote creation.
+      }
+    }
 
     void emitQuoteEvent({
       quoteId,
