@@ -370,6 +370,9 @@ export default async function SupplierQuoteDetailPage({
       latestKickoffNudgedAt={latestKickoffNudgedAt}
       capacitySnapshotsResult={capacitySnapshotsResult}
       capacityRequestCreatedAt={latestCapacityRequest.createdAt}
+      portalEmailEnabled={portalEmailEnabled}
+      portalEmailDisabledCopy={portalEmailDisabledCopy}
+      portalEmailFileOptions={portalEmailFileOptions}
     />
   );
 }
@@ -405,6 +408,9 @@ function SupplierQuoteWorkspace({
   latestKickoffNudgedAt,
   capacitySnapshotsResult,
   capacityRequestCreatedAt,
+  portalEmailEnabled,
+  portalEmailDisabledCopy,
+  portalEmailFileOptions,
 }: {
   data: QuoteWorkspaceData;
   cadFeaturesByFileId: Record<string, CadFeatureSummary>;
@@ -439,6 +445,9 @@ function SupplierQuoteWorkspace({
   latestKickoffNudgedAt: string | null;
   capacitySnapshotsResult: Awaited<ReturnType<typeof loadSupplierCapacitySnapshotsForWeek>>;
   capacityRequestCreatedAt: string | null;
+  portalEmailEnabled: boolean;
+  portalEmailDisabledCopy: string | null;
+  portalEmailFileOptions: Awaited<ReturnType<typeof loadOutboundFileOptions>>;
 }) {
   const { quote, uploadMeta, filePreviews, uploadGroups, parts, filesMissingCanonical, legacyFileNames } = data;
   const quoteFiles = Array.isArray(quote.files) ? quote.files : [];
