@@ -95,6 +95,7 @@ import { loadCadFeaturesForQuote, type CadFeatureSummary } from "@/server/quotes
 import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
 import { canSupplierEmailCustomer, isCustomerEmailBridgeEnabled } from "@/server/quotes/customerEmailPrefs";
 import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
+import { isPortalEmailSendEnabledFlag } from "@/server/quotes/emailOpsFlags";
 
 export const dynamic = "force-dynamic";
 
@@ -214,9 +215,12 @@ export default async function SupplierQuoteDetailPage({
   });
   const isWinningSupplier = awardedToSupplier;
   const outboundStatus = getEmailOutboundStatus();
+  const portalEmailEnvEnabled = isPortalEmailSendEnabledFlag();
   let portalEmailEnabled = false;
   let portalEmailDisabledCopy: string | null = null;
-  if (!outboundStatus.enabled) {
+  if (!portalEmailEnvEnabled) {
+    portalEmailDisabledCopy = "Send via email is disabled on this environment.";
+  } else if (!outboundStatus.enabled) {
     portalEmailDisabledCopy = "Email not configured.";
   } else if (!awardedToSupplier) {
     portalEmailDisabledCopy = "Email is available after this RFQ is awarded to you.";

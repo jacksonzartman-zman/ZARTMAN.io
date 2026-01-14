@@ -832,6 +832,7 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
     supplier_id: supplierId,
     metadata: {
       via: "email",
+      outbound: false,
       provider: normalizeString(inbound.provider) === "postmark" ? "postmark" : "generic",
       providerMessageId,
       inReplyTo: normalizeString(inbound.inReplyTo) || null,
@@ -984,6 +985,7 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
     customer_id: customerId,
     metadata: {
       via: "email",
+      outbound: false,
       provider: normalizeString(inbound.provider) === "postmark" ? "postmark" : "generic",
       providerMessageId,
       inReplyTo: normalizeString(inbound.inReplyTo) || null,

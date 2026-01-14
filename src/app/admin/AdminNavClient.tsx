@@ -35,6 +35,7 @@ const MORE_LINKS: PortalNavLink[] = [
   { label: "Suppliers", href: "/admin/suppliers" },
   { label: "Bench health", href: "/admin/bench-health" },
   { label: "System health", href: "/admin/system-health" },
+  { label: "Email ops", href: "/admin/email-ops" },
 ];
 
 const MOBILE_LINKS: PortalNavLink[] = [
