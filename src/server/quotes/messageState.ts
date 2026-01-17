@@ -134,21 +134,32 @@ export async function loadQuoteMessageRollups(
   }
 }
 
+export type AdminMessageReplyState = {
+  needsReply: boolean;
+  lastCustomerMessageAt: string | null;
+  lastAdminMessageAt: string | null;
+};
+
+export function computeAdminReplyState(rollup: QuoteMessageRollup): AdminMessageReplyState {
+  const lastCustomerMessageAt = rollup.lastCustomerAt;
+  const lastAdminMessageAt = rollup.lastAdminAt;
+  const lastMessageAt = rollup.lastMessageAt;
+
+  const lastCustomerMs = ms(lastCustomerMessageAt);
+  const lastAdminMs = ms(lastAdminMessageAt);
+  const lastMessageMs = ms(lastMessageAt);
+
+  const needsReply =
+    lastCustomerMs !== null &&
+    lastMessageMs !== null &&
+    lastCustomerMs === lastMessageMs &&
+    (lastAdminMs === null || lastAdminMs < lastCustomerMs);
+
+  return { needsReply, lastCustomerMessageAt, lastAdminMessageAt };
+}
+
 export function computeAdminNeedsReply(rollup: QuoteMessageRollup): boolean {
-  const customerMs = ms(rollup.lastCustomerAt);
-  const supplierMs = ms(rollup.lastSupplierAt);
-  const adminMs = ms(rollup.lastAdminAt);
-
-  const externalMs =
-    customerMs === null
-      ? supplierMs
-      : supplierMs === null
-        ? customerMs
-        : Math.max(customerMs, supplierMs);
-
-  if (externalMs === null) return false;
-  if (adminMs === null) return true;
-  return externalMs > adminMs;
+  return computeAdminReplyState(rollup).needsReply;
 }
 
 export type AdminThreadSlaStatus = "clear" | "needs_reply" | "overdue";
@@ -206,15 +217,15 @@ export function computeAdminThreadSla(
 
 /**
  * Quick verification (manual):
- * - Customer or supplier sends a message → admin sees "Needs reply" (quotes list + quote detail) and a "message_needs_reply" notification.
+ * - Customer sends a message → admin sees "Needs reply" (quotes list + quote detail) and a "message_needs_reply" notification.
  * - Admin replies (sender_role='admin') → "Needs reply" disappears on refresh and notification stops generating.
- * - System messages (sender_role='system') do NOT clear "Needs reply".
- * - If an inbound message is older than 24h → admin sees "Overdue" (quotes list + quote detail), and notification body indicates overdue.
+ * - Supplier/system messages do NOT create "Needs reply".
+ * - If the latest customer message is older than 24h → admin sees "Overdue" (quotes list + quote detail), and notification body indicates overdue.
  *
  * Unit-ish sanity checks:
- * - lastAdminAt is null, customer/supplier exists → needsReply = true
- * - lastAdminAt is null, no customer/supplier → needsReply = false
- * - max(customer,supplier) <= lastAdminAt → needsReply = false
- * - max(customer,supplier) > lastAdminAt → needsReply = true
+ * - lastAdminAt is null, last message is customer → needsReply = true
+ * - lastAdminAt is null, last message is not customer → needsReply = false
+ * - lastCustomerAt <= lastAdminAt → needsReply = false
+ * - lastCustomerAt > lastAdminAt and lastMessageAt == lastCustomerAt → needsReply = true
  */
 
