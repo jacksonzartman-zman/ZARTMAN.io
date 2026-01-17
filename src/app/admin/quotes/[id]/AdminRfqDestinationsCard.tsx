@@ -12,11 +12,22 @@ import {
   upsertRfqOffer,
   type UpsertRfqOfferState,
 } from "./actions";
-import { ctaSizeClasses, dangerCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
-import { formatCurrency } from "@/lib/formatCurrency";
 import type { RfqOffer } from "@/server/rfqs/offers";
-import { CopyTextButton } from "@/components/CopyTextButton";
+import {
+  DESTINATION_STATUS_META,
+  EMPTY_OFFER_DRAFT,
+  buildOfferDraft,
+  formatEnumLabel,
+  formatOfferSummary,
+  type OfferDraft,
+} from "@/components/admin/rfq/destinationHelpers";
+import {
+  DestinationEmailModal,
+  DestinationErrorModal,
+  OfferModal,
+} from "@/components/admin/rfq/destinationModals";
 
 type AdminRfqDestinationsCardProps = {
   quoteId: string;
@@ -30,66 +41,6 @@ type FeedbackTone = "success" | "error";
 type FeedbackState = {
   tone: FeedbackTone;
   message: string;
-};
-
-type StatusMeta = {
-  label: string;
-  className: string;
-};
-
-type OfferDraft = {
-  totalPrice: string;
-  unitPrice: string;
-  toolingPrice: string;
-  shippingPrice: string;
-  leadTimeDaysMin: string;
-  leadTimeDaysMax: string;
-  confidenceScore: string;
-  riskFlags: string;
-  assumptions: string;
-};
-
-const STATUS_META: Record<RfqDestinationStatus, StatusMeta> = {
-  draft: {
-    label: "Draft",
-    className: "border-slate-700 bg-slate-900/40 text-slate-200",
-  },
-  queued: {
-    label: "Queued",
-    className: "border-amber-500/40 bg-amber-500/10 text-amber-100",
-  },
-  sent: {
-    label: "Sent",
-    className: "border-blue-500/40 bg-blue-500/10 text-blue-100",
-  },
-  viewed: {
-    label: "Viewed",
-    className: "border-indigo-500/40 bg-indigo-500/10 text-indigo-100",
-  },
-  quoted: {
-    label: "Quoted",
-    className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
-  },
-  declined: {
-    label: "Declined",
-    className: "border-red-500/40 bg-red-500/10 text-red-100",
-  },
-  error: {
-    label: "Error",
-    className: "border-red-500/60 bg-red-500/15 text-red-100",
-  },
-};
-
-const EMPTY_OFFER_DRAFT: OfferDraft = {
-  totalPrice: "",
-  unitPrice: "",
-  toolingPrice: "",
-  shippingPrice: "",
-  leadTimeDaysMin: "",
-  leadTimeDaysMax: "",
-  confidenceScore: "",
-  riskFlags: "",
-  assumptions: "",
 };
 
 const EMPTY_OFFER_STATE: UpsertRfqOfferState = {
@@ -413,7 +364,8 @@ export function AdminRfqDestinationsCard({
                 const isEmailMode = provider?.quoting_mode === "email";
                 const isEmailGenerating = pending && emailLoadingId === destination.id;
                 const emailError = emailErrorsById[destination.id];
-                const statusMeta = STATUS_META[destination.status] ?? STATUS_META.draft;
+                const statusMeta =
+                  DESTINATION_STATUS_META[destination.status] ?? DESTINATION_STATUS_META.draft;
                 const sentAtLabel = formatDateTime(destination.sent_at, {
                   includeTime: true,
                   fallback: "-",
@@ -552,472 +504,49 @@ export function AdminRfqDestinationsCard({
         )}
       </div>
 
-      {offerDestination ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Add or edit offer"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeOfferModal();
-          }}
-        >
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Add offer details</h3>
-                <p className="mt-1 text-sm text-slate-300">
-                  Capture normalized pricing and lead time for{" "}
-                  <span className="font-semibold text-slate-100">
-                    {providerById.get(offerDestination.provider_id)?.name ??
-                      offerDestination.provider_id}
-                  </span>
-                  .
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeOfferModal}
-                className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
+      <OfferModal
+        isOpen={Boolean(offerDestination)}
+        providerLabel={
+          offerDestination
+            ? providerById.get(offerDestination.provider_id)?.name ?? offerDestination.provider_id
+            : "Provider"
+        }
+        offerDraft={offerDraft}
+        offerFieldErrors={offerFieldErrors}
+        offerError={offerError}
+        pending={pending}
+        onClose={closeOfferModal}
+        onChange={updateOfferField}
+        onSubmit={submitOffer}
+      />
 
-            <div className="mt-4 space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Total price
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={offerDraft.totalPrice}
-                    onChange={(event) => updateOfferField("totalPrice", event.target.value)}
-                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                    placeholder="0"
-                  />
-                  {offerFieldErrors.totalPrice ? (
-                    <p className="text-xs text-amber-200">{offerFieldErrors.totalPrice}</p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Unit price
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={offerDraft.unitPrice}
-                    onChange={(event) => updateOfferField("unitPrice", event.target.value)}
-                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                    placeholder="0"
-                  />
-                  {offerFieldErrors.unitPrice ? (
-                    <p className="text-xs text-amber-200">{offerFieldErrors.unitPrice}</p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Tooling price
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={offerDraft.toolingPrice}
-                    onChange={(event) => updateOfferField("toolingPrice", event.target.value)}
-                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                    placeholder="0"
-                  />
-                  {offerFieldErrors.toolingPrice ? (
-                    <p className="text-xs text-amber-200">{offerFieldErrors.toolingPrice}</p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Shipping price
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={offerDraft.shippingPrice}
-                    onChange={(event) => updateOfferField("shippingPrice", event.target.value)}
-                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                    placeholder="0"
-                  />
-                  {offerFieldErrors.shippingPrice ? (
-                    <p className="text-xs text-amber-200">{offerFieldErrors.shippingPrice}</p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Lead time min days
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    step={1}
-                    value={offerDraft.leadTimeDaysMin}
-                    onChange={(event) => updateOfferField("leadTimeDaysMin", event.target.value)}
-                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                    placeholder="0"
-                  />
-                  {offerFieldErrors.leadTimeDaysMin ? (
-                    <p className="text-xs text-amber-200">{offerFieldErrors.leadTimeDaysMin}</p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Lead time max days
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    step={1}
-                    value={offerDraft.leadTimeDaysMax}
-                    onChange={(event) => updateOfferField("leadTimeDaysMax", event.target.value)}
-                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                    placeholder="0"
-                  />
-                  {offerFieldErrors.leadTimeDaysMax ? (
-                    <p className="text-xs text-amber-200">{offerFieldErrors.leadTimeDaysMax}</p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Confidence score
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={offerDraft.confidenceScore}
-                    onChange={(event) => updateOfferField("confidenceScore", event.target.value)}
-                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                    placeholder="0-100"
-                  />
-                  {offerFieldErrors.confidenceScore ? (
-                    <p className="text-xs text-amber-200">
-                      {offerFieldErrors.confidenceScore}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Risk flags
-                  </label>
-                  <input
-                    type="text"
-                    value={offerDraft.riskFlags}
-                    onChange={(event) => updateOfferField("riskFlags", event.target.value)}
-                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                    placeholder="comma-separated"
-                  />
-                  <p className="text-xs text-slate-500">
-                    Use commas to separate multiple flags.
-                  </p>
-                </div>
-              </div>
+      <DestinationEmailModal
+        isOpen={Boolean(emailDestination && emailPackage)}
+        providerLabel={
+          emailDestination
+            ? providerById.get(emailDestination.provider_id)?.name ?? emailDestination.provider_id
+            : "Provider"
+        }
+        subject={emailPackage?.subject ?? ""}
+        body={emailPackage?.body ?? ""}
+        pending={pending}
+        onClose={closeEmailModal}
+        onMarkSent={() => {
+          if (!emailDestination) return;
+          handleStatusUpdate(emailDestination.id, "sent");
+        }}
+      />
 
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Assumptions
-                </label>
-                <textarea
-                  value={offerDraft.assumptions}
-                  onChange={(event) => updateOfferField("assumptions", event.target.value)}
-                  rows={4}
-                  className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                  placeholder="Optional notes about scope, exclusions, or context."
-                  maxLength={2000}
-                />
-              </div>
-
-              {offerError ? (
-                <p className="text-sm text-amber-200" role="alert">
-                  {offerError}
-                </p>
-              ) : null}
-
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeOfferModal}
-                  className="rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={submitOffer}
-                  disabled={pending}
-                  className={clsx(
-                    secondaryCtaClasses,
-                    ctaSizeClasses.sm,
-                    pending ? "cursor-not-allowed opacity-60" : null,
-                  )}
-                >
-                  {pending ? "Saving..." : "Save offer"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {emailDestination && emailPackage ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Generate RFQ email"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeEmailModal();
-          }}
-        >
-          <div className="w-full max-w-3xl rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Outbound RFQ email</h3>
-                <p className="mt-1 text-sm text-slate-300">
-                  Draft for{" "}
-                  <span className="font-semibold text-slate-100">
-                    {providerById.get(emailDestination.provider_id)?.name ??
-                      emailDestination.provider_id}
-                  </span>
-                  .
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeEmailModal}
-                className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Subject
-                </label>
-                <input
-                  value={emailPackage.subject}
-                  readOnly
-                  className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:outline-none"
-                />
-                <CopyTextButton text={emailPackage.subject} idleLabel="Copy subject" />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Body
-                </label>
-                <textarea
-                  value={emailPackage.body}
-                  readOnly
-                  rows={12}
-                  className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:outline-none"
-                />
-                <CopyTextButton text={emailPackage.body} idleLabel="Copy body" />
-              </div>
-
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleStatusUpdate(emailDestination.id, "sent")}
-                  disabled={pending}
-                  className={clsx(
-                    "rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition",
-                    pending
-                      ? "cursor-not-allowed opacity-60"
-                      : "hover:border-slate-500 hover:text-white",
-                  )}
-                >
-                  Mark Sent
-                </button>
-                <button
-                  type="button"
-                  onClick={closeEmailModal}
-                  className="rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
-                >
-                  Done
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {errorDestination ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Mark destination as error"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeErrorPrompt();
-          }}
-        >
-          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Log dispatch error</h3>
-                <p className="mt-1 text-sm text-slate-300">
-                  Add a short note for the error status on this destination.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeErrorPrompt}
-                className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Error message
-              </label>
-              <textarea
-                value={errorNote}
-                onChange={(event) => setErrorNote(event.target.value)}
-                rows={4}
-                className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-red-400 focus:outline-none"
-                placeholder="Describe what went wrong with this dispatch..."
-                maxLength={1000}
-              />
-              {errorFeedback ? (
-                <p className="text-sm text-amber-200" role="alert">
-                  {errorFeedback}
-                </p>
-              ) : null}
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeErrorPrompt}
-                  className="rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={submitError}
-                  disabled={pending}
-                  className={clsx(
-                    dangerCtaClasses,
-                    ctaSizeClasses.sm,
-                    pending ? "cursor-not-allowed opacity-60" : null,
-                  )}
-                >
-                  {pending ? "Saving..." : "Save error"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <DestinationErrorModal
+        isOpen={Boolean(errorDestination)}
+        errorNote={errorNote}
+        errorFeedback={errorFeedback}
+        pending={pending}
+        onClose={closeErrorPrompt}
+        onChange={setErrorNote}
+        onSubmit={submitError}
+      />
     </div>
   );
 }
 
-function formatEnumLabel(value?: string | null): string {
-  if (!value) return "-";
-  const collapsed = value.replace(/[_-]+/g, " ").trim();
-  if (!collapsed) return "-";
-  return collapsed
-    .split(" ")
-    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
-    .join(" ");
-}
-
-function buildOfferDraft(offer: RfqOffer | null): OfferDraft {
-  if (!offer) {
-    return { ...EMPTY_OFFER_DRAFT };
-  }
-  return {
-    ...EMPTY_OFFER_DRAFT,
-    totalPrice: formatDraftValue(offer.total_price),
-    unitPrice: formatDraftValue(offer.unit_price),
-    toolingPrice: formatDraftValue(offer.tooling_price),
-    shippingPrice: formatDraftValue(offer.shipping_price),
-    leadTimeDaysMin: formatDraftValue(offer.lead_time_days_min),
-    leadTimeDaysMax: formatDraftValue(offer.lead_time_days_max),
-    confidenceScore: formatDraftValue(offer.confidence_score),
-    riskFlags: Array.isArray(offer.quality_risk_flags)
-      ? offer.quality_risk_flags.join(", ")
-      : "",
-    assumptions: offer.assumptions ?? "",
-  };
-}
-
-function formatDraftValue(value: number | string | null | undefined): string {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? String(value) : "";
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : "";
-  }
-  return "";
-}
-
-function formatOfferSummary(offer: RfqOffer): string {
-  const parts: string[] = [];
-  const currency = offer.currency ?? "USD";
-  const total = toFiniteNumber(offer.total_price);
-  const unit = toFiniteNumber(offer.unit_price);
-  if (typeof total === "number") {
-    parts.push(`Total ${formatCurrency(total, currency)}`);
-  } else if (typeof unit === "number") {
-    parts.push(`Unit ${formatCurrency(unit, currency)}`);
-  }
-
-  const leadTimeLabel = formatLeadTimeSummary(
-    offer.lead_time_days_min,
-    offer.lead_time_days_max,
-  );
-  if (leadTimeLabel) {
-    parts.push(leadTimeLabel);
-  }
-
-  if (typeof offer.confidence_score === "number") {
-    parts.push(`Confidence ${offer.confidence_score}`);
-  }
-
-  return parts.length > 0 ? parts.join(" | ") : "Offer saved";
-}
-
-function formatLeadTimeSummary(
-  minDays: number | null,
-  maxDays: number | null,
-): string | null {
-  if (typeof minDays === "number" && typeof maxDays === "number") {
-    return `${minDays}-${maxDays} days`;
-  }
-  if (typeof minDays === "number") {
-    return `${minDays}+ days`;
-  }
-  if (typeof maxDays === "number") {
-    return `Up to ${maxDays} days`;
-  }
-  return null;
-}
-
-function toFiniteNumber(value: number | string | null | undefined): number | null {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
