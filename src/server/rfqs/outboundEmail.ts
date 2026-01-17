@@ -60,10 +60,6 @@ type SerializedSupabaseErrorLike = {
 
 function serializeSupabaseErrorString(error: unknown): string {
   const serialized = serializeSupabaseError(error);
-  if (typeof serialized === "string") {
-    const message = serialized.trim();
-    if (message) return message;
-  }
   if (serialized && typeof serialized === "object") {
     const rawMessage = (serialized as SerializedSupabaseErrorLike).message;
     if (typeof rawMessage === "string") {
@@ -76,7 +72,7 @@ function serializeSupabaseErrorString(error: unknown): string {
       if (code) return code;
     }
   }
-  const fallback = JSON.stringify(serialized);
+  const fallback = JSON.stringify(serialized ?? "unknown_error");
   return fallback ? fallback : "unknown_error";
 }
 
