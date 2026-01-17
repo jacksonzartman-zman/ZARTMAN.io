@@ -1,0 +1,464 @@
+import Link from "next/link";
+import clsx from "clsx";
+import AdminDashboardShell from "@/app/admin/AdminDashboardShell";
+import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
+import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
+import { formatDateTime } from "@/lib/formatDate";
+import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { getAdminOpsInboxRows, type AdminOpsInboxRow } from "@/server/ops/inbox";
+import { getActiveProviders } from "@/server/providers";
+
+export const dynamic = "force-dynamic";
+
+const DESTINATION_STATUS_VALUES = [
+  "queued",
+  "sent",
+  "viewed",
+  "quoted",
+  "declined",
+  "error",
+] as const;
+
+const DESTINATION_STATUS_OPTIONS = [
+  { value: "all", label: "All" },
+  { value: "queued", label: "Queued" },
+  { value: "sent", label: "Sent" },
+  { value: "viewed", label: "Viewed" },
+  { value: "quoted", label: "Quoted" },
+  { value: "declined", label: "Declined" },
+  { value: "error", label: "Error" },
+] as const;
+
+type DestinationStatus = (typeof DESTINATION_STATUS_VALUES)[number];
+type DestinationStatusFilter = DestinationStatus | "all";
+
+const DESTINATION_STATUS_META: Record<
+  DestinationStatus,
+  { label: string; className: string }
+> = {
+  queued: { label: "Queued", className: "pill-muted" },
+  sent: { label: "Sent", className: "pill-info" },
+  viewed: { label: "Viewed", className: "pill-info" },
+  quoted: { label: "Quoted", className: "pill-success" },
+  declined: { label: "Declined", className: "pill-warning" },
+  error: {
+    label: "Error",
+    className: "border-red-400/60 bg-red-500/15 text-red-100",
+  },
+};
+
+type NeedsActionChip = {
+  key: "needsReplyCount" | "errorsCount" | "queuedStaleCount";
+  label: string;
+  className: string;
+};
+
+const NEEDS_ACTION_CHIPS: NeedsActionChip[] = [
+  {
+    key: "needsReplyCount",
+    label: "Needs reply",
+    className: "pill-warning",
+  },
+  {
+    key: "errorsCount",
+    label: "Errors",
+    className: "border-red-400/60 bg-red-500/15 text-red-100",
+  },
+  {
+    key: "queuedStaleCount",
+    label: "Queued stale",
+    className: "pill-info",
+  },
+];
+
+export default async function AdminOpsInboxPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+
+  const needsActionOnly = parseToggle(usp.get("needsAction"));
+  const selectedOnly = parseToggle(usp.get("selected"));
+  const destinationStatus = normalizeDestinationStatus(usp.get("destinationStatus"));
+  const providerId = normalizeFilterValue(usp.get("provider"));
+
+  const [rows, activeProviders] = await Promise.all([
+    getAdminOpsInboxRows({
+      limit: 200,
+      filters: {
+        needsActionOnly,
+        selectedOnly,
+        destinationStatus: destinationStatus === "all" ? null : destinationStatus,
+        providerId: providerId || null,
+      },
+    }),
+    getActiveProviders(),
+  ]);
+
+  const preparedRows = rows.map((row) => {
+    const lastActivityMs = resolveLastActivityMs(row);
+    return {
+      row,
+      lastActivityMs,
+      needsAction: row.summary.needsActionCount > 0,
+    };
+  });
+
+  const sortedRows = preparedRows.sort((a, b) => {
+    if (a.needsAction !== b.needsAction) {
+      return a.needsAction ? -1 : 1;
+    }
+    if (a.lastActivityMs !== b.lastActivityMs) {
+      return b.lastActivityMs - a.lastActivityMs;
+    }
+    return a.row.quote.id.localeCompare(b.row.quote.id);
+  });
+
+  const hasFilters =
+    needsActionOnly ||
+    selectedOnly ||
+    destinationStatus !== "all" ||
+    providerId.length > 0;
+
+  const actionButtonClass = clsx(
+    secondaryCtaClasses,
+    ctaSizeClasses.sm,
+    "min-w-[5.5rem] justify-center",
+  );
+
+  return (
+    <AdminDashboardShell
+      title="Ops Inbox"
+      description="Cockpit for Kayak dispatch and destination follow-ups."
+    >
+      <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-5">
+        <form
+          method="GET"
+          action="/admin/ops/inbox"
+          className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between"
+        >
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <label className="flex flex-col gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Destination status
+              </span>
+              <select
+                name="destinationStatus"
+                defaultValue={destinationStatus}
+                className="w-full min-w-48 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+              >
+                {DESTINATION_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Provider
+              </span>
+              <select
+                name="provider"
+                defaultValue={providerId || "all"}
+                className="w-full min-w-56 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+              >
+                <option value="all">All</option>
+                {activeProviders.map((provider) => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+                {providerId && !activeProviders.some((provider) => provider.id === providerId) ? (
+                  <option value={providerId}>Unknown provider ({providerId})</option>
+                ) : null}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+              <input
+                type="checkbox"
+                name="needsAction"
+                value="1"
+                defaultChecked={needsActionOnly}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+              />
+              Needs action only
+            </label>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+              <input
+                type="checkbox"
+                name="selected"
+                value="1"
+                defaultChecked={selectedOnly}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+              />
+              Selected only
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-400"
+          >
+            Apply filters
+          </button>
+        </form>
+      </section>
+
+      <div className="mt-6 overflow-x-auto">
+        <AdminTableShell
+          head={
+            <tr>
+              <th className="px-5 py-4">Quote</th>
+              <th className="px-5 py-4">Customer</th>
+              <th className="px-5 py-4">Destinations</th>
+              <th className="px-5 py-4">Needs action</th>
+              <th className="px-5 py-4">Last activity</th>
+              <th className="px-5 py-4 text-right">Actions</th>
+            </tr>
+          }
+          body={
+            sortedRows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-6 py-12 text-center text-base text-slate-300">
+                  <p className="font-medium text-slate-100">
+                    {hasFilters
+                      ? "No quotes match these dispatch filters."
+                      : "No dispatch work in the Ops Inbox yet."}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-400">
+                    {hasFilters
+                      ? "Try widening the filters to see more destinations."
+                      : "Kick off dispatch by adding destinations from a quote detail page."}
+                  </p>
+                </td>
+              </tr>
+            ) : (
+              sortedRows.map(({ row, lastActivityMs, needsAction }) => {
+                const quoteLabel = row.quote.title?.trim() || row.quote.id;
+                const quoteHref = `/admin/quotes/${row.quote.id}`;
+                const displayName =
+                  row.customer.name?.trim() || row.customer.email?.trim() || "—";
+                const email = row.customer.email?.trim() || "";
+                const lastActivity = lastActivityMs > 0 ? new Date(lastActivityMs) : null;
+
+                return (
+                  <tr key={row.quote.id} className="bg-slate-950/40 transition hover:bg-slate-900/40">
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <div className="flex flex-col">
+                        <Link
+                          href={quoteHref}
+                          className="text-sm font-semibold text-emerald-100 hover:text-emerald-200"
+                        >
+                          {quoteLabel}
+                        </Link>
+                        {row.quote.title && row.quote.title.trim() !== row.quote.id ? (
+                          <span className="text-xs text-slate-500">{row.quote.id}</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-slate-100">
+                          {displayName}
+                        </span>
+                        {email ? (
+                          <a
+                            href={`mailto:${email}`}
+                            className="text-xs text-slate-400 hover:text-emerald-200"
+                          >
+                            {email}
+                          </a>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <div className="flex flex-wrap gap-2">
+                        {DESTINATION_STATUS_VALUES.map((status) => {
+                          const count = row.summary.counts[status] ?? 0;
+                          if (count <= 0) return null;
+                          const meta = DESTINATION_STATUS_META[status];
+                          return (
+                            <span
+                              key={status}
+                              className={clsx("pill pill-table", meta.className)}
+                            >
+                              {meta.label} {count}
+                            </span>
+                          );
+                        })}
+                        {row.destinations.length === 0 ? (
+                          <span className="pill pill-table pill-muted">No destinations</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <div className="flex flex-wrap gap-2">
+                        {NEEDS_ACTION_CHIPS.map((chip) => {
+                          const count = row.summary[chip.key] ?? 0;
+                          if (count <= 0) return null;
+                          return (
+                            <span
+                              key={chip.key}
+                              className={clsx("pill pill-table", chip.className)}
+                            >
+                              {chip.label}: {count}
+                            </span>
+                          );
+                        })}
+                        {!needsAction ? (
+                          <span className="pill pill-table pill-muted">All clear</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-300")}>
+                      {formatDateTime(lastActivity, { includeTime: true })}
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4 text-right")}>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Link href={quoteHref} className={actionButtonClass}>
+                          Open
+                        </Link>
+                        <DispatchDrawer row={row} actionClassName={actionButtonClass} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )
+          }
+        />
+      </div>
+    </AdminDashboardShell>
+  );
+}
+
+function DispatchDrawer({
+  row,
+  actionClassName,
+}: {
+  row: AdminOpsInboxRow;
+  actionClassName: string;
+}) {
+  const destinations = row.destinations;
+  const quoteHref = `/admin/quotes/${row.quote.id}#destinations`;
+  return (
+    <details className="group relative text-left">
+      <summary className={clsx(actionClassName, "cursor-pointer list-none")}>
+        Dispatch
+      </summary>
+      <div className="mt-2 w-[min(22rem,90vw)] rounded-2xl border border-slate-900/80 bg-slate-950/95 p-4 text-xs text-slate-200 shadow-[0_16px_40px_rgba(2,6,23,0.6)]">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Dispatch details
+          </p>
+          <Link
+            href={quoteHref}
+            className="text-xs font-semibold text-emerald-200 hover:text-emerald-100"
+          >
+            Open full panel
+          </Link>
+        </div>
+        <div className="mt-3 space-y-3">
+          {destinations.length === 0 ? (
+            <p className="text-slate-400">No destinations yet. Add providers to begin dispatch.</p>
+          ) : (
+            destinations.map((destination) => {
+              const providerLabel = destination.provider_name || destination.provider_id;
+              const statusLabel = formatStatusLabel(destination.status);
+              const statusClass =
+                destination.status && DESTINATION_STATUS_VALUES.includes(destination.status as DestinationStatus)
+                  ? DESTINATION_STATUS_META[destination.status as DestinationStatus].className
+                  : "pill-muted";
+              const lastUpdate = resolveDestinationLastUpdate(destination);
+              const metaParts = [destination.provider_type, destination.quoting_mode]
+                .map((value) => (value ? formatStatusLabel(value) : ""))
+                .filter(Boolean);
+
+              return (
+                <div key={destination.id} className="rounded-xl border border-slate-900/60 bg-slate-950/60 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-100">{providerLabel}</p>
+                      {metaParts.length > 0 ? (
+                        <p className="text-[11px] text-slate-500">{metaParts.join(" · ")}</p>
+                      ) : null}
+                    </div>
+                    <span className={clsx("pill pill-table", statusClass)}>{statusLabel}</span>
+                  </div>
+                  <div className="mt-2 text-[11px] text-slate-500">
+                    Last update: {formatDateTime(lastUpdate, { includeTime: true })}
+                  </div>
+                  {destination.error_message ? (
+                    <p className="mt-2 text-[11px] text-red-200">
+                      Error: {destination.error_message}
+                    </p>
+                  ) : null}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function resolveLastActivityMs(row: AdminOpsInboxRow): number {
+  let latest = toMs(row.quote.created_at);
+  for (const destination of row.destinations) {
+    latest = Math.max(latest, toMs(destination.last_status_at), toMs(destination.sent_at));
+  }
+  return latest;
+}
+
+function resolveDestinationLastUpdate(destination: AdminOpsInboxRow["destinations"][number]): Date | null {
+  const timestamp = Math.max(
+    toMs(destination.last_status_at),
+    toMs(destination.sent_at),
+    toMs(destination.created_at),
+  );
+  return timestamp > 0 ? new Date(timestamp) : null;
+}
+
+function toMs(value: string | null | undefined): number {
+  if (!value) return -1;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : -1;
+}
+
+function normalizeDestinationStatus(value: unknown): DestinationStatusFilter {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if ((DESTINATION_STATUS_VALUES as readonly string[]).includes(normalized)) {
+    return normalized as DestinationStatusFilter;
+  }
+  return "all";
+}
+
+function parseToggle(value: string | null): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "on" || normalized === "yes";
+}
+
+function normalizeFilterValue(value: string | null): string {
+  const normalized = value?.trim();
+  if (!normalized || normalized === "all") return "";
+  return normalized;
+}
+
+function formatStatusLabel(value: string | null | undefined): string {
+  if (!value) return "Unknown";
+  return value
+    .toString()
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
