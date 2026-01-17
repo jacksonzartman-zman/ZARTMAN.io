@@ -4,6 +4,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser, UnauthorizedError } from "@/server/auth";
 import { schemaGate } from "@/server/db/schemaContract";
 import {
+  debugOnce,
   handleMissingSupabaseSchema,
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -386,7 +387,7 @@ async function tryStoreAdminThreadMessage(args: {
     if (!extendedError) return true;
 
     if (isMissingTableOrColumnError(extendedError)) {
-      warnOnce(
+      debugOnce(
         "email_outbound_customer:quote_messages_insert_degraded",
         `${WARN_PREFIX} message insert degraded; retrying minimal`,
         {
@@ -398,7 +399,7 @@ async function tryStoreAdminThreadMessage(args: {
     const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(basePayload);
     if (baseError) {
       if (isMissingTableOrColumnError(baseError)) {
-        warnOnce("email_outbound_customer:quote_messages_insert_missing_schema", `${WARN_PREFIX} message insert skipped`, {
+        debugOnce("email_outbound_customer:quote_messages_insert_missing_schema", `${WARN_PREFIX} message insert skipped`, {
           code: serializeSupabaseError(baseError).code,
         });
         return false;

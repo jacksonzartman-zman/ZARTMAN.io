@@ -1,6 +1,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { schemaGate } from "@/server/db/schemaContract";
 import {
+  debugOnce,
   handleMissingSupabaseSchema,
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -399,7 +400,7 @@ async function tryStorePortalOutboundThreadMessage(args: {
     if (!extendedError) return true;
 
     if (isMissingTableOrColumnError(extendedError)) {
-      warnOnce(
+      debugOnce(
         "email_portal_send:quote_messages_insert_degraded",
         `${WARN_PREFIX} message insert degraded; retrying minimal`,
         { code: serializeSupabaseError(extendedError).code },
@@ -409,7 +410,7 @@ async function tryStorePortalOutboundThreadMessage(args: {
     const { error: baseError } = await supabaseServer.from("quote_messages").insert(basePayload);
     if (baseError) {
       if (isMissingTableOrColumnError(baseError)) {
-        warnOnce("email_portal_send:quote_messages_insert_missing_schema", `${WARN_PREFIX} message insert skipped`, {
+        debugOnce("email_portal_send:quote_messages_insert_missing_schema", `${WARN_PREFIX} message insert skipped`, {
           code: serializeSupabaseError(baseError).code,
         });
         return false;

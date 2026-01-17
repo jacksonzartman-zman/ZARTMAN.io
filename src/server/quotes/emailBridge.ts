@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { supabaseServer } from "@/lib/supabaseServer";
 import { schemaGate } from "@/server/db/schemaContract";
-import { isMissingTableOrColumnError, serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
+import { debugOnce, isMissingTableOrColumnError, serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
 import { isCustomerEmailOptedIn } from "@/server/quotes/customerEmailPrefs";
 
 export type InboundEmailAttachment = {
@@ -769,7 +769,7 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
     warnKey: "email_bridge:quote_messages",
   });
   if (!supported) {
-    warnOnce("email_bridge:unsupported", `${WARN_PREFIX} unsupported; quote_messages missing`);
+    debugOnce("email_bridge:unsupported", `${WARN_PREFIX} unsupported; quote_messages missing`);
     return { ok: false, error: "unsupported", httpStatus: 200 };
   }
 
@@ -924,7 +924,7 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
     warnKey: "email_bridge:quote_messages_customer",
   });
   if (!supported) {
-    warnOnce("email_bridge:unsupported_customer", `${WARN_PREFIX} unsupported; quote_messages missing`);
+    debugOnce("email_bridge:unsupported_customer", `${WARN_PREFIX} unsupported; quote_messages missing`);
     return { ok: false, error: "unsupported", httpStatus: 200 };
   }
 
