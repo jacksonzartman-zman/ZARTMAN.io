@@ -55,6 +55,13 @@ export type AwardActionState = {
   selectedBidId?: string | null;
 };
 
+export type SelectOfferActionState = {
+  ok: boolean;
+  error?: string | null;
+  message?: string | null;
+  selectedOfferId?: string | null;
+};
+
 export type AwardBidAsCustomerResult =
   | { ok: true }
   | { ok: false; errorCode: string; message: string };
@@ -75,6 +82,13 @@ const CUSTOMER_AWARD_ALREADY_WON_ERROR =
 const CUSTOMER_AWARD_GENERIC_ERROR =
   "We couldn’t update the winner. Please try again.";
 const CUSTOMER_AWARD_SUCCESS_MESSAGE = "Winning supplier selected.";
+const CUSTOMER_SELECT_OFFER_GENERIC_ERROR =
+  "We couldn’t save your offer selection. Please try again.";
+const CUSTOMER_SELECT_OFFER_ACCESS_ERROR =
+  "We couldn’t confirm your access to this quote.";
+const CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR =
+  "That offer isn’t available for this RFQ.";
+const CUSTOMER_SELECT_OFFER_SUCCESS_MESSAGE = "Offer selection saved.";
 
 const CUSTOMER_MESSAGE_GENERIC_ERROR =
   "Unable to send your message right now. Please try again.";
@@ -115,6 +129,18 @@ type CustomerAwardBidRow = {
   id: string;
   quote_id: string;
   supplier_id: string | null;
+};
+
+type CustomerOfferQuoteRow = {
+  id: string;
+  customer_id: string | null;
+  customer_email: string | null;
+};
+
+type CustomerOfferRow = {
+  id: string;
+  rfq_id: string | null;
+  provider_id: string | null;
 };
 
 export async function archiveCustomerQuoteAction(
@@ -634,6 +660,122 @@ export async function awardQuoteToBidAction(
   }
 
   return awardCustomerBid(quoteId, bidId);
+}
+
+export async function selectOfferAction(
+  _prev: SelectOfferActionState,
+  formData: FormData,
+): Promise<SelectOfferActionState> {
+  const quoteId = normalizeId(getFormString(formData, "quoteId"));
+  const offerId = normalizeId(getFormString(formData, "offerId"));
+
+  if (!quoteId || !offerId) {
+    return { ok: false, error: CUSTOMER_SELECT_OFFER_GENERIC_ERROR };
+  }
+
+  try {
+    const user = await requireUser({
+      redirectTo: `/customer/quotes/${quoteId}`,
+    });
+    const customer = await getCustomerByUserId(user.id);
+    if (!customer) {
+      return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
+    }
+
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes")
+      .select("id,customer_id,customer_email")
+      .eq("id", quoteId)
+      .maybeSingle<CustomerOfferQuoteRow>();
+
+    if (quoteError) {
+      console.error("[customer offer select] quote lookup failed", {
+        quoteId,
+        error: serializeActionError(quoteError),
+      });
+      return { ok: false, error: CUSTOMER_SELECT_OFFER_GENERIC_ERROR };
+    }
+
+    if (!quoteRow) {
+      return { ok: false, error: "Quote not found." };
+    }
+
+    const quoteCustomerId = normalizeId(quoteRow.customer_id ?? null);
+    const customerIdMatches =
+      Boolean(quoteCustomerId) && quoteCustomerId === customer.id;
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.customer_email ?? null);
+    const normalizedCustomerEmail = normalizeEmailInput(customer.email);
+    const customerEmailMatches =
+      Boolean(normalizedQuoteEmail) &&
+      Boolean(normalizedCustomerEmail) &&
+      normalizedQuoteEmail === normalizedCustomerEmail;
+
+    if (!customerIdMatches && !customerEmailMatches) {
+      console.warn("[customer offer select] access denied", {
+        quoteId,
+        userId: user.id,
+        customerId: customer.id,
+      });
+      return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
+    }
+
+    const { data: offerRow, error: offerError } = await supabaseServer
+      .from("rfq_offers")
+      .select("id,rfq_id,provider_id")
+      .eq("id", offerId)
+      .maybeSingle<CustomerOfferRow>();
+
+    if (offerError) {
+      console.error("[customer offer select] offer lookup failed", {
+        quoteId,
+        offerId,
+        error: serializeActionError(offerError),
+      });
+      return { ok: false, error: CUSTOMER_SELECT_OFFER_GENERIC_ERROR };
+    }
+
+    if (!offerRow || offerRow.rfq_id !== quoteId) {
+      return { ok: false, error: CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR };
+    }
+
+    const providerId = normalizeId(offerRow.provider_id ?? null);
+    if (!providerId) {
+      return { ok: false, error: CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR };
+    }
+
+    const { error: updateError } = await supabaseServer
+      .from("quotes")
+      .update({
+        selected_provider_id: providerId,
+        selected_offer_id: offerId,
+        selected_at: new Date().toISOString(),
+      })
+      .eq("id", quoteId);
+
+    if (updateError) {
+      console.error("[customer offer select] update failed", {
+        quoteId,
+        offerId,
+        error: serializeActionError(updateError),
+      });
+      return { ok: false, error: CUSTOMER_SELECT_OFFER_GENERIC_ERROR };
+    }
+
+    revalidatePath(`/customer/quotes/${quoteId}`);
+
+    return {
+      ok: true,
+      selectedOfferId: offerId,
+      message: CUSTOMER_SELECT_OFFER_SUCCESS_MESSAGE,
+    };
+  } catch (error) {
+    console.error("[customer offer select] crashed", {
+      quoteId,
+      offerId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_SELECT_OFFER_GENERIC_ERROR };
+  }
 }
 
 export async function awardBidAsCustomerAction(

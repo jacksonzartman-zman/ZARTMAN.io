@@ -52,6 +52,7 @@ import {
 import { loadSupplierById } from "@/server/suppliers/profile";
 import { postQuoteMessage as postCustomerQuoteMessage } from "./actions";
 import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
+import { CustomerQuoteCompareOffers } from "./CustomerQuoteCompareOffers";
 import {
   getCustomerKickoffSummary,
   type CustomerKickoffSummary,
@@ -157,6 +158,7 @@ export default async function CustomerQuoteDetailPage({
     safeOnly: true,
     viewerUserId: user.id,
     viewerRole: "customer",
+    includeOffers: true,
   });
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[customer quote] load failed", {
@@ -185,6 +187,7 @@ export default async function CustomerQuoteDetailPage({
     uploadGroups,
     filePreviews,
     parts,
+    rfqOffers,
     messages: quoteMessages,
     messagesError,
     filesMissingCanonical,
@@ -1536,6 +1539,40 @@ export default async function CustomerQuoteDetailPage({
     </DisclosureSection>
   );
 
+  const compareOffersSection = (
+    <DisclosureSection
+      id="compare-offers"
+      className="scroll-mt-24"
+      title="Compare Offers"
+      description="Review provider offers and select a best-fit option."
+      defaultOpen={rfqOffers.length > 0}
+      summary={
+        <TagPill
+          size="md"
+          tone={rfqOffers.length > 0 ? "emerald" : "slate"}
+          className="normal-case tracking-normal"
+        >
+          {rfqOffers.length > 0
+            ? `${rfqOffers.length} offer${rfqOffers.length === 1 ? "" : "s"}`
+            : "No offers"}
+        </TagPill>
+      }
+    >
+      {rfqOffers.length === 0 ? (
+        <EmptyStateCard
+          title="Compare offers"
+          description="No offers yet. We'll notify you when quotes arrive."
+        />
+      ) : (
+        <CustomerQuoteCompareOffers
+          quoteId={quote.id}
+          offers={rfqOffers}
+          selectedOfferId={quote.selected_offer_id ?? null}
+        />
+      )}
+    </DisclosureSection>
+  );
+
   const kickoffSection = (
     <DisclosureSection
       id="kickoff"
@@ -1603,6 +1640,7 @@ export default async function CustomerQuoteDetailPage({
   const sectionRailSections = buildCustomerQuoteSections({
     bidCount,
     hasWinner: quoteHasWinner,
+    offerCount: rfqOffers.length,
     kickoffRatio: kickoffTasksRatio,
     kickoffComplete: kickoffProgressBasis.isComplete,
     messageCount: quoteMessages.length,
@@ -1647,6 +1685,7 @@ export default async function CustomerQuoteDetailPage({
 
           {orderWorkspaceSection}
           {decisionSection}
+          {compareOffersSection}
           {kickoffSection}
           {messagesUnavailable ? (
             <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
@@ -2111,6 +2150,7 @@ function readOptionalUploadMetaString(
 function buildCustomerQuoteSections(args: {
   bidCount: number;
   hasWinner: boolean;
+  offerCount: number;
   kickoffRatio: string | null;
   kickoffComplete: boolean;
   messageCount: number;
@@ -2123,6 +2163,7 @@ function buildCustomerQuoteSections(args: {
     : args.bidCount > 0
       ? `${args.bidCount}`
       : undefined;
+  const compareBadge = args.offerCount > 0 ? `${args.offerCount}` : undefined;
   const kickoffBadge = args.kickoffComplete
     ? "Complete"
     : args.kickoffRatio
@@ -2139,6 +2180,13 @@ function buildCustomerQuoteSections(args: {
       href: "#decision",
       badge: decisionBadge,
       tone: args.hasWinner ? "neutral" : args.bidCount > 0 ? "info" : "neutral",
+    },
+    {
+      key: "compare-offers",
+      label: "Compare offers",
+      href: "#compare-offers",
+      badge: compareBadge,
+      tone: args.offerCount > 0 ? "info" : "neutral",
     },
     {
       key: "kickoff",
