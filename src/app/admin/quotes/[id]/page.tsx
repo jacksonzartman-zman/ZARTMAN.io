@@ -105,6 +105,7 @@ import {
 import { AwardOutcomeCard } from "./AwardOutcomeCard";
 import { loadLatestAwardFeedbackForQuote } from "@/server/quotes/awardFeedback";
 import { formatAwardFeedbackReasonLabel } from "@/lib/awardFeedback";
+import { AwardEmailGenerator } from "./AwardEmailGenerator";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { loadQuoteUploadGroups } from "@/server/quotes/uploadFiles";
@@ -426,6 +427,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       safeOnly: true,
       includeOffers: true,
     });
+    const workspaceQuote =
+      workspaceResult.ok && workspaceResult.data ? workspaceResult.data.quote : null;
+    const selectedOfferId = workspaceQuote?.selected_offer_id ?? null;
+    const selectionConfirmedAt = workspaceQuote?.selection_confirmed_at ?? null;
     const parts = workspaceResult.ok && workspaceResult.data ? workspaceResult.data.parts : [];
     const cadFeaturesByFileId = await (async () => {
       // Best-effort pre-population: never block the page on heavy work.
@@ -2455,12 +2460,19 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 </span>
               }
             >
-              <AdminRfqDestinationsCard
-                quoteId={quote.id}
-                providers={activeProviders}
-                destinations={rfqDestinations}
-                offers={rfqOffers}
-              />
+              <div className="space-y-4">
+                <AwardEmailGenerator
+                  quoteId={quote.id}
+                  selectedOfferId={selectedOfferId}
+                  selectionConfirmedAt={selectionConfirmedAt}
+                />
+                <AdminRfqDestinationsCard
+                  quoteId={quote.id}
+                  providers={activeProviders}
+                  destinations={rfqDestinations}
+                  offers={rfqOffers}
+                />
+              </div>
             </DisclosureSection>
 
             <DisclosureSection
