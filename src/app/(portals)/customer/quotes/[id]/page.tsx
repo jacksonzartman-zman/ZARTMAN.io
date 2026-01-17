@@ -49,7 +49,7 @@ import {
   type QuoteProjectRecord,
 } from "@/server/quotes/projects";
 import { loadSupplierById } from "@/server/suppliers/profile";
-import { postQuoteMessageSimple } from "./actions";
+import { postCustomerQuoteMessageAction } from "./actions";
 import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
 import { CustomerQuoteCompareOffers } from "./CustomerQuoteCompareOffers";
 import { CustomerQuoteSelectionConfirmation } from "./CustomerQuoteSelectionConfirmation";
@@ -1161,7 +1161,7 @@ export default async function CustomerQuoteDetailPage({
       />
     ) : null;
 
-  const postMessageAction = postQuoteMessageSimple.bind(null, quote.id);
+  const postMessageAction = postCustomerQuoteMessageAction.bind(null, quote.id);
 
   const orderWorkspaceSection = (
     <CustomerQuoteOrderWorkspace

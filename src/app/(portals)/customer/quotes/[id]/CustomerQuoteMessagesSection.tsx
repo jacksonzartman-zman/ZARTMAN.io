@@ -8,7 +8,7 @@ type CustomerQuoteMessagesSectionProps = {
   messages: QuoteMessageRecord[];
   currentUserId: string | null;
   canPost: boolean;
-  postAction: (formData: FormData) => Promise<unknown>;
+  postAction: (formData: FormData) => void | Promise<void>;
 };
 
 export function CustomerQuoteMessagesSection({
