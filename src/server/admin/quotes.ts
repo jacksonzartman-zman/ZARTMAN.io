@@ -61,6 +61,7 @@ export type AdminQuoteUpdateInput = {
   quoteId: string;
   status?: string | null;
   price?: number | string | null;
+  confidenceScore?: number | string | null;
   currency?: string | null;
   targetDate?: string | null;
   dfmNotes?: string | null;
@@ -687,6 +688,11 @@ function normalizeAdminQuoteUpdateInput(
   const price = normalizeOptionalPrice(input.price);
   if (typeof price !== "undefined") {
     updates.price = price;
+  }
+
+  const confidenceScore = normalizeOptionalPrice(input.confidenceScore);
+  if (typeof confidenceScore !== "undefined") {
+    updates.confidence_score = confidenceScore;
   }
 
   const currency = normalizeCurrency(input.currency);
