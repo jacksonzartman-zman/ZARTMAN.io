@@ -102,6 +102,8 @@ const ADMIN_PART_FILES_GENERIC_ERROR =
   "We couldn't update part files right now. Please try again.";
 const ADMIN_PART_DRAWING_UPLOAD_ERROR =
   "Couldn’t upload drawings; please try again.";
+const ADMIN_QUOTE_CONFIDENCE_SCORE_ERROR =
+  "Confidence score must be between 0 and 100.";
 
 export type UpsertRfqOfferState =
   | { ok: true; message: string; offerId: string }
@@ -475,10 +477,26 @@ export async function submitAdminQuoteUpdateAction(
       return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
     }
 
+    const confidenceScoreRaw = getFormString(formData, "confidenceScore");
+    const confidenceScoreInput =
+      typeof confidenceScoreRaw === "string" ? confidenceScoreRaw.trim() : "";
+    const confidenceScore =
+      confidenceScoreInput.length > 0 ? Number(confidenceScoreInput) : null;
+
+    if (
+      confidenceScore !== null &&
+      (!Number.isFinite(confidenceScore) ||
+        confidenceScore < 0 ||
+        confidenceScore > 100)
+    ) {
+      return { ok: false, error: ADMIN_QUOTE_CONFIDENCE_SCORE_ERROR };
+    }
+
     const payload: AdminQuoteUpdateInput = {
       quoteId: normalizedQuoteId,
       status: getFormString(formData, "status"),
       price: getFormString(formData, "price"),
+      confidenceScore,
       currency: getFormString(formData, "currency"),
       targetDate: getFormString(formData, "targetDate"),
       dfmNotes: getFormString(formData, "dfmNotes"),
