@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import type { InboundEmail } from "@/server/quotes/emailBridge";
 import { handleInboundEmailBridge } from "@/server/quotes/emailBridge";
 import { warnOnce } from "@/server/db/schemaErrors";
+import { isEmailInboundEnabled } from "@/server/quotes/emailOpsFlags";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -220,6 +221,12 @@ function isAuthorized(req: Request, expectedUser: string, expectedPass: string):
 }
 
 export async function POST(req: Request) {
+  if (!isEmailInboundEnabled()) {
+    // Kill-switch: always 200 disabled (avoid provider churn/retries).
+    // IMPORTANT: do not attempt auth parsing or DB calls when disabled.
+    return NextResponse.json({ ok: false, error: "disabled" }, { status: 200 });
+  }
+
   const expectedUser = normalizeString(process.env.POSTMARK_INBOUND_BASIC_USER);
   const expectedPass = normalizeString(process.env.POSTMARK_INBOUND_BASIC_PASS);
 

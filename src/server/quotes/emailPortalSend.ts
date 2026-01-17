@@ -10,6 +10,7 @@ import { canSupplierEmailCustomer, isCustomerEmailBridgeEnabled } from "@/server
 import { createCustomerReplyToken, createReplyToken } from "@/server/quotes/emailBridge";
 import { resolveOutboundAttachments } from "@/server/quotes/emailAttachments";
 import { getEmailOutboundStatus, getEmailSender, type EmailSendRequest } from "@/server/quotes/emailOutbound";
+import { isPortalEmailSendEnabledFlag } from "@/server/quotes/emailOpsFlags";
 
 type PortalSendResult =
   | { ok: true; sent: true; attachmentsSent: number }
@@ -427,6 +428,10 @@ export async function sendEmailToCustomerFromSupplier(args: {
   message: string;
   attachmentFileIds?: string[];
 }): Promise<PortalSendResult> {
+  if (!isPortalEmailSendEnabledFlag()) {
+    return { ok: false, error: "disabled" };
+  }
+
   const status = getEmailOutboundStatus();
   if (!status.enabled) {
     return { ok: false, error: "disabled" };
@@ -514,6 +519,10 @@ export async function sendEmailToSupplierFromCustomer(args: {
   message: string;
   attachmentFileIds?: string[];
 }): Promise<PortalSendResult> {
+  if (!isPortalEmailSendEnabledFlag()) {
+    return { ok: false, error: "disabled" };
+  }
+
   const status = getEmailOutboundStatus();
   if (!status.enabled) {
     return { ok: false, error: "disabled" };

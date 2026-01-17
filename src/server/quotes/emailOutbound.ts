@@ -1,5 +1,6 @@
 import { createCustomerReplyToken, createReplyToken } from "@/server/quotes/emailBridge";
 import { warnOnce } from "@/server/db/schemaErrors";
+import { isEmailOutboundEnabled } from "@/server/quotes/emailOpsFlags";
 
 export type EmailSendRequest = {
   to: string;
@@ -61,6 +62,10 @@ function sanitizeExcerpt(value: unknown, maxLen: number): string | null {
 }
 
 export function getEmailOutboundStatus(): { enabled: true } | { enabled: false; reason: string } {
+  if (!isEmailOutboundEnabled()) {
+    return { enabled: false, reason: "disabled" };
+  }
+
   const provider = normalizeLower(process.env.EMAIL_PROVIDER || "");
   if (!provider || provider === "none") {
     return { enabled: false, reason: "disabled" };
@@ -99,6 +104,10 @@ const disabledSender: EmailSender = {
 };
 
 export function getEmailSender(): EmailSender {
+  if (!isEmailOutboundEnabled()) {
+    return disabledSender;
+  }
+
   const provider = normalizeLower(process.env.EMAIL_PROVIDER || "");
   if (!provider || provider === "none") {
     return disabledSender;

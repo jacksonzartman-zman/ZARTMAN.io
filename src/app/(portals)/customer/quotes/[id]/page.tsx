@@ -98,6 +98,7 @@ import { isCustomerEmailBridgeEnabled, isCustomerEmailOptedIn } from "@/server/q
 import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
 import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
 import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
+import { isPortalEmailSendEnabledFlag } from "@/server/quotes/emailOpsFlags";
 
 export const dynamic = "force-dynamic";
 
@@ -1156,12 +1157,15 @@ export default async function CustomerQuoteDetailPage({
   const postMessageAction = postCustomerQuoteMessage.bind(null, quote.id);
 
   const outboundStatus = getEmailOutboundStatus();
-  const portalEmailEnabled = outboundStatus.enabled && quoteHasWinner;
-  const portalEmailDisabledCopy = !outboundStatus.enabled
-    ? "Email not configured."
-    : !quoteHasWinner
-      ? "Email is available after a supplier is selected."
-      : null;
+  const portalEmailEnvEnabled = isPortalEmailSendEnabledFlag();
+  const portalEmailEnabled = portalEmailEnvEnabled && outboundStatus.enabled && quoteHasWinner;
+  const portalEmailDisabledCopy = !portalEmailEnvEnabled
+    ? "Send via email is disabled on this environment."
+    : !outboundStatus.enabled
+      ? "Email not configured."
+      : !quoteHasWinner
+        ? "Email is available after a supplier is selected."
+        : null;
   const portalEmailFileOptions = portalEmailEnabled
     ? await loadOutboundFileOptions({ quoteId: quote.id, limit: 50 })
     : [];

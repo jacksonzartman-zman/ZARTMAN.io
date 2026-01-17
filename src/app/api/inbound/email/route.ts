@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import type { InboundEmail } from "@/server/quotes/emailBridge";
 import { handleInboundEmailBridge } from "@/server/quotes/emailBridge";
+import { isGenericInboundEnabled } from "@/server/quotes/emailOpsFlags";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,11 @@ function coerceInboundEmail(payload: unknown): InboundEmail | null {
 }
 
 export async function POST(req: Request) {
+  if (!isGenericInboundEnabled()) {
+    // Kill-switch: return 200 and do not parse payload / touch DB.
+    return NextResponse.json({ ok: false, error: "disabled" }, { status: 200 });
+  }
+
   let payload: unknown;
   try {
     payload = await req.json();
