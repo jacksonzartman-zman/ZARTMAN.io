@@ -42,7 +42,7 @@ type FileLoadResult =
   | { ok: false; missing: false; error: string };
 
 type OutboundEmailResult =
-  | { ok: true; subject: string; body: string }
+  | { ok: true; subject: string; body: string; providerId: string }
   | { ok: false; error: string };
 
 function normalizeString(value: unknown): string {
@@ -310,6 +310,10 @@ export async function buildDestinationOutboundEmail(args: {
   if (!provider?.id) {
     return { ok: false, error: "Provider record not found." };
   }
+  const providerId = normalizeId(provider.id);
+  if (!providerId) {
+    return { ok: false, error: "Provider record not found." };
+  }
 
   const { data: quote, error: quoteError } = await supabaseServer
     .from("quotes_with_uploads")
@@ -383,5 +387,5 @@ export async function buildDestinationOutboundEmail(args: {
     return { ok: false, error: "Generated email content was incomplete." };
   }
 
-  return { ok: true, subject: outbound.subject, body: outbound.body };
+  return { ok: true, subject: outbound.subject, body: outbound.body, providerId };
 }

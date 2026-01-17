@@ -60,6 +60,7 @@ import {
   assertPartBelongsToQuote,
 } from "@/server/admin/quoteParts";
 import { appendFilesToQuoteUpload } from "@/server/quotes/uploadFiles";
+import { logOpsEvent } from "@/server/ops/events";
 import { parseRfqOfferStatus } from "@/server/rfqs/offers";
 import { buildDestinationOutboundEmail } from "@/server/rfqs/outboundEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
@@ -725,6 +726,17 @@ export async function upsertRfqOffer(
       }
     }
 
+    await logOpsEvent({
+      quoteId: normalizedRfqId,
+      destinationId,
+      eventType: "offer_upserted",
+      payload: {
+        provider_id: providerId,
+        status,
+        offer_id: data.id,
+      },
+    });
+
     revalidatePath("/admin/quotes");
     revalidatePath(`/admin/quotes/${normalizedRfqId}`);
 
@@ -754,6 +766,16 @@ export async function generateDestinationEmailAction(args: {
     if (!result.ok) {
       return { ok: false, error: result.error };
     }
+
+    await logOpsEvent({
+      quoteId,
+      destinationId,
+      eventType: "outbound_email_generated",
+      payload: {
+        provider_id: result.providerId,
+      },
+    });
+
     return { ok: true, subject: result.subject, body: result.body };
   } catch (error) {
     console.error("[admin rfq email] action crashed", {
@@ -860,6 +882,20 @@ export async function addDestinationsAction(args: {
       }
     }
 
+    if (newRows.length > 0) {
+      await Promise.all(
+        newRows.map((row) =>
+          logOpsEvent({
+            quoteId: normalizedQuoteId,
+            eventType: "destination_added",
+            payload: {
+              provider_id: row.provider_id,
+            },
+          }),
+        ),
+      );
+    }
+
     revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
 
     const addedCount = newRows.length;
@@ -900,9 +936,15 @@ export async function updateDestinationStatusAction(args: {
 
     const { data: destination, error: destinationError } = await supabaseServer
       .from("rfq_destinations")
-      .select("id,rfq_id,sent_at")
+      .select("id,rfq_id,sent_at,status,provider_id")
       .eq("id", destinationId)
-      .maybeSingle<{ id: string; rfq_id: string | null; sent_at: string | null }>();
+      .maybeSingle<{
+        id: string;
+        rfq_id: string | null;
+        sent_at: string | null;
+        status: string | null;
+        provider_id: string | null;
+      }>();
 
     if (destinationError) {
       if (isMissingTableOrColumnError(destinationError)) {
@@ -955,6 +997,22 @@ export async function updateDestinationStatusAction(args: {
     }
 
     const rfqId = normalizeIdInput(destination.rfq_id);
+    const providerId = normalizeIdInput(destination.provider_id);
+    const previousStatus = normalizeDestinationStatus(destination.status);
+
+    if (rfqId) {
+      await logOpsEvent({
+        quoteId: rfqId,
+        destinationId,
+        eventType: "destination_status_updated",
+        payload: {
+          status_from: previousStatus ?? null,
+          status_to: status,
+          provider_id: providerId || null,
+        },
+      });
+    }
+
     if (rfqId) {
       revalidatePath(`/admin/quotes/${rfqId}`);
     }

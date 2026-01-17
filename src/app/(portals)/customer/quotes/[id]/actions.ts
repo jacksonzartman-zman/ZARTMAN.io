@@ -5,6 +5,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
 import { createQuoteMessage } from "@/server/quotes/messages";
 import { sendEmailToSupplierFromCustomer } from "@/server/quotes/emailPortalSend";
+import { logOpsEvent } from "@/server/ops/events";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
@@ -760,6 +761,15 @@ export async function selectOfferAction(
       });
       return { ok: false, error: CUSTOMER_SELECT_OFFER_GENERIC_ERROR };
     }
+
+    await logOpsEvent({
+      quoteId,
+      eventType: "offer_selected",
+      payload: {
+        offer_id: offerId,
+        provider_id: providerId,
+      },
+    });
 
     revalidatePath(`/customer/quotes/${quoteId}`);
 
