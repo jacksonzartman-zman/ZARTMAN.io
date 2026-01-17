@@ -6,7 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDateTime } from "@/lib/formatDate";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
-import { computeDestinationNeedsAction } from "@/lib/ops/sla";
+import { computeDestinationNeedsAction, type SlaConfig } from "@/lib/ops/sla";
 import {
   DESTINATION_STATUS_META,
   EMPTY_OFFER_DRAFT,
@@ -35,6 +35,7 @@ import {
 type OpsInboxDispatchDrawerProps = {
   row: AdminOpsInboxRow;
   actionClassName: string;
+  slaConfig: SlaConfig;
 };
 
 type FeedbackTone = "success" | "error";
@@ -101,7 +102,11 @@ const NEEDS_ACTION_META: Record<Exclude<ReturnType<typeof computeDestinationNeed
 
 const BULK_CONCURRENCY_LIMIT = 3;
 
-export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatchDrawerProps) {
+export function OpsInboxDispatchDrawer({
+  row,
+  actionClassName,
+  slaConfig,
+}: OpsInboxDispatchDrawerProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [isOpen, setIsOpen] = useState(false);
@@ -779,6 +784,7 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
                             hasOffer: offerProviderIds.has(destination.provider_id),
                           },
                           new Date(),
+                          slaConfig,
                         );
                         const needsActionMeta =
                           needsActionResult.needsAction && needsActionResult.reason

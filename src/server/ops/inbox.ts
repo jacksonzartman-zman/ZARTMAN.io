@@ -1,5 +1,10 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import { computeDestinationNeedsAction, computeQuoteNeedsAction, type SlaReason } from "@/lib/ops/sla";
+import {
+  computeDestinationNeedsAction,
+  computeQuoteNeedsAction,
+  type SlaConfig,
+  type SlaReason,
+} from "@/lib/ops/sla";
 import {
   handleMissingSupabaseSchema,
   serializeSupabaseError,
@@ -7,6 +12,7 @@ import {
 } from "@/server/admin/logging";
 import { requireAdminUser } from "@/server/auth";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
+import { getOpsSlaConfig } from "@/server/ops/settings";
 import { parseRfqOfferStatus, type RfqOffer } from "@/server/rfqs/offers";
 
 export type AdminOpsInboxFilters = {
@@ -75,6 +81,7 @@ type AdminOpsInboxArgs = {
   limit?: number;
   offset?: number;
   filters?: AdminOpsInboxFilters;
+  slaConfig?: SlaConfig;
 };
 
 type QuoteRow = {
@@ -171,6 +178,7 @@ export async function getAdminOpsInboxRows(
 ): Promise<AdminOpsInboxRow[]> {
   await requireAdminUser();
 
+  const slaConfig = args.slaConfig ?? (await getOpsSlaConfig());
   const limit = normalizeLimit(args.limit);
   const offset = normalizeOffset(args.offset);
   if (limit <= 0) {
@@ -278,7 +286,7 @@ export async function getAdminOpsInboxRows(
 
     const destinations = destinationsByQuoteId.get(quoteId) ?? [];
     const offers = offersByQuoteId.get(quoteId) ?? [];
-    const summary = buildQuoteSummary(destinations, offers, now);
+    const summary = buildQuoteSummary(destinations, offers, now, slaConfig);
 
     const row: AdminOpsInboxRow = {
       quote: {
@@ -740,6 +748,7 @@ function buildQuoteSummary(
   destinations: AdminOpsInboxDestination[],
   offers: AdminOpsInboxOffer[],
   now: Date,
+  slaConfig: SlaConfig,
 ): AdminOpsInboxSummary {
   const counts: Record<DestinationStatusCountKey, number> = {
     queued: 0,
@@ -775,6 +784,7 @@ function buildQuoteSummary(
         hasOffer: offerProviderIds.has(destination.provider_id),
       },
       now,
+      slaConfig,
     );
 
     if (result.needsAction && result.reason) {
@@ -794,6 +804,7 @@ function buildQuoteSummary(
       offers,
     },
     now,
+    slaConfig,
   );
 
   return {
