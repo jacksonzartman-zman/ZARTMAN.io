@@ -4,7 +4,12 @@ import { revalidatePath } from "next/cache";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
-import { getServerAuthUser, requireAdminUser, requireUser } from "@/server/auth";
+import {
+  getServerAuthUser,
+  requireAdminUser,
+  requireUser,
+  UnauthorizedError,
+} from "@/server/auth";
 import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -118,6 +123,12 @@ const ADMIN_RFQ_OFFER_PROVIDER_ERROR = "Select a provider.";
 const ADMIN_RFQ_OFFER_STATUS_ERROR = "Select a valid offer status.";
 const ADMIN_RFQ_OFFER_CONFIDENCE_ERROR =
   "Confidence score must be between 0 and 100.";
+const ADMIN_RFQ_OFFER_VALIDATION_ERROR =
+  "Check the offer details and try again.";
+const ADMIN_RFQ_OFFER_NUMBER_ERROR = "Enter a valid number.";
+const ADMIN_RFQ_OFFER_INTEGER_ERROR = "Enter a whole number.";
+const ADMIN_RFQ_OFFER_LEAD_TIME_RANGE_ERROR =
+  "Lead time min must be less than or equal to max.";
 const ADMIN_DESTINATIONS_GENERIC_ERROR =
   "We couldn't update destinations right now. Please try again.";
 const ADMIN_DESTINATIONS_INPUT_ERROR = "Select at least one provider.";
@@ -540,9 +551,13 @@ export async function upsertRfqOffer(
   formData: FormData,
 ): Promise<UpsertRfqOfferState> {
   try {
-    const { user } = await getServerAuthUser();
-    if (!user) {
-      return { ok: false, error: ADMIN_RFQ_OFFER_AUTH_ERROR };
+    try {
+      await requireAdminUser();
+    } catch (error) {
+      if (error instanceof UnauthorizedError) {
+        return { ok: false, error: ADMIN_RFQ_OFFER_AUTH_ERROR };
+      }
+      throw error;
     }
 
     const normalizedRfqId = normalizeIdInput(rfqId);
@@ -559,30 +574,16 @@ export async function upsertRfqOffer(
       };
     }
 
-    const status = parseRfqOfferStatus(getFormString(formData, "status"));
+    const statusInput = getFormString(formData, "status");
+    const status =
+      typeof statusInput === "string" && statusInput.trim().length > 0
+        ? parseRfqOfferStatus(statusInput)
+        : "received";
     if (!status) {
       return {
         ok: false,
         error: ADMIN_RFQ_OFFER_STATUS_ERROR,
         fieldErrors: { status: ADMIN_RFQ_OFFER_STATUS_ERROR },
-      };
-    }
-
-    const confidenceRaw = getFormString(formData, "confidenceScore");
-    const confidenceScore: number | null =
-      typeof confidenceRaw === "string" && confidenceRaw.trim().length > 0
-        ? Number(confidenceRaw.trim())
-        : null;
-    if (
-      confidenceScore !== null &&
-      (!Number.isFinite(confidenceScore) ||
-        confidenceScore < 0 ||
-        confidenceScore > 100)
-    ) {
-      return {
-        ok: false,
-        error: ADMIN_RFQ_OFFER_CONFIDENCE_ERROR,
-        fieldErrors: { confidenceScore: ADMIN_RFQ_OFFER_CONFIDENCE_ERROR },
       };
     }
 
@@ -596,12 +597,67 @@ export async function upsertRfqOffer(
 
     const destinationId = normalizeOptionalId(getFormString(formData, "destinationId"));
     const assumptions = normalizeOptionalText(getFormString(formData, "assumptions"));
-    const totalPrice = normalizeOptionalNumber(getFormString(formData, "totalPrice"));
-    const unitPrice = normalizeOptionalNumber(getFormString(formData, "unitPrice"));
-    const toolingPrice = normalizeOptionalNumber(getFormString(formData, "toolingPrice"));
-    const shippingPrice = normalizeOptionalNumber(getFormString(formData, "shippingPrice"));
-    const leadTimeMin = normalizeOptionalInteger(getFormString(formData, "leadTimeDaysMin"));
-    const leadTimeMax = normalizeOptionalInteger(getFormString(formData, "leadTimeDaysMax"));
+    const totalPriceRaw = getFormString(formData, "totalPrice");
+    const unitPriceRaw = getFormString(formData, "unitPrice");
+    const toolingPriceRaw = getFormString(formData, "toolingPrice");
+    const shippingPriceRaw = getFormString(formData, "shippingPrice");
+    const leadTimeMinRaw = getFormString(formData, "leadTimeDaysMin");
+    const leadTimeMaxRaw = getFormString(formData, "leadTimeDaysMax");
+    const confidenceRaw = getFormString(formData, "confidenceScore");
+
+    const totalPrice = normalizeOptionalNumber(totalPriceRaw);
+    const unitPrice = normalizeOptionalNumber(unitPriceRaw);
+    const toolingPrice = normalizeOptionalNumber(toolingPriceRaw);
+    const shippingPrice = normalizeOptionalNumber(shippingPriceRaw);
+    const leadTimeMin = normalizeOptionalInteger(leadTimeMinRaw);
+    const leadTimeMax = normalizeOptionalInteger(leadTimeMaxRaw);
+    const confidenceScore = normalizeOptionalInteger(confidenceRaw);
+
+    const fieldErrors: Record<string, string> = {};
+    if (hasNonEmptyString(totalPriceRaw) && totalPrice === null) {
+      fieldErrors.totalPrice = ADMIN_RFQ_OFFER_NUMBER_ERROR;
+    }
+    if (hasNonEmptyString(unitPriceRaw) && unitPrice === null) {
+      fieldErrors.unitPrice = ADMIN_RFQ_OFFER_NUMBER_ERROR;
+    }
+    if (hasNonEmptyString(toolingPriceRaw) && toolingPrice === null) {
+      fieldErrors.toolingPrice = ADMIN_RFQ_OFFER_NUMBER_ERROR;
+    }
+    if (hasNonEmptyString(shippingPriceRaw) && shippingPrice === null) {
+      fieldErrors.shippingPrice = ADMIN_RFQ_OFFER_NUMBER_ERROR;
+    }
+    if (hasNonEmptyString(leadTimeMinRaw) && leadTimeMin === null) {
+      fieldErrors.leadTimeDaysMin = ADMIN_RFQ_OFFER_INTEGER_ERROR;
+    }
+    if (hasNonEmptyString(leadTimeMaxRaw) && leadTimeMax === null) {
+      fieldErrors.leadTimeDaysMax = ADMIN_RFQ_OFFER_INTEGER_ERROR;
+    }
+    if (hasNonEmptyString(confidenceRaw) && confidenceScore === null) {
+      fieldErrors.confidenceScore = ADMIN_RFQ_OFFER_CONFIDENCE_ERROR;
+    }
+    if (
+      typeof confidenceScore === "number" &&
+      (confidenceScore < 0 || confidenceScore > 100)
+    ) {
+      fieldErrors.confidenceScore = ADMIN_RFQ_OFFER_CONFIDENCE_ERROR;
+    }
+    if (
+      typeof leadTimeMin === "number" &&
+      typeof leadTimeMax === "number" &&
+      leadTimeMin > leadTimeMax
+    ) {
+      fieldErrors.leadTimeDaysMin = ADMIN_RFQ_OFFER_LEAD_TIME_RANGE_ERROR;
+      fieldErrors.leadTimeDaysMax = ADMIN_RFQ_OFFER_LEAD_TIME_RANGE_ERROR;
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+      return {
+        ok: false,
+        error: ADMIN_RFQ_OFFER_VALIDATION_ERROR,
+        fieldErrors,
+      };
+    }
+
     const receivedAt = normalizeOptionalTimestamp(getFormString(formData, "receivedAt"));
 
     assignIfDefined(payload, "destination_id", destinationId);
@@ -635,6 +691,31 @@ export async function upsertRfqOffer(
 
     if (!data?.id) {
       return { ok: false, error: ADMIN_RFQ_OFFER_GENERIC_ERROR };
+    }
+
+    if (destinationId) {
+      const now = new Date().toISOString();
+      const { error: destinationError } = await supabaseServer
+        .from("rfq_destinations")
+        .update({
+          status: "quoted",
+          last_status_at: now,
+          error_message: null,
+        })
+        .eq("id", destinationId)
+        .eq("rfq_id", normalizedRfqId);
+
+      if (destinationError) {
+        if (isMissingTableOrColumnError(destinationError)) {
+          return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+        }
+        console.error("[admin rfq destinations] offer status update failed", {
+          rfqId: normalizedRfqId,
+          destinationId,
+          error: serializeSupabaseError(destinationError),
+        });
+        return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+      }
     }
 
     revalidatePath("/admin/quotes");
@@ -1410,7 +1491,7 @@ function normalizeOptionalInteger(value: unknown): number | null | undefined {
   if (typeof normalized === "undefined" || normalized === null) {
     return normalized;
   }
-  return Math.round(normalized);
+  return Number.isInteger(normalized) ? normalized : null;
 }
 
 function normalizeOptionalTimestamp(value: unknown): string | null | undefined {
@@ -1441,6 +1522,10 @@ function assignIfDefined(
   if (typeof value !== "undefined") {
     target[key] = value;
   }
+}
+
+function hasNonEmptyString(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 export type AdminCapacityUpdateRequestState =

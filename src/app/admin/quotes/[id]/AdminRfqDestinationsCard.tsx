@@ -8,14 +8,19 @@ import type { RfqDestination, RfqDestinationStatus } from "@/server/rfqs/destina
 import {
   addDestinationsAction,
   updateDestinationStatusAction,
+  upsertRfqOffer,
+  type UpsertRfqOfferState,
 } from "./actions";
 import { ctaSizeClasses, dangerCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatCurrency } from "@/lib/formatCurrency";
+import type { RfqOffer } from "@/server/rfqs/offers";
 
 type AdminRfqDestinationsCardProps = {
   quoteId: string;
   providers: ProviderRow[];
   destinations: RfqDestination[];
+  offers: RfqOffer[];
 };
 
 type FeedbackTone = "success" | "error";
@@ -28,6 +33,18 @@ type FeedbackState = {
 type StatusMeta = {
   label: string;
   className: string;
+};
+
+type OfferDraft = {
+  totalPrice: string;
+  unitPrice: string;
+  toolingPrice: string;
+  shippingPrice: string;
+  leadTimeDaysMin: string;
+  leadTimeDaysMax: string;
+  confidenceScore: string;
+  riskFlags: string;
+  assumptions: string;
 };
 
 const STATUS_META: Record<RfqDestinationStatus, StatusMeta> = {
@@ -61,10 +78,29 @@ const STATUS_META: Record<RfqDestinationStatus, StatusMeta> = {
   },
 };
 
+const EMPTY_OFFER_DRAFT: OfferDraft = {
+  totalPrice: "",
+  unitPrice: "",
+  toolingPrice: "",
+  shippingPrice: "",
+  leadTimeDaysMin: "",
+  leadTimeDaysMax: "",
+  confidenceScore: "",
+  riskFlags: "",
+  assumptions: "",
+};
+
+const EMPTY_OFFER_STATE: UpsertRfqOfferState = {
+  ok: true,
+  message: "",
+  offerId: "",
+};
+
 export function AdminRfqDestinationsCard({
   quoteId,
   providers,
   destinations,
+  offers,
 }: AdminRfqDestinationsCardProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -73,6 +109,10 @@ export function AdminRfqDestinationsCard({
   const [errorDestination, setErrorDestination] = useState<RfqDestination | null>(null);
   const [errorNote, setErrorNote] = useState("");
   const [errorFeedback, setErrorFeedback] = useState<string | null>(null);
+  const [offerDestination, setOfferDestination] = useState<RfqDestination | null>(null);
+  const [offerDraft, setOfferDraft] = useState<OfferDraft>(EMPTY_OFFER_DRAFT);
+  const [offerFieldErrors, setOfferFieldErrors] = useState<Record<string, string>>({});
+  const [offerError, setOfferError] = useState<string | null>(null);
 
   const providerById = useMemo(() => {
     const map = new Map<string, ProviderRow>();
@@ -81,6 +121,14 @@ export function AdminRfqDestinationsCard({
     }
     return map;
   }, [providers]);
+
+  const offersByProviderId = useMemo(() => {
+    const map = new Map<string, RfqOffer>();
+    for (const offer of offers) {
+      map.set(offer.provider_id, offer);
+    }
+    return map;
+  }, [offers]);
 
   const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const selections = Array.from(event.target.selectedOptions).map((option) => option.value);
@@ -116,6 +164,55 @@ export function AdminRfqDestinationsCard({
         return;
       }
       setFeedback({ tone: "error", message: result.error });
+    });
+  };
+
+  const openOfferModal = (destination: RfqDestination) => {
+    const offer = offersByProviderId.get(destination.provider_id) ?? null;
+    setOfferFieldErrors({});
+    setOfferError(null);
+    setOfferDestination(destination);
+    setOfferDraft(buildOfferDraft(offer));
+  };
+
+  const closeOfferModal = () => {
+    setOfferFieldErrors({});
+    setOfferError(null);
+    setOfferDestination(null);
+    setOfferDraft(EMPTY_OFFER_DRAFT);
+  };
+
+  const updateOfferField = (field: keyof OfferDraft, value: string) => {
+    setOfferDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const submitOffer = () => {
+    if (!offerDestination || pending) return;
+    setOfferFieldErrors({});
+    setOfferError(null);
+    setFeedback(null);
+    startTransition(async () => {
+      const formData = new FormData();
+      formData.set("providerId", offerDestination.provider_id);
+      formData.set("destinationId", offerDestination.id);
+      formData.set("totalPrice", offerDraft.totalPrice);
+      formData.set("unitPrice", offerDraft.unitPrice);
+      formData.set("toolingPrice", offerDraft.toolingPrice);
+      formData.set("shippingPrice", offerDraft.shippingPrice);
+      formData.set("leadTimeDaysMin", offerDraft.leadTimeDaysMin);
+      formData.set("leadTimeDaysMax", offerDraft.leadTimeDaysMax);
+      formData.set("confidenceScore", offerDraft.confidenceScore);
+      formData.set("qualityRiskFlags", offerDraft.riskFlags);
+      formData.set("assumptions", offerDraft.assumptions);
+      const result = await upsertRfqOffer(quoteId, EMPTY_OFFER_STATE, formData);
+      if (result.ok) {
+        setFeedback({ tone: "success", message: result.message });
+        closeOfferModal();
+        router.refresh();
+        return;
+      }
+      setOfferError(result.error);
+      setOfferFieldErrors(result.fieldErrors ?? {});
     });
   };
 
@@ -263,6 +360,9 @@ export function AdminRfqDestinationsCard({
                   Last Update
                 </th>
                 <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Offer
+                </th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Actions
                 </th>
               </tr>
@@ -283,6 +383,8 @@ export function AdminRfqDestinationsCard({
                   includeTime: true,
                   fallback: "-",
                 });
+                const offer = offersByProviderId.get(destination.provider_id) ?? null;
+                const offerSummary = offer ? formatOfferSummary(offer) : null;
                 return (
                   <tr key={destination.id}>
                     <td className="px-4 py-2 align-top font-medium text-slate-100">
@@ -308,7 +410,27 @@ export function AdminRfqDestinationsCard({
                     <td className="px-4 py-2 align-top text-slate-300">{sentAtLabel}</td>
                     <td className="px-4 py-2 align-top text-slate-300">{lastUpdateLabel}</td>
                     <td className="px-4 py-2 align-top">
+                      {offerSummary ? (
+                        <p className="text-xs text-slate-200">{offerSummary}</p>
+                      ) : (
+                        <p className="text-xs text-slate-500">No offer yet</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 align-top">
                       <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openOfferModal(destination)}
+                          disabled={pending}
+                          className={clsx(
+                            "rounded-full border border-emerald-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-100 transition",
+                            pending
+                              ? "cursor-not-allowed opacity-60"
+                              : "hover:border-emerald-400 hover:text-white",
+                          )}
+                        >
+                          Add / Edit Offer
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleStatusUpdate(destination.id, "sent")}
@@ -370,6 +492,222 @@ export function AdminRfqDestinationsCard({
           </table>
         )}
       </div>
+
+      {offerDestination ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add or edit offer"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeOfferModal();
+          }}
+        >
+          <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Add offer details</h3>
+                <p className="mt-1 text-sm text-slate-300">
+                  Capture normalized pricing and lead time for{" "}
+                  <span className="font-semibold text-slate-100">
+                    {providerById.get(offerDestination.provider_id)?.name ??
+                      offerDestination.provider_id}
+                  </span>
+                  .
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeOfferModal}
+                className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Total price
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={offerDraft.totalPrice}
+                    onChange={(event) => updateOfferField("totalPrice", event.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                    placeholder="0"
+                  />
+                  {offerFieldErrors.totalPrice ? (
+                    <p className="text-xs text-amber-200">{offerFieldErrors.totalPrice}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Unit price
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={offerDraft.unitPrice}
+                    onChange={(event) => updateOfferField("unitPrice", event.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                    placeholder="0"
+                  />
+                  {offerFieldErrors.unitPrice ? (
+                    <p className="text-xs text-amber-200">{offerFieldErrors.unitPrice}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Tooling price
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={offerDraft.toolingPrice}
+                    onChange={(event) => updateOfferField("toolingPrice", event.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                    placeholder="0"
+                  />
+                  {offerFieldErrors.toolingPrice ? (
+                    <p className="text-xs text-amber-200">{offerFieldErrors.toolingPrice}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Shipping price
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={offerDraft.shippingPrice}
+                    onChange={(event) => updateOfferField("shippingPrice", event.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                    placeholder="0"
+                  />
+                  {offerFieldErrors.shippingPrice ? (
+                    <p className="text-xs text-amber-200">{offerFieldErrors.shippingPrice}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Lead time min days
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    step={1}
+                    value={offerDraft.leadTimeDaysMin}
+                    onChange={(event) => updateOfferField("leadTimeDaysMin", event.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                    placeholder="0"
+                  />
+                  {offerFieldErrors.leadTimeDaysMin ? (
+                    <p className="text-xs text-amber-200">{offerFieldErrors.leadTimeDaysMin}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Lead time max days
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    step={1}
+                    value={offerDraft.leadTimeDaysMax}
+                    onChange={(event) => updateOfferField("leadTimeDaysMax", event.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                    placeholder="0"
+                  />
+                  {offerFieldErrors.leadTimeDaysMax ? (
+                    <p className="text-xs text-amber-200">{offerFieldErrors.leadTimeDaysMax}</p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Confidence score
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={offerDraft.confidenceScore}
+                    onChange={(event) => updateOfferField("confidenceScore", event.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                    placeholder="0-100"
+                  />
+                  {offerFieldErrors.confidenceScore ? (
+                    <p className="text-xs text-amber-200">
+                      {offerFieldErrors.confidenceScore}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Risk flags
+                  </label>
+                  <input
+                    type="text"
+                    value={offerDraft.riskFlags}
+                    onChange={(event) => updateOfferField("riskFlags", event.target.value)}
+                    className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                    placeholder="comma-separated"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Use commas to separate multiple flags.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Assumptions
+                </label>
+                <textarea
+                  value={offerDraft.assumptions}
+                  onChange={(event) => updateOfferField("assumptions", event.target.value)}
+                  rows={4}
+                  className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                  placeholder="Optional notes about scope, exclusions, or context."
+                  maxLength={2000}
+                />
+              </div>
+
+              {offerError ? (
+                <p className="text-sm text-amber-200" role="alert">
+                  {offerError}
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeOfferModal}
+                  className="rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitOffer}
+                  disabled={pending}
+                  className={clsx(
+                    secondaryCtaClasses,
+                    ctaSizeClasses.sm,
+                    pending ? "cursor-not-allowed opacity-60" : null,
+                  )}
+                >
+                  {pending ? "Saving..." : "Save offer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {errorDestination ? (
         <div
@@ -452,4 +790,90 @@ function formatEnumLabel(value?: string | null): string {
     .split(" ")
     .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
     .join(" ");
+}
+
+function buildOfferDraft(offer: RfqOffer | null): OfferDraft {
+  if (!offer) {
+    return { ...EMPTY_OFFER_DRAFT };
+  }
+  return {
+    ...EMPTY_OFFER_DRAFT,
+    totalPrice: formatDraftValue(offer.total_price),
+    unitPrice: formatDraftValue(offer.unit_price),
+    toolingPrice: formatDraftValue(offer.tooling_price),
+    shippingPrice: formatDraftValue(offer.shipping_price),
+    leadTimeDaysMin: formatDraftValue(offer.lead_time_days_min),
+    leadTimeDaysMax: formatDraftValue(offer.lead_time_days_max),
+    confidenceScore: formatDraftValue(offer.confidence_score),
+    riskFlags: Array.isArray(offer.quality_risk_flags)
+      ? offer.quality_risk_flags.join(", ")
+      : "",
+    assumptions: offer.assumptions ?? "",
+  };
+}
+
+function formatDraftValue(value: number | string | null | undefined): string {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "";
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : "";
+  }
+  return "";
+}
+
+function formatOfferSummary(offer: RfqOffer): string {
+  const parts: string[] = [];
+  const currency = offer.currency ?? "USD";
+  const total = toFiniteNumber(offer.total_price);
+  const unit = toFiniteNumber(offer.unit_price);
+  if (typeof total === "number") {
+    parts.push(`Total ${formatCurrency(total, currency)}`);
+  } else if (typeof unit === "number") {
+    parts.push(`Unit ${formatCurrency(unit, currency)}`);
+  }
+
+  const leadTimeLabel = formatLeadTimeSummary(
+    offer.lead_time_days_min,
+    offer.lead_time_days_max,
+  );
+  if (leadTimeLabel) {
+    parts.push(leadTimeLabel);
+  }
+
+  if (typeof offer.confidence_score === "number") {
+    parts.push(`Confidence ${offer.confidence_score}`);
+  }
+
+  return parts.length > 0 ? parts.join(" | ") : "Offer saved";
+}
+
+function formatLeadTimeSummary(
+  minDays: number | null,
+  maxDays: number | null,
+): string | null {
+  if (typeof minDays === "number" && typeof maxDays === "number") {
+    return `${minDays}-${maxDays} days`;
+  }
+  if (typeof minDays === "number") {
+    return `${minDays}+ days`;
+  }
+  if (typeof maxDays === "number") {
+    return `Up to ${maxDays} days`;
+  }
+  return null;
+}
+
+function toFiniteNumber(value: number | string | null | undefined): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }

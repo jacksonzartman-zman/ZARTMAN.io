@@ -113,6 +113,7 @@ import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { getRfqDestinations } from "@/server/rfqs/destinations";
+import { getRfqOffers } from "@/server/rfqs/offers";
 import { getActiveProviders } from "@/server/providers";
 import { schemaGate } from "@/server/db/schemaContract";
 import {
@@ -447,9 +448,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     })();
     const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
     const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
-    const [activeProviders, rfqDestinations] = await Promise.all([
+    const [activeProviders, rfqDestinations, rfqOffers] = await Promise.all([
       getActiveProviders(),
       getRfqDestinations(quote.id),
+      getRfqOffers(quote.id),
     ]);
 
     let rfqFeedbackRows: QuoteRfqFeedbackAdminRow[] = [];
@@ -2403,6 +2405,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 quoteId={quote.id}
                 providers={activeProviders}
                 destinations={rfqDestinations}
+                offers={rfqOffers}
               />
             </DisclosureSection>
 
