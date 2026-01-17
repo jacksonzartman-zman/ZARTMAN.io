@@ -7,6 +7,7 @@ import { formatDateTime } from "@/lib/formatDate";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { getAdminOpsInboxRows, type AdminOpsInboxRow } from "@/server/ops/inbox";
 import { getActiveProviders } from "@/server/providers";
+import { OpsInboxDispatchDrawer } from "./OpsInboxDispatchDrawer";
 
 export const dynamic = "force-dynamic";
 
@@ -323,7 +324,7 @@ export default async function AdminOpsInboxPage({
                         <Link href={quoteHref} className={actionButtonClass}>
                           Open
                         </Link>
-                        <DispatchDrawer row={row} actionClassName={actionButtonClass} />
+                        <OpsInboxDispatchDrawer row={row} actionClassName={actionButtonClass} />
                       </div>
                     </td>
                   </tr>
@@ -337,92 +338,12 @@ export default async function AdminOpsInboxPage({
   );
 }
 
-function DispatchDrawer({
-  row,
-  actionClassName,
-}: {
-  row: AdminOpsInboxRow;
-  actionClassName: string;
-}) {
-  const destinations = row.destinations;
-  const quoteHref = `/admin/quotes/${row.quote.id}#destinations`;
-  return (
-    <details className="group relative text-left">
-      <summary className={clsx(actionClassName, "cursor-pointer list-none")}>
-        Dispatch
-      </summary>
-      <div className="mt-2 w-[min(22rem,90vw)] rounded-2xl border border-slate-900/80 bg-slate-950/95 p-4 text-xs text-slate-200 shadow-[0_16px_40px_rgba(2,6,23,0.6)]">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Dispatch details
-          </p>
-          <Link
-            href={quoteHref}
-            className="text-xs font-semibold text-emerald-200 hover:text-emerald-100"
-          >
-            Open full panel
-          </Link>
-        </div>
-        <div className="mt-3 space-y-3">
-          {destinations.length === 0 ? (
-            <p className="text-slate-400">No destinations yet. Add providers to begin dispatch.</p>
-          ) : (
-            destinations.map((destination) => {
-              const providerLabel = destination.provider_name || destination.provider_id;
-              const statusLabel = formatStatusLabel(destination.status);
-              const statusClass =
-                destination.status && DESTINATION_STATUS_VALUES.includes(destination.status as DestinationStatus)
-                  ? DESTINATION_STATUS_META[destination.status as DestinationStatus].className
-                  : "pill-muted";
-              const lastUpdate = resolveDestinationLastUpdate(destination);
-              const metaParts = [destination.provider_type, destination.quoting_mode]
-                .map((value) => (value ? formatStatusLabel(value) : ""))
-                .filter(Boolean);
-
-              return (
-                <div key={destination.id} className="rounded-xl border border-slate-900/60 bg-slate-950/60 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-100">{providerLabel}</p>
-                      {metaParts.length > 0 ? (
-                        <p className="text-[11px] text-slate-500">{metaParts.join(" · ")}</p>
-                      ) : null}
-                    </div>
-                    <span className={clsx("pill pill-table", statusClass)}>{statusLabel}</span>
-                  </div>
-                  <div className="mt-2 text-[11px] text-slate-500">
-                    Last update: {formatDateTime(lastUpdate, { includeTime: true })}
-                  </div>
-                  {destination.error_message ? (
-                    <p className="mt-2 text-[11px] text-red-200">
-                      Error: {destination.error_message}
-                    </p>
-                  ) : null}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </details>
-  );
-}
-
 function resolveLastActivityMs(row: AdminOpsInboxRow): number {
   let latest = toMs(row.quote.created_at);
   for (const destination of row.destinations) {
     latest = Math.max(latest, toMs(destination.last_status_at), toMs(destination.sent_at));
   }
   return latest;
-}
-
-function resolveDestinationLastUpdate(destination: AdminOpsInboxRow["destinations"][number]): Date | null {
-  const timestamp = Math.max(
-    toMs(destination.last_status_at),
-    toMs(destination.sent_at),
-    toMs(destination.created_at),
-  );
-  return timestamp > 0 ? new Date(timestamp) : null;
 }
 
 function toMs(value: string | null | undefined): number {
@@ -451,14 +372,3 @@ function normalizeFilterValue(value: string | null): string {
   return normalized;
 }
 
-function formatStatusLabel(value: string | null | undefined): string {
-  if (!value) return "Unknown";
-  return value
-    .toString()
-    .trim()
-    .replace(/[_-]+/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}

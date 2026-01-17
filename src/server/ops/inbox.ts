@@ -7,6 +7,7 @@ import {
 } from "@/server/admin/logging";
 import { requireAdminUser } from "@/server/auth";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
+import { parseRfqOfferStatus, type RfqOffer } from "@/server/rfqs/offers";
 
 export type AdminOpsInboxFilters = {
   status?: string | null;
@@ -44,9 +45,7 @@ export type AdminOpsInboxDestination = {
   error_message: string | null;
 };
 
-export type AdminOpsInboxOffer = {
-  provider_id: string;
-};
+export type AdminOpsInboxOffer = RfqOffer;
 
 export type AdminOpsInboxSummary = {
   counts: {
@@ -114,8 +113,23 @@ type DestinationRow = {
 };
 
 type OfferRow = {
+  id: string | null;
   rfq_id: string | null;
   provider_id: string | null;
+  destination_id: string | null;
+  currency: string | null;
+  total_price: number | string | null;
+  unit_price: number | string | null;
+  tooling_price: number | string | null;
+  shipping_price: number | string | null;
+  lead_time_days_min: number | string | null;
+  lead_time_days_max: number | string | null;
+  assumptions: string | null;
+  confidence_score: number | string | null;
+  quality_risk_flags: string[] | null;
+  status: string | null;
+  received_at: string | null;
+  created_at: string | null;
 };
 
 const DEFAULT_LIMIT = 50;
@@ -129,6 +143,26 @@ const DESTINATION_STATUS_COUNTS = [
   "declined",
   "error",
 ] as const;
+
+const OFFER_SELECT = [
+  "id",
+  "rfq_id",
+  "provider_id",
+  "destination_id",
+  "currency",
+  "total_price",
+  "unit_price",
+  "tooling_price",
+  "shipping_price",
+  "lead_time_days_min",
+  "lead_time_days_max",
+  "assumptions",
+  "confidence_score",
+  "quality_risk_flags",
+  "status",
+  "received_at",
+  "created_at",
+].join(",");
 
 type DestinationStatusCountKey = (typeof DESTINATION_STATUS_COUNTS)[number];
 
@@ -287,6 +321,61 @@ function normalizeOptionalString(value: unknown): string | null {
 function normalizeId(value: unknown): string | null {
   const normalized = normalizeString(value);
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeOptionalId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeCurrency(value: unknown): string {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length > 0) {
+      return trimmed.toUpperCase();
+    }
+  }
+  return "USD";
+}
+
+function normalizeNumeric(value: unknown): number | string | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  return null;
+}
+
+function normalizeInteger(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? Math.round(value) : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? Math.round(parsed) : null;
+  }
+  return null;
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeRiskFlags(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((flag) => (typeof flag === "string" ? flag.trim() : ""))
+    .filter((flag) => flag.length > 0);
 }
 
 function normalizeLimit(value: unknown): number {
@@ -564,7 +653,7 @@ async function loadOffersByQuoteId(
   try {
     const { data, error } = await supabaseServer
       .from("rfq_offers")
-      .select("rfq_id,provider_id")
+      .select(OFFER_SELECT)
       .in("rfq_id", quoteIds)
       .returns<OfferRow[]>();
 
@@ -586,13 +675,14 @@ async function loadOffersByQuoteId(
     }
 
     for (const row of Array.isArray(data) ? data : []) {
-      const quoteId = normalizeId(row?.rfq_id);
-      const providerId = normalizeId(row?.provider_id);
-      if (!quoteId || !providerId) continue;
+      const offer = normalizeOfferRow(row);
+      if (!offer) continue;
+      const quoteId = normalizeId(offer.rfq_id);
+      if (!quoteId) continue;
       if (!map.has(quoteId)) {
         map.set(quoteId, []);
       }
-      map.get(quoteId)!.push({ provider_id: providerId });
+      map.get(quoteId)!.push(offer);
     }
   } catch (error) {
     if (
@@ -611,6 +701,39 @@ async function loadOffersByQuoteId(
   }
 
   return map;
+}
+
+function normalizeOfferRow(row: OfferRow): RfqOffer | null {
+  const id = normalizeId(row?.id);
+  const rfqId = normalizeId(row?.rfq_id);
+  const providerId = normalizeId(row?.provider_id);
+  if (!id || !rfqId || !providerId) {
+    return null;
+  }
+
+  const createdAt = row?.created_at ?? new Date().toISOString();
+  const receivedAt = row?.received_at ?? createdAt;
+
+  return {
+    id,
+    rfq_id: rfqId,
+    provider_id: providerId,
+    destination_id: normalizeOptionalId(row?.destination_id),
+    currency: normalizeCurrency(row?.currency),
+    total_price: normalizeNumeric(row?.total_price),
+    unit_price: normalizeNumeric(row?.unit_price),
+    tooling_price: normalizeNumeric(row?.tooling_price),
+    shipping_price: normalizeNumeric(row?.shipping_price),
+    lead_time_days_min: normalizeInteger(row?.lead_time_days_min),
+    lead_time_days_max: normalizeInteger(row?.lead_time_days_max),
+    assumptions: normalizeOptionalText(row?.assumptions),
+    confidence_score: normalizeInteger(row?.confidence_score),
+    quality_risk_flags: normalizeRiskFlags(row?.quality_risk_flags),
+    status: parseRfqOfferStatus(row?.status) ?? "received",
+    received_at: receivedAt,
+    created_at: createdAt,
+    provider: null,
+  };
 }
 
 function buildQuoteSummary(
