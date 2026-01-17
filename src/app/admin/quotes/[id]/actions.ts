@@ -1272,7 +1272,6 @@ export async function postQuoteMessage(
 
     console.log("[admin messages] create success", {
       quoteId: normalizedQuoteId,
-      userId: user.id,
       messageId: result.message.id,
     });
 
