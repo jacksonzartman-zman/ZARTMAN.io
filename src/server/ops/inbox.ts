@@ -14,10 +14,16 @@ import { requireAdminUser } from "@/server/auth";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 import { getOpsSlaConfig } from "@/server/ops/settings";
 import { parseRfqOfferStatus, type RfqOffer } from "@/server/rfqs/offers";
+import {
+  computeAdminReplyState,
+  loadQuoteMessageRollups,
+  type AdminMessageReplyState,
+} from "@/server/quotes/messageState";
 
 export type AdminOpsInboxFilters = {
   status?: string | null;
   needsActionOnly?: boolean | null;
+  messageNeedsReplyOnly?: boolean | null;
   providerId?: string | null;
   destinationStatus?: string | null;
   selectedOnly?: boolean | null;
@@ -66,6 +72,9 @@ export type AdminOpsInboxSummary = {
   needsReplyCount: number;
   errorsCount: number;
   queuedStaleCount: number;
+  messageNeedsReplyCount: number;
+  lastCustomerMessageAt: string | null;
+  lastAdminMessageAt: string | null;
   topReasons: Array<Exclude<SlaReason, null>>;
 };
 
@@ -272,12 +281,18 @@ export async function getAdminOpsInboxRows(
   const customerByQuoteId = seedCustomerMap(quotes);
   await hydrateCustomerInfo({ quoteIds, customerByQuoteId });
 
-  const [destinationsByQuoteId, offersByQuoteId] = await Promise.all([
+  const [destinationsByQuoteId, offersByQuoteId, messageRollupsByQuoteId] = await Promise.all([
     loadDestinationsByQuoteId(quoteIds),
     loadOffersByQuoteId(quoteIds),
+    loadQuoteMessageRollups(quoteIds),
   ]);
 
   const now = new Date();
+  const emptyMessageState: AdminMessageReplyState = {
+    needsReply: false,
+    lastCustomerMessageAt: null,
+    lastAdminMessageAt: null,
+  };
   const rows: AdminOpsInboxRow[] = [];
 
   for (const quote of quotes) {
@@ -286,7 +301,9 @@ export async function getAdminOpsInboxRows(
 
     const destinations = destinationsByQuoteId.get(quoteId) ?? [];
     const offers = offersByQuoteId.get(quoteId) ?? [];
-    const summary = buildQuoteSummary(destinations, offers, now, slaConfig);
+    const messageRollup = messageRollupsByQuoteId[quoteId] ?? null;
+    const messageState = messageRollup ? computeAdminReplyState(messageRollup) : emptyMessageState;
+    const summary = buildQuoteSummary(destinations, offers, now, slaConfig, messageState);
 
     const row: AdminOpsInboxRow = {
       quote: {
@@ -409,6 +426,7 @@ function normalizeFilters(raw?: AdminOpsInboxFilters) {
   return {
     status: status ? status.toLowerCase() : null,
     needsActionOnly: Boolean(raw?.needsActionOnly),
+    messageNeedsReplyOnly: Boolean(raw?.messageNeedsReplyOnly),
     providerId,
     destinationStatus: destinationStatus ? destinationStatus.toLowerCase() : null,
     selectedOnly: Boolean(raw?.selectedOnly),
@@ -749,6 +767,7 @@ function buildQuoteSummary(
   offers: AdminOpsInboxOffer[],
   now: Date,
   slaConfig: SlaConfig,
+  messageState: AdminMessageReplyState,
 ): AdminOpsInboxSummary {
   const counts: Record<DestinationStatusCountKey, number> = {
     queued: 0,
@@ -807,9 +826,17 @@ function buildQuoteSummary(
     slaConfig,
   );
 
+  const messageNeedsReplyCount = messageState.needsReply ? 1 : 0;
+
   return {
     counts,
-    ...needs,
+    needsActionCount: needs.needsActionCount + messageNeedsReplyCount,
+    needsReplyCount: needs.needsReplyCount,
+    errorsCount: needs.errorsCount,
+    queuedStaleCount: needs.queuedStaleCount,
+    messageNeedsReplyCount,
+    lastCustomerMessageAt: messageState.lastCustomerMessageAt,
+    lastAdminMessageAt: messageState.lastAdminMessageAt,
     topReasons: buildTopReasons(reasonCounts),
   };
 }
@@ -858,6 +885,10 @@ function passesFilters(
   }
 
   if (filters.needsActionOnly && row.summary.needsActionCount <= 0) {
+    return false;
+  }
+
+  if (filters.messageNeedsReplyOnly && row.summary.messageNeedsReplyCount <= 0) {
     return false;
   }
 

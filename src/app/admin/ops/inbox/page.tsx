@@ -50,7 +50,7 @@ const DESTINATION_STATUS_META: Record<
 };
 
 type NeedsActionChip = {
-  key: "needsReplyCount" | "errorsCount" | "queuedStaleCount";
+  key: "needsReplyCount" | "errorsCount" | "queuedStaleCount" | "messageNeedsReplyCount";
   label: string;
   className: string;
 };
@@ -59,6 +59,11 @@ const NEEDS_ACTION_CHIPS: NeedsActionChip[] = [
   {
     key: "needsReplyCount",
     label: "Needs reply",
+    className: "pill-warning",
+  },
+  {
+    key: "messageNeedsReplyCount",
+    label: "Msg Needs Reply",
     className: "pill-warning",
   },
   {
@@ -81,6 +86,7 @@ export default async function AdminOpsInboxPage({
   const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
 
   const needsActionOnly = parseToggle(usp.get("needsAction"));
+  const messageNeedsReplyOnly = parseToggle(usp.get("messageNeedsReply"));
   const selectedOnly = parseToggle(usp.get("selected"));
   const destinationStatus = normalizeDestinationStatus(usp.get("destinationStatus"));
   const providerId = normalizeFilterValue(usp.get("provider"));
@@ -92,6 +98,7 @@ export default async function AdminOpsInboxPage({
       limit: 200,
       filters: {
         needsActionOnly,
+        messageNeedsReplyOnly,
         selectedOnly,
         destinationStatus: destinationStatus === "all" ? null : destinationStatus,
         providerId: providerId || null,
@@ -122,6 +129,7 @@ export default async function AdminOpsInboxPage({
 
   const hasFilters =
     needsActionOnly ||
+    messageNeedsReplyOnly ||
     selectedOnly ||
     destinationStatus !== "all" ||
     providerId.length > 0;
@@ -200,6 +208,17 @@ export default async function AdminOpsInboxPage({
                 className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
               />
               Needs action only
+            </label>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+              <input
+                type="checkbox"
+                name="messageNeedsReply"
+                value="1"
+                defaultChecked={messageNeedsReplyOnly}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+              />
+              Message needs reply only
             </label>
 
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
@@ -360,6 +379,11 @@ function resolveLastActivityMs(row: AdminOpsInboxRow): number {
   for (const destination of row.destinations) {
     latest = Math.max(latest, toMs(destination.last_status_at), toMs(destination.sent_at));
   }
+  latest = Math.max(
+    latest,
+    toMs(row.summary.lastCustomerMessageAt),
+    toMs(row.summary.lastAdminMessageAt),
+  );
   return latest;
 }
 
