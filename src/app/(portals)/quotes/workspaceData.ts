@@ -13,10 +13,8 @@ import {
   loadQuoteUploadGroups,
   type QuoteUploadGroup,
 } from "@/server/quotes/uploadFiles";
-import {
-  loadQuoteMessages,
-  type QuoteMessageRecord,
-} from "@/server/quotes/messages";
+import { getQuoteMessages } from "@/server/messages/quoteMessages";
+import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import {
   SAFE_QUOTE_WITH_UPLOADS_FIELDS,
   type SafeQuoteWithUploadsField,
@@ -280,7 +278,7 @@ export async function loadQuoteWorkspaceData(
       fileCount,
     };
 
-    const messagesResult = await loadQuoteMessages({
+    const messagesResult = await getQuoteMessages({
       quoteId: enrichedQuote.id,
       viewerUserId: options?.viewerUserId ?? null,
       viewerRole: options?.viewerRole ?? null,
@@ -290,7 +288,9 @@ export async function loadQuoteWorkspaceData(
       ? null
       : typeof messagesResult.error === "string"
         ? messagesResult.error
-        : "message-load-error";
+        : messagesResult.missing
+          ? "missing_schema"
+          : "message-load-error";
 
     const filesIssue = filesUnavailable || filesErrorLogged;
 

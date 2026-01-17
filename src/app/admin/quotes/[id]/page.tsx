@@ -13,10 +13,8 @@ import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatAwardedByLabel, formatShortId } from "@/lib/awards";
 import { supabaseServer } from "@/lib/supabaseServer";
-import {
-  loadQuoteMessages,
-  type QuoteMessageRecord,
-} from "@/server/quotes/messages";
+import { getQuoteMessages } from "@/server/messages/quoteMessages";
+import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import { getCustomerReplyToAddress, getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
 import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
 import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
@@ -604,18 +602,20 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       quote.internal_notes.trim().length > 0
         ? quote.internal_notes
         : null;
-    const messagesResult = await loadQuoteMessages({
+    const messagesResult = await getQuoteMessages({
       quoteId: quote.id,
       viewerRole: "admin",
     });
     if (!messagesResult.ok) {
       console.error("Failed to load quote messages", {
         quoteId: quote.id,
-        error: messagesResult.error ?? messagesResult.reason,
+        error: messagesResult.error ?? "message-load-error",
       });
     }
     const quoteMessages: QuoteMessageRecord[] = messagesResult.messages;
-    const quoteMessagesError = messagesResult.ok ? null : messagesResult.error;
+    const quoteMessagesError = messagesResult.ok
+      ? null
+      : messagesResult.error ?? (messagesResult.missing ? "missing_schema" : null);
 
     const threadSlaByQuoteId = await loadAdminThreadSlaForQuotes({ quoteIds: [quote.id] });
     const threadSla = threadSlaByQuoteId[quote.id] ?? null;
@@ -1426,7 +1426,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       />
     );
 
-    const messagesUnavailable = Boolean(quoteMessagesError);
+    const messagesUnavailable = !messagesResult.ok || messagesResult.missing || Boolean(quoteMessagesError);
     const postMessageAction = postAdminQuoteMessage.bind(null, quote.id);
     const outboundEmailEnabled = getEmailOutboundStatus().enabled;
     const outboundFileOptions = await loadOutboundFileOptions({ quoteId: quote.id, limit: 50 });

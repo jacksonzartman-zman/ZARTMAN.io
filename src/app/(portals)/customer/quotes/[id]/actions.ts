@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { notifyOnNewQuoteMessage } from "@/server/quotes/notifications";
-import { createQuoteMessage } from "@/server/quotes/messages";
+import { postQuoteMessage as postUnifiedQuoteMessage } from "@/server/messages/quoteMessages";
 import { sendEmailToSupplierFromCustomer } from "@/server/quotes/emailPortalSend";
 import { logOpsEvent } from "@/server/ops/events";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
@@ -405,11 +405,6 @@ export async function postQuoteMessage(
       };
     }
 
-    const senderName =
-      customer.company_name?.trim() ? customer.company_name.trim() : "Customer";
-    // Masked identities: do not store customer email in shared thread rows.
-    const senderEmail = null;
-
     if (sendViaEmail) {
       const attachmentFileIds = formData
         .getAll("attachmentFileIds")
@@ -447,16 +442,10 @@ export async function postQuoteMessage(
       };
     }
 
-    const supabase = createAuthClient();
-    const result = await createQuoteMessage({
+    const result = await postUnifiedQuoteMessage({
       quoteId: normalizedQuoteId,
-      senderId: user.id,
-      senderRole: "customer",
-      body: trimmedBody,
-      senderName,
-      senderEmail,
-      customerId: customer.id,
-      supabase,
+      message: trimmedBody,
+      authorRole: "customer",
     });
 
     if (!result.ok || !result.message) {

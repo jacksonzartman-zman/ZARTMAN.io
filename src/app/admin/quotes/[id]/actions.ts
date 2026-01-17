@@ -28,10 +28,8 @@ import {
   logAdminQuotesError,
   logAdminQuotesWarn,
 } from "@/server/admin/quotes/logging";
-import {
-  createQuoteMessage,
-  type QuoteMessageRecord,
-} from "@/server/quotes/messages";
+import { postQuoteMessage as postUnifiedQuoteMessage } from "@/server/messages/quoteMessages";
+import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { upsertQuoteProject } from "@/server/quotes/projects";
 import {
@@ -1245,21 +1243,15 @@ export async function postQuoteMessage(
   }
 
   try {
-    const user = await requireAdminUser();
-
-    const result = await createQuoteMessage({
+    const result = await postUnifiedQuoteMessage({
       quoteId: normalizedQuoteId,
-      senderId: user.id,
-      senderRole: "admin",
-      body: trimmedBody,
-      senderName: "Zartman.io",
-      senderEmail: user.email ?? "admin@zartman.io",
+      message: trimmedBody,
+      authorRole: "admin",
     });
 
     if (!result.ok || !result.message) {
       console.error("[admin messages] create failed", {
         quoteId: normalizedQuoteId,
-        userId: user.id,
         error: result.error ?? result.reason,
       });
       return {
@@ -1280,7 +1272,6 @@ export async function postQuoteMessage(
 
     console.log("[admin messages] create success", {
       quoteId: normalizedQuoteId,
-      userId: user.id,
       messageId: result.message.id,
     });
 
