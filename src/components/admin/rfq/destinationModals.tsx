@@ -27,14 +27,23 @@ type DestinationEmailModalProps = {
   onMarkSent: () => void;
 };
 
-export type BulkDestinationEmailResult = {
-  destinationId: string;
-  providerLabel: string;
-  status: "success" | "error" | "skipped";
-  subject?: string;
-  body?: string;
-  message: string;
-};
+export type BulkDestinationEmailResult =
+  | {
+      destinationId: string;
+      providerLabel: string;
+      status: "success";
+      subject: string;
+      body: string;
+      message: string;
+    }
+  | {
+      destinationId: string;
+      providerLabel: string;
+      status: "error" | "skipped";
+      message: string;
+      subject?: never;
+      body?: never;
+    };
 
 type BulkDestinationEmailModalProps = {
   isOpen: boolean;

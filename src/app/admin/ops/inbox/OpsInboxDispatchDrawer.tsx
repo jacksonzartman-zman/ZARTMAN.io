@@ -360,10 +360,13 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
     setBulkEmailResults([]);
     setBulkEmailModalOpen(false);
     startTransition(async () => {
-      const results = await runWithConcurrency(
+      const results = await runWithConcurrency<
+        AdminOpsInboxRow["destinations"][number],
+        BulkDestinationEmailResult
+      >(
         selectedDestinations,
         BULK_CONCURRENCY_LIMIT,
-        async (destination) => {
+        async (destination): Promise<BulkDestinationEmailResult> => {
           const providerLabel =
             destination.provider_name || destination.provider_id || "Provider";
           if (destination.quoting_mode !== "email") {
@@ -424,10 +427,13 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
     setBulkActionSummary(null);
     setBulkActionType("markSent");
     startTransition(async () => {
-      const results = await runWithConcurrency(
+      const results = await runWithConcurrency<
+        AdminOpsInboxRow["destinations"][number],
+        BulkActionResult
+      >(
         selectedDestinations,
         BULK_CONCURRENCY_LIMIT,
-        async (destination) => {
+        async (destination): Promise<BulkActionResult> => {
           const providerLabel =
             destination.provider_name || destination.provider_id || "Provider";
           try {
@@ -477,10 +483,13 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
     setBulkActionSummary(null);
     setBulkActionType("markError");
     startTransition(async () => {
-      const results = await runWithConcurrency(
+      const results = await runWithConcurrency<
+        AdminOpsInboxRow["destinations"][number],
+        BulkActionResult
+      >(
         selectedDestinations,
         BULK_CONCURRENCY_LIMIT,
-        async (destination) => {
+        async (destination): Promise<BulkActionResult> => {
           const providerLabel =
             destination.provider_name || destination.provider_id || "Provider";
           try {
