@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
+import { listMarketplaceRfqsByIds } from "./rfqs";
 import type { MarketplaceRfq, RfqBidRecord } from "./types";
 import { marketplacePowerProfile, type MarketPowerProfile } from "./strategy";
 import { logMarketplaceEvent } from "./events";
@@ -355,39 +356,24 @@ async function loadProcessMap(rfqIds: string[]) {
   }
 
   try {
-    const { data, error } = await supabaseServer
-      .from("rfqs")
-      .select("id,process_requirements")
-      .in("id", rfqIds);
-
-    if (error) {
-      if (isMissingRfqTableError(error)) {
-        return {};
-      }
-      console.error("pricing: process map query failed", { error });
-      return {};
-    }
-
-    const rows =
-      (data as Array<{ id: string; process_requirements: string[] | null }>) ?? [];
-    return rows.reduce<Record<string, string[]>>((map, row) => {
-      const processes = Array.isArray(row.process_requirements)
-        ? row.process_requirements
-            .map((value) =>
-              typeof value === "string" ? value.trim().toLowerCase() : "",
-            )
-            .filter((value) => value.length > 0)
-        : [];
-      map[row.id] = processes;
+    const rfqs = await listMarketplaceRfqsByIds(rfqIds);
+    return rfqs.reduce<Record<string, string[]>>((map, rfq) => {
+      map[rfq.id] = normalizeProcessArray(rfq.process_requirements);
       return map;
     }, {});
   } catch (error) {
-    if (isMissingRfqTableError(error)) {
-      return {};
-    }
     console.error("pricing: process map unexpected error", { error });
     return {};
   }
+}
+
+function normalizeProcessArray(values?: string[] | null): string[] {
+  if (!Array.isArray(values) || values.length === 0) {
+    return [];
+  }
+  return values
+    .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
+    .filter((value) => value.length > 0);
 }
 
 function computeFloor(context: PricingContext) {

@@ -2,7 +2,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
 import { logMarketplaceEvent } from "./events";
 import { listBidsForRfq } from "./bids";
-import { loadRfqById, OPEN_RFQ_STATUSES } from "./rfqs";
+import { loadRfqById, listCustomerRfqs, OPEN_RFQ_STATUSES } from "./rfqs";
 import {
   marketplacePowerProfile,
   customerPriorityProfile,
@@ -449,36 +449,11 @@ export async function recommendTimelineStrategy(
 }
 
 async function fetchRecentCustomerRfqs(customerId: string): Promise<MarketplaceRfq[]> {
-  if (!isRfqsFeatureEnabled()) {
+  if (!customerId) {
     return [];
   }
 
-  try {
-    const { data, error } = await supabaseServer
-      .from("rfqs")
-      .select(
-        "id,customer_id,status,title,description,quantity,process_requirements,material_requirements,certification_requirements,target_date,created_at,updated_at,priority,files,upload_id",
-      )
-      .eq("customer_id", customerId)
-      .order("created_at", { ascending: false })
-      .limit(MAX_RFQ_HISTORY);
-
-    if (error) {
-      if (isMissingRfqTableError(error)) {
-        return [];
-      }
-      console.error("customer-intel: rfq history query failed", { customerId, error });
-      return [];
-    }
-
-    return (data as MarketplaceRfq[]) ?? [];
-  } catch (error) {
-    if (isMissingRfqTableError(error)) {
-      return [];
-    }
-    console.error("customer-intel: rfq history unexpected error", { customerId, error });
-    return [];
-  }
+  return await listCustomerRfqs(customerId, { limit: MAX_RFQ_HISTORY });
 }
 
 async function summarizeCustomerBids(rfqIds: string[]) {
