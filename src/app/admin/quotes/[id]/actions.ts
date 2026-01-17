@@ -61,6 +61,7 @@ import {
 } from "@/server/admin/quoteParts";
 import { appendFilesToQuoteUpload } from "@/server/quotes/uploadFiles";
 import { parseRfqOfferStatus } from "@/server/rfqs/offers";
+import { buildDestinationOutboundEmail } from "@/server/rfqs/outboundEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 
@@ -115,6 +116,10 @@ export type UpsertRfqOfferState =
   | { ok: true; message: string; offerId: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
 
+export type GenerateDestinationEmailActionResult =
+  | { ok: true; subject: string; body: string }
+  | { ok: false; error: string };
+
 const ADMIN_RFQ_OFFER_GENERIC_ERROR =
   "We couldn't save this offer right now. Please try again.";
 const ADMIN_RFQ_OFFER_AUTH_ERROR = "You must be signed in to update offers.";
@@ -133,6 +138,8 @@ const ADMIN_DESTINATIONS_GENERIC_ERROR =
   "We couldn't update destinations right now. Please try again.";
 const ADMIN_DESTINATIONS_INPUT_ERROR = "Select at least one provider.";
 const ADMIN_DESTINATION_STATUS_ERROR = "Select a valid destination status.";
+const ADMIN_DESTINATION_EMAIL_ERROR =
+  "We couldn't generate this RFQ email right now. Please try again.";
 
 export async function submitAwardFeedbackAction(
   quoteId: string,
@@ -728,6 +735,33 @@ export async function upsertRfqOffer(
       error: serializeActionError(error),
     });
     return { ok: false, error: ADMIN_RFQ_OFFER_GENERIC_ERROR };
+  }
+}
+
+export async function generateDestinationEmailAction(args: {
+  quoteId: string;
+  destinationId: string;
+}): Promise<GenerateDestinationEmailActionResult> {
+  const quoteId = normalizeIdInput(args.quoteId);
+  const destinationId = normalizeIdInput(args.destinationId);
+  if (!quoteId || !destinationId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+    const result = await buildDestinationOutboundEmail({ quoteId, destinationId });
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+    return { ok: true, subject: result.subject, body: result.body };
+  } catch (error) {
+    console.error("[admin rfq email] action crashed", {
+      quoteId,
+      destinationId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_DESTINATION_EMAIL_ERROR };
   }
 }
 

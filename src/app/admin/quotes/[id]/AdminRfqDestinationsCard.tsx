@@ -7,6 +7,7 @@ import type { ProviderRow } from "@/server/providers";
 import type { RfqDestination, RfqDestinationStatus } from "@/server/rfqs/destinations";
 import {
   addDestinationsAction,
+  generateDestinationEmailAction,
   updateDestinationStatusAction,
   upsertRfqOffer,
   type UpsertRfqOfferState,
@@ -15,6 +16,7 @@ import { ctaSizeClasses, dangerCtaClasses, secondaryCtaClasses } from "@/lib/cta
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import type { RfqOffer } from "@/server/rfqs/offers";
+import { CopyTextButton } from "@/components/CopyTextButton";
 
 type AdminRfqDestinationsCardProps = {
   quoteId: string;
@@ -113,6 +115,10 @@ export function AdminRfqDestinationsCard({
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(EMPTY_OFFER_DRAFT);
   const [offerFieldErrors, setOfferFieldErrors] = useState<Record<string, string>>({});
   const [offerError, setOfferError] = useState<string | null>(null);
+  const [emailDestination, setEmailDestination] = useState<RfqDestination | null>(null);
+  const [emailPackage, setEmailPackage] = useState<{ subject: string; body: string } | null>(null);
+  const [emailLoadingId, setEmailLoadingId] = useState<string | null>(null);
+  const [emailErrorsById, setEmailErrorsById] = useState<Record<string, string>>({});
 
   const providerById = useMemo(() => {
     const map = new Map<string, ProviderRow>();
@@ -247,6 +253,36 @@ export function AdminRfqDestinationsCard({
     });
   };
 
+  const openEmailModal = (destination: RfqDestination, subject: string, body: string) => {
+    setEmailDestination(destination);
+    setEmailPackage({ subject, body });
+  };
+
+  const closeEmailModal = () => {
+    setEmailDestination(null);
+    setEmailPackage(null);
+  };
+
+  const handleGenerateEmail = (destination: RfqDestination) => {
+    if (pending) return;
+    setEmailErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
+    setEmailDestination(null);
+    setEmailPackage(null);
+    setEmailLoadingId(destination.id);
+    startTransition(async () => {
+      const result = await generateDestinationEmailAction({
+        quoteId,
+        destinationId: destination.id,
+      });
+      if (result.ok) {
+        openEmailModal(destination, result.subject, result.body);
+      } else {
+        setEmailErrorsById((prev) => ({ ...prev, [destination.id]: result.error }));
+      }
+      setEmailLoadingId(null);
+    });
+  };
+
   const selectedCountLabel =
     selectedProviderIds.length > 0
       ? `${selectedProviderIds.length} selected`
@@ -374,6 +410,9 @@ export function AdminRfqDestinationsCard({
                 const providerName = provider?.name ?? destination.provider_id;
                 const providerType = formatEnumLabel(provider?.provider_type);
                 const providerMode = formatEnumLabel(provider?.quoting_mode);
+                const isEmailMode = provider?.quoting_mode === "email";
+                const isEmailGenerating = pending && emailLoadingId === destination.id;
+                const emailError = emailErrorsById[destination.id];
                 const statusMeta = STATUS_META[destination.status] ?? STATUS_META.draft;
                 const sentAtLabel = formatDateTime(destination.sent_at, {
                   includeTime: true,
@@ -431,6 +470,21 @@ export function AdminRfqDestinationsCard({
                         >
                           Add / Edit Offer
                         </button>
+                        {isEmailMode ? (
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateEmail(destination)}
+                            disabled={pending || isEmailGenerating}
+                            className={clsx(
+                              "rounded-full border border-indigo-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition",
+                              pending || isEmailGenerating
+                                ? "cursor-not-allowed opacity-60"
+                                : "hover:border-indigo-400 hover:text-white",
+                            )}
+                          >
+                            {isEmailGenerating ? "Generating..." : "Generate RFQ Email"}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleStatusUpdate(destination.id, "sent")}
@@ -483,6 +537,11 @@ export function AdminRfqDestinationsCard({
                         >
                           Mark Error
                         </button>
+                        {emailError ? (
+                          <p className="basis-full text-xs text-amber-200" role="alert">
+                            {emailError}
+                          </p>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -702,6 +761,91 @@ export function AdminRfqDestinationsCard({
                   )}
                 >
                   {pending ? "Saving..." : "Save offer"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {emailDestination && emailPackage ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Generate RFQ email"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeEmailModal();
+          }}
+        >
+          <div className="w-full max-w-3xl rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Outbound RFQ email</h3>
+                <p className="mt-1 text-sm text-slate-300">
+                  Draft for{" "}
+                  <span className="font-semibold text-slate-100">
+                    {providerById.get(emailDestination.provider_id)?.name ??
+                      emailDestination.provider_id}
+                  </span>
+                  .
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEmailModal}
+                className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Subject
+                </label>
+                <input
+                  value={emailPackage.subject}
+                  readOnly
+                  className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:outline-none"
+                />
+                <CopyTextButton text={emailPackage.subject} idleLabel="Copy subject" />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Body
+                </label>
+                <textarea
+                  value={emailPackage.body}
+                  readOnly
+                  rows={12}
+                  className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:outline-none"
+                />
+                <CopyTextButton text={emailPackage.body} idleLabel="Copy body" />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleStatusUpdate(emailDestination.id, "sent")}
+                  disabled={pending}
+                  className={clsx(
+                    "rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition",
+                    pending
+                      ? "cursor-not-allowed opacity-60"
+                      : "hover:border-slate-500 hover:text-white",
+                  )}
+                >
+                  Mark Sent
+                </button>
+                <button
+                  type="button"
+                  onClick={closeEmailModal}
+                  className="rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
+                >
+                  Done
                 </button>
               </div>
             </div>
