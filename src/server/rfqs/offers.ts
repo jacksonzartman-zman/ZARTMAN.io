@@ -87,9 +87,9 @@ export function parseRfqOfferStatus(value: unknown): RfqOfferStatus | null {
   return null;
 }
 
-export async function getRfqOffers(rfqId: string): Promise<RfqOffer[]> {
-  const normalizedId = normalizeId(rfqId);
-  if (!normalizedId) {
+export async function getRfqOffers(quoteId: string): Promise<RfqOffer[]> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
     return [];
   }
 
@@ -97,20 +97,20 @@ export async function getRfqOffers(rfqId: string): Promise<RfqOffer[]> {
     const { data, error } = await supabaseServer
       .from("rfq_offers")
       .select(OFFER_SELECT)
-      .eq("rfq_id", normalizedId)
+      .eq("rfq_id", normalizedQuoteId)
       .order("created_at", { ascending: true })
       .returns<RawRfqOfferRow[]>();
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
         console.warn("[rfq offers] missing schema; returning empty", {
-          rfqId: normalizedId,
+          quoteId: normalizedQuoteId,
           supabaseError: serializeSupabaseError(error),
         });
         return [];
       }
       console.error("[rfq offers] query failed", {
-        rfqId: normalizedId,
+        quoteId: normalizedQuoteId,
         supabaseError: serializeSupabaseError(error),
       });
       return [];
@@ -123,13 +123,13 @@ export async function getRfqOffers(rfqId: string): Promise<RfqOffer[]> {
   } catch (error) {
     if (isMissingTableOrColumnError(error)) {
       console.warn("[rfq offers] missing schema; returning empty", {
-        rfqId: normalizedId,
+        quoteId: normalizedQuoteId,
         supabaseError: serializeSupabaseError(error),
       });
       return [];
     }
     console.error("[rfq offers] unexpected error", {
-      rfqId: normalizedId,
+      quoteId: normalizedQuoteId,
       error: serializeSupabaseError(error) ?? error,
     });
     return [];

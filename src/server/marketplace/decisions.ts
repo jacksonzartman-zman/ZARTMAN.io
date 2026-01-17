@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import { OPEN_RFQ_STATUSES } from "./rfqs";
+import { listOpenCustomerRfqs, OPEN_RFQ_STATUSES } from "./rfqs";
 import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
 import type {
   RfqBidRecord,
@@ -54,10 +54,6 @@ type RawBidRow = RfqBidRecord & {
 type BidWithSupplier = Omit<RawBidRow, "supplier"> & {
   supplier: SupplierSummary | null;
 };
-
-const RFQ_SELECT_FIELDS = ["id", "title", "priority", "target_date", "status"].join(
-  ",",
-);
 
 const BID_SELECT_FIELDS = [
   "id",
@@ -130,42 +126,14 @@ async function fetchOpenCustomerRfqs(
     return [];
   }
 
-  try {
-    const { data, error } = await supabaseServer
-      .from("rfqs")
-      .select(RFQ_SELECT_FIELDS)
-      .eq("customer_id", customerId)
-      .in("status", OPEN_RFQ_STATUSES)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      if (isMissingRfqTableError(error)) {
-        return [];
-      }
-
-      console.error("decisions: fetchOpenCustomerRfqs failed", {
-        customerId,
-        error,
-      });
-      return [];
-    }
-
-    const rows = Array.isArray(data)
-      ? (data as unknown as CustomerRfqRecord[])
-      : [];
-
-    return rows;
-  } catch (error) {
-    if (isMissingRfqTableError(error)) {
-      return [];
-    }
-
-    console.error("decisions: fetchOpenCustomerRfqs unexpected error", {
-      customerId,
-      error,
-    });
-    return [];
-  }
+  const rfqs = await listOpenCustomerRfqs(customerId);
+  return rfqs.map((rfq) => ({
+    id: rfq.id,
+    title: rfq.title,
+    priority: typeof rfq.priority === "number" ? rfq.priority : null,
+    target_date: rfq.target_date,
+    status: rfq.status,
+  }));
 }
 
 async function fetchBidsForRfqs(rfqIds: string[]): Promise<BidWithSupplier[]> {

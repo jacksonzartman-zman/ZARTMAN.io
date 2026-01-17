@@ -1,6 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { logMarketplaceEvent } from "./events";
-import { OPEN_RFQ_STATUSES } from "./rfqs";
+import { listCustomerRfqs, listOpenMarketplaceRfqs } from "./rfqs";
 import type { MarketplaceRfq, RfqBidRecord } from "./types";
 import { isMissingRfqTableError, isRfqsFeatureEnabled } from "./flags";
 
@@ -407,25 +407,9 @@ async function fetchProcessDemand(processes: string[]) {
   }
 
   try {
-    const { data, error } = await supabaseServer
-      .from("rfqs")
-      .select("id,process_requirements")
-      .in("status", OPEN_RFQ_STATUSES)
-      .order("created_at", { ascending: false })
-      .limit(500);
-
-    if (error) {
-      if (isMissingRfqTableError(error)) {
-        return demand;
-      }
-      console.error("strategy: demand query failed", { error });
-      return demand;
-    }
-
-    const rows =
-      (data as Array<{ process_requirements: string[] | null }>) ?? [];
-    rows.forEach((row) => {
-      const reqs = normalizeProcessArray(row.process_requirements);
+    const rfqs = await listOpenMarketplaceRfqs({ limit: 500 });
+    rfqs.forEach((rfq) => {
+      const reqs = normalizeProcessArray(rfq.process_requirements);
       normalized.forEach((process) => {
         if (reqs.includes(process)) {
           demand[process] = (demand[process] ?? 0) + 1;
@@ -435,9 +419,6 @@ async function fetchProcessDemand(processes: string[]) {
 
     return demand;
   } catch (error) {
-    if (isMissingRfqTableError(error)) {
-      return demand;
-    }
     console.error("strategy: demand query unexpected error", { error });
     return demand;
   }
@@ -540,28 +521,10 @@ async function loadCustomerHistory(customerId: string | null): Promise<CustomerH
   }
 
   try {
-    const { data, error } = await supabaseServer
-      .from("rfqs")
-      .select("id,status,priority")
-      .eq("customer_id", customerId)
-      .order("created_at", { ascending: false })
-      .limit(200);
-
-    if (error) {
-      if (isMissingRfqTableError(error)) {
-        return { totalRfqs: 0, awards: 0, totalSpend: 0 };
-      }
-      console.error("strategy: customer history query failed", { customerId, error });
-      return { totalRfqs: 0, awards: 0, totalSpend: 0 };
-    }
-
-    const rows =
-      (data as Array<{ id: string; status: string | null; priority: number | null }>) ??
-      [];
-
-    const rfqIds = rows.map((row) => row.id);
-    const totalRfqs = rows.length;
-    const awards = rows.filter((row) => row.status === "awarded").length;
+    const rfqs = await listCustomerRfqs(customerId, { limit: 200 });
+    const rfqIds = rfqs.map((rfq) => rfq.id);
+    const totalRfqs = rfqs.length;
+    const awards = rfqs.filter((rfq) => rfq.status === "awarded").length;
 
     let totalSpend = 0;
     if (rfqIds.length > 0) {
