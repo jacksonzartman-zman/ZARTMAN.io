@@ -27,6 +27,7 @@ export type RfqOffer = {
   lead_time_days_min: number | null;
   lead_time_days_max: number | null;
   assumptions: string | null;
+  notes: string | null;
   confidence_score: number | null;
   quality_risk_flags: string[];
   status: RfqOfferStatus;
@@ -48,6 +49,7 @@ type RawRfqOfferRow = {
   lead_time_days_min: number | string | null;
   lead_time_days_max: number | string | null;
   assumptions: string | null;
+  notes: string | null;
   confidence_score: number | string | null;
   quality_risk_flags: string[] | null;
   status: string | null;
@@ -69,6 +71,7 @@ const OFFER_SELECT = [
   "lead_time_days_min",
   "lead_time_days_max",
   "assumptions",
+  "notes",
   "confidence_score",
   "quality_risk_flags",
   "status",
@@ -160,6 +163,7 @@ function normalizeOfferRow(row: RawRfqOfferRow): RfqOffer | null {
     lead_time_days_min: normalizeInteger(row?.lead_time_days_min),
     lead_time_days_max: normalizeInteger(row?.lead_time_days_max),
     assumptions: normalizeOptionalText(row?.assumptions),
+    notes: normalizeOptionalText(row?.notes),
     confidence_score: normalizeInteger(row?.confidence_score),
     quality_risk_flags: normalizeRiskFlags(row?.quality_risk_flags),
     status: normalizeStatus(row?.status),

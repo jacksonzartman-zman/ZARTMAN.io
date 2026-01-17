@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 type FooterLink = {
   label: string;
@@ -46,6 +49,11 @@ const FOOTER_COLUMNS: {
 ];
 
 export default function SiteFooter() {
+  const pathname = usePathname();
+  if (pathname?.startsWith("/provider/offer")) {
+    return null;
+  }
+
   return (
     <footer className="border-t border-slate-900/70 bg-neutral-950/90">
       <div className="mx-auto max-w-page px-4 py-12 sm:px-6 lg:px-8">
