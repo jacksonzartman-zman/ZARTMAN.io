@@ -1,4 +1,4 @@
--- Phase 20: Normalized RFQ offers for comparison.
+-- Phase 21: Normalized RFQ offers for comparison.
 
 create table if not exists public.rfq_offers (
   id uuid primary key default gen_random_uuid(),
