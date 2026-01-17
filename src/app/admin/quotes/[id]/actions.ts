@@ -56,6 +56,7 @@ import {
 } from "@/server/admin/quoteParts";
 import { appendFilesToQuoteUpload } from "@/server/quotes/uploadFiles";
 import { parseRfqOfferStatus } from "@/server/rfqs/offers";
+import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 
 export type { AwardBidFormState } from "./awardFormState";
@@ -117,6 +118,10 @@ const ADMIN_RFQ_OFFER_PROVIDER_ERROR = "Select a provider.";
 const ADMIN_RFQ_OFFER_STATUS_ERROR = "Select a valid offer status.";
 const ADMIN_RFQ_OFFER_CONFIDENCE_ERROR =
   "Confidence score must be between 0 and 100.";
+const ADMIN_DESTINATIONS_GENERIC_ERROR =
+  "We couldn't update destinations right now. Please try again.";
+const ADMIN_DESTINATIONS_INPUT_ERROR = "Select at least one provider.";
+const ADMIN_DESTINATION_STATUS_ERROR = "Select a valid destination status.";
 
 export async function submitAwardFeedbackAction(
   quoteId: string,
@@ -643,6 +648,218 @@ export async function upsertRfqOffer(
     });
     return { ok: false, error: ADMIN_RFQ_OFFER_GENERIC_ERROR };
   }
+}
+
+export type AddDestinationsActionResult =
+  | { ok: true; message: string; addedCount: number; skippedCount: number }
+  | { ok: false; error: string };
+
+export type UpdateDestinationStatusActionResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+const DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
+  "draft",
+  "queued",
+  "sent",
+  "viewed",
+  "quoted",
+  "declined",
+  "error",
+]);
+
+export async function addDestinationsAction(args: {
+  quoteId: string;
+  providerIds: string[];
+}): Promise<AddDestinationsActionResult> {
+  const normalizedQuoteId = normalizeIdInput(args.quoteId);
+  const providerIds = Array.isArray(args.providerIds) ? args.providerIds : [];
+  const normalizedProviders = providerIds
+    .map((providerId) => normalizeIdInput(providerId))
+    .filter(Boolean);
+  const uniqueProviders = Array.from(new Set(normalizedProviders));
+
+  if (!normalizedQuoteId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+  if (uniqueProviders.length === 0) {
+    return { ok: false, error: ADMIN_DESTINATIONS_INPUT_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+
+    const { data: existingRows, error: existingError } = await supabaseServer
+      .from("rfq_destinations")
+      .select("provider_id")
+      .eq("rfq_id", normalizedQuoteId)
+      .in("provider_id", uniqueProviders)
+      .returns<Array<{ provider_id: string | null }>>();
+
+    if (existingError) {
+      if (isMissingTableOrColumnError(existingError)) {
+        return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+      }
+      console.error("[admin rfq destinations] lookup failed", {
+        quoteId: normalizedQuoteId,
+        error: serializeSupabaseError(existingError),
+      });
+      return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+    }
+
+    const existingProviderIds = new Set(
+      (existingRows ?? [])
+        .map((row) => normalizeIdInput(row.provider_id))
+        .filter(Boolean),
+    );
+
+    const now = new Date().toISOString();
+    const newRows = uniqueProviders
+      .filter((providerId) => !existingProviderIds.has(providerId))
+      .map((providerId) => ({
+        rfq_id: normalizedQuoteId,
+        provider_id: providerId,
+        status: "queued",
+        last_status_at: now,
+        error_message: null,
+      }));
+
+    if (newRows.length > 0) {
+      const { error: insertError } = await supabaseServer
+        .from("rfq_destinations")
+        .upsert(newRows, {
+          onConflict: "rfq_id,provider_id",
+          ignoreDuplicates: true,
+        });
+
+      if (insertError) {
+        if (isMissingTableOrColumnError(insertError)) {
+          return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+        }
+        console.error("[admin rfq destinations] insert failed", {
+          quoteId: normalizedQuoteId,
+          providers: uniqueProviders,
+          error: serializeSupabaseError(insertError),
+        });
+        return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+      }
+    }
+
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+
+    const addedCount = newRows.length;
+    const skippedCount = uniqueProviders.length - addedCount;
+    const message =
+      addedCount === 0
+        ? "All selected providers are already destinations."
+        : skippedCount > 0
+          ? `Added ${addedCount} destination${addedCount === 1 ? "" : "s"}; ${skippedCount} already existed.`
+          : `Added ${addedCount} destination${addedCount === 1 ? "" : "s"}.`;
+
+    return { ok: true, message, addedCount, skippedCount };
+  } catch (error) {
+    console.error("[admin rfq destinations] add crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+  }
+}
+
+export async function updateDestinationStatusAction(args: {
+  destinationId: string;
+  status: RfqDestinationStatus;
+  errorMessage?: string | null;
+}): Promise<UpdateDestinationStatusActionResult> {
+  const destinationId = normalizeIdInput(args.destinationId);
+  const status = normalizeDestinationStatus(args.status);
+  if (!destinationId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+  if (!status) {
+    return { ok: false, error: ADMIN_DESTINATION_STATUS_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+
+    const { data: destination, error: destinationError } = await supabaseServer
+      .from("rfq_destinations")
+      .select("id,rfq_id,sent_at")
+      .eq("id", destinationId)
+      .maybeSingle<{ id: string; rfq_id: string | null; sent_at: string | null }>();
+
+    if (destinationError) {
+      if (isMissingTableOrColumnError(destinationError)) {
+        return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+      }
+      console.error("[admin rfq destinations] load failed", {
+        destinationId,
+        error: serializeSupabaseError(destinationError),
+      });
+      return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+    }
+
+    if (!destination?.id) {
+      return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+    }
+
+    const now = new Date().toISOString();
+    const payload: Record<string, unknown> = {
+      status,
+      last_status_at: now,
+    };
+
+    if (status === "sent" && !destination.sent_at) {
+      payload.sent_at = now;
+    }
+
+    if (status === "error") {
+      const trimmed =
+        typeof args.errorMessage === "string" ? args.errorMessage.trim() : "";
+      payload.error_message = trimmed || "Error noted.";
+    } else {
+      payload.error_message = null;
+    }
+
+    const { error: updateError } = await supabaseServer
+      .from("rfq_destinations")
+      .update(payload)
+      .eq("id", destinationId);
+
+    if (updateError) {
+      if (isMissingTableOrColumnError(updateError)) {
+        return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+      }
+      console.error("[admin rfq destinations] update failed", {
+        destinationId,
+        status,
+        error: serializeSupabaseError(updateError),
+      });
+      return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+    }
+
+    const rfqId = normalizeIdInput(destination.rfq_id);
+    if (rfqId) {
+      revalidatePath(`/admin/quotes/${rfqId}`);
+    }
+
+    return { ok: true, message: "Destination updated." };
+  } catch (error) {
+    console.error("[admin rfq destinations] update crashed", {
+      destinationId,
+      status: args.status,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+  }
+}
+
+function normalizeDestinationStatus(value: unknown): RfqDestinationStatus | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return DESTINATION_STATUSES.has(normalized as RfqDestinationStatus)
+    ? (normalized as RfqDestinationStatus)
+    : null;
 }
 
 export type QuoteStatusTransitionState =

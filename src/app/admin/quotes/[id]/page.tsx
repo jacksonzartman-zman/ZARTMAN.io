@@ -112,6 +112,8 @@ import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
+import { getRfqDestinations } from "@/server/rfqs/destinations";
+import { getActiveProviders } from "@/server/providers";
 import { schemaGate } from "@/server/db/schemaContract";
 import {
   handleMissingSupabaseRelation,
@@ -130,6 +132,7 @@ import { AdminPartsFilesSection } from "./AdminPartsFilesSection";
 import { EmailSupplierForm } from "./EmailSupplierForm";
 import { EmailCustomerForm } from "./EmailCustomerForm";
 import { InviteEmailThreadButton } from "./InviteEmailThreadButton";
+import { AdminRfqDestinationsCard } from "./AdminRfqDestinationsCard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -444,6 +447,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     })();
     const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
     const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
+    const [activeProviders, rfqDestinations] = await Promise.all([
+      getActiveProviders(),
+      getRfqDestinations(quote.id),
+    ]);
 
     let rfqFeedbackRows: QuoteRfqFeedbackAdminRow[] = [];
     let rfqFeedbackSchemaMissing = false;
@@ -2380,6 +2387,25 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           </DisclosureSection>
 
           <div className="space-y-4">
+            <DisclosureSection
+              id="destinations"
+              className="scroll-mt-24"
+              title="Destinations (Kayak Dispatch)"
+              description="Add providers and track RFQ dispatch status."
+              defaultOpen={rfqDestinations.length === 0}
+              summary={
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  {rfqDestinations.length} destination{rfqDestinations.length === 1 ? "" : "s"}
+                </span>
+              }
+            >
+              <AdminRfqDestinationsCard
+                quoteId={quote.id}
+                providers={activeProviders}
+                destinations={rfqDestinations}
+              />
+            </DisclosureSection>
+
             <DisclosureSection
               id="uploads"
               className="scroll-mt-24"
