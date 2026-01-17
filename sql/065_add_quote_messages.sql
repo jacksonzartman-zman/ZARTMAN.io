@@ -13,76 +13,72 @@ create table if not exists public.quote_messages (
   updated_at timestamptz null
 );
 
--- Align legacy column names with the unified schema.
+-- Keep legacy columns in sync with the unified schema.
+create or replace function public.quote_messages_sync_legacy_fields()
+returns trigger
+language plpgsql
+as $$
+declare
+  payload jsonb;
+  role_value text;
+  legacy_role text;
+  user_value text;
+  message_value text;
+begin
+  payload := to_jsonb(new);
+
+  role_value := lower(trim(coalesce(
+    payload->>'author_role',
+    payload->>'sender_role',
+    payload->>'author_type'
+  )));
+
+  if role_value = '' then
+    role_value := null;
+  end if;
+
+  if role_value = 'supplier' then
+    role_value := 'provider';
+  elsif role_value = 'system' then
+    role_value := 'admin';
+  end if;
+
+  if role_value is not null then
+    payload := jsonb_set(payload, '{author_role}', to_jsonb(role_value), true);
+    legacy_role := case when role_value = 'provider' then 'supplier' else role_value end;
+    payload := jsonb_set(payload, '{sender_role}', to_jsonb(legacy_role), true);
+    payload := jsonb_set(payload, '{author_type}', to_jsonb(legacy_role), true);
+  end if;
+
+  user_value := nullif(coalesce(payload->>'author_user_id', payload->>'sender_id'), '');
+  if user_value is not null then
+    payload := jsonb_set(payload, '{author_user_id}', to_jsonb(user_value), true);
+    payload := jsonb_set(payload, '{sender_id}', to_jsonb(user_value), true);
+  end if;
+
+  message_value := coalesce(payload->>'message', payload->>'body');
+  if message_value is not null then
+    payload := jsonb_set(payload, '{message}', to_jsonb(message_value), true);
+    payload := jsonb_set(payload, '{body}', to_jsonb(message_value), true);
+  end if;
+
+  new := jsonb_populate_record(new, payload);
+  return new;
+end $$;
+
 do $$
 begin
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'quote_messages'
-      and column_name = 'author_type'
-  )
-  and not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'quote_messages'
-      and column_name = 'author_role'
-  ) then
-    execute 'alter table public.quote_messages rename column author_type to author_role';
+  if to_regclass('public.quote_messages') is null then
+    return;
   end if;
 
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'quote_messages'
-      and column_name = 'sender_role'
-  )
-  and not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'quote_messages'
-      and column_name = 'author_role'
-  ) then
-    execute 'alter table public.quote_messages rename column sender_role to author_role';
-  end if;
-
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'quote_messages'
-      and column_name = 'sender_id'
-  )
-  and not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'quote_messages'
-      and column_name = 'author_user_id'
-  ) then
-    execute 'alter table public.quote_messages rename column sender_id to author_user_id';
-  end if;
-
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'quote_messages'
-      and column_name = 'body'
-  )
-  and not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'quote_messages'
-      and column_name = 'message'
-  ) then
-    execute 'alter table public.quote_messages rename column body to message';
-  end if;
+  execute 'drop trigger if exists quote_messages_sync_legacy_fields on public.quote_messages';
+  execute 'drop trigger if exists quote_messages_sync_legacy_fields_trigger on public.quote_messages';
+  execute $sql$
+    create trigger quote_messages_sync_legacy_fields
+      before insert or update on public.quote_messages
+      for each row execute function public.quote_messages_sync_legacy_fields();
+  $sql$;
 end $$;
 
 alter table if exists public.quote_messages
@@ -110,7 +106,19 @@ begin
       and table_name = 'quote_messages'
       and column_name = 'sender_role'
   ) then
-    execute 'update public.quote_messages set author_role = coalesce(author_role, sender_role) where author_role is null';
+    execute $sql$
+      update public.quote_messages
+      set author_role = coalesce(
+        author_role,
+        case
+          when lower(sender_role) = 'supplier' then 'provider'
+          when lower(sender_role) = 'system' then 'admin'
+          else lower(sender_role)
+        end
+      )
+      where author_role is null
+        and sender_role is not null;
+    $sql$;
   end if;
 
   if exists (
@@ -127,7 +135,19 @@ begin
       and table_name = 'quote_messages'
       and column_name = 'author_type'
   ) then
-    execute 'update public.quote_messages set author_role = coalesce(author_role, author_type) where author_role is null';
+    execute $sql$
+      update public.quote_messages
+      set author_role = coalesce(
+        author_role,
+        case
+          when lower(author_type) = 'supplier' then 'provider'
+          when lower(author_type) = 'system' then 'admin'
+          else lower(author_type)
+        end
+      )
+      where author_role is null
+        and author_type is not null;
+    $sql$;
   end if;
 
   if exists (
