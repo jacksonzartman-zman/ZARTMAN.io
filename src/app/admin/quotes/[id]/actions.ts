@@ -564,11 +564,15 @@ export async function upsertRfqOffer(
     }
 
     const confidenceRaw = getFormString(formData, "confidenceScore");
-    const confidenceScore = normalizeOptionalInteger(confidenceRaw);
+    const confidenceScore: number | null =
+      typeof confidenceRaw === "string" && confidenceRaw.trim().length > 0
+        ? Number(confidenceRaw.trim())
+        : null;
     if (
-      typeof confidenceRaw === "string" &&
-      confidenceRaw.trim().length > 0 &&
-      (confidenceScore === null || confidenceScore < 0 || confidenceScore > 100)
+      confidenceScore !== null &&
+      (!Number.isFinite(confidenceScore) ||
+        confidenceScore < 0 ||
+        confidenceScore > 100)
     ) {
       return {
         ok: false,
