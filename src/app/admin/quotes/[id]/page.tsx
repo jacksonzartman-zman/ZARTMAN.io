@@ -416,7 +416,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const statusLabel = QUOTE_STATUS_LABELS[status] ?? "Unknown";
     const filePreviews = await getQuoteFilePreviews(quote);
     const uploadGroups = await loadQuoteUploadGroups(quote.id);
-    const workspaceResult = await loadQuoteWorkspaceData(quote.id, { safeOnly: true });
+    const workspaceResult = await loadQuoteWorkspaceData(quote.id, {
+      safeOnly: true,
+      includeOffers: true,
+    });
     const parts = workspaceResult.ok && workspaceResult.data ? workspaceResult.data.parts : [];
     const cadFeaturesByFileId = await (async () => {
       // Best-effort pre-population: never block the page on heavy work.
