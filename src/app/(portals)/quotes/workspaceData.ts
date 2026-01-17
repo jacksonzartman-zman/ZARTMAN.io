@@ -25,6 +25,7 @@ import {
   serializeSupabaseError,
   isMissingTableOrColumnError,
 } from "@/server/admin/logging";
+import { getRfqOffers, type RfqOffer } from "@/server/rfqs/offers";
 
 export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
   files: QuoteFileMeta[];
@@ -37,6 +38,7 @@ export type QuoteWorkspaceData = {
   uploadGroups: QuoteUploadGroup[];
   filePreviews: Awaited<ReturnType<typeof getQuoteFilePreviews>>;
   parts: QuotePartWithFiles[];
+  rfqOffers: RfqOffer[];
   messages: QuoteMessageRecord[];
   messagesError?: string | null;
   filesUnavailable?: boolean;
@@ -85,6 +87,10 @@ type LoadQuoteWorkspaceOptions = {
    * When provided, message attachment download links can be tokenized for this user.
    */
   viewerRole?: "admin" | "customer" | "supplier" | (string & {}) | null;
+  /**
+   * When true, fetch normalized offers for admin comparison views.
+   */
+  includeOffers?: boolean;
 };
 
 type SafeQuoteRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
@@ -232,6 +238,8 @@ export async function loadQuoteWorkspaceData(
     const filePreviews = await getQuoteFilePreviews(quote, filePreviewOptions);
     const uploadGroups = await loadQuoteUploadGroups(quoteId);
     const parts = await loadQuotePartsWithFiles(quoteId);
+    const includeOffers = Boolean(options?.includeOffers);
+    const rfqOffers = includeOffers ? await getRfqOffers(quote.id) : [];
     const legacyDeclared = buildQuoteFilesFromRow(quote);
     const filesMissingCanonical = filePreviews.length === 0 && legacyDeclared.length > 0;
     const legacyFileNames = legacyDeclared.map((f) => f.filename);
@@ -276,6 +284,7 @@ export async function loadQuoteWorkspaceData(
         uploadGroups,
         filePreviews,
         parts,
+        rfqOffers,
         messages: messages ?? [],
         messagesError,
         filesUnavailable: filesIssue,

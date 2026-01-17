@@ -55,6 +55,7 @@ import {
   assertPartBelongsToQuote,
 } from "@/server/admin/quoteParts";
 import { appendFilesToQuoteUpload } from "@/server/quotes/uploadFiles";
+import { parseRfqOfferStatus } from "@/server/rfqs/offers";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 
 export type { AwardBidFormState } from "./awardFormState";
@@ -101,6 +102,19 @@ const ADMIN_PART_FILES_GENERIC_ERROR =
   "We couldn't update part files right now. Please try again.";
 const ADMIN_PART_DRAWING_UPLOAD_ERROR =
   "Couldn’t upload drawings; please try again.";
+
+export type UpsertRfqOfferState =
+  | { ok: true; message: string; offerId: string }
+  | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+const ADMIN_RFQ_OFFER_GENERIC_ERROR =
+  "We couldn't save this offer right now. Please try again.";
+const ADMIN_RFQ_OFFER_AUTH_ERROR = "You must be signed in to update offers.";
+const ADMIN_RFQ_OFFER_ID_ERROR = "We couldn't determine which RFQ to update.";
+const ADMIN_RFQ_OFFER_PROVIDER_ERROR = "Select a provider.";
+const ADMIN_RFQ_OFFER_STATUS_ERROR = "Select a valid offer status.";
+const ADMIN_RFQ_OFFER_CONFIDENCE_ERROR =
+  "Confidence score must be between 0 and 100.";
 
 export async function submitAwardFeedbackAction(
   quoteId: string,
@@ -494,6 +508,118 @@ export async function submitAdminQuoteUpdateAction(
       error: serializeActionError(error),
     });
     return { ok: false, error: QUOTE_UPDATE_ERROR };
+  }
+}
+
+export async function upsertRfqOffer(
+  rfqId: string,
+  _prevState: UpsertRfqOfferState,
+  formData: FormData,
+): Promise<UpsertRfqOfferState> {
+  try {
+    const { user } = await getServerAuthUser();
+    if (!user) {
+      return { ok: false, error: ADMIN_RFQ_OFFER_AUTH_ERROR };
+    }
+
+    const normalizedRfqId = normalizeIdInput(rfqId);
+    if (!normalizedRfqId) {
+      return { ok: false, error: ADMIN_RFQ_OFFER_ID_ERROR };
+    }
+
+    const providerId = normalizeIdInput(getFormString(formData, "providerId"));
+    if (!providerId) {
+      return {
+        ok: false,
+        error: ADMIN_RFQ_OFFER_PROVIDER_ERROR,
+        fieldErrors: { providerId: ADMIN_RFQ_OFFER_PROVIDER_ERROR },
+      };
+    }
+
+    const status = parseRfqOfferStatus(getFormString(formData, "status"));
+    if (!status) {
+      return {
+        ok: false,
+        error: ADMIN_RFQ_OFFER_STATUS_ERROR,
+        fieldErrors: { status: ADMIN_RFQ_OFFER_STATUS_ERROR },
+      };
+    }
+
+    const confidenceRaw = getFormString(formData, "confidenceScore");
+    const confidenceScore = normalizeOptionalInteger(confidenceRaw);
+    if (
+      typeof confidenceRaw === "string" &&
+      confidenceRaw.trim().length > 0 &&
+      (confidenceScore === null || confidenceScore < 0 || confidenceScore > 100)
+    ) {
+      return {
+        ok: false,
+        error: ADMIN_RFQ_OFFER_CONFIDENCE_ERROR,
+        fieldErrors: { confidenceScore: ADMIN_RFQ_OFFER_CONFIDENCE_ERROR },
+      };
+    }
+
+    const payload: Record<string, unknown> = {
+      rfq_id: normalizedRfqId,
+      provider_id: providerId,
+      currency: normalizeCurrency(getFormString(formData, "currency")) ?? "USD",
+      status,
+      quality_risk_flags: normalizeRiskFlags(formData),
+    };
+
+    const destinationId = normalizeOptionalId(getFormString(formData, "destinationId"));
+    const assumptions = normalizeOptionalText(getFormString(formData, "assumptions"));
+    const totalPrice = normalizeOptionalNumber(getFormString(formData, "totalPrice"));
+    const unitPrice = normalizeOptionalNumber(getFormString(formData, "unitPrice"));
+    const toolingPrice = normalizeOptionalNumber(getFormString(formData, "toolingPrice"));
+    const shippingPrice = normalizeOptionalNumber(getFormString(formData, "shippingPrice"));
+    const leadTimeMin = normalizeOptionalInteger(getFormString(formData, "leadTimeDaysMin"));
+    const leadTimeMax = normalizeOptionalInteger(getFormString(formData, "leadTimeDaysMax"));
+    const receivedAt = normalizeOptionalTimestamp(getFormString(formData, "receivedAt"));
+
+    assignIfDefined(payload, "destination_id", destinationId);
+    assignIfDefined(payload, "assumptions", assumptions);
+    assignIfDefined(payload, "total_price", totalPrice);
+    assignIfDefined(payload, "unit_price", unitPrice);
+    assignIfDefined(payload, "tooling_price", toolingPrice);
+    assignIfDefined(payload, "shipping_price", shippingPrice);
+    assignIfDefined(payload, "lead_time_days_min", leadTimeMin);
+    assignIfDefined(payload, "lead_time_days_max", leadTimeMax);
+    assignIfDefined(payload, "confidence_score", confidenceScore);
+    assignIfDefined(payload, "received_at", receivedAt);
+
+    const { data, error } = await supabaseServer
+      .from("rfq_offers")
+      .upsert(payload, { onConflict: "rfq_id,provider_id" })
+      .select("id")
+      .maybeSingle<{ id: string }>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return { ok: false, error: ADMIN_RFQ_OFFER_GENERIC_ERROR };
+      }
+      console.error("[admin rfq offers] upsert failed", {
+        rfqId: normalizedRfqId,
+        providerId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return { ok: false, error: ADMIN_RFQ_OFFER_GENERIC_ERROR };
+    }
+
+    if (!data?.id) {
+      return { ok: false, error: ADMIN_RFQ_OFFER_GENERIC_ERROR };
+    }
+
+    revalidatePath("/admin/quotes");
+    revalidatePath(`/admin/quotes/${normalizedRfqId}`);
+
+    return { ok: true, message: "Offer saved.", offerId: data.id };
+  } catch (error) {
+    console.error("[admin rfq offers] action crashed", {
+      rfqId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_RFQ_OFFER_GENERIC_ERROR };
   }
 }
 
@@ -995,6 +1121,87 @@ function normalizeEmail(value: unknown): string | null {
   if (!trimmed) return null;
   if (!trimmed.includes("@")) return null;
   return trimmed;
+}
+
+function normalizeIdInput(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalId(value: unknown): string | null | undefined {
+  if (typeof value === "undefined") return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeOptionalText(value: unknown): string | null | undefined {
+  if (typeof value === "undefined") return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeCurrency(value: unknown): string | null | undefined {
+  if (typeof value === "undefined") return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.toUpperCase() : null;
+}
+
+function normalizeOptionalNumber(value: unknown): number | null | undefined {
+  if (typeof value === "undefined") return undefined;
+  if (value === null) return null;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeOptionalInteger(value: unknown): number | null | undefined {
+  const normalized = normalizeOptionalNumber(value);
+  if (typeof normalized === "undefined" || normalized === null) {
+    return normalized;
+  }
+  return Math.round(normalized);
+}
+
+function normalizeOptionalTimestamp(value: unknown): string | null | undefined {
+  if (typeof value === "undefined") return undefined;
+  if (value === null) return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsedMs = Date.parse(trimmed);
+  if (!Number.isFinite(parsedMs)) return null;
+  return new Date(parsedMs).toISOString();
+}
+
+function normalizeRiskFlags(formData: FormData): string[] {
+  const rawValues = formData.getAll("qualityRiskFlags");
+  const flags = rawValues.flatMap((value) => {
+    if (typeof value !== "string") return [];
+    return value.split(",").map((segment) => segment.trim());
+  });
+  return Array.from(new Set(flags.filter((flag) => flag.length > 0)));
+}
+
+function assignIfDefined(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  if (typeof value !== "undefined") {
+    target[key] = value;
+  }
 }
 
 export type AdminCapacityUpdateRequestState =
