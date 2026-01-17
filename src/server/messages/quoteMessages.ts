@@ -331,6 +331,20 @@ function normalizeQuoteMessageRow(
   };
 }
 
+function sortMessagesByCreatedAt(messages: QuoteMessageRecord[]): QuoteMessageRecord[] {
+  return [...messages].sort((a, b) => {
+    const aTime = Date.parse(a.created_at);
+    const bTime = Date.parse(b.created_at);
+    if (!Number.isNaN(aTime) && !Number.isNaN(bTime)) {
+      if (aTime !== bTime) return aTime - bTime;
+      return a.id.localeCompare(b.id);
+    }
+    if (!Number.isNaN(aTime)) return -1;
+    if (!Number.isNaN(bTime)) return 1;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export async function getQuoteMessages({
   quoteId,
   limit = 50,
@@ -358,7 +372,7 @@ export async function getQuoteMessages({
       .from(QUOTE_MESSAGES_RELATION)
       .select("*")
       .eq("quote_id", normalizedQuoteId)
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(cappedLimit)
       .returns<Record<string, unknown>[]>();
 
@@ -392,7 +406,8 @@ export async function getQuoteMessages({
       .map((row) => (row && typeof row === "object" ? normalizeQuoteMessageRow(row, providerNameById) : null))
       .filter((row): row is QuoteMessageRecord => Boolean(row));
 
-    const decorated = decorateMessagesForViewer(normalized, {
+    const ordered = sortMessagesByCreatedAt(normalized);
+    const decorated = decorateMessagesForViewer(ordered, {
       viewerRole,
       viewerUserId,
     });

@@ -117,6 +117,12 @@ const CUSTOMER_EMAIL_LENGTH_ERROR = "Email message is too long. Keep it under 5,
 const CUSTOMER_EMAIL_DISABLED_ERROR = "Email not configured.";
 const CUSTOMER_EMAIL_MISSING_RECIPIENT_ERROR = "Supplier email is missing for this quote.";
 const CUSTOMER_EMAIL_SEND_FAILED_ERROR = "We couldn’t send that email right now. Please try again.";
+const DEFAULT_MESSAGE_FORM_STATE: QuoteMessageFormState = {
+  ok: true,
+  message: null,
+  error: null,
+  fieldErrors: {},
+};
 const CUSTOMER_PROJECT_GENERIC_ERROR =
   "We couldn’t save your project details. Please retry.";
 const CUSTOMER_PROJECT_SUCCESS_MESSAGE = "Project details saved.";
@@ -490,6 +496,13 @@ export async function postQuoteMessage(
       error: CUSTOMER_MESSAGE_GENERIC_ERROR,
     };
   }
+}
+
+export async function postQuoteMessageSimple(
+  quoteId: string,
+  formData: FormData,
+): Promise<QuoteMessageFormState> {
+  return postQuoteMessage(quoteId, DEFAULT_MESSAGE_FORM_STATE, formData);
 }
 
 export async function submitCustomerQuoteProjectAction(

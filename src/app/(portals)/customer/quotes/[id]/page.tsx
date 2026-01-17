@@ -13,7 +13,6 @@ import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
-import { QuoteMessagesThread } from "@/app/(portals)/shared/QuoteMessagesThread";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
 import {
@@ -50,7 +49,7 @@ import {
   type QuoteProjectRecord,
 } from "@/server/quotes/projects";
 import { loadSupplierById } from "@/server/suppliers/profile";
-import { postQuoteMessage as postCustomerQuoteMessage } from "./actions";
+import { postQuoteMessageSimple } from "./actions";
 import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
 import { CustomerQuoteCompareOffers } from "./CustomerQuoteCompareOffers";
 import { CustomerQuoteSelectionConfirmation } from "./CustomerQuoteSelectionConfirmation";
@@ -98,9 +97,8 @@ import { DemoModeBanner } from "./DemoModeBanner";
 import { CustomerEmailRepliesCard } from "./CustomerEmailRepliesCard";
 import { isCustomerEmailBridgeEnabled, isCustomerEmailOptedIn } from "@/server/quotes/customerEmailPrefs";
 import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
-import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
-import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
-import { isPortalEmailSendEnabledFlag } from "@/server/quotes/emailOpsFlags";
+import { CustomerQuoteMessagesSection } from "./CustomerQuoteMessagesSection";
+import { CustomerQuoteMessagesReadMarker } from "./CustomerQuoteMessagesReadMarker";
 
 export const dynamic = "force-dynamic";
 
@@ -1163,21 +1161,7 @@ export default async function CustomerQuoteDetailPage({
       />
     ) : null;
 
-  const postMessageAction = postCustomerQuoteMessage.bind(null, quote.id);
-
-  const outboundStatus = getEmailOutboundStatus();
-  const portalEmailEnvEnabled = isPortalEmailSendEnabledFlag();
-  const portalEmailEnabled = portalEmailEnvEnabled && outboundStatus.enabled && quoteHasWinner;
-  const portalEmailDisabledCopy = !portalEmailEnvEnabled
-    ? "Send via email is disabled on this environment."
-    : !outboundStatus.enabled
-      ? "Email not configured."
-      : !quoteHasWinner
-        ? "Email is available after a supplier is selected."
-        : null;
-  const portalEmailFileOptions = portalEmailEnabled
-    ? await loadOutboundFileOptions({ quoteId: quote.id, limit: 50 })
-    : [];
+  const postMessageAction = postQuoteMessageSimple.bind(null, quote.id);
 
   const orderWorkspaceSection = (
     <CustomerQuoteOrderWorkspace
@@ -1744,6 +1728,11 @@ export default async function CustomerQuoteDetailPage({
               )
             }
           >
+            <CustomerQuoteMessagesReadMarker
+              quoteId={quote.id}
+              enabled={tabParam === "messages"}
+              currentUserId={user.id}
+            />
             <div id="email-replies">
               <CustomerEmailRepliesCard
                 quoteId={quote.id}
@@ -1765,42 +1754,12 @@ export default async function CustomerQuoteDetailPage({
                 disabled={readOnly}
               />
             </div>
-            <QuoteMessagesThread
+            <CustomerQuoteMessagesSection
               quoteId={quote.id}
               messages={quoteMessages}
+              currentUserId={user.id}
               canPost={!readOnly}
               postAction={postMessageAction}
-              currentUserId={user.id}
-              viewerRole="customer"
-              markRead={tabParam === "messages"}
-              title="Messages"
-              description="Shared thread with your supplier and the Zartman admin team."
-              usageHint="Use Messages for clarifications, change requests, and questions."
-              portalEmail={{
-                enabled: portalEmailEnabled,
-                recipientRole: "supplier",
-                fileOptions: portalEmailFileOptions,
-                disabledCopy: portalEmailDisabledCopy,
-              }}
-              emailReplyIndicator={
-                customerEmailBridgeEnabled && customerEmailOptedIn && customerReplyToAddress
-                  ? { state: "enabled", replyTo: customerReplyToAddress }
-                  : customerEmailBridgeEnabled && customerReplyToAddress
-                    ? {
-                        state: "off",
-                        cta: { label: "Manage email replies", href: "#email-replies" },
-                      }
-                    : customerEmailBridgeEnabled
-                      ? { state: "off" }
-                      : { state: "off", helper: "Email replies disabled on this environment." }
-              }
-              helperText="Your note notifies your supplier and the Zartman admin team."
-              disabledCopy={
-                readOnly
-                  ? "You’re viewing this workspace in read-only mode, so messaging is disabled."
-                  : undefined
-              }
-              emptyStateCopy="No messages yet. Start the thread if you need clarification, want to request a change, or have a question—everyone on this workspace will be notified."
             />
           </DisclosureSection>
 
