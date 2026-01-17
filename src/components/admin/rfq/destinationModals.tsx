@@ -27,6 +27,22 @@ type DestinationEmailModalProps = {
   onMarkSent: () => void;
 };
 
+export type BulkDestinationEmailResult = {
+  destinationId: string;
+  providerLabel: string;
+  status: "success" | "error" | "skipped";
+  subject?: string;
+  body?: string;
+  message: string;
+};
+
+type BulkDestinationEmailModalProps = {
+  isOpen: boolean;
+  results: BulkDestinationEmailResult[];
+  pending: boolean;
+  onClose: () => void;
+};
+
 type DestinationErrorModalProps = {
   isOpen: boolean;
   errorNote: string;
@@ -35,6 +51,9 @@ type DestinationErrorModalProps = {
   onClose: () => void;
   onChange: (value: string) => void;
   onSubmit: () => void;
+  title?: string;
+  description?: string;
+  submitLabel?: string;
 };
 
 export function OfferModal({
@@ -347,6 +366,136 @@ export function DestinationEmailModal({
   );
 }
 
+export function BulkDestinationEmailModal({
+  isOpen,
+  results,
+  pending,
+  onClose,
+}: BulkDestinationEmailModalProps) {
+  if (!isOpen) return null;
+  const successCount = results.filter((result) => result.status === "success").length;
+  const errorCount = results.filter((result) => result.status === "error").length;
+  const skippedCount = results.filter((result) => result.status === "skipped").length;
+  const summaryLabel = `${successCount} generated, ${errorCount} failed, ${skippedCount} skipped`;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Bulk RFQ emails"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-4xl rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Bulk RFQ emails</h3>
+            <p className="mt-1 text-sm text-slate-300">{summaryLabel}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-4 max-h-[60vh] space-y-4 overflow-y-auto pr-2">
+          {results.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
+              No email drafts were generated.
+            </p>
+          ) : (
+            results.map((result) => {
+              const statusLabel =
+                result.status === "success"
+                  ? "Generated"
+                  : result.status === "skipped"
+                    ? "Skipped"
+                    : "Failed";
+              const statusClass =
+                result.status === "success"
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                  : result.status === "skipped"
+                    ? "border-slate-700 bg-slate-900/60 text-slate-200"
+                    : "border-amber-500/40 bg-amber-500/10 text-amber-100";
+              return (
+                <div
+                  key={result.destinationId}
+                  className="rounded-2xl border border-slate-900/60 bg-slate-950/60 p-4"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-100">{result.providerLabel}</p>
+                      {result.message ? (
+                        <p className="mt-1 text-xs text-slate-400">{result.message}</p>
+                      ) : null}
+                    </div>
+                    <span
+                      className={clsx(
+                        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+                        statusClass,
+                      )}
+                    >
+                      {statusLabel}
+                    </span>
+                  </div>
+
+                  {result.status === "success" ? (
+                    <div className="mt-3 space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Subject
+                        </label>
+                        <input
+                          value={result.subject ?? ""}
+                          readOnly
+                          className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:outline-none"
+                        />
+                        <CopyTextButton text={result.subject ?? ""} idleLabel="Copy subject" />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Body
+                        </label>
+                        <textarea
+                          value={result.body ?? ""}
+                          readOnly
+                          rows={8}
+                          className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:outline-none"
+                        />
+                        <CopyTextButton text={result.body ?? ""} idleLabel="Copy body" />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className={clsx(
+              "rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white",
+              pending ? "cursor-not-allowed opacity-60" : null,
+            )}
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DestinationErrorModal({
   isOpen,
   errorNote,
@@ -355,14 +504,21 @@ export function DestinationErrorModal({
   onClose,
   onChange,
   onSubmit,
+  title,
+  description,
+  submitLabel,
 }: DestinationErrorModalProps) {
   if (!isOpen) return null;
+  const resolvedTitle = title ?? "Log dispatch error";
+  const resolvedDescription =
+    description ?? "Add a short note for the error status on this destination.";
+  const resolvedSubmitLabel = submitLabel ?? "Save error";
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Mark destination as error"
+      aria-label={resolvedTitle}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -370,10 +526,8 @@ export function DestinationErrorModal({
       <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-white">Log dispatch error</h3>
-            <p className="mt-1 text-sm text-slate-300">
-              Add a short note for the error status on this destination.
-            </p>
+            <h3 className="text-lg font-semibold text-white">{resolvedTitle}</h3>
+            <p className="mt-1 text-sm text-slate-300">{resolvedDescription}</p>
           </div>
           <button
             type="button"
@@ -419,7 +573,7 @@ export function DestinationErrorModal({
                 pending ? "cursor-not-allowed opacity-60" : null,
               )}
             >
-              {pending ? "Saving..." : "Save error"}
+              {pending ? "Saving..." : resolvedSubmitLabel}
             </button>
           </div>
         </div>
