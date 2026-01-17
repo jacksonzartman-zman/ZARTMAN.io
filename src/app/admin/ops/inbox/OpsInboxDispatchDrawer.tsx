@@ -16,9 +16,11 @@ import {
   type OfferDraft,
 } from "@/components/admin/rfq/destinationHelpers";
 import {
+  BulkDestinationEmailModal,
   DestinationEmailModal,
   DestinationErrorModal,
   OfferModal,
+  type BulkDestinationEmailResult,
 } from "@/components/admin/rfq/destinationModals";
 import type { RfqOffer } from "@/server/rfqs/offers";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
@@ -41,6 +43,22 @@ type FeedbackState = {
   tone: FeedbackTone;
   message: string;
 };
+
+type BulkActionStatus = "success" | "error" | "skipped";
+
+type BulkActionResult = {
+  destinationId: string;
+  providerLabel: string;
+  status: BulkActionStatus;
+  message: string;
+};
+
+type BulkActionSummary = {
+  actionLabel: string;
+  results: BulkActionResult[];
+};
+
+type BulkActionType = "generate" | "markSent" | "markError";
 
 type DestinationStatusKey = RfqDestinationStatus | "unknown";
 
@@ -81,6 +99,8 @@ const NEEDS_ACTION_META: Record<Exclude<ReturnType<typeof computeDestinationNeed
   },
 };
 
+const BULK_CONCURRENCY_LIMIT = 3;
+
 export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatchDrawerProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -98,6 +118,14 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
   const [emailPackage, setEmailPackage] = useState<{ subject: string; body: string } | null>(null);
   const [emailLoadingId, setEmailLoadingId] = useState<string | null>(null);
   const [emailErrorsById, setEmailErrorsById] = useState<Record<string, string>>({});
+  const [selectedDestinationIds, setSelectedDestinationIds] = useState<Set<string>>(new Set());
+  const [bulkActionSummary, setBulkActionSummary] = useState<BulkActionSummary | null>(null);
+  const [bulkActionType, setBulkActionType] = useState<BulkActionType | null>(null);
+  const [bulkEmailResults, setBulkEmailResults] = useState<BulkDestinationEmailResult[]>([]);
+  const [bulkEmailModalOpen, setBulkEmailModalOpen] = useState(false);
+  const [bulkErrorNote, setBulkErrorNote] = useState("");
+  const [bulkErrorFeedback, setBulkErrorFeedback] = useState<string | null>(null);
+  const [bulkErrorPromptOpen, setBulkErrorPromptOpen] = useState(false);
 
   const offersByProviderId = useMemo(() => {
     const map = new Map<string, RfqOffer>();
@@ -131,6 +159,32 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
 
   const quoteHref = `/admin/quotes/${row.quote.id}`;
   const quoteTitle = row.quote.title?.trim() || row.quote.id;
+  const selectedDestinations = useMemo(() => {
+    if (selectedDestinationIds.size === 0) return [];
+    return row.destinations.filter((destination) => selectedDestinationIds.has(destination.id));
+  }, [row.destinations, selectedDestinationIds]);
+  const selectedCount = selectedDestinations.length;
+  const selectedEmailDestinations = useMemo(
+    () => selectedDestinations.filter((destination) => destination.quoting_mode === "email"),
+    [selectedDestinations],
+  );
+  const selectedEmailCount = selectedEmailDestinations.length;
+  const selectedCountLabel =
+    selectedCount > 0 ? `${selectedCount} selected` : "No destinations selected";
+  const bulkSummaryCounts = useMemo(() => {
+    if (!bulkActionSummary) return null;
+    return bulkActionSummary.results.reduce(
+      (counts, result) => {
+        counts[result.status] += 1;
+        return counts;
+      },
+      { success: 0, error: 0, skipped: 0 },
+    );
+  }, [bulkActionSummary]);
+  const isBulkGenerating = bulkActionType === "generate";
+  const isBulkMarkingSent = bulkActionType === "markSent";
+  const isBulkMarkingError = bulkActionType === "markError";
+  const bulkBusy = pending || bulkActionType !== null;
 
   const handleStatusUpdate = (destinationId: string, status: RfqDestinationStatus) => {
     if (pending) return;
@@ -262,12 +316,229 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
     });
   };
 
+  const toggleDestinationSelected = (destinationId: string) => {
+    setSelectedDestinationIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(destinationId)) {
+        next.delete(destinationId);
+      } else {
+        next.add(destinationId);
+      }
+      return next;
+    });
+  };
+
+  const closeDrawer = () => {
+    setIsOpen(false);
+    setSelectedDestinationIds(new Set());
+    setBulkActionSummary(null);
+    setBulkActionType(null);
+    setBulkEmailResults([]);
+    setBulkEmailModalOpen(false);
+    setBulkErrorNote("");
+    setBulkErrorFeedback(null);
+    setBulkErrorPromptOpen(false);
+  };
+
+  const openBulkErrorPrompt = () => {
+    setBulkErrorFeedback(null);
+    setBulkErrorNote("");
+    setBulkErrorPromptOpen(true);
+  };
+
+  const closeBulkErrorPrompt = () => {
+    setBulkErrorFeedback(null);
+    setBulkErrorNote("");
+    setBulkErrorPromptOpen(false);
+  };
+
+  const handleBulkGenerateEmails = () => {
+    if (pending || isBulkGenerating || selectedEmailCount === 0) return;
+    setFeedback(null);
+    setBulkActionSummary(null);
+    setBulkActionType("generate");
+    setBulkEmailResults([]);
+    setBulkEmailModalOpen(false);
+    startTransition(async () => {
+      const results = await runWithConcurrency(
+        selectedDestinations,
+        BULK_CONCURRENCY_LIMIT,
+        async (destination) => {
+          const providerLabel =
+            destination.provider_name || destination.provider_id || "Provider";
+          if (destination.quoting_mode !== "email") {
+            return {
+              destinationId: destination.id,
+              providerLabel,
+              status: "skipped",
+              message: "Email mode only.",
+            };
+          }
+          try {
+            const result = await generateDestinationEmailAction({
+              quoteId: row.quote.id,
+              destinationId: destination.id,
+            });
+            if (result.ok) {
+              return {
+                destinationId: destination.id,
+                providerLabel,
+                status: "success",
+                message: "Email generated.",
+                subject: result.subject,
+                body: result.body,
+              };
+            }
+            return {
+              destinationId: destination.id,
+              providerLabel,
+              status: "error",
+              message: result.error,
+            };
+          } catch (error) {
+            console.error("[ops inbox bulk email] action crashed", error);
+            return {
+              destinationId: destination.id,
+              providerLabel,
+              status: "error",
+              message: "Email generation failed.",
+            };
+          }
+        },
+      );
+
+      setBulkEmailResults(results);
+      setBulkEmailModalOpen(true);
+      setBulkActionSummary({
+        actionLabel: "Generate emails",
+        results: results.map(({ subject, body, ...rest }) => rest),
+      });
+      setBulkActionType(null);
+      router.refresh();
+    });
+  };
+
+  const handleBulkMarkSent = () => {
+    if (pending || isBulkMarkingSent || selectedCount === 0) return;
+    setFeedback(null);
+    setBulkActionSummary(null);
+    setBulkActionType("markSent");
+    startTransition(async () => {
+      const results = await runWithConcurrency(
+        selectedDestinations,
+        BULK_CONCURRENCY_LIMIT,
+        async (destination) => {
+          const providerLabel =
+            destination.provider_name || destination.provider_id || "Provider";
+          try {
+            const result = await updateDestinationStatusAction({
+              destinationId: destination.id,
+              status: "sent",
+            });
+            if (result.ok) {
+              return {
+                destinationId: destination.id,
+                providerLabel,
+                status: "success",
+                message: result.message,
+              };
+            }
+            return {
+              destinationId: destination.id,
+              providerLabel,
+              status: "error",
+              message: result.error,
+            };
+          } catch (error) {
+            console.error("[ops inbox bulk mark sent] action crashed", error);
+            return {
+              destinationId: destination.id,
+              providerLabel,
+              status: "error",
+              message: "Update failed.",
+            };
+          }
+        },
+      );
+
+      setBulkActionSummary({
+        actionLabel: "Mark sent",
+        results,
+      });
+      setBulkActionType(null);
+      router.refresh();
+    });
+  };
+
+  const submitBulkError = () => {
+    if (pending || isBulkMarkingError || selectedCount === 0) return;
+    setBulkErrorFeedback(null);
+    setFeedback(null);
+    setBulkActionSummary(null);
+    setBulkActionType("markError");
+    startTransition(async () => {
+      const results = await runWithConcurrency(
+        selectedDestinations,
+        BULK_CONCURRENCY_LIMIT,
+        async (destination) => {
+          const providerLabel =
+            destination.provider_name || destination.provider_id || "Provider";
+          try {
+            const result = await updateDestinationStatusAction({
+              destinationId: destination.id,
+              status: "error",
+              errorMessage: bulkErrorNote.trim(),
+            });
+            if (result.ok) {
+              return {
+                destinationId: destination.id,
+                providerLabel,
+                status: "success",
+                message: "Error recorded.",
+              };
+            }
+            return {
+              destinationId: destination.id,
+              providerLabel,
+              status: "error",
+              message: result.error,
+            };
+          } catch (error) {
+            console.error("[ops inbox bulk mark error] action crashed", error);
+            return {
+              destinationId: destination.id,
+              providerLabel,
+              status: "error",
+              message: "Update failed.",
+            };
+          }
+        },
+      );
+
+      setBulkActionSummary({
+        actionLabel: "Mark error",
+        results,
+      });
+      setBulkActionType(null);
+      closeBulkErrorPrompt();
+      router.refresh();
+    });
+  };
+
   return (
     <>
       <button
         type="button"
         onClick={() => {
           setFeedback(null);
+          setSelectedDestinationIds(new Set());
+          setBulkActionSummary(null);
+          setBulkActionType(null);
+          setBulkEmailResults([]);
+          setBulkEmailModalOpen(false);
+          setBulkErrorNote("");
+          setBulkErrorFeedback(null);
+          setBulkErrorPromptOpen(false);
           setIsOpen(true);
         }}
         className={clsx(actionClassName, "cursor-pointer")}
@@ -281,7 +552,7 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
             type="button"
             className="absolute inset-0 cursor-default"
             aria-label="Close dispatch drawer"
-            onClick={() => setIsOpen(false)}
+            onClick={closeDrawer}
           />
           <aside className="relative flex h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-900/70 bg-slate-950/95 shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-900/60 px-5 py-4">
@@ -308,7 +579,7 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
                 </Link>
                 <button
                   type="button"
-                  onClick={() => setIsOpen(false)}
+                  onClick={closeDrawer}
                   className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
                 >
                   Close
@@ -329,6 +600,133 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
                 >
                   {feedback.message}
                 </p>
+              ) : null}
+
+              <div className="rounded-2xl border border-slate-900/60 bg-slate-950/60 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Bulk actions
+                    </p>
+                    <p className="text-sm text-slate-200">{selectedCountLabel}</p>
+                    {selectedCount > 0 ? (
+                      <p className="mt-1 text-xs text-slate-400">
+                        {selectedEmailCount} email-mode selected
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleBulkGenerateEmails}
+                      disabled={bulkBusy || selectedEmailCount === 0}
+                      className={clsx(
+                        "rounded-full border border-indigo-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition",
+                        bulkBusy || selectedEmailCount === 0
+                          ? "cursor-not-allowed opacity-60"
+                          : "hover:border-indigo-400 hover:text-white",
+                      )}
+                    >
+                      {isBulkGenerating ? "Generating..." : "Generate emails"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBulkMarkSent}
+                      disabled={bulkBusy || selectedCount === 0}
+                      className={clsx(
+                        "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
+                        bulkBusy || selectedCount === 0
+                          ? "cursor-not-allowed opacity-60"
+                          : "hover:border-slate-500 hover:text-white",
+                      )}
+                    >
+                      {isBulkMarkingSent ? "Marking..." : "Mark sent"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openBulkErrorPrompt}
+                      disabled={bulkBusy || selectedCount === 0}
+                      className={clsx(
+                        "rounded-full border border-red-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-100 transition",
+                        bulkBusy || selectedCount === 0
+                          ? "cursor-not-allowed opacity-60"
+                          : "hover:border-red-400 hover:text-white",
+                      )}
+                    >
+                      {isBulkMarkingError ? "Saving..." : "Mark error"}
+                    </button>
+                  </div>
+                </div>
+                {selectedCount > 0 && selectedEmailCount < selectedCount ? (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Only email-mode destinations generate drafts.
+                  </p>
+                ) : null}
+              </div>
+
+              {bulkActionSummary ? (
+                <div className="rounded-2xl border border-slate-900/60 bg-slate-950/60 px-4 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Bulk summary
+                      </p>
+                      <p className="text-sm font-semibold text-slate-100">
+                        {bulkActionSummary.actionLabel}
+                      </p>
+                      {bulkSummaryCounts ? (
+                        <p className="mt-1 text-xs text-slate-400">
+                          {bulkSummaryCounts.success} success, {bulkSummaryCounts.error} failed,{" "}
+                          {bulkSummaryCounts.skipped} skipped
+                        </p>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBulkActionSummary(null)}
+                      className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                  <div className="mt-3 max-h-40 space-y-2 overflow-y-auto text-xs">
+                    {bulkActionSummary.results.map((result) => {
+                      const statusLabel =
+                        result.status === "success"
+                          ? "Success"
+                          : result.status === "skipped"
+                            ? "Skipped"
+                            : "Failed";
+                      const statusClass =
+                        result.status === "success"
+                          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                          : result.status === "skipped"
+                            ? "border-slate-700 bg-slate-900/60 text-slate-200"
+                            : "border-amber-500/40 bg-amber-500/10 text-amber-100";
+                      return (
+                        <div
+                          key={result.destinationId}
+                          className="flex items-start justify-between gap-3 rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-slate-100">
+                              {result.providerLabel}
+                            </p>
+                            <p className="text-xs text-slate-400">{result.message}</p>
+                          </div>
+                          <span
+                            className={clsx(
+                              "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                              statusClass,
+                            )}
+                          >
+                            {statusLabel}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               ) : null}
 
               {groupedDestinations.length === 0 ? (
@@ -377,6 +775,7 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
                           needsActionResult.needsAction && needsActionResult.reason
                             ? NEEDS_ACTION_META[needsActionResult.reason]
                             : null;
+                        const isSelected = selectedDestinationIds.has(destination.id);
 
                         return (
                           <div
@@ -384,14 +783,24 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
                             className="rounded-2xl border border-slate-900/60 bg-slate-950/60 p-4"
                           >
                             <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-100">
-                                  {providerLabel}
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  {providerType} · {providerMode}
-                                </p>
-                              </div>
+                              <label className="flex items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleDestinationSelected(destination.id)}
+                                  disabled={bulkBusy}
+                                  aria-label={`Select ${providerLabel} for bulk actions`}
+                                  className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+                                />
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-100">
+                                    {providerLabel}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500">
+                                    {providerType} · {providerMode}
+                                  </p>
+                                </div>
+                              </label>
                               <div className="flex flex-col items-end gap-2">
                                 <span
                                   className={clsx(
@@ -531,6 +940,13 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
         }}
       />
 
+      <BulkDestinationEmailModal
+        isOpen={bulkEmailModalOpen}
+        results={bulkEmailResults}
+        pending={pending}
+        onClose={() => setBulkEmailModalOpen(false)}
+      />
+
       <DestinationErrorModal
         isOpen={Boolean(errorDestination)}
         errorNote={errorNote}
@@ -539,6 +955,19 @@ export function OpsInboxDispatchDrawer({ row, actionClassName }: OpsInboxDispatc
         onClose={closeErrorPrompt}
         onChange={setErrorNote}
         onSubmit={submitError}
+      />
+
+      <DestinationErrorModal
+        isOpen={bulkErrorPromptOpen}
+        errorNote={bulkErrorNote}
+        errorFeedback={bulkErrorFeedback}
+        pending={pending}
+        onClose={closeBulkErrorPrompt}
+        onChange={setBulkErrorNote}
+        onSubmit={submitBulkError}
+        title="Log dispatch errors"
+        description="Add one note to apply to all selected destinations."
+        submitLabel="Save errors"
       />
     </>
   );
@@ -558,4 +987,28 @@ function normalizeStatus(value: string | null | undefined): DestinationStatusKey
     return normalized;
   }
   return "unknown";
+}
+
+async function runWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  handler: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await handler(items[currentIndex], currentIndex);
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(limit, Math.max(items.length, 1)) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+  return results;
 }
