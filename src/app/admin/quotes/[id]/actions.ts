@@ -470,7 +470,7 @@ export async function submitAdminQuoteUpdateAction(
       confidenceScoreInput.length > 0 ? Number(confidenceScoreInput) : null;
 
     if (
-      confidenceScoreInput.length > 0 &&
+      confidenceScore !== null &&
       (!Number.isFinite(confidenceScore) ||
         confidenceScore < 0 ||
         confidenceScore > 100)
