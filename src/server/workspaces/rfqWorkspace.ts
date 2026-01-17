@@ -1,6 +1,10 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { listBidsForRfq } from "@/server/marketplace/bids";
 import { loadRfqById } from "@/server/marketplace/rfqs";
+import {
+  getRfqDestinations,
+  type RfqDestination,
+} from "@/server/rfqs/destinations";
 import type {
   ListBidsResult,
   MarketplaceRfq,
@@ -50,6 +54,7 @@ export type RfqWorkspaceData = {
   rfq: MarketplaceRfq;
   supplierBids: ListBidsResult["bids"];
   supplierBidError?: string | null;
+  destinations: RfqDestination[];
   collaborationThreads: RfqCollaborationThread[];
   fileAttachments: RfqWorkspaceFileAttachment[];
   viewerRole: RfqWorkspaceViewerRole;
@@ -97,9 +102,10 @@ export async function loadRfqWorkspace(
     return null;
   }
 
-  const [bidResult, threads] = await Promise.all([
+  const [bidResult, threads, destinations] = await Promise.all([
     listBidsForRfq(rfqId),
     loadCollaborationThreads(rfqId),
+    getRfqDestinations(rfqId),
   ]);
 
   const fileAttachments = deriveFileAttachments(rfq);
@@ -109,6 +115,7 @@ export async function loadRfqWorkspace(
     rfq,
     supplierBids: bidResult.bids,
     supplierBidError: bidResult.error,
+    destinations,
     collaborationThreads: threads,
     fileAttachments,
     viewerRole,
@@ -294,6 +301,7 @@ export const RFQ_WORKSPACE_EXAMPLE_PAYLOAD: RfqWorkspaceData = {
     ],
     upload_id: null,
   },
+  destinations: [],
   supplierBids: [
     {
       id: "bid_demo_001",
