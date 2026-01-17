@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import {
+  debugOnce,
   extractSupabaseSource,
   isMissingSupabaseRelationError,
   isMissingTableOrColumnError,
@@ -32,6 +33,7 @@ type RequireSchemaOpts = {
 
 const PROBE_CACHE = new Map<string, RelationProbeResult>();
 const IN_FLIGHT = new Map<string, Promise<RelationProbeResult>>();
+const QUOTE_MESSAGES_RELATION = "quote_messages";
 
 function schemaContractUseInfoSchema(): boolean {
   return String(process.env.SCHEMA_CONTRACT_USE_INFO_SCHEMA ?? "")
@@ -236,6 +238,7 @@ async function probeColumnsExist(args: {
 export async function requireSchema(opts: RequireSchemaOpts): Promise<RelationProbeResult> {
   const relation = normalizeRelation(opts.relation);
   const requiredColumns = normalizeColumns(opts.requiredColumns);
+  const logMissingSchema = relation === QUOTE_MESSAGES_RELATION ? debugOnce : warnOnce;
 
   if (!relation) {
     const result: RelationProbeResult = { ok: false, relation: "", reason: "unknown" };
@@ -277,7 +280,7 @@ export async function requireSchema(opts: RequireSchemaOpts): Promise<RelationPr
                 missing,
               };
               const warnKey = `${opts.warnKey ?? `schema_contract:${relation}`}:${result.reason}`;
-              warnOnce(warnKey, `${opts.warnPrefix} missing schema`, {
+              logMissingSchema(warnKey, `${opts.warnPrefix} missing schema`, {
                 relation,
                 reason: result.reason,
                 missing: result.missing,
@@ -316,7 +319,7 @@ export async function requireSchema(opts: RequireSchemaOpts): Promise<RelationPr
     const warnKey = `${opts.warnKey ?? `schema_contract:${relation}`}:${result.reason}`;
     const serialized = head.reason === "unknown" ? serializeSupabaseError(head.error) : null;
     const status = head.reason === "unknown" ? readSupabaseErrorStatus(head.error) : null;
-    warnOnce(warnKey, `${opts.warnPrefix} missing schema`, {
+    logMissingSchema(warnKey, `${opts.warnPrefix} missing schema`, {
       relation,
       reason: result.reason,
       missing: result.missing,

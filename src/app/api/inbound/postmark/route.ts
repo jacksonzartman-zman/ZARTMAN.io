@@ -5,7 +5,7 @@
  * - Good auth but malformed payload → 400 { ok:false, error:"invalid_payload" }
  * - Good auth + valid payload but EMAIL_BRIDGE_SECRET missing → 200 { ok:false, error:"disabled" } (from handler)
  * - Token invalid → 401 { ok:false, error:"token_invalid" }
- * - Schema missing (quote_messages missing) → 200 { ok:false, error:"unsupported" } (warnOnce)
+ * - Schema missing (quote_messages missing) → 200 { ok:false, error:"unsupported" } (debugOnce)
  * - Good auth + valid payload + valid token → inserts quote_messages supplier/customer message when supported
  * - Inbound with attachments → attachments uploaded + linked under message (best-effort)
  * - Replay same webhook twice → dedupe prevents duplicate message insert (best-effort)

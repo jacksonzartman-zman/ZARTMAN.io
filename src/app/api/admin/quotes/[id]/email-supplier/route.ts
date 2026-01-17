@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser, UnauthorizedError } from "@/server/auth";
 import { schemaGate } from "@/server/db/schemaContract";
-import { isMissingTableOrColumnError, serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
+import { debugOnce, isMissingTableOrColumnError, serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
 import { buildSupplierThreadEmail, getEmailOutboundStatus, getEmailSender } from "@/server/quotes/emailOutbound";
 import { resolveOutboundAttachments } from "@/server/quotes/emailAttachments";
 
@@ -343,7 +343,7 @@ async function tryStoreAdminThreadMessage(args: {
     if (!extendedError) return true;
 
     if (isMissingTableOrColumnError(extendedError)) {
-      warnOnce(
+      debugOnce(
         "email_outbound:quote_messages_insert_degraded",
         `${WARN_PREFIX} message insert degraded; retrying minimal`,
         {
@@ -355,7 +355,7 @@ async function tryStoreAdminThreadMessage(args: {
     const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(basePayload);
     if (baseError) {
       if (isMissingTableOrColumnError(baseError)) {
-        warnOnce("email_outbound:quote_messages_insert_missing_schema", `${WARN_PREFIX} message insert skipped`, {
+        debugOnce("email_outbound:quote_messages_insert_missing_schema", `${WARN_PREFIX} message insert skipped`, {
           code: serializeSupabaseError(baseError).code,
         });
         return false;

@@ -8,6 +8,7 @@ export type SerializedSupabaseError = {
 type LogContext = Record<string, unknown | null | undefined>;
 
 const WARN_ONCE_KEYS = new Set<string>();
+const DEBUG_ONCE_KEYS = new Set<string>();
 
 function sanitizeContext(context?: LogContext | null) {
   if (!context) return null;
@@ -28,6 +29,17 @@ export function warnOnce(key: string, message: string, context?: LogContext) {
     console.warn(message, payload);
   } else {
     console.warn(message);
+  }
+}
+
+export function debugOnce(key: string, message: string, context?: LogContext) {
+  if (DEBUG_ONCE_KEYS.has(key)) return;
+  DEBUG_ONCE_KEYS.add(key);
+  const payload = sanitizeContext(context);
+  if (payload && Object.keys(payload).length > 0) {
+    console.debug(message, payload);
+  } else {
+    console.debug(message);
   }
 }
 
@@ -228,8 +240,10 @@ export function handleMissingSupabaseSchema(args: {
   markSupabaseRelationMissing(args.relation);
 
   const serialized = serializeSupabaseError(args.error);
-  const key = args.warnKey ?? `missing_relation:${args.relation}`;
-  warnOnce(key, `${args.warnPrefix} missing relation; skipping`, {
+  const normalizedRelation = typeof args.relation === "string" ? args.relation.trim() : "";
+  const key = args.warnKey ?? `missing_relation:${normalizedRelation}`;
+  const logOnce = normalizedRelation === "quote_messages" ? debugOnce : warnOnce;
+  logOnce(key, `${args.warnPrefix} missing relation; skipping`, {
     code: serialized.code,
     message: serialized.message,
   });
