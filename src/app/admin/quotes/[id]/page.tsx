@@ -115,6 +115,7 @@ import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { getRfqDestinations } from "@/server/rfqs/destinations";
 import { getRfqOffers } from "@/server/rfqs/offers";
 import { getActiveProviders } from "@/server/providers";
+import { listOpsEventsForQuote, type OpsEventRecord } from "@/server/ops/events";
 import { schemaGate } from "@/server/db/schemaContract";
 import {
   handleMissingSupabaseRelation,
@@ -122,6 +123,7 @@ import {
   isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { formatEnumLabel } from "@/components/admin/rfq/destinationHelpers";
 import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadSupplierReputationForSuppliers } from "@/server/suppliers/reputation";
 import { ensureCadFeaturesForQuote, loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
@@ -448,11 +450,27 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     })();
     const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
     const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
-    const [activeProviders, rfqDestinations, rfqOffers] = await Promise.all([
+    const [activeProviders, rfqDestinations, rfqOffers, opsEventsResult] = await Promise.all([
       getActiveProviders(),
       getRfqDestinations(quote.id),
       getRfqOffers(quote.id),
+      listOpsEventsForQuote(quote.id, { limit: 20 }),
     ]);
+    const opsEvents = opsEventsResult.ok ? opsEventsResult.events : [];
+    const providerLabelById = new Map<string, string>();
+    for (const provider of activeProviders) {
+      if (provider?.id && provider.name) {
+        providerLabelById.set(provider.id, provider.name);
+      }
+    }
+    for (const destination of rfqDestinations) {
+      if (!providerLabelById.has(destination.provider_id)) {
+        const fallback =
+          destination.provider?.name ?? `Provider ${formatShortId(destination.provider_id)}`;
+        providerLabelById.set(destination.provider_id, fallback);
+      }
+    }
+    const destinationById = new Map(rfqDestinations.map((destination) => [destination.id, destination]));
 
     let rfqFeedbackRows: QuoteRfqFeedbackAdminRow[] = [];
     let rfqFeedbackSchemaMissing = false;
@@ -1538,6 +1556,41 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       </div>
     );
 
+    const opsTimelineContent = (
+      <section className={cardClasses}>
+        {opsEvents.length === 0 ? (
+          <p className="text-sm text-slate-400">No ops events yet.</p>
+        ) : (
+          <div className="divide-y divide-slate-900/60">
+            {opsEvents.map((event) => {
+              const timestamp =
+                formatDateTime(event.created_at, { includeTime: true }) ?? event.created_at;
+              return (
+                <div
+                  key={event.id}
+                  className="grid gap-3 py-3 sm:grid-cols-[150px_minmax(0,1fr)]"
+                >
+                  <div className="text-xs text-slate-400">{timestamp}</div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-100">
+                      {formatOpsEventTypeLabel(event.event_type)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {renderOpsEventSummary({
+                        event,
+                        providerLabelById,
+                        destinationById,
+                      })}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    );
+
     const decisionAwardedSupplier =
       winningBidExists && (winningSupplierName ?? "").trim().length > 0
         ? (winningSupplierName ?? "").trim()
@@ -2128,6 +2181,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   messageCount: quoteMessages.length,
                   needsReply: adminNeedsReply,
                   fileCount: filePreviews.length,
+                  opsEventCount: opsEvents.length,
                 })}
               />
             }
@@ -2541,6 +2595,21 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               {trackingContent}
             </DisclosureSection>
 
+            <DisclosureSection
+              id="ops-timeline"
+              className="scroll-mt-24"
+              title="Ops Timeline"
+              description="Dispatch and provider events for this RFQ."
+              defaultOpen={false}
+              summary={
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  {opsEvents.length} event{opsEvents.length === 1 ? "" : "s"}
+                </span>
+              }
+            >
+              {opsTimelineContent}
+            </DisclosureSection>
+
             <CollapsibleCard
               title="3D viewer workspace"
               description="Open STL previews in the interactive modal."
@@ -2562,6 +2631,7 @@ function buildAdminQuoteSections(args: {
   messageCount: number;
   needsReply: boolean;
   fileCount: number;
+  opsEventCount: number;
 }): QuoteSectionRailSection[] {
   const decisionBadge = args.hasWinner
     ? "Winner"
@@ -2577,6 +2647,7 @@ function buildAdminQuoteSections(args: {
         : "Locked";
   const uploadsBadge = args.fileCount > 0 ? `${args.fileCount}` : undefined;
   const messagesBadge = args.needsReply ? "Reply" : args.messageCount > 0 ? `${args.messageCount}` : undefined;
+  const opsBadge = args.opsEventCount > 0 ? `${args.opsEventCount}` : undefined;
 
   return [
     {
@@ -2603,6 +2674,7 @@ function buildAdminQuoteSections(args: {
     { key: "uploads", label: "Uploads", href: "#uploads", badge: uploadsBadge },
     { key: "details", label: "Details", href: "#details" },
     { key: "timeline", label: "Timeline", href: "#timeline" },
+    { key: "ops-timeline", label: "Ops Timeline", href: "#ops-timeline", badge: opsBadge },
   ];
 }
 
@@ -2850,4 +2922,114 @@ function formatRfqSignalCategory(value: string): string {
     .replace(/[_-]+/g, " ")
     .trim()
     .replace(/^\w/, (m) => m.toUpperCase());
+}
+
+function formatOpsEventTypeLabel(value: string): string {
+  const label = formatEnumLabel(value);
+  return label === "-" ? "Event" : label;
+}
+
+function renderOpsEventSummary(args: {
+  event: OpsEventRecord;
+  providerLabelById: Map<string, string>;
+  destinationById: Map<string, { provider_id: string }>;
+}): ReactNode {
+  const payload = args.event.payload ?? {};
+  const destinationId =
+    resolvePayloadString(payload, "destination_id") ?? args.event.destination_id ?? null;
+  const destination = destinationId ? args.destinationById.get(destinationId) ?? null : null;
+  const providerId =
+    resolvePayloadString(payload, "provider_id") ?? destination?.provider_id ?? null;
+
+  const providerLabel = providerId
+    ? args.providerLabelById.get(providerId) ?? `Provider ${formatShortId(providerId)}`
+    : null;
+
+  const providerLink = providerId ? (
+    <Link
+      href={`/admin/ops/inbox?provider=${providerId}`}
+      className="text-emerald-200 underline-offset-4 hover:underline"
+    >
+      {providerLabel}
+    </Link>
+  ) : null;
+
+  const destinationLink = destinationId ? (
+    <HashScrollLink
+      hash="destinations"
+      className="text-emerald-200 underline-offset-4 hover:underline"
+    >
+      {formatShortId(destinationId)}
+    </HashScrollLink>
+  ) : null;
+
+  const summaryParts: ReactNode[] = [];
+  switch (args.event.event_type) {
+    case "destination_added": {
+      summaryParts.push("Destination added");
+      break;
+    }
+    case "destination_status_updated": {
+      const statusFrom = formatOpsStatusLabel(resolvePayloadString(payload, "status_from"));
+      const statusTo = formatOpsStatusLabel(resolvePayloadString(payload, "status_to"));
+      if (statusFrom && statusTo) {
+        summaryParts.push(`Status ${statusFrom} to ${statusTo}`);
+      } else if (statusTo) {
+        summaryParts.push(`Status set to ${statusTo}`);
+      } else {
+        summaryParts.push("Status updated");
+      }
+      break;
+    }
+    case "outbound_email_generated": {
+      summaryParts.push("Outbound email draft generated");
+      break;
+    }
+    case "offer_upserted": {
+      const offerStatus = formatOpsStatusLabel(resolvePayloadString(payload, "status"));
+      summaryParts.push(offerStatus ? `Offer saved (${offerStatus})` : "Offer saved");
+      break;
+    }
+    case "offer_selected": {
+      const offerId = resolvePayloadString(payload, "offer_id");
+      summaryParts.push(offerId ? `Offer ${formatShortId(offerId)} selected` : "Offer selected");
+      break;
+    }
+    default: {
+      summaryParts.push("Ops event recorded");
+      break;
+    }
+  }
+
+  if (destinationLink) {
+    summaryParts.push(<>Destination {destinationLink}</>);
+  }
+  if (providerLink) {
+    summaryParts.push(<>Provider {providerLink}</>);
+  }
+
+  return <>{joinSummaryParts(summaryParts)}</>;
+}
+
+function formatOpsStatusLabel(value: string | null): string | null {
+  const label = formatEnumLabel(value);
+  return label === "-" ? null : label;
+}
+
+function resolvePayloadString(
+  payload: Record<string, unknown> | null | undefined,
+  key: string,
+): string | null {
+  const value = payload?.[key];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function joinSummaryParts(parts: ReactNode[]): ReactNode {
+  return parts.reduce<ReactNode[]>((acc, part, index) => {
+    if (index > 0) acc.push(" · ");
+    acc.push(part);
+    return acc;
+  }, []);
 }
