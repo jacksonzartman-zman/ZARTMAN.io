@@ -6,6 +6,7 @@ import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import { formatDateTime } from "@/lib/formatDate";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { getAdminOpsInboxRows, type AdminOpsInboxRow } from "@/server/ops/inbox";
+import { getOpsSlaConfig } from "@/server/ops/settings";
 import { getActiveProviders } from "@/server/providers";
 import { OpsInboxDispatchDrawer } from "./OpsInboxDispatchDrawer";
 
@@ -84,6 +85,8 @@ export default async function AdminOpsInboxPage({
   const destinationStatus = normalizeDestinationStatus(usp.get("destinationStatus"));
   const providerId = normalizeFilterValue(usp.get("provider"));
 
+  const slaConfig = await getOpsSlaConfig();
+
   const [rows, activeProviders] = await Promise.all([
     getAdminOpsInboxRows({
       limit: 200,
@@ -93,6 +96,7 @@ export default async function AdminOpsInboxPage({
         destinationStatus: destinationStatus === "all" ? null : destinationStatus,
         providerId: providerId || null,
       },
+      slaConfig,
     }),
     getActiveProviders(),
   ]);
@@ -127,11 +131,20 @@ export default async function AdminOpsInboxPage({
     ctaSizeClasses.sm,
     "min-w-[5.5rem] justify-center",
   );
+  const headerActions = (
+    <Link
+      href="/admin/ops/settings"
+      className={clsx(secondaryCtaClasses, ctaSizeClasses.sm)}
+    >
+      SLA settings
+    </Link>
+  );
 
   return (
     <AdminDashboardShell
       title="Ops Inbox"
       description="Cockpit for Kayak dispatch and destination follow-ups."
+      actions={headerActions}
     >
       <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-5">
         <form
@@ -324,7 +337,11 @@ export default async function AdminOpsInboxPage({
                         <Link href={quoteHref} className={actionButtonClass}>
                           Open
                         </Link>
-                        <OpsInboxDispatchDrawer row={row} actionClassName={actionButtonClass} />
+                        <OpsInboxDispatchDrawer
+                          row={row}
+                          actionClassName={actionButtonClass}
+                          slaConfig={slaConfig}
+                        />
                       </div>
                     </td>
                   </tr>
