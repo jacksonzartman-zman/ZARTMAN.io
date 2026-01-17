@@ -10,7 +10,8 @@ export type OpsEventType =
   | "destination_status_updated"
   | "outbound_email_generated"
   | "offer_upserted"
-  | "offer_selected";
+  | "offer_selected"
+  | "message_posted";
 
 export type LogOpsEventInput = {
   quoteId: string;
