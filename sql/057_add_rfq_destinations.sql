@@ -2,7 +2,7 @@
 
 create table if not exists public.rfq_destinations (
   id uuid primary key default gen_random_uuid(),
-  rfq_id uuid not null references public.rfqs(id) on delete cascade,
+  rfq_id uuid not null references public.quotes(id) on delete cascade,
   provider_id uuid not null references public.providers(id),
   status text not null,
   sent_at timestamptz null,
