@@ -63,6 +63,10 @@ export type SelectOfferActionState = {
   selectedOfferId?: string | null;
 };
 
+export type ConfirmSelectionActionResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
 export type AwardBidAsCustomerResult =
   | { ok: true }
   | { ok: false; errorCode: string; message: string };
@@ -90,6 +94,20 @@ const CUSTOMER_SELECT_OFFER_ACCESS_ERROR =
 const CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR =
   "That offer isn’t available for this RFQ.";
 const CUSTOMER_SELECT_OFFER_SUCCESS_MESSAGE = "Offer selection saved.";
+const CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR =
+  "We couldn’t confirm your selection. Please try again.";
+const CUSTOMER_CONFIRM_SELECTION_ACCESS_ERROR =
+  "We couldn’t confirm your access to this quote.";
+const CUSTOMER_CONFIRM_SELECTION_MISSING_OFFER_ERROR =
+  "Select an offer before confirming.";
+const CUSTOMER_CONFIRM_SELECTION_ALREADY_CONFIRMED_ERROR =
+  "Selection is already confirmed for this quote.";
+const CUSTOMER_CONFIRM_SELECTION_PO_LENGTH_ERROR =
+  "PO number must be 100 characters or fewer.";
+const CUSTOMER_CONFIRM_SELECTION_SHIP_TO_LENGTH_ERROR =
+  "Ship-to details must be 2000 characters or fewer.";
+const CUSTOMER_CONFIRM_SELECTION_INSPECTION_LENGTH_ERROR =
+  "Inspection requirements must be 2000 characters or fewer.";
 
 const CUSTOMER_MESSAGE_GENERIC_ERROR =
   "Unable to send your message right now. Please try again.";
@@ -142,6 +160,14 @@ type CustomerOfferRow = {
   id: string;
   rfq_id: string | null;
   provider_id: string | null;
+};
+
+type CustomerSelectionConfirmQuoteRow = {
+  id: string;
+  customer_id: string | null;
+  customer_email: string | null;
+  selected_offer_id: string | null;
+  selection_confirmed_at: string | null;
 };
 
 export async function archiveCustomerQuoteAction(
@@ -788,6 +814,115 @@ export async function selectOfferAction(
   }
 }
 
+export async function confirmSelectionAction(args: {
+  quoteId: string;
+  poNumber?: string | null;
+  shipTo?: string | null;
+  inspectionRequirements?: string | null;
+}): Promise<ConfirmSelectionActionResult> {
+  const quoteId = normalizeId(args.quoteId);
+  if (!quoteId) {
+    return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR };
+  }
+
+  const poNumber = normalizeOptionalText(args.poNumber);
+  const shipTo = normalizeOptionalText(args.shipTo);
+  const inspectionRequirements = normalizeOptionalText(args.inspectionRequirements);
+
+  if (poNumber && poNumber.length > 100) {
+    return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_PO_LENGTH_ERROR };
+  }
+  if (shipTo && shipTo.length > 2000) {
+    return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_SHIP_TO_LENGTH_ERROR };
+  }
+  if (inspectionRequirements && inspectionRequirements.length > 2000) {
+    return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_INSPECTION_LENGTH_ERROR };
+  }
+
+  try {
+    const user = await requireUser({
+      redirectTo: `/customer/quotes/${quoteId}`,
+    });
+    const customer = await getCustomerByUserId(user.id);
+    if (!customer) {
+      return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_ACCESS_ERROR };
+    }
+
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes")
+      .select("id,customer_id,customer_email,selected_offer_id,selection_confirmed_at")
+      .eq("id", quoteId)
+      .maybeSingle<CustomerSelectionConfirmQuoteRow>();
+
+    if (quoteError) {
+      console.error("[customer selection confirm] quote lookup failed", {
+        quoteId,
+        error: serializeActionError(quoteError),
+      });
+      return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR };
+    }
+
+    if (!quoteRow) {
+      return { ok: false, error: "Quote not found." };
+    }
+
+    const quoteCustomerId = normalizeId(quoteRow.customer_id ?? null);
+    const customerIdMatches = Boolean(quoteCustomerId) && quoteCustomerId === customer.id;
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.customer_email ?? null);
+    const normalizedCustomerEmail = normalizeEmailInput(customer.email);
+    const customerEmailMatches =
+      Boolean(normalizedQuoteEmail) &&
+      Boolean(normalizedCustomerEmail) &&
+      normalizedQuoteEmail === normalizedCustomerEmail;
+
+    if (!customerIdMatches && !customerEmailMatches) {
+      console.warn("[customer selection confirm] access denied", {
+        quoteId,
+        userId: user.id,
+        customerId: customer.id,
+      });
+      return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_ACCESS_ERROR };
+    }
+
+    const selectedOfferId = normalizeId(quoteRow.selected_offer_id ?? null);
+    if (!selectedOfferId) {
+      return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_MISSING_OFFER_ERROR };
+    }
+
+    if (quoteRow.selection_confirmed_at) {
+      return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_ALREADY_CONFIRMED_ERROR };
+    }
+
+    const { error: updateError } = await supabaseServer
+      .from("quotes")
+      .update({
+        po_number: poNumber,
+        ship_to: shipTo,
+        inspection_requirements: inspectionRequirements,
+        selection_confirmed_at: new Date().toISOString(),
+      })
+      .eq("id", quoteId);
+
+    if (updateError) {
+      console.error("[customer selection confirm] update failed", {
+        quoteId,
+        error: serializeActionError(updateError),
+      });
+      return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR };
+    }
+
+    revalidatePath(`/customer/quotes/${quoteId}`);
+
+    return { ok: true, message: "Selection confirmed." };
+  } catch (error) {
+    console.error("[customer selection confirm] crashed", {
+      quoteId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR };
+  }
+}
+
 export async function awardBidAsCustomerAction(
   quoteId: string,
   bidId: string,
@@ -1051,6 +1186,12 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
 
 function normalizeId(value?: string | null): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalText(value?: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export type CustomerPartFormState = {

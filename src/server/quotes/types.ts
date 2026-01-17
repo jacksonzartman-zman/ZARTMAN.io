@@ -38,6 +38,10 @@ export type QuoteWithUploadsRow = QuoteFileSource & {
   selected_provider_id?: string | null;
   selected_offer_id?: string | null;
   selected_at?: string | null;
+  po_number?: string | null;
+  ship_to?: string | null;
+  inspection_requirements?: string | null;
+  selection_confirmed_at?: string | null;
 };
 
 export type UploadMeta = {
