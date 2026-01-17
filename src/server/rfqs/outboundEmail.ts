@@ -60,19 +60,16 @@ type SerializedSupabaseErrorLike = {
 
 function serializeSupabaseErrorString(error: unknown): string {
   const serialized = serializeSupabaseError(error);
-  if (serialized && typeof serialized === "object") {
-    const message =
-      typeof (serialized as SerializedSupabaseErrorLike).message === "string"
-        ? (serialized as SerializedSupabaseErrorLike).message.trim()
-        : "";
-    if (message) return message;
-    const code =
-      typeof (serialized as SerializedSupabaseErrorLike).code === "string"
-        ? (serialized as SerializedSupabaseErrorLike).code.trim()
-        : "";
-    if (code) return code;
-    return "unknown_error";
-  }
+  const message =
+    typeof (serialized as SerializedSupabaseErrorLike).message === "string"
+      ? (serialized as SerializedSupabaseErrorLike).message.trim()
+      : "";
+  if (message) return message;
+  const code =
+    typeof (serialized as SerializedSupabaseErrorLike).code === "string"
+      ? (serialized as SerializedSupabaseErrorLike).code.trim()
+      : "";
+  if (code) return code;
   const fallback = JSON.stringify(serialized);
   return fallback ? fallback : "unknown_error";
 }
