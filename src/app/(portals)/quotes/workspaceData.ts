@@ -97,7 +97,12 @@ type SafeQuoteRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
 
 type QuoteExtrasRow = Pick<
   QuoteWithUploadsRow,
-  "customer_id" | "dfm_notes" | "internal_notes"
+  | "customer_id"
+  | "dfm_notes"
+  | "internal_notes"
+  | "selected_provider_id"
+  | "selected_offer_id"
+  | "selected_at"
 >;
 
 type UploadMetaRow = UploadMeta & {
@@ -141,7 +146,9 @@ export async function loadQuoteWorkspaceData(
 
       const { data: extras, error: extrasError } = await supabaseServer
         .from("quotes")
-        .select("customer_id,dfm_notes,internal_notes")
+        .select(
+          "customer_id,dfm_notes,internal_notes,selected_provider_id,selected_offer_id,selected_at",
+        )
         .eq("id", quoteId)
         .maybeSingle<QuoteExtrasRow>();
 
@@ -157,6 +164,9 @@ export async function loadQuoteWorkspaceData(
         customer_id: extras?.customer_id ?? null,
         dfm_notes: extras?.dfm_notes ?? null,
         internal_notes: extras?.internal_notes ?? null,
+        selected_provider_id: extras?.selected_provider_id ?? null,
+        selected_offer_id: extras?.selected_offer_id ?? null,
+        selected_at: extras?.selected_at ?? null,
       };
     } else {
       const { data: fullQuote, error } = await supabaseServer

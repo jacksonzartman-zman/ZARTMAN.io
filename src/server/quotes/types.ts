@@ -35,6 +35,9 @@ export type QuoteWithUploadsRow = QuoteFileSource & {
   awarded_at?: string | null;
   awarded_by_user_id?: string | null;
   awarded_by_role?: string | null;
+  selected_provider_id?: string | null;
+  selected_offer_id?: string | null;
+  selected_at?: string | null;
 };
 
 export type UploadMeta = {
