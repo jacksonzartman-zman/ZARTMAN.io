@@ -53,6 +53,7 @@ import { loadSupplierById } from "@/server/suppliers/profile";
 import { postQuoteMessage as postCustomerQuoteMessage } from "./actions";
 import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
 import { CustomerQuoteCompareOffers } from "./CustomerQuoteCompareOffers";
+import { CustomerQuoteSelectionConfirmation } from "./CustomerQuoteSelectionConfirmation";
 import {
   getCustomerKickoffSummary,
   type CustomerKickoffSummary,
@@ -685,6 +686,11 @@ export default async function CustomerQuoteDetailPage({
     bestPriceValue != null
       ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
       : "Pending";
+  const selectedOfferId = quote.selected_offer_id ?? null;
+  const selectedOffer = selectedOfferId
+    ? rfqOffers.find((offer) => offer.id === selectedOfferId) ?? null
+    : null;
+  const selectionConfirmedAt = quote.selection_confirmed_at ?? null;
 
   const kickoffTolerances =
     readOptionalUploadMetaString(uploadMeta, [
@@ -1567,11 +1573,38 @@ export default async function CustomerQuoteDetailPage({
         <CustomerQuoteCompareOffers
           quoteId={quote.id}
           offers={rfqOffers}
-          selectedOfferId={quote.selected_offer_id ?? null}
+          selectedOfferId={selectedOfferId}
         />
       )}
     </DisclosureSection>
   );
+
+  const selectionConfirmedSection =
+    selectedOfferId ? (
+      <DisclosureSection
+        id="selection-confirmed"
+        className="scroll-mt-24"
+        title="Selection confirmed"
+        description="Confirm provider details and draft the award pack."
+        defaultOpen
+        summary={
+          <TagPill size="md" tone={selectionConfirmedAt ? "emerald" : "slate"}>
+            {selectionConfirmedAt ? "Confirmed" : "Pending"}
+          </TagPill>
+        }
+      >
+        <CustomerQuoteSelectionConfirmation
+          quoteId={quote.id}
+          selectedOffer={selectedOffer}
+          selectionConfirmedAt={selectionConfirmedAt}
+          poNumber={quote.po_number ?? null}
+          shipTo={quote.ship_to ?? null}
+          inspectionRequirements={quote.inspection_requirements ?? null}
+          files={filePreviews}
+          readOnly={readOnly}
+        />
+      </DisclosureSection>
+    ) : null;
 
   const kickoffSection = (
     <DisclosureSection
@@ -1686,6 +1719,7 @@ export default async function CustomerQuoteDetailPage({
           {orderWorkspaceSection}
           {decisionSection}
           {compareOffersSection}
+          {selectionConfirmedSection}
           {kickoffSection}
           {messagesUnavailable ? (
             <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">

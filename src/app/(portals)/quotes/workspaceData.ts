@@ -103,6 +103,10 @@ type QuoteExtrasRow = Pick<
   | "selected_provider_id"
   | "selected_offer_id"
   | "selected_at"
+  | "po_number"
+  | "ship_to"
+  | "inspection_requirements"
+  | "selection_confirmed_at"
 >;
 
 type UploadMetaRow = UploadMeta & {
@@ -147,7 +151,7 @@ export async function loadQuoteWorkspaceData(
       const { data: extras, error: extrasError } = await supabaseServer
         .from("quotes")
         .select(
-          "customer_id,dfm_notes,internal_notes,selected_provider_id,selected_offer_id,selected_at",
+          "customer_id,dfm_notes,internal_notes,selected_provider_id,selected_offer_id,selected_at,po_number,ship_to,inspection_requirements,selection_confirmed_at",
         )
         .eq("id", quoteId)
         .maybeSingle<QuoteExtrasRow>();
@@ -167,6 +171,10 @@ export async function loadQuoteWorkspaceData(
         selected_provider_id: extras?.selected_provider_id ?? null,
         selected_offer_id: extras?.selected_offer_id ?? null,
         selected_at: extras?.selected_at ?? null,
+        po_number: extras?.po_number ?? null,
+        ship_to: extras?.ship_to ?? null,
+        inspection_requirements: extras?.inspection_requirements ?? null,
+        selection_confirmed_at: extras?.selection_confirmed_at ?? null,
       };
     } else {
       const { data: fullQuote, error } = await supabaseServer
