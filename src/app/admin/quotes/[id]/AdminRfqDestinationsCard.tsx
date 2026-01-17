@@ -1,0 +1,455 @@
+"use client";
+
+import clsx from "clsx";
+import { useMemo, useState, useTransition, type ChangeEvent } from "react";
+import { useRouter } from "next/navigation";
+import type { ProviderRow } from "@/server/providers";
+import type { RfqDestination, RfqDestinationStatus } from "@/server/rfqs/destinations";
+import {
+  addDestinationsAction,
+  updateDestinationStatusAction,
+} from "./actions";
+import { ctaSizeClasses, dangerCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { formatDateTime } from "@/lib/formatDate";
+
+type AdminRfqDestinationsCardProps = {
+  quoteId: string;
+  providers: ProviderRow[];
+  destinations: RfqDestination[];
+};
+
+type FeedbackTone = "success" | "error";
+
+type FeedbackState = {
+  tone: FeedbackTone;
+  message: string;
+};
+
+type StatusMeta = {
+  label: string;
+  className: string;
+};
+
+const STATUS_META: Record<RfqDestinationStatus, StatusMeta> = {
+  draft: {
+    label: "Draft",
+    className: "border-slate-700 bg-slate-900/40 text-slate-200",
+  },
+  queued: {
+    label: "Queued",
+    className: "border-amber-500/40 bg-amber-500/10 text-amber-100",
+  },
+  sent: {
+    label: "Sent",
+    className: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+  },
+  viewed: {
+    label: "Viewed",
+    className: "border-indigo-500/40 bg-indigo-500/10 text-indigo-100",
+  },
+  quoted: {
+    label: "Quoted",
+    className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
+  },
+  declined: {
+    label: "Declined",
+    className: "border-red-500/40 bg-red-500/10 text-red-100",
+  },
+  error: {
+    label: "Error",
+    className: "border-red-500/60 bg-red-500/15 text-red-100",
+  },
+};
+
+export function AdminRfqDestinationsCard({
+  quoteId,
+  providers,
+  destinations,
+}: AdminRfqDestinationsCardProps) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [selectedProviderIds, setSelectedProviderIds] = useState<string[]>([]);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const [errorDestination, setErrorDestination] = useState<RfqDestination | null>(null);
+  const [errorNote, setErrorNote] = useState("");
+  const [errorFeedback, setErrorFeedback] = useState<string | null>(null);
+
+  const providerById = useMemo(() => {
+    const map = new Map<string, ProviderRow>();
+    for (const provider of providers) {
+      map.set(provider.id, provider);
+    }
+    return map;
+  }, [providers]);
+
+  const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const selections = Array.from(event.target.selectedOptions).map((option) => option.value);
+    setSelectedProviderIds(selections);
+  };
+
+  const handleAddDestinations = () => {
+    if (selectedProviderIds.length === 0 || pending) return;
+    setFeedback(null);
+    startTransition(async () => {
+      const result = await addDestinationsAction({
+        quoteId,
+        providerIds: selectedProviderIds,
+      });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: result.message });
+        setSelectedProviderIds([]);
+        router.refresh();
+        return;
+      }
+      setFeedback({ tone: "error", message: result.error });
+    });
+  };
+
+  const handleStatusUpdate = (destinationId: string, status: RfqDestinationStatus) => {
+    if (pending) return;
+    setFeedback(null);
+    startTransition(async () => {
+      const result = await updateDestinationStatusAction({ destinationId, status });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: result.message });
+        router.refresh();
+        return;
+      }
+      setFeedback({ tone: "error", message: result.error });
+    });
+  };
+
+  const openErrorPrompt = (destination: RfqDestination) => {
+    setErrorFeedback(null);
+    setErrorDestination(destination);
+    setErrorNote(destination.error_message ?? "");
+  };
+
+  const closeErrorPrompt = () => {
+    setErrorFeedback(null);
+    setErrorDestination(null);
+    setErrorNote("");
+  };
+
+  const submitError = () => {
+    if (!errorDestination || pending) return;
+    setErrorFeedback(null);
+    startTransition(async () => {
+      const result = await updateDestinationStatusAction({
+        destinationId: errorDestination.id,
+        status: "error",
+        errorMessage: errorNote.trim(),
+      });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: "Error recorded." });
+        closeErrorPrompt();
+        router.refresh();
+        return;
+      }
+      setErrorFeedback(result.error);
+    });
+  };
+
+  const selectedCountLabel =
+    selectedProviderIds.length > 0
+      ? `${selectedProviderIds.length} selected`
+      : "No providers selected";
+
+  const destinationsCountLabel = `${destinations.length} destination${
+    destinations.length === 1 ? "" : "s"
+  }`;
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Provider picker
+            </p>
+            <p className="mt-1 text-sm text-slate-300">
+              Add active providers as destinations for this RFQ.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleAddDestinations}
+            disabled={pending || selectedProviderIds.length === 0}
+            className={clsx(
+              secondaryCtaClasses,
+              ctaSizeClasses.sm,
+              pending || selectedProviderIds.length === 0 ? "cursor-not-allowed opacity-60" : null,
+            )}
+          >
+            {pending ? "Adding..." : "Add destinations"}
+          </button>
+        </div>
+
+        <div className="mt-3 grid gap-2">
+          {providers.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
+              No active providers available.
+            </p>
+          ) : (
+            <>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Active providers
+              </label>
+              <select
+                multiple
+                value={selectedProviderIds}
+                onChange={handleProviderChange}
+                className="min-h-[140px] w-full rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none"
+              >
+                {providers.map((provider) => {
+                  const typeLabel = formatEnumLabel(provider.provider_type);
+                  const modeLabel = formatEnumLabel(provider.quoting_mode);
+                  return (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name} ({typeLabel}, {modeLabel})
+                    </option>
+                  );
+                })}
+              </select>
+              <p className="text-xs text-slate-500">{selectedCountLabel}</p>
+            </>
+          )}
+        </div>
+
+        {feedback ? (
+          <p
+            className={clsx(
+              "mt-3 text-sm",
+              feedback.tone === "success" ? "text-emerald-200" : "text-amber-200",
+            )}
+            role={feedback.tone === "success" ? "status" : "alert"}
+          >
+            {feedback.message}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-900/60 px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Destinations
+          </p>
+          <span className="text-xs text-slate-400">{destinationsCountLabel}</span>
+        </div>
+        {destinations.length === 0 ? (
+          <div className="px-4 py-4 text-sm text-slate-400">
+            No destinations yet. Use the picker above to add providers.
+          </div>
+        ) : (
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-950/40">
+              <tr>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Provider
+                </th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Type
+                </th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Mode
+                </th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Status
+                </th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Sent At
+                </th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Last Update
+                </th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-900/60">
+              {destinations.map((destination) => {
+                const provider =
+                  destination.provider ?? providerById.get(destination.provider_id) ?? null;
+                const providerName = provider?.name ?? destination.provider_id;
+                const providerType = formatEnumLabel(provider?.provider_type);
+                const providerMode = formatEnumLabel(provider?.quoting_mode);
+                const statusMeta = STATUS_META[destination.status] ?? STATUS_META.draft;
+                const sentAtLabel = formatDateTime(destination.sent_at, {
+                  includeTime: true,
+                  fallback: "-",
+                });
+                const lastUpdateLabel = formatDateTime(destination.last_status_at, {
+                  includeTime: true,
+                  fallback: "-",
+                });
+                return (
+                  <tr key={destination.id}>
+                    <td className="px-4 py-2 align-top font-medium text-slate-100">
+                      {providerName}
+                    </td>
+                    <td className="px-4 py-2 align-top text-slate-300">{providerType}</td>
+                    <td className="px-4 py-2 align-top text-slate-300">{providerMode}</td>
+                    <td className="px-4 py-2 align-top">
+                      <div className="flex flex-col gap-1">
+                        <span
+                          className={clsx(
+                            "inline-flex w-fit items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+                            statusMeta.className,
+                          )}
+                        >
+                          {statusMeta.label}
+                        </span>
+                        {destination.status === "error" && destination.error_message ? (
+                          <p className="text-[11px] text-red-200">{destination.error_message}</p>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 align-top text-slate-300">{sentAtLabel}</td>
+                    <td className="px-4 py-2 align-top text-slate-300">{lastUpdateLabel}</td>
+                    <td className="px-4 py-2 align-top">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleStatusUpdate(destination.id, "sent")}
+                          disabled={pending}
+                          className={clsx(
+                            "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
+                            pending
+                              ? "cursor-not-allowed opacity-60"
+                              : "hover:border-slate-500 hover:text-white",
+                          )}
+                        >
+                          Mark Sent
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStatusUpdate(destination.id, "quoted")}
+                          disabled={pending}
+                          className={clsx(
+                            "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
+                            pending
+                              ? "cursor-not-allowed opacity-60"
+                              : "hover:border-slate-500 hover:text-white",
+                          )}
+                        >
+                          Mark Quoted
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleStatusUpdate(destination.id, "declined")}
+                          disabled={pending}
+                          className={clsx(
+                            "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
+                            pending
+                              ? "cursor-not-allowed opacity-60"
+                              : "hover:border-slate-500 hover:text-white",
+                          )}
+                        >
+                          Mark Declined
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openErrorPrompt(destination)}
+                          disabled={pending}
+                          className={clsx(
+                            "rounded-full border border-red-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-100 transition",
+                            pending
+                              ? "cursor-not-allowed opacity-60"
+                              : "hover:border-red-400 hover:text-white",
+                          )}
+                        >
+                          Mark Error
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {errorDestination ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Mark destination as error"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeErrorPrompt();
+          }}
+        >
+          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Log dispatch error</h3>
+                <p className="mt-1 text-sm text-slate-300">
+                  Add a short note for the error status on this destination.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeErrorPrompt}
+                className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Error message
+              </label>
+              <textarea
+                value={errorNote}
+                onChange={(event) => setErrorNote(event.target.value)}
+                rows={4}
+                className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-red-400 focus:outline-none"
+                placeholder="Describe what went wrong with this dispatch..."
+                maxLength={1000}
+              />
+              {errorFeedback ? (
+                <p className="text-sm text-amber-200" role="alert">
+                  {errorFeedback}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeErrorPrompt}
+                  className="rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitError}
+                  disabled={pending}
+                  className={clsx(
+                    dangerCtaClasses,
+                    ctaSizeClasses.sm,
+                    pending ? "cursor-not-allowed opacity-60" : null,
+                  )}
+                >
+                  {pending ? "Saving..." : "Save error"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function formatEnumLabel(value?: string | null): string {
+  if (!value) return "-";
+  const collapsed = value.replace(/[_-]+/g, " ").trim();
+  if (!collapsed) return "-";
+  return collapsed
+    .split(" ")
+    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
+    .join(" ");
+}
