@@ -505,6 +505,13 @@ export async function postQuoteMessageSimple(
   return postQuoteMessage(quoteId, DEFAULT_MESSAGE_FORM_STATE, formData);
 }
 
+export async function postCustomerQuoteMessageAction(
+  quoteId: string,
+  formData: FormData,
+): Promise<void> {
+  await postQuoteMessage(quoteId, DEFAULT_MESSAGE_FORM_STATE, formData);
+}
+
 export async function submitCustomerQuoteProjectAction(
   quoteId: string,
   _prev: CustomerProjectFormState,
