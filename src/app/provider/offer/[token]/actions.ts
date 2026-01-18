@@ -164,6 +164,7 @@ export async function submitOfferViaTokenAction(
 
     revalidatePath("/admin/quotes");
     revalidatePath(`/admin/quotes/${tokenContext.destination.rfq_id}`);
+    revalidatePath("/admin/ops/inbox");
     revalidatePath(`/customer/quotes/${tokenContext.destination.rfq_id}`);
 
     return { ok: true, message: OFFER_SUBMIT_SUCCESS };
