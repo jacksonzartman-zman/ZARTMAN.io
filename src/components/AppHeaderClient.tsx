@@ -131,8 +131,8 @@ export default function AppHeaderClient({
                 >
                   Log in
                 </Link>
-                <Link href="/quote" className={primaryCtaClasses}>
-                  Get quote
+                <Link href="/customer/search" className={primaryCtaClasses}>
+                  Search suppliers
                 </Link>
               </div>
             )}

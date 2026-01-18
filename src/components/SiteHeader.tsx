@@ -47,8 +47,8 @@ export default function SiteHeader() {
           >
             Log in
           </Link>
-          <Link href="/quote" className={primaryCtaClasses}>
-            Get quote
+          <Link href="/customer/search" className={primaryCtaClasses}>
+            Search suppliers
           </Link>
         </nav>
       </div>

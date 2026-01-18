@@ -16,12 +16,16 @@ const FOOTER_COLUMNS: {
   {
     title: "Customers",
     links: [
-      { label: "Customer portal", href: "/customer" },
       {
-        label: "Become a customer",
-        href: "/customer/signup",
+        label: "Search suppliers",
+        href: "/customer/search",
+        description: "Start a supplier search and compare options in one workspace.",
+      },
+      {
+        label: "View my quotes",
+        href: "/customer/quotes",
         description:
-          "Create your workspace and send your first RFQ.",
+          "Track pricing, lead times, and awards across your searches.",
       },
     ],
   },
