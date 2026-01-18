@@ -6,6 +6,7 @@ import { UPLOAD_STATUS_LABELS, type UploadStatus } from "./constants";
 import CreateQuoteButton from "./CreateQuoteButton";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 
 export type InboxRow = {
   id: string;
@@ -59,16 +60,22 @@ export default function AdminTable({
               className="px-6 py-12 text-center text-base text-slate-300"
             >
               <p className="font-medium text-slate-100">{emptyHeadline}</p>
-              <p className="mt-2 text-sm text-slate-400">
-                Need to test the flow?{" "}
-                <Link
-                  href="/quote"
-                  className="font-semibold text-emerald-300 hover:text-emerald-200"
-                >
-                  Submit a new RFQ
-                </Link>{" "}
-                from the public intake form.
-              </p>
+              {SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+                <p className="mt-2 text-sm text-slate-400">
+                  Need to test the flow?{" "}
+                  <Link
+                    href="/quote"
+                    className="font-semibold text-emerald-300 hover:text-emerald-200"
+                  >
+                    Submit a new RFQ
+                  </Link>{" "}
+                  from the public intake form.
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-slate-400">
+                  Need to test the flow? Use the customer search experience to seed a request.
+                </p>
+              )}
             </td>
           </tr>
         ) : (

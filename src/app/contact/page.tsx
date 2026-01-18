@@ -1,7 +1,18 @@
 import Link from "next/link";
 import ContactForm from "@/components/ContactForm";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 
 export default function ContactPage() {
+  const fastTrackHref = SHOW_LEGACY_QUOTE_ENTRYPOINTS
+    ? "/quote"
+    : "/customer/search";
+  const fastTrackLabel = SHOW_LEGACY_QUOTE_ENTRYPOINTS
+    ? "Start an RFQ instead"
+    : "Search suppliers instead";
+  const fastTrackCopy = SHOW_LEGACY_QUOTE_ENTRYPOINTS
+    ? "Use this form when you want a walkthrough, help matching jobs to suppliers, or clarity on how we handle files. Ready to award work right now? You can always skip ahead and go straight to the RFQ intake form."
+    : "Use this form when you want a walkthrough, help matching jobs to suppliers, or clarity on how we handle files. Ready to award work right now? You can always skip ahead and start a supplier search.";
+
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8 sm:py-20 space-y-12">
@@ -13,15 +24,15 @@ export default function ContactPage() {
             Talk through your RFQs with the team behind Zartman.io
           </h1>
           <p className="text-base text-ink-muted heading-snug">
-            Use this form when you want a walkthrough, help matching jobs to suppliers, or clarity on how we handle files. Ready to award work right now? You can always skip ahead and go straight to the RFQ intake form.
+            {fastTrackCopy}
           </p>
           <p className="text-sm text-ink-soft">
             Working on something urgent?{" "}
             <Link
-              href="/quote"
+              href={fastTrackHref}
               className="font-semibold text-emerald-300 hover:text-emerald-200"
             >
-              Start an RFQ instead
+              {fastTrackLabel}
             </Link>
             .
           </p>

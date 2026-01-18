@@ -2,12 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SHOW_SUPPLIER_DIRECTORY_PUBLIC } from "@/lib/ui/deprecation";
 
 type FooterLink = {
   label: string;
   href: string;
   description?: string;
 };
+
+const SUPPLIER_DIRECTORY_LINKS: FooterLink[] = SHOW_SUPPLIER_DIRECTORY_PUBLIC
+  ? [
+      { label: "Suppliers", href: "/suppliers" },
+      { label: "Join as Supplier", href: "/suppliers/join" },
+    ]
+  : [];
 
 const FOOTER_COLUMNS: {
   title: string;
@@ -17,8 +25,7 @@ const FOOTER_COLUMNS: {
     title: "Marketplace",
     links: [
       { label: "Search suppliers", href: "/customer/search" },
-      { label: "Suppliers", href: "/suppliers" },
-      { label: "Join as Supplier", href: "/suppliers/join" },
+      ...SUPPLIER_DIRECTORY_LINKS,
     ],
   },
   {

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { SHOW_SUPPLIER_DIRECTORY_PUBLIC } from "@/lib/ui/deprecation";
 import {
   loadPublicSuppliersDirectory,
   type PublicSupplierDirectoryRow,
@@ -63,9 +64,11 @@ export default async function SuppliersDirectoryPage() {
             <Link href={REQUEST_QUOTE_HREF} className={primaryCtaClasses}>
               Search suppliers
             </Link>
-            <Link href={BECOME_SUPPLIER_HREF} className={secondaryCtaClasses}>
-              Join as a supplier
-            </Link>
+            {SHOW_SUPPLIER_DIRECTORY_PUBLIC ? (
+              <Link href={BECOME_SUPPLIER_HREF} className={secondaryCtaClasses}>
+                Join as a supplier
+              </Link>
+            ) : null}
           </div>
         </section>
 

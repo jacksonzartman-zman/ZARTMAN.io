@@ -1,0 +1,2 @@
+export const SHOW_SUPPLIER_DIRECTORY_PUBLIC = true;
+export const SHOW_LEGACY_QUOTE_ENTRYPOINTS = false;

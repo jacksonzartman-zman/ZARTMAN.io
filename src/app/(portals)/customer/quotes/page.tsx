@@ -10,6 +10,7 @@ import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
 import { CustomerQuotesListClient } from "./CustomerQuotesListClient";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 
 export const dynamic = "force-dynamic";
 
@@ -74,12 +75,14 @@ export default async function CustomerQuotesPage({
         title="Quotes"
         subtitle="All RFQs you’ve submitted, from draft to award."
         actions={
-          <Link
-            href="/quote"
-            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-          >
-            Start a new RFQ
-          </Link>
+          SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+            <Link
+              href="/quote"
+              className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+            >
+              Start a new RFQ
+            </Link>
+          ) : null
         }
       >
         <section className="space-y-3 rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
@@ -137,12 +140,14 @@ export default async function CustomerQuotesPage({
       title="Quotes"
       subtitle="All RFQs you’ve submitted, from draft to award."
       actions={
-        <Link
-          href="/quote"
-          className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-        >
-          Start a new RFQ
-        </Link>
+        SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+          <Link
+            href="/quote"
+            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+          >
+            Start a new RFQ
+          </Link>
+        ) : null
       }
     >
       <PortalCard
@@ -215,12 +220,14 @@ export default async function CustomerQuotesPage({
                   When you submit an RFQ, we’ll route it to matching suppliers and you’ll see bids and updates here as they come in.
                 </p>
                 <div className="mt-4">
-                  <Link
-                    href="/quote"
-                    className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
-                  >
-                    Start an RFQ
-                  </Link>
+                  {SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+                    <Link
+                      href="/quote"
+                      className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
+                    >
+                      Start an RFQ
+                    </Link>
+                  ) : null}
                 </div>
               </>
             )}

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { SHOW_SUPPLIER_DIRECTORY_PUBLIC } from "@/lib/ui/deprecation";
 import {
   extractSupplierIdFromSlug,
   loadPublicSupplierById,
@@ -50,9 +51,14 @@ export default async function SupplierProfilePage(props: any) {
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8 sm:py-20 space-y-12">
         <section className="space-y-6 max-w-4xl">
-          <Link href="/suppliers" className="text-sm font-semibold text-emerald-200 hover:text-emerald-100">
-            &lt;- Back to directory
-          </Link>
+          {SHOW_SUPPLIER_DIRECTORY_PUBLIC ? (
+            <Link
+              href="/suppliers"
+              className="text-sm font-semibold text-emerald-200 hover:text-emerald-100"
+            >
+              &lt;- Back to directory
+            </Link>
+          ) : null}
           <div className="space-y-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
               Supplier profile
@@ -68,9 +74,11 @@ export default async function SupplierProfilePage(props: any) {
             <Link href={REQUEST_QUOTE_HREF} className={primaryCtaClasses}>
               Search suppliers
             </Link>
-            <Link href="/suppliers" className={secondaryCtaClasses}>
-              Browse directory
-            </Link>
+            {SHOW_SUPPLIER_DIRECTORY_PUBLIC ? (
+              <Link href="/suppliers" className={secondaryCtaClasses}>
+                Browse directory
+              </Link>
+            ) : null}
           </div>
         </section>
 
