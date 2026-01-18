@@ -3,6 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import { createAuthClient, getServerAuthUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierByUserId } from "@/server/suppliers";
@@ -27,6 +28,8 @@ type CustomerRecord = Awaited<ReturnType<typeof getCustomerByUserId>>;
 type SupplierRecord = Awaited<ReturnType<typeof loadSupplierByUserId>>;
 
 const SHOW_LOGIN_DEBUG = process.env.NEXT_PUBLIC_SHOW_LOGIN_DEBUG === "true";
+const LEGACY_QUOTE_PATH = "/quote";
+const CUSTOMER_SEARCH_PATH = "/customer/search";
 
 type LoginPageProps = {
   searchParams?: Record<string, string | string[] | undefined>;
@@ -42,7 +45,8 @@ async function LoginPage({ searchParams }: LoginPageProps) {
   console.log("[auth] login cookies on /login:", cookieNames);
 
   const { user } = await getServerAuthUser();
-  const nextPath = resolveNextPath(searchParams);
+  const rawNextPath = resolveNextPath(searchParams);
+  const nextPath = resolveLegacyQuoteNextPath(rawNextPath);
   const sessionSummary = {
     userId: user?.id ?? null,
     email: user?.email ?? null,
@@ -111,7 +115,11 @@ function NotLoggedInMessage({ nextPath }: { nextPath?: string | null }) {
   if (quoteFlow) {
     return (
       <main className="mx-auto flex min-h-[60vh] max-w-xl flex-col items-center justify-center gap-4 px-4 py-12">
-        <PortalLoginPanel role="customer" fallbackRedirect="/quote" nextPath={nextPath ?? "/quote"} />
+        <PortalLoginPanel
+          role="customer"
+          fallbackRedirect={LEGACY_QUOTE_PATH}
+          nextPath={nextPath ?? LEGACY_QUOTE_PATH}
+        />
         <p className="text-xs text-slate-500">
           Supplier?{" "}
           <Link
@@ -280,11 +288,33 @@ function resolveNextPath(searchParams?: Record<string, string | string[] | undef
   return value.startsWith("/") ? value : null;
 }
 
+function resolveLegacyQuoteNextPath(nextPath: string | null): string | null {
+  if (!nextPath) {
+    return null;
+  }
+  if (SHOW_LEGACY_QUOTE_ENTRYPOINTS) {
+    return nextPath;
+  }
+  return isLegacyQuotePath(nextPath) ? CUSTOMER_SEARCH_PATH : nextPath;
+}
+
+function isLegacyQuotePath(nextPath: string) {
+  return (
+    nextPath === LEGACY_QUOTE_PATH ||
+    nextPath.startsWith(`${LEGACY_QUOTE_PATH}/`) ||
+    nextPath.startsWith(`${LEGACY_QUOTE_PATH}?`) ||
+    nextPath.startsWith(`${LEGACY_QUOTE_PATH}#`)
+  );
+}
+
 function isQuoteFlow(nextPath?: string | null) {
   if (!nextPath) {
     return false;
   }
-  return nextPath === "/quote" || nextPath.startsWith("/quote");
+  if (!SHOW_LEGACY_QUOTE_ENTRYPOINTS) {
+    return false;
+  }
+  return isLegacyQuotePath(nextPath);
 }
 
 type NextLoginPage = (props: {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { requestMagicLinkForEmail } from "@/app/auth/actions";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import type { PortalRole } from "@/types/portal";
 
 type PortalLoginPanelProps = {
@@ -29,11 +30,36 @@ const ROLE_COPY: Record<
   },
 };
 
-function isQuoteFlow(nextPath?: string | null) {
+const LEGACY_QUOTE_PATH = "/quote";
+const CUSTOMER_SEARCH_PATH = "/customer/search";
+
+function isLegacyQuotePath(nextPath: string) {
+  return (
+    nextPath === LEGACY_QUOTE_PATH ||
+    nextPath.startsWith(`${LEGACY_QUOTE_PATH}/`) ||
+    nextPath.startsWith(`${LEGACY_QUOTE_PATH}?`) ||
+    nextPath.startsWith(`${LEGACY_QUOTE_PATH}#`)
+  );
+}
+
+function resolveLegacyQuoteNextPath(nextPath: string | null, role: PortalRole) {
   if (!nextPath) {
+    return null;
+  }
+  if (SHOW_LEGACY_QUOTE_ENTRYPOINTS) {
+    return nextPath;
+  }
+  if (!isLegacyQuotePath(nextPath)) {
+    return nextPath;
+  }
+  return role === "customer" ? CUSTOMER_SEARCH_PATH : null;
+}
+
+function isQuoteFlow(nextPath?: string | null) {
+  if (!SHOW_LEGACY_QUOTE_ENTRYPOINTS || !nextPath) {
     return false;
   }
-  return nextPath === "/quote" || nextPath.startsWith("/quote");
+  return isLegacyQuotePath(nextPath);
 }
 
 export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLoginPanelProps) {
@@ -52,8 +78,9 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
 
   const normalizedNextPath =
     typeof nextPath === "string" && nextPath.startsWith("/") ? nextPath : null;
+  const gatedNextPath = resolveLegacyQuoteNextPath(normalizedNextPath, resolvedRole);
   const redirectPath =
-    normalizedNextPath ??
+    gatedNextPath ??
     (typeof pathname === "string" && pathname.startsWith(`/${resolvedRole}`)
       ? pathname
       : fallbackRedirect);
