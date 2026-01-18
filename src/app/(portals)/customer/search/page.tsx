@@ -58,6 +58,7 @@ type SearchParamsSnapshot = {
   minPrice: string;
   maxPrice: string;
   location: string;
+  sort: string;
 };
 
 type CountMap = Map<string, number>;
@@ -70,7 +71,12 @@ const FILTER_PARAM_KEYS = [
   "minPrice",
   "maxPrice",
   "location",
+  "sort",
 ] as const;
+
+const SORT_PARAM_VALUES = ["bestValue", "fastest", "lowestPrice", "lowestRisk"] as const;
+type SortParamValue = (typeof SORT_PARAM_VALUES)[number];
+const DEFAULT_SORT_PARAM: SortParamValue = "bestValue";
 
 export default async function CustomerSearchPage({ searchParams }: CustomerSearchPageProps) {
   const user = await requireUser({ redirectTo: "/customer/search" });
@@ -100,6 +106,10 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   }
 
   const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+  const normalizedSort = normalizeSortParam(usp.get("sort")) ?? DEFAULT_SORT_PARAM;
+  if (usp.get("sort") !== normalizedSort) {
+    usp.set("sort", normalizedSort);
+  }
   const rawParams = snapshotSearchParams(usp);
   const filters = parseSearchFilters(usp);
 
@@ -178,7 +188,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
 
   const activeQuoteSummary = buildQuoteSummary(workspaceData);
 
-  const clearFiltersHref = buildClearFiltersHref(rawParams.quoteId);
+  const clearFiltersHref = buildClearFiltersHref(rawParams.quoteId, rawParams.sort);
   const shareSearchHref = activeQuote ? buildSearchHref(usp, activeQuote.id) : "";
 
   return (
@@ -252,6 +262,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
               {activeQuote ? (
                 <input type="hidden" name="quote" value={activeQuote.id} />
               ) : null}
+              <input type="hidden" name="sort" value={rawParams.sort} />
               {!activeQuote ? (
                 <p className="text-xs text-slate-400">
                   Select a search to apply filters to provider results.
@@ -583,6 +594,7 @@ function snapshotSearchParams(usp: URLSearchParams): SearchParamsSnapshot {
     minPrice: usp.get("minPrice") ?? "",
     maxPrice: usp.get("maxPrice") ?? "",
     location: usp.get("location") ?? "",
+    sort: usp.get("sort") ?? "",
   };
 }
 
@@ -617,6 +629,15 @@ function normalizeFilterValue(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeSortParam(value: string | null | undefined): SortParamValue | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return SORT_PARAM_VALUES.includes(trimmed as SortParamValue)
+    ? (trimmed as SortParamValue)
+    : null;
 }
 
 function parseNumberFilter(value: string | null, integer: boolean): number | null {
@@ -865,10 +886,18 @@ function buildSearchHref(usp: URLSearchParams, quoteId: string): string {
   return qs ? `/customer/search?${qs}` : "/customer/search";
 }
 
-function buildClearFiltersHref(quoteId?: string | null): string {
-  const normalized = normalizeText(quoteId);
-  if (!normalized) return "/customer/search";
-  return `/customer/search?quote=${encodeURIComponent(normalized)}`;
+function buildClearFiltersHref(quoteId?: string | null, sort?: string | null): string {
+  const params = new URLSearchParams();
+  const normalizedQuote = normalizeText(quoteId);
+  const normalizedSort = normalizeSortParam(sort);
+  if (normalizedQuote) {
+    params.set("quote", normalizedQuote);
+  }
+  if (normalizedSort) {
+    params.set("sort", normalizedSort);
+  }
+  const qs = params.toString();
+  return qs ? `/customer/search?${qs}` : "/customer/search";
 }
 
 async function loadSearchListCounts(quoteIds: string[]): Promise<{

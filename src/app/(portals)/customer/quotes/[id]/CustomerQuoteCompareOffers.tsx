@@ -2,14 +2,14 @@
 
 import clsx from "clsx";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
 import { TagPill } from "@/components/shared/primitives/TagPill";
 import { decorateOffersForCompare, type DecoratedRfqOffer } from "@/lib/aggregator/scoring";
 import type { RfqOffer } from "@/server/rfqs/offers";
 import { selectOfferAction, type SelectOfferActionState } from "./actions";
 
-type SortKey = "bestValue" | "lowestPrice" | "fastestLead" | "lowestRisk" | "providerName";
+type SortKey = "bestValue" | "fastest" | "lowestPrice" | "lowestRisk";
 type SortDirection = "asc" | "desc";
 
 type CustomerQuoteCompareOffersProps = {
@@ -29,19 +29,33 @@ const BADGE_TONE: Record<string, "emerald" | "blue" | "amber"> = {
   "Lowest Risk": "amber",
 };
 
+const SORT_PARAM_KEY = "sort";
+const SORT_KEYS: SortKey[] = ["bestValue", "fastest", "lowestPrice", "lowestRisk"];
+const DEFAULT_SORT_KEY: SortKey = "bestValue";
+
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: "bestValue", label: "Best value" },
-  { value: "lowestPrice", label: "Lowest price" },
-  { value: "fastestLead", label: "Fastest lead time" },
-  { value: "lowestRisk", label: "Lowest risk" },
-  { value: "providerName", label: "Provider name" },
+  { value: "bestValue", label: "Best Value" },
+  { value: "fastest", label: "Fastest" },
+  { value: "lowestPrice", label: "Lowest Price" },
+  { value: "lowestRisk", label: "Lowest Risk" },
 ];
 
 const RANK_REASON_BY_BADGE: Record<string, string> = {
-  "Best Value": "Best value: strong price + lead time",
-  Fastest: "Fastest: shortest lead time",
-  "Lowest Risk": "Lowest risk: fewest risk flags",
+  "Best Value": "Best Value",
+  Fastest: "Fastest",
+  "Lowest Risk": "Lowest Risk",
 };
+
+function parseSortKey(value: string | null): SortKey | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return SORT_KEYS.includes(trimmed as SortKey) ? (trimmed as SortKey) : null;
+}
+
+function resolveSortKey(value: string | null): SortKey {
+  return parseSortKey(value) ?? DEFAULT_SORT_KEY;
+}
 
 export function CustomerQuoteCompareOffers({
   quoteId,
@@ -49,11 +63,15 @@ export function CustomerQuoteCompareOffers({
   selectedOfferId,
 }: CustomerQuoteCompareOffersProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [state, formAction] = useFormState<SelectOfferActionState, FormData>(
     selectOfferAction,
     INITIAL_SELECT_STATE,
   );
-  const [sortKey, setSortKey] = useState<SortKey>("bestValue");
+  const [sortKey, setSortKey] = useState<SortKey>(() =>
+    resolveSortKey(searchParams.get(SORT_PARAM_KEY)),
+  );
   const [showBadgeWinnersOnly, setShowBadgeWinnersOnly] = useState(false);
   const [showLowRiskOnly, setShowLowRiskOnly] = useState(false);
   const [expandedOfferId, setExpandedOfferId] = useState<string | null>(null);
@@ -71,6 +89,18 @@ export function CustomerQuoteCompareOffers({
     if (!state.ok || !state.selectedOfferId) return;
     router.refresh();
   }, [router, state.ok, state.selectedOfferId]);
+
+  useEffect(() => {
+    const nextSortKey = resolveSortKey(searchParams.get(SORT_PARAM_KEY));
+    setSortKey((current) => (current === nextSortKey ? current : nextSortKey));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get(SORT_PARAM_KEY) === sortKey) return;
+    params.set(SORT_PARAM_KEY, sortKey);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, sortKey]);
 
   const filteredOffers = useMemo(() => {
     let next = decoratedOffers;
@@ -190,7 +220,7 @@ export function CustomerQuoteCompareOffers({
                   </td>
                 </tr>
               ) : (
-                sortedOffers.map((offer) => {
+                sortedOffers.map((offer, index) => {
                   const isSelected = resolvedSelectedOfferId === offer.id;
                   const dimNonWinner = selectionLocked && !isSelected;
                   const providerType = formatEnumLabel(offer.provider?.provider_type);
@@ -200,7 +230,8 @@ export function CustomerQuoteCompareOffers({
                   const hasAssumptions = Boolean(offer.assumptions?.trim());
                   const confidenceLabel =
                     typeof offer.confidenceValue === "number" ? offer.confidenceValue : "-";
-                  const rankReason = buildRankReason(offer);
+                  const showRankReason = index < 3;
+                  const rankReason = showRankReason ? buildRankReason(offer) : null;
 
                   return (
                     <Fragment key={offer.id}>
@@ -272,9 +303,11 @@ export function CustomerQuoteCompareOffers({
                                 ))}
                               </div>
                             ) : null}
-                            <p className="text-[11px] text-slate-500">
-                              Why this rank: {rankReason}
-                            </p>
+                            {rankReason ? (
+                              <p className="text-[11px] text-slate-500">
+                                Why this is ranked here: {rankReason}
+                              </p>
+                            ) : null}
                           </div>
                         </td>
                         <td className="px-5 py-4 align-top text-right">
@@ -346,31 +379,46 @@ function SelectOfferButton({
 function compareOffers(a: DecoratedRfqOffer, b: DecoratedRfqOffer, sortKey: SortKey): number {
   switch (sortKey) {
     case "lowestPrice": {
-      const byPrice = compareNullableNumber(a.totalPriceValue, b.totalPriceValue, "asc");
-      if (byPrice !== 0) return byPrice;
-      return compareProviderName(a, b);
+      return compareBy(
+        compareNullableNumber(a.totalPriceValue, b.totalPriceValue, "asc"),
+        compareNullableNumber(a.leadTimeDaysAverage, b.leadTimeDaysAverage, "asc"),
+        compareNullableNumber(a.rankScore, b.rankScore, "desc"),
+        compareProviderName(a, b),
+      );
     }
-    case "fastestLead": {
-      const byLead = compareNullableNumber(a.leadTimeDaysAverage, b.leadTimeDaysAverage, "asc");
-      if (byLead !== 0) return byLead;
-      return compareProviderName(a, b);
+    case "fastest": {
+      return compareBy(
+        compareNullableNumber(a.leadTimeDaysAverage, b.leadTimeDaysAverage, "asc"),
+        compareNullableNumber(a.totalPriceValue, b.totalPriceValue, "asc"),
+        compareNullableNumber(a.rankScore, b.rankScore, "desc"),
+        compareProviderName(a, b),
+      );
     }
     case "lowestRisk": {
-      const byRisk = compareNullableNumber(a.riskFlagCount, b.riskFlagCount, "asc");
-      if (byRisk !== 0) return byRisk;
-      const byConfidence = compareNullableNumber(a.confidenceValue, b.confidenceValue, "desc");
-      if (byConfidence !== 0) return byConfidence;
-      return compareProviderName(a, b);
+      return compareBy(
+        compareNullableNumber(a.riskFlagCount, b.riskFlagCount, "asc"),
+        compareNullableNumber(a.confidenceValue, b.confidenceValue, "desc"),
+        compareNullableNumber(a.rankScore, b.rankScore, "desc"),
+        compareProviderName(a, b),
+      );
     }
-    case "providerName":
-      return compareProviderName(a, b);
     case "bestValue":
     default: {
-      const byRank = compareNullableNumber(a.rankScore, b.rankScore, "desc");
-      if (byRank !== 0) return byRank;
-      return compareProviderName(a, b);
+      return compareBy(
+        compareNullableNumber(a.rankScore, b.rankScore, "desc"),
+        compareNullableNumber(a.leadTimeDaysAverage, b.leadTimeDaysAverage, "asc"),
+        compareNullableNumber(a.totalPriceValue, b.totalPriceValue, "asc"),
+        compareProviderName(a, b),
+      );
     }
   }
+}
+
+function compareBy(...comparisons: number[]): number {
+  for (const result of comparisons) {
+    if (result !== 0) return result;
+  }
+  return 0;
 }
 
 function buildRankReason(offer: DecoratedRfqOffer): string {
