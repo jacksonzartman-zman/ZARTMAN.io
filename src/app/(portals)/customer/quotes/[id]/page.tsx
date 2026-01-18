@@ -13,7 +13,6 @@ import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
 import {
   buildSearchStateSummary,
-  formatSearchStateActionLabel,
   formatSearchStateLabel,
   searchStateLabelTone,
 } from "@/lib/search/searchState";
@@ -35,10 +34,6 @@ import {
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
 import { loadBidsForQuote, type BidRow } from "@/server/bids";
 import { loadCustomerQuoteBidSummaries } from "@/server/customers/bids";
-import type {
-  RfqDestination,
-  RfqDestinationStatus,
-} from "@/server/rfqs/destinations";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
@@ -93,7 +88,6 @@ import {
   isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
-import { loadBidComparisonSummary } from "@/server/quotes/bidCompare";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
 import {
@@ -210,7 +204,6 @@ export default async function CustomerQuoteDetailPage({
     bidsResult,
     projectResult,
     customerKickoffSummary,
-    bidComparisonSummary,
   ] = await Promise.all([
     loadCustomerQuoteBidSummaries({
       quoteId: quote.id,
@@ -221,7 +214,6 @@ export default async function CustomerQuoteDetailPage({
     loadBidsForQuote(quote.id),
     loadQuoteProjectForQuote(quote.id),
     getCustomerKickoffSummary(quote.id),
-    loadBidComparisonSummary(quote.id),
   ]);
   const customerBidSummaries = customerBidSummariesResult.ok
     ? customerBidSummariesResult.bids
@@ -708,18 +700,15 @@ export default async function CustomerQuoteDetailPage({
   const searchStateCounts = searchStateSummary.counts;
   const searchStateLabel = formatSearchStateLabel(searchStateSummary.status_label);
   const searchStateTone = searchStateLabelTone(searchStateSummary.status_label);
-  const searchStateAction = searchStateSummary.recommended_action;
-  const searchStateActionLabel = formatSearchStateActionLabel(searchStateAction);
-  const searchStateActionHref =
-    searchStateAction === "adjust_search" ? "#uploads" : "mailto:support@zartman.app";
-  const sortedDestinations = [...(rfqDestinations ?? [])].sort(sortDestinationsByLastUpdate);
-  const maxDestinationRows = 6;
-  const visibleDestinations = sortedDestinations.slice(0, maxDestinationRows);
-  const remainingDestinationCount = Math.max(sortedDestinations.length - visibleDestinations.length, 0);
-  const offersReceivedCount = searchStateCounts.offers_total;
-  const offersReceivedLabel = `${offersReceivedCount} offer${
-    offersReceivedCount === 1 ? "" : "s"
-  } received`;
+  const searchStatusLabel =
+    searchStateSummary.status_label === "results_available" ? "Results" : searchStateLabel;
+  const destinationsLabel = `${searchStateCounts.destinations_total} destination${
+    searchStateCounts.destinations_total === 1 ? "" : "s"
+  }`;
+  const offersLabel = `${searchStateCounts.offers_total} offer${
+    searchStateCounts.offers_total === 1 ? "" : "s"
+  }`;
+  const searchResultsHref = `/customer/search?quote=${quote.id}`;
 
   const kickoffTolerances =
     readOptionalUploadMetaString(uploadMeta, [
@@ -783,46 +772,6 @@ export default async function CustomerQuoteDetailPage({
       "cadRevision",
     ]) ?? null;
 
-  const bidCompareRows = bidComparisonSummary?.rows ?? [];
-  const compareBestPriceSupplierId = (() => {
-    let best: { supplierId: string; amount: number } | null = null;
-    for (const row of bidCompareRows) {
-      if (typeof row.totalAmount !== "number") continue;
-      if (!best || row.totalAmount < best.amount) {
-        best = { supplierId: row.supplierId, amount: row.totalAmount };
-      }
-    }
-    return best?.supplierId ?? null;
-  })();
-  const compareFastestLeadSupplierId = (() => {
-    let best: { supplierId: string; lead: number } | null = null;
-    for (const row of bidCompareRows) {
-      if (typeof row.leadTimeDays !== "number") continue;
-      if (!best || row.leadTimeDays < best.lead) {
-        best = { supplierId: row.supplierId, lead: row.leadTimeDays };
-      }
-    }
-    return best?.supplierId ?? null;
-  })();
-  const compareRowsByScore = [...bidCompareRows].sort((a, b) => {
-    const sa = typeof a.compositeScore === "number" ? a.compositeScore : -1;
-    const sb = typeof b.compositeScore === "number" ? b.compositeScore : -1;
-    if (sb !== sa) return sb - sa;
-    return a.supplierName.localeCompare(b.supplierName);
-  });
-  const bestCompositeScore =
-    compareRowsByScore.length > 0 && typeof compareRowsByScore[0]?.compositeScore === "number"
-      ? compareRowsByScore[0]!.compositeScore
-      : null;
-  const recommendedSupplierIds = new Set(
-    compareRowsByScore
-      .filter((row) => typeof row.compositeScore === "number")
-      .filter((row) =>
-        bestCompositeScore === null ? false : (row.compositeScore ?? -1) >= bestCompositeScore - 5,
-      )
-      .slice(0, 2)
-      .map((row) => row.supplierId),
-  );
   const bidSummaryBadgeLabel = bidsUnavailable
     ? "Bids unavailable"
     : bidCount === 0
@@ -1432,274 +1381,40 @@ export default async function CustomerQuoteDetailPage({
           </div>
         ) : null}
         {bidSummaryPanel}
-        {bidCompareRows.length > 0 ? (
-          <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
-            <div className="border-b border-slate-900/60 px-5 py-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Compare bids
-              </p>
-              <p className="mt-1 text-sm text-slate-300">
-                We’ve summarized each supplier’s bid, lead time, and fit. Use this to choose who to award.
-              </p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] border-collapse text-left text-sm">
-                <thead className="border-b border-slate-900/60 bg-slate-950/70">
-                  <tr className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    <th className="px-5 py-3">Supplier</th>
-                    <th className="px-5 py-3">Total price</th>
-                    <th className="px-5 py-3">Lead time</th>
-                    <th className="px-5 py-3">Match</th>
-                    <th className="px-5 py-3">Bench</th>
-                    <th className="px-5 py-3">Parts coverage</th>
-                    <th className="px-5 py-3 text-right">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-900/60">
-                  {bidCompareRows.map((row) => {
-                    const isBestPrice = row.supplierId === compareBestPriceSupplierId;
-                    const isFastest = row.supplierId === compareFastestLeadSupplierId;
-                    const isRecommended = recommendedSupplierIds.has(row.supplierId);
-
-                    const rowClasses = clsx(
-                      isRecommended
-                        ? "bg-emerald-500/5"
-                        : isBestPrice || isFastest
-                          ? "bg-slate-900/30"
-                          : "bg-transparent",
-                    );
-
-                    const priceLabel =
-                      typeof row.totalAmount === "number"
-                        ? formatCurrency(row.totalAmount, row.currency ?? undefined)
-                        : "Pending";
-                    const leadLabel =
-                      typeof row.leadTimeDays === "number"
-                        ? `${row.leadTimeDays} day${row.leadTimeDays === 1 ? "" : "s"}`
-                        : "Pending";
-                    const awardHref = buildAwardCompareHref(resolvedSearchParams, row.supplierId);
-
-                    return (
-                      <tr key={row.supplierId} className={rowClasses}>
-                        <td className="px-5 py-4 align-top">
-                          <div className="min-w-0">
-                            <span
-                              className="block min-w-0 truncate text-base font-semibold text-white"
-                              title={row.supplierName}
-                            >
-                              {row.supplierName}
-                            </span>
-                            {isRecommended || isBestPrice || isFastest ? (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {isRecommended ? (
-                                  <TagPill size="md" tone="emerald">
-                                    Recommended
-                                  </TagPill>
-                                ) : null}
-                                {isBestPrice ? (
-                                  <TagPill size="md" tone="blue">
-                                    Best price
-                                  </TagPill>
-                                ) : null}
-                                {isFastest ? (
-                                  <TagPill size="md" tone="blue">
-                                    Fastest lead
-                                  </TagPill>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 align-top text-slate-100">
-                          <span className="font-semibold text-white">{priceLabel}</span>
-                        </td>
-                        <td className="px-5 py-4 align-top text-slate-100">
-                          <span className="font-semibold text-white">{leadLabel}</span>
-                        </td>
-                        <td className="px-5 py-4 align-top">
-                          <TagPill size="md" tone={matchHealthPillTone(row.matchHealth)}>
-                            {formatMatchHealthLabel(row.matchHealth)}
-                          </TagPill>
-                        </td>
-                        <td className="px-5 py-4 align-top">
-                          <TagPill size="md" tone={benchStatusPillTone(row.benchStatus)}>
-                            {formatBenchStatusLabel(row.benchStatus)}
-                          </TagPill>
-                        </td>
-                        <td className="px-5 py-4 align-top">
-                          <TagPill size="md" tone={partsCoveragePillTone(row.partsCoverage)}>
-                            {row.partsCoverage === "good"
-                              ? "Good"
-                              : row.partsCoverage === "needs_attention"
-                                ? "Needs attention"
-                                : "None"}
-                          </TagPill>
-                        </td>
-                        <td className="px-5 py-4 align-top text-right">
-                          <Link
-                            href={awardHref}
-                            className={clsx(
-                              "inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2",
-                              customerCanAward
-                                ? "border-emerald-400/50 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20 focus-visible:outline-emerald-400"
-                                : "border-slate-800/80 text-slate-400 opacity-70 pointer-events-none",
-                            )}
-                          >
-                            Award
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
       </div>
     </DisclosureSection>
   );
 
-  const searchingProvidersSection = (
-    <PortalCard
-      title="Searching providers..."
-      description="Dispatch progress updates as providers receive and respond to your RFQ."
-      action={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
-            {searchStateLabel}
-          </TagPill>
+  const searchStatusCard = (
+    <section
+      className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3"
+      aria-label="Search status"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Status
+            </span>
+            <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
+              {searchStatusLabel}
+            </TagPill>
+          </div>
+          <p className="text-sm text-slate-200">
+            {destinationsLabel} | {offersLabel}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={searchResultsHref}
+            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-black transition hover:bg-emerald-400"
+          >
+            View results
+          </Link>
           <CustomerQuoteRefreshResultsButton quoteId={quoteId} />
         </div>
-      }
-    >
-      <div className="space-y-4">
-        <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-4">
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Destinations
-            </dt>
-            <dd className="text-lg font-semibold text-white">{searchStateCounts.destinations_total}</dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Pending
-            </dt>
-            <dd className="text-lg font-semibold text-white">{searchStateCounts.destinations_pending}</dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Error
-            </dt>
-            <dd className="text-lg font-semibold text-white">{searchStateCounts.destinations_error}</dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Offers
-            </dt>
-            <dd className="text-lg font-semibold text-white">{searchStateCounts.offers_total}</dd>
-          </div>
-        </dl>
-        {searchStateAction !== "refresh" ? (
-          <p className="text-xs text-slate-400">
-            Next step:{" "}
-            {searchStateAction === "contact_support" ? (
-              <a href={searchStateActionHref} className="font-semibold text-slate-100 hover:text-white">
-                {searchStateActionLabel}
-              </a>
-            ) : (
-              <a href={searchStateActionHref} className="font-semibold text-slate-100 hover:text-white">
-                {searchStateActionLabel}
-              </a>
-            )}
-          </p>
-        ) : null}
-
-        {offersReceivedCount > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
-            <div>
-              <p className="text-sm font-semibold text-emerald-100">{offersReceivedLabel}</p>
-              <p className="text-xs text-emerald-200">
-                Compare offers to pick the best fit.
-              </p>
-            </div>
-            <Link
-              href="#compare-offers"
-              className="inline-flex items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-            >
-              Compare offers
-            </Link>
-          </div>
-        ) : (
-          <EmptyStateCard
-            title="Offers loading"
-            description="Offers appear as providers respond."
-            tone="info"
-          />
-        )}
-
-        {sortedDestinations.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-400">
-            Providers will appear here as we begin dispatching your RFQ.
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-900/60 bg-slate-950/30">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-900/60 bg-slate-950/60">
-                <tr className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  <th className="px-4 py-2">Provider</th>
-                  <th className="px-4 py-2">Status</th>
-                  <th className="px-4 py-2">Last update</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-900/60">
-                {visibleDestinations.map((destination, index) => {
-                  const providerLabel = getDestinationProviderLabel(destination, index);
-                  const providerTypeLabel = formatEnumLabel(destination.provider?.provider_type);
-                  const statusLabel = formatDestinationStatusLabel(destination.status);
-                  const statusTone = destinationStatusTone(destination.status);
-                  const lastUpdateLabel = formatDateTime(destination.last_status_at, {
-                    includeTime: true,
-                    fallback: "—",
-                  });
-
-                  return (
-                    <tr key={destination.id}>
-                      <td className="px-4 py-3 text-slate-100">
-                        <div className="flex flex-col gap-1">
-                          <span>{providerLabel}</span>
-                          {providerTypeLabel ? (
-                            <TagPill
-                              size="sm"
-                              tone="muted"
-                              className="w-fit normal-case tracking-normal"
-                            >
-                              {providerTypeLabel}
-                            </TagPill>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <TagPill size="sm" tone={statusTone} className="normal-case">
-                          {statusLabel}
-                        </TagPill>
-                      </td>
-                      <td className="px-4 py-3 text-slate-300">{lastUpdateLabel}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {remainingDestinationCount > 0 ? (
-          <p className="text-xs text-slate-400">
-            + {remainingDestinationCount} more provider
-            {remainingDestinationCount === 1 ? "" : "s"} in progress
-          </p>
-        ) : null}
       </div>
-    </PortalCard>
+    </section>
   );
 
   const compareOffersSection = (
@@ -1871,11 +1586,11 @@ export default async function CustomerQuoteDetailPage({
               updatedAtText={updatedAtText}
             />
             {receiptBanner}
+            {searchStatusCard}
           </div>
 
           {orderWorkspaceSection}
           {decisionSection}
-          {searchingProvidersSection}
           {compareOffersSection}
           {selectionConfirmedSection}
           {kickoffSection}
@@ -2397,158 +2112,6 @@ function buildQuoteTabHref(
   params.set("tab", tabValue);
   const qs = params.toString();
   return qs ? `?${qs}${hash}` : `${hash}`;
-}
-
-function buildAwardCompareHref(
-  resolvedSearchParams: SearchParamsLike | undefined,
-  supplierId: string,
-): string {
-  const params = new URLSearchParams();
-  const source = resolvedSearchParams ?? {};
-  for (const [key, value] of Object.entries(source)) {
-    if (typeof value === "string") {
-      params.set(key, value);
-    } else if (Array.isArray(value) && typeof value[0] === "string") {
-      params.set(key, value[0]);
-    }
-  }
-  params.set("focus", "award");
-  params.set("awardSupplierId", supplierId);
-  const qs = params.toString();
-  return qs ? `?${qs}#award` : "#award";
-}
-
-function parseDestinationTimestamp(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
-}
-
-function sortDestinationsByLastUpdate(a: RfqDestination, b: RfqDestination): number {
-  const aMs = parseDestinationTimestamp(a.last_status_at);
-  const bMs = parseDestinationTimestamp(b.last_status_at);
-  if (aMs != null && bMs != null && aMs !== bMs) {
-    return bMs - aMs;
-  }
-  if (aMs != null) return -1;
-  if (bMs != null) return 1;
-  return a.id.localeCompare(b.id);
-}
-
-function formatDestinationStatusLabel(status: RfqDestinationStatus): string {
-  switch (status) {
-    case "draft":
-      return "Draft";
-    case "queued":
-      return "Queued";
-    case "sent":
-      return "Sent";
-    case "viewed":
-      return "Viewed";
-    case "quoted":
-      return "Quoted";
-    case "declined":
-      return "Declined";
-    case "error":
-      return "Error";
-    default:
-      return "Pending";
-  }
-}
-
-function destinationStatusTone(status: RfqDestinationStatus): TagPillTone {
-  switch (status) {
-    case "queued":
-      return "amber";
-    case "sent":
-    case "viewed":
-      return "blue";
-    case "quoted":
-      return "emerald";
-    case "declined":
-    case "error":
-      return "red";
-    case "draft":
-    default:
-      return "slate";
-  }
-}
-
-function formatEnumLabel(value?: string | null): string {
-  if (!value) return "";
-  const collapsed = value.replace(/[_-]+/g, " ").trim();
-  if (!collapsed) return "";
-  return collapsed
-    .split(" ")
-    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
-    .join(" ");
-}
-
-function getDestinationProviderLabel(
-  destination: RfqDestination,
-  fallbackIndex: number,
-): string {
-  const name = destination.provider?.name;
-  if (typeof name === "string" && name.trim().length > 0) {
-    return name.trim();
-  }
-  return `Provider ${fallbackIndex + 1}`;
-}
-
-function formatMatchHealthLabel(value: unknown): string {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (normalized === "good") return "Good";
-  if (normalized === "caution") return "Caution";
-  if (normalized === "poor") return "Poor";
-  return "Unknown";
-}
-
-function matchHealthPillTone(value: unknown): TagPillTone {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  switch (normalized) {
-    case "good":
-      return "emerald";
-    case "caution":
-      return "amber";
-    case "poor":
-      return "red";
-    default:
-      return "slate";
-  }
-}
-
-function formatBenchStatusLabel(value: unknown): string {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (normalized === "underused") return "Underused";
-  if (normalized === "balanced") return "Balanced";
-  if (normalized === "overused") return "Overused";
-  return "Unknown";
-}
-
-function benchStatusPillTone(value: unknown): TagPillTone {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  switch (normalized) {
-    case "underused":
-      return "blue";
-    case "balanced":
-      return "emerald";
-    case "overused":
-      return "amber";
-    default:
-      return "slate";
-  }
-}
-
-function partsCoveragePillTone(value: unknown): TagPillTone {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  switch (normalized) {
-    case "good":
-      return "emerald";
-    case "needs_attention":
-      return "amber";
-    default:
-      return "slate";
-  }
 }
 
 function PortalNoticeCard({
