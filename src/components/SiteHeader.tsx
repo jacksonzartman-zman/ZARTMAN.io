@@ -12,7 +12,11 @@ const CENTER_LINKS = [
 
 export default function SiteHeader() {
   const pathname = usePathname();
-  if (pathname?.startsWith("/customer") || pathname?.startsWith("/supplier")) {
+  if (
+    pathname?.startsWith("/customer") ||
+    pathname?.startsWith("/supplier") ||
+    pathname?.startsWith("/provider/offer")
+  ) {
     return null;
   }
 
