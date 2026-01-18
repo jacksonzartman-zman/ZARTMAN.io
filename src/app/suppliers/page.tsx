@@ -137,7 +137,7 @@ export default async function SuppliersDirectoryPage() {
                           href={`/suppliers/${supplier.slug}`}
                           className="text-sm font-semibold text-emerald-200 hover:text-emerald-100"
                         >
-                          View profile ->
+                          View profile <span aria-hidden="true">→</span>
                         </Link>
                       </div>
                     </div>
