@@ -61,12 +61,12 @@ export default async function SupplierProfilePage(props: any) {
               {supplier.supplierName}
             </h1>
             <p className="text-base text-ink-muted heading-snug">
-              Review process coverage, location, and capabilities before requesting a quote.
+              Review process coverage, location, and capabilities before starting a supplier search.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Link href={REQUEST_QUOTE_HREF} className={primaryCtaClasses}>
-              Request quote
+              Search suppliers
             </Link>
             <Link href="/suppliers" className={secondaryCtaClasses}>
               Browse directory
@@ -105,7 +105,7 @@ export default async function SupplierProfilePage(props: any) {
         </section>
 
         <section className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-6 text-sm text-ink-muted">
-          Need a supplier match fast? Request a quote and we&apos;ll route your RFQ to the best-fit shops.
+          Need a supplier match fast? Search suppliers and we&apos;ll route your RFQ to the best-fit shops.
         </section>
       </div>
     </main>

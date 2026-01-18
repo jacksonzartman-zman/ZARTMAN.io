@@ -61,7 +61,7 @@ export default async function SuppliersDirectoryPage() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Link href={REQUEST_QUOTE_HREF} className={primaryCtaClasses}>
-              Request quote
+              Search suppliers
             </Link>
             <Link href={BECOME_SUPPLIER_HREF} className={secondaryCtaClasses}>
               Join as a supplier
@@ -84,8 +84,8 @@ export default async function SuppliersDirectoryPage() {
 
           {isEmpty ? (
             <div className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-6 text-sm text-ink-muted">
-              The directory is currently being curated. Request a quote to get matched with the right
-              suppliers for your project.
+              The directory is currently being curated. Search suppliers to get matched with the right
+              partners for your project.
             </div>
           ) : (
             <div className="grid gap-4">

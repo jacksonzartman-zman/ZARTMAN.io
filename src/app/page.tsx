@@ -159,7 +159,7 @@ export default async function HomePage() {
                   href="/customer/search"
                   className={`${primaryCtaClasses} w-full rounded-2xl px-6 py-3 text-sm lg:w-auto`}
                 >
-                  Search
+                  Search suppliers
                 </Link>
               </div>
             </div>
@@ -326,10 +326,10 @@ export default async function HomePage() {
               Talk to Jackson
             </Link>
             <Link
-              href="/quote"
+              href="/customer/search"
               className={`${ghostCtaClasses} justify-center`}
             >
-              Upload parts now
+              Search suppliers
             </Link>
           </div>
           <p className="text-xs text-ink-soft">
