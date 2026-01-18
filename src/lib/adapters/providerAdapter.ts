@@ -30,6 +30,7 @@ export type BuildOutboundRfqArgs = {
   quote: OutboundRfqQuote;
   customer?: OutboundRfqCustomer | null;
   fileLinks?: OutboundRfqFileLink[];
+  offerLink?: string | null;
 };
 
 export type ProviderAdapter = {

@@ -1,7 +1,11 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getAdapterForProvider, type OutboundRfqFileLink } from "@/lib/adapters/providerAdapter";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
-import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
+import {
+  isMissingColumnError,
+  isMissingTableOrColumnError,
+  serializeSupabaseError,
+} from "@/server/admin/logging";
 import type { ProviderRow } from "@/server/providers";
 import type { QuoteFileSource } from "@/server/quotes/types";
 
@@ -24,6 +28,7 @@ type DestinationRow = {
   id: string;
   rfq_id: string;
   provider_id: string;
+  offer_token?: string | null;
 };
 
 type RawFileRow = {
@@ -266,12 +271,20 @@ export async function buildDestinationOutboundEmail(args: {
     return { ok: false, error: "Missing RFQ identifiers." };
   }
 
-  const { data: destination, error: destinationError } = await supabaseServer
-    .from("rfq_destinations")
-    .select("id,rfq_id,provider_id")
-    .eq("id", destinationId)
-    .eq("rfq_id", quoteId)
-    .maybeSingle<DestinationRow>();
+  const destinationQuery = (select: string) =>
+    supabaseServer
+      .from("rfq_destinations")
+      .select(select)
+      .eq("id", destinationId)
+      .eq("rfq_id", quoteId)
+      .maybeSingle<DestinationRow>();
+
+  let destinationResult = await destinationQuery("id,rfq_id,provider_id,offer_token");
+  if (destinationResult.error && isMissingColumnError(destinationResult.error, "offer_token")) {
+    destinationResult = await destinationQuery("id,rfq_id,provider_id");
+  }
+
+  const { data: destination, error: destinationError } = destinationResult;
 
   if (destinationError) {
     if (isMissingTableOrColumnError(destinationError)) {
@@ -356,6 +369,10 @@ export async function buildDestinationOutboundEmail(args: {
   const customerPhone = pickFirst(uploadMeta?.phone, null);
 
   const quoteTitle = explicitTitle ?? quote.id;
+  const offerToken = normalizeString(destination.offer_token);
+  const offerLink = offerToken
+    ? buildPortalLink(`/provider/offer/${encodeURIComponent(offerToken)}`)
+    : null;
 
   const adapter = getAdapterForProvider(provider);
   if (!adapter) {
@@ -381,6 +398,7 @@ export async function buildDestinationOutboundEmail(args: {
       phone: customerPhone,
     },
     fileLinks: fileLinksResult.links,
+    offerLink,
   });
 
   if (!normalizeString(outbound.subject) || !normalizeString(outbound.body)) {
