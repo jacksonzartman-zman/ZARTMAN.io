@@ -10,9 +10,11 @@ type CoverageDisclosureProps = {
 };
 
 type ProviderTypeKey = "network" | "marketplace" | "factory" | "broker";
+type QuotingModeKey = "manual" | "email" | "api";
 
 type CoverageCounts = {
   byType: Record<ProviderTypeKey, number>;
+  byQuotingMode: Record<QuotingModeKey, number>;
   contacted: number;
   replied: number;
   pending: number;
@@ -24,6 +26,11 @@ const PROVIDER_TYPE_LABELS: Array<{ key: ProviderTypeKey; label: string }> = [
   { key: "marketplace", label: "Marketplace" },
   { key: "factory", label: "Factory" },
   { key: "broker", label: "Broker" },
+];
+const QUOTING_MODE_LABELS: Array<{ key: QuotingModeKey; label: string }> = [
+  { key: "manual", label: "Manual" },
+  { key: "email", label: "Email" },
+  { key: "api", label: "API-ready" },
 ];
 
 const CONTACTED_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
@@ -60,15 +67,47 @@ export function CoverageDisclosure({
       contentClassName="py-4"
     >
       <div className="space-y-4 text-sm text-slate-200">
-        <div>
+        <div className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Provider mix
+            What happens when you click Search?
           </p>
-          <dl className="mt-2 grid gap-2 sm:grid-cols-4">
-            {PROVIDER_TYPE_LABELS.map((type) => (
-              <CoverageStat key={type.key} label={type.label} value={counts.byType[type.key]} />
-            ))}
-          </dl>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-slate-300">
+            <li>We package your RFQ details and match it to providers by process and volume fit.</li>
+            <li>We dispatch the RFQ through our current workflow and monitor delivery.</li>
+            <li>Responses arrive as suppliers quote, and we notify you as they land.</li>
+          </ul>
+          <p className="text-xs text-slate-300">
+            We send RFQs to verified suppliers and show you all responses in one place.
+          </p>
+        </div>
+        <div className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            Which providers will be contacted?
+          </p>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Provider type
+            </p>
+            <dl className="mt-2 grid gap-2 sm:grid-cols-4">
+              {PROVIDER_TYPE_LABELS.map((type) => (
+                <CoverageStat key={type.key} label={type.label} value={counts.byType[type.key]} />
+              ))}
+            </dl>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Quoting mode
+            </p>
+            <dl className="mt-2 grid gap-2 sm:grid-cols-3">
+              {QUOTING_MODE_LABELS.map((mode) => (
+                <CoverageStat
+                  key={mode.key}
+                  label={mode.label}
+                  value={counts.byQuotingMode[mode.key]}
+                />
+              ))}
+            </dl>
+          </div>
         </div>
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -104,14 +143,23 @@ function buildCoverageCounts(destinations: RfqDestination[]): CoverageCounts {
     factory: 0,
     broker: 0,
   };
+  const byQuotingMode: CoverageCounts["byQuotingMode"] = {
+    manual: 0,
+    email: 0,
+    api: 0,
+  };
   let contacted = 0;
   let replied = 0;
   let pending = 0;
 
   for (const destination of destinations) {
     const typeKey = normalizeProviderType(destination.provider?.provider_type);
+    const quotingModeKey = normalizeQuotingMode(destination.provider?.quoting_mode);
     if (typeKey) {
       byType[typeKey] += 1;
+    }
+    if (quotingModeKey) {
+      byQuotingMode[quotingModeKey] += 1;
     }
     if (CONTACTED_STATUSES.has(destination.status)) {
       contacted += 1;
@@ -124,7 +172,7 @@ function buildCoverageCounts(destinations: RfqDestination[]): CoverageCounts {
     }
   }
 
-  return { byType, contacted, replied, pending, total: destinations.length };
+  return { byType, byQuotingMode, contacted, replied, pending, total: destinations.length };
 }
 
 function normalizeProviderType(value: string | null | undefined): ProviderTypeKey | null {
@@ -134,6 +182,15 @@ function normalizeProviderType(value: string | null | undefined): ProviderTypeKe
   if (normalized === "marketplace") return "marketplace";
   if (normalized === "factory") return "factory";
   if (normalized === "broker") return "broker";
+  return null;
+}
+
+function normalizeQuotingMode(value: string | null | undefined): QuotingModeKey | null {
+  if (!value) return null;
+  const normalized = value.replace(/[_-]+/g, " ").trim().toLowerCase();
+  if (normalized === "manual") return "manual";
+  if (normalized === "email") return "email";
+  if (normalized === "api") return "api";
   return null;
 }
 
