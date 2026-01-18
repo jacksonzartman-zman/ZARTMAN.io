@@ -15,6 +15,7 @@ export type ProviderOfferActionState = {
   message?: string | null;
   error?: string | null;
   submittedAt?: string | null;
+  wasRevision?: boolean;
   fieldErrors?: {
     price?: string;
     leadTimeDays?: string;
@@ -24,7 +25,9 @@ export type ProviderOfferActionState = {
   };
 };
 
-const OFFER_SUBMIT_SUCCESS = "Offer submitted.";
+const OFFER_RECEIVED_SUCCESS =
+  "Offer received. The requester will review and follow up if needed.";
+const OFFER_UPDATED_SUCCESS = "Offer updated.";
 const OFFER_SUBMIT_ERROR = "We couldn’t submit your offer right now. Please try again.";
 const OFFER_INVALID_TOKEN_ERROR =
   "This offer link is invalid or expired. Ask the Zartman team for a new link.";
@@ -176,7 +179,12 @@ export async function submitOfferViaTokenAction(
     revalidatePath("/admin/ops/inbox");
     revalidatePath(`/customer/quotes/${tokenContext.destination.rfq_id}`);
 
-    return { ok: true, message: OFFER_SUBMIT_SUCCESS, submittedAt };
+    return {
+      ok: true,
+      message: hadExistingOffer ? OFFER_UPDATED_SUCCESS : OFFER_RECEIVED_SUCCESS,
+      submittedAt,
+      wasRevision: hadExistingOffer,
+    };
   } catch (error) {
     console.error("[provider offer] action crashed", {
       tokenPresent: Boolean(token),
