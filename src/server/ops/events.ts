@@ -161,9 +161,11 @@ export async function logSupplierJoinOpsEvent(
 }
 
 export type SupplierInvitedOpsEventInput = {
-  email: string;
+  email?: string | null;
+  website?: string | null;
   supplierName: string;
   note?: string | null;
+  needsResearch?: boolean;
   customerId?: string | null;
   customerEmail?: string | null;
   userId?: string | null;
@@ -174,16 +176,20 @@ export async function logSupplierInvitedOpsEvent(
   input: SupplierInvitedOpsEventInput,
 ): Promise<void> {
   const email = normalizeEmail(input.email);
+  const website = normalizeWebsite(input.website);
   const supplierName = normalizeText(input.supplierName);
   const eventType = normalizeEventType("supplier_invited");
-  if (!email || !eventType) {
+  if (!eventType) {
     return;
   }
 
   const payload = sanitizePayload({
-    email,
+    email: email ?? undefined,
+    supplier_email: email ?? undefined,
+    supplier_website: website ?? undefined,
     supplier_name: supplierName || undefined,
     note: normalizeOptionalText(input.note) ?? undefined,
+    needs_research: input.needsResearch ? true : undefined,
     customer_id: normalizeOptionalId(input.customerId) ?? undefined,
     customer_email: normalizeEmail(input.customerEmail) ?? undefined,
     user_id: normalizeOptionalId(input.userId) ?? undefined,
@@ -372,6 +378,25 @@ function normalizeEmail(value: unknown): string | null {
   }
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeWebsite(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const hasScheme = /^https?:\/\//i.test(trimmed);
+  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function normalizeText(value: unknown): string {

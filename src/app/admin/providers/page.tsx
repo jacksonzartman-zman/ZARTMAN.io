@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import clsx from "clsx";
 import AdminDashboardShell from "@/app/admin/AdminDashboardShell";
 import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
@@ -191,140 +192,200 @@ export default async function AdminProvidersPage({
             </tr>
           ) : (
             providers.map((provider) => {
-              const emailValue = readEmailValue(provider, emailColumn);
-              const websiteValue = provider.website?.trim() || null;
+              const rawEmailValue = readEmailValue(provider, emailColumn);
+              const rawWebsiteValue = provider.website?.trim() || null;
+              const rawNotesValue = provider.notes?.trim() || null;
+              const notesValue = stripInviteDetailLines(rawNotesValue);
+              const emailValue = rawEmailValue ?? extractInviteDetail(rawNotesValue, "Invited email:");
+              const websiteValue =
+                rawWebsiteValue ?? extractInviteDetail(rawNotesValue, "Invited website:");
+              const needsResearch = !emailValue && !websiteValue;
               const activeMeta = activePill(provider.is_active);
               const verificationMeta = verificationPill(provider.verification_status);
               const sourceLabel = formatEnumLabel(provider.source);
               const verifiedAtLabel = formatDateTime(provider.verified_at, { includeTime: true });
               const contacted = Boolean(provider.contacted_at);
+              const showInviteSummary = provider.source === "customer_invite";
               return (
-                <tr key={provider.id} className="bg-slate-950/40 transition hover:bg-slate-900/40">
-                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-                    <div className="space-y-1">
-                      <p className="text-sm font-semibold text-slate-100">{provider.name}</p>
-                      <p className="text-xs text-slate-500">{provider.id}</p>
-                    </div>
-                  </td>
-                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-                    {formatEnumLabel(provider.provider_type)}
-                  </td>
-                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-                    {formatEnumLabel(provider.quoting_mode)}
-                  </td>
-                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-                    <span className={pillClass(activeMeta.className)}>{activeMeta.label}</span>
-                  </td>
-                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-                    <span className={pillClass(verificationMeta.className)}>
-                      {verificationMeta.label}
-                    </span>
-                  </td>
-                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>{sourceLabel}</td>
-                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>{verifiedAtLabel}</td>
-                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-                    <div className="space-y-1 text-xs text-slate-300">
-                      {emailColumn ? (
-                        <span>{emailValue || "—"}</span>
-                      ) : (
-                        <span className="text-slate-500">Email unavailable</span>
-                      )}
-                      {websiteValue ? (
-                        <Link
-                          href={websiteValue}
-                          className="text-emerald-200 hover:text-emerald-100"
-                        >
-                          {websiteValue}
-                        </Link>
-                      ) : (
-                        <span className="text-slate-500">Website —</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-                    <div className="flex flex-col gap-2 text-xs">
-                      {provider.verification_status !== "verified" ? (
-                        <form action={verifyProviderAction}>
+                <Fragment key={provider.id}>
+                  <tr className="bg-slate-950/40 transition hover:bg-slate-900/40">
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-slate-100">{provider.name}</p>
+                        <p className="text-xs text-slate-500">{provider.id}</p>
+                      </div>
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      {formatEnumLabel(provider.provider_type)}
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      {formatEnumLabel(provider.quoting_mode)}
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <span className={pillClass(activeMeta.className)}>{activeMeta.label}</span>
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <span className={pillClass(verificationMeta.className)}>
+                        {verificationMeta.label}
+                      </span>
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>{sourceLabel}</td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>{verifiedAtLabel}</td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <div className="space-y-1 text-xs text-slate-300">
+                        {emailValue ? (
+                          <span>{emailValue}</span>
+                        ) : emailColumn ? (
+                          <span>—</span>
+                        ) : (
+                          <span className="text-slate-500">Email unavailable</span>
+                        )}
+                        {websiteValue ? (
+                          <Link
+                            href={websiteValue}
+                            className="text-emerald-200 hover:text-emerald-100"
+                          >
+                            {websiteValue}
+                          </Link>
+                        ) : (
+                          <span className="text-slate-500">Website —</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <div className="flex flex-col gap-2 text-xs">
+                        {provider.verification_status !== "verified" ? (
+                          <form action={verifyProviderAction}>
+                            <input type="hidden" name="providerId" value={provider.id} />
+                            <button
+                              type="submit"
+                              className="rounded-full border border-emerald-500/40 px-3 py-1 font-semibold text-emerald-100 transition hover:border-emerald-400 hover:text-white"
+                            >
+                              Verify
+                            </button>
+                          </form>
+                        ) : (
+                          <span className="text-emerald-200">Verified</span>
+                        )}
+                        {contacted ? (
+                          <span className="text-slate-400">Contacted</span>
+                        ) : (
+                          <form action={markProviderContactedAction}>
+                            <input type="hidden" name="providerId" value={provider.id} />
+                            <button
+                              type="submit"
+                              className="rounded-full border border-slate-700 px-3 py-1 font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                            >
+                              Mark contacted
+                            </button>
+                          </form>
+                        )}
+                        <form action={toggleProviderActiveAction}>
                           <input type="hidden" name="providerId" value={provider.id} />
+                          <input
+                            type="hidden"
+                            name="nextActive"
+                            value={provider.is_active ? "false" : "true"}
+                          />
                           <button
                             type="submit"
-                            className="rounded-full border border-emerald-500/40 px-3 py-1 font-semibold text-emerald-100 transition hover:border-emerald-400 hover:text-white"
+                            className={clsx(
+                              "rounded-full border px-3 py-1 font-semibold transition",
+                              provider.is_active
+                                ? "border-amber-500/40 text-amber-100 hover:border-amber-400 hover:text-white"
+                                : "border-blue-500/40 text-blue-100 hover:border-blue-400 hover:text-white",
+                            )}
                           >
-                            Verify
+                            {provider.is_active ? "Deactivate" : "Activate"}
                           </button>
                         </form>
-                      ) : (
-                        <span className="text-emerald-200">Verified</span>
-                      )}
-                      {contacted ? (
-                        <span className="text-slate-400">Contacted</span>
-                      ) : (
-                        <form action={markProviderContactedAction}>
-                          <input type="hidden" name="providerId" value={provider.id} />
-                          <button
-                            type="submit"
-                            className="rounded-full border border-slate-700 px-3 py-1 font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
-                          >
-                            Mark contacted
-                          </button>
-                        </form>
-                      )}
-                      <form action={toggleProviderActiveAction}>
-                        <input type="hidden" name="providerId" value={provider.id} />
-                        <input
-                          type="hidden"
-                          name="nextActive"
-                          value={provider.is_active ? "false" : "true"}
-                        />
-                        <button
-                          type="submit"
-                          className={clsx(
-                            "rounded-full border px-3 py-1 font-semibold transition",
-                            provider.is_active
-                              ? "border-amber-500/40 text-amber-100 hover:border-amber-400 hover:text-white"
-                              : "border-blue-500/40 text-blue-100 hover:border-blue-400 hover:text-white",
-                          )}
-                        >
-                          {provider.is_active ? "Deactivate" : "Activate"}
-                        </button>
-                      </form>
-                      <details className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
-                        <summary className="cursor-pointer font-semibold text-slate-200">
-                          Edit contact
-                        </summary>
-                        <form action={updateProviderContactAction} className="mt-2 space-y-2">
-                          <input type="hidden" name="providerId" value={provider.id} />
-                          {emailColumn ? (
+                        <details className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                          <summary className="cursor-pointer font-semibold text-slate-200">
+                            Edit contact
+                          </summary>
+                          <form action={updateProviderContactAction} className="mt-2 space-y-2">
+                            <input type="hidden" name="providerId" value={provider.id} />
+                            {emailColumn ? (
+                              <label className="flex flex-col gap-1 text-[11px] text-slate-400">
+                                {emailLabel}
+                                <input
+                                  name="email"
+                                  defaultValue={emailValue ?? ""}
+                                  placeholder="name@provider.com"
+                                  className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
+                                />
+                              </label>
+                            ) : null}
                             <label className="flex flex-col gap-1 text-[11px] text-slate-400">
-                              {emailLabel}
+                              Website
                               <input
-                                name="email"
-                                defaultValue={emailValue ?? ""}
-                                placeholder="name@provider.com"
+                                name="website"
+                                defaultValue={websiteValue ?? ""}
+                                placeholder="https://provider.com"
                                 className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
                               />
                             </label>
-                          ) : null}
-                          <label className="flex flex-col gap-1 text-[11px] text-slate-400">
-                            Website
-                            <input
-                              name="website"
-                              defaultValue={websiteValue ?? ""}
-                              placeholder="https://provider.com"
-                              className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
-                            />
-                          </label>
-                          <button
-                            type="submit"
-                            className="w-full rounded-lg bg-emerald-500 px-2 py-1 text-xs font-semibold text-emerald-950 hover:bg-emerald-400"
-                          >
-                            Save contact
-                          </button>
-                        </form>
-                      </details>
-                    </div>
-                  </td>
-                </tr>
+                            <button
+                              type="submit"
+                              className="w-full rounded-lg bg-emerald-500 px-2 py-1 text-xs font-semibold text-emerald-950 hover:bg-emerald-400"
+                            >
+                              Save contact
+                            </button>
+                          </form>
+                        </details>
+                      </div>
+                    </td>
+                  </tr>
+                  {showInviteSummary ? (
+                    <tr className="bg-slate-950/30">
+                      <td colSpan={9} className="px-5 pb-5">
+                        <div className="rounded-xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                              Invited details
+                            </p>
+                            {needsResearch ? (
+                              <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100">
+                                Needs research
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-3 grid gap-3 text-xs text-slate-300 md:grid-cols-3">
+                            <div className="space-y-1">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                Email
+                              </p>
+                              <p>{emailValue || "—"}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                Website
+                              </p>
+                              {websiteValue ? (
+                                <Link
+                                  href={websiteValue}
+                                  className="text-emerald-200 hover:text-emerald-100"
+                                >
+                                  {websiteValue}
+                                </Link>
+                              ) : (
+                                <p>—</p>
+                              )}
+                            </div>
+                            <div className="space-y-1 md:col-span-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                Notes
+                              </p>
+                              <p className="whitespace-pre-wrap text-slate-200">
+                                {notesValue || "—"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
               );
             })
           )
@@ -477,6 +538,38 @@ function readEmailValue(provider: ProviderContactRow, column: ProviderEmailColum
   if (!column) return null;
   const raw = provider[column];
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+function extractInviteDetail(
+  notes: string | null,
+  prefix: "Invited email:" | "Invited website:",
+): string | null {
+  if (!notes) return null;
+  const lines = notes.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith(prefix)) {
+      const value = trimmed.slice(prefix.length).trim();
+      return value || null;
+    }
+  }
+  return null;
+}
+
+function stripInviteDetailLines(notes: string | null): string | null {
+  if (!notes) return null;
+  const lines = notes
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      if (trimmed.startsWith("Invited email:")) return false;
+      if (trimmed.startsWith("Invited website:")) return false;
+      return true;
+    })
+    .join("\n")
+    .trim();
+  return lines.length > 0 ? lines : null;
 }
 
 function pillClass(colorClasses: string): string {

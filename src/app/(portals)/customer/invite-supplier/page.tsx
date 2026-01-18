@@ -67,7 +67,7 @@ export default async function CustomerInviteSupplierPage({
 
       <PortalCard
         title="Supplier details"
-        description="Send us their name and email. We’ll handle the rest."
+        description="Send their name and any contact info you have so we can follow up."
       >
         <form action={inviteSupplierAction} className="space-y-4">
           <label className="flex flex-col gap-2">
@@ -85,12 +85,23 @@ export default async function CustomerInviteSupplierPage({
 
           <label className="flex flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Supplier email
+              Supplier website (optional)
+            </span>
+            <input
+              name="website"
+              type="text"
+              placeholder="supplier.com"
+              className="w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-white"
+            />
+          </label>
+
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Supplier email (optional)
             </span>
             <input
               name="email"
               type="email"
-              required
               placeholder="sales@supplier.com"
               className="w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-white"
             />
@@ -98,12 +109,12 @@ export default async function CustomerInviteSupplierPage({
 
           <label className="flex flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Note (optional)
+              Notes (optional)
             </span>
             <textarea
               name="note"
               rows={4}
-              placeholder="Share any helpful context for our outreach."
+              placeholder="What do you want quoted?"
               className="w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-white"
             />
           </label>

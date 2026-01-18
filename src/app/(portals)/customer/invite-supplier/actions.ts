@@ -6,12 +6,12 @@ import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requi
 import { getCustomerByUserId } from "@/server/customers";
 import { logSupplierInvitedOpsEvent } from "@/server/ops/events";
 import { createCustomerInviteProviderStub } from "@/server/providers";
-import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 
 const SUPPLIER_INVITE_ERROR =
   "We couldn’t capture that invite. Please try again.";
 const SUPPLIER_NAME_REQUIRED = "Supplier name is required.";
-const SUPPLIER_EMAIL_REQUIRED = "Enter a valid supplier email.";
+const SUPPLIER_EMAIL_INVALID = "Enter a valid supplier email or leave it blank.";
+const SUPPLIER_WEBSITE_INVALID = "Enter a valid supplier website or leave it blank.";
 const SUPPLIER_NAME_LENGTH = "Supplier name must be 200 characters or fewer.";
 const SUPPLIER_NOTE_LENGTH = "Note must be 2000 characters or fewer.";
 
@@ -37,9 +37,17 @@ export async function inviteSupplierAction(formData: FormData) {
       redirect(`/customer/invite-supplier?error=${encodeURIComponent(SUPPLIER_NAME_LENGTH)}`);
     }
 
-    const supplierEmail = normalizeEmailInput(getFormString(formData, "email"));
-    if (!supplierEmail || !supplierEmail.includes("@")) {
-      redirect(`/customer/invite-supplier?error=${encodeURIComponent(SUPPLIER_EMAIL_REQUIRED)}`);
+    const supplierEmailInput = normalizeText(getFormString(formData, "email"));
+    const supplierEmail = normalizeEmail(supplierEmailInput);
+    if (supplierEmailInput && !supplierEmail) {
+      redirect(`/customer/invite-supplier?error=${encodeURIComponent(SUPPLIER_EMAIL_INVALID)}`);
+    }
+
+    const supplierWebsiteInput = getFormString(formData, "website");
+    const { normalizedWebsite: supplierWebsite, error: websiteError } =
+      normalizeWebsiteInput(supplierWebsiteInput);
+    if (websiteError) {
+      redirect(`/customer/invite-supplier?error=${encodeURIComponent(websiteError)}`);
     }
 
     const note = normalizeOptionalText(getFormString(formData, "note"));
@@ -47,11 +55,14 @@ export async function inviteSupplierAction(formData: FormData) {
       redirect(`/customer/invite-supplier?error=${encodeURIComponent(SUPPLIER_NOTE_LENGTH)}`);
     }
 
+    const needsResearch = !supplierEmail && !supplierWebsite;
+
     let providerId: string | null = null;
     try {
       const providerResult = await createCustomerInviteProviderStub({
         name: supplierName,
         email: supplierEmail,
+        website: supplierWebsite,
         notes: note,
       });
       providerId = providerResult.providerId ?? null;
@@ -63,8 +74,10 @@ export async function inviteSupplierAction(formData: FormData) {
 
     await logSupplierInvitedOpsEvent({
       email: supplierEmail,
+      website: supplierWebsite,
       supplierName,
       note,
+      needsResearch,
       customerId: customer.id,
       customerEmail: customer.email ?? null,
       userId: user.id,
@@ -87,4 +100,39 @@ function normalizeText(value: unknown): string {
 function normalizeOptionalText(value: unknown): string | null {
   const normalized = normalizeText(value);
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  if (!normalized.includes("@")) return null;
+  if (/\s/.test(normalized)) return null;
+  const parts = normalized.split("@");
+  if (parts.length !== 2) return null;
+  if (!parts[0] || !parts[1] || !parts[1].includes(".")) return null;
+  return normalized;
+}
+
+function normalizeWebsiteInput(
+  value: unknown,
+): { normalizedWebsite: string | null; error: string | null } {
+  if (typeof value !== "string") {
+    return { normalizedWebsite: null, error: null };
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { normalizedWebsite: null, error: null };
+  }
+  const hasScheme = /^https?:\/\//i.test(trimmed);
+  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return { normalizedWebsite: null, error: SUPPLIER_WEBSITE_INVALID };
+    }
+    return { normalizedWebsite: url.toString(), error: null };
+  } catch {
+    return { normalizedWebsite: null, error: SUPPLIER_WEBSITE_INVALID };
+  }
 }
