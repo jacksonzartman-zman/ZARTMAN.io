@@ -46,6 +46,7 @@ import {
 } from "@/server/quotes/status";
 import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
+import { CustomerQuoteRefreshResultsButton } from "./CustomerQuoteRefreshResultsButton";
 import { FocusScroll } from "./FocusScroll";
 import { FocusTabScroll } from "@/app/(portals)/shared/FocusTabScroll";
 import {
@@ -1547,6 +1548,7 @@ export default async function CustomerQuoteDetailPage({
     <PortalCard
       title="Searching providers..."
       description="Dispatch progress updates as providers receive and respond to your RFQ."
+      action={<CustomerQuoteRefreshResultsButton quoteId={quoteId} />}
     >
       <div className="space-y-4">
         <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-4">
