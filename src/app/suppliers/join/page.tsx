@@ -7,12 +7,12 @@ export const metadata: Metadata = {
 };
 
 type Props = {
+  params?: Record<string, never>;
   searchParams?: Record<string, string | string[] | undefined>;
 };
 
-export default function SupplierJoinPage({
-  searchParams,
-}: Props) {
+const SupplierJoinPage = ((props: unknown) => {
+  const { searchParams } = props as Props;
   const supplierSlug = getSearchParamValue(searchParams, "supplier");
 
   return (
@@ -42,4 +42,6 @@ export default function SupplierJoinPage({
       </div>
     </main>
   );
-}
+}) satisfies ((props: Props) => JSX.Element);
+
+export default SupplierJoinPage;
