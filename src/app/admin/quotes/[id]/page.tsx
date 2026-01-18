@@ -113,7 +113,7 @@ import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { getRfqDestinations } from "@/server/rfqs/destinations";
 import { getRfqOffers } from "@/server/rfqs/offers";
-import { getActiveProviders } from "@/server/providers";
+import { listProviders } from "@/server/providers";
 import { listOpsEventsForQuote, type OpsEventRecord } from "@/server/ops/events";
 import { schemaGate } from "@/server/db/schemaContract";
 import {
@@ -453,15 +453,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     })();
     const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
     const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
-    const [activeProviders, rfqDestinations, rfqOffers, opsEventsResult] = await Promise.all([
-      getActiveProviders(),
+    const [providers, rfqDestinations, rfqOffers, opsEventsResult] = await Promise.all([
+      listProviders(),
       getRfqDestinations(quote.id),
       getRfqOffers(quote.id),
       listOpsEventsForQuote(quote.id, { limit: 20 }),
     ]);
     const opsEvents = opsEventsResult.ok ? opsEventsResult.events : [];
     const providerLabelById = new Map<string, string>();
-    for (const provider of activeProviders) {
+    for (const provider of providers) {
       if (provider?.id && provider.name) {
         providerLabelById.set(provider.id, provider.name);
       }
@@ -2468,7 +2468,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 />
                 <AdminRfqDestinationsCard
                   quoteId={quote.id}
-                  providers={activeProviders}
+                  providers={providers}
                   destinations={rfqDestinations}
                   offers={rfqOffers}
                 />

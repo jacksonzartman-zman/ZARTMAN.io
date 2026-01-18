@@ -7,7 +7,7 @@ import { formatDateTime } from "@/lib/formatDate";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { getAdminOpsInboxRows, type AdminOpsInboxRow } from "@/server/ops/inbox";
 import { getOpsSlaConfig } from "@/server/ops/settings";
-import { getActiveProviders } from "@/server/providers";
+import { listProviders } from "@/server/providers";
 import { OpsInboxDispatchDrawer } from "./OpsInboxDispatchDrawer";
 
 export const dynamic = "force-dynamic";
@@ -93,7 +93,7 @@ export default async function AdminOpsInboxPage({
 
   const slaConfig = await getOpsSlaConfig();
 
-  const [rows, activeProviders] = await Promise.all([
+  const [rows, providers] = await Promise.all([
     getAdminOpsInboxRows({
       limit: 200,
       filters: {
@@ -105,7 +105,7 @@ export default async function AdminOpsInboxPage({
       },
       slaConfig,
     }),
-    getActiveProviders(),
+    listProviders(),
   ]);
 
   const preparedRows = rows.map((row) => {
@@ -188,12 +188,12 @@ export default async function AdminOpsInboxPage({
                 className="w-full min-w-56 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
               >
                 <option value="all">All</option>
-                {activeProviders.map((provider) => (
+                {providers.map((provider) => (
                   <option key={provider.id} value={provider.id}>
                     {provider.name}
                   </option>
                 ))}
-                {providerId && !activeProviders.some((provider) => provider.id === providerId) ? (
+                {providerId && !providers.some((provider) => provider.id === providerId) ? (
                   <option value={providerId}>Unknown provider ({providerId})</option>
                 ) : null}
               </select>

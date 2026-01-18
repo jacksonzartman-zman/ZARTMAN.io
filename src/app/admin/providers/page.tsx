@@ -1,0 +1,426 @@
+import Link from "next/link";
+import clsx from "clsx";
+import AdminDashboardShell from "@/app/admin/AdminDashboardShell";
+import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
+import { requireAdminUser } from "@/server/auth";
+import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
+import { formatDateTime } from "@/lib/formatDate";
+import {
+  listProvidersWithContact,
+  PROVIDER_QUOTING_MODES,
+  PROVIDER_SOURCES,
+  PROVIDER_TYPES,
+  PROVIDER_VERIFICATION_STATUSES,
+  type ProviderContactRow,
+  type ProviderEmailColumn,
+  type ProviderQuotingMode,
+  type ProviderSource,
+  type ProviderType,
+  type ProviderVerificationStatus,
+} from "@/server/providers";
+import {
+  toggleProviderActiveAction,
+  updateProviderContactAction,
+  verifyProviderAction,
+} from "./actions";
+
+export const dynamic = "force-dynamic";
+
+type ActiveFilter = "all" | "active" | "inactive";
+type VerificationFilter = "all" | ProviderVerificationStatus;
+type TypeFilter = "all" | ProviderType;
+type QuotingFilter = "all" | ProviderQuotingMode;
+type SourceFilter = "all" | ProviderSource;
+
+const ACTIVE_FILTERS: Array<{ value: ActiveFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+];
+
+const VERIFICATION_FILTERS: Array<{ value: VerificationFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "verified", label: "Verified" },
+  { value: "unverified", label: "Unverified" },
+];
+
+const SOURCE_FILTERS: Array<{ value: SourceFilter; label: string }> = [
+  { value: "all", label: "All" },
+  ...PROVIDER_SOURCES.map((value) => ({ value, label: formatEnumLabel(value) })),
+];
+
+const TYPE_FILTERS: Array<{ value: TypeFilter; label: string }> = [
+  { value: "all", label: "All" },
+  ...PROVIDER_TYPES.map((value) => ({ value, label: formatEnumLabel(value) })),
+];
+
+const QUOTING_FILTERS: Array<{ value: QuotingFilter; label: string }> = [
+  { value: "all", label: "All" },
+  ...PROVIDER_QUOTING_MODES.map((value) => ({ value, label: formatEnumLabel(value) })),
+];
+
+export default async function AdminProvidersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  await requireAdminUser({ redirectTo: "/login" });
+
+  const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+  const activeFilter = parseActiveFilter(usp.get("active"));
+  const verificationFilter = parseVerificationFilter(usp.get("verification"));
+  const typeFilter = parseTypeFilter(usp.get("type"));
+  const quotingFilter = parseQuotingFilter(usp.get("quoting"));
+  const sourceFilter = parseSourceFilter(usp.get("source"));
+
+  const { providers, emailColumn } = await listProvidersWithContact({
+    isActive:
+      activeFilter === "all" ? null : activeFilter === "active",
+    verificationStatus:
+      verificationFilter === "all" ? null : verificationFilter,
+    providerType: typeFilter === "all" ? null : typeFilter,
+    quotingMode: quotingFilter === "all" ? null : quotingFilter,
+    source: sourceFilter === "all" ? null : sourceFilter,
+  });
+
+  const emptyState = providers.length === 0;
+  const emailLabel = formatEmailLabel(emailColumn);
+
+  return (
+    <AdminDashboardShell
+      title="Providers"
+      description="Review provider status before activating them for customer dispatch."
+      actions={
+        <div className="flex flex-col gap-2">
+          <Link
+            href="/admin/providers/import"
+            className="text-sm font-semibold text-emerald-200 hover:text-emerald-100"
+          >
+            Import providers →
+          </Link>
+        </div>
+      }
+    >
+      <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-5">
+        <form method="GET" action="/admin/providers" className="flex flex-wrap items-end gap-3">
+          <FilterSelect
+            name="active"
+            label="Active"
+            defaultValue={activeFilter}
+            options={ACTIVE_FILTERS}
+          />
+          <FilterSelect
+            name="verification"
+            label="Verification"
+            defaultValue={verificationFilter}
+            options={VERIFICATION_FILTERS}
+          />
+          <FilterSelect
+            name="type"
+            label="Type"
+            defaultValue={typeFilter}
+            options={TYPE_FILTERS}
+          />
+          <FilterSelect
+            name="quoting"
+            label="Quoting mode"
+            defaultValue={quotingFilter}
+            options={QUOTING_FILTERS}
+          />
+          <FilterSelect
+            name="source"
+            label="Source"
+            defaultValue={sourceFilter}
+            options={SOURCE_FILTERS}
+          />
+          <button
+            type="submit"
+            className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-400"
+          >
+            Apply
+          </button>
+        </form>
+        {!emailColumn ? (
+          <p className="mt-3 text-xs text-slate-500">
+            Email editing is unavailable until a provider email column is added to the database.
+          </p>
+        ) : null}
+      </section>
+
+      <AdminTableShell
+        className="mt-5"
+        head={
+          <tr>
+            <th className="px-5 py-4">Provider</th>
+            <th className="px-5 py-4">Type</th>
+            <th className="px-5 py-4">Mode</th>
+            <th className="px-5 py-4">Active</th>
+            <th className="px-5 py-4">Verification</th>
+            <th className="px-5 py-4">Source</th>
+            <th className="px-5 py-4">Verified at</th>
+            <th className="px-5 py-4">Contact</th>
+            <th className="px-5 py-4">Actions</th>
+          </tr>
+        }
+        body={
+          emptyState ? (
+            <tr>
+              <td colSpan={9} className="px-6 py-12 text-center text-base text-slate-300">
+                <p className="font-medium text-slate-100">No providers found</p>
+                <p className="mt-2 text-sm text-slate-400">
+                  Adjust the filters to see the full provider list.
+                </p>
+              </td>
+            </tr>
+          ) : (
+            providers.map((provider) => {
+              const emailValue = readEmailValue(provider, emailColumn);
+              const websiteValue = provider.website?.trim() || null;
+              const activeMeta = activePill(provider.is_active);
+              const verificationMeta = verificationPill(provider.verification_status);
+              const sourceLabel = formatEnumLabel(provider.source);
+              const verifiedAtLabel = formatDateTime(provider.verified_at, { includeTime: true });
+              return (
+                <tr key={provider.id} className="bg-slate-950/40 transition hover:bg-slate-900/40">
+                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-slate-100">{provider.name}</p>
+                      <p className="text-xs text-slate-500">{provider.id}</p>
+                    </div>
+                  </td>
+                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                    {formatEnumLabel(provider.provider_type)}
+                  </td>
+                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                    {formatEnumLabel(provider.quoting_mode)}
+                  </td>
+                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                    <span className={pillClass(activeMeta.className)}>{activeMeta.label}</span>
+                  </td>
+                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                    <span className={pillClass(verificationMeta.className)}>
+                      {verificationMeta.label}
+                    </span>
+                  </td>
+                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>{sourceLabel}</td>
+                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>{verifiedAtLabel}</td>
+                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                    <div className="space-y-1 text-xs text-slate-300">
+                      {emailColumn ? (
+                        <span>{emailValue || "—"}</span>
+                      ) : (
+                        <span className="text-slate-500">Email unavailable</span>
+                      )}
+                      {websiteValue ? (
+                        <Link
+                          href={websiteValue}
+                          className="text-emerald-200 hover:text-emerald-100"
+                        >
+                          {websiteValue}
+                        </Link>
+                      ) : (
+                        <span className="text-slate-500">Website —</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                    <div className="flex flex-col gap-2 text-xs">
+                      {provider.verification_status !== "verified" ? (
+                        <form action={verifyProviderAction}>
+                          <input type="hidden" name="providerId" value={provider.id} />
+                          <button
+                            type="submit"
+                            className="rounded-full border border-emerald-500/40 px-3 py-1 font-semibold text-emerald-100 transition hover:border-emerald-400 hover:text-white"
+                          >
+                            Verify
+                          </button>
+                        </form>
+                      ) : (
+                        <span className="text-emerald-200">Verified</span>
+                      )}
+                      <form action={toggleProviderActiveAction}>
+                        <input type="hidden" name="providerId" value={provider.id} />
+                        <input
+                          type="hidden"
+                          name="nextActive"
+                          value={provider.is_active ? "false" : "true"}
+                        />
+                        <button
+                          type="submit"
+                          className={clsx(
+                            "rounded-full border px-3 py-1 font-semibold transition",
+                            provider.is_active
+                              ? "border-amber-500/40 text-amber-100 hover:border-amber-400 hover:text-white"
+                              : "border-blue-500/40 text-blue-100 hover:border-blue-400 hover:text-white",
+                          )}
+                        >
+                          {provider.is_active ? "Deactivate" : "Activate"}
+                        </button>
+                      </form>
+                      <details className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                        <summary className="cursor-pointer font-semibold text-slate-200">
+                          Edit contact
+                        </summary>
+                        <form action={updateProviderContactAction} className="mt-2 space-y-2">
+                          <input type="hidden" name="providerId" value={provider.id} />
+                          {emailColumn ? (
+                            <label className="flex flex-col gap-1 text-[11px] text-slate-400">
+                              {emailLabel}
+                              <input
+                                name="email"
+                                defaultValue={emailValue ?? ""}
+                                placeholder="name@provider.com"
+                                className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
+                              />
+                            </label>
+                          ) : null}
+                          <label className="flex flex-col gap-1 text-[11px] text-slate-400">
+                            Website
+                            <input
+                              name="website"
+                              defaultValue={websiteValue ?? ""}
+                              placeholder="https://provider.com"
+                              className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
+                            />
+                          </label>
+                          <button
+                            type="submit"
+                            className="w-full rounded-lg bg-emerald-500 px-2 py-1 text-xs font-semibold text-emerald-950 hover:bg-emerald-400"
+                          >
+                            Save contact
+                          </button>
+                        </form>
+                      </details>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })
+          )
+        }
+      />
+    </AdminDashboardShell>
+  );
+}
+
+function FilterSelect<T extends string>({
+  name,
+  label,
+  defaultValue,
+  options,
+}: {
+  name: string;
+  label: string;
+  defaultValue: T;
+  options: Array<{ value: T; label: string }>;
+}) {
+  return (
+    <label className="flex flex-col gap-2">
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+      <select
+        name={name}
+        defaultValue={defaultValue}
+        className="w-full min-w-40 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function parseActiveFilter(value: unknown): ActiveFilter {
+  const normalized = normalizeFilterValue(value);
+  if (normalized === "active" || normalized === "inactive") {
+    return normalized;
+  }
+  return "all";
+}
+
+function parseVerificationFilter(value: unknown): VerificationFilter {
+  const normalized = normalizeFilterValue(value);
+  if (PROVIDER_VERIFICATION_STATUSES.includes(normalized as ProviderVerificationStatus)) {
+    return normalized as ProviderVerificationStatus;
+  }
+  return "all";
+}
+
+function parseTypeFilter(value: unknown): TypeFilter {
+  const normalized = normalizeFilterValue(value);
+  if (PROVIDER_TYPES.includes(normalized as ProviderType)) {
+    return normalized as ProviderType;
+  }
+  return "all";
+}
+
+function parseQuotingFilter(value: unknown): QuotingFilter {
+  const normalized = normalizeFilterValue(value);
+  if (PROVIDER_QUOTING_MODES.includes(normalized as ProviderQuotingMode)) {
+    return normalized as ProviderQuotingMode;
+  }
+  return "all";
+}
+
+function parseSourceFilter(value: unknown): SourceFilter {
+  const normalized = normalizeFilterValue(value);
+  if (PROVIDER_SOURCES.includes(normalized as ProviderSource)) {
+    return normalized as ProviderSource;
+  }
+  return "all";
+}
+
+function normalizeFilterValue(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.trim().toLowerCase();
+}
+
+function formatEnumLabel(value?: string | null): string {
+  if (!value) return "";
+  const collapsed = value.replace(/[_-]+/g, " ").trim();
+  if (!collapsed) return "";
+  return collapsed
+    .split(" ")
+    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
+    .join(" ");
+}
+
+function formatEmailLabel(column: ProviderEmailColumn | null): string {
+  switch (column) {
+    case "primary_email":
+      return "Primary email";
+    case "contact_email":
+      return "Contact email";
+    case "email":
+    default:
+      return "Email";
+  }
+}
+
+function readEmailValue(provider: ProviderContactRow, column: ProviderEmailColumn | null): string | null {
+  if (!column) return null;
+  const raw = provider[column];
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+function pillClass(colorClasses: string): string {
+  return clsx(
+    "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+    colorClasses,
+  );
+}
+
+function activePill(isActive: boolean): { label: string; className: string } {
+  return isActive
+    ? { label: "Active", className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" }
+    : { label: "Inactive", className: "border-slate-700 bg-slate-900/60 text-slate-200" };
+}
+
+function verificationPill(status: ProviderVerificationStatus): { label: string; className: string } {
+  if (status === "verified") {
+    return { label: "Verified", className: "border-blue-500/40 bg-blue-500/10 text-blue-100" };
+  }
+  return { label: "Unverified", className: "border-amber-500/40 bg-amber-500/10 text-amber-100" };
+}
