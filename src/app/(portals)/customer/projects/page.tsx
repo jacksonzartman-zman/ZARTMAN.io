@@ -11,7 +11,7 @@ import {
 } from "@/lib/relativeTime";
 import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
 import { MessageLinkWithUnread } from "@/app/(portals)/components/MessageLinkWithUnread";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { getCustomerAwardedQuotesForProjects } from "@/server/customer/projects";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
@@ -88,7 +88,7 @@ export default async function CustomerProjectsPage({
     return Array.isArray(v) ? v[0] : v;
   };
 
-  const user = await requireUser({ redirectTo: "/customer/projects" });
+  const user = await requireCustomerSessionOrRedirect("/customer/projects");
   const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {

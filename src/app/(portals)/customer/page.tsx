@@ -14,7 +14,7 @@ import {
   getFirstParamValue,
   normalizeEmailInput,
 } from "@/app/(portals)/quotes/pageUtils";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerById, getCustomerByUserId } from "@/server/customers";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
 import type { WorkspaceMetric } from "../WorkspaceMetrics";
@@ -104,7 +104,7 @@ type LoadCustomerPortalDataArgs =
 async function CustomerDashboardPage({
   searchParams,
 }: CustomerPageProps) {
-  const user = await requireUser({ redirectTo: "/customer" });
+  const user = await requireCustomerSessionOrRedirect("/customer");
   const roles = await resolveUserRoles(user.id);
   void refreshNotificationsForUser(user.id, "customer").catch((error) => {
     console.error("[notifications] refresh failed (customer)", { userId: user.id, error });

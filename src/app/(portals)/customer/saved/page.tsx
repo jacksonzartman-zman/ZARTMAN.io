@@ -4,7 +4,7 @@ import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { SavedSearchesList } from "@/app/(portals)/customer/saved/SavedSearchesList";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { listCustomerSavedSearches } from "@/server/customer/savedSearches";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
@@ -12,7 +12,7 @@ import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 export const dynamic = "force-dynamic";
 
 export default async function CustomerSavedSearchesPage() {
-  const user = await requireUser({ redirectTo: "/customer/saved" });
+  const user = await requireCustomerSessionOrRedirect("/customer/saved");
   const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {

@@ -12,7 +12,8 @@ import {
   acceptSupplierBidForQuote,
   declineSupplierBid,
 } from "@/server/suppliers";
-import { createAuthClient, getServerAuthUser, requireUser } from "@/server/auth";
+import { createAuthClient, getServerAuthUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import { upsertQuoteProject } from "@/server/quotes/projects";
@@ -187,9 +188,7 @@ export async function archiveCustomerQuoteAction(
   }
 
   try {
-    const user = await requireUser({
-      redirectTo: `/customer/quotes/${normalizedQuoteId}`,
-    });
+    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${normalizedQuoteId}`);
     const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return {
@@ -253,9 +252,7 @@ export async function reopenCustomerQuoteAction(
   }
 
   try {
-    const user = await requireUser({
-      redirectTo: `/customer/quotes/${normalizedQuoteId}`,
-    });
+    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${normalizedQuoteId}`);
     const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return {
@@ -364,7 +361,7 @@ export async function postQuoteMessage(
   }
 
   try {
-    const user = await requireUser({ redirectTo: redirectPath });
+    const user = await requireCustomerSessionOrRedirect(redirectPath);
     const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return {
@@ -530,7 +527,7 @@ export async function submitCustomerQuoteProjectAction(
       return { ok: false, error: "Missing quote reference." };
     }
 
-    const user = await requireUser({ redirectTo: redirectPath });
+    const user = await requireCustomerSessionOrRedirect(redirectPath);
     const customer = await getCustomerByUserId(user.id);
 
     if (!customer) {
@@ -710,9 +707,7 @@ export async function selectOfferAction(
   }
 
   try {
-    const user = await requireUser({
-      redirectTo: `/customer/quotes/${quoteId}`,
-    });
+    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${quoteId}`);
     const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
@@ -849,9 +844,7 @@ export async function confirmSelectionAction(args: {
   }
 
   try {
-    const user = await requireUser({
-      redirectTo: `/customer/quotes/${quoteId}`,
-    });
+    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${quoteId}`);
     const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_ACCESS_ERROR };
@@ -943,9 +936,7 @@ export async function awardBidAsCustomerAction(
   }
 
   try {
-    const user = await requireUser({
-      redirectTo: `/customer/quotes/${normalizedQuoteId}`,
-    });
+    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${normalizedQuoteId}`);
     const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return { ok: false, errorCode: "access_denied", message: CUSTOMER_AWARD_ACCESS_ERROR };
@@ -1103,7 +1094,7 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
   const quoteId = rawQuoteId.trim();
 
   try {
-    const user = await requireUser({ redirectTo: `/customer/quotes/${quoteId}` });
+    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${quoteId}`);
     const customer = await getCustomerByUserId(user.id);
     if (!customer) {
       return {
@@ -1218,7 +1209,7 @@ export async function generateAiPartSuggestionsAction(
     return { status: "error", message: "Missing quote reference." };
   }
 
-  const { user, error } = await getServerAuthUser();
+  const { user, error } = await getServerAuthUser({ quiet: true });
   if (error || !user) {
     return { status: "error", message: "You must be signed in to use AI suggestions." };
   }
@@ -1254,7 +1245,7 @@ export async function customerCreateQuotePartAction(
     return { status: "error", message: "Missing quote reference." };
   }
 
-  const { user, error } = await getServerAuthUser();
+  const { user, error } = await getServerAuthUser({ quiet: true });
   if (error || !user) {
     return { status: "error", message: "You must be signed in to edit parts." };
   }
@@ -1293,7 +1284,7 @@ export async function customerUpdateQuotePartFilesAction(
     return { status: "error", message: "Missing quote reference." };
   }
 
-  const { user, error } = await getServerAuthUser();
+  const { user, error } = await getServerAuthUser({ quiet: true });
   if (error || !user) {
     return { status: "error", message: "You must be signed in to edit parts." };
   }
@@ -1431,7 +1422,7 @@ export async function getUploadTargetsForCustomerQuote(
     return { status: "error", message: "Missing quote reference." };
   }
 
-  const { user, error } = await getServerAuthUser();
+  const { user, error } = await getServerAuthUser({ quiet: true });
   if (error || !user) {
     return { status: "error", message: "You must be signed in to upload files." };
   }
@@ -1516,7 +1507,7 @@ export async function registerUploadedFilesForCustomerQuote(
     return { status: "error", message: "Missing quote reference." };
   }
 
-  const { user, error } = await getServerAuthUser();
+  const { user, error } = await getServerAuthUser({ quiet: true });
   if (error || !user) {
     return { status: "error", message: "You must be signed in to upload files." };
   }
@@ -1570,7 +1561,7 @@ export async function customerUploadQuoteFilesAction(
     return { status: "error", message: "Missing quote reference." };
   }
 
-  const { user, error } = await getServerAuthUser();
+  const { user, error } = await getServerAuthUser({ quiet: true });
   if (error || !user) {
     return { status: "error", message: "You must be signed in to upload files." };
   }

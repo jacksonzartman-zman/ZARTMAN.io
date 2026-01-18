@@ -194,19 +194,28 @@ function logMissingAuthSessionOnce(error: unknown) {
   );
 }
 
+type GetServerAuthUserOptions = {
+  quiet?: boolean;
+};
+
 async function getSupabaseAuthUser(
   supabase: SupabaseClientType,
+  options?: GetServerAuthUserOptions,
 ): Promise<SupabaseAuthUserResult> {
   try {
     const { data, error } = await supabase.auth.getUser();
     if (error && isAuthSessionMissingError(error)) {
-      logMissingAuthSessionOnce(error);
+      if (!options?.quiet) {
+        logMissingAuthSessionOnce(error);
+      }
       return { data: { user: null }, error: null, missingSession: true };
     }
     return { data: data ?? null, error: error ?? null, missingSession: false };
   } catch (error) {
     if (isAuthSessionMissingError(error)) {
-      logMissingAuthSessionOnce(error);
+      if (!options?.quiet) {
+        logMissingAuthSessionOnce(error);
+      }
       return { data: { user: null }, error: null, missingSession: true };
     }
     throw error;
@@ -216,17 +225,21 @@ async function getSupabaseAuthUser(
 // Example (anonymous request, no cookies):
 // const { user, error, hasUser } = await getServerAuthUser();
 // -> user === null, error === null, hasUser === false (no error logs)
-export async function getServerAuthUser(): Promise<ServerAuthUserResult> {
+export async function getServerAuthUser(
+  options?: GetServerAuthUserOptions,
+): Promise<ServerAuthUserResult> {
   try {
     const supabase = await createReadOnlyAuthClient();
-    const { data, error, missingSession } = await getSupabaseAuthUser(supabase);
+    const { data, error, missingSession } = await getSupabaseAuthUser(supabase, options);
     const hasUser = Boolean(data?.user);
     const serializedError = error ? serializeSupabaseError(error) : null;
 
-    console.info("[auth] getUser result:", {
-      hasUser,
-      error: serializedError,
-    });
+    if (!options?.quiet) {
+      console.info("[auth] getUser result:", {
+        hasUser,
+        error: serializedError,
+      });
+    }
 
     if (missingSession) {
       return { user: null, error: null, hasUser: false };
@@ -234,18 +247,24 @@ export async function getServerAuthUser(): Promise<ServerAuthUserResult> {
 
     if (error) {
       if (isDynamicServerUsageError(error)) {
-        console.info(
-          "[auth] getUser run skipped during static generation (dynamic route only)",
-        );
+        if (!options?.quiet) {
+          console.info(
+            "[auth] getUser run skipped during static generation (dynamic route only)",
+          );
+        }
         return { user: null, error: serializedError ?? error, hasUser: false };
       }
 
-      console.error("[auth] getUser failed", error);
+      if (!options?.quiet) {
+        console.error("[auth] getUser failed", error);
+      }
       return { user: null, error: serializedError ?? error, hasUser: false };
     }
 
     if (!data?.user) {
-      console.warn("[auth] no authenticated user returned by Supabase");
+      if (!options?.quiet) {
+        console.warn("[auth] no authenticated user returned by Supabase");
+      }
       return { user: null, error: null, hasUser: false };
     }
 
@@ -256,18 +275,24 @@ export async function getServerAuthUser(): Promise<ServerAuthUserResult> {
     };
   } catch (error) {
     if (isDynamicServerUsageError(error)) {
-      console.info(
-        "[auth] getServerAuthUser skipped during static generation (dynamic route only)",
-      );
+      if (!options?.quiet) {
+        console.info(
+          "[auth] getServerAuthUser skipped during static generation (dynamic route only)",
+        );
+      }
       return { user: null, error, hasUser: false };
     }
 
     if (isAuthSessionMissingError(error)) {
-      logMissingAuthSessionOnce(error);
+      if (!options?.quiet) {
+        logMissingAuthSessionOnce(error);
+      }
       return { user: null, error: null, hasUser: false };
     }
 
-    console.error("[auth] getServerAuthUser: unexpected failure", error);
+    if (!options?.quiet) {
+      console.error("[auth] getServerAuthUser: unexpected failure", error);
+    }
     return { user: null, error, hasUser: false };
   }
 }

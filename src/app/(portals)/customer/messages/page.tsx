@@ -4,7 +4,7 @@ import clsx from "clsx";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { loadCustomerInbox } from "@/server/messages/inbox";
 import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
@@ -47,7 +47,7 @@ function statusPillClasses(label: string) {
 }
 
 export default async function CustomerMessagesPage() {
-  const user = await requireUser({ redirectTo: "/customer/messages" });
+  const user = await requireCustomerSessionOrRedirect("/customer/messages");
   const rows = await loadCustomerInbox({ userId: user.id, email: user.email ?? null });
 
   return (

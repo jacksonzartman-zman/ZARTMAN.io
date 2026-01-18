@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CUSTOMER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
 import { CustomerNotificationSettingsForm } from "./CustomerNotificationSettingsForm";
 import { CustomerEmailRepliesDefaultsCard } from "./CustomerEmailRepliesDefaultsCard";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadNotificationPreferencesMap } from "@/server/notifications/preferences";
 import { getCustomerEmailDefaultOptIn } from "@/server/quotes/customerEmailDefaults";
@@ -16,7 +16,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function CustomerSettingsPage() {
-  const user = await requireUser({ redirectTo: "/customer" });
+  const user = await requireCustomerSessionOrRedirect("/customer/settings");
   const customer = await getCustomerByUserId(user.id);
   const email = customer?.email ?? user.email ?? "you@company.com";
   const companyName =

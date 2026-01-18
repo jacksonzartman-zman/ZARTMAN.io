@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import {
   attachQuotesToCustomer,
   upsertCustomerProfileForUser,
@@ -21,7 +21,7 @@ export async function completeCustomerProfileAction(
   formData: FormData,
 ): Promise<CompleteCustomerProfileActionState> {
   try {
-    const user = await requireUser({ redirectTo: "/customer" });
+    const user = await requireCustomerSessionOrRedirect("/customer");
     const companyName = getText(formData, "company_name");
     const phone = getText(formData, "phone");
     const website = getText(formData, "website");

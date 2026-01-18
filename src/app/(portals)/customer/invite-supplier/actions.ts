@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { getFormString, serializeActionError } from "@/lib/forms";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { logSupplierInvitedOpsEvent } from "@/server/ops/events";
 import { createCustomerInviteProviderStub } from "@/server/providers";
@@ -20,7 +20,7 @@ const MAX_NOTE_LENGTH = 2000;
 
 export async function inviteSupplierAction(formData: FormData) {
   try {
-    const user = await requireUser({ redirectTo: "/customer/invite-supplier" });
+    const user = await requireCustomerSessionOrRedirect("/customer/invite-supplier");
     const customer = await getCustomerByUserId(user.id);
 
     if (!customer) {

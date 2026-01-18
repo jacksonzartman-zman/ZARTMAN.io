@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { CUSTOMER_NOTIFICATION_OPTIONS } from "@/constants/notificationPreferences";
 import { serializeActionError } from "@/lib/forms";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { upsertNotificationPreference } from "@/server/notifications/preferences";
 
@@ -20,7 +20,7 @@ export async function submitCustomerNotificationSettingsAction(
   formData: FormData,
 ): Promise<CustomerNotificationSettingsFormState> {
   try {
-    const user = await requireUser({ redirectTo: "/customer/settings" });
+    const user = await requireCustomerSessionOrRedirect("/customer/settings");
     const customer = await getCustomerByUserId(user.id);
 
     if (!customer) {
