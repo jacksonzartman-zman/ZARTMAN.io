@@ -25,6 +25,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesList, type CustomerQuoteListRow } from "@/server/customer/quotesList";
+import { touchCustomerSavedSearch } from "@/server/customer/savedSearches";
 import { schemaGate } from "@/server/db/schemaContract";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import { type RfqDestination, type RfqDestinationStatus } from "@/server/rfqs/destinations";
@@ -130,6 +131,10 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     }
   }
 
+  if (activeQuote) {
+    await touchCustomerSavedSearch({ customerId: customer.id, quoteId: activeQuote.id });
+  }
+
   const showRecentSearches = !activeQuote;
   const listCounts = showRecentSearches
     ? await loadSearchListCounts(recentQuotes.map((quote) => quote.id))
@@ -205,7 +210,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
               <CustomerSearchActions
                 quoteId={activeQuote.id}
                 sharePath={shareSearchHref}
-                defaultEmail={user.email ?? null}
+                quoteLabel={activeQuote.rfqLabel ?? null}
               />
             ) : null}
             {activeQuote ? (
