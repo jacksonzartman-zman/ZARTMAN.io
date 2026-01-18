@@ -1,6 +1,6 @@
 "use client";
 
-import type { InputHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { useEffect, useState, type FormEvent, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import clsx from "clsx";
 import { formatDateTime } from "@/lib/formatDate";
@@ -27,7 +27,10 @@ const INITIAL_STATE: ProviderOfferActionState = {
   error: null,
   message: null,
   fieldErrors: {},
+  wasRevision: false,
 };
+
+const RESUBMIT_COOLDOWN_MS = 5000;
 
 export function OfferSubmissionForm({
   token,
@@ -40,13 +43,41 @@ export function OfferSubmissionForm({
   >(submitOfferViaTokenAction, INITIAL_STATE);
   const fieldErrors = state.fieldErrors ?? {};
   const showSuccess = state.ok;
-  const successMessage = state.message ?? "Offer submitted.";
   const submittedAtValue = state.submittedAt ?? lastSubmittedAt ?? null;
   const submittedAtLabel = submittedAtValue
     ? formatDateTime(submittedAtValue, { includeTime: true })
     : null;
+  const isRevision = Boolean(state.wasRevision);
+  const baseSuccessMessage =
+    state.message ??
+    (isRevision
+      ? "Offer updated."
+      : "Offer received. The requester will review and follow up if needed.");
+  const successMessage =
+    isRevision && submittedAtLabel
+      ? `${baseSuccessMessage} Last submitted at ${submittedAtLabel}.`
+      : baseSuccessMessage;
   const hasExistingOffer = Boolean(submittedAtValue);
   const submitLabel = hasExistingOffer ? "Resubmit offer" : "Submit offer";
+  const [cooldownActive, setCooldownActive] = useState(false);
+  const showSubmittedAtLabel = Boolean(submittedAtLabel) && (!showSuccess || !isRevision);
+
+  useEffect(() => {
+    if (!state.ok || !state.submittedAt) {
+      return;
+    }
+    setCooldownActive(true);
+    const timeout = setTimeout(() => {
+      setCooldownActive(false);
+    }, RESUBMIT_COOLDOWN_MS);
+    return () => clearTimeout(timeout);
+  }, [state.ok, state.submittedAt]);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    if (cooldownActive) {
+      event.preventDefault();
+    }
+  };
 
   return (
     <section className="space-y-4 rounded-3xl border border-slate-900 bg-slate-950/70 p-6 shadow-lift-sm">
@@ -57,7 +88,7 @@ export function OfferSubmissionForm({
         <p className="mt-2 text-sm text-slate-300">
           Share pricing and lead time so we can evaluate your response quickly.
         </p>
-        {submittedAtLabel ? (
+        {showSubmittedAtLabel ? (
           <p className="mt-2 text-xs text-slate-400">
             Last submitted at {submittedAtLabel}.
           </p>
@@ -76,7 +107,7 @@ export function OfferSubmissionForm({
         </div>
       ) : null}
 
-      <form action={formAction} className="space-y-4">
+      <form action={formAction} onSubmit={handleSubmit} className="space-y-4">
         <input type="hidden" name="token" value={token} />
         <div className="grid gap-4 md:grid-cols-2">
           <InputField
@@ -140,7 +171,7 @@ export function OfferSubmissionForm({
           defaultValue={initialValues?.notes}
         />
 
-        <SubmitButton label={submitLabel} />
+        <SubmitButton label={submitLabel} cooldownActive={cooldownActive} />
       </form>
     </section>
   );
@@ -228,13 +259,14 @@ function TextAreaField({ label, error, helper, className, ...rest }: TextAreaFie
   );
 }
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({ label, cooldownActive }: { label: string; cooldownActive: boolean }) {
   const { pending } = useFormStatus();
+  const isDisabled = pending || cooldownActive;
   return (
     <button
       type="submit"
       className={clsx(primaryCtaClasses, "w-full justify-center")}
-      disabled={pending}
+      disabled={isDisabled}
     >
       {pending ? "Submitting..." : label}
     </button>
