@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ghostCtaClasses, primaryCtaClasses } from "@/lib/ctas";
+import { primaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { FAQ_ITEMS } from "@/data/faq";
 
@@ -64,31 +64,86 @@ const WHY_TEAMS_POINTS = [
 ];
 
 const FEATURED_FAQ_ITEMS = FAQ_ITEMS.slice(0, 3);
+const PROCESS_TABS = [
+  { label: "CNC", isActive: true },
+  { label: "3DP", isActive: false },
+  { label: "Sheet Metal", isActive: false },
+  { label: "Injection", isActive: false },
+  { label: "Assembly", isActive: false },
+  { label: "AI Mode", isActive: false },
+];
 
 export default function HomePage() {
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
         {/* HERO */}
-        <section className="mx-auto max-w-4xl space-y-6">
+        <section className="mx-auto max-w-5xl space-y-6">
           <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
-            RFQs without the chaos
+            Manufacturing metasearch
           </p>
-          <div className="space-y-5">
+          <div className="space-y-4">
             <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
-              Upload a part. We&apos;ll handle the shop scramble.
+              Compare manufacturing quotes from top suppliers.
             </h1>
             <p className="text-base text-ink-muted heading-snug">
-              Zartman.io quietly routes your RFQs to vetted suppliers, collects bids, and helps you award work—without spam, blast emails, or spreadsheet gymnastics.
+              Search multiple providers at once. No vendor lock-in.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link href="/quote" className={primaryCtaClasses}>
-              Get quote
-            </Link>
-            <Link href="#how-it-works" className={ghostCtaClasses}>
-              How it works
-            </Link>
+          <div className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-4 shadow-[0_18px_50px_rgba(2,6,23,0.45)] sm:p-6">
+            <div className="flex flex-wrap items-center gap-2">
+              {PROCESS_TABS.map((tab) => (
+                <button
+                  key={tab.label}
+                  type="button"
+                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
+                    tab.isActive
+                      ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-100 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
+                      : "border-slate-900/70 bg-slate-900/40 text-ink-soft hover:border-slate-700/80 hover:bg-slate-900/70"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 rounded-2xl border border-slate-900/70 bg-slate-950/80 p-3">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[1.2fr,0.6fr,0.9fr,auto] lg:items-stretch">
+                <label className="flex items-center justify-center gap-2 rounded-xl border border-slate-900/70 bg-slate-900/50 px-4 py-3 text-sm font-semibold text-ink transition hover:border-slate-700/80 hover:bg-slate-900/80">
+                  <input
+                    type="file"
+                    accept=".zip,.step,.stp,.iges,.igs,.stl"
+                    className="sr-only"
+                  />
+                  Upload CAD/ZIP
+                </label>
+                <label className="flex flex-col gap-1 rounded-xl border border-slate-900/70 bg-slate-900/50 px-4 py-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                    Qty
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="50"
+                    className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 rounded-xl border border-slate-900/70 bg-slate-900/50 px-4 py-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                    Need-by date
+                  </span>
+                  <input
+                    type="date"
+                    className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
+                  />
+                </label>
+                <Link
+                  href="/customer/search"
+                  className={`${primaryCtaClasses} w-full rounded-2xl px-6 py-3 text-sm lg:w-auto`}
+                >
+                  Search
+                </Link>
+              </div>
+            </div>
           </div>
           <div className="flex flex-col gap-2 text-xs text-ink-soft sm:flex-row sm:items-center sm:gap-3">
             {TRUST_SIGNALS.map((signal) => (
