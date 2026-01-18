@@ -17,7 +17,7 @@ export type ProviderQuotingMode = (typeof PROVIDER_QUOTING_MODES)[number];
 export const PROVIDER_VERIFICATION_STATUSES = ["unverified", "verified"] as const;
 export type ProviderVerificationStatus = (typeof PROVIDER_VERIFICATION_STATUSES)[number];
 
-export const PROVIDER_SOURCES = ["manual", "csv_import", "discovered"] as const;
+export const PROVIDER_SOURCES = ["manual", "csv_import", "discovered", "customer_invite"] as const;
 export type ProviderSource = (typeof PROVIDER_SOURCES)[number];
 
 export type ProviderRow = {
@@ -31,6 +31,7 @@ export type ProviderRow = {
   verification_status: ProviderVerificationStatus;
   source: ProviderSource;
   verified_at: string | null;
+  contacted_at?: string | null;
   created_at: string;
 };
 
@@ -155,8 +156,15 @@ export async function listProviders(filters: ProviderListFilters = {}): Promise<
 export async function listProvidersWithContact(
   filters: ProviderListFilters = {},
 ): Promise<{ providers: ProviderContactRow[]; emailColumn: ProviderEmailColumn | null }> {
-  const emailColumn = await resolveProviderEmailColumn();
-  const selectColumns = emailColumn ? [...PROVIDER_COLUMNS, emailColumn] : [...PROVIDER_COLUMNS];
+  const [emailColumn, supportsContactedAt] = await Promise.all([
+    resolveProviderEmailColumn(),
+    hasColumns(PROVIDERS_TABLE, ["contacted_at"]),
+  ]);
+  const selectColumns = [
+    ...PROVIDER_COLUMNS,
+    ...(emailColumn ? [emailColumn] : []),
+    ...(supportsContactedAt ? ["contacted_at"] : []),
+  ];
   const supported = await schemaGate({
     enabled: true,
     relation: PROVIDERS_TABLE,
@@ -267,14 +275,41 @@ export async function resolveProviderEmailColumn(): Promise<ProviderEmailColumn 
   return null;
 }
 
-export type CreateDiscoveredProviderInput = {
+export type CreateProviderStubInput = {
   name: string;
   email?: string | null;
   notes?: string | null;
 };
 
 export async function createDiscoveredProviderStub(
-  input: CreateDiscoveredProviderInput,
+  input: CreateProviderStubInput,
+): Promise<{ providerId: string | null }> {
+  return createProviderStub({
+    ...input,
+    source: "discovered",
+    warnKey: "providers:create_discovered_stub",
+  });
+}
+
+export async function createCustomerInviteProviderStub(
+  input: CreateProviderStubInput,
+): Promise<{ providerId: string | null }> {
+  return createProviderStub({
+    ...input,
+    source: "customer_invite",
+    includeInviteDomain: true,
+    warnKey: "providers:create_customer_invite_stub",
+  });
+}
+
+type CreateProviderStubOptions = CreateProviderStubInput & {
+  source: ProviderSource;
+  includeInviteDomain?: boolean;
+  warnKey: string;
+};
+
+async function createProviderStub(
+  input: CreateProviderStubOptions,
 ): Promise<{ providerId: string | null }> {
   const name = normalizeText(input.name);
   if (!name) {
@@ -286,7 +321,7 @@ export async function createDiscoveredProviderStub(
     relation: PROVIDERS_TABLE,
     requiredColumns: ["name", "provider_type", "quoting_mode", "is_active"],
     warnPrefix: "[providers]",
-    warnKey: "providers:create_discovered_stub",
+    warnKey: input.warnKey,
   });
   if (!supported) {
     return { providerId: null };
@@ -294,12 +329,16 @@ export async function createDiscoveredProviderStub(
 
   const normalizedEmail = normalizeEmail(input.email);
   const normalizedNotes = normalizeOptionalText(input.notes);
+  const inviteDomain = input.includeInviteDomain ? normalizeDomainFromEmail(normalizedEmail) : null;
+  const websiteFromDomain = inviteDomain ? normalizeWebsiteFromDomain(inviteDomain) : null;
 
-  const [supportsVerificationStatus, supportsSource, supportsNotes, emailColumn] =
+  const [supportsVerificationStatus, supportsSource, supportsNotes, supportsWebsite, supportsIsVerified, emailColumn] =
     await Promise.all([
       hasColumns(PROVIDERS_TABLE, ["verification_status"]),
       hasColumns(PROVIDERS_TABLE, ["source"]),
-      normalizedNotes ? hasColumns(PROVIDERS_TABLE, ["notes"]) : Promise.resolve(false),
+      normalizedNotes || inviteDomain ? hasColumns(PROVIDERS_TABLE, ["notes"]) : Promise.resolve(false),
+      inviteDomain ? hasColumns(PROVIDERS_TABLE, ["website"]) : Promise.resolve(false),
+      hasColumns(PROVIDERS_TABLE, ["is_verified"]),
       resolveProviderEmailColumn(),
     ]);
 
@@ -313,11 +352,24 @@ export async function createDiscoveredProviderStub(
   if (supportsVerificationStatus) {
     payload.verification_status = "unverified";
   }
-  if (supportsSource) {
-    payload.source = "discovered";
+  if (supportsIsVerified) {
+    payload.is_verified = false;
   }
-  if (supportsNotes && normalizedNotes) {
-    payload.notes = normalizedNotes;
+  if (supportsSource) {
+    payload.source = input.source;
+  }
+  if (supportsWebsite && websiteFromDomain) {
+    payload.website = websiteFromDomain;
+  }
+  if (supportsNotes) {
+    const notesValue = buildInviteNotes({
+      notes: normalizedNotes,
+      domain: inviteDomain,
+      includeDomain: Boolean(inviteDomain && (!supportsWebsite || !websiteFromDomain)),
+    });
+    if (notesValue) {
+      payload.notes = notesValue;
+    }
   }
   if (emailColumn && normalizedEmail) {
     payload[emailColumn] = normalizedEmail;
@@ -331,7 +383,7 @@ export async function createDiscoveredProviderStub(
       .maybeSingle<{ id: string | null }>();
 
     if (error) {
-      console.warn("[providers] create discovered provider failed", {
+      console.warn("[providers] create provider stub failed", {
         error: serializeSupabaseError(error) ?? error,
       });
       return { providerId: null };
@@ -340,7 +392,7 @@ export async function createDiscoveredProviderStub(
     const providerId = normalizeText(data?.id);
     return { providerId: providerId || null };
   } catch (error) {
-    console.warn("[providers] create discovered provider crashed", {
+    console.warn("[providers] create provider stub crashed", {
       error: serializeSupabaseError(error) ?? error,
     });
     return { providerId: null };
@@ -361,4 +413,48 @@ function normalizeEmail(value: unknown): string | null {
   const normalized = value.trim().toLowerCase();
   if (!normalized || !normalized.includes("@")) return null;
   return normalized;
+}
+
+function normalizeDomainFromEmail(email: string | null): string | null {
+  if (!email) return null;
+  const atIndex = email.lastIndexOf("@");
+  if (atIndex < 0) return null;
+  const domain = email.slice(atIndex + 1).trim().toLowerCase();
+  if (!domain || !domain.includes(".")) return null;
+  if (/\s/.test(domain)) return null;
+  return domain;
+}
+
+function normalizeWebsiteFromDomain(domain: string): string | null {
+  const trimmed = domain.trim().toLowerCase();
+  if (!trimmed) return null;
+  const candidate = `https://${trimmed}`;
+  try {
+    return new URL(candidate).toString();
+  } catch {
+    return null;
+  }
+}
+
+function buildInviteNotes({
+  notes,
+  domain,
+  includeDomain,
+}: {
+  notes: string | null;
+  domain: string | null;
+  includeDomain: boolean;
+}): string | null {
+  const normalizedNotes = normalizeOptionalText(notes);
+  if (!includeDomain || !domain) {
+    return normalizedNotes;
+  }
+  const domainLine = `Invited domain: ${domain}`;
+  if (!normalizedNotes) {
+    return domainLine;
+  }
+  if (normalizedNotes.includes(domainLine)) {
+    return normalizedNotes;
+  }
+  return `${normalizedNotes}\n${domainLine}`;
 }

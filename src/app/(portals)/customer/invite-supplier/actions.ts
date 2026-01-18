@@ -5,7 +5,7 @@ import { getFormString, serializeActionError } from "@/lib/forms";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { logSupplierInvitedOpsEvent } from "@/server/ops/events";
-import { createDiscoveredProviderStub } from "@/server/providers";
+import { createCustomerInviteProviderStub } from "@/server/providers";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 
 const SUPPLIER_INVITE_ERROR =
@@ -49,7 +49,7 @@ export async function inviteSupplierAction(formData: FormData) {
 
     let providerId: string | null = null;
     try {
-      const providerResult = await createDiscoveredProviderStub({
+      const providerResult = await createCustomerInviteProviderStub({
         name: supplierName,
         email: supplierEmail,
         notes: note,
