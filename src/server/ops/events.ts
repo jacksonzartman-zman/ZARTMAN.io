@@ -8,6 +8,7 @@ import {
 export type OpsEventType =
   | "destination_added"
   | "destination_status_updated"
+  | "customer_saved_search_interest"
   | "outbound_email_generated"
   | "offer_upserted"
   | "offer_revised"

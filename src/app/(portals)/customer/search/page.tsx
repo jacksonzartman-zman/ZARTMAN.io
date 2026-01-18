@@ -7,6 +7,7 @@ import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { CustomerQuoteCompareOffers } from "@/app/(portals)/customer/quotes/[id]/CustomerQuoteCompareOffers";
 import { CustomerQuoteRefreshResultsButton } from "@/app/(portals)/customer/quotes/[id]/CustomerQuoteRefreshResultsButton";
+import { CustomerSearchActions } from "@/app/(portals)/customer/search/CustomerSearchActions";
 import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { formatQuoteId } from "@/app/(portals)/quotes/pageUtils";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
@@ -169,6 +170,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   const activeQuoteSummary = buildQuoteSummary(workspaceData);
 
   const clearFiltersHref = buildClearFiltersHref(rawParams.quoteId);
+  const shareSearchHref = activeQuote ? buildSearchHref(usp, activeQuote.id) : "";
 
   return (
     <PortalShell
@@ -196,6 +198,13 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {activeQuote ? (
+              <CustomerSearchActions
+                quoteId={activeQuote.id}
+                sharePath={shareSearchHref}
+                defaultEmail={user.email ?? null}
+              />
+            ) : null}
             {activeQuote ? (
               <Link
                 href={`/customer/quotes/${activeQuote.id}#uploads`}
