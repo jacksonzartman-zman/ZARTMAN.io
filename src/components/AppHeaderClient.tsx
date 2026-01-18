@@ -28,6 +28,7 @@ const ROLE_BADGE_CLASSES: Record<PortalRole, string> = {
 
 const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
   customer: [
+    { label: "Search", href: "/customer/search" },
     { label: "Dashboard", href: "/customer" },
     { label: "Quotes", href: "/customer/quotes" },
     { label: "Projects", href: "/customer/projects" },
