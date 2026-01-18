@@ -185,7 +185,7 @@ function CustomerSearchSaveModal({
 
         <div className="space-y-4 p-6">
           <p className="text-sm text-slate-200">
-            Add a short label and we'll save a private link for you to revisit, share, or use when
+            Add a short label and we will save a private link for you to revisit, share, or use when
             inviting suppliers.
           </p>
 
