@@ -60,7 +60,10 @@ import {
 import { appendFilesToQuoteUpload } from "@/server/quotes/uploadFiles";
 import { logOpsEvent } from "@/server/ops/events";
 import { parseRfqOfferStatus } from "@/server/rfqs/offers";
-import { buildDestinationOutboundEmail } from "@/server/rfqs/outboundEmail";
+import {
+  buildDestinationOutboundEmail,
+  buildDestinationWebFormInstructions,
+} from "@/server/rfqs/outboundEmail";
 import { buildAwardEmail } from "@/server/quotes/awardEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
@@ -120,6 +123,10 @@ export type GenerateDestinationEmailActionResult =
   | { ok: true; subject: string; body: string }
   | { ok: false; error: string };
 
+export type GenerateDestinationWebFormInstructionsActionResult =
+  | { ok: true; url: string; instructions: string }
+  | { ok: false; error: string };
+
 export type GenerateAwardEmailActionResult =
   | { ok: true; subject: string; body: string }
   | { ok: false; error: string };
@@ -144,6 +151,8 @@ const ADMIN_DESTINATIONS_INPUT_ERROR = "Select at least one provider.";
 const ADMIN_DESTINATION_STATUS_ERROR = "Select a valid destination status.";
 const ADMIN_DESTINATION_EMAIL_ERROR =
   "We couldn't generate this RFQ email right now. Please try again.";
+const ADMIN_DESTINATION_WEB_FORM_ERROR =
+  "We couldn't generate the RFQ instructions right now. Please try again.";
 const ADMIN_AWARD_EMAIL_ERROR =
   "We couldn't generate the award email right now. Please try again.";
 
@@ -789,6 +798,35 @@ export async function generateDestinationEmailAction(args: {
       error: serializeActionError(error),
     });
     return { ok: false, error: ADMIN_DESTINATION_EMAIL_ERROR };
+  }
+}
+
+export async function generateDestinationWebFormInstructionsAction(args: {
+  destinationId: string;
+}): Promise<GenerateDestinationWebFormInstructionsActionResult> {
+  const destinationId = normalizeIdInput(args.destinationId);
+  if (!destinationId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+    const result = await buildDestinationWebFormInstructions({ destinationId });
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+
+    return {
+      ok: true,
+      url: result.url ?? "",
+      instructions: result.instructions,
+    };
+  } catch (error) {
+    console.error("[admin rfq web form] action crashed", {
+      destinationId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_DESTINATION_WEB_FORM_ERROR };
   }
 }
 

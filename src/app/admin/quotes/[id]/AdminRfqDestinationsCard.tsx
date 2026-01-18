@@ -8,6 +8,7 @@ import type { RfqDestination, RfqDestinationStatus } from "@/server/rfqs/destina
 import {
   addDestinationsAction,
   generateDestinationEmailAction,
+  generateDestinationWebFormInstructionsAction,
   updateDestinationStatusAction,
   upsertRfqOffer,
   type UpsertRfqOfferState,
@@ -26,10 +27,12 @@ import {
 import {
   DestinationEmailModal,
   DestinationErrorModal,
+  DestinationWebFormModal,
   OfferModal,
 } from "@/components/admin/rfq/destinationModals";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import { buildPublicUrl } from "@/lib/publicUrl";
+import { resolveDispatchModeValue } from "@/lib/adapters/providerDispatchMode";
 
 type AdminRfqDestinationsCardProps = {
   quoteId: string;
@@ -75,6 +78,13 @@ export function AdminRfqDestinationsCard({
   const [emailPackage, setEmailPackage] = useState<{ subject: string; body: string } | null>(null);
   const [emailLoadingId, setEmailLoadingId] = useState<string | null>(null);
   const [emailErrorsById, setEmailErrorsById] = useState<Record<string, string>>({});
+  const [webFormDestination, setWebFormDestination] = useState<RfqDestination | null>(null);
+  const [webFormPackage, setWebFormPackage] = useState<{
+    url: string;
+    instructions: string;
+  } | null>(null);
+  const [webFormLoadingId, setWebFormLoadingId] = useState<string | null>(null);
+  const [webFormErrorsById, setWebFormErrorsById] = useState<Record<string, string>>({});
   const [showAllProviders, setShowAllProviders] = useState(false);
 
   const providerById = useMemo(() => {
@@ -262,6 +272,35 @@ export function AdminRfqDestinationsCard({
     });
   };
 
+  const openWebFormModal = (destination: RfqDestination, url: string, instructions: string) => {
+    setWebFormDestination(destination);
+    setWebFormPackage({ url, instructions });
+  };
+
+  const closeWebFormModal = () => {
+    setWebFormDestination(null);
+    setWebFormPackage(null);
+  };
+
+  const handleGenerateWebFormInstructions = (destination: RfqDestination) => {
+    if (pending) return;
+    setWebFormErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
+    setWebFormDestination(null);
+    setWebFormPackage(null);
+    setWebFormLoadingId(destination.id);
+    startTransition(async () => {
+      const result = await generateDestinationWebFormInstructionsAction({
+        destinationId: destination.id,
+      });
+      if (result.ok) {
+        openWebFormModal(destination, result.url, result.instructions);
+      } else {
+        setWebFormErrorsById((prev) => ({ ...prev, [destination.id]: result.error }));
+      }
+      setWebFormLoadingId(null);
+    });
+  };
+
   const selectedCountLabel =
     selectedProviderIds.length > 0
       ? `${selectedProviderIds.length} selected`
@@ -445,14 +484,27 @@ export function AdminRfqDestinationsCard({
             </thead>
             <tbody className="divide-y divide-slate-900/60">
               {destinations.map((destination) => {
-                const provider =
-                  destination.provider ?? providerById.get(destination.provider_id) ?? null;
-                const providerName = provider?.name ?? destination.provider_id;
-                const providerType = formatEnumLabel(provider?.provider_type);
-                const providerMode = formatEnumLabel(provider?.quoting_mode);
-                const isEmailMode = provider?.quoting_mode === "email";
+                const providerRecord = providerById.get(destination.provider_id) ?? null;
+                const providerFallback = destination.provider ?? null;
+                const providerName =
+                  providerRecord?.name ?? providerFallback?.name ?? destination.provider_id;
+                const providerType = formatEnumLabel(
+                  providerRecord?.provider_type ?? providerFallback?.provider_type,
+                );
+                const providerMode = formatEnumLabel(
+                  providerRecord?.quoting_mode ?? providerFallback?.quoting_mode,
+                );
+                const dispatchMode = resolveDispatchModeValue(
+                  providerRecord?.dispatch_mode,
+                  providerRecord?.quoting_mode ?? providerFallback?.quoting_mode ?? null,
+                );
+                const isEmailMode = dispatchMode === "email";
+                const isWebFormMode = dispatchMode === "web_form";
+                const webFormUrl = providerRecord?.rfq_url ?? providerRecord?.website ?? "";
                 const isEmailGenerating = pending && emailLoadingId === destination.id;
+                const isWebFormGenerating = pending && webFormLoadingId === destination.id;
                 const emailError = emailErrorsById[destination.id];
+                const webFormError = webFormErrorsById[destination.id];
                 const statusMeta =
                   DESTINATION_STATUS_META[destination.status] ?? DESTINATION_STATUS_META.draft;
                 const sentAtLabel = formatDateTime(destination.sent_at, {
@@ -535,6 +587,43 @@ export function AdminRfqDestinationsCard({
                             {isEmailGenerating ? "Generating..." : "Generate RFQ Email"}
                           </button>
                         ) : null}
+                        {isWebFormMode ? (
+                          webFormUrl ? (
+                            <a
+                              href={webFormUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={copyOfferButtonEnabledClass}
+                            >
+                              Open RFQ page
+                            </a>
+                          ) : (
+                            <span title="RFQ URL unavailable." className="inline-flex">
+                              <button
+                                type="button"
+                                disabled
+                                className={copyOfferButtonDisabledClass}
+                              >
+                                Open RFQ page
+                              </button>
+                            </span>
+                          )
+                        ) : null}
+                        {isWebFormMode ? (
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateWebFormInstructions(destination)}
+                            disabled={pending || isWebFormGenerating}
+                            className={clsx(
+                              "rounded-full border border-indigo-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition",
+                              pending || isWebFormGenerating
+                                ? "cursor-not-allowed opacity-60"
+                                : "hover:border-indigo-400 hover:text-white",
+                            )}
+                          >
+                            {isWebFormGenerating ? "Generating..." : "Generate RFQ Instructions"}
+                          </button>
+                        ) : null}
                         {offerToken ? (
                           <CopyTextButton
                             text={offerLink}
@@ -609,6 +698,11 @@ export function AdminRfqDestinationsCard({
                             {emailError}
                           </p>
                         ) : null}
+                        {webFormError ? (
+                          <p className="basis-full text-xs text-amber-200" role="alert">
+                            {webFormError}
+                          </p>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -649,6 +743,23 @@ export function AdminRfqDestinationsCard({
         onMarkSent={() => {
           if (!emailDestination) return;
           handleStatusUpdate(emailDestination.id, "sent");
+        }}
+      />
+
+      <DestinationWebFormModal
+        isOpen={Boolean(webFormDestination && webFormPackage)}
+        providerLabel={
+          webFormDestination
+            ? providerById.get(webFormDestination.provider_id)?.name ?? webFormDestination.provider_id
+            : "Provider"
+        }
+        url={webFormPackage?.url ?? ""}
+        instructions={webFormPackage?.instructions ?? ""}
+        pending={pending}
+        onClose={closeWebFormModal}
+        onMarkSent={() => {
+          if (!webFormDestination) return;
+          handleStatusUpdate(webFormDestination.id, "sent");
         }}
       />
 

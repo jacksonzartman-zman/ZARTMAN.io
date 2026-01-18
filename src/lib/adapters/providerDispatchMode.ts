@@ -12,6 +12,13 @@ function normalizeDispatchMode(value: unknown): ProviderDispatchMode | null {
   return null;
 }
 
+export function resolveDispatchModeValue(
+  dispatchMode: unknown,
+  quotingMode: unknown,
+): ProviderDispatchMode | null {
+  return normalizeDispatchMode(dispatchMode) ?? normalizeDispatchMode(quotingMode);
+}
+
 export function resolveProviderDispatchMode(provider: ProviderRow): ProviderDispatchMode | null {
-  return normalizeDispatchMode(provider.dispatch_mode) ?? normalizeDispatchMode(provider.quoting_mode);
+  return resolveDispatchModeValue(provider.dispatch_mode, provider.quoting_mode);
 }
