@@ -12,7 +12,8 @@ export type OpsEventType =
   | "offer_upserted"
   | "offer_revised"
   | "offer_selected"
-  | "message_posted";
+  | "message_posted"
+  | "supplier_join_requested";
 
 export type LogOpsEventInput = {
   quoteId: string;
@@ -91,6 +92,69 @@ export async function logOpsEvent(input: LogOpsEventInput): Promise<void> {
   }
 }
 
+export type SupplierJoinOpsEventInput = {
+  email: string;
+  supplierSlug?: string | null;
+  source?: string | null;
+};
+
+export async function logSupplierJoinOpsEvent(
+  input: SupplierJoinOpsEventInput,
+): Promise<void> {
+  const email = normalizeEmail(input.email);
+  const eventType = normalizeEventType("supplier_join_requested");
+  if (!email || !eventType) {
+    return;
+  }
+
+  const payload = sanitizePayload({
+    email,
+    supplier_slug: normalizeOptionalId(input.supplierSlug),
+    source: normalizeOptionalId(input.source),
+  });
+
+  try {
+    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
+      quote_id: null,
+      destination_id: null,
+      event_type: eventType,
+      payload,
+    });
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        const serialized = serializeSupabaseError(error);
+        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+          code: serialized?.code ?? null,
+          message: serialized?.message ?? null,
+        });
+        return;
+      }
+
+      console.warn("[ops events] supplier join insert failed", {
+        eventType,
+        email,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      const serialized = serializeSupabaseError(error);
+      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+        code: serialized?.code ?? null,
+        message: serialized?.message ?? null,
+      });
+      return;
+    }
+
+    console.warn("[ops events] supplier join insert crashed", {
+      eventType,
+      email,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+}
+
 export async function listOpsEventsForQuote(
   quoteId: string,
   options?: { limit?: number },
@@ -160,6 +224,14 @@ export async function listOpsEventsForQuote(
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
 }
 
 function normalizeOptionalId(value: unknown): string | null {
