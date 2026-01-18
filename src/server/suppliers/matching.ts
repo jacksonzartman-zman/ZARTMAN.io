@@ -509,7 +509,7 @@ export function normalizeProcess(value?: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function normalizeMaterial(value?: string | null): string | null {
+export function normalizeMaterial(value?: string | null): string | null {
   if (typeof value !== "string") {
     return null;
   }

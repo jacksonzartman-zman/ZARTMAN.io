@@ -33,6 +33,10 @@ export type ProviderRow = {
   website: string | null;
   rfq_url?: string | null;
   notes: string | null;
+  processes?: string[] | null;
+  materials?: string[] | null;
+  country?: string | null;
+  states?: string[] | null;
   verification_status: ProviderVerificationStatus;
   source: ProviderSource;
   verified_at: string | null;
@@ -77,15 +81,30 @@ const PROVIDER_COLUMNS = [
 ] as const;
 
 async function resolveProviderSelectColumns(): Promise<string[]> {
-  const [supportsDispatchMode, supportsRfqUrl] = await Promise.all([
+  const [
+    supportsDispatchMode,
+    supportsRfqUrl,
+    supportsProcesses,
+    supportsMaterials,
+    supportsCountry,
+    supportsStates,
+  ] = await Promise.all([
     hasColumns(PROVIDERS_TABLE, ["dispatch_mode"]),
     hasColumns(PROVIDERS_TABLE, ["rfq_url"]),
+    hasColumns(PROVIDERS_TABLE, ["processes"]),
+    hasColumns(PROVIDERS_TABLE, ["materials"]),
+    hasColumns(PROVIDERS_TABLE, ["country"]),
+    hasColumns(PROVIDERS_TABLE, ["states"]),
   ]);
 
   return [
     ...PROVIDER_COLUMNS,
     ...(supportsDispatchMode ? ["dispatch_mode"] : []),
     ...(supportsRfqUrl ? ["rfq_url"] : []),
+    ...(supportsProcesses ? ["processes"] : []),
+    ...(supportsMaterials ? ["materials"] : []),
+    ...(supportsCountry ? ["country"] : []),
+    ...(supportsStates ? ["states"] : []),
   ];
 }
 
