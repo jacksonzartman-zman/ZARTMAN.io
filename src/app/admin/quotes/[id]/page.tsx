@@ -464,11 +464,14 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       listOpsEventsForQuote(quote.id, { limit: 20 }),
     ]);
     const providers = providersResult.providers;
+    const shipToPostalCode =
+      quote.ship_to_postal_code ?? uploadMeta?.shipping_postal_code ?? null;
     const providerEligibilityCriteria = buildProviderEligibilityCriteria({
       process: uploadMeta?.manufacturing_process ?? null,
       quantity: uploadMeta?.quantity ?? null,
-      shipTo: quote.ship_to ?? null,
-      shippingPostalCode: uploadMeta?.shipping_postal_code ?? null,
+      shipToState: quote.ship_to_state ?? null,
+      shipToCountry: quote.ship_to_country ?? null,
+      shipToPostalCode,
     });
     const providerEligibility = await getEligibleProvidersForQuote(
       quote.id,

@@ -18,6 +18,7 @@ export type ProviderEligibilityCriteria = {
   process?: string | null;
   shipToState?: string | null;
   shipToCountry?: string | null;
+  shipToPostalCode?: string | null;
   quantity?: number | null;
 };
 
@@ -38,14 +39,17 @@ export type EligibleProvidersForQuoteResult = {
 export type ProviderEligibilityInputs = {
   process?: string | null;
   quantity?: string | number | null;
-  shipTo?: string | null;
-  shippingPostalCode?: string | null;
+  shipToState?: string | null;
+  shipToCountry?: string | null;
+  shipToPostalCode?: string | null;
 };
 
 type QuoteEligibilityRow = {
   id: string | null;
   upload_id?: string | null;
-  ship_to?: string | null;
+  ship_to_state?: string | null;
+  ship_to_country?: string | null;
+  ship_to_postal_code?: string | null;
 };
 
 type UploadEligibilityRow = {
@@ -213,6 +217,11 @@ function normalizeState(value: unknown): string | null {
   return code ?? null;
 }
 
+function normalizePostalCode(value: unknown): string | null {
+  const cleaned = normalizeOptionalText(value);
+  return cleaned ? cleaned.toUpperCase() : null;
+}
+
 function normalizeQuantity(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.max(0, Math.floor(value));
@@ -255,40 +264,6 @@ function normalizeReasonScore(reasons: ProviderEligibilityReason[]): number {
   return reasons.reduce((total, reason) => total + PROVIDER_REASON_WEIGHTS[reason], 0);
 }
 
-function parseShipToLocation(args: {
-  shipTo?: string | null;
-  shippingPostalCode?: string | null;
-}): { state: string | null; country: string | null } {
-  const shipTo = normalizeOptionalText(args.shipTo);
-  const postalCode = normalizeOptionalText(args.shippingPostalCode);
-  const upper = shipTo ? shipTo.toUpperCase() : "";
-  let country = shipTo ? normalizeCountry(shipTo) : null;
-  let state: string | null = null;
-
-  if (upper) {
-    const tokens = upper.split(/[,/|]/g).flatMap((part) => part.trim().split(/\s+/g));
-    for (const token of tokens) {
-      const normalizedState = normalizeState(token);
-      if (normalizedState) {
-        state = normalizedState;
-      }
-      const normalizedCountry = normalizeCountry(token);
-      if (normalizedCountry) {
-        country = normalizedCountry;
-      }
-    }
-  }
-
-  if (!state && postalCode) {
-    const normalizedPostal = normalizeState(postalCode);
-    if (normalizedPostal && (!country || country === "US")) {
-      state = normalizedPostal;
-    }
-  }
-
-  return { state, country };
-}
-
 function buildKnownContactStatus(args: {
   provider: ProviderContactRow;
   emailColumn: ProviderEmailColumn | null;
@@ -306,6 +281,7 @@ function normalizeCriteria(criteria: ProviderEligibilityCriteria): ProviderEligi
     process: normalizeProcess(criteria.process ?? null),
     shipToState: normalizeState(criteria.shipToState),
     shipToCountry: normalizeCountry(criteria.shipToCountry),
+    shipToPostalCode: normalizePostalCode(criteria.shipToPostalCode),
     quantity: normalizeQuantity(criteria.quantity ?? null),
   };
 }
@@ -322,18 +298,12 @@ function isProviderEligible(args: {
 export function buildProviderEligibilityCriteria(
   inputs: ProviderEligibilityInputs,
 ): ProviderEligibilityCriteria {
-  const process = normalizeProcess(inputs.process ?? null);
-  const quantity = normalizeQuantity(inputs.quantity ?? null);
-  const { state, country } = parseShipToLocation({
-    shipTo: inputs.shipTo ?? null,
-    shippingPostalCode: inputs.shippingPostalCode ?? null,
-  });
-
   return {
-    process,
-    shipToState: state,
-    shipToCountry: country,
-    quantity,
+    process: normalizeProcess(inputs.process ?? null),
+    shipToState: normalizeState(inputs.shipToState ?? null),
+    shipToCountry: normalizeCountry(inputs.shipToCountry ?? null),
+    shipToPostalCode: normalizePostalCode(inputs.shipToPostalCode ?? null),
+    quantity: normalizeQuantity(inputs.quantity ?? null),
   };
 }
 
@@ -354,15 +324,20 @@ export async function resolveProviderEligibilityCriteriaForQuote(
   });
   if (!quoteSupported) return {};
 
-  const [supportsUploadId, supportsShipTo] = await Promise.all([
+  const [supportsUploadId, supportsShipToState, supportsShipToCountry, supportsShipToPostalCode] =
+    await Promise.all([
     hasColumns("quotes", ["upload_id"]),
-    hasColumns("quotes", ["ship_to"]),
-  ]);
+      hasColumns("quotes", ["ship_to_state"]),
+      hasColumns("quotes", ["ship_to_country"]),
+      hasColumns("quotes", ["ship_to_postal_code"]),
+    ]);
 
   const quoteSelect = [
     "id",
     supportsUploadId ? "upload_id" : null,
-    supportsShipTo ? "ship_to" : null,
+    supportsShipToState ? "ship_to_state" : null,
+    supportsShipToCountry ? "ship_to_country" : null,
+    supportsShipToPostalCode ? "ship_to_postal_code" : null,
   ]
     .filter(Boolean)
     .join(",");
@@ -422,8 +397,10 @@ export async function resolveProviderEligibilityCriteriaForQuote(
   return buildProviderEligibilityCriteria({
     process: uploadRow?.manufacturing_process ?? null,
     quantity: uploadRow?.quantity ?? null,
-    shipTo: quoteRow?.ship_to ?? null,
-    shippingPostalCode: uploadRow?.shipping_postal_code ?? null,
+    shipToState: quoteRow?.ship_to_state ?? null,
+    shipToCountry: quoteRow?.ship_to_country ?? null,
+    shipToPostalCode:
+      quoteRow?.ship_to_postal_code ?? uploadRow?.shipping_postal_code ?? null,
   });
 }
 

@@ -40,7 +40,19 @@ export type QuoteNotesRow = {
   internal_notes: string | null;
   kickoff_completed_at: string | null;
 };
-export type AdminQuoteDetailRow = AdminQuoteListRow & QuoteNotesRow;
+export type QuoteShipToConfirmationRow = {
+  ship_to_name: string | null;
+  ship_to_company: string | null;
+  ship_to_address1: string | null;
+  ship_to_address2: string | null;
+  ship_to_city: string | null;
+  ship_to_state: string | null;
+  ship_to_postal_code: string | null;
+  ship_to_country: string | null;
+};
+export type AdminQuoteDetailRow = AdminQuoteListRow &
+  QuoteNotesRow &
+  QuoteShipToConfirmationRow;
 
 export type AdminQuoteMetaInput = {
   quoteId: string | null | undefined;
@@ -206,10 +218,14 @@ export async function loadAdminQuoteDetail(
       };
     }
 
-    const notes = await loadQuoteNotes(quoteId);
+    const [notes, shipToConfirmation] = await Promise.all([
+      loadQuoteNotes(quoteId),
+      loadQuoteShipToConfirmation(quoteId),
+    ]);
     const merged: AdminQuoteDetailRow = {
       ...data,
       ...notes,
+      ...shipToConfirmation,
     };
 
     logAdminQuotesInfo("detail loaded", { quoteId });
@@ -263,6 +279,75 @@ async function loadQuoteNotes(quoteId: string): Promise<QuoteNotesRow> {
     return data ?? fallback;
   } catch (error) {
     console.error("[admin quotes] notes crashed", {
+      quoteId,
+      error: serializeSupabaseError(error),
+    });
+    return fallback;
+  }
+}
+
+type QuoteShipToRawRow = Partial<Record<keyof QuoteShipToConfirmationRow, unknown>>;
+
+function normalizeOptionalText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function buildShipToFallback(): QuoteShipToConfirmationRow {
+  return {
+    ship_to_name: null,
+    ship_to_company: null,
+    ship_to_address1: null,
+    ship_to_address2: null,
+    ship_to_city: null,
+    ship_to_state: null,
+    ship_to_postal_code: null,
+    ship_to_country: null,
+  };
+}
+
+async function loadQuoteShipToConfirmation(
+  quoteId: string,
+): Promise<QuoteShipToConfirmationRow> {
+  const fallback = buildShipToFallback();
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes")
+      .select("*")
+      .eq("id", quoteId)
+      .maybeSingle<QuoteShipToRawRow>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[admin quotes] ship-to missing schema", {
+          quoteId,
+          supabaseError: serializeSupabaseError(error),
+        });
+      } else {
+        console.error("[admin quotes] ship-to query failed", {
+          quoteId,
+          supabaseError: serializeSupabaseError(error),
+        });
+      }
+      return fallback;
+    }
+
+    if (!data) return fallback;
+
+    return {
+      ship_to_name: normalizeOptionalText(data.ship_to_name),
+      ship_to_company: normalizeOptionalText(data.ship_to_company),
+      ship_to_address1: normalizeOptionalText(data.ship_to_address1),
+      ship_to_address2: normalizeOptionalText(data.ship_to_address2),
+      ship_to_city: normalizeOptionalText(data.ship_to_city),
+      ship_to_state: normalizeOptionalText(data.ship_to_state),
+      ship_to_postal_code: normalizeOptionalText(data.ship_to_postal_code),
+      ship_to_country: normalizeOptionalText(data.ship_to_country),
+    };
+  } catch (error) {
+    console.error("[admin quotes] ship-to crashed", {
       quoteId,
       error: serializeSupabaseError(error),
     });
