@@ -6,7 +6,7 @@ import clsx from "clsx";
 import { formatDateTime } from "@/lib/formatDate";
 import { primaryCtaClasses } from "@/lib/ctas";
 import {
-  submitProviderOfferAction,
+  submitOfferViaTokenAction,
   type ProviderOfferActionState,
 } from "./actions";
 
@@ -31,7 +31,7 @@ export function OfferSubmissionForm({
   const [state, formAction] = useFormState<
     ProviderOfferActionState,
     FormData
-  >(submitProviderOfferAction, INITIAL_STATE);
+  >(submitOfferViaTokenAction, INITIAL_STATE);
   const fieldErrors = state.fieldErrors ?? {};
   const hasSubmitted = alreadySubmitted || state.ok;
   const showSuccess = hasSubmitted;
