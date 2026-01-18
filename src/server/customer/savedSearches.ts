@@ -31,12 +31,48 @@ type QuoteActivityRow = {
   created_at: string | null;
 };
 
+type QuoteSummaryRow = {
+  id: string | null;
+  upload_id: string | null;
+  target_date: string | null;
+};
+
+type UploadSummaryRow = {
+  id: string | null;
+  manufacturing_process: string | null;
+  quantity: string | null;
+};
+
+type DestinationSummaryRow = {
+  rfq_id: string | null;
+  provider_id: string | null;
+};
+
+type ProviderLocationRow = {
+  id: string | null;
+  country: string | null;
+};
+
+export type SavedSearchSummary = {
+  process: string | null;
+  quantity: string | null;
+  needBy: string | null;
+  locations: string[];
+};
+
+type SavedSearchQuoteSummary = {
+  process: string | null;
+  quantity: string | null;
+  needBy: string | null;
+};
+
 export type SavedSearchListItem = {
   quoteId: string;
   label: string;
   createdAt: string;
   lastViewedAt: string | null;
   lastActivityAt: string | null;
+  summary: SavedSearchSummary;
 };
 
 export type SavedSearchListResult = {
@@ -91,13 +127,17 @@ export async function listCustomerSavedSearches(customerId: string): Promise<Sav
       .filter((row): row is SavedSearchListItem => Boolean(row));
 
     const quoteIds = normalized.map((row) => row.quoteId);
-    const activityByQuoteId = await loadQuoteLastActivityById(quoteIds);
+    const [activityByQuoteId, summaryByQuoteId] = await Promise.all([
+      loadQuoteLastActivityById(quoteIds),
+      loadSavedSearchSummaries(quoteIds),
+    ]);
 
     return {
       supported: true,
       searches: normalized.map((row) => ({
         ...row,
         lastActivityAt: activityByQuoteId.get(row.quoteId) ?? null,
+        summary: summaryByQuoteId.get(row.quoteId) ?? row.summary,
       })),
     };
   } catch (error) {
@@ -398,6 +438,359 @@ async function loadQuoteLastActivityById(quoteIds: string[]): Promise<Map<string
   return map;
 }
 
+async function loadSavedSearchSummaries(
+  quoteIds: string[],
+): Promise<Map<string, SavedSearchSummary>> {
+  const map = new Map<string, SavedSearchSummary>();
+  const ids = Array.from(new Set(quoteIds.map((id) => normalizeId(id)).filter(Boolean)));
+  if (ids.length === 0) {
+    return map;
+  }
+
+  const [quoteSummaries, locationSummaries] = await Promise.all([
+    loadSavedSearchQuoteSummaries(ids),
+    loadSavedSearchLocations(ids),
+  ]);
+
+  for (const quoteId of ids) {
+    const quoteSummary = quoteSummaries.get(quoteId) ?? null;
+    const locations = locationSummaries.get(quoteId) ?? [];
+    map.set(quoteId, {
+      process: quoteSummary?.process ?? null,
+      quantity: quoteSummary?.quantity ?? null,
+      needBy: quoteSummary?.needBy ?? null,
+      locations,
+    });
+  }
+
+  return map;
+}
+
+async function loadSavedSearchQuoteSummaries(
+  quoteIds: string[],
+): Promise<Map<string, SavedSearchQuoteSummary>> {
+  const map = new Map<string, SavedSearchQuoteSummary>();
+  const ids = Array.from(new Set(quoteIds.map((id) => normalizeId(id)).filter(Boolean)));
+  if (ids.length === 0) {
+    return map;
+  }
+
+  const quotesSupported = await schemaGate({
+    enabled: true,
+    relation: "quotes_with_uploads",
+    requiredColumns: ["id", "upload_id", "target_date"],
+    warnPrefix: WARN_PREFIX,
+    warnKey: "customer_saved_searches:summary_quotes",
+  });
+  if (!quotesSupported || isSupabaseRelationMarkedMissing("quotes_with_uploads")) {
+    return map;
+  }
+
+  let rows: QuoteSummaryRow[] = [];
+  try {
+    const { data, error } = await supabaseServer
+      .from("quotes_with_uploads")
+      .select("id,upload_id,target_date")
+      .in("id", ids)
+      .returns<QuoteSummaryRow[]>();
+
+    if (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: "quotes_with_uploads",
+          error,
+          warnPrefix: WARN_PREFIX,
+          warnKey: "customer_saved_searches:summary_quotes_missing_schema",
+        })
+      ) {
+        return map;
+      }
+      warnOnce(
+        "customer_saved_searches:summary_quotes_failed",
+        `${WARN_PREFIX} quote summary lookup failed`,
+        { code: serializeSupabaseError(error).code },
+      );
+      return map;
+    }
+    rows = Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (
+      handleMissingSupabaseSchema({
+        relation: "quotes_with_uploads",
+        error,
+        warnPrefix: WARN_PREFIX,
+        warnKey: "customer_saved_searches:summary_quotes_crash_missing_schema",
+      })
+    ) {
+      return map;
+    }
+    warnOnce(
+      "customer_saved_searches:summary_quotes_crash",
+      `${WARN_PREFIX} quote summary lookup crashed`,
+      { error: String(error) },
+    );
+    return map;
+  }
+
+  const uploadIds = rows
+    .map((row) => normalizeId(row?.upload_id))
+    .filter((id) => id.length > 0);
+  const uploadsById = await loadSavedSearchUploadMeta(uploadIds);
+
+  for (const row of rows) {
+    const quoteId = normalizeId(row?.id);
+    if (!quoteId) continue;
+    const uploadId = normalizeId(row?.upload_id);
+    const upload = uploadId ? uploadsById.get(uploadId) ?? null : null;
+    const process = normalizeOptionalText(upload?.manufacturing_process);
+    const quantity = normalizeOptionalText(upload?.quantity);
+    const needBy = normalizeOptionalText(row?.target_date);
+    map.set(quoteId, { process, quantity, needBy });
+  }
+
+  return map;
+}
+
+async function loadSavedSearchUploadMeta(
+  uploadIds: string[],
+): Promise<Map<string, UploadSummaryRow>> {
+  const map = new Map<string, UploadSummaryRow>();
+  const ids = Array.from(new Set(uploadIds.map((id) => normalizeId(id)).filter(Boolean)));
+  if (ids.length === 0) {
+    return map;
+  }
+
+  const uploadsSupported = await schemaGate({
+    enabled: true,
+    relation: "uploads",
+    requiredColumns: ["id", "manufacturing_process", "quantity"],
+    warnPrefix: WARN_PREFIX,
+    warnKey: "customer_saved_searches:summary_uploads",
+  });
+  if (!uploadsSupported || isSupabaseRelationMarkedMissing("uploads")) {
+    return map;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("uploads")
+      .select("id,manufacturing_process,quantity")
+      .in("id", ids)
+      .returns<UploadSummaryRow[]>();
+
+    if (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: "uploads",
+          error,
+          warnPrefix: WARN_PREFIX,
+          warnKey: "customer_saved_searches:summary_uploads_missing_schema",
+        })
+      ) {
+        return map;
+      }
+      warnOnce(
+        "customer_saved_searches:summary_uploads_failed",
+        `${WARN_PREFIX} upload summary lookup failed`,
+        { code: serializeSupabaseError(error).code },
+      );
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const id = normalizeId(row?.id);
+      if (id) {
+        map.set(id, row);
+      }
+    }
+  } catch (error) {
+    if (
+      handleMissingSupabaseSchema({
+        relation: "uploads",
+        error,
+        warnPrefix: WARN_PREFIX,
+        warnKey: "customer_saved_searches:summary_uploads_crash_missing_schema",
+      })
+    ) {
+      return map;
+    }
+    warnOnce(
+      "customer_saved_searches:summary_uploads_crash",
+      `${WARN_PREFIX} upload summary lookup crashed`,
+      { error: String(error) },
+    );
+  }
+
+  return map;
+}
+
+async function loadSavedSearchLocations(
+  quoteIds: string[],
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  const ids = Array.from(new Set(quoteIds.map((id) => normalizeId(id)).filter(Boolean)));
+  if (ids.length === 0) {
+    return map;
+  }
+
+  const [destinationsSupported, providersSupported] = await Promise.all([
+    schemaGate({
+      enabled: true,
+      relation: "rfq_destinations",
+      requiredColumns: ["rfq_id", "provider_id"],
+      warnPrefix: WARN_PREFIX,
+      warnKey: "customer_saved_searches:summary_destinations",
+    }),
+    schemaGate({
+      enabled: true,
+      relation: "providers",
+      requiredColumns: ["id", "country"],
+      warnPrefix: WARN_PREFIX,
+      warnKey: "customer_saved_searches:summary_providers",
+    }),
+  ]);
+  if (
+    !destinationsSupported ||
+    !providersSupported ||
+    isSupabaseRelationMarkedMissing("rfq_destinations") ||
+    isSupabaseRelationMarkedMissing("providers")
+  ) {
+    return map;
+  }
+
+  let destinationRows: DestinationSummaryRow[] = [];
+  try {
+    const { data, error } = await supabaseServer
+      .from("rfq_destinations")
+      .select("rfq_id,provider_id")
+      .in("rfq_id", ids)
+      .returns<DestinationSummaryRow[]>();
+
+    if (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: "rfq_destinations",
+          error,
+          warnPrefix: WARN_PREFIX,
+          warnKey: "customer_saved_searches:summary_destinations_missing_schema",
+        })
+      ) {
+        return map;
+      }
+      warnOnce(
+        "customer_saved_searches:summary_destinations_failed",
+        `${WARN_PREFIX} destination summary lookup failed`,
+        { code: serializeSupabaseError(error).code },
+      );
+      return map;
+    }
+    destinationRows = Array.isArray(data) ? data : [];
+  } catch (error) {
+    if (
+      handleMissingSupabaseSchema({
+        relation: "rfq_destinations",
+        error,
+        warnPrefix: WARN_PREFIX,
+        warnKey: "customer_saved_searches:summary_destinations_crash_missing_schema",
+      })
+    ) {
+      return map;
+    }
+    warnOnce(
+      "customer_saved_searches:summary_destinations_crash",
+      `${WARN_PREFIX} destination summary lookup crashed`,
+      { error: String(error) },
+    );
+    return map;
+  }
+
+  const providerIds = Array.from(
+    new Set(destinationRows.map((row) => normalizeId(row?.provider_id)).filter(Boolean)),
+  );
+  if (providerIds.length === 0) {
+    return map;
+  }
+
+  const providerCountryById = new Map<string, string>();
+  try {
+    const { data, error } = await supabaseServer
+      .from("providers")
+      .select("id,country")
+      .in("id", providerIds)
+      .returns<ProviderLocationRow[]>();
+
+    if (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: "providers",
+          error,
+          warnPrefix: WARN_PREFIX,
+          warnKey: "customer_saved_searches:summary_providers_missing_schema",
+        })
+      ) {
+        return map;
+      }
+      warnOnce(
+        "customer_saved_searches:summary_providers_failed",
+        `${WARN_PREFIX} provider location lookup failed`,
+        { code: serializeSupabaseError(error).code },
+      );
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const id = normalizeId(row?.id);
+      const country = normalizeOptionalText(row?.country);
+      if (id && country) {
+        providerCountryById.set(id, country);
+      }
+    }
+  } catch (error) {
+    if (
+      handleMissingSupabaseSchema({
+        relation: "providers",
+        error,
+        warnPrefix: WARN_PREFIX,
+        warnKey: "customer_saved_searches:summary_providers_crash_missing_schema",
+      })
+    ) {
+      return map;
+    }
+    warnOnce(
+      "customer_saved_searches:summary_providers_crash",
+      `${WARN_PREFIX} provider location lookup crashed`,
+      { error: String(error) },
+    );
+    return map;
+  }
+
+  const locationSetsByQuoteId = new Map<string, Map<string, string>>();
+  for (const row of destinationRows) {
+    const quoteId = normalizeId(row?.rfq_id);
+    const providerId = normalizeId(row?.provider_id);
+    if (!quoteId || !providerId) continue;
+    const country = providerCountryById.get(providerId);
+    if (!country) continue;
+    const key = country.toLowerCase();
+    if (!locationSetsByQuoteId.has(quoteId)) {
+      locationSetsByQuoteId.set(quoteId, new Map());
+    }
+    const entry = locationSetsByQuoteId.get(quoteId)!;
+    if (!entry.has(key)) {
+      entry.set(key, country);
+    }
+  }
+
+  for (const [quoteId, locationMap] of locationSetsByQuoteId.entries()) {
+    const locations = Array.from(locationMap.values()).sort((a, b) => a.localeCompare(b));
+    if (locations.length > 0) {
+      map.set(quoteId, locations);
+    }
+  }
+
+  return map;
+}
+
 function normalizeSavedSearchRow(row: SavedSearchRow): SavedSearchListItem | null {
   const quoteId = normalizeId(row?.quote_id);
   if (!quoteId) return null;
@@ -420,6 +813,12 @@ function normalizeSavedSearchRow(row: SavedSearchRow): SavedSearchListItem | nul
     createdAt,
     lastViewedAt,
     lastActivityAt: null,
+    summary: {
+      process: null,
+      quantity: null,
+      needBy: null,
+      locations: [],
+    },
   };
 }
 
@@ -442,6 +841,12 @@ async function ensureSavedSearchesSchema(warnKey: string): Promise<boolean> {
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function normalizeLabel(value: unknown): string {

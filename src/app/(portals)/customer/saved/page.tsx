@@ -20,7 +20,7 @@ export default async function CustomerSavedSearchesPage() {
       <PortalShell
         workspace="customer"
         title="Saved searches"
-        subtitle="Revisit searches you want to keep tabs on."
+        subtitle="Revisit, share, or invite suppliers from saved searches."
         actions={
           <Link href="/customer/search" className={secondaryCtaClasses}>
             Back to search
@@ -42,7 +42,7 @@ export default async function CustomerSavedSearchesPage() {
     <PortalShell
       workspace="customer"
       title="Saved searches"
-      subtitle="Revisit searches you want to keep tabs on."
+      subtitle="Revisit, share, or invite suppliers from saved searches."
       actions={
         <Link href="/customer/search" className={primaryCtaClasses}>
           Search results
@@ -58,13 +58,13 @@ export default async function CustomerSavedSearchesPage() {
       ) : savedSearches.searches.length === 0 ? (
         <EmptyStateCard
           title="No saved searches yet"
-          description="Save a search to return to it quickly."
+          description="Save a search to revisit it or share it with your team."
           action={{ label: "Open search results", href: "/customer/search" }}
         />
       ) : (
         <PortalCard
           title="Saved searches"
-          description="Open, rename, or remove saved searches."
+          description="Open, copy, rename, or remove saved searches."
         >
           <SavedSearchesList searches={savedSearches.searches} />
         </PortalCard>
