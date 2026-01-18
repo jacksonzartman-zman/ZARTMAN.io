@@ -278,6 +278,7 @@ export async function resolveProviderEmailColumn(): Promise<ProviderEmailColumn 
 export type CreateProviderStubInput = {
   name: string;
   email?: string | null;
+  website?: string | null;
   notes?: string | null;
 };
 
@@ -329,15 +330,19 @@ async function createProviderStub(
 
   const normalizedEmail = normalizeEmail(input.email);
   const normalizedNotes = normalizeOptionalText(input.notes);
+  const normalizedWebsite = normalizeWebsite(input.website);
   const inviteDomain = input.includeInviteDomain ? normalizeDomainFromEmail(normalizedEmail) : null;
   const websiteFromDomain = inviteDomain ? normalizeWebsiteFromDomain(inviteDomain) : null;
+  const preferredWebsite = normalizedWebsite ?? websiteFromDomain;
 
+  const needsNotesColumn = Boolean(normalizedNotes || normalizedEmail || normalizedWebsite || inviteDomain);
+  const needsWebsiteColumn = Boolean(preferredWebsite);
   const [supportsVerificationStatus, supportsSource, supportsNotes, supportsWebsite, supportsIsVerified, emailColumn] =
     await Promise.all([
       hasColumns(PROVIDERS_TABLE, ["verification_status"]),
       hasColumns(PROVIDERS_TABLE, ["source"]),
-      normalizedNotes || inviteDomain ? hasColumns(PROVIDERS_TABLE, ["notes"]) : Promise.resolve(false),
-      inviteDomain ? hasColumns(PROVIDERS_TABLE, ["website"]) : Promise.resolve(false),
+      needsNotesColumn ? hasColumns(PROVIDERS_TABLE, ["notes"]) : Promise.resolve(false),
+      needsWebsiteColumn ? hasColumns(PROVIDERS_TABLE, ["website"]) : Promise.resolve(false),
       hasColumns(PROVIDERS_TABLE, ["is_verified"]),
       resolveProviderEmailColumn(),
     ]);
@@ -358,14 +363,25 @@ async function createProviderStub(
   if (supportsSource) {
     payload.source = input.source;
   }
-  if (supportsWebsite && websiteFromDomain) {
-    payload.website = websiteFromDomain;
+  if (supportsWebsite && preferredWebsite) {
+    payload.website = preferredWebsite;
   }
   if (supportsNotes) {
+    const includeWebsiteLine = Boolean(normalizedWebsite && !supportsWebsite);
+    const includeEmailLine = Boolean(normalizedEmail && !emailColumn);
+    const includeDomainLine =
+      Boolean(inviteDomain) &&
+      !includeWebsiteLine &&
+      !includeEmailLine &&
+      (!supportsWebsite || !preferredWebsite);
     const notesValue = buildInviteNotes({
       notes: normalizedNotes,
       domain: inviteDomain,
-      includeDomain: Boolean(inviteDomain && (!supportsWebsite || !websiteFromDomain)),
+      includeDomain: includeDomainLine,
+      includeWebsite: includeWebsiteLine,
+      website: normalizedWebsite,
+      includeEmail: includeEmailLine,
+      email: normalizedEmail,
     });
     if (notesValue) {
       payload.notes = notesValue;
@@ -415,6 +431,23 @@ function normalizeEmail(value: unknown): string | null {
   return normalized;
 }
 
+function normalizeWebsite(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const hasScheme = /^https?:\/\//i.test(trimmed);
+  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 function normalizeDomainFromEmail(email: string | null): string | null {
   if (!email) return null;
   const atIndex = email.lastIndexOf("@");
@@ -440,21 +473,44 @@ function buildInviteNotes({
   notes,
   domain,
   includeDomain,
+  includeWebsite,
+  website,
+  includeEmail,
+  email,
 }: {
   notes: string | null;
   domain: string | null;
   includeDomain: boolean;
+  includeWebsite: boolean;
+  website: string | null;
+  includeEmail: boolean;
+  email: string | null;
 }): string | null {
-  const normalizedNotes = normalizeOptionalText(notes);
-  if (!includeDomain || !domain) {
-    return normalizedNotes;
+  let normalizedNotes = normalizeOptionalText(notes);
+  const lines: string[] = [];
+
+  if (includeWebsite && website) {
+    lines.push(`Invited website: ${website}`);
   }
-  const domainLine = `Invited domain: ${domain}`;
-  if (!normalizedNotes) {
-    return domainLine;
+
+  if (includeEmail && email) {
+    lines.push(`Invited email: ${email}`);
   }
-  if (normalizedNotes.includes(domainLine)) {
-    return normalizedNotes;
+
+  if (includeDomain && domain) {
+    lines.push(`Invited domain: ${domain}`);
   }
-  return `${normalizedNotes}\n${domainLine}`;
+
+  for (const line of lines) {
+    if (!line) continue;
+    if (!normalizedNotes) {
+      normalizedNotes = line;
+      continue;
+    }
+    if (!normalizedNotes.includes(line)) {
+      normalizedNotes = `${normalizedNotes}\n${line}`;
+    }
+  }
+
+  return normalizedNotes;
 }
