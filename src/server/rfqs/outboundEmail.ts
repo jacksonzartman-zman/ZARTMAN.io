@@ -304,7 +304,9 @@ export async function buildDestinationOutboundEmail(args: {
 
   const { data: provider, error: providerError } = await supabaseServer
     .from("providers")
-    .select("id,name,provider_type,quoting_mode,is_active,website,notes,created_at")
+    .select(
+      "id,name,provider_type,quoting_mode,is_active,website,notes,verification_status,source,verified_at,created_at",
+    )
     .eq("id", destination.provider_id)
     .maybeSingle<ProviderRow>();
 
