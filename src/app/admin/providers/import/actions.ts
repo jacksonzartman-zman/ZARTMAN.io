@@ -58,14 +58,23 @@ export async function importProvidersAction(
       return { ok: false, error: PROVIDER_IMPORT_GENERIC_ERROR };
     }
 
-    const [supportsWebsite, supportsNotes, supportsPrimaryEmail, supportsEmail, supportsContactEmail] =
-      await Promise.all([
-        hasColumns("providers", ["website"]),
-        hasColumns("providers", ["notes"]),
-        hasColumns("providers", ["primary_email"]),
-        hasColumns("providers", ["email"]),
-        hasColumns("providers", ["contact_email"]),
-      ]);
+    const [
+      supportsWebsite,
+      supportsNotes,
+      supportsPrimaryEmail,
+      supportsEmail,
+      supportsContactEmail,
+      supportsDispatchMode,
+      supportsRfqUrl,
+    ] = await Promise.all([
+      hasColumns("providers", ["website"]),
+      hasColumns("providers", ["notes"]),
+      hasColumns("providers", ["primary_email"]),
+      hasColumns("providers", ["email"]),
+      hasColumns("providers", ["contact_email"]),
+      hasColumns("providers", ["dispatch_mode"]),
+      hasColumns("providers", ["rfq_url"]),
+    ]);
 
     const emailColumn = supportsPrimaryEmail
       ? "primary_email"
@@ -76,6 +85,7 @@ export async function importProvidersAction(
           : null;
 
     const payloads = parseResult.validRows.map((row) => {
+      const hasWebForm = Boolean(row.rfqUrl);
       const payload: Record<string, unknown> = {
         name: row.name,
         provider_type: row.providerType,
@@ -87,6 +97,12 @@ export async function importProvidersAction(
 
       if (supportsWebsite) {
         payload.website = row.website ?? null;
+      }
+      if (supportsDispatchMode) {
+        payload.dispatch_mode = hasWebForm ? "web_form" : "email";
+      }
+      if (supportsRfqUrl && row.rfqUrl) {
+        payload.rfq_url = row.rfqUrl;
       }
 
       if (emailColumn) {

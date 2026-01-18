@@ -1,5 +1,6 @@
 import type { ProviderRow } from "@/server/providers";
 import { emailAdapter } from "./emailAdapter";
+import { webFormAdapter } from "./webFormAdapter";
 
 export type OutboundRfqCustomer = {
   name?: string | null;
@@ -11,6 +12,11 @@ export type OutboundRfqCustomer = {
 export type OutboundRfqFileLink = {
   label: string;
   url: string;
+};
+
+export type OutboundRfqDestination = {
+  id: string;
+  offerLink?: string | null;
 };
 
 export type OutboundRfqQuote = {
@@ -25,20 +31,36 @@ export type OutboundRfqQuote = {
   desiredLeadTime?: string | null;
 };
 
-export type BuildOutboundRfqArgs = {
+export type BuildOutboundArgs = {
   provider: ProviderRow;
   quote: OutboundRfqQuote;
+  destination?: OutboundRfqDestination | null;
   customer?: OutboundRfqCustomer | null;
-  fileLinks?: OutboundRfqFileLink[];
-  offerLink?: string | null;
+  files?: OutboundRfqFileLink[];
 };
+
+export type OutboundRfqDispatch =
+  | {
+      mode: "email";
+      subject: string;
+      body: string;
+    }
+  | {
+      mode: "web_form";
+      webFormUrl: string | null;
+      webFormInstructions: string;
+    }
+  | {
+      mode: "api";
+      payloadJson: Record<string, unknown>;
+    };
 
 export type ProviderAdapter = {
   supports(provider: ProviderRow): boolean;
-  buildOutboundRfq(args: BuildOutboundRfqArgs): { subject: string; body: string };
+  buildOutbound(args: BuildOutboundArgs): OutboundRfqDispatch;
 };
 
-const ADAPTERS: ProviderAdapter[] = [emailAdapter];
+const ADAPTERS: ProviderAdapter[] = [emailAdapter, webFormAdapter];
 
 export function getAdapterForProvider(provider: ProviderRow): ProviderAdapter | null {
   return ADAPTERS.find((adapter) => adapter.supports(provider)) ?? null;

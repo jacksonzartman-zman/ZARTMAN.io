@@ -39,15 +39,18 @@ export default function ProviderImportForm() {
             CSV format
           </p>
           <p className="text-sm text-slate-300">
-            Paste CSV rows with columns in this order: name, website, email, provider_type.
-            Provider types: {PROVIDER_IMPORT_TYPES.join(", ")}.
+            Paste CSV rows with columns in this order: name, website, email, provider_type, rfq_url
+            (optional). Provider types: {PROVIDER_IMPORT_TYPES.join(", ")}.
           </p>
           <p className="text-xs text-slate-500">
-            Providers are created inactive and set to email quoting mode.
+            Providers are created inactive and default to email dispatch. Include rfq_url to set
+            web-form dispatch.
           </p>
           <div className="rounded-xl border border-slate-900 bg-slate-950/70 px-4 py-3 text-xs text-slate-400">
-            <p className="font-mono">name,website,email,provider_type</p>
-            <p className="font-mono">Acme Precision,https://acmeprecision.com,rfq@acme.com,factory</p>
+            <p className="font-mono">name,website,email,provider_type,rfq_url</p>
+            <p className="font-mono">
+              Acme Precision,https://acmeprecision.com,rfq@acme.com,factory,https://acmeprecision.com/rfq
+            </p>
           </div>
         </div>
 
@@ -62,7 +65,7 @@ export default function ProviderImportForm() {
               onChange={(event) => setCsvText(event.target.value)}
               rows={9}
               spellCheck={false}
-              placeholder="Acme Precision,https://acmeprecision.com,rfq@acme.com,factory"
+              placeholder="Acme Precision,https://acmeprecision.com,rfq@acme.com,factory,https://acmeprecision.com/rfq"
               className="w-full rounded-xl border border-slate-900 bg-black/30 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
             />
           </label>
@@ -116,6 +119,7 @@ export default function ProviderImportForm() {
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Website</th>
               <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3">RFQ URL</th>
               <th className="px-4 py-3">Provider type</th>
               <th className="px-4 py-3">Status</th>
             </tr>
@@ -123,7 +127,7 @@ export default function ProviderImportForm() {
           body={
             totalRows === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
+                <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-400">
                   No rows to preview yet.
                 </td>
               </tr>
@@ -149,6 +153,7 @@ function PreviewRow({ row }: { row: ProviderImportRow }) {
       <td className={clsx(adminTableCellClass, "px-4 py-3")}>{row.name || "—"}</td>
       <td className={clsx(adminTableCellClass, "px-4 py-3")}>{row.website || "—"}</td>
       <td className={clsx(adminTableCellClass, "px-4 py-3")}>{row.email || "—"}</td>
+      <td className={clsx(adminTableCellClass, "px-4 py-3")}>{row.rfqUrl || "—"}</td>
       <td className={clsx(adminTableCellClass, "px-4 py-3")}>
         {row.providerType || "—"}
       </td>

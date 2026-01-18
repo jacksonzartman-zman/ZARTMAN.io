@@ -12,6 +12,7 @@ export type ProviderImportRow = {
   name: string;
   website: string | null;
   email: string | null;
+  rfqUrl: string | null;
   providerType: ProviderImportType | null;
   errors: string[];
 };
@@ -28,6 +29,7 @@ type ParsedCsvRow = {
 };
 
 const HEADER_FIELDS = ["name", "website", "email", "provider_type"];
+const HEADER_FIELDS_WITH_RFQ = [...HEADER_FIELDS, "rfq_url"];
 
 export function parseProviderImportCsv(input: string): ProviderImportParseResult {
   const csvRows = parseCsvRows(input);
@@ -59,14 +61,15 @@ function parseProviderRow(row: ParsedCsvRow): ProviderImportRow {
 
   if (columnCount < 4) {
     errors.push(`Expected 4 columns, found ${columnCount}.`);
-  } else if (columnCount > 4) {
-    errors.push(`Expected 4 columns, found ${columnCount}. Extra data after provider_type.`);
+  } else if (columnCount > 5) {
+    errors.push(`Expected 4 or 5 columns, found ${columnCount}. Extra data after rfq_url.`);
   }
 
   const name = trimmed[0] ?? "";
   const websiteInput = trimmed[1] ?? "";
   const emailInput = trimmed[2] ?? "";
   const providerTypeInput = trimmed[3] ?? "";
+  const rfqUrlInput = trimmed[4] ?? "";
 
   if (!name) {
     errors.push("Name is required.");
@@ -82,6 +85,11 @@ function parseProviderRow(row: ParsedCsvRow): ProviderImportRow {
     errors.push(websiteError);
   }
 
+  const { normalizedUrl: rfqUrl, error: rfqUrlError } = normalizeOptionalUrl(rfqUrlInput, "RFQ URL");
+  if (rfqUrlError) {
+    errors.push(rfqUrlError);
+  }
+
   const providerType = normalizeProviderType(providerTypeInput);
   if (!providerType) {
     errors.push(
@@ -94,6 +102,7 @@ function parseProviderRow(row: ParsedCsvRow): ProviderImportRow {
     name,
     website: normalizedWebsite,
     email,
+    rfqUrl,
     providerType,
     errors,
   };
@@ -114,17 +123,25 @@ function normalizeWebsite(value: string): {
   normalizedWebsite: string | null;
   error: string | null;
 } {
+  const { normalizedUrl, error } = normalizeOptionalUrl(value, "Website");
+  return { normalizedWebsite: normalizedUrl, error };
+}
+
+function normalizeOptionalUrl(
+  value: string,
+  label: string,
+): { normalizedUrl: string | null; error: string | null } {
   const trimmed = value.trim();
   if (!trimmed) {
-    return { normalizedWebsite: null, error: null };
+    return { normalizedUrl: null, error: null };
   }
   const hasScheme = /^https?:\/\//i.test(trimmed);
   const candidate = hasScheme ? trimmed : `https://${trimmed}`;
   try {
     const url = new URL(candidate);
-    return { normalizedWebsite: url.toString(), error: null };
+    return { normalizedUrl: url.toString(), error: null };
   } catch {
-    return { normalizedWebsite: trimmed, error: "Website must be a valid URL." };
+    return { normalizedUrl: trimmed, error: `${label} must be a valid URL.` };
   }
 }
 
@@ -190,10 +207,13 @@ function parseCsvRows(input: string): ParsedCsvRow[] {
 
 function detectHeaderRow(fields: string[] | undefined): boolean {
   if (!fields || fields.length < 4) return false;
-  const normalized = fields.slice(0, 4).map((value) =>
+  const normalized = fields.slice(0, 5).map((value) =>
     value.trim().toLowerCase().replace(/\s+/g, "_"),
   );
-  return HEADER_FIELDS.every((field, index) => normalized[index] === field);
+  const baseMatches = HEADER_FIELDS.every((field, index) => normalized[index] === field);
+  if (!baseMatches) return false;
+  if (normalized.length < 5 || !normalized[4]) return true;
+  return normalized[4] === HEADER_FIELDS_WITH_RFQ[4];
 }
 
 function isEmptyRow(fields: string[]): boolean {

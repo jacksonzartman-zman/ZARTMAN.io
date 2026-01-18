@@ -1,43 +1,12 @@
-import { formatDateTime } from "@/lib/formatDate";
-import type { BuildOutboundRfqArgs, ProviderAdapter } from "./providerAdapter";
-
-function normalizeString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function formatQuantity(value: BuildOutboundRfqArgs["quote"]["quantity"]): string | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-  const asText = normalizeString(value);
-  return asText || null;
-}
-
-function formatTargetDate(value: string | null | undefined): string | null {
-  const trimmed = normalizeString(value);
-  if (!trimmed) return null;
-  const formatted = formatDateTime(trimmed, { fallback: "" });
-  return formatted || trimmed;
-}
-
-function formatRequester(args: BuildOutboundRfqArgs): string | null {
-  const name = normalizeString(args.customer?.name);
-  const company = normalizeString(args.customer?.company);
-  if (name && company && name !== company) {
-    return `${name} (${company})`;
-  }
-  if (company) return company;
-  if (name) return name;
-  return null;
-}
-
-function formatTurnaround(args: BuildOutboundRfqArgs): string {
-  const leadTime = normalizeString(args.quote.desiredLeadTime);
-  const targetDate = formatTargetDate(args.quote.targetDate);
-  if (leadTime) return leadTime;
-  if (targetDate) return `Target date ${targetDate}`;
-  return "Not specified";
-}
+import type { BuildOutboundArgs, ProviderAdapter } from "./providerAdapter";
+import { resolveProviderDispatchMode } from "./providerDispatchMode";
+import {
+  formatQuantity,
+  formatRequester,
+  formatTargetDate,
+  formatTurnaround,
+  normalizeString,
+} from "./rfqContent";
 
 function buildSection(title: string, items: string[], emptyLabel: string): string[] {
   if (items.length === 0) {
@@ -48,9 +17,9 @@ function buildSection(title: string, items: string[], emptyLabel: string): strin
 
 export const emailAdapter: ProviderAdapter = {
   supports(provider) {
-    return provider.quoting_mode === "email";
+    return resolveProviderDispatchMode(provider) === "email";
   },
-  buildOutboundRfq(args) {
+  buildOutbound(args) {
     const quoteTitle = normalizeString(args.quote.title) || args.quote.id;
     const process = normalizeString(args.quote.process);
     const material = normalizeString(args.quote.material);
@@ -101,7 +70,7 @@ export const emailAdapter: ProviderAdapter = {
     lines.push(...buildSection("Timing:", timing, "Not specified"));
     lines.push("");
 
-    const fileLinks = Array.isArray(args.fileLinks) ? args.fileLinks : [];
+    const fileLinks = Array.isArray(args.files) ? args.files : [];
     const files: string[] = fileLinks.map((file, index) => {
       const label = normalizeString(file.label) || `File ${index + 1}`;
       const url = normalizeString(file.url);
@@ -110,7 +79,7 @@ export const emailAdapter: ProviderAdapter = {
     lines.push(...buildSection("Files:", files, "No files available"));
     lines.push("");
 
-    const offerLink = normalizeString(args.offerLink);
+    const offerLink = normalizeString(args.destination?.offerLink);
     if (offerLink) {
       lines.push("Quote submission link:");
       lines.push(`- Submit your quote here (no login required): ${offerLink}`);
@@ -125,6 +94,6 @@ export const emailAdapter: ProviderAdapter = {
     lines.push("");
     lines.push("Reply to this email with your quote; include any notes/assumptions.");
 
-    return { subject, body: lines.join("\n") };
+    return { mode: "email", subject, body: lines.join("\n") };
   },
 };

@@ -14,6 +14,9 @@ export type ProviderType = (typeof PROVIDER_TYPES)[number];
 export const PROVIDER_QUOTING_MODES = ["manual", "email", "api"] as const;
 export type ProviderQuotingMode = (typeof PROVIDER_QUOTING_MODES)[number];
 
+export const PROVIDER_DISPATCH_MODES = ["email", "web_form", "api"] as const;
+export type ProviderDispatchMode = (typeof PROVIDER_DISPATCH_MODES)[number];
+
 export const PROVIDER_VERIFICATION_STATUSES = ["unverified", "verified"] as const;
 export type ProviderVerificationStatus = (typeof PROVIDER_VERIFICATION_STATUSES)[number];
 
@@ -25,8 +28,10 @@ export type ProviderRow = {
   name: string;
   provider_type: ProviderType;
   quoting_mode: ProviderQuotingMode;
+  dispatch_mode?: ProviderDispatchMode | null;
   is_active: boolean;
   website: string | null;
+  rfq_url?: string | null;
   notes: string | null;
   verification_status: ProviderVerificationStatus;
   source: ProviderSource;
@@ -70,9 +75,22 @@ const PROVIDER_COLUMNS = [
   "verified_at",
   "created_at",
 ] as const;
-const PROVIDER_SELECT = PROVIDER_COLUMNS.join(",");
+
+async function resolveProviderSelectColumns(): Promise<string[]> {
+  const [supportsDispatchMode, supportsRfqUrl] = await Promise.all([
+    hasColumns(PROVIDERS_TABLE, ["dispatch_mode"]),
+    hasColumns(PROVIDERS_TABLE, ["rfq_url"]),
+  ]);
+
+  return [
+    ...PROVIDER_COLUMNS,
+    ...(supportsDispatchMode ? ["dispatch_mode"] : []),
+    ...(supportsRfqUrl ? ["rfq_url"] : []),
+  ];
+}
 
 export async function getActiveProviders(): Promise<ProviderRow[]> {
+  const selectColumns = await resolveProviderSelectColumns();
   const supported = await schemaGate({
     enabled: true,
     relation: PROVIDERS_TABLE,
@@ -87,7 +105,7 @@ export async function getActiveProviders(): Promise<ProviderRow[]> {
   try {
     const { data, error } = await supabaseServer
       .from(PROVIDERS_TABLE)
-      .select(PROVIDER_SELECT)
+      .select(selectColumns.join(","))
       .eq("is_active", true)
       .eq("verification_status", "verified")
       .order("name", { ascending: true })
@@ -106,6 +124,7 @@ export async function getActiveProviders(): Promise<ProviderRow[]> {
 }
 
 export async function listProviders(filters: ProviderListFilters = {}): Promise<ProviderRow[]> {
+  const selectColumns = await resolveProviderSelectColumns();
   const supported = await schemaGate({
     enabled: true,
     relation: PROVIDERS_TABLE,
@@ -120,7 +139,7 @@ export async function listProviders(filters: ProviderListFilters = {}): Promise<
   try {
     let query = supabaseServer
       .from(PROVIDERS_TABLE)
-      .select(PROVIDER_SELECT)
+      .select(selectColumns.join(","))
       .order("name", { ascending: true });
 
     if (typeof filters.isActive === "boolean") {
@@ -156,12 +175,13 @@ export async function listProviders(filters: ProviderListFilters = {}): Promise<
 export async function listProvidersWithContact(
   filters: ProviderListFilters = {},
 ): Promise<{ providers: ProviderContactRow[]; emailColumn: ProviderEmailColumn | null }> {
-  const [emailColumn, supportsContactedAt] = await Promise.all([
+  const [emailColumn, supportsContactedAt, baseColumns] = await Promise.all([
     resolveProviderEmailColumn(),
     hasColumns(PROVIDERS_TABLE, ["contacted_at"]),
+    resolveProviderSelectColumns(),
   ]);
   const selectColumns = [
-    ...PROVIDER_COLUMNS,
+    ...baseColumns,
     ...(emailColumn ? [emailColumn] : []),
     ...(supportsContactedAt ? ["contacted_at"] : []),
   ];
