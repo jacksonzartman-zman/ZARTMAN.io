@@ -47,7 +47,7 @@ export default function SiteHeader() {
 
         <nav className="flex flex-wrap items-center justify-start gap-3 text-sm font-medium text-ink-soft md:justify-end">
           <Link href="/customer/search" className={primaryCtaClasses}>
-            Search
+            Search suppliers
           </Link>
           <Link
             href="/login"

@@ -30,7 +30,6 @@ const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
   customer: [
     { label: "Search", href: "/customer/search" },
     { label: "Quotes", href: "/customer/quotes" },
-    { label: "Suppliers", href: "/suppliers" },
     { label: "Account", href: "/customer/settings" },
   ],
   supplier: [

@@ -14,36 +14,11 @@ const FOOTER_COLUMNS: {
   links: FooterLink[];
 }[] = [
   {
-    title: "Customers",
+    title: "Marketplace",
     links: [
-      {
-        label: "Search suppliers",
-        href: "/customer/search",
-        description: "Start a supplier search and compare options in one workspace.",
-      },
-      {
-        label: "View my quotes",
-        href: "/customer/quotes",
-        description:
-          "Track pricing, lead times, and awards across your searches.",
-      },
-    ],
-  },
-  {
-    title: "Suppliers",
-    links: [
-      { label: "Supplier portal", href: "/supplier" },
-      {
-        label: "Supplier directory",
-        href: "/suppliers",
-        description: "Browse vetted suppliers by process and location.",
-      },
-      {
-        label: "Join as a supplier",
-        href: "/suppliers/join",
-        description:
-          "Share your email to start receiving matching RFQs.",
-      },
+      { label: "Search suppliers", href: "/customer/search" },
+      { label: "Suppliers", href: "/suppliers" },
+      { label: "Join as Supplier", href: "/suppliers/join" },
     ],
   },
   {
@@ -66,7 +41,7 @@ export default function SiteFooter() {
   return (
     <footer className="border-t border-slate-900/70 bg-neutral-950/90">
       <div className="mx-auto max-w-page px-4 py-12 sm:px-6 lg:px-8">
-        <div className="grid gap-8 sm:grid-cols-2 md:grid-cols-3">
+        <div className="grid gap-8 sm:grid-cols-2">
           {FOOTER_COLUMNS.map((column) => (
             <div key={column.title} className="space-y-3">
               <p className="text-sm font-semibold uppercase tracking-wide text-ink">
