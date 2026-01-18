@@ -113,7 +113,11 @@ import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { getRfqDestinations } from "@/server/rfqs/destinations";
 import { getRfqOffers } from "@/server/rfqs/offers";
-import { listProviders } from "@/server/providers";
+import { listProvidersWithContact } from "@/server/providers";
+import {
+  buildProviderEligibilityCriteria,
+  getEligibleProvidersForQuote,
+} from "@/server/providers/eligibility";
 import { listOpsEventsForQuote, type OpsEventRecord } from "@/server/ops/events";
 import { schemaGate } from "@/server/db/schemaContract";
 import {
@@ -453,12 +457,27 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     })();
     const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
     const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
-    const [providers, rfqDestinations, rfqOffers, opsEventsResult] = await Promise.all([
-      listProviders(),
+    const [providersResult, rfqDestinations, rfqOffers, opsEventsResult] = await Promise.all([
+      listProvidersWithContact(),
       getRfqDestinations(quote.id),
       getRfqOffers(quote.id),
       listOpsEventsForQuote(quote.id, { limit: 20 }),
     ]);
+    const providers = providersResult.providers;
+    const providerEligibilityCriteria = buildProviderEligibilityCriteria({
+      process: uploadMeta?.manufacturing_process ?? null,
+      quantity: uploadMeta?.quantity ?? null,
+      shipTo: quote.ship_to ?? null,
+      shippingPostalCode: uploadMeta?.shipping_postal_code ?? null,
+    });
+    const providerEligibility = await getEligibleProvidersForQuote(
+      quote.id,
+      providerEligibilityCriteria,
+      {
+        providers,
+        emailColumn: providersResult.emailColumn,
+      },
+    );
     const opsEvents = opsEventsResult.ok ? opsEventsResult.events : [];
     const providerLabelById = new Map<string, string>();
     for (const provider of providers) {
@@ -2471,6 +2490,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   providers={providers}
                   destinations={rfqDestinations}
                   offers={rfqOffers}
+                  providerEligibility={providerEligibility}
                 />
               </div>
             </DisclosureSection>
@@ -2979,6 +2999,23 @@ function renderOpsEventSummary(args: {
   switch (args.event.event_type) {
     case "destination_added": {
       summaryParts.push("Destination added");
+      break;
+    }
+    case "destinations_added": {
+      const chosenProviders = Array.isArray(payload?.chosen_provider_ids)
+        ? payload.chosen_provider_ids.filter((value) => typeof value === "string")
+        : [];
+      const eligibleCount =
+        typeof payload?.eligible_count === "number" ? payload.eligible_count : null;
+      if (chosenProviders.length > 0 && typeof eligibleCount === "number") {
+        summaryParts.push(
+          `Destinations added (${chosenProviders.length} chosen, ${eligibleCount} eligible)`,
+        );
+      } else if (chosenProviders.length > 0) {
+        summaryParts.push(`Destinations added (${chosenProviders.length} chosen)`);
+      } else {
+        summaryParts.push("Destinations added");
+      }
       break;
     }
     case "destination_status_updated": {

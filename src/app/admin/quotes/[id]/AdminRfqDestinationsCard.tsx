@@ -1,9 +1,17 @@
 "use client";
 
 import clsx from "clsx";
-import { useEffect, useMemo, useState, useTransition, type ChangeEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type ChangeEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import type { ProviderRow } from "@/server/providers";
+import type { EligibleProvidersForQuoteResult } from "@/server/providers/eligibility";
 import type { RfqDestination, RfqDestinationStatus } from "@/server/rfqs/destinations";
 import {
   addDestinationsAction,
@@ -39,6 +47,7 @@ type AdminRfqDestinationsCardProps = {
   providers: ProviderRow[];
   destinations: RfqDestination[];
   offers: RfqOffer[];
+  providerEligibility?: EligibleProvidersForQuoteResult | null;
 };
 
 type FeedbackTone = "success" | "error";
@@ -62,6 +71,7 @@ export function AdminRfqDestinationsCard({
   providers,
   destinations,
   offers,
+  providerEligibility,
 }: AdminRfqDestinationsCardProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -86,6 +96,7 @@ export function AdminRfqDestinationsCard({
   const [webFormLoadingId, setWebFormLoadingId] = useState<string | null>(null);
   const [webFormErrorsById, setWebFormErrorsById] = useState<Record<string, string>>({});
   const [showAllProviders, setShowAllProviders] = useState(false);
+  const [includeUnverifiedProviders, setIncludeUnverifiedProviders] = useState(false);
 
   const providerById = useMemo(() => {
     const map = new Map<string, ProviderRow>();
@@ -113,17 +124,82 @@ export function AdminRfqDestinationsCard({
     [providers],
   );
 
-  const visibleProviders = showAllProviders ? providers : verifiedActiveProviders;
+  const eligibilityRankById = useMemo(() => {
+    const map = new Map<string, number>();
+    (providerEligibility?.rankedProviderIds ?? []).forEach((providerId, index) => {
+      if (providerId) {
+        map.set(providerId, index);
+      }
+    });
+    return map;
+  }, [providerEligibility]);
+
+  const eligibleProviderIds = useMemo(() => {
+    return new Set(providerEligibility?.eligibleProviderIds ?? []);
+  }, [providerEligibility]);
+
+  const hasEligibilityCriteria = Boolean(
+    providerEligibility?.criteria?.process ||
+      providerEligibility?.criteria?.shipToState ||
+      providerEligibility?.criteria?.shipToCountry,
+  );
+
+  const sortByEligibility = useCallback(
+    (list: ProviderRow[]) => {
+      return [...list].sort((a, b) => {
+        const rankA = eligibilityRankById.get(a.id);
+        const rankB = eligibilityRankById.get(b.id);
+        if (typeof rankA === "number" || typeof rankB === "number") {
+          const normalizedA = typeof rankA === "number" ? rankA : Number.MAX_SAFE_INTEGER;
+          const normalizedB = typeof rankB === "number" ? rankB : Number.MAX_SAFE_INTEGER;
+          if (normalizedA !== normalizedB) return normalizedA - normalizedB;
+        }
+        const nameDiff = a.name.localeCompare(b.name);
+        if (nameDiff !== 0) return nameDiff;
+        return a.id.localeCompare(b.id);
+      });
+    },
+    [eligibilityRankById],
+  );
+
+  const sortedVerifiedProviders = useMemo(
+    () => sortByEligibility(verifiedActiveProviders),
+    [sortByEligibility, verifiedActiveProviders],
+  );
+
+  const sortedReviewProviders = useMemo(
+    () => sortByEligibility(reviewProviders),
+    [reviewProviders, sortByEligibility],
+  );
+
+  const showEligibleOnly = hasEligibilityCriteria && !showAllProviders;
+
+  const visibleVerifiedProviders = useMemo(() => {
+    return showEligibleOnly
+      ? sortedVerifiedProviders.filter((provider) => eligibleProviderIds.has(provider.id))
+      : sortedVerifiedProviders;
+  }, [eligibleProviderIds, showEligibleOnly, sortedVerifiedProviders]);
+
+  const visibleReviewProviders = useMemo(() => {
+    if (!includeUnverifiedProviders) return [];
+    return showEligibleOnly
+      ? sortedReviewProviders.filter((provider) => eligibleProviderIds.has(provider.id))
+      : sortedReviewProviders;
+  }, [eligibleProviderIds, includeUnverifiedProviders, showEligibleOnly, sortedReviewProviders]);
+
+  const visibleProviders = useMemo(() => {
+    return includeUnverifiedProviders
+      ? [...visibleVerifiedProviders, ...visibleReviewProviders]
+      : visibleVerifiedProviders;
+  }, [includeUnverifiedProviders, visibleReviewProviders, visibleVerifiedProviders]);
 
   const visibleProviderIds = useMemo(() => {
     return new Set(visibleProviders.map((provider) => provider.id));
   }, [visibleProviders]);
 
   useEffect(() => {
-    if (!showAllProviders) {
-      setSelectedProviderIds((prev) => prev.filter((id) => visibleProviderIds.has(id)));
-    }
-  }, [showAllProviders, visibleProviderIds]);
+    setSelectedProviderIds((prev) => prev.filter((id) => visibleProviderIds.has(id)));
+  }, [visibleProviderIds]);
 
   const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const selections = Array.from(event.target.selectedOptions).map((option) => option.value);
@@ -314,6 +390,14 @@ export function AdminRfqDestinationsCard({
       ? `${selectedNeedsReviewCount} unverified or inactive`
       : null;
 
+  const emptyProviderLabel = showEligibleOnly
+    ? includeUnverifiedProviders
+      ? "No eligible providers available."
+      : "No eligible verified providers available."
+    : includeUnverifiedProviders
+      ? "No providers available."
+      : "No verified providers available.";
+
   const destinationsCountLabel = `${destinations.length} destination${
     destinations.length === 1 ? "" : "s"
   }`;
@@ -347,12 +431,12 @@ export function AdminRfqDestinationsCard({
         <div className="mt-3 grid gap-2">
           {visibleProviders.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
-              {showAllProviders ? "No providers available." : "No verified providers available."}
+              {emptyProviderLabel}
             </p>
           ) : (
             <>
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {showAllProviders ? "Providers" : "Verified providers"}
+                {includeUnverifiedProviders ? "Providers" : "Verified providers"}
               </label>
               <select
                 multiple
@@ -360,11 +444,11 @@ export function AdminRfqDestinationsCard({
                 onChange={handleProviderChange}
                 className="min-h-[140px] w-full rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none"
               >
-                {showAllProviders ? (
+                {includeUnverifiedProviders ? (
                   <>
-                    {verifiedActiveProviders.length > 0 ? (
+                    {visibleVerifiedProviders.length > 0 ? (
                       <optgroup label="Verified + active">
-                        {verifiedActiveProviders.map((provider) => {
+                        {visibleVerifiedProviders.map((provider) => {
                           const typeLabel = formatEnumLabel(provider.provider_type);
                           const modeLabel = formatEnumLabel(provider.quoting_mode);
                           return (
@@ -375,9 +459,9 @@ export function AdminRfqDestinationsCard({
                         })}
                       </optgroup>
                     ) : null}
-                    {reviewProviders.length > 0 ? (
+                    {visibleReviewProviders.length > 0 ? (
                       <optgroup label="Needs review">
-                        {reviewProviders.map((provider) => {
+                        {visibleReviewProviders.map((provider) => {
                           const typeLabel = formatEnumLabel(provider.provider_type);
                           const modeLabel = formatEnumLabel(provider.quoting_mode);
                           const statusFlags = [
@@ -395,7 +479,7 @@ export function AdminRfqDestinationsCard({
                     ) : null}
                   </>
                 ) : (
-                  verifiedActiveProviders.map((provider) => {
+                  visibleVerifiedProviders.map((provider) => {
                     const typeLabel = formatEnumLabel(provider.provider_type);
                     const modeLabel = formatEnumLabel(provider.quoting_mode);
                     return (
@@ -417,9 +501,23 @@ export function AdminRfqDestinationsCard({
                   onChange={() => setShowAllProviders((prev) => !prev)}
                   className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
                 />
+                Show all providers
+              </label>
+              {showEligibleOnly ? (
+                <p className="text-xs text-slate-500">
+                  Eligible providers match the intake process or ship-to location.
+                </p>
+              ) : null}
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={includeUnverifiedProviders}
+                  onChange={() => setIncludeUnverifiedProviders((prev) => !prev)}
+                  className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+                />
                 Include unverified or inactive providers
               </label>
-              {showAllProviders ? (
+              {includeUnverifiedProviders ? (
                 <p className="text-xs text-slate-500">
                   Unverified or inactive providers stay hidden from customers until approved.
                 </p>

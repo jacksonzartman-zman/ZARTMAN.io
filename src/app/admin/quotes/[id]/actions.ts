@@ -59,6 +59,10 @@ import {
 } from "@/server/admin/quoteParts";
 import { appendFilesToQuoteUpload } from "@/server/quotes/uploadFiles";
 import { logOpsEvent } from "@/server/ops/events";
+import {
+  getEligibleProvidersForQuote,
+  resolveProviderEligibilityCriteriaForQuote,
+} from "@/server/providers/eligibility";
 import { parseRfqOfferStatus } from "@/server/rfqs/offers";
 import {
   buildDestinationOutboundEmail,
@@ -951,6 +955,32 @@ export async function addDestinationsAction(args: {
     }
 
     if (newRows.length > 0) {
+      try {
+        const criteria = await resolveProviderEligibilityCriteriaForQuote(normalizedQuoteId);
+        const eligibility = await getEligibleProvidersForQuote(normalizedQuoteId, criteria);
+        const criteriaPayload = Object.fromEntries(
+          Object.entries({
+            process: criteria.process ?? undefined,
+            ship_to_state: criteria.shipToState ?? undefined,
+            ship_to_country: criteria.shipToCountry ?? undefined,
+            quantity: typeof criteria.quantity === "number" ? criteria.quantity : undefined,
+          }).filter(([, value]) => typeof value !== "undefined"),
+        );
+        await logOpsEvent({
+          quoteId: normalizedQuoteId,
+          eventType: "destinations_added",
+          payload: {
+            criteria: criteriaPayload,
+            eligible_count: eligibility.eligibleProviderIds.length,
+            chosen_provider_ids: uniqueProviders,
+          },
+        });
+      } catch (error) {
+        console.warn("[admin rfq destinations] routing snapshot failed", {
+          quoteId: normalizedQuoteId,
+          error: serializeActionError(error),
+        });
+      }
       await Promise.all(
         newRows.map((row) =>
           logOpsEvent({
