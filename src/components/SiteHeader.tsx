@@ -3,15 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { primaryCtaClasses } from "@/lib/ctas";
-import { SHOW_SUPPLIER_DIRECTORY_PUBLIC } from "@/lib/ui/deprecation";
+import { getPublicNavConfig } from "@/lib/ui/publicNav";
 import { BrandMark } from "@/components/BrandMark";
 
-const PUBLIC_LINKS = SHOW_SUPPLIER_DIRECTORY_PUBLIC
-  ? [
-      { label: "Suppliers", href: "/suppliers" },
-      { label: "Join as Supplier", href: "/suppliers/join" },
-    ]
-  : [];
+const PUBLIC_NAV = getPublicNavConfig();
 
 export default function SiteHeader() {
   const pathname = usePathname() ?? "/";
@@ -36,9 +31,9 @@ export default function SiteHeader() {
           className="text-base font-semibold text-ink transition-colors hover:text-ink-soft"
         />
 
-        {PUBLIC_LINKS.length > 0 ? (
+        {PUBLIC_NAV.headerLinks.length > 0 ? (
           <nav className="flex flex-wrap items-center justify-center gap-4 text-sm font-medium text-ink-soft md:justify-center">
-            {PUBLIC_LINKS.map((link) => (
+            {PUBLIC_NAV.headerLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -51,14 +46,14 @@ export default function SiteHeader() {
         ) : null}
 
         <nav className="flex flex-wrap items-center justify-start gap-3 text-sm font-medium text-ink-soft md:justify-end">
-          <Link href="/customer/search" className={primaryCtaClasses}>
-            Search suppliers
+          <Link href={PUBLIC_NAV.primaryCta.href} className={primaryCtaClasses}>
+            {PUBLIC_NAV.primaryCta.label}
           </Link>
           <Link
-            href="/login"
+            href={PUBLIC_NAV.authLink.href}
             className="rounded-full px-3 py-1.5 text-ink-soft transition-colors hover:text-ink"
           >
-            Login
+            {PUBLIC_NAV.authLink.label}
           </Link>
         </nav>
       </div>
