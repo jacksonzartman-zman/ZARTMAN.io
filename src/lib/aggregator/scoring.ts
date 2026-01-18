@@ -59,16 +59,8 @@ export function decorateOffersForCompare(offers: RfqOffer[]): DecoratedRfqOffer[
 
   const minPrice = minNumeric(normalized.map((offer) => offer.totalPriceValue));
   const minLeadTime = minNumeric(normalized.map((offer) => offer.leadTimeDaysAverage));
-  const bestValueId = pickBestValueId(normalized);
-  const fastestId = pickFastestId(normalized);
-  const lowestRiskId = pickLowestRiskId(normalized);
 
-  return normalized.map((offer) => {
-    const badges = [];
-    if (offer.id === bestValueId) badges.push(BADGE_LABELS.bestValue);
-    if (offer.id === fastestId) badges.push(BADGE_LABELS.fastest);
-    if (offer.id === lowestRiskId) badges.push(BADGE_LABELS.lowestRisk);
-
+  const scored = normalized.map((offer) => {
     const priceScore = scoreRelative(minPrice, offer.totalPriceValue);
     const leadTimeScore = scoreRelative(minLeadTime, offer.leadTimeDaysAverage);
     const confidenceScore = typeof offer.confidenceValue === "number"
@@ -84,8 +76,23 @@ export function decorateOffersForCompare(offers: RfqOffer[]): DecoratedRfqOffer[
 
     return {
       ...offer,
-      badges,
       rankScore,
+    };
+  });
+
+  const bestValueId = pickBestValueId(scored);
+  const fastestId = pickFastestId(scored);
+  const lowestRiskId = pickLowestRiskId(scored);
+
+  return scored.map((offer) => {
+    const badges = [];
+    if (offer.id === bestValueId) badges.push(BADGE_LABELS.bestValue);
+    if (offer.id === fastestId) badges.push(BADGE_LABELS.fastest);
+    if (offer.id === lowestRiskId) badges.push(BADGE_LABELS.lowestRisk);
+
+    return {
+      ...offer,
+      badges,
     };
   });
 }
@@ -106,7 +113,7 @@ function scoreRelative(minValue: number | null, value: number | null): number {
 }
 
 function pickBestValueId(offers: DecoratedRfqOffer[]): string | null {
-  return pickByNumeric(offers, (offer) => offer.totalPriceValue, "asc");
+  return pickByNumeric(offers, (offer) => offer.rankScore, "desc");
 }
 
 function pickFastestId(offers: DecoratedRfqOffer[]): string | null {
