@@ -107,10 +107,12 @@ export async function logSupplierJoinOpsEvent(
     return;
   }
 
+  const supplierSlug = normalizeOptionalId(input.supplierSlug) ?? undefined;
+  const source = normalizeOptionalId(input.source) ?? undefined;
   const payload = sanitizePayload({
     email,
-    supplier_slug: normalizeOptionalId(input.supplierSlug),
-    source: normalizeOptionalId(input.source),
+    supplier_slug: supplierSlug,
+    source,
   });
 
   try {
