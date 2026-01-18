@@ -35,10 +35,10 @@ const FOOTER_COLUMNS: {
         description: "Browse vetted suppliers by process and location.",
       },
       {
-        label: "Become a supplier",
-        href: "/supplier/signup",
+        label: "Join as a supplier",
+        href: "/suppliers/join",
         description:
-          "Create a supplier profile and get a magic link to finish onboarding.",
+          "Share your email to start receiving matching RFQs.",
       },
     ],
   },

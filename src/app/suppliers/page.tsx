@@ -8,7 +8,7 @@ import {
 } from "@/server/suppliers/publicDirectory";
 
 const REQUEST_QUOTE_HREF = "/customer/search";
-const BECOME_SUPPLIER_HREF = "/supplier/signup";
+const BECOME_SUPPLIER_HREF = "/suppliers/join";
 
 const tagClasses =
   "inline-flex items-center rounded-full border border-slate-800/70 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-ink-soft";
@@ -64,7 +64,7 @@ export default async function SuppliersDirectoryPage() {
               Request quote
             </Link>
             <Link href={BECOME_SUPPLIER_HREF} className={secondaryCtaClasses}>
-              Become a supplier
+              Join as a supplier
             </Link>
           </div>
         </section>
