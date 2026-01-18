@@ -25,6 +25,7 @@ import {
   updateProviderContactAction,
   verifyProviderAction,
 } from "./actions";
+import { CopyOutreachEmailButton } from "./CopyOutreachEmailButton";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ type VerificationFilter = "all" | ProviderVerificationStatus;
 type TypeFilter = "all" | ProviderType;
 type QuotingFilter = "all" | ProviderQuotingMode;
 type SourceFilter = "all" | ProviderSource;
+type ViewFilter = "all" | "needs_research";
 
 const ACTIVE_FILTERS: Array<{ value: ActiveFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -74,9 +76,14 @@ export default async function AdminProvidersPage({
   const typeFilter = parseTypeFilter(usp.get("type"));
   const quotingFilter = parseQuotingFilter(usp.get("quoting"));
   const sourceFilter = parseSourceFilter(usp.get("source"));
+  const viewFilter = parseViewFilter(usp.get("view"));
+  const needsResearchFilterActive = viewFilter === "needs_research";
   const inviteFilterActive =
-    sourceFilter === "customer_invite" && verificationFilter === "unverified";
+    viewFilter === "all" &&
+    sourceFilter === "customer_invite" &&
+    verificationFilter === "unverified";
   const defaultFiltersActive =
+    viewFilter === "all" &&
     activeFilter === "all" &&
     verificationFilter === "all" &&
     typeFilter === "all" &&
@@ -86,6 +93,7 @@ export default async function AdminProvidersPage({
     verification: "unverified",
     source: "customer_invite",
   });
+  const needsResearchFilterHref = buildProvidersFilterHref({ view: "needs_research" });
 
   const { providers, emailColumn } = await listProvidersWithContact({
     isActive:
@@ -97,7 +105,36 @@ export default async function AdminProvidersPage({
     source: sourceFilter === "all" ? null : sourceFilter,
   });
 
-  const emptyState = providers.length === 0;
+  const providerRows = providers.map((provider) => {
+    const rawEmailValue = readEmailValue(provider, emailColumn);
+    const rawWebsiteValue = provider.website?.trim() || null;
+    const rawNotesValue = provider.notes?.trim() || null;
+    const notesValue = stripInviteDetailLines(rawNotesValue);
+    const emailValue = rawEmailValue ?? extractInviteDetail(rawNotesValue, "Invited email:");
+    const websiteValue =
+      rawWebsiteValue ?? extractInviteDetail(rawNotesValue, "Invited website:");
+    const contacted = Boolean(provider.contacted_at);
+    const missingContactDetails = !emailValue || !websiteValue;
+    const needsResearch =
+      (provider.source === "customer_invite" && missingContactDetails) ||
+      (provider.verification_status !== "verified" && !contacted);
+
+    return {
+      provider,
+      emailValue,
+      websiteValue,
+      websiteHref: normalizeWebsiteHref(websiteValue),
+      notesValue,
+      contacted,
+      needsResearch,
+    };
+  });
+
+  const visibleProviders = needsResearchFilterActive
+    ? providerRows.filter((row) => row.needsResearch)
+    : providerRows;
+
+  const emptyState = visibleProviders.length === 0;
   const emailLabel = formatEmailLabel(emailColumn);
 
   return (
@@ -119,8 +156,20 @@ export default async function AdminProvidersPage({
         <div className="flex flex-wrap items-center gap-2 pb-4 text-xs text-slate-400">
           <FilterChip label="All providers" href="/admin/providers" active={defaultFiltersActive} />
           <FilterChip label="Customer invites" href={inviteFilterHref} active={inviteFilterActive} />
+          <FilterChip
+            label="Needs research"
+            href={needsResearchFilterHref}
+            active={needsResearchFilterActive}
+          />
         </div>
         <form method="GET" action="/admin/providers" className="flex flex-wrap items-end gap-3">
+          {viewFilter !== "all" ? (
+            <input
+              type="hidden"
+              name="view"
+              value={viewFilter === "needs_research" ? "needs-research" : viewFilter}
+            />
+          ) : null}
           <FilterSelect
             name="active"
             label="Active"
@@ -191,21 +240,23 @@ export default async function AdminProvidersPage({
               </td>
             </tr>
           ) : (
-            providers.map((provider) => {
-              const rawEmailValue = readEmailValue(provider, emailColumn);
-              const rawWebsiteValue = provider.website?.trim() || null;
-              const rawNotesValue = provider.notes?.trim() || null;
-              const notesValue = stripInviteDetailLines(rawNotesValue);
-              const emailValue = rawEmailValue ?? extractInviteDetail(rawNotesValue, "Invited email:");
-              const websiteValue =
-                rawWebsiteValue ?? extractInviteDetail(rawNotesValue, "Invited website:");
-              const needsResearch = !emailValue && !websiteValue;
+            visibleProviders.map((row) => {
+              const {
+                provider,
+                emailValue,
+                websiteValue,
+                websiteHref,
+                notesValue,
+                contacted,
+                needsResearch,
+              } = row;
               const activeMeta = activePill(provider.is_active);
               const verificationMeta = verificationPill(provider.verification_status);
               const sourceLabel = formatEnumLabel(provider.source);
               const verifiedAtLabel = formatDateTime(provider.verified_at, { includeTime: true });
-              const contacted = Boolean(provider.contacted_at);
               const showInviteSummary = provider.source === "customer_invite";
+              const outreachSubject = buildOutreachEmailSubject(provider.name);
+              const outreachBody = buildOutreachEmailBody(provider.name);
               return (
                 <Fragment key={provider.id}>
                   <tr className="bg-slate-950/40 transition hover:bg-slate-900/40">
@@ -241,12 +292,16 @@ export default async function AdminProvidersPage({
                           <span className="text-slate-500">Email unavailable</span>
                         )}
                         {websiteValue ? (
-                          <Link
-                            href={websiteValue}
-                            className="text-emerald-200 hover:text-emerald-100"
-                          >
-                            {websiteValue}
-                          </Link>
+                          websiteHref ? (
+                            <Link
+                              href={websiteHref}
+                              className="text-emerald-200 hover:text-emerald-100"
+                            >
+                              {websiteValue}
+                            </Link>
+                          ) : (
+                            <span>{websiteValue}</span>
+                          )
                         ) : (
                           <span className="text-slate-500">Website —</span>
                         )}
@@ -254,6 +309,19 @@ export default async function AdminProvidersPage({
                     </td>
                     <td className={clsx(adminTableCellClass, "px-5 py-4")}>
                       <div className="flex flex-col gap-2 text-xs">
+                        {websiteHref ? (
+                          <a
+                            href={websiteHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-full border border-slate-700 px-3 py-1 font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                          >
+                            Open website
+                          </a>
+                        ) : null}
+                        {emailValue ? (
+                          <CopyOutreachEmailButton subject={outreachSubject} body={outreachBody} />
+                        ) : null}
                         {provider.verification_status !== "verified" ? (
                           <form action={verifyProviderAction}>
                             <input type="hidden" name="providerId" value={provider.id} />
@@ -362,12 +430,16 @@ export default async function AdminProvidersPage({
                                 Website
                               </p>
                               {websiteValue ? (
-                                <Link
-                                  href={websiteValue}
-                                  className="text-emerald-200 hover:text-emerald-100"
-                                >
-                                  {websiteValue}
-                                </Link>
+                                websiteHref ? (
+                                  <Link
+                                    href={websiteHref}
+                                    className="text-emerald-200 hover:text-emerald-100"
+                                  >
+                                    {websiteValue}
+                                  </Link>
+                                ) : (
+                                  <p>{websiteValue}</p>
+                                )
                               ) : (
                                 <p>—</p>
                               )}
@@ -454,6 +526,7 @@ function buildProvidersFilterHref(filters: {
   type?: TypeFilter;
   quoting?: QuotingFilter;
   source?: SourceFilter;
+  view?: ViewFilter;
 }): string {
   const params = new URLSearchParams();
   if (filters.active && filters.active !== "all") params.set("active", filters.active);
@@ -463,6 +536,9 @@ function buildProvidersFilterHref(filters: {
   if (filters.type && filters.type !== "all") params.set("type", filters.type);
   if (filters.quoting && filters.quoting !== "all") params.set("quoting", filters.quoting);
   if (filters.source && filters.source !== "all") params.set("source", filters.source);
+  if (filters.view && filters.view !== "all") {
+    params.set("view", filters.view === "needs_research" ? "needs-research" : filters.view);
+  }
   const qs = params.toString();
   return qs ? `/admin/providers?${qs}` : "/admin/providers";
 }
@@ -503,6 +579,14 @@ function parseSourceFilter(value: unknown): SourceFilter {
   const normalized = normalizeFilterValue(value);
   if (PROVIDER_SOURCES.includes(normalized as ProviderSource)) {
     return normalized as ProviderSource;
+  }
+  return "all";
+}
+
+function parseViewFilter(value: unknown): ViewFilter {
+  const normalized = normalizeFilterValue(value);
+  if (normalized === "needs_research" || normalized === "needs-research") {
+    return "needs_research";
   }
   return "all";
 }
@@ -570,6 +654,49 @@ function stripInviteDetailLines(notes: string | null): string | null {
     .join("\n")
     .trim();
   return lines.length > 0 ? lines : null;
+}
+
+function normalizeWebsiteHref(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const hasScheme = /^https?:\/\//i.test(trimmed);
+  const candidate = hasScheme ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function buildOutreachEmailSubject(providerName: string): string {
+  const name = normalizeOutreachName(providerName);
+  return name ? `Quote request for ${name}` : "Quote request";
+}
+
+function buildOutreachEmailBody(providerName: string): string {
+  const name = normalizeOutreachName(providerName);
+  const greeting = name ? `Hi ${name} team,` : "Hi there,";
+  return [
+    greeting,
+    "",
+    "We're looking to request a quote for a customer part.",
+    "Are you able to quote from STEP files and drawings?",
+    "",
+    "If so, please reply with your preferred contact and any quoting requirements.",
+    "",
+    "Thanks,",
+    "Zartman Team",
+  ].join("\n");
+}
+
+function normalizeOutreachName(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function pillClass(colorClasses: string): string {
