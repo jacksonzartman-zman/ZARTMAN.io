@@ -3,7 +3,7 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
-import { schemaGate } from "@/server/db/schemaContract";
+import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 
 export type RfqDestinationStatus =
   | "draft"
@@ -28,6 +28,7 @@ export type RfqDestination = {
   sent_at: string | null;
   last_status_at: string;
   external_reference: string | null;
+  offer_token: string | null;
   error_message: string | null;
   created_at: string;
   provider: RfqDestinationProvider | null;
@@ -62,6 +63,7 @@ type RawRfqDestinationRow = {
   sent_at: string | null;
   last_status_at: string | null;
   external_reference: string | null;
+  offer_token?: string | null;
   error_message: string | null;
   created_at: string | null;
   provider: RfqDestinationProvider | null;
@@ -95,11 +97,12 @@ type RawOfferTokenDestinationRow = {
   external_reference: string | null;
   error_message: string | null;
   created_at: string | null;
+  offer_token?: string | null;
   provider: RawOfferTokenProviderRow | null;
   quote: RawOfferTokenQuoteRow | null;
 };
 
-const DESTINATION_SELECT = [
+const DESTINATION_COLUMNS = [
   "id",
   "rfq_id",
   "provider_id",
@@ -109,8 +112,9 @@ const DESTINATION_SELECT = [
   "external_reference",
   "error_message",
   "created_at",
-  "provider:providers(name,provider_type,quoting_mode)",
-].join(",");
+];
+
+const DESTINATION_PROVIDER_SELECT = "provider:providers(name,provider_type,quoting_mode)";
 
 const OFFER_TOKEN_DESTINATION_COLUMNS = [
   "id",
@@ -148,6 +152,7 @@ const OFFER_TOKEN_SELECT = [
   "external_reference",
   "error_message",
   "created_at",
+  "offer_token",
   `provider:providers(${OFFER_TOKEN_PROVIDER_COLUMNS.join(",")})`,
   `quote:quotes(${OFFER_TOKEN_QUOTE_COLUMNS.join(",")})`,
 ].join(",");
@@ -168,10 +173,19 @@ export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[
     return [];
   }
 
+  const supportsOfferToken = await hasColumns("rfq_destinations", ["offer_token"]);
+  const destinationSelect = [
+    ...DESTINATION_COLUMNS,
+    supportsOfferToken ? "offer_token" : null,
+    DESTINATION_PROVIDER_SELECT,
+  ]
+    .filter(Boolean)
+    .join(",");
+
   try {
     const { data, error } = await supabaseServer
       .from("rfq_destinations")
-      .select(DESTINATION_SELECT)
+      .select(destinationSelect)
       .eq("rfq_id", normalizedId)
       .order("created_at", { ascending: true })
       .returns<RawRfqDestinationRow[]>();
@@ -301,6 +315,7 @@ function normalizeDestinationRow(row: RawRfqDestinationRow): RfqDestination | nu
     sent_at: row?.sent_at ?? null,
     last_status_at: lastStatusAt,
     external_reference: row?.external_reference ?? null,
+    offer_token: normalizeOptionalText(row?.offer_token),
     error_message: row?.error_message ?? null,
     created_at: createdAt,
     provider: row?.provider ?? null,
@@ -339,6 +354,7 @@ function normalizeOfferTokenRow(
       sent_at: row?.sent_at ?? null,
       last_status_at: lastStatusAt,
       external_reference: row?.external_reference ?? null,
+      offer_token: normalizeOptionalText(row?.offer_token),
       error_message: row?.error_message ?? null,
       created_at: createdAt,
     },
