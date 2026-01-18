@@ -48,6 +48,7 @@ export type ProviderStatusSnapshot = {
   id: string;
   is_active: boolean;
   verification_status: ProviderVerificationStatus;
+  source?: ProviderSource | null;
 };
 
 export type ProviderListFilters = {
@@ -278,9 +279,13 @@ export async function getProviderStatusByIds(
   }
 
   try {
+    const supportsSource = await hasColumns(PROVIDERS_TABLE, ["source"]);
+    const selectColumns = supportsSource
+      ? "id,is_active,verification_status,source"
+      : "id,is_active,verification_status";
     const { data, error } = await supabaseServer
       .from(PROVIDERS_TABLE)
-      .select("id,is_active,verification_status")
+      .select(selectColumns)
       .in("id", normalizedIds)
       .returns<Array<ProviderStatusSnapshot>>();
 

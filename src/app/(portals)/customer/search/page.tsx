@@ -21,6 +21,7 @@ import {
   searchStateLabelTone,
 } from "@/lib/search/searchState";
 import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
+import { decorateProviderForCustomerDisplay } from "@/lib/providers/customerDisplay";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
@@ -187,6 +188,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   const totalOfferCount = searchStateCounts.offers_total;
 
   const activeQuoteSummary = buildQuoteSummary(workspaceData);
+  const matchedOnProcess = activeQuoteSummary.process !== "Pending" && activeQuoteSummary.process !== "—";
 
   const clearFiltersHref = buildClearFiltersHref(rawParams.quoteId, rawParams.sort);
   const shareSearchHref = activeQuote ? buildSearchHref(usp, activeQuote.id) : "";
@@ -466,6 +468,10 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                     quoteId={activeQuote.id}
                     offers={filteredOffers}
                     selectedOfferId={workspaceData.quote.selected_offer_id ?? null}
+                    matchContext={{
+                      matchedOnProcess,
+                      locationFilter: filterContext.filters.location ?? null,
+                    }}
                   />
                 ) : totalOfferCount === 0 ? (
                   <div className="space-y-4">
@@ -477,6 +483,10 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                     {renderDestinationsTable({
                       destinations: visiblePendingDestinations,
                       remainingCount: remainingPendingDestinationCount,
+                      matchContext: {
+                        matchedOnProcess,
+                        locationFilter: filterContext.filters.location ?? null,
+                      },
                     })}
                   </div>
                 ) : (
@@ -809,6 +819,10 @@ function isDestinationReceived(status: RfqDestinationStatus): boolean {
 function renderDestinationsTable(args: {
   destinations: RfqDestination[];
   remainingCount: number;
+  matchContext?: {
+    matchedOnProcess?: boolean;
+    locationFilter?: string | null;
+  };
 }) {
   if (args.destinations.length === 0) {
     return (
@@ -839,6 +853,15 @@ function renderDestinationsTable(args: {
                 includeTime: true,
                 fallback: "—",
               });
+              const providerDisplay = decorateProviderForCustomerDisplay(destination.provider, {
+                matchedOnProcess: args.matchContext?.matchedOnProcess,
+                locationFilter: args.matchContext?.locationFilter ?? null,
+                previousActivity: isDestinationReceived(destination.status),
+              });
+              const whyShownLabel =
+                providerDisplay.whyShownTags.length > 0
+                  ? `Matched on: ${providerDisplay.whyShownTags.join(", ")}`
+                  : null;
 
               return (
                 <tr key={destination.id}>
@@ -849,6 +872,12 @@ function renderDestinationsTable(args: {
                         <TagPill size="sm" tone="muted" className="w-fit normal-case tracking-normal">
                           {providerTypeLabel}
                         </TagPill>
+                      ) : null}
+                      <p className="text-[11px] text-slate-400">
+                        Source: {providerDisplay.sourceLabel}
+                      </p>
+                      {whyShownLabel ? (
+                        <p className="text-[11px] text-slate-500">{whyShownLabel}</p>
                       ) : null}
                     </div>
                   </td>

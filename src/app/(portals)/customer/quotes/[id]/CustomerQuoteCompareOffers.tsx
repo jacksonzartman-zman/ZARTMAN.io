@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
 import { TagPill } from "@/components/shared/primitives/TagPill";
 import { decorateOffersForCompare, type DecoratedRfqOffer } from "@/lib/aggregator/scoring";
+import { decorateProviderForCustomerDisplay } from "@/lib/providers/customerDisplay";
 import type { RfqOffer } from "@/server/rfqs/offers";
 import { selectOfferAction, type SelectOfferActionState } from "./actions";
 
@@ -16,6 +17,10 @@ type CustomerQuoteCompareOffersProps = {
   quoteId: string;
   offers: RfqOffer[];
   selectedOfferId?: string | null;
+  matchContext?: {
+    matchedOnProcess?: boolean;
+    locationFilter?: string | null;
+  };
 };
 
 const INITIAL_SELECT_STATE: SelectOfferActionState = {
@@ -61,6 +66,7 @@ export function CustomerQuoteCompareOffers({
   quoteId,
   offers,
   selectedOfferId,
+  matchContext,
 }: CustomerQuoteCompareOffersProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -225,13 +231,27 @@ export function CustomerQuoteCompareOffers({
                   const dimNonWinner = selectionLocked && !isSelected;
                   const providerType = formatEnumLabel(offer.provider?.provider_type);
                   const providerMode = formatEnumLabel(offer.provider?.quoting_mode);
-                  const providerSourceLabel = providerType || "Unknown";
-                  const providerModeLabel = providerMode ? `Mode: ${providerMode}` : null;
+                  const providerMetaLabel =
+                    [
+                      providerType ? `Type: ${providerType}` : null,
+                      providerMode ? `Mode: ${providerMode}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || null;
+                  const providerDisplay = decorateProviderForCustomerDisplay(offer.provider, {
+                    matchedOnProcess: matchContext?.matchedOnProcess,
+                    locationFilter: matchContext?.locationFilter ?? null,
+                    previousActivity: true,
+                  });
                   const hasAssumptions = Boolean(offer.assumptions?.trim());
                   const confidenceLabel =
                     typeof offer.confidenceValue === "number" ? offer.confidenceValue : "-";
                   const showRankReason = index < 3;
                   const rankReason = showRankReason ? buildRankReason(offer) : null;
+                  const whyShownLabel =
+                    providerDisplay.whyShownTags.length > 0
+                      ? `Matched on: ${providerDisplay.whyShownTags.join(", ")}`
+                      : null;
 
                   return (
                     <Fragment key={offer.id}>
@@ -250,10 +270,13 @@ export function CustomerQuoteCompareOffers({
                               {offer.providerName}
                             </p>
                             <p className="mt-1 text-xs text-slate-400">
-                              Source: {providerSourceLabel}
+                              Source: {providerDisplay.sourceLabel}
                             </p>
-                            {providerModeLabel ? (
-                              <p className="mt-1 text-xs text-slate-500">{providerModeLabel}</p>
+                            {whyShownLabel ? (
+                              <p className="mt-1 text-xs text-slate-500">{whyShownLabel}</p>
+                            ) : null}
+                            {providerMetaLabel ? (
+                              <p className="mt-1 text-xs text-slate-500">{providerMetaLabel}</p>
                             ) : null}
                             <button
                               type="button"
