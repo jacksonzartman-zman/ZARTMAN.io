@@ -14,13 +14,13 @@ type HomeProcessTabsProps = {
 };
 
 export default function HomeProcessTabs({ processes }: HomeProcessTabsProps) {
-  if (!processes || processes.length === 0) {
-    return null;
-  }
-
-  const [activeKey, setActiveKey] = useState(processes[0].key);
+  const [activeKey, setActiveKey] = useState(processes[0]?.key ?? "");
   const activeProcess =
     processes.find((process) => process.key === activeKey) ?? processes[0];
+
+  if (!activeProcess) {
+    return null;
+  }
 
   return (
     <div className="space-y-4">
