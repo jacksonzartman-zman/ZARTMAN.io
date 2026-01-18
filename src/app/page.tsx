@@ -72,6 +72,8 @@ const PROCESS_TABS = [
   { label: "Assembly", isActive: false },
   { label: "AI Mode", isActive: false },
 ];
+const ghostCtaClasses =
+  "inline-flex items-center justify-center rounded-full border border-ink-soft px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink-soft/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
 export default function HomePage() {
   return (
