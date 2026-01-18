@@ -5,7 +5,7 @@ import { getFormString, serializeActionError } from "@/lib/forms";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import { serializeSupabaseError } from "@/server/admin/logging";
-import { logProviderContactedOpsEvent } from "@/server/ops/events";
+import { logProviderContactedOpsEvent, logProviderStatusOpsEvent } from "@/server/ops/events";
 import { resolveProviderEmailColumn } from "@/server/providers";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 
@@ -29,11 +29,12 @@ export async function verifyProviderAction(formData: FormData): Promise<void> {
       return;
     }
 
+    const verifiedAt = new Date().toISOString();
     const { error } = await supabaseServer
       .from("providers")
       .update({
         verification_status: "verified",
-        verified_at: new Date().toISOString(),
+        verified_at: verifiedAt,
       })
       .eq("id", providerId);
 
@@ -45,9 +46,72 @@ export async function verifyProviderAction(formData: FormData): Promise<void> {
       return;
     }
 
+    await logProviderStatusOpsEvent({
+      providerId,
+      eventType: "provider_verified",
+      snapshot: {
+        verification_status: "verified",
+        verified_at: verifiedAt,
+      },
+    });
+
     revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
   } catch (error) {
     console.error("[admin providers] verify crashed", {
+      providerId,
+      error: serializeActionError(error),
+    });
+  }
+}
+
+export async function unverifyProviderAction(formData: FormData): Promise<void> {
+  const providerId = normalizeId(getFormString(formData, "providerId"));
+  if (!providerId) return;
+
+  try {
+    await requireAdminUser();
+
+    const supported = await schemaGate({
+      enabled: true,
+      relation: "providers",
+      requiredColumns: ["id", "verification_status", "verified_at"],
+      warnPrefix: "[admin providers]",
+      warnKey: "admin_providers_unverify",
+    });
+    if (!supported) {
+      return;
+    }
+
+    const { error } = await supabaseServer
+      .from("providers")
+      .update({
+        verification_status: "unverified",
+        verified_at: null,
+      })
+      .eq("id", providerId);
+
+    if (error) {
+      console.error("[admin providers] unverify failed", {
+        providerId,
+        error: serializeSupabaseError(error),
+      });
+      return;
+    }
+
+    await logProviderStatusOpsEvent({
+      providerId,
+      eventType: "provider_unverified",
+      snapshot: {
+        verification_status: "unverified",
+        verified_at: null,
+      },
+    });
+
+    revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
+  } catch (error) {
+    console.error("[admin providers] unverify crashed", {
       providerId,
       error: serializeActionError(error),
     });
@@ -88,7 +152,16 @@ export async function toggleProviderActiveAction(formData: FormData): Promise<vo
       return;
     }
 
+    await logProviderStatusOpsEvent({
+      providerId,
+      eventType: nextActive ? "provider_activated" : "provider_deactivated",
+      snapshot: {
+        is_active: nextActive,
+      },
+    });
+
     revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
   } catch (error) {
     console.error("[admin providers] toggle active crashed", {
       providerId,
@@ -146,6 +219,7 @@ export async function updateProviderContactAction(formData: FormData): Promise<v
     }
 
     revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
   } catch (error) {
     console.error("[admin providers] update contact crashed", {
       providerId,
@@ -220,6 +294,7 @@ export async function markProviderContactedAction(formData: FormData): Promise<v
     });
 
     revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
   } catch (error) {
     console.error("[admin providers] mark contacted crashed", {
       providerId,
