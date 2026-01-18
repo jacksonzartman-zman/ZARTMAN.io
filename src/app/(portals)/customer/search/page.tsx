@@ -13,6 +13,12 @@ import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
+import {
+  buildSearchStateSummary,
+  formatSearchStateActionLabel,
+  formatSearchStateLabel,
+  searchStateLabelTone,
+} from "@/lib/search/searchState";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
@@ -134,7 +140,19 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   });
 
   const filteredOffers = applyOfferFilters(rfqOffers, filterContext.filters);
-  const destinationCounts = summarizeRfqDestinationCounts(rfqDestinations);
+  const searchStateSummary = buildSearchStateSummary({
+    destinations: rfqDestinations,
+    offers: rfqOffers,
+  });
+  const searchStateCounts = searchStateSummary.counts;
+  const searchStateLabel = formatSearchStateLabel(searchStateSummary.status_label);
+  const searchStateTone = searchStateLabelTone(searchStateSummary.status_label);
+  const searchStateAction = searchStateSummary.recommended_action;
+  const searchStateActionLabel = formatSearchStateActionLabel(searchStateAction);
+  const searchStateActionHref =
+    searchStateAction === "adjust_search"
+      ? `/customer/quotes/${activeQuote?.id ?? ""}#uploads`
+      : "mailto:support@zartman.app";
   const pendingDestinations = buildPendingDestinations({
     destinations: rfqDestinations,
     filters: filterContext.filters,
@@ -146,7 +164,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   );
 
   const offerCount = filteredOffers.length;
-  const totalOfferCount = rfqOffers.length;
+  const totalOfferCount = searchStateCounts.offers_total;
 
   const activeQuoteSummary = buildQuoteSummary(workspaceData);
 
@@ -338,15 +356,42 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
               <PortalCard
                 title="Searching providers..."
                 description="Track dispatch progress as we route your RFQ to matched providers."
-                action={<CustomerQuoteRefreshResultsButton quoteId={activeQuote.id} />}
+                action={
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
+                      {searchStateLabel}
+                    </TagPill>
+                    <CustomerQuoteRefreshResultsButton quoteId={activeQuote.id} />
+                  </div>
+                }
               >
                 <div className="space-y-4">
                   <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-4">
-                    <SummaryStat label="Queued" value={destinationCounts.queued} />
-                    <SummaryStat label="Sent" value={destinationCounts.sent} />
-                    <SummaryStat label="Quoted" value={destinationCounts.quoted} />
-                    <SummaryStat label="Error" value={destinationCounts.error} />
+                    <SummaryStat label="Destinations" value={searchStateCounts.destinations_total} />
+                    <SummaryStat label="Pending" value={searchStateCounts.destinations_pending} />
+                    <SummaryStat label="Error" value={searchStateCounts.destinations_error} />
+                    <SummaryStat label="Offers" value={searchStateCounts.offers_total} />
                   </dl>
+                  {searchStateAction !== "refresh" ? (
+                    <p className="text-xs text-slate-400">
+                      Next step:{" "}
+                      {searchStateAction === "contact_support" ? (
+                        <a
+                          href={searchStateActionHref}
+                          className="font-semibold text-slate-100 hover:text-white"
+                        >
+                          {searchStateActionLabel}
+                        </a>
+                      ) : (
+                        <Link
+                          href={searchStateActionHref}
+                          className="font-semibold text-slate-100 hover:text-white"
+                        >
+                          {searchStateActionLabel}
+                        </Link>
+                      )}
+                    </p>
+                  ) : null}
                   <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
                     <p className="text-sm font-semibold text-slate-100">
                       {totalOfferCount > 0
@@ -899,46 +944,6 @@ function buildQuoteSummary(workspaceData: Awaited<ReturnType<typeof loadQuoteWor
     needBy,
     files: fileLabel,
   };
-}
-
-type DestinationCounts = {
-  queued: number;
-  sent: number;
-  quoted: number;
-  error: number;
-};
-
-function summarizeRfqDestinationCounts(destinations: RfqDestination[]): DestinationCounts {
-  const counts: DestinationCounts = {
-    queued: 0,
-    sent: 0,
-    quoted: 0,
-    error: 0,
-  };
-
-  for (const destination of destinations) {
-    switch (destination.status) {
-      case "draft":
-      case "queued":
-        counts.queued += 1;
-        break;
-      case "sent":
-      case "viewed":
-      case "declined":
-        counts.sent += 1;
-        break;
-      case "quoted":
-        counts.quoted += 1;
-        break;
-      case "error":
-        counts.error += 1;
-        break;
-      default:
-        break;
-    }
-  }
-
-  return counts;
 }
 
 function parseDestinationTimestamp(value: string | null | undefined): number | null {

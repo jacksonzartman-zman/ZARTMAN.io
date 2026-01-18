@@ -11,6 +11,12 @@ import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
+import {
+  buildSearchStateSummary,
+  formatSearchStateActionLabel,
+  formatSearchStateLabel,
+  searchStateLabelTone,
+} from "@/lib/search/searchState";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
@@ -695,12 +701,22 @@ export default async function CustomerQuoteDetailPage({
     ? rfqOffers.find((offer) => offer.id === selectedOfferId) ?? null
     : null;
   const selectionConfirmedAt = quote.selection_confirmed_at ?? null;
-  const destinationCounts = summarizeRfqDestinationCounts(rfqDestinations ?? []);
+  const searchStateSummary = buildSearchStateSummary({
+    destinations: rfqDestinations ?? [],
+    offers: rfqOffers ?? [],
+  });
+  const searchStateCounts = searchStateSummary.counts;
+  const searchStateLabel = formatSearchStateLabel(searchStateSummary.status_label);
+  const searchStateTone = searchStateLabelTone(searchStateSummary.status_label);
+  const searchStateAction = searchStateSummary.recommended_action;
+  const searchStateActionLabel = formatSearchStateActionLabel(searchStateAction);
+  const searchStateActionHref =
+    searchStateAction === "adjust_search" ? "#uploads" : "mailto:support@zartman.app";
   const sortedDestinations = [...(rfqDestinations ?? [])].sort(sortDestinationsByLastUpdate);
   const maxDestinationRows = 6;
   const visibleDestinations = sortedDestinations.slice(0, maxDestinationRows);
   const remainingDestinationCount = Math.max(sortedDestinations.length - visibleDestinations.length, 0);
-  const offersReceivedCount = rfqOffers.length;
+  const offersReceivedCount = searchStateCounts.offers_total;
   const offersReceivedLabel = `${offersReceivedCount} offer${
     offersReceivedCount === 1 ? "" : "s"
   } received`;
@@ -1548,35 +1564,56 @@ export default async function CustomerQuoteDetailPage({
     <PortalCard
       title="Searching providers..."
       description="Dispatch progress updates as providers receive and respond to your RFQ."
-      action={<CustomerQuoteRefreshResultsButton quoteId={quoteId} />}
+      action={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
+            {searchStateLabel}
+          </TagPill>
+          <CustomerQuoteRefreshResultsButton quoteId={quoteId} />
+        </div>
+      }
     >
       <div className="space-y-4">
         <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-4">
           <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
             <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Queued
+              Destinations
             </dt>
-            <dd className="text-lg font-semibold text-white">{destinationCounts.queued}</dd>
+            <dd className="text-lg font-semibold text-white">{searchStateCounts.destinations_total}</dd>
           </div>
           <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
             <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Sent
+              Pending
             </dt>
-            <dd className="text-lg font-semibold text-white">{destinationCounts.sent}</dd>
-          </div>
-          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Quoted
-            </dt>
-            <dd className="text-lg font-semibold text-white">{destinationCounts.quoted}</dd>
+            <dd className="text-lg font-semibold text-white">{searchStateCounts.destinations_pending}</dd>
           </div>
           <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
             <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               Error
             </dt>
-            <dd className="text-lg font-semibold text-white">{destinationCounts.error}</dd>
+            <dd className="text-lg font-semibold text-white">{searchStateCounts.destinations_error}</dd>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Offers
+            </dt>
+            <dd className="text-lg font-semibold text-white">{searchStateCounts.offers_total}</dd>
           </div>
         </dl>
+        {searchStateAction !== "refresh" ? (
+          <p className="text-xs text-slate-400">
+            Next step:{" "}
+            {searchStateAction === "contact_support" ? (
+              <a href={searchStateActionHref} className="font-semibold text-slate-100 hover:text-white">
+                {searchStateActionLabel}
+              </a>
+            ) : (
+              <a href={searchStateActionHref} className="font-semibold text-slate-100 hover:text-white">
+                {searchStateActionLabel}
+              </a>
+            )}
+          </p>
+        ) : null}
 
         {offersReceivedCount > 0 ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
@@ -2379,46 +2416,6 @@ function buildAwardCompareHref(
   params.set("awardSupplierId", supplierId);
   const qs = params.toString();
   return qs ? `?${qs}#award` : "#award";
-}
-
-type DestinationCounts = {
-  queued: number;
-  sent: number;
-  quoted: number;
-  error: number;
-};
-
-function summarizeRfqDestinationCounts(destinations: RfqDestination[]): DestinationCounts {
-  const counts: DestinationCounts = {
-    queued: 0,
-    sent: 0,
-    quoted: 0,
-    error: 0,
-  };
-
-  for (const destination of destinations) {
-    switch (destination.status) {
-      case "draft":
-      case "queued":
-        counts.queued += 1;
-        break;
-      case "sent":
-      case "viewed":
-      case "declined":
-        counts.sent += 1;
-        break;
-      case "quoted":
-        counts.quoted += 1;
-        break;
-      case "error":
-        counts.error += 1;
-        break;
-      default:
-        break;
-    }
-  }
-
-  return counts;
 }
 
 function parseDestinationTimestamp(value: string | null | undefined): number | null {
