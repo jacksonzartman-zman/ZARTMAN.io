@@ -52,16 +52,23 @@ export function CustomerSearchActions({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setSaveModalOpen(true)}
-        className={ACTION_BUTTON_CLASSES}
-      >
-        Save this search
-      </button>
-      <button type="button" onClick={handleShare} className={ACTION_BUTTON_CLASSES}>
-        {shareLabel}
-      </button>
+      <div className="flex flex-col items-start gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSaveModalOpen(true)}
+            className={ACTION_BUTTON_CLASSES}
+          >
+            Save this search
+          </button>
+          <button type="button" onClick={handleShare} className={ACTION_BUTTON_CLASSES}>
+            {shareLabel}
+          </button>
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Saved searches are private links you can share with teammates.
+        </p>
+      </div>
       <CustomerSearchSaveModal
         open={saveModalOpen}
         onClose={() => setSaveModalOpen(false)}
@@ -162,7 +169,9 @@ function CustomerSearchSaveModal({
         <div className="flex items-start justify-between gap-3 border-b border-slate-900 px-6 py-4">
           <div className="min-w-0 space-y-1">
             <p className="truncate text-sm font-semibold text-white">Save this search</p>
-            <p className="text-xs text-slate-400">Keep this search handy for later.</p>
+            <p className="text-xs text-slate-400">
+              Save this search to revisit, share, or invite suppliers.
+            </p>
           </div>
           <button
             type="button"
@@ -176,7 +185,8 @@ function CustomerSearchSaveModal({
 
         <div className="space-y-4 p-6">
           <p className="text-sm text-slate-200">
-            Add a short label and we’ll store this search in your workspace.
+            Add a short label and we will save a private link for you to revisit, share, or use when
+            inviting suppliers.
           </p>
 
           <label className="flex flex-col gap-2 text-xs font-semibold text-slate-300">
