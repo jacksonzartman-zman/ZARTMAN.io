@@ -32,6 +32,7 @@ import { type RfqDestination, type RfqDestinationStatus } from "@/server/rfqs/de
 import { type RfqOffer } from "@/server/rfqs/offers";
 import { PROVIDER_TYPES } from "@/server/providers";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { CoverageDisclosure } from "@/components/CoverageDisclosure";
 import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
 
 type CustomerSearchPageProps = {
@@ -428,6 +429,8 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                   </div>
                 </div>
               </PortalCard>
+
+              <CoverageDisclosure destinations={rfqDestinations} />
 
               <PortalCard
                 title="Offers returned"

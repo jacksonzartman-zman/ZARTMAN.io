@@ -71,6 +71,7 @@ import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffN
 import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { CoverageDisclosure } from "@/components/CoverageDisclosure";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
@@ -1587,6 +1588,7 @@ export default async function CustomerQuoteDetailPage({
             />
             {receiptBanner}
             {searchStatusCard}
+            <CoverageDisclosure destinations={rfqDestinations} />
           </div>
 
           {orderWorkspaceSection}
