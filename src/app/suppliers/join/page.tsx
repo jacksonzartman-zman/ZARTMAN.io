@@ -6,13 +6,13 @@ export const metadata: Metadata = {
   title: "Join as a supplier | Zartman",
 };
 
-type SupplierJoinPageProps = {
+type Props = {
   searchParams?: Record<string, string | string[] | undefined>;
 };
 
 export default function SupplierJoinPage({
   searchParams,
-}: SupplierJoinPageProps) {
+}: Props) {
   const supplierSlug = getSearchParamValue(searchParams, "supplier");
 
   return (
