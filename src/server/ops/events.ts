@@ -14,7 +14,8 @@ export type OpsEventType =
   | "offer_revised"
   | "offer_selected"
   | "message_posted"
-  | "supplier_join_requested";
+  | "supplier_join_requested"
+  | "supplier_invited";
 
 export type LogOpsEventInput = {
   quoteId: string;
@@ -158,6 +159,78 @@ export async function logSupplierJoinOpsEvent(
   }
 }
 
+export type SupplierInvitedOpsEventInput = {
+  email: string;
+  supplierName: string;
+  note?: string | null;
+  customerId?: string | null;
+  customerEmail?: string | null;
+  userId?: string | null;
+  providerId?: string | null;
+};
+
+export async function logSupplierInvitedOpsEvent(
+  input: SupplierInvitedOpsEventInput,
+): Promise<void> {
+  const email = normalizeEmail(input.email);
+  const supplierName = normalizeText(input.supplierName);
+  const eventType = normalizeEventType("supplier_invited");
+  if (!email || !eventType) {
+    return;
+  }
+
+  const payload = sanitizePayload({
+    email,
+    supplier_name: supplierName || undefined,
+    note: normalizeOptionalText(input.note) ?? undefined,
+    customer_id: normalizeOptionalId(input.customerId) ?? undefined,
+    customer_email: normalizeEmail(input.customerEmail) ?? undefined,
+    user_id: normalizeOptionalId(input.userId) ?? undefined,
+    provider_id: normalizeOptionalId(input.providerId) ?? undefined,
+  });
+
+  try {
+    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
+      quote_id: null,
+      destination_id: null,
+      event_type: eventType,
+      payload,
+    });
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        const serialized = serializeSupabaseError(error);
+        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+          code: serialized?.code ?? null,
+          message: serialized?.message ?? null,
+        });
+        return;
+      }
+
+      console.warn("[ops events] supplier invite insert failed", {
+        eventType,
+        email,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      const serialized = serializeSupabaseError(error);
+      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+        code: serialized?.code ?? null,
+        message: serialized?.message ?? null,
+      });
+      return;
+    }
+
+    console.warn("[ops events] supplier invite insert crashed", {
+      eventType,
+      email,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+}
+
 export async function listOpsEventsForQuote(
   quoteId: string,
   options?: { limit?: number },
@@ -234,6 +307,15 @@ function normalizeEmail(value: unknown): string | null {
     return null;
   }
   const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  const normalized = normalizeText(value);
   return normalized.length > 0 ? normalized : null;
 }
 

@@ -834,6 +834,12 @@ export default async function CustomerQuoteDetailPage({
         disabled={readOnly}
       />
       <Link
+        href="/customer/invite-supplier"
+        className="inline-flex items-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
+      >
+        Invite your supplier
+      </Link>
+      <Link
         href="/customer/quotes"
         className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
       >

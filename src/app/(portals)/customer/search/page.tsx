@@ -214,6 +214,9 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                 quoteLabel={activeQuote.rfqLabel ?? null}
               />
             ) : null}
+            <Link href="/customer/invite-supplier" className={secondaryCtaClasses}>
+              Invite your supplier
+            </Link>
             {activeQuote ? (
               <Link href={`/customer/quotes/${activeQuote.id}`} className={secondaryCtaClasses}>
                 Open quote
