@@ -19,6 +19,7 @@ import {
   type ProviderVerificationStatus,
 } from "@/server/providers";
 import {
+  markProviderContactedAction,
   toggleProviderActiveAction,
   updateProviderContactAction,
   verifyProviderAction,
@@ -72,6 +73,18 @@ export default async function AdminProvidersPage({
   const typeFilter = parseTypeFilter(usp.get("type"));
   const quotingFilter = parseQuotingFilter(usp.get("quoting"));
   const sourceFilter = parseSourceFilter(usp.get("source"));
+  const inviteFilterActive =
+    sourceFilter === "customer_invite" && verificationFilter === "unverified";
+  const defaultFiltersActive =
+    activeFilter === "all" &&
+    verificationFilter === "all" &&
+    typeFilter === "all" &&
+    quotingFilter === "all" &&
+    sourceFilter === "all";
+  const inviteFilterHref = buildProvidersFilterHref({
+    verification: "unverified",
+    source: "customer_invite",
+  });
 
   const { providers, emailColumn } = await listProvidersWithContact({
     isActive:
@@ -102,6 +115,10 @@ export default async function AdminProvidersPage({
       }
     >
       <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-5">
+        <div className="flex flex-wrap items-center gap-2 pb-4 text-xs text-slate-400">
+          <FilterChip label="All providers" href="/admin/providers" active={defaultFiltersActive} />
+          <FilterChip label="Customer invites" href={inviteFilterHref} active={inviteFilterActive} />
+        </div>
         <form method="GET" action="/admin/providers" className="flex flex-wrap items-end gap-3">
           <FilterSelect
             name="active"
@@ -180,6 +197,7 @@ export default async function AdminProvidersPage({
               const verificationMeta = verificationPill(provider.verification_status);
               const sourceLabel = formatEnumLabel(provider.source);
               const verifiedAtLabel = formatDateTime(provider.verified_at, { includeTime: true });
+              const contacted = Boolean(provider.contacted_at);
               return (
                 <tr key={provider.id} className="bg-slate-950/40 transition hover:bg-slate-900/40">
                   <td className={clsx(adminTableCellClass, "px-5 py-4")}>
@@ -237,6 +255,19 @@ export default async function AdminProvidersPage({
                         </form>
                       ) : (
                         <span className="text-emerald-200">Verified</span>
+                      )}
+                      {contacted ? (
+                        <span className="text-slate-400">Contacted</span>
+                      ) : (
+                        <form action={markProviderContactedAction}>
+                          <input type="hidden" name="providerId" value={provider.id} />
+                          <button
+                            type="submit"
+                            className="rounded-full border border-slate-700 px-3 py-1 font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                          >
+                            Mark contacted
+                          </button>
+                        </form>
                       )}
                       <form action={toggleProviderActiveAction}>
                         <input type="hidden" name="providerId" value={provider.id} />
@@ -330,6 +361,49 @@ function FilterSelect<T extends string>({
       </select>
     </label>
   );
+}
+
+function FilterChip({
+  label,
+  href,
+  active,
+}: {
+  label: string;
+  href: string;
+  active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className={clsx(
+        "rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition",
+        active
+          ? "border-emerald-400/60 bg-emerald-500/10 text-emerald-100"
+          : "border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200",
+      )}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function buildProvidersFilterHref(filters: {
+  active?: ActiveFilter;
+  verification?: VerificationFilter;
+  type?: TypeFilter;
+  quoting?: QuotingFilter;
+  source?: SourceFilter;
+}): string {
+  const params = new URLSearchParams();
+  if (filters.active && filters.active !== "all") params.set("active", filters.active);
+  if (filters.verification && filters.verification !== "all") {
+    params.set("verification", filters.verification);
+  }
+  if (filters.type && filters.type !== "all") params.set("type", filters.type);
+  if (filters.quoting && filters.quoting !== "all") params.set("quoting", filters.quoting);
+  if (filters.source && filters.source !== "all") params.set("source", filters.source);
+  const qs = params.toString();
+  return qs ? `/admin/providers?${qs}` : "/admin/providers";
 }
 
 function parseActiveFilter(value: unknown): ActiveFilter {

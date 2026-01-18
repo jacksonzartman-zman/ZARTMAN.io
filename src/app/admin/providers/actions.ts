@@ -5,8 +5,9 @@ import { getFormString, serializeActionError } from "@/lib/forms";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import { serializeSupabaseError } from "@/server/admin/logging";
+import { logProviderContactedOpsEvent } from "@/server/ops/events";
 import { resolveProviderEmailColumn } from "@/server/providers";
-import { schemaGate } from "@/server/db/schemaContract";
+import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 
 const PROVIDER_ACTION_ERROR = "We couldn't update this provider right now.";
 
@@ -147,6 +148,80 @@ export async function updateProviderContactAction(formData: FormData): Promise<v
     revalidatePath("/admin/providers");
   } catch (error) {
     console.error("[admin providers] update contact crashed", {
+      providerId,
+      error: serializeActionError(error) ?? PROVIDER_ACTION_ERROR,
+    });
+  }
+}
+
+export async function markProviderContactedAction(formData: FormData): Promise<void> {
+  const providerId = normalizeId(getFormString(formData, "providerId"));
+  if (!providerId) return;
+
+  try {
+    await requireAdminUser();
+
+    const [supportsContactedAt, emailColumn] = await Promise.all([
+      hasColumns("providers", ["contacted_at"]),
+      resolveProviderEmailColumn(),
+    ]);
+
+    let providerName: string | null = null;
+    let providerEmail: string | null = null;
+
+    try {
+      const selectColumns = ["id", "name", ...(emailColumn ? [emailColumn] : [])].join(",");
+      const { data, error } = await supabaseServer
+        .from("providers")
+        .select(selectColumns)
+        .eq("id", providerId)
+        .maybeSingle<Record<string, string | null>>();
+
+      if (!error && data) {
+        providerName = normalizeText(data.name);
+        if (emailColumn) {
+          providerEmail = normalizeText(data[emailColumn]) || null;
+        }
+      }
+    } catch (error) {
+      console.warn("[admin providers] provider lookup for contact event failed", {
+        providerId,
+        error: serializeActionError(error),
+      });
+    }
+
+    if (supportsContactedAt) {
+      const supported = await schemaGate({
+        enabled: true,
+        relation: "providers",
+        requiredColumns: ["id", "contacted_at"],
+        warnPrefix: "[admin providers]",
+        warnKey: "admin_providers_mark_contacted",
+      });
+      if (supported) {
+        const { error } = await supabaseServer
+          .from("providers")
+          .update({ contacted_at: new Date().toISOString() })
+          .eq("id", providerId);
+
+        if (error) {
+          console.error("[admin providers] mark contacted failed", {
+            providerId,
+            error: serializeSupabaseError(error),
+          });
+        }
+      }
+    }
+
+    await logProviderContactedOpsEvent({
+      providerId,
+      providerName,
+      providerEmail,
+    });
+
+    revalidatePath("/admin/providers");
+  } catch (error) {
+    console.error("[admin providers] mark contacted crashed", {
       providerId,
       error: serializeActionError(error) ?? PROVIDER_ACTION_ERROR,
     });

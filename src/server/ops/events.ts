@@ -15,7 +15,8 @@ export type OpsEventType =
   | "offer_selected"
   | "message_posted"
   | "supplier_join_requested"
-  | "supplier_invited";
+  | "supplier_invited"
+  | "provider_contacted";
 
 export type LogOpsEventInput = {
   quoteId: string;
@@ -226,6 +227,69 @@ export async function logSupplierInvitedOpsEvent(
     console.warn("[ops events] supplier invite insert crashed", {
       eventType,
       email,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+}
+
+export type ProviderContactedOpsEventInput = {
+  providerId: string;
+  providerName?: string | null;
+  providerEmail?: string | null;
+};
+
+export async function logProviderContactedOpsEvent(
+  input: ProviderContactedOpsEventInput,
+): Promise<void> {
+  const providerId = normalizeOptionalId(input.providerId);
+  const eventType = normalizeEventType("provider_contacted");
+  if (!providerId || !eventType) {
+    return;
+  }
+
+  const payload = sanitizePayload({
+    provider_id: providerId,
+    provider_name: normalizeOptionalText(input.providerName) ?? undefined,
+    provider_email: normalizeEmail(input.providerEmail) ?? undefined,
+  });
+
+  try {
+    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
+      quote_id: null,
+      destination_id: null,
+      event_type: eventType,
+      payload,
+    });
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        const serialized = serializeSupabaseError(error);
+        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+          code: serialized?.code ?? null,
+          message: serialized?.message ?? null,
+        });
+        return;
+      }
+
+      console.warn("[ops events] provider contacted insert failed", {
+        eventType,
+        providerId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      const serialized = serializeSupabaseError(error);
+      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+        code: serialized?.code ?? null,
+        message: serialized?.message ?? null,
+      });
+      return;
+    }
+
+    console.warn("[ops events] provider contacted insert crashed", {
+      eventType,
+      providerId,
       error: serializeSupabaseError(error) ?? error,
     });
   }
