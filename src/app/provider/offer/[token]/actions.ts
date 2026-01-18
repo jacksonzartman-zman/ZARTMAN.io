@@ -14,6 +14,7 @@ export type ProviderOfferActionState = {
   ok: boolean;
   message?: string | null;
   error?: string | null;
+  submittedAt?: string | null;
   fieldErrors?: {
     price?: string;
     leadTimeDays?: string;
@@ -93,6 +94,14 @@ export async function submitOfferViaTokenAction(
   }
 
   try {
+    const existingOffer = await loadExistingOfferSnapshot({
+      rfqId: tokenContext.destination.rfq_id,
+      providerId: tokenContext.provider.id,
+      destinationId: tokenContext.destination.id,
+    });
+    const hadExistingOffer = Boolean(existingOffer?.id);
+    const submittedAt = new Date().toISOString();
+
     const payload: Record<string, unknown> = {
       rfq_id: tokenContext.destination.rfq_id,
       provider_id: tokenContext.provider.id,
@@ -102,6 +111,7 @@ export async function submitOfferViaTokenAction(
       lead_time_days_min: leadTimeDays,
       lead_time_days_max: leadTimeDays,
       status: "received",
+      received_at: submittedAt,
     };
 
     assignIfDefined(payload, "assumptions", assumptions);
@@ -130,12 +140,11 @@ export async function submitOfferViaTokenAction(
       return { ok: false, error: OFFER_SUBMIT_ERROR };
     }
 
-    const now = new Date().toISOString();
     const { error: destinationError } = await supabaseServer
       .from("rfq_destinations")
       .update({
         status: "quoted",
-        last_status_at: now,
+        last_status_at: submittedAt,
         error_message: null,
       })
       .eq("id", tokenContext.destination.id)
@@ -153,7 +162,7 @@ export async function submitOfferViaTokenAction(
     await logOpsEvent({
       quoteId: tokenContext.destination.rfq_id,
       destinationId: tokenContext.destination.id,
-      eventType: "offer_upserted",
+      eventType: hadExistingOffer ? "offer_revised" : "offer_upserted",
       payload: {
         provider_id: tokenContext.provider.id,
         status: "received",
@@ -167,7 +176,7 @@ export async function submitOfferViaTokenAction(
     revalidatePath("/admin/ops/inbox");
     revalidatePath(`/customer/quotes/${tokenContext.destination.rfq_id}`);
 
-    return { ok: true, message: OFFER_SUBMIT_SUCCESS };
+    return { ok: true, message: OFFER_SUBMIT_SUCCESS, submittedAt };
   } catch (error) {
     console.error("[provider offer] action crashed", {
       tokenPresent: Boolean(token),
@@ -223,4 +232,108 @@ function assignIfDefined(
 
 function hasNonEmptyString(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+type ExistingOfferSnapshot = {
+  id: string | null;
+  received_at: string | null;
+  destination_id: string | null;
+};
+
+async function loadExistingOfferSnapshot(args: {
+  rfqId: string;
+  providerId: string;
+  destinationId?: string | null;
+}): Promise<ExistingOfferSnapshot | null> {
+  const rfqId = normalizeId(args.rfqId);
+  const providerId = normalizeId(args.providerId);
+  const destinationId = normalizeId(args.destinationId);
+  if (!rfqId || !providerId) return null;
+
+  const selectFields = "id,received_at,destination_id";
+
+  try {
+    if (destinationId) {
+      const { data, error } = await supabaseServer
+        .from("rfq_offers")
+        .select(selectFields)
+        .eq("destination_id", destinationId)
+        .maybeSingle<ExistingOfferSnapshot>();
+
+      if (error) {
+        if (!isMissingTableOrColumnError(error)) {
+          console.warn("[provider offer] existing offer lookup failed", {
+            rfqId,
+            providerId,
+            destinationId,
+            error: serializeSupabaseError(error),
+          });
+        }
+      } else if (data?.id) {
+        return data;
+      }
+    }
+
+    let compositeQuery = supabaseServer
+      .from("rfq_offers")
+      .select(selectFields)
+      .eq("rfq_id", rfqId)
+      .eq("provider_id", providerId);
+
+    if (destinationId) {
+      compositeQuery = compositeQuery.eq("destination_id", destinationId);
+    }
+
+    const { data, error } = await compositeQuery.maybeSingle<ExistingOfferSnapshot>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        if (destinationId) {
+          const { data: fallbackData } = await supabaseServer
+            .from("rfq_offers")
+            .select(selectFields)
+            .eq("rfq_id", rfqId)
+            .eq("provider_id", providerId)
+            .maybeSingle<ExistingOfferSnapshot>();
+          if (fallbackData?.id) return fallbackData;
+        }
+        return null;
+      }
+      console.warn("[provider offer] existing offer lookup failed", {
+        rfqId,
+        providerId,
+        destinationId,
+        error: serializeSupabaseError(error),
+      });
+      return null;
+    }
+
+    if (!data?.id && destinationId) {
+      const { data: fallbackData } = await supabaseServer
+        .from("rfq_offers")
+        .select(selectFields)
+        .eq("rfq_id", rfqId)
+        .eq("provider_id", providerId)
+        .maybeSingle<ExistingOfferSnapshot>();
+      if (fallbackData?.id) return fallbackData;
+    }
+
+    if (!data?.id) return null;
+    return data;
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      return null;
+    }
+    console.warn("[provider offer] existing offer lookup crashed", {
+      rfqId,
+      providerId,
+      destinationId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return null;
+  }
+}
+
+function normalizeId(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }

@@ -3002,6 +3002,11 @@ function renderOpsEventSummary(args: {
       summaryParts.push(offerStatus ? `Offer saved (${offerStatus})` : "Offer saved");
       break;
     }
+    case "offer_revised": {
+      const offerStatus = formatOpsStatusLabel(resolvePayloadString(payload, "status"));
+      summaryParts.push(offerStatus ? `Offer revised (${offerStatus})` : "Offer revised");
+      break;
+    }
     case "offer_selected": {
       const offerId = resolvePayloadString(payload, "offer_id");
       summaryParts.push(offerId ? `Offer ${formatShortId(offerId)} selected` : "Offer selected");
