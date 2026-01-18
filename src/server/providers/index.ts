@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { serializeSupabaseError } from "@/server/admin/logging";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 
 export const PROVIDER_TYPES = [
@@ -264,4 +265,100 @@ export async function resolveProviderEmailColumn(): Promise<ProviderEmailColumn 
   if (supportsEmail) return "email";
   if (supportsContactEmail) return "contact_email";
   return null;
+}
+
+export type CreateDiscoveredProviderInput = {
+  name: string;
+  email?: string | null;
+  notes?: string | null;
+};
+
+export async function createDiscoveredProviderStub(
+  input: CreateDiscoveredProviderInput,
+): Promise<{ providerId: string | null }> {
+  const name = normalizeText(input.name);
+  if (!name) {
+    return { providerId: null };
+  }
+
+  const supported = await schemaGate({
+    enabled: true,
+    relation: PROVIDERS_TABLE,
+    requiredColumns: ["name", "provider_type", "quoting_mode", "is_active"],
+    warnPrefix: "[providers]",
+    warnKey: "providers:create_discovered_stub",
+  });
+  if (!supported) {
+    return { providerId: null };
+  }
+
+  const normalizedEmail = normalizeEmail(input.email);
+  const normalizedNotes = normalizeOptionalText(input.notes);
+
+  const [supportsVerificationStatus, supportsSource, supportsNotes, emailColumn] =
+    await Promise.all([
+      hasColumns(PROVIDERS_TABLE, ["verification_status"]),
+      hasColumns(PROVIDERS_TABLE, ["source"]),
+      normalizedNotes ? hasColumns(PROVIDERS_TABLE, ["notes"]) : Promise.resolve(false),
+      resolveProviderEmailColumn(),
+    ]);
+
+  const payload: Record<string, unknown> = {
+    name,
+    provider_type: "direct_supplier",
+    quoting_mode: "email",
+    is_active: false,
+  };
+
+  if (supportsVerificationStatus) {
+    payload.verification_status = "unverified";
+  }
+  if (supportsSource) {
+    payload.source = "discovered";
+  }
+  if (supportsNotes && normalizedNotes) {
+    payload.notes = normalizedNotes;
+  }
+  if (emailColumn && normalizedEmail) {
+    payload[emailColumn] = normalizedEmail;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(PROVIDERS_TABLE)
+      .insert(payload)
+      .select("id")
+      .maybeSingle<{ id: string | null }>();
+
+    if (error) {
+      console.warn("[providers] create discovered provider failed", {
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return { providerId: null };
+    }
+
+    const providerId = normalizeText(data?.id);
+    return { providerId: providerId || null };
+  } catch (error) {
+    console.warn("[providers] create discovered provider crashed", {
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return { providerId: null };
+  }
+}
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  const normalized = normalizeText(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || !normalized.includes("@")) return null;
+  return normalized;
 }
