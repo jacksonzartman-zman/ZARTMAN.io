@@ -5,16 +5,21 @@ import { usePathname } from "next/navigation";
 import { primaryCtaClasses } from "@/lib/ctas";
 import { BrandMark } from "@/components/BrandMark";
 
-const CENTER_LINKS = [
-  { label: "Capabilities", href: "/capabilities" },
+const PUBLIC_LINKS = [
   { label: "Suppliers", href: "/suppliers" },
-  { label: "Resources", href: "/resources" },
+  { label: "Join as Supplier", href: "/suppliers/join" },
 ];
 
 export default function SiteHeader() {
-  const pathname = usePathname();
-  const isSupplierPortal = pathname === "/supplier" || pathname?.startsWith("/supplier/");
-  if (pathname?.startsWith("/customer") || isSupplierPortal || pathname?.startsWith("/provider/offer")) {
+  const pathname = usePathname() ?? "/";
+  const isSupplierSignup = pathname.startsWith("/supplier/signup");
+  const isSupplierPortal =
+    !isSupplierSignup && (pathname === "/supplier" || pathname.startsWith("/supplier/"));
+  const isCustomerPortal = pathname.startsWith("/customer");
+  const isAdminRoute = pathname.startsWith("/admin");
+  const isProviderOfferRoute = pathname.startsWith("/provider/offer");
+
+  if (isCustomerPortal || isSupplierPortal || isAdminRoute || isProviderOfferRoute) {
     return null;
   }
 
@@ -29,7 +34,7 @@ export default function SiteHeader() {
         />
 
         <nav className="flex flex-wrap items-center justify-center gap-4 text-sm font-medium text-ink-soft md:justify-center">
-          {CENTER_LINKS.map((link) => (
+          {PUBLIC_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -41,14 +46,14 @@ export default function SiteHeader() {
         </nav>
 
         <nav className="flex flex-wrap items-center justify-start gap-3 text-sm font-medium text-ink-soft md:justify-end">
+          <Link href="/customer/search" className={primaryCtaClasses}>
+            Search
+          </Link>
           <Link
             href="/login"
             className="rounded-full px-3 py-1.5 text-ink-soft transition-colors hover:text-ink"
           >
-            Log in
-          </Link>
-          <Link href="/customer/search" className={primaryCtaClasses}>
-            Search suppliers
+            Login
           </Link>
         </nav>
       </div>
