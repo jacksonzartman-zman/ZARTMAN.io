@@ -18,6 +18,7 @@ export type RfqDestinationProvider = {
   name: string | null;
   provider_type: string | null;
   quoting_mode: string | null;
+  country?: string | null;
 };
 
 export type RfqDestination = {
@@ -114,8 +115,6 @@ const DESTINATION_COLUMNS = [
   "created_at",
 ];
 
-const DESTINATION_PROVIDER_SELECT = "provider:providers(name,provider_type,quoting_mode)";
-
 const OFFER_TOKEN_DESTINATION_COLUMNS = [
   "id",
   "rfq_id",
@@ -173,11 +172,19 @@ export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[
     return [];
   }
 
-  const supportsOfferToken = await hasColumns("rfq_destinations", ["offer_token"]);
+  const [supportsOfferToken, includeProviderCountry] = await Promise.all([
+    hasColumns("rfq_destinations", ["offer_token"]),
+    hasColumns("providers", ["country"]),
+  ]);
+  const providerColumns = ["name", "provider_type", "quoting_mode"];
+  if (includeProviderCountry) {
+    providerColumns.push("country");
+  }
+  const destinationProviderSelect = `provider:providers(${providerColumns.join(",")})`;
   const destinationSelect = [
     ...DESTINATION_COLUMNS,
     supportsOfferToken ? "offer_token" : null,
-    DESTINATION_PROVIDER_SELECT,
+    destinationProviderSelect,
   ]
     .filter(Boolean)
     .join(",");

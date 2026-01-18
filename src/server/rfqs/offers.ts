@@ -1,4 +1,5 @@
 import { supabaseServer } from "@/lib/supabaseServer";
+import { hasColumns } from "@/server/db/schemaContract";
 import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -12,6 +13,7 @@ export type RfqOfferProvider = {
   name: string | null;
   provider_type: string | null;
   quoting_mode: string | null;
+  country?: string | null;
 };
 
 export type RfqOffer = {
@@ -58,7 +60,7 @@ type RawRfqOfferRow = {
   provider: RfqOfferProvider | null;
 };
 
-const OFFER_SELECT = [
+const OFFER_COLUMNS = [
   "id",
   "rfq_id",
   "provider_id",
@@ -77,10 +79,18 @@ const OFFER_SELECT = [
   "status",
   "received_at",
   "created_at",
-  "provider:providers(name,provider_type,quoting_mode)",
-].join(",");
+];
 
 const RFQ_OFFER_STATUS_SET = new Set<RfqOfferStatus>(RFQ_OFFER_STATUSES);
+
+async function buildOfferSelect(): Promise<string> {
+  const providerColumns = ["name", "provider_type", "quoting_mode"];
+  const includeCountry = await hasColumns("providers", ["country"]);
+  if (includeCountry) {
+    providerColumns.push("country");
+  }
+  return [...OFFER_COLUMNS, `provider:providers(${providerColumns.join(",")})`].join(",");
+}
 
 export function parseRfqOfferStatus(value: unknown): RfqOfferStatus | null {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -97,9 +107,10 @@ export async function getRfqOffers(quoteId: string): Promise<RfqOffer[]> {
   }
 
   try {
+    const offerSelect = await buildOfferSelect();
     const { data, error } = await supabaseServer
       .from("rfq_offers")
-      .select(OFFER_SELECT)
+      .select(offerSelect)
       .eq("rfq_id", normalizedQuoteId)
       .order("created_at", { ascending: true })
       .returns<RawRfqOfferRow[]>();

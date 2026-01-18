@@ -1,40 +1,1025 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import clsx from "clsx";
+
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import { CustomerQuoteCompareOffers } from "@/app/(portals)/customer/quotes/[id]/CustomerQuoteCompareOffers";
+import { CustomerQuoteRefreshResultsButton } from "@/app/(portals)/customer/quotes/[id]/CustomerQuoteRefreshResultsButton";
+import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
+import { formatQuoteId } from "@/app/(portals)/quotes/pageUtils";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
+import { formatDateTime } from "@/lib/formatDate";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
+import { supabaseServer } from "@/lib/supabaseServer";
 import { requireUser } from "@/server/auth";
+import { getCustomerByUserId } from "@/server/customers";
+import { loadCustomerQuotesList, type CustomerQuoteListRow } from "@/server/customer/quotesList";
+import { schemaGate } from "@/server/db/schemaContract";
+import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
+import { type RfqDestination, type RfqDestinationStatus } from "@/server/rfqs/destinations";
+import { type RfqOffer } from "@/server/rfqs/offers";
+import { PROVIDER_TYPES } from "@/server/providers";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
 
-export default async function CustomerSearchPage() {
-  await requireUser({ redirectTo: "/customer/search" });
+type CustomerSearchPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+type SearchFilters = {
+  providerType: string | null;
+  status: "pending" | "received" | null;
+  minLeadDays: number | null;
+  maxLeadDays: number | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+  location: string | null;
+};
+
+type SearchParamsSnapshot = {
+  quoteId: string;
+  providerType: string;
+  status: string;
+  minLeadDays: string;
+  maxLeadDays: string;
+  minPrice: string;
+  maxPrice: string;
+  location: string;
+};
+
+type CountMap = Map<string, number>;
+
+const FILTER_PARAM_KEYS = [
+  "providerType",
+  "status",
+  "minLeadDays",
+  "maxLeadDays",
+  "minPrice",
+  "maxPrice",
+  "location",
+] as const;
+
+export default async function CustomerSearchPage({ searchParams }: CustomerSearchPageProps) {
+  const user = await requireUser({ redirectTo: "/customer/search" });
+  const customer = await getCustomerByUserId(user.id);
+
+  if (!customer) {
+    return (
+      <PortalShell
+        workspace="customer"
+        title="Search results"
+        subtitle="Compare pricing and lead times across providers."
+        actions={
+          <Link href="/quote" className={primaryCtaClasses}>
+            Start a search
+          </Link>
+        }
+      >
+        <EmptyStateCard
+          title="Complete your profile"
+          description="Finish setting up your customer profile to access search results and provider offers."
+          action={{ label: "Back to dashboard", href: "/customer" }}
+        />
+      </PortalShell>
+    );
+  }
+
+  const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+  const rawParams = snapshotSearchParams(usp);
+  const filters = parseSearchFilters(usp);
+
+  const quoteIdParam = normalizeText(rawParams.quoteId);
+  const quotes = await loadCustomerQuotesList(
+    { userId: user.id, email: user.email ?? null },
+    {},
+  );
+
+  const selectedQuote = quotes.find((quote) => quote.id === quoteIdParam) ?? null;
+  const recentQuotes = quotes.slice(0, 8);
+
+  let activeQuote = selectedQuote;
+  let workspaceData = null;
+  let workspaceError: string | null = null;
+
+  if (activeQuote) {
+    const workspaceResult = await loadQuoteWorkspaceData(activeQuote.id, {
+      safeOnly: true,
+      viewerUserId: user.id,
+      viewerRole: "customer",
+      includeOffers: true,
+    });
+    if (!workspaceResult.ok || !workspaceResult.data) {
+      workspaceError = workspaceResult.error ?? "Unable to load this search.";
+      activeQuote = null;
+      workspaceData = null;
+    } else {
+      workspaceData = workspaceResult.data;
+    }
+  }
+
+  const showRecentSearches = !activeQuote;
+  const listCounts = showRecentSearches
+    ? await loadSearchListCounts(recentQuotes.map((quote) => quote.id))
+    : { offerCounts: new Map(), destinationCounts: new Map() };
+
+  const rfqOffers = workspaceData?.rfqOffers ?? [];
+  const rfqDestinations = workspaceData?.rfqDestinations ?? [];
+  const filterContext = buildFilterContext({
+    offers: rfqOffers,
+    destinations: rfqDestinations,
+    filters,
+  });
+
+  const filteredOffers = applyOfferFilters(rfqOffers, filterContext.filters);
+  const destinationCounts = summarizeRfqDestinationCounts(rfqDestinations);
+  const pendingDestinations = buildPendingDestinations({
+    destinations: rfqDestinations,
+    filters: filterContext.filters,
+  }).sort(sortDestinationsByLastUpdate);
+  const visiblePendingDestinations = pendingDestinations.slice(0, 6);
+  const remainingPendingDestinationCount = Math.max(
+    pendingDestinations.length - visiblePendingDestinations.length,
+    0,
+  );
+
+  const offerCount = filteredOffers.length;
+  const totalOfferCount = rfqOffers.length;
+
+  const activeQuoteSummary = buildQuoteSummary(workspaceData);
+
+  const clearFiltersHref = buildClearFiltersHref(rawParams.quoteId);
 
   return (
     <PortalShell
       workspace="customer"
-      title="Search manufacturing options"
-      subtitle="Compare pricing and lead times across providers."
-      actions={
-        <>
-          <Link href="/quote" className={primaryCtaClasses}>
-            Start a search
-          </Link>
-          <Link href="/customer/quotes" className={secondaryCtaClasses}>
-            View quote history
-          </Link>
-        </>
-      }
+      title="Search results"
+      subtitle="Track provider responses, compare offers, and refine your search."
     >
-      <PortalCard
-        title="Start from your RFQ"
-        description="Upload a CAD pack and we will match you to the right providers."
+      <section
+        className={clsx(
+          "rounded-2xl border border-slate-900/70 bg-slate-950/70 px-6 py-5 shadow-[0_10px_30px_rgba(2,6,23,0.45)]",
+          "lg:sticky lg:top-4 lg:z-20",
+        )}
+        aria-label="Search summary"
       >
-        <ul className="list-disc space-y-2 pl-5 text-sm text-slate-300">
-          <li>Share your parts, quantities, and deadlines in one place.</li>
-          <li>We route the RFQ to qualified suppliers for pricing and lead times.</li>
-          <li>Track responses in your quote history once submitted.</li>
-        </ul>
-      </PortalCard>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {activeQuote ? `Search ${formatQuoteId(activeQuote.id)}` : "Search summary"}
+            </div>
+            <p className="text-lg font-semibold text-white">
+              {activeQuote?.rfqLabel ?? "Select a search to view results"}
+            </p>
+            {activeQuote?.primaryFileName ? (
+              <p className="text-sm text-slate-400">{activeQuote.primaryFileName}</p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {activeQuote ? (
+              <Link
+                href={`/customer/quotes/${activeQuote.id}#uploads`}
+                className={primaryCtaClasses}
+              >
+                Edit search
+              </Link>
+            ) : null}
+            <Link href="/quote" className={secondaryCtaClasses}>
+              New search
+            </Link>
+          </div>
+        </div>
+        <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryTile label="Process" value={activeQuoteSummary.process} />
+          <SummaryTile label="Quantity" value={activeQuoteSummary.quantity} />
+          <SummaryTile label="Need-by" value={activeQuoteSummary.needBy} />
+          <SummaryTile label="Files" value={activeQuoteSummary.files} />
+        </dl>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+        <aside className="space-y-4">
+          <PortalCard title="Filters" description="Refine which providers appear in results.">
+            <form method="get" className="space-y-4">
+              {activeQuote ? (
+                <input type="hidden" name="quote" value={activeQuote.id} />
+              ) : null}
+              {!activeQuote ? (
+                <p className="text-xs text-slate-400">
+                  Select a search to apply filters to provider results.
+                </p>
+              ) : null}
+              <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+                Provider type
+                <select
+                  name="providerType"
+                  defaultValue={rawParams.providerType}
+                  className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
+                >
+                  <option value="">All</option>
+                  {PROVIDER_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {formatEnumLabel(type)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+                Status
+                <select
+                  name="status"
+                  defaultValue={rawParams.status}
+                  className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
+                >
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="received">Received</option>
+                </select>
+              </label>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-300">Lead time (days)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    name="minLeadDays"
+                    min={0}
+                    placeholder="Min"
+                    defaultValue={rawParams.minLeadDays}
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
+                  />
+                  <input
+                    type="number"
+                    name="maxLeadDays"
+                    min={0}
+                    placeholder="Max"
+                    defaultValue={rawParams.maxLeadDays}
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-300">Price (total)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    name="minPrice"
+                    min={0}
+                    placeholder="Min"
+                    defaultValue={rawParams.minPrice}
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
+                  />
+                  <input
+                    type="number"
+                    name="maxPrice"
+                    min={0}
+                    placeholder="Max"
+                    defaultValue={rawParams.maxPrice}
+                    className="w-full rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
+                  />
+                </div>
+              </div>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+                Location
+                <input
+                  type="search"
+                  name="location"
+                  placeholder={filterContext.hasLocationData ? "Any country" : "Location unavailable"}
+                  defaultValue={rawParams.location}
+                  disabled={!filterContext.hasLocationData}
+                  list={filterContext.hasLocationData ? "provider-location-options" : undefined}
+                  className={clsx(
+                    "w-full rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400",
+                    !filterContext.hasLocationData && "cursor-not-allowed text-slate-500",
+                  )}
+                />
+              </label>
+              {filterContext.hasLocationData ? (
+                <datalist id="provider-location-options">
+                  {filterContext.locationOptions.map((location) => (
+                    <option key={location} value={location} />
+                  ))}
+                </datalist>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Provider location details are not available for this search.
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="submit"
+                  className="inline-flex w-full items-center justify-center rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-black transition hover:bg-emerald-400 sm:w-auto"
+                >
+                  Apply
+                </button>
+                <Link
+                  href={clearFiltersHref}
+                  className="text-xs font-semibold text-slate-300 underline-offset-4 hover:underline"
+                >
+                  Clear filters
+                </Link>
+              </div>
+            </form>
+          </PortalCard>
+        </aside>
+
+        <div className="space-y-6">
+          {workspaceError ? (
+            <EmptyStateCard
+              title="Search unavailable"
+              description={workspaceError}
+              action={{ label: "View searches", href: "/customer/search" }}
+            />
+          ) : null}
+
+          {activeQuote && workspaceData ? (
+            <>
+              <PortalCard
+                title="Searching providers..."
+                description="Track dispatch progress as we route your RFQ to matched providers."
+                action={<CustomerQuoteRefreshResultsButton quoteId={activeQuote.id} />}
+              >
+                <div className="space-y-4">
+                  <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-4">
+                    <SummaryStat label="Queued" value={destinationCounts.queued} />
+                    <SummaryStat label="Sent" value={destinationCounts.sent} />
+                    <SummaryStat label="Quoted" value={destinationCounts.quoted} />
+                    <SummaryStat label="Error" value={destinationCounts.error} />
+                  </dl>
+                  <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-100">
+                      {totalOfferCount > 0
+                        ? `${totalOfferCount} offer${totalOfferCount === 1 ? "" : "s"} received`
+                        : "Offers still pending"}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      We will notify you as new responses arrive.
+                    </p>
+                  </div>
+                </div>
+              </PortalCard>
+
+              <PortalCard
+                title="Offers returned"
+                description="Compare pricing and lead times from qualified providers."
+                action={
+                  <TagPill
+                    size="sm"
+                    tone={totalOfferCount > 0 ? "emerald" : "slate"}
+                    className="normal-case tracking-normal"
+                  >
+                    {totalOfferCount > 0
+                      ? `${offerCount} of ${totalOfferCount}`
+                      : "No offers"}
+                  </TagPill>
+                }
+              >
+                {offerCount > 0 ? (
+                  <CustomerQuoteCompareOffers
+                    quoteId={activeQuote.id}
+                    offers={filteredOffers}
+                    selectedOfferId={workspaceData.quote.selected_offer_id ?? null}
+                  />
+                ) : totalOfferCount === 0 ? (
+                  <div className="space-y-4">
+                    <EmptyStateCard
+                      title="Offers are on the way"
+                      description="Providers are reviewing your RFQ. We'll surface offers here as soon as they respond."
+                      tone="info"
+                    />
+                    {renderDestinationsTable({
+                      destinations: visiblePendingDestinations,
+                      remainingCount: remainingPendingDestinationCount,
+                    })}
+                  </div>
+                ) : (
+                  <EmptyStateCard
+                    title="No offers match these filters"
+                    description="Adjust your filters to see the full list of returned offers."
+                    action={{ label: "Clear filters", href: clearFiltersHref }}
+                  />
+                )}
+              </PortalCard>
+            </>
+          ) : quotes.length === 0 ? (
+            <EmptyStateCard
+              title="No searches yet"
+              description="Upload a new RFQ to start comparing pricing and lead times."
+              action={{ label: "Start a search", href: "/quote" }}
+              secondaryAction={{ label: "View dashboard", href: "/customer" }}
+            />
+          ) : (
+            <PortalCard
+              title="Recent searches"
+              description="Pick a search session to see provider progress and offers."
+            >
+              <div className="space-y-3">
+                {recentQuotes.map((quote) => {
+                  const lastActivity = formatRelativeTimeFromTimestamp(
+                    toTimestamp(quote.lastActivityAt ?? quote.updatedAt ?? quote.createdAt),
+                  );
+                  const destinationsCount = listCounts.destinationCounts.get(quote.id) ?? 0;
+                  const offersCount = listCounts.offerCounts.get(quote.id) ?? 0;
+                  const href = buildSearchHref(usp, quote.id);
+                  const statusTone = deriveSearchStatusTone(quote.status);
+                  return (
+                    <div
+                      key={quote.id}
+                      className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-4"
+                    >
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="space-y-2">
+                          <p className="text-base font-semibold text-white">{quote.rfqLabel}</p>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                            <span>{formatQuoteId(quote.id)}</span>
+                            <span>•</span>
+                            <span>{lastActivity ? `Active ${lastActivity}` : "Activity pending"}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <TagPill size="sm" tone={statusTone} className="normal-case">
+                              {quote.status}
+                            </TagPill>
+                            <TagPill size="sm" tone="muted" className="normal-case tracking-normal">
+                              {destinationsCount} destination
+                              {destinationsCount === 1 ? "" : "s"}
+                            </TagPill>
+                            <TagPill size="sm" tone="muted" className="normal-case tracking-normal">
+                              {offersCount} offer{offersCount === 1 ? "" : "s"}
+                            </TagPill>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center">
+                          <Link
+                            href={href}
+                            className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+                          >
+                            View results
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <Link
+                  href="/customer/quotes"
+                  className="text-xs font-semibold text-slate-300 underline-offset-4 hover:underline"
+                >
+                  View quote history
+                </Link>
+              </div>
+            </PortalCard>
+          )}
+        </div>
+      </div>
     </PortalShell>
   );
+}
+
+function SummaryTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="mt-1 text-sm font-semibold text-white">{value}</dd>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="text-lg font-semibold text-white">{value}</dd>
+    </div>
+  );
+}
+
+function snapshotSearchParams(usp: URLSearchParams): SearchParamsSnapshot {
+  return {
+    quoteId: usp.get("quote") ?? "",
+    providerType: usp.get("providerType") ?? "",
+    status: usp.get("status") ?? "",
+    minLeadDays: usp.get("minLeadDays") ?? "",
+    maxLeadDays: usp.get("maxLeadDays") ?? "",
+    minPrice: usp.get("minPrice") ?? "",
+    maxPrice: usp.get("maxPrice") ?? "",
+    location: usp.get("location") ?? "",
+  };
+}
+
+function parseSearchFilters(usp: URLSearchParams): SearchFilters {
+  const providerType = normalizeFilterValue(usp.get("providerType"));
+  const statusRaw = normalizeFilterValue(usp.get("status"));
+  const status =
+    statusRaw === "pending" || statusRaw === "received" ? statusRaw : null;
+  const minLeadDaysRaw = parseNumberFilter(usp.get("minLeadDays"), true);
+  const maxLeadDaysRaw = parseNumberFilter(usp.get("maxLeadDays"), true);
+  const minPriceRaw = parseNumberFilter(usp.get("minPrice"), false);
+  const maxPriceRaw = parseNumberFilter(usp.get("maxPrice"), false);
+  const normalizedLeadRange = normalizeRange(minLeadDaysRaw, maxLeadDaysRaw);
+  const normalizedPriceRange = normalizeRange(minPriceRaw, maxPriceRaw);
+
+  return {
+    providerType,
+    status,
+    minLeadDays: normalizedLeadRange.min,
+    maxLeadDays: normalizedLeadRange.max,
+    minPrice: normalizedPriceRange.min,
+    maxPrice: normalizedPriceRange.max,
+    location: normalizeFilterValue(usp.get("location")),
+  };
+}
+
+function normalizeText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeFilterValue(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseNumberFilter(value: string | null, integer: boolean): number | null {
+  if (!value) return null;
+  const cleaned = value.replace(/[^0-9.-]/g, "");
+  if (!cleaned) return null;
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) return null;
+  const normalized = integer ? Math.round(parsed) : parsed;
+  if (normalized < 0) return null;
+  return normalized;
+}
+
+function normalizeRange(min: number | null, max: number | null): { min: number | null; max: number | null } {
+  if (min == null || max == null) {
+    return { min, max };
+  }
+  if (min <= max) {
+    return { min, max };
+  }
+  return { min: max, max: min };
+}
+
+function buildFilterContext(args: {
+  offers: RfqOffer[];
+  destinations: RfqDestination[];
+  filters: SearchFilters;
+}) {
+  const locationOptions = new Set<string>();
+  for (const offer of args.offers) {
+    const location = readProviderLocation(offer.provider);
+    if (location) locationOptions.add(location);
+  }
+  for (const destination of args.destinations) {
+    const location = readProviderLocation(destination.provider);
+    if (location) locationOptions.add(location);
+  }
+  const sortedLocations = Array.from(locationOptions).sort((a, b) => a.localeCompare(b));
+  const hasLocationData = sortedLocations.length > 0;
+  const filters = {
+    ...args.filters,
+    location: hasLocationData ? args.filters.location : null,
+  };
+
+  return { filters, locationOptions: sortedLocations, hasLocationData };
+}
+
+function readProviderLocation(provider?: { country?: string | null } | null): string | null {
+  if (!provider) return null;
+  if (typeof provider.country === "string" && provider.country.trim().length > 0) {
+    return provider.country.trim();
+  }
+  return null;
+}
+
+function applyOfferFilters(offers: RfqOffer[], filters: SearchFilters): RfqOffer[] {
+  return offers.filter((offer) => {
+    if (filters.status === "pending") {
+      return false;
+    }
+    if (!matchesProviderType(offer.provider?.provider_type, filters.providerType)) {
+      return false;
+    }
+    if (!matchesLocation(offer.provider, filters.location)) {
+      return false;
+    }
+    const leadTimeValue = deriveOfferLeadTime(offer);
+    if (!matchesRange(leadTimeValue, filters.minLeadDays, filters.maxLeadDays)) {
+      return false;
+    }
+    const priceValue = parseOfferAmount(offer.total_price);
+    if (!matchesRange(priceValue, filters.minPrice, filters.maxPrice)) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function applyDestinationFilters(
+  destinations: RfqDestination[],
+  filters: SearchFilters,
+): RfqDestination[] {
+  return destinations.filter((destination) => {
+    if (!matchesProviderType(destination.provider?.provider_type, filters.providerType)) {
+      return false;
+    }
+    if (!matchesLocation(destination.provider, filters.location)) {
+      return false;
+    }
+    if (filters.status === "received") {
+      return isDestinationReceived(destination.status);
+    }
+    if (filters.status === "pending") {
+      return !isDestinationReceived(destination.status);
+    }
+    return true;
+  });
+}
+
+function buildPendingDestinations(args: {
+  destinations: RfqDestination[];
+  filters: SearchFilters;
+}): RfqDestination[] {
+  return applyDestinationFilters(args.destinations, {
+    ...args.filters,
+    status: "pending",
+  });
+}
+
+function matchesProviderType(value: string | null | undefined, filter: string | null): boolean {
+  if (!filter) return true;
+  const normalized = normalizeFilterValue(value);
+  return normalized === filter;
+}
+
+function matchesLocation(
+  provider: { country?: string | null } | null | undefined,
+  filter: string | null,
+): boolean {
+  if (!filter) return true;
+  const location = readProviderLocation(provider);
+  if (!location) return false;
+  return location.toLowerCase().includes(filter);
+}
+
+function matchesRange(
+  value: number | null,
+  min: number | null,
+  max: number | null,
+): boolean {
+  if (value == null) {
+    return min == null && max == null;
+  }
+  if (min != null && value < min) {
+    return false;
+  }
+  if (max != null && value > max) {
+    return false;
+  }
+  return true;
+}
+
+function deriveOfferLeadTime(offer: RfqOffer): number | null {
+  const min = offer.lead_time_days_min;
+  const max = offer.lead_time_days_max;
+  if (typeof min === "number" && typeof max === "number") {
+    return Math.round((min + max) / 2);
+  }
+  if (typeof min === "number") return min;
+  if (typeof max === "number") return max;
+  return null;
+}
+
+function parseOfferAmount(value: number | string | null): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/[^0-9.-]/g, "");
+  if (!cleaned) return null;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isDestinationReceived(status: RfqDestinationStatus): boolean {
+  return status === "quoted" || status === "declined";
+}
+
+function renderDestinationsTable(args: {
+  destinations: RfqDestination[];
+  remainingCount: number;
+}) {
+  if (args.destinations.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-400">
+        Providers will appear here once dispatch begins.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="overflow-hidden rounded-xl border border-slate-900/60 bg-slate-950/30">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-slate-900/60 bg-slate-950/60">
+            <tr className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <th className="px-4 py-2">Provider</th>
+              <th className="px-4 py-2">Status</th>
+              <th className="px-4 py-2">Last update</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-900/60">
+            {args.destinations.map((destination, index) => {
+              const providerLabel = getDestinationProviderLabel(destination, index);
+              const providerTypeLabel = formatEnumLabel(destination.provider?.provider_type);
+              const statusLabel = formatDestinationStatusLabel(destination.status);
+              const statusTone = destinationStatusTone(destination.status);
+              const lastUpdateLabel = formatDateTime(destination.last_status_at, {
+                includeTime: true,
+                fallback: "—",
+              });
+
+              return (
+                <tr key={destination.id}>
+                  <td className="px-4 py-3 text-slate-100">
+                    <div className="flex flex-col gap-1">
+                      <span>{providerLabel}</span>
+                      {providerTypeLabel ? (
+                        <TagPill size="sm" tone="muted" className="w-fit normal-case tracking-normal">
+                          {providerTypeLabel}
+                        </TagPill>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <TagPill size="sm" tone={statusTone} className="normal-case">
+                      {statusLabel}
+                    </TagPill>
+                  </td>
+                  <td className="px-4 py-3 text-slate-300">{lastUpdateLabel}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {args.remainingCount > 0 ? (
+        <p className="text-xs text-slate-400">
+          + {args.remainingCount} more provider{args.remainingCount === 1 ? "" : "s"} in progress
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function buildSearchHref(usp: URLSearchParams, quoteId: string): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of usp.entries()) {
+    if (key === "quote") continue;
+    if (FILTER_PARAM_KEYS.includes(key as (typeof FILTER_PARAM_KEYS)[number])) {
+      params.set(key, value);
+    }
+  }
+  params.set("quote", quoteId);
+  const qs = params.toString();
+  return qs ? `/customer/search?${qs}` : "/customer/search";
+}
+
+function buildClearFiltersHref(quoteId?: string | null): string {
+  const normalized = normalizeText(quoteId);
+  if (!normalized) return "/customer/search";
+  return `/customer/search?quote=${encodeURIComponent(normalized)}`;
+}
+
+async function loadSearchListCounts(quoteIds: string[]): Promise<{
+  offerCounts: CountMap;
+  destinationCounts: CountMap;
+}> {
+  const normalizedIds = Array.from(new Set(quoteIds.map((id) => normalizeText(id)).filter(Boolean)));
+  if (normalizedIds.length === 0) {
+    return { offerCounts: new Map(), destinationCounts: new Map() };
+  }
+
+  const [offerCounts, destinationCounts] = await Promise.all([
+    loadCountMap("rfq_offers", "rfq_id", normalizedIds),
+    loadCountMap("rfq_destinations", "rfq_id", normalizedIds),
+  ]);
+
+  return { offerCounts, destinationCounts };
+}
+
+async function loadCountMap(
+  relation: string,
+  column: string,
+  ids: string[],
+): Promise<CountMap> {
+  const map = new Map<string, number>();
+  if (ids.length === 0) return map;
+
+  const supported = await schemaGate({
+    enabled: true,
+    relation,
+    requiredColumns: [column],
+    warnPrefix: "[customer search]",
+    warnKey: `customer_search:${relation}`,
+  });
+  if (!supported) {
+    return map;
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(relation)
+      .select(column)
+      .in(column, ids)
+      .returns<Array<Record<string, string | null>>>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return map;
+      }
+      console.warn("[customer search] count query failed", {
+        relation,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const raw = row?.[column];
+      const id = typeof raw === "string" ? raw.trim() : "";
+      if (!id) continue;
+      map.set(id, (map.get(id) ?? 0) + 1);
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      return map;
+    }
+    console.warn("[customer search] count query crashed", {
+      relation,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
+}
+
+function buildQuoteSummary(workspaceData: Awaited<ReturnType<typeof loadQuoteWorkspaceData>>["data"]) {
+  if (!workspaceData) {
+    return {
+      process: "—",
+      quantity: "—",
+      needBy: "—",
+      files: "—",
+    };
+  }
+  const quote = workspaceData?.quote ?? null;
+  const uploadMeta = workspaceData?.uploadMeta ?? null;
+  const process =
+    typeof uploadMeta?.manufacturing_process === "string" &&
+    uploadMeta.manufacturing_process.trim().length > 0
+      ? uploadMeta.manufacturing_process.trim()
+      : "Pending";
+  const quantity =
+    typeof uploadMeta?.quantity === "string" && uploadMeta.quantity.trim().length > 0
+      ? uploadMeta.quantity.trim()
+      : "Pending";
+  const needBy = quote?.target_date ? formatDateTime(quote.target_date) : "Pending";
+  const fileCount = quote?.fileCount ?? 0;
+  const fileLabel = fileCount === 0
+    ? "No files"
+    : fileCount === 1
+      ? quote?.files?.[0]?.filename ?? "1 file"
+      : `${quote?.files?.[0]?.filename ?? "Files"} + ${fileCount - 1}`;
+
+  return {
+    process,
+    quantity,
+    needBy,
+    files: fileLabel,
+  };
+}
+
+type DestinationCounts = {
+  queued: number;
+  sent: number;
+  quoted: number;
+  error: number;
+};
+
+function summarizeRfqDestinationCounts(destinations: RfqDestination[]): DestinationCounts {
+  const counts: DestinationCounts = {
+    queued: 0,
+    sent: 0,
+    quoted: 0,
+    error: 0,
+  };
+
+  for (const destination of destinations) {
+    switch (destination.status) {
+      case "draft":
+      case "queued":
+        counts.queued += 1;
+        break;
+      case "sent":
+      case "viewed":
+      case "declined":
+        counts.sent += 1;
+        break;
+      case "quoted":
+        counts.quoted += 1;
+        break;
+      case "error":
+        counts.error += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return counts;
+}
+
+function parseDestinationTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function sortDestinationsByLastUpdate(a: RfqDestination, b: RfqDestination): number {
+  const aMs = parseDestinationTimestamp(a.last_status_at);
+  const bMs = parseDestinationTimestamp(b.last_status_at);
+  if (aMs != null && bMs != null && aMs !== bMs) {
+    return bMs - aMs;
+  }
+  if (aMs != null) return -1;
+  if (bMs != null) return 1;
+  return a.id.localeCompare(b.id);
+}
+
+function formatDestinationStatusLabel(status: RfqDestinationStatus): string {
+  switch (status) {
+    case "draft":
+      return "Draft";
+    case "queued":
+      return "Queued";
+    case "sent":
+      return "Sent";
+    case "viewed":
+      return "Viewed";
+    case "quoted":
+      return "Quoted";
+    case "declined":
+      return "Declined";
+    case "error":
+      return "Error";
+    default:
+      return "Pending";
+  }
+}
+
+function destinationStatusTone(status: RfqDestinationStatus): TagPillTone {
+  switch (status) {
+    case "queued":
+      return "amber";
+    case "sent":
+    case "viewed":
+      return "blue";
+    case "quoted":
+      return "emerald";
+    case "declined":
+    case "error":
+      return "red";
+    case "draft":
+    default:
+      return "slate";
+  }
+}
+
+function formatEnumLabel(value?: string | null): string {
+  if (!value) return "";
+  const collapsed = value.replace(/[_-]+/g, " ").trim();
+  if (!collapsed) return "";
+  return collapsed
+    .split(" ")
+    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
+    .join(" ");
+}
+
+function getDestinationProviderLabel(destination: RfqDestination, fallbackIndex: number): string {
+  const name = destination.provider?.name;
+  if (typeof name === "string" && name.trim().length > 0) {
+    return name.trim();
+  }
+  return `Provider ${fallbackIndex + 1}`;
+}
+
+function deriveSearchStatusTone(statusLabel: string): TagPillTone {
+  const normalized = normalizeFilterValue(statusLabel);
+  if (!normalized) return "slate";
+  if (normalized.includes("award") || normalized.includes("won")) return "emerald";
+  if (normalized.includes("bid") || normalized.includes("review")) return "blue";
+  if (normalized.includes("closed") || normalized.includes("cancel")) return "amber";
+  return "slate";
 }
