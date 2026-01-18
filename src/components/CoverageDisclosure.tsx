@@ -80,7 +80,7 @@ export function CoverageDisclosure({
             <CoverageStat label="Pending" value={counts.pending} />
           </dl>
         </div>
-        <p className="text-xs text-slate-400">We don't play favorites.</p>
+        <p className="text-xs text-slate-400">We don&apos;t play favorites.</p>
       </div>
     </DisclosureSection>
   );
