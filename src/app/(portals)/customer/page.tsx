@@ -45,6 +45,9 @@ export const dynamic = "force-dynamic";
 
 const QUOTE_LIMIT = 20;
 const RECENT_ACTIVITY_LIMIT = 10;
+const CUSTOMER_UPLOAD_SOURCE_LABEL = SHOW_LEGACY_QUOTE_ENTRYPOINTS
+  ? "/quote"
+  : "the search flow";
 const IN_PROGRESS_STATUSES: QuoteStatus[] = ["in_review", "quoted", "approved"];
 const COMPLETED_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
 const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
@@ -491,7 +494,10 @@ async function CustomerDashboardPage({
                 ? `Track ${openQuotes.length} open quote${openQuotes.length === 1 ? "" : "s"} to keep reviews moving.`
                 : "Watch for new quotes here as soon as uploads are processed."}
             </li>
-            <li>Uploads from /quote will sync back into this workspace automatically.</li>
+            <li>
+              Uploads from {CUSTOMER_UPLOAD_SOURCE_LABEL} will sync back into this workspace
+              automatically.
+            </li>
           </ul>
         </PortalCard>
       ) : null}
@@ -795,8 +801,8 @@ function deriveCustomerMetrics(quotes: PortalQuote[]): WorkspaceMetric[] {
       value: submitted,
       helper:
         submitted > 0
-          ? `${submitted} file${submitted === 1 ? "" : "s"} synced from /quote`
-          : "Upload parts from /quote to populate this workspace.",
+          ? `${submitted} file${submitted === 1 ? "" : "s"} synced from ${CUSTOMER_UPLOAD_SOURCE_LABEL}`
+          : `Upload parts via ${CUSTOMER_UPLOAD_SOURCE_LABEL} to populate this workspace.`,
     },
     {
       label: "Quotes in progress",
