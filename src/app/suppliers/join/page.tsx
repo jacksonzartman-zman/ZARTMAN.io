@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactElement } from "react";
 import { getSearchParamValue } from "@/app/(portals)/quotes/pageUtils";
 import { SupplierJoinForm } from "./SupplierJoinForm";
 
@@ -6,13 +7,13 @@ export const metadata: Metadata = {
   title: "Join as a supplier | Zartman",
 };
 
-type SupplierJoinPageProps = {
+type Props = {
+  params?: Record<string, never>;
   searchParams?: Record<string, string | string[] | undefined>;
 };
 
-export default function SupplierJoinPage({
-  searchParams,
-}: SupplierJoinPageProps) {
+const SupplierJoinPage = ((props: unknown) => {
+  const { searchParams } = props as Props;
   const supplierSlug = getSearchParamValue(searchParams, "supplier");
 
   return (
@@ -42,4 +43,6 @@ export default function SupplierJoinPage({
       </div>
     </main>
   );
-}
+}) satisfies ((props: Props) => ReactElement);
+
+export default SupplierJoinPage;
