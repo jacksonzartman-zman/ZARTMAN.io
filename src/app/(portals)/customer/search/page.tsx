@@ -22,7 +22,7 @@ import {
 } from "@/lib/search/searchState";
 import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesList, type CustomerQuoteListRow } from "@/server/customer/quotesList";
 import { touchCustomerSavedSearch } from "@/server/customer/savedSearches";
@@ -79,7 +79,7 @@ type SortParamValue = (typeof SORT_PARAM_VALUES)[number];
 const DEFAULT_SORT_PARAM: SortParamValue = "bestValue";
 
 export default async function CustomerSearchPage({ searchParams }: CustomerSearchPageProps) {
-  const user = await requireUser({ redirectTo: "/customer/search" });
+  const user = await requireCustomerSessionOrRedirect("/customer/search");
   const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {

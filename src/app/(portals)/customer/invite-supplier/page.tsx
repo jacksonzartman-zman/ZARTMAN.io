@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { inviteSupplierAction } from "./actions";
 
@@ -15,7 +15,7 @@ type CustomerInviteSupplierPageProps = {
 export default async function CustomerInviteSupplierPage({
   searchParams,
 }: CustomerInviteSupplierPageProps) {
-  const user = await requireUser({ redirectTo: "/customer/invite-supplier" });
+  const user = await requireCustomerSessionOrRedirect("/customer/invite-supplier");
   const customer = await getCustomerByUserId(user.id);
   const resolvedParams = searchParams ? await searchParams : undefined;
   const submitted = firstString(resolvedParams?.submitted);

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { serializeActionError } from "@/lib/forms";
 import { createCustomerInvite, resendCustomerInvite } from "@/server/customers/invites";
@@ -12,7 +12,7 @@ function getString(value: unknown): string {
 }
 
 async function requireCustomerWorkspace() {
-  const user = await requireUser({ redirectTo: "/customer/settings/team" });
+  const user = await requireCustomerSessionOrRedirect("/customer/settings/team");
   const customer = await getCustomerByUserId(user.id);
   return { user, customer };
 }

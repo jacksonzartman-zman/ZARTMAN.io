@@ -34,7 +34,7 @@ import {
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
 import { loadBidsForQuote, type BidRow } from "@/server/bids";
 import { loadCustomerQuoteBidSummaries } from "@/server/customers/bids";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
@@ -129,9 +129,7 @@ export default async function CustomerQuoteDetailPage({
     resolveMaybePromise(searchParams),
   ]);
 
-  const user = await requireUser({
-    redirectTo: `/customer/quotes/${quoteId}`,
-  });
+  const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${quoteId}`);
   const emailParam = getSearchParamValue(resolvedSearchParams, "email");
   const overrideEmail = normalizeEmailInput(emailParam);
   const focusParam = getSearchParamValue(resolvedSearchParams, "focus");

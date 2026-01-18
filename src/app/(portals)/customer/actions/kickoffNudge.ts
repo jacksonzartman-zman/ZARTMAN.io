@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { serializeActionError } from "@/lib/forms";
 import { nudgeSupplierKickoffAsCustomer } from "@/server/quotes/kickoffNudge";
@@ -32,7 +32,7 @@ export async function nudgeSupplierKickoffAction(args: {
   }
 
   try {
-    const user = await requireUser({ redirectTo: `/customer/quotes/${quoteId}` });
+    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${quoteId}`);
     const customer = await getCustomerByUserId(user.id);
     if (!customer?.id) {
       return { ok: false, reason: "access_denied" };

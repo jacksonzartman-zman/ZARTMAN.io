@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import {
   loadCustomerQuotesList,
@@ -65,7 +65,7 @@ type CustomerQuotesPageProps = {
 export default async function CustomerQuotesPage({
   searchParams,
 }: CustomerQuotesPageProps) {
-  const user = await requireUser({ redirectTo: "/customer" });
+  const user = await requireCustomerSessionOrRedirect("/customer/quotes");
   const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {

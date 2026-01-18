@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import {
   buildCustomerInviteLink,
@@ -19,7 +19,7 @@ type CustomerTeamSettingsPageProps = {
 export default async function CustomerTeamSettingsPage({
   searchParams,
 }: CustomerTeamSettingsPageProps) {
-  const user = await requireUser({ redirectTo: "/customer/settings/team" });
+  const user = await requireCustomerSessionOrRedirect("/customer/settings/team");
   const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {

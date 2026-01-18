@@ -38,7 +38,7 @@ async function CustomerInvitePage({ params }: CustomerInvitePageProps) {
     );
   }
 
-  const { user } = await getServerAuthUser();
+  const { user } = await getServerAuthUser({ quiet: true });
 
   if (!user) {
     const nextPath = `/customer/invite/${encodeURIComponent(invite.token)}`;

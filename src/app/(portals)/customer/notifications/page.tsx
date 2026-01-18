@@ -1,6 +1,6 @@
 import Link from "next/link";
 import clsx from "clsx";
-import { requireUser } from "@/server/auth";
+import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { resolveUserRoles } from "@/server/users/roles";
 import {
   loadUserNotifications,
@@ -18,7 +18,7 @@ const DAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
 });
 
 export default async function CustomerNotificationsPage() {
-  const user = await requireUser({ redirectTo: "/login?next=/customer/notifications" });
+  const user = await requireCustomerSessionOrRedirect("/customer/notifications");
   const roles = await resolveUserRoles(user.id);
   if (!roles?.isCustomer) {
     return (
