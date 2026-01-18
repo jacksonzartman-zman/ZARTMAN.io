@@ -2,6 +2,9 @@ import Link from "next/link";
 import { primaryCtaClasses } from "@/lib/ctas";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { FAQ_ITEMS } from "@/data/faq";
+import { getActiveProviders } from "@/server/providers";
+
+export const dynamic = "force-dynamic";
 
 const TRUST_SIGNALS = [
   "Built by manufacturing sales leaders",
@@ -75,7 +78,21 @@ const PROCESS_TABS = [
 const ghostCtaClasses =
   "inline-flex items-center justify-center rounded-full border border-ink-soft px-4 py-2 text-sm font-medium text-ink transition hover:bg-ink-soft/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
-export default function HomePage() {
+function getProviderInitials(name: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return "??";
+  }
+
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+export default async function HomePage() {
+  const activeProviders = await getActiveProviders();
+
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
@@ -153,6 +170,50 @@ export default function HomePage() {
                 {signal}
               </span>
             ))}
+          </div>
+        </section>
+
+        {/* TRUST */}
+        <section className="rounded-3xl border border-slate-900/60 bg-slate-950/70 p-6 shadow-[0_12px_35px_rgba(2,6,23,0.4)] sm:p-8">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr),minmax(0,1.05fr)] lg:items-center">
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-ink-soft">
+                Trust network
+              </p>
+              <h2 className="text-2xl sm:text-3xl font-semibold text-ink heading-tight">
+                Search across marketplaces, networks, and factories
+              </h2>
+              <p className="text-sm text-ink-muted heading-snug">
+                We don&apos;t play favorites &mdash; results are ranked by value, speed,
+                and risk.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {activeProviders.length === 0 ? (
+                <span className="text-xs text-ink-soft">
+                  Active providers will appear here.
+                </span>
+              ) : (
+                activeProviders.map((provider) => {
+                  const initials = getProviderInitials(provider.name);
+
+                  return (
+                    <div
+                      key={provider.id}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-900/70 bg-slate-950/60 px-3 py-1.5 text-xs font-semibold text-ink shadow-[0_8px_20px_rgba(2,6,23,0.35)]"
+                    >
+                      <span
+                        aria-hidden
+                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/70 text-[10px] font-semibold text-slate-200"
+                      >
+                        {initials}
+                      </span>
+                      <span>{provider.name}</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </section>
 
