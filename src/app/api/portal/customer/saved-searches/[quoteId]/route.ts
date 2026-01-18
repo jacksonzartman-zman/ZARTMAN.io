@@ -24,6 +24,11 @@ type Ctx = {
   params: Promise<Params>;
 };
 
+async function getQuoteIdFromCtx(ctx: Ctx) {
+  const { quoteId } = await ctx.params;
+  return quoteId;
+}
+
 export async function PATCH(req: Request, ctx: Ctx) {
   try {
     const user = await requireUser({ redirectTo: "/customer/saved" });
@@ -32,7 +37,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       return NextResponse.json({ ok: false, error: "missing_profile" }, { status: 403 });
     }
 
-    const { quoteId } = await ctx.params;
+    const quoteId = await getQuoteIdFromCtx(ctx);
     const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
     if (!normalizedQuoteId) {
       return NextResponse.json({ ok: false, error: "invalid_quote" }, { status: 400 });
@@ -72,7 +77,7 @@ export async function DELETE(_req: Request, ctx: Ctx) {
       return NextResponse.json({ ok: false, error: "missing_profile" }, { status: 403 });
     }
 
-    const { quoteId } = await ctx.params;
+    const quoteId = await getQuoteIdFromCtx(ctx);
     const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
     if (!normalizedQuoteId) {
       return NextResponse.json({ ok: false, error: "invalid_quote" }, { status: 400 });
