@@ -1616,6 +1616,7 @@ export default async function CustomerQuoteDetailPage({
               <tbody className="divide-y divide-slate-900/60">
                 {visibleDestinations.map((destination, index) => {
                   const providerLabel = getDestinationProviderLabel(destination, index);
+                  const providerTypeLabel = formatEnumLabel(destination.provider?.provider_type);
                   const statusLabel = formatDestinationStatusLabel(destination.status);
                   const statusTone = destinationStatusTone(destination.status);
                   const lastUpdateLabel = formatDateTime(destination.last_status_at, {
@@ -1625,7 +1626,20 @@ export default async function CustomerQuoteDetailPage({
 
                   return (
                     <tr key={destination.id}>
-                      <td className="px-4 py-3 text-slate-100">{providerLabel}</td>
+                      <td className="px-4 py-3 text-slate-100">
+                        <div className="flex flex-col gap-1">
+                          <span>{providerLabel}</span>
+                          {providerTypeLabel ? (
+                            <TagPill
+                              size="sm"
+                              tone="muted"
+                              className="w-fit normal-case tracking-normal"
+                            >
+                              {providerTypeLabel}
+                            </TagPill>
+                          ) : null}
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <TagPill size="sm" tone={statusTone} className="normal-case">
                           {statusLabel}
@@ -2459,6 +2473,16 @@ function destinationStatusTone(status: RfqDestinationStatus): TagPillTone {
     default:
       return "slate";
   }
+}
+
+function formatEnumLabel(value?: string | null): string {
+  if (!value) return "";
+  const collapsed = value.replace(/[_-]+/g, " ").trim();
+  if (!collapsed) return "";
+  return collapsed
+    .split(" ")
+    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
+    .join(" ");
 }
 
 function getDestinationProviderLabel(
