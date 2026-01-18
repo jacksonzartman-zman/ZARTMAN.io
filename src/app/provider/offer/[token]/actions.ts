@@ -1,8 +1,10 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import { getDestinationByOfferToken } from "@/server/rfqs/destinations";
+import { logOpsEvent } from "@/server/ops/events";
 import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -31,15 +33,20 @@ const OFFER_LEAD_TIME_ERROR = "Enter a lead time in days.";
 const OFFER_CONFIDENCE_ERROR = "Confidence must be between 0 and 100.";
 const OFFER_TEXT_LENGTH_ERROR = "Keep this under 2,000 characters.";
 const MAX_TEXT_LENGTH = 2000;
+const ACTIVE_DESTINATION_STATUSES = new Set(["queued", "sent", "viewed", "quoted"]);
 
-export async function submitProviderOfferAction(
+export async function submitOfferViaTokenAction(
   _prevState: ProviderOfferActionState,
   formData: FormData,
 ): Promise<ProviderOfferActionState> {
   const token = getFormString(formData, "token");
   const tokenContext = await getDestinationByOfferToken(token ?? "");
 
-  if (!tokenContext) {
+  if (
+    !tokenContext ||
+    !ACTIVE_DESTINATION_STATUSES.has(tokenContext.destination.status) ||
+    tokenContext.destination.provider_id !== tokenContext.provider.id
+  ) {
     return { ok: false, error: OFFER_INVALID_TOKEN_ERROR };
   }
 
@@ -123,15 +130,17 @@ export async function submitProviderOfferAction(
       return { ok: false, error: OFFER_SUBMIT_ERROR };
     }
 
+    const now = new Date().toISOString();
     const { error: destinationError } = await supabaseServer
       .from("rfq_destinations")
       .update({
         status: "quoted",
-        last_status_at: new Date().toISOString(),
+        last_status_at: now,
         error_message: null,
       })
       .eq("id", tokenContext.destination.id)
-      .eq("rfq_id", tokenContext.destination.rfq_id);
+      .eq("rfq_id", tokenContext.destination.rfq_id)
+      .eq("provider_id", tokenContext.provider.id);
 
     if (destinationError && !isMissingTableOrColumnError(destinationError)) {
       console.error("[provider offer] destination status update failed", {
@@ -141,6 +150,22 @@ export async function submitProviderOfferAction(
       });
     }
 
+    await logOpsEvent({
+      quoteId: tokenContext.destination.rfq_id,
+      destinationId: tokenContext.destination.id,
+      eventType: "offer_upserted",
+      payload: {
+        provider_id: tokenContext.provider.id,
+        status: "received",
+        offer_id: data.id,
+        source: "provider_token",
+      },
+    });
+
+    revalidatePath("/admin/quotes");
+    revalidatePath(`/admin/quotes/${tokenContext.destination.rfq_id}`);
+    revalidatePath(`/customer/quotes/${tokenContext.destination.rfq_id}`);
+
     return { ok: true, message: OFFER_SUBMIT_SUCCESS };
   } catch (error) {
     console.error("[provider offer] action crashed", {
@@ -149,6 +174,13 @@ export async function submitProviderOfferAction(
     });
     return { ok: false, error: OFFER_SUBMIT_ERROR };
   }
+}
+
+export async function submitProviderOfferAction(
+  prevState: ProviderOfferActionState,
+  formData: FormData,
+): Promise<ProviderOfferActionState> {
+  return submitOfferViaTokenAction(prevState, formData);
 }
 
 function normalizeOptionalNumber(value: unknown): number | null {
