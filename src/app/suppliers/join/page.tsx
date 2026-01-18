@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactElement } from "react";
 import { getSearchParamValue } from "@/app/(portals)/quotes/pageUtils";
 import { SupplierJoinForm } from "./SupplierJoinForm";
 
@@ -42,6 +43,6 @@ const SupplierJoinPage = ((props: unknown) => {
       </div>
     </main>
   );
-}) satisfies ((props: Props) => JSX.Element);
+}) satisfies ((props: Props) => ReactElement);
 
 export default SupplierJoinPage;
