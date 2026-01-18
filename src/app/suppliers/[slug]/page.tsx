@@ -34,7 +34,8 @@ function TagList({ items, emptyLabel }: { items: string[]; emptyLabel: string })
   );
 }
 
-export default async function SupplierProfilePage({ params }: Props) {
+export default async function SupplierProfilePage(props: any) {
+  const { params } = props as Props;
   const supplierId = extractSupplierIdFromSlug(params.slug);
   if (!supplierId) {
     notFound();
