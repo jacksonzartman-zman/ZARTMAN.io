@@ -181,8 +181,8 @@ export function CustomerQuoteCompareOffers({
                 const dimNonWinner = selectionLocked && !isSelected;
                 const providerType = formatEnumLabel(offer.provider?.provider_type);
                 const providerMode = formatEnumLabel(offer.provider?.quoting_mode);
-                const providerMeta =
-                  [providerType, providerMode].filter(Boolean).join(" / ") || "-";
+                const providerSourceLabel = providerType || "Unknown";
+                const providerModeLabel = providerMode ? `Mode: ${providerMode}` : null;
                 const hasAssumptions = Boolean(offer.assumptions?.trim());
                 const confidenceLabel =
                   typeof offer.confidenceValue === "number" ? offer.confidenceValue : "-";
@@ -204,8 +204,11 @@ export function CustomerQuoteCompareOffers({
                             {offer.providerName}
                           </p>
                           <p className="mt-1 text-xs text-slate-400">
-                            {providerMeta}
+                            Source: {providerSourceLabel}
                           </p>
+                          {providerModeLabel ? (
+                            <p className="mt-1 text-xs text-slate-500">{providerModeLabel}</p>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() =>
