@@ -17,7 +17,11 @@ export type OpsEventType =
   | "message_posted"
   | "supplier_join_requested"
   | "supplier_invited"
-  | "provider_contacted";
+  | "provider_contacted"
+  | "provider_verified"
+  | "provider_unverified"
+  | "provider_activated"
+  | "provider_deactivated";
 
 export type LogOpsEventInput = {
   quoteId: string;
@@ -28,7 +32,7 @@ export type LogOpsEventInput = {
 
 export type OpsEventRecord = {
   id: string;
-  quote_id: string;
+  quote_id: string | null;
   destination_id: string | null;
   event_type: OpsEventType;
   payload: Record<string, unknown>;
@@ -302,6 +306,72 @@ export async function logProviderContactedOpsEvent(
   }
 }
 
+export type ProviderStatusOpsEventInput = {
+  providerId: string;
+  eventType:
+    | "provider_verified"
+    | "provider_unverified"
+    | "provider_activated"
+    | "provider_deactivated";
+  snapshot?: Record<string, unknown> | null;
+};
+
+export async function logProviderStatusOpsEvent(
+  input: ProviderStatusOpsEventInput,
+): Promise<void> {
+  const providerId = normalizeOptionalId(input.providerId);
+  const eventType = normalizeEventType(input.eventType);
+  if (!providerId || !eventType) {
+    return;
+  }
+
+  const payload = sanitizePayload({
+    provider_id: providerId,
+    ...(input.snapshot ?? {}),
+  });
+
+  try {
+    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
+      quote_id: null,
+      destination_id: null,
+      event_type: eventType,
+      payload,
+    });
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        const serialized = serializeSupabaseError(error);
+        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+          code: serialized?.code ?? null,
+          message: serialized?.message ?? null,
+        });
+        return;
+      }
+
+      console.warn("[ops events] provider status insert failed", {
+        eventType,
+        providerId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      const serialized = serializeSupabaseError(error);
+      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+        code: serialized?.code ?? null,
+        message: serialized?.message ?? null,
+      });
+      return;
+    }
+
+    console.warn("[ops events] provider status insert crashed", {
+      eventType,
+      providerId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+}
+
 export async function listOpsEventsForQuote(
   quoteId: string,
   options?: { limit?: number },
@@ -363,6 +433,73 @@ export async function listOpsEventsForQuote(
     }
     console.error("[ops events] list crashed", {
       quoteId: normalizedQuoteId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return { ok: false, events: [], error: "Unable to load ops events." };
+  }
+}
+
+export async function listOpsEventsForProvider(
+  providerId: string,
+  options?: { limit?: number },
+): Promise<ListOpsEventsResult> {
+  const normalizedProviderId = normalizeId(providerId);
+  const limit = normalizeLimit(options?.limit);
+
+  if (!normalizedProviderId) {
+    return { ok: false, events: [], error: "providerId is required" };
+  }
+
+  try {
+    type OpsEventRow = {
+      id: string | null;
+      quote_id: string | null;
+      destination_id: string | null;
+      event_type: string | null;
+      payload: unknown;
+      created_at: string | null;
+    };
+
+    const { data, error } = await supabaseServer
+      .from(OPS_EVENTS_TABLE)
+      .select(OPS_EVENTS_SELECT)
+      .filter("payload->>provider_id", "eq", normalizedProviderId)
+      .order("created_at", { ascending: false })
+      .limit(limit)
+      .returns<OpsEventRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        const serialized = serializeSupabaseError(error);
+        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+          code: serialized?.code ?? null,
+          message: serialized?.message ?? null,
+        });
+        return { ok: true, events: [], error: null };
+      }
+      console.error("[ops events] list provider events failed", {
+        providerId: normalizedProviderId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return { ok: false, events: [], error: "Unable to load ops events." };
+    }
+
+    const events: OpsEventRecord[] = (Array.isArray(data) ? data : [])
+      .map((row) => normalizeOpsEventRow(row, { requireQuoteId: false }))
+      .filter((event): event is OpsEventRecord => Boolean(event));
+
+    return { ok: true, events, error: null };
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      const serialized = serializeSupabaseError(error);
+      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+        code: serialized?.code ?? null,
+        message: serialized?.message ?? null,
+      });
+      return { ok: true, events: [], error: null };
+    }
+    console.error("[ops events] list provider events crashed", {
+      providerId: normalizedProviderId,
       error: serializeSupabaseError(error) ?? error,
     });
     return { ok: false, events: [], error: "Unable to load ops events." };
@@ -439,18 +576,25 @@ function sanitizePayload(payload: Record<string, unknown> | null | undefined) {
   return entries.length > 0 ? Object.fromEntries(entries) : {};
 }
 
-function normalizeOpsEventRow(row: {
-  id: string | null;
-  quote_id: string | null;
-  destination_id: string | null;
-  event_type: string | null;
-  payload: unknown;
-  created_at: string | null;
-}): OpsEventRecord | null {
+function normalizeOpsEventRow(
+  row: {
+    id: string | null;
+    quote_id: string | null;
+    destination_id: string | null;
+    event_type: string | null;
+    payload: unknown;
+    created_at: string | null;
+  },
+  options?: { requireQuoteId?: boolean },
+): OpsEventRecord | null {
   const id = normalizeId(row?.id);
-  const quoteId = normalizeId(row?.quote_id);
+  const quoteId = normalizeOptionalId(row?.quote_id);
   const eventType = normalizeEventType(row?.event_type);
-  if (!id || !quoteId || !eventType) {
+  const requireQuoteId = options?.requireQuoteId ?? true;
+  if (!id || !eventType) {
+    return null;
+  }
+  if (requireQuoteId && !quoteId) {
     return null;
   }
 
