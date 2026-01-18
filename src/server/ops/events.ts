@@ -10,6 +10,7 @@ export type OpsEventType =
   | "destination_status_updated"
   | "outbound_email_generated"
   | "offer_upserted"
+  | "offer_revised"
   | "offer_selected"
   | "message_posted";
 

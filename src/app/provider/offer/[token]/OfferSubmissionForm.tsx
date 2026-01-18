@@ -12,8 +12,14 @@ import {
 
 type OfferSubmissionFormProps = {
   token: string;
-  alreadySubmitted: boolean;
-  submittedAt?: string | null;
+  lastSubmittedAt?: string | null;
+  initialValues?: {
+    price?: string | number;
+    leadTimeDays?: string | number;
+    confidenceScore?: string | number;
+    assumptions?: string;
+    notes?: string;
+  };
 };
 
 const INITIAL_STATE: ProviderOfferActionState = {
@@ -25,23 +31,22 @@ const INITIAL_STATE: ProviderOfferActionState = {
 
 export function OfferSubmissionForm({
   token,
-  alreadySubmitted,
-  submittedAt = null,
+  lastSubmittedAt = null,
+  initialValues,
 }: OfferSubmissionFormProps) {
   const [state, formAction] = useFormState<
     ProviderOfferActionState,
     FormData
   >(submitOfferViaTokenAction, INITIAL_STATE);
   const fieldErrors = state.fieldErrors ?? {};
-  const hasSubmitted = alreadySubmitted || state.ok;
-  const showSuccess = hasSubmitted;
-  const successMessage = alreadySubmitted
-    ? "Offer already submitted."
-    : state.message ?? "Offer submitted.";
-  const submittedAtLabel =
-    alreadySubmitted && submittedAt
-      ? formatDateTime(submittedAt, { includeTime: true })
-      : null;
+  const showSuccess = state.ok;
+  const successMessage = state.message ?? "Offer submitted.";
+  const submittedAtValue = state.submittedAt ?? lastSubmittedAt ?? null;
+  const submittedAtLabel = submittedAtValue
+    ? formatDateTime(submittedAtValue, { includeTime: true })
+    : null;
+  const hasExistingOffer = Boolean(submittedAtValue);
+  const submitLabel = hasExistingOffer ? "Resubmit offer" : "Submit offer";
 
   return (
     <section className="space-y-4 rounded-3xl border border-slate-900 bg-slate-950/70 p-6 shadow-lift-sm">
@@ -52,16 +57,16 @@ export function OfferSubmissionForm({
         <p className="mt-2 text-sm text-slate-300">
           Share pricing and lead time so we can evaluate your response quickly.
         </p>
+        {submittedAtLabel ? (
+          <p className="mt-2 text-xs text-slate-400">
+            Last submitted at {submittedAtLabel}.
+          </p>
+        ) : null}
       </div>
 
       {showSuccess ? (
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
           <p>{successMessage}</p>
-          {submittedAtLabel ? (
-            <p className="mt-1 text-xs text-emerald-200">
-              Submitted {submittedAtLabel}.
-            </p>
-          ) : null}
         </div>
       ) : null}
 
@@ -83,9 +88,9 @@ export function OfferSubmissionForm({
             min="0"
             required
             prefix="$"
-            disabled={hasSubmitted}
             error={fieldErrors.price}
             placeholder="15000"
+            defaultValue={initialValues?.price}
           />
           <InputField
             label="Lead time (days)"
@@ -95,9 +100,9 @@ export function OfferSubmissionForm({
             step="1"
             min="1"
             required
-            disabled={hasSubmitted}
             error={fieldErrors.leadTimeDays}
             placeholder="10"
+            defaultValue={initialValues?.leadTimeDays}
           />
         </div>
 
@@ -109,33 +114,33 @@ export function OfferSubmissionForm({
           step="1"
           min="0"
           max="100"
-          disabled={hasSubmitted}
           error={fieldErrors.confidenceScore}
           placeholder="85"
           helper="Optional · 0–100"
+          defaultValue={initialValues?.confidenceScore}
         />
 
         <TextAreaField
           label="Assumptions"
           name="assumptions"
-          disabled={hasSubmitted}
           error={fieldErrors.assumptions}
           placeholder="Assumptions about tolerances, finishing, or quantities."
           helper="Optional"
           maxLength={2000}
+          defaultValue={initialValues?.assumptions}
         />
 
         <TextAreaField
           label="Notes"
           name="notes"
-          disabled={hasSubmitted}
           error={fieldErrors.notes}
           placeholder="Any extra context, risks, or questions to flag."
           helper="Optional"
           maxLength={2000}
+          defaultValue={initialValues?.notes}
         />
 
-        <SubmitButton disabled={hasSubmitted} />
+        <SubmitButton label={submitLabel} />
       </form>
     </section>
   );
@@ -223,16 +228,15 @@ function TextAreaField({ label, error, helper, className, ...rest }: TextAreaFie
   );
 }
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
+function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
-  const isDisabled = disabled || pending;
   return (
     <button
       type="submit"
       className={clsx(primaryCtaClasses, "w-full justify-center")}
-      disabled={isDisabled}
+      disabled={pending}
     >
-      {pending ? "Submitting..." : disabled ? "Offer submitted" : "Submit offer"}
+      {pending ? "Submitting..." : label}
     </button>
   );
 }

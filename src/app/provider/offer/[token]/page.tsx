@@ -44,6 +44,13 @@ type QuoteSummary = {
 type ExistingOfferRow = {
   id: string | null;
   received_at: string | null;
+  total_price: number | string | null;
+  lead_time_days_min: number | null;
+  lead_time_days_max: number | null;
+  confidence_score: number | null;
+  assumptions: string | null;
+  notes: string | null;
+  destination_id: string | null;
 };
 
 export default async function ProviderOfferPage({ params }: ProviderOfferPageProps) {
@@ -78,7 +85,19 @@ export default async function ProviderOfferPage({ params }: ProviderOfferPagePro
   const existingOffer = await loadExistingOffer({
     rfqId: tokenContext.quote.id,
     providerId: tokenContext.provider.id,
+    destinationId: tokenContext.destination.id,
   });
+  const initialValues = existingOffer
+    ? {
+        price: formatOfferInputValue(existingOffer.total_price),
+        leadTimeDays: formatOfferInputValue(
+          existingOffer.lead_time_days_min ?? existingOffer.lead_time_days_max,
+        ),
+        confidenceScore: formatOfferInputValue(existingOffer.confidence_score),
+        assumptions: formatOfferTextValue(existingOffer.assumptions),
+        notes: formatOfferTextValue(existingOffer.notes),
+      }
+    : undefined;
 
   const providerName = tokenContext.provider.name ?? "Provider";
   const displayedFiles = quoteSummary.fileNames.slice(0, 3);
@@ -145,8 +164,8 @@ export default async function ProviderOfferPage({ params }: ProviderOfferPagePro
 
         <OfferSubmissionForm
           token={token}
-          alreadySubmitted={Boolean(existingOffer)}
-          submittedAt={existingOffer?.received_at ?? null}
+          lastSubmittedAt={existingOffer?.received_at ?? null}
+          initialValues={initialValues}
         />
       </div>
     </main>
@@ -320,29 +339,89 @@ async function loadUploadSummary(
 async function loadExistingOffer(args: {
   rfqId: string;
   providerId: string;
+  destinationId?: string | null;
 }): Promise<ExistingOfferRow | null> {
   const rfqId = normalizeText(args.rfqId);
   const providerId = normalizeText(args.providerId);
+  const destinationId = normalizeText(args.destinationId);
   if (!rfqId || !providerId) return null;
 
+  const selectFields = [
+    "id",
+    "received_at",
+    "total_price",
+    "lead_time_days_min",
+    "lead_time_days_max",
+    "confidence_score",
+    "assumptions",
+    "notes",
+    "destination_id",
+  ].join(",");
+
   try {
-    const { data, error } = await supabaseServer
+    if (destinationId) {
+      const { data, error } = await supabaseServer
+        .from("rfq_offers")
+        .select(selectFields)
+        .eq("destination_id", destinationId)
+        .maybeSingle<ExistingOfferRow>();
+
+      if (error) {
+        if (!isMissingTableOrColumnError(error)) {
+          console.warn("[provider offer] existing offer lookup failed", {
+            rfqId,
+            providerId,
+            destinationId,
+            error: serializeSupabaseError(error),
+          });
+        }
+      } else if (data?.id) {
+        return data;
+      }
+    }
+
+    let compositeQuery = supabaseServer
       .from("rfq_offers")
-      .select("id,received_at")
+      .select(selectFields)
       .eq("rfq_id", rfqId)
-      .eq("provider_id", providerId)
-      .maybeSingle<ExistingOfferRow>();
+      .eq("provider_id", providerId);
+
+    if (destinationId) {
+      compositeQuery = compositeQuery.eq("destination_id", destinationId);
+    }
+
+    const { data, error } = await compositeQuery.maybeSingle<ExistingOfferRow>();
 
     if (error) {
       if (isMissingTableOrColumnError(error)) {
+        if (destinationId) {
+          const { data: fallbackData } = await supabaseServer
+            .from("rfq_offers")
+            .select(selectFields)
+            .eq("rfq_id", rfqId)
+            .eq("provider_id", providerId)
+            .maybeSingle<ExistingOfferRow>();
+          if (fallbackData?.id) return fallbackData;
+        }
         return null;
       }
       console.warn("[provider offer] existing offer lookup failed", {
         rfqId,
         providerId,
+        destinationId,
         error: serializeSupabaseError(error),
       });
       return null;
+    }
+
+    if (!data?.id && destinationId) {
+      const { data: fallbackData } = await supabaseServer
+        .from("rfq_offers")
+        .select(selectFields)
+        .eq("rfq_id", rfqId)
+        .eq("provider_id", providerId)
+        .maybeSingle<ExistingOfferRow>();
+      if (fallbackData?.id) return fallbackData;
     }
 
     if (!data?.id) return null;
@@ -354,6 +433,7 @@ async function loadExistingOffer(args: {
     console.warn("[provider offer] existing offer lookup crashed", {
       rfqId,
       providerId,
+      destinationId,
       error: serializeSupabaseError(error) ?? error,
     });
     return null;
@@ -364,4 +444,21 @@ function normalizeText(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function formatOfferInputValue(value: unknown): string | undefined {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value.toString() : undefined;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  return undefined;
+}
+
+function formatOfferTextValue(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
