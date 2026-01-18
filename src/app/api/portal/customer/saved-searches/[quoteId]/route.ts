@@ -16,11 +16,15 @@ type PatchBody = {
   label?: string;
 };
 
-type RouteContext = {
-  params: { quoteId?: string };
+type Params = {
+  quoteId: string;
 };
 
-export async function PATCH(req: Request, context: RouteContext) {
+type Ctx = {
+  params: Promise<Params>;
+};
+
+export async function PATCH(req: Request, ctx: Ctx) {
   try {
     const user = await requireUser({ redirectTo: "/customer/saved" });
     const customer = await getCustomerByUserId(user.id);
@@ -28,8 +32,9 @@ export async function PATCH(req: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "missing_profile" }, { status: 403 });
     }
 
-    const quoteId = typeof context?.params?.quoteId === "string" ? context.params.quoteId.trim() : "";
-    if (!quoteId) {
+    const { quoteId } = await ctx.params;
+    const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+    if (!normalizedQuoteId) {
       return NextResponse.json({ ok: false, error: "invalid_quote" }, { status: 400 });
     }
 
@@ -41,7 +46,7 @@ export async function PATCH(req: Request, context: RouteContext) {
 
     const result = await renameCustomerSavedSearch({
       customerId: customer.id,
-      quoteId,
+      quoteId: normalizedQuoteId,
       label,
     });
     if (!result.ok) {
@@ -59,7 +64,7 @@ export async function PATCH(req: Request, context: RouteContext) {
   }
 }
 
-export async function DELETE(_req: Request, context: RouteContext) {
+export async function DELETE(_req: Request, ctx: Ctx) {
   try {
     const user = await requireUser({ redirectTo: "/customer/saved" });
     const customer = await getCustomerByUserId(user.id);
@@ -67,14 +72,15 @@ export async function DELETE(_req: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "missing_profile" }, { status: 403 });
     }
 
-    const quoteId = typeof context?.params?.quoteId === "string" ? context.params.quoteId.trim() : "";
-    if (!quoteId) {
+    const { quoteId } = await ctx.params;
+    const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+    if (!normalizedQuoteId) {
       return NextResponse.json({ ok: false, error: "invalid_quote" }, { status: 400 });
     }
 
     const result = await deleteCustomerSavedSearch({
       customerId: customer.id,
-      quoteId,
+      quoteId: normalizedQuoteId,
     });
     if (!result.ok) {
       const status = result.reason === "invalid" ? 400 : 200;
