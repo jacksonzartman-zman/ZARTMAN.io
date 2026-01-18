@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { useMemo, useState, useTransition, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, useTransition, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { ProviderRow } from "@/server/providers";
 import type { RfqDestination, RfqDestinationStatus } from "@/server/rfqs/destinations";
@@ -51,6 +51,9 @@ const EMPTY_OFFER_STATE: UpsertRfqOfferState = {
   offerId: "",
 };
 
+const isVerifiedActiveProvider = (provider: ProviderRow) =>
+  provider.is_active && provider.verification_status === "verified";
+
 export function AdminRfqDestinationsCard({
   quoteId,
   providers,
@@ -72,6 +75,7 @@ export function AdminRfqDestinationsCard({
   const [emailPackage, setEmailPackage] = useState<{ subject: string; body: string } | null>(null);
   const [emailLoadingId, setEmailLoadingId] = useState<string | null>(null);
   const [emailErrorsById, setEmailErrorsById] = useState<Record<string, string>>({});
+  const [showAllProviders, setShowAllProviders] = useState(false);
 
   const providerById = useMemo(() => {
     const map = new Map<string, ProviderRow>();
@@ -88,6 +92,28 @@ export function AdminRfqDestinationsCard({
     }
     return map;
   }, [offers]);
+
+  const verifiedActiveProviders = useMemo(
+    () => providers.filter((provider) => isVerifiedActiveProvider(provider)),
+    [providers],
+  );
+
+  const reviewProviders = useMemo(
+    () => providers.filter((provider) => !isVerifiedActiveProvider(provider)),
+    [providers],
+  );
+
+  const visibleProviders = showAllProviders ? providers : verifiedActiveProviders;
+
+  const visibleProviderIds = useMemo(() => {
+    return new Set(visibleProviders.map((provider) => provider.id));
+  }, [visibleProviders]);
+
+  useEffect(() => {
+    if (!showAllProviders) {
+      setSelectedProviderIds((prev) => prev.filter((id) => visibleProviderIds.has(id)));
+    }
+  }, [showAllProviders, visibleProviderIds]);
 
   const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const selections = Array.from(event.target.selectedOptions).map((option) => option.value);
@@ -240,6 +266,14 @@ export function AdminRfqDestinationsCard({
     selectedProviderIds.length > 0
       ? `${selectedProviderIds.length} selected`
       : "No providers selected";
+  const selectedNeedsReviewCount = selectedProviderIds.filter((providerId) => {
+    const provider = providerById.get(providerId);
+    return provider ? !isVerifiedActiveProvider(provider) : false;
+  }).length;
+  const selectedNeedsReviewLabel =
+    selectedNeedsReviewCount > 0
+      ? `${selectedNeedsReviewCount} unverified or inactive`
+      : null;
 
   const destinationsCountLabel = `${destinations.length} destination${
     destinations.length === 1 ? "" : "s"
@@ -254,7 +288,7 @@ export function AdminRfqDestinationsCard({
               Provider picker
             </p>
             <p className="mt-1 text-sm text-slate-300">
-              Add active providers as destinations for this RFQ.
+              Add verified providers as destinations for this RFQ.
             </p>
           </div>
           <button
@@ -272,14 +306,14 @@ export function AdminRfqDestinationsCard({
         </div>
 
         <div className="mt-3 grid gap-2">
-          {providers.length === 0 ? (
+          {visibleProviders.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-400">
-              No active providers available.
+              {showAllProviders ? "No providers available." : "No verified providers available."}
             </p>
           ) : (
             <>
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Active providers
+                {showAllProviders ? "Providers" : "Verified providers"}
               </label>
               <select
                 multiple
@@ -287,17 +321,70 @@ export function AdminRfqDestinationsCard({
                 onChange={handleProviderChange}
                 className="min-h-[140px] w-full rounded-xl border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none"
               >
-                {providers.map((provider) => {
-                  const typeLabel = formatEnumLabel(provider.provider_type);
-                  const modeLabel = formatEnumLabel(provider.quoting_mode);
-                  return (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name} ({typeLabel}, {modeLabel})
-                    </option>
-                  );
-                })}
+                {showAllProviders ? (
+                  <>
+                    {verifiedActiveProviders.length > 0 ? (
+                      <optgroup label="Verified + active">
+                        {verifiedActiveProviders.map((provider) => {
+                          const typeLabel = formatEnumLabel(provider.provider_type);
+                          const modeLabel = formatEnumLabel(provider.quoting_mode);
+                          return (
+                            <option key={provider.id} value={provider.id}>
+                              {provider.name} ({typeLabel}, {modeLabel})
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    ) : null}
+                    {reviewProviders.length > 0 ? (
+                      <optgroup label="Needs review">
+                        {reviewProviders.map((provider) => {
+                          const typeLabel = formatEnumLabel(provider.provider_type);
+                          const modeLabel = formatEnumLabel(provider.quoting_mode);
+                          const statusFlags = [
+                            provider.verification_status !== "verified" ? "Unverified" : null,
+                            provider.is_active ? null : "Inactive",
+                          ].filter(Boolean);
+                          const statusNote = statusFlags.length > 0 ? ` — ${statusFlags.join(", ")}` : "";
+                          return (
+                            <option key={provider.id} value={provider.id}>
+                              {provider.name} ({typeLabel}, {modeLabel}){statusNote}
+                            </option>
+                          );
+                        })}
+                      </optgroup>
+                    ) : null}
+                  </>
+                ) : (
+                  verifiedActiveProviders.map((provider) => {
+                    const typeLabel = formatEnumLabel(provider.provider_type);
+                    const modeLabel = formatEnumLabel(provider.quoting_mode);
+                    return (
+                      <option key={provider.id} value={provider.id}>
+                        {provider.name} ({typeLabel}, {modeLabel})
+                      </option>
+                    );
+                  })
+                )}
               </select>
-              <p className="text-xs text-slate-500">{selectedCountLabel}</p>
+              <div className="text-xs text-slate-500">
+                <p>{selectedCountLabel}</p>
+                {selectedNeedsReviewLabel ? <p>{selectedNeedsReviewLabel}</p> : null}
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                <input
+                  type="checkbox"
+                  checked={showAllProviders}
+                  onChange={() => setShowAllProviders((prev) => !prev)}
+                  className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+                />
+                Include unverified or inactive providers
+              </label>
+              {showAllProviders ? (
+                <p className="text-xs text-slate-500">
+                  Unverified or inactive providers stay hidden from customers until approved.
+                </p>
+              ) : null}
             </>
           )}
         </div>

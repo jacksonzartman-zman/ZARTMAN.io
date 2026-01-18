@@ -43,7 +43,14 @@ export async function importProvidersAction(
     const supported = await schemaGate({
       enabled: true,
       relation: "providers",
-      requiredColumns: ["name", "provider_type", "quoting_mode", "is_active"],
+      requiredColumns: [
+        "name",
+        "provider_type",
+        "quoting_mode",
+        "is_active",
+        "verification_status",
+        "source",
+      ],
       warnPrefix: "[admin providers import]",
       warnKey: "admin_providers_import",
     });
@@ -74,6 +81,8 @@ export async function importProvidersAction(
         provider_type: row.providerType,
         quoting_mode: "email",
         is_active: false,
+        verification_status: "unverified",
+        source: "csv_import",
       };
 
       if (supportsWebsite) {

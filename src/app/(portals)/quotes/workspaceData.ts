@@ -28,6 +28,7 @@ import {
   getRfqDestinations,
   type RfqDestination,
 } from "@/server/rfqs/destinations";
+import { getProviderStatusByIds } from "@/server/providers";
 
 export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
   files: QuoteFileMeta[];
@@ -260,8 +261,38 @@ export async function loadQuoteWorkspaceData(
     const uploadGroups = await loadQuoteUploadGroups(quoteId);
     const parts = await loadQuotePartsWithFiles(quoteId);
     const includeOffers = Boolean(options?.includeOffers);
-    const rfqOffers = includeOffers ? await getRfqOffers(quote.id) : [];
-    const rfqDestinations = await getRfqDestinations(quote.id);
+    const rfqOffersRaw = includeOffers ? await getRfqOffers(quote.id) : [];
+    const rfqDestinationsRaw = await getRfqDestinations(quote.id);
+    let rfqOffers = rfqOffersRaw;
+    let rfqDestinations = rfqDestinationsRaw;
+
+    if (options?.viewerRole === "customer") {
+      const providerIds = new Set<string>();
+      for (const offer of rfqOffersRaw) {
+        if (offer.provider_id) providerIds.add(offer.provider_id);
+      }
+      for (const destination of rfqDestinationsRaw) {
+        if (destination.provider_id) providerIds.add(destination.provider_id);
+      }
+
+      if (providerIds.size > 0) {
+        const providerStatuses = await getProviderStatusByIds(Array.from(providerIds));
+        const isVerifiedActive = (providerId: string) => {
+          const snapshot = providerStatuses.get(providerId);
+          return Boolean(snapshot?.is_active && snapshot?.verification_status === "verified");
+        };
+
+        if (providerStatuses.size === 0) {
+          rfqOffers = [];
+          rfqDestinations = [];
+        } else {
+          rfqOffers = rfqOffersRaw.filter((offer) => isVerifiedActive(offer.provider_id));
+          rfqDestinations = rfqDestinationsRaw.filter((destination) =>
+            isVerifiedActive(destination.provider_id),
+          );
+        }
+      }
+    }
     const legacyDeclared = buildQuoteFilesFromRow(quote);
     const filesMissingCanonical = filePreviews.length === 0 && legacyDeclared.length > 0;
     const legacyFileNames = legacyDeclared.map((f) => f.filename);
