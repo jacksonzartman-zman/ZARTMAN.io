@@ -13,6 +13,11 @@ const REQUEST_QUOTE_HREF = "/customer/search";
 const tagClasses =
   "inline-flex items-center rounded-full border border-slate-800/70 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-ink-soft";
 
+type Props = {
+  params: { slug: string };
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
 function TagList({ items, emptyLabel }: { items: string[]; emptyLabel: string }) {
   if (items.length === 0) {
     return <span className="text-sm text-ink-muted">{emptyLabel}</span>;
@@ -29,11 +34,7 @@ function TagList({ items, emptyLabel }: { items: string[]; emptyLabel: string })
   );
 }
 
-export default async function SupplierProfilePage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export default async function SupplierProfilePage({ params }: Props) {
   const supplierId = extractSupplierIdFromSlug(params.slug);
   if (!supplierId) {
     notFound();
