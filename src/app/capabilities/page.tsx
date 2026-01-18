@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { primaryCtaClasses } from "@/lib/ctas";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import {
   CAPABILITY_ENVELOPES,
   CAPABILITY_PROCESSES,
@@ -38,6 +39,13 @@ const MATCHING_POINTS = [
 ];
 
 export default function CapabilitiesPage() {
+  const primaryCtaHref = SHOW_LEGACY_QUOTE_ENTRYPOINTS
+    ? "/quote"
+    : "/customer/search";
+  const primaryCtaLabel = SHOW_LEGACY_QUOTE_ENTRYPOINTS
+    ? "Start an RFQ"
+    : "Search suppliers";
+
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
@@ -55,8 +63,8 @@ export default function CapabilitiesPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Link href="/quote" className={primaryCtaClasses}>
-              Start an RFQ
+            <Link href={primaryCtaHref} className={primaryCtaClasses}>
+              {primaryCtaLabel}
             </Link>
             <Link href={talkCapabilitiesHref} className={secondaryGhostButtonClasses}>
               Talk about capabilities

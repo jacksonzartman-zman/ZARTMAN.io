@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import {
   BUYER_SUPPORT_POINTS,
   LOOKING_AHEAD_POINTS,
@@ -7,6 +8,13 @@ import {
 } from "@/data/about";
 
 export default function AboutPage() {
+  const primaryCtaHref = SHOW_LEGACY_QUOTE_ENTRYPOINTS
+    ? "/quote"
+    : "/customer/search";
+  const primaryCtaLabel = SHOW_LEGACY_QUOTE_ENTRYPOINTS
+    ? "start an RFQ"
+    : "search suppliers";
+
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8 sm:py-20 space-y-16">
@@ -28,10 +36,10 @@ export default function AboutPage() {
           <p className="text-sm text-ink-soft">
             Ready to send parts today? Skip the tour and{" "}
             <Link
-              href="/quote"
+              href={primaryCtaHref}
               className="font-semibold text-emerald-300 hover:text-emerald-200"
             >
-              start an RFQ
+              {primaryCtaLabel}
             </Link>
             .
           </p>

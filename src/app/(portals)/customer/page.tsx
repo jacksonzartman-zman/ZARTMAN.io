@@ -9,6 +9,7 @@ import {
   isOpenQuoteStatus,
 } from "@/server/quotes/status";
 import { primaryCtaClasses } from "@/lib/ctas";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import {
   getFirstParamValue,
   normalizeEmailInput,
@@ -143,12 +144,14 @@ async function CustomerDashboardPage({
         subtitle="Upload RFQs, track bids, and keep supplier moves organized."
         headerContent={heroContent}
         actions={
-          <Link
-            href="/quote"
-            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-          >
-            Start a new RFQ
-          </Link>
+          SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+            <Link
+              href="/quote"
+              className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+            >
+              Start a new RFQ
+            </Link>
+          ) : null
         }
       >
         <CompleteCustomerProfileCard
@@ -189,12 +192,14 @@ async function CustomerDashboardPage({
           />
         }
         actions={
-          <Link
-            href="/quote"
-            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-          >
-            Start a new RFQ
-          </Link>
+          SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+            <Link
+              href="/quote"
+              className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+            >
+              Start a new RFQ
+            </Link>
+          ) : null
         }
       >
         <section className="rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
@@ -298,14 +303,14 @@ async function CustomerDashboardPage({
     </div>
   );
 
-  const headerActions = (
+  const headerActions = SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
     <Link
       href="/quote"
       className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
     >
       Start a new RFQ
     </Link>
-  );
+  ) : null;
 
   return (
     <PortalShell
@@ -320,9 +325,11 @@ async function CustomerDashboardPage({
           title="Start your first RFQ"
           description="Upload your CAD or a ZIP, tell us what you need, and we’ll route it to the right suppliers."
           action={
-            <Link href="/quote" className={primaryCtaClasses}>
-              Create an RFQ
-            </Link>
+            SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+              <Link href="/quote" className={primaryCtaClasses}>
+                Create an RFQ
+              </Link>
+            ) : null
           }
         >
           <ul className="list-disc space-y-2 pl-5 text-sm text-slate-300">
@@ -378,12 +385,14 @@ async function CustomerDashboardPage({
             title="No open RFQs yet"
             description={`Waiting for the first upload from ${viewerDisplayEmail}. Fresh RFQs drop here as soon as they sync.`}
             action={
-              <Link
-                href="/quote"
-                className="text-sm font-semibold text-emerald-300 underline-offset-4 hover:underline"
-              >
-                Submit a new RFQ
-              </Link>
+              SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+                <Link
+                  href="/quote"
+                  className="text-sm font-semibold text-emerald-300 underline-offset-4 hover:underline"
+                >
+                  Submit a new RFQ
+                </Link>
+              ) : null
             }
           />
         )}
@@ -468,9 +477,11 @@ async function CustomerDashboardPage({
           title="Next steps"
           description="Keep momentum with a lightweight checklist."
           action={
-            <Link href="/quote" className={primaryCtaClasses}>
-              Submit a new RFQ
-            </Link>
+            SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+              <Link href="/quote" className={primaryCtaClasses}>
+                Submit a new RFQ
+              </Link>
+            ) : null
           }
         >
           <ul className="list-disc space-y-2 pl-5 text-slate-300">
@@ -866,12 +877,14 @@ function CustomerPortalDemoCard() {
       title="Customer portal demo"
         description="Signed-in teammates can append ?email=you@company.com to preview other accounts for demos."
       action={
-        <Link
-          href="/quote"
-          className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-emerald-300 transition hover:border-emerald-400 hover:text-emerald-200"
-        >
-          Go to /quote
-        </Link>
+        SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+          <Link
+            href="/quote"
+            className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-emerald-300 transition hover:border-emerald-400 hover:text-emerald-200"
+          >
+            Go to /quote
+          </Link>
+        ) : null
       }
     >
       <p className="text-sm text-slate-300">

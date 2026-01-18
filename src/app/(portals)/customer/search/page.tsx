@@ -20,6 +20,7 @@ import {
   formatSearchStateLabel,
   searchStateLabelTone,
 } from "@/lib/search/searchState";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
@@ -80,9 +81,11 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
         title="Search results"
         subtitle="Compare pricing and lead times across providers."
         actions={
-          <Link href="/quote" className={primaryCtaClasses}>
-            Start a search
-          </Link>
+          SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+            <Link href="/quote" className={primaryCtaClasses}>
+              Start a search
+            </Link>
+          ) : null
         }
       >
         <EmptyStateCard
@@ -218,9 +221,11 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                 Edit search
               </Link>
             ) : null}
-            <Link href="/quote" className={secondaryCtaClasses}>
-              New search
-            </Link>
+            {SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+              <Link href="/quote" className={secondaryCtaClasses}>
+                New search
+              </Link>
+            ) : null}
           </div>
         </div>
         <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-2 lg:grid-cols-4">
@@ -465,7 +470,11 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             <EmptyStateCard
               title="No searches yet"
               description="Upload a new RFQ to start comparing pricing and lead times."
-              action={{ label: "Start a search", href: "/quote" }}
+              action={
+                SHOW_LEGACY_QUOTE_ENTRYPOINTS
+                  ? { label: "Start a search", href: "/quote" }
+                  : null
+              }
               secondaryAction={{ label: "View dashboard", href: "/customer" }}
             />
           ) : (

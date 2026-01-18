@@ -14,6 +14,7 @@ import {
 } from "@/app/actions";
 import { CONTACT_FOCUS_OPTIONS } from "@/data/contact";
 import { ghostCtaClasses, primaryCtaClasses } from "@/lib/ctas";
+import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 
 const INITIAL_STATE: ContactFormState = {
   success: false,
@@ -114,12 +115,14 @@ export default function ContactForm() {
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <SubmitButton disabled={disableFields} />
-        <Link
-          href="/quote"
-          className={clsx(ghostCtaClasses, "w-full justify-center")}
-        >
-          Just send an RFQ instead
-        </Link>
+        {SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
+          <Link
+            href="/quote"
+            className={clsx(ghostCtaClasses, "w-full justify-center")}
+          >
+            Just send an RFQ instead
+          </Link>
+        ) : null}
       </div>
       <p className="text-xs text-ink-soft">
         We reply with real project context—no auto-responders or marketing drip.

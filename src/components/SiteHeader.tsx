@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { primaryCtaClasses } from "@/lib/ctas";
+import { SHOW_SUPPLIER_DIRECTORY_PUBLIC } from "@/lib/ui/deprecation";
 import { BrandMark } from "@/components/BrandMark";
 
-const PUBLIC_LINKS = [
-  { label: "Suppliers", href: "/suppliers" },
-  { label: "Join as Supplier", href: "/suppliers/join" },
-];
+const PUBLIC_LINKS = SHOW_SUPPLIER_DIRECTORY_PUBLIC
+  ? [
+      { label: "Suppliers", href: "/suppliers" },
+      { label: "Join as Supplier", href: "/suppliers/join" },
+    ]
+  : [];
 
 export default function SiteHeader() {
   const pathname = usePathname() ?? "/";
@@ -33,17 +36,19 @@ export default function SiteHeader() {
           className="text-base font-semibold text-ink transition-colors hover:text-ink-soft"
         />
 
-        <nav className="flex flex-wrap items-center justify-center gap-4 text-sm font-medium text-ink-soft md:justify-center">
-          {PUBLIC_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="transition-colors hover:text-ink"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+        {PUBLIC_LINKS.length > 0 ? (
+          <nav className="flex flex-wrap items-center justify-center gap-4 text-sm font-medium text-ink-soft md:justify-center">
+            {PUBLIC_LINKS.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="transition-colors hover:text-ink"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        ) : null}
 
         <nav className="flex flex-wrap items-center justify-start gap-3 text-sm font-medium text-ink-soft md:justify-end">
           <Link href="/customer/search" className={primaryCtaClasses}>
