@@ -19,6 +19,7 @@ import {
   BulkDestinationEmailModal,
   DestinationEmailModal,
   DestinationErrorModal,
+  DestinationWebFormModal,
   OfferModal,
   type BulkDestinationEmailResult,
 } from "@/components/admin/rfq/destinationModals";
@@ -28,11 +29,13 @@ import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import type { AdminOpsInboxRow } from "@/server/ops/inbox";
 import {
   generateDestinationEmailAction,
+  generateDestinationWebFormInstructionsAction,
   updateDestinationStatusAction,
   upsertRfqOffer,
   type UpsertRfqOfferState,
 } from "@/app/admin/quotes/[id]/actions";
 import { buildPublicUrl } from "@/lib/publicUrl";
+import { resolveDispatchModeValue } from "@/lib/adapters/providerDispatchMode";
 
 type OpsInboxDispatchDrawerProps = {
   row: AdminOpsInboxRow;
@@ -125,6 +128,14 @@ export function OpsInboxDispatchDrawer({
   const [emailPackage, setEmailPackage] = useState<{ subject: string; body: string } | null>(null);
   const [emailLoadingId, setEmailLoadingId] = useState<string | null>(null);
   const [emailErrorsById, setEmailErrorsById] = useState<Record<string, string>>({});
+  const [webFormDestination, setWebFormDestination] =
+    useState<AdminOpsInboxRow["destinations"][number] | null>(null);
+  const [webFormPackage, setWebFormPackage] = useState<{
+    url: string;
+    instructions: string;
+  } | null>(null);
+  const [webFormLoadingId, setWebFormLoadingId] = useState<string | null>(null);
+  const [webFormErrorsById, setWebFormErrorsById] = useState<Record<string, string>>({});
   const [selectedDestinationIds, setSelectedDestinationIds] = useState<Set<string>>(new Set());
   const [bulkActionSummary, setBulkActionSummary] = useState<BulkActionSummary | null>(null);
   const [bulkActionType, setBulkActionType] = useState<BulkActionType | null>(null);
@@ -172,7 +183,11 @@ export function OpsInboxDispatchDrawer({
   }, [row.destinations, selectedDestinationIds]);
   const selectedCount = selectedDestinations.length;
   const selectedEmailDestinations = useMemo(
-    () => selectedDestinations.filter((destination) => destination.quoting_mode === "email"),
+    () =>
+      selectedDestinations.filter(
+        (destination) =>
+          resolveDispatchModeValue(destination.dispatch_mode, destination.quoting_mode) === "email",
+      ),
     [selectedDestinations],
   );
   const selectedEmailCount = selectedEmailDestinations.length;
@@ -323,6 +338,43 @@ export function OpsInboxDispatchDrawer({
     });
   };
 
+  const openWebFormModal = (
+    destination: AdminOpsInboxRow["destinations"][number],
+    url: string,
+    instructions: string,
+  ) => {
+    setWebFormDestination(destination);
+    setWebFormPackage({ url, instructions });
+  };
+
+  const closeWebFormModal = () => {
+    setWebFormDestination(null);
+    setWebFormPackage(null);
+  };
+
+  const handleGenerateWebFormInstructions = (
+    destination: AdminOpsInboxRow["destinations"][number],
+  ) => {
+    if (pending) return;
+    setWebFormErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
+    setWebFormDestination(null);
+    setWebFormPackage(null);
+    setWebFormLoadingId(destination.id);
+    startTransition(async () => {
+      const result = await generateDestinationWebFormInstructionsAction({
+        destinationId: destination.id,
+      });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: "Instructions generated." });
+        openWebFormModal(destination, result.url, result.instructions);
+      } else {
+        setFeedback({ tone: "error", message: result.error });
+        setWebFormErrorsById((prev) => ({ ...prev, [destination.id]: result.error }));
+      }
+      setWebFormLoadingId(null);
+    });
+  };
+
   const toggleDestinationSelected = (destinationId: string) => {
     setSelectedDestinationIds((prev) => {
       const next = new Set(prev);
@@ -376,7 +428,10 @@ export function OpsInboxDispatchDrawer({
         async (destination): Promise<BulkDestinationEmailResult> => {
           const providerLabel =
             destination.provider_name || destination.provider_id || "Provider";
-          if (destination.quoting_mode !== "email") {
+          if (
+            resolveDispatchModeValue(destination.dispatch_mode, destination.quoting_mode) !==
+            "email"
+          ) {
             return {
               destinationId: destination.id,
               providerLabel,
@@ -766,9 +821,18 @@ export function OpsInboxDispatchDrawer({
                           destination.provider_name || destination.provider_id || "Provider";
                         const providerType = formatEnumLabel(destination.provider_type);
                         const providerMode = formatEnumLabel(destination.quoting_mode);
-                        const isEmailMode = destination.quoting_mode === "email";
+                        const dispatchMode = resolveDispatchModeValue(
+                          destination.dispatch_mode,
+                          destination.quoting_mode,
+                        );
+                        const isEmailMode = dispatchMode === "email";
+                        const isWebFormMode = dispatchMode === "web_form";
+                        const webFormUrl =
+                          destination.provider_rfq_url || destination.provider_website || "";
                         const isEmailGenerating = pending && emailLoadingId === destination.id;
+                        const isWebFormGenerating = pending && webFormLoadingId === destination.id;
                         const emailError = emailErrorsById[destination.id];
+                        const webFormError = webFormErrorsById[destination.id];
                         const statusKey = normalizeStatus(destination.status);
                         const statusMeta =
                           statusKey === "unknown"
@@ -878,6 +942,43 @@ export function OpsInboxDispatchDrawer({
                                   {isEmailGenerating ? "Generating..." : "Generate Email"}
                                 </button>
                               ) : null}
+                              {isWebFormMode ? (
+                                webFormUrl ? (
+                                  <a
+                                    href={webFormUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={copyOfferButtonEnabledClass}
+                                  >
+                                    Open RFQ page
+                                  </a>
+                                ) : (
+                                  <span title="RFQ URL unavailable." className="inline-flex">
+                                    <button
+                                      type="button"
+                                      disabled
+                                      className={copyOfferButtonDisabledClass}
+                                    >
+                                      Open RFQ page
+                                    </button>
+                                  </span>
+                                )
+                              ) : null}
+                              {isWebFormMode ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateWebFormInstructions(destination)}
+                                  disabled={pending || isWebFormGenerating}
+                                  className={clsx(
+                                    "rounded-full border border-indigo-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition",
+                                    pending || isWebFormGenerating
+                                      ? "cursor-not-allowed opacity-60"
+                                      : "hover:border-indigo-400 hover:text-white",
+                                  )}
+                                >
+                                  {isWebFormGenerating ? "Generating..." : "Generate RFQ Instructions"}
+                                </button>
+                              ) : null}
                               {offerToken ? (
                                 <CopyTextButton
                                   text={offerLink}
@@ -939,6 +1040,11 @@ export function OpsInboxDispatchDrawer({
                                   {emailError}
                                 </p>
                               ) : null}
+                              {webFormError ? (
+                                <p className="basis-full text-xs text-amber-200" role="alert">
+                                  {webFormError}
+                                </p>
+                              ) : null}
                             </div>
                           </div>
                         );
@@ -982,6 +1088,23 @@ export function OpsInboxDispatchDrawer({
         onMarkSent={() => {
           if (!emailDestination) return;
           handleStatusUpdate(emailDestination.id, "sent");
+        }}
+      />
+
+      <DestinationWebFormModal
+        isOpen={Boolean(webFormDestination && webFormPackage)}
+        providerLabel={
+          webFormDestination
+            ? webFormDestination.provider_name || webFormDestination.provider_id
+            : "Provider"
+        }
+        url={webFormPackage?.url ?? ""}
+        instructions={webFormPackage?.instructions ?? ""}
+        pending={pending}
+        onClose={closeWebFormModal}
+        onMarkSent={() => {
+          if (!webFormDestination) return;
+          handleStatusUpdate(webFormDestination.id, "sent");
         }}
       />
 

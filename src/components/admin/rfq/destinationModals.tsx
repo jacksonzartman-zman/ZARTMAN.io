@@ -27,6 +27,16 @@ type DestinationEmailModalProps = {
   onMarkSent: () => void;
 };
 
+type DestinationWebFormModalProps = {
+  isOpen: boolean;
+  providerLabel: string;
+  url: string;
+  instructions: string;
+  pending: boolean;
+  onClose: () => void;
+  onMarkSent: () => void;
+};
+
 export type BulkDestinationEmailResult =
   | {
       destinationId: string;
@@ -347,6 +357,97 @@ export function DestinationEmailModal({
               className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:outline-none"
             />
             <CopyTextButton text={body} idleLabel="Copy body" />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onMarkSent}
+              disabled={pending}
+              className={clsx(
+                "rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition",
+                pending ? "cursor-not-allowed opacity-60" : "hover:border-slate-500 hover:text-white",
+              )}
+            >
+              Mark Sent
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DestinationWebFormModal({
+  isOpen,
+  providerLabel,
+  url,
+  instructions,
+  pending,
+  onClose,
+  onMarkSent,
+}: DestinationWebFormModalProps) {
+  if (!isOpen) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Generate RFQ instructions"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-3xl rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Web-form RFQ instructions</h3>
+            <p className="mt-1 text-sm text-slate-300">
+              Instructions for{" "}
+              <span className="font-semibold text-slate-100">{providerLabel}</span>.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              RFQ URL
+            </label>
+            <input
+              value={url}
+              readOnly
+              placeholder="No RFQ URL available"
+              className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none"
+            />
+            <CopyTextButton text={url} idleLabel="Copy URL" />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Instructions
+            </label>
+            <textarea
+              value={instructions}
+              readOnly
+              rows={10}
+              className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:outline-none"
+            />
+            <CopyTextButton text={instructions} idleLabel="Copy instructions" />
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">

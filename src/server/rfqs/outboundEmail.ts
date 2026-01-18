@@ -1,5 +1,9 @@
 import { supabaseServer } from "@/lib/supabaseServer";
-import { getAdapterForProvider, type OutboundRfqFileLink } from "@/lib/adapters/providerAdapter";
+import {
+  getAdapterForProvider,
+  type BuildOutboundArgs,
+  type OutboundRfqFileLink,
+} from "@/lib/adapters/providerAdapter";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import {
   isMissingColumnError,
@@ -49,6 +53,14 @@ type FileLoadResult =
 
 type OutboundEmailResult =
   | { ok: true; subject: string; body: string; providerId: string }
+  | { ok: false; error: string };
+
+type OutboundContextResult =
+  | { ok: true; context: BuildOutboundArgs; providerId: string }
+  | { ok: false; error: string };
+
+type OutboundWebFormResult =
+  | { ok: true; url: string | null; instructions: string; providerId: string }
   | { ok: false; error: string };
 
 function normalizeString(value: unknown): string {
@@ -262,23 +274,26 @@ function pickFirst(...values: Array<string | null | undefined>): string | null {
   return null;
 }
 
-export async function buildDestinationOutboundEmail(args: {
-  quoteId: string;
+async function loadDestinationOutboundContext(args: {
+  quoteId?: string;
   destinationId: string;
-}): Promise<OutboundEmailResult> {
-  const quoteId = normalizeId(args.quoteId);
+}): Promise<OutboundContextResult> {
   const destinationId = normalizeId(args.destinationId);
-  if (!quoteId || !destinationId) {
+  const quoteIdInput = normalizeId(args.quoteId);
+  if (!destinationId) {
     return { ok: false, error: "Missing RFQ identifiers." };
   }
 
-  const destinationQuery = (select: string) =>
-    supabaseServer
+  const destinationQuery = (select: string) => {
+    let query = supabaseServer
       .from("rfq_destinations")
       .select(select)
-      .eq("id", destinationId)
-      .eq("rfq_id", quoteId)
-      .maybeSingle<DestinationRow>();
+      .eq("id", destinationId);
+    if (quoteIdInput) {
+      query = query.eq("rfq_id", quoteIdInput);
+    }
+    return query.maybeSingle<DestinationRow>();
+  };
 
   let destinationResult = await destinationQuery("id,rfq_id,provider_id,offer_token");
   if (destinationResult.error && isMissingColumnError(destinationResult.error, "offer_token")) {
@@ -293,13 +308,18 @@ export async function buildDestinationOutboundEmail(args: {
     }
     console.error("[rfq outbound email] destination lookup failed", {
       destinationId,
-      quoteId,
+      quoteId: quoteIdInput || null,
       error: serializeSupabaseError(destinationError),
     });
     return { ok: false, error: "Unable to load this destination right now." };
   }
 
   if (!destination?.id) {
+    return { ok: false, error: "RFQ destination not found." };
+  }
+
+  const quoteId = normalizeId(destination.rfq_id);
+  if (!quoteId) {
     return { ok: false, error: "RFQ destination not found." };
   }
 
@@ -397,7 +417,46 @@ export async function buildDestinationOutboundEmail(args: {
     ? buildPortalLink(`/provider/offer/${encodeURIComponent(offerToken)}`)
     : null;
 
-  const adapter = getAdapterForProvider(provider);
+  return {
+    ok: true,
+    providerId,
+    context: {
+      provider,
+      destination: {
+        id: destination.id,
+        offerLink,
+      },
+      quote: {
+        id: quote.id,
+        title: quoteTitle,
+        process: uploadMeta?.manufacturing_process ?? null,
+        quantity: uploadMeta?.quantity ?? null,
+        targetDate: quote.target_date ?? null,
+      },
+      customer: {
+        name: customerName,
+        email: customerEmail,
+        company: customerCompany,
+        phone: customerPhone,
+      },
+      files: fileLinksResult.links,
+    },
+  };
+}
+
+export async function buildDestinationOutboundEmail(args: {
+  quoteId: string;
+  destinationId: string;
+}): Promise<OutboundEmailResult> {
+  const contextResult = await loadDestinationOutboundContext({
+    quoteId: args.quoteId,
+    destinationId: args.destinationId,
+  });
+  if (!contextResult.ok) {
+    return { ok: false, error: contextResult.error };
+  }
+
+  const adapter = getAdapterForProvider(contextResult.context.provider);
   if (!adapter) {
     return {
       ok: false,
@@ -405,27 +464,7 @@ export async function buildDestinationOutboundEmail(args: {
     };
   }
 
-  const outbound = adapter.buildOutbound({
-    provider,
-    destination: {
-      id: destination.id,
-      offerLink,
-    },
-    quote: {
-      id: quote.id,
-      title: quoteTitle,
-      process: uploadMeta?.manufacturing_process ?? null,
-      quantity: uploadMeta?.quantity ?? null,
-      targetDate: quote.target_date ?? null,
-    },
-    customer: {
-      name: customerName,
-      email: customerEmail,
-      company: customerCompany,
-      phone: customerPhone,
-    },
-    files: fileLinksResult.links,
-  });
+  const outbound = adapter.buildOutbound(contextResult.context);
 
   if (outbound.mode !== "email") {
     return { ok: false, error: "This provider is not configured for email dispatch." };
@@ -435,5 +474,47 @@ export async function buildDestinationOutboundEmail(args: {
     return { ok: false, error: "Generated email content was incomplete." };
   }
 
-  return { ok: true, subject: outbound.subject, body: outbound.body, providerId };
+  return {
+    ok: true,
+    subject: outbound.subject,
+    body: outbound.body,
+    providerId: contextResult.providerId,
+  };
+}
+
+export async function buildDestinationWebFormInstructions(args: {
+  destinationId: string;
+}): Promise<OutboundWebFormResult> {
+  const contextResult = await loadDestinationOutboundContext({
+    destinationId: args.destinationId,
+  });
+  if (!contextResult.ok) {
+    return { ok: false, error: contextResult.error };
+  }
+
+  const adapter = getAdapterForProvider(contextResult.context.provider);
+  if (!adapter) {
+    return {
+      ok: false,
+      error: "No outbound dispatch adapter is available for this provider.",
+    };
+  }
+
+  const outbound = adapter.buildOutbound(contextResult.context);
+  if (outbound.mode !== "web_form") {
+    return { ok: false, error: "This provider is not configured for web-form dispatch." };
+  }
+
+  const instructions = normalizeString(outbound.webFormInstructions);
+  if (!instructions) {
+    return { ok: false, error: "Generated instructions were incomplete." };
+  }
+
+  const url = normalizeString(outbound.webFormUrl) || null;
+  return {
+    ok: true,
+    url,
+    instructions,
+    providerId: contextResult.providerId,
+  };
 }

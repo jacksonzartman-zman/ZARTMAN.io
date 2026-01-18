@@ -51,6 +51,9 @@ export type AdminOpsInboxDestination = {
   provider_name: string | null;
   provider_type: string | null;
   quoting_mode: string | null;
+  dispatch_mode: string | null;
+  provider_website: string | null;
+  provider_rfq_url: string | null;
   status: string | null;
   created_at: string | null;
   last_status_at: string | null;
@@ -127,6 +130,9 @@ type DestinationRow = {
     name?: string | null;
     provider_type?: string | null;
     quoting_mode?: string | null;
+    dispatch_mode?: string | null;
+    website?: string | null;
+    rfq_url?: string | null;
   } | null;
 };
 
@@ -556,6 +562,9 @@ async function loadDestinationsByQuoteId(
     supportsErrorMessage,
     supportsOfferToken,
     providersSupported,
+    supportsDispatchMode,
+    supportsRfqUrl,
+    supportsProviderWebsite,
   ] = await Promise.all([
     hasColumns("rfq_destinations", ["last_status_at"]),
     hasColumns("rfq_destinations", ["sent_at"]),
@@ -568,6 +577,9 @@ async function loadDestinationsByQuoteId(
       warnPrefix: "[admin ops inbox]",
       warnKey: "admin_ops_inbox:providers",
     }),
+    hasColumns("providers", ["dispatch_mode"]),
+    hasColumns("providers", ["rfq_url"]),
+    hasColumns("providers", ["website"]),
   ]);
 
   const destinationSelect = [
@@ -584,8 +596,12 @@ async function loadDestinationsByQuoteId(
     .filter(Boolean)
     .join(",");
 
+  const providerColumns = ["name", "provider_type", "quoting_mode"];
+  if (supportsDispatchMode) providerColumns.push("dispatch_mode");
+  if (supportsRfqUrl) providerColumns.push("rfq_url");
+  if (supportsProviderWebsite) providerColumns.push("website");
   const withProviderSelect = providersSupported
-    ? `${destinationSelect},provider:providers(name,provider_type,quoting_mode)`
+    ? `${destinationSelect},provider:providers(${providerColumns.join(",")})`
     : destinationSelect;
 
   const loadRows = async (select: string): Promise<DestinationRow[] | null> => {
@@ -655,6 +671,9 @@ async function loadDestinationsByQuoteId(
       provider_name: normalizeOptionalString(row?.provider?.name),
       provider_type: normalizeOptionalString(row?.provider?.provider_type),
       quoting_mode: normalizeOptionalString(row?.provider?.quoting_mode),
+      dispatch_mode: normalizeOptionalString(row?.provider?.dispatch_mode),
+      provider_website: normalizeOptionalString(row?.provider?.website),
+      provider_rfq_url: normalizeOptionalString(row?.provider?.rfq_url),
       status: normalizeOptionalString(row?.status),
       created_at: normalizeOptionalString(row?.created_at),
       last_status_at: normalizeOptionalString(row?.last_status_at),
