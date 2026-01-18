@@ -206,6 +206,11 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
               />
             ) : null}
             {activeQuote ? (
+              <Link href={`/customer/quotes/${activeQuote.id}`} className={secondaryCtaClasses}>
+                Open quote
+              </Link>
+            ) : null}
+            {activeQuote ? (
               <Link
                 href={`/customer/quotes/${activeQuote.id}#uploads`}
                 className={primaryCtaClasses}

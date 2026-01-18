@@ -11,6 +11,7 @@ import {
   useCallback,
 } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import {
   CAD_ACCEPT_STRING,
@@ -409,6 +410,7 @@ export default function UploadBox({
   prefillContact,
   showExplainer = false,
 }: UploadBoxProps) {
+  const router = useRouter();
   const baseState = useMemo(
     () => buildInitialUploadState(prefillContact),
     [prefillContact],
@@ -1474,10 +1476,14 @@ export default function UploadBox({
         setSuccessMessage(null);
         return;
       }
+      const nextQuoteId = finalized.quoteId.trim();
       setError(null);
       setSuccessMessage(finalized.message || "RFQ received.");
       setFieldErrors({});
       resetUploadState();
+      if (nextQuoteId) {
+        router.push(`/customer/search?quote=${encodeURIComponent(nextQuoteId)}`);
+      }
     } catch (e) {
       console.error("[intake-upload] failed", { step: "finalize", message: "unexpected error", err: e });
       setError(QUOTE_INTAKE_FALLBACK_ERROR);
