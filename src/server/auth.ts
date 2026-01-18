@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { User } from "@supabase/supabase-js";
-import { serializeSupabaseError } from "@/server/admin/logging";
+import { extractSupabaseSource, serializeSupabaseError } from "@/server/admin/logging";
+import { debugOnce } from "@/server/db/schemaErrors";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -51,6 +52,7 @@ type SupabaseClientType = ReturnType<typeof createServerSupabaseClient>;
 export type ServerAuthUserResult = {
   user: User | null;
   error: unknown | null;
+  hasUser: boolean;
 };
 
 type RequireUserOptions = {
@@ -114,48 +116,159 @@ function isDynamicServerUsageError(error: unknown): boolean {
   return hasDigest(error) || (error instanceof Error && hasDigest(error.message));
 }
 
+type SupabaseAuthUserResult = {
+  data: { user: User | null } | null;
+  error: unknown | null;
+  missingSession: boolean;
+};
+
+const AUTH_SESSION_MISSING_LOG_KEY = "auth:session_missing";
+
+function readStringProp(obj: unknown, key: string): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  return key in obj && typeof (obj as { [key: string]: unknown })[key] === "string"
+    ? ((obj as { [key: string]: unknown })[key] as string)
+    : null;
+}
+
+function readNumberProp(obj: unknown, key: string): number | null {
+  if (!obj || typeof obj !== "object") return null;
+  return key in obj && typeof (obj as { [key: string]: unknown })[key] === "number"
+    ? ((obj as { [key: string]: unknown })[key] as number)
+    : null;
+}
+
+function readBooleanProp(obj: unknown, key: string): boolean | null {
+  if (!obj || typeof obj !== "object") return null;
+  return key in obj && typeof (obj as { [key: string]: unknown })[key] === "boolean"
+    ? ((obj as { [key: string]: unknown })[key] as boolean)
+    : null;
+}
+
+function isAuthSessionMissingError(error: unknown): boolean {
+  if (!error) return false;
+  const source = extractSupabaseSource(error);
+  const serialized = serializeSupabaseError(error);
+  const message =
+    readStringProp(source, "message") ??
+    readStringProp(error, "message") ??
+    serialized.message ??
+    (error instanceof Error ? error.message : null);
+  if (message && message.toLowerCase().includes("auth session missing")) {
+    return true;
+  }
+
+  const name =
+    readStringProp(source, "name") ??
+    readStringProp(error, "name") ??
+    (error instanceof Error ? error.name : null);
+  if (name === "AuthSessionMissingError") {
+    return true;
+  }
+
+  const isAuthError =
+    readBooleanProp(source, "__isAuthError") ?? readBooleanProp(error, "__isAuthError");
+  const status =
+    readNumberProp(source, "status") ??
+    readNumberProp(source, "statusCode") ??
+    readNumberProp(error, "status") ??
+    readNumberProp(error, "statusCode");
+  return Boolean(isAuthError && status === 400);
+}
+
+function logMissingAuthSessionOnce(error: unknown) {
+  const source = extractSupabaseSource(error);
+  const serialized = serializeSupabaseError(error);
+  debugOnce(
+    AUTH_SESSION_MISSING_LOG_KEY,
+    "[auth] missing session; treating as anonymous",
+    {
+      message: serialized.message,
+      name: readStringProp(source, "name") ?? readStringProp(error, "name"),
+      status:
+        readNumberProp(source, "status") ??
+        readNumberProp(source, "statusCode") ??
+        readNumberProp(error, "status") ??
+        readNumberProp(error, "statusCode"),
+    },
+  );
+}
+
+async function getSupabaseAuthUser(
+  supabase: SupabaseClientType,
+): Promise<SupabaseAuthUserResult> {
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error && isAuthSessionMissingError(error)) {
+      logMissingAuthSessionOnce(error);
+      return { data: { user: null }, error: null, missingSession: true };
+    }
+    return { data: data ?? null, error: error ?? null, missingSession: false };
+  } catch (error) {
+    if (isAuthSessionMissingError(error)) {
+      logMissingAuthSessionOnce(error);
+      return { data: { user: null }, error: null, missingSession: true };
+    }
+    throw error;
+  }
+}
+
+// Example (anonymous request, no cookies):
+// const { user, error, hasUser } = await getServerAuthUser();
+// -> user === null, error === null, hasUser === false (no error logs)
 export async function getServerAuthUser(): Promise<ServerAuthUserResult> {
   try {
     const supabase = await createReadOnlyAuthClient();
-    const { data, error } = await supabase.auth.getUser();
+    const { data, error, missingSession } = await getSupabaseAuthUser(supabase);
+    const hasUser = Boolean(data?.user);
     const serializedError = error ? serializeSupabaseError(error) : null;
 
     console.info("[auth] getUser result:", {
-      hasUser: Boolean(data?.user),
+      hasUser,
       error: serializedError,
     });
+
+    if (missingSession) {
+      return { user: null, error: null, hasUser: false };
+    }
 
     if (error) {
       if (isDynamicServerUsageError(error)) {
         console.info(
           "[auth] getUser run skipped during static generation (dynamic route only)",
         );
-        return { user: null, error: serializedError ?? error };
+        return { user: null, error: serializedError ?? error, hasUser: false };
       }
 
       console.error("[auth] getUser failed", error);
-      return { user: null, error: serializedError ?? error };
+      return { user: null, error: serializedError ?? error, hasUser: false };
     }
 
     if (!data?.user) {
       console.warn("[auth] no authenticated user returned by Supabase");
-      return { user: null, error: null };
+      return { user: null, error: null, hasUser: false };
     }
 
     return {
       user: data.user,
       error: null,
+      hasUser: true,
     };
   } catch (error) {
     if (isDynamicServerUsageError(error)) {
       console.info(
         "[auth] getServerAuthUser skipped during static generation (dynamic route only)",
       );
-      return { user: null, error };
+      return { user: null, error, hasUser: false };
+    }
+
+    if (isAuthSessionMissingError(error)) {
+      logMissingAuthSessionOnce(error);
+      return { user: null, error: null, hasUser: false };
     }
 
     console.error("[auth] getServerAuthUser: unexpected failure", error);
-    return { user: null, error };
+    return { user: null, error, hasUser: false };
   }
 }
 
