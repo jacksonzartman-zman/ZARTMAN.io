@@ -4,6 +4,7 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import type { ProviderSource, ProviderVerificationStatus } from "@/server/providers";
 
 export const RFQ_OFFER_STATUSES = ["received", "revised", "withdrawn"] as const;
 
@@ -13,6 +14,9 @@ export type RfqOfferProvider = {
   name: string | null;
   provider_type: string | null;
   quoting_mode: string | null;
+  verification_status?: ProviderVerificationStatus | string | null;
+  source?: ProviderSource | string | null;
+  is_active?: boolean | null;
   country?: string | null;
 };
 

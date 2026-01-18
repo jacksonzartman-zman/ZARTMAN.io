@@ -277,19 +277,42 @@ export async function loadQuoteWorkspaceData(
 
       if (providerIds.size > 0) {
         const providerStatuses = await getProviderStatusByIds(Array.from(providerIds));
-        const isVerifiedActive = (providerId: string) => {
+        const isVisibleToCustomer = (providerId: string) => {
           const snapshot = providerStatuses.get(providerId);
-          return Boolean(snapshot?.is_active && snapshot?.verification_status === "verified");
+          if (!snapshot) return false;
+          const isVerifiedActive = snapshot.is_active && snapshot.verification_status === "verified";
+          const isCustomerInvite = snapshot.source === "customer_invite";
+          return isVerifiedActive || isCustomerInvite;
+        };
+        const attachProviderStatus = <
+          T extends { provider_id: string; provider?: Record<string, unknown> | null },
+        >(
+          item: T,
+        ): T => {
+          const snapshot = providerStatuses.get(item.provider_id);
+          if (!snapshot || !item.provider) return item;
+          return {
+            ...item,
+            provider: {
+              ...item.provider,
+              verification_status:
+                snapshot.verification_status ?? item.provider.verification_status ?? null,
+              source: snapshot.source ?? item.provider.source ?? null,
+              is_active: snapshot.is_active ?? item.provider.is_active ?? null,
+            },
+          };
         };
 
         if (providerStatuses.size === 0) {
           rfqOffers = [];
           rfqDestinations = [];
         } else {
-          rfqOffers = rfqOffersRaw.filter((offer) => isVerifiedActive(offer.provider_id));
-          rfqDestinations = rfqDestinationsRaw.filter((destination) =>
-            isVerifiedActive(destination.provider_id),
-          );
+          rfqOffers = rfqOffersRaw
+            .filter((offer) => isVisibleToCustomer(offer.provider_id))
+            .map((offer) => attachProviderStatus(offer));
+          rfqDestinations = rfqDestinationsRaw
+            .filter((destination) => isVisibleToCustomer(destination.provider_id))
+            .map((destination) => attachProviderStatus(destination));
         }
       }
     }

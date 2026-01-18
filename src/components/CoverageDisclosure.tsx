@@ -60,7 +60,7 @@ export function CoverageDisclosure({
     <DisclosureSection
       id="coverage"
       title="Coverage"
-      description="Verified, active providers only."
+      description="Verified, active providers plus your invited suppliers."
       defaultOpen={defaultOpen}
       summary={summaryLabel}
       className={clsx("border-slate-900/60 bg-slate-950/40", className)}
@@ -77,7 +77,8 @@ export function CoverageDisclosure({
             <li>Responses arrive as suppliers quote, and we notify you as they land.</li>
           </ul>
           <p className="text-xs text-slate-300">
-            We send RFQs to verified suppliers and show you all responses in one place.
+            We send RFQs to verified suppliers and any suppliers you invite, and show all responses
+            in one place.
           </p>
         </div>
         <div className="space-y-3">

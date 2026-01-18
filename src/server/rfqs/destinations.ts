@@ -4,6 +4,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
+import type { ProviderSource, ProviderVerificationStatus } from "@/server/providers";
 
 export type RfqDestinationStatus =
   | "draft"
@@ -18,6 +19,9 @@ export type RfqDestinationProvider = {
   name: string | null;
   provider_type: string | null;
   quoting_mode: string | null;
+  verification_status?: ProviderVerificationStatus | string | null;
+  source?: ProviderSource | string | null;
+  is_active?: boolean | null;
   country?: string | null;
 };
 

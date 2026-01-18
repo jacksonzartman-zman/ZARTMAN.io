@@ -1451,6 +1451,7 @@ export default async function CustomerQuoteDetailPage({
           quoteId={quote.id}
           offers={rfqOffers}
           selectedOfferId={selectedOfferId}
+          matchContext={{ matchedOnProcess: Boolean(intakeProcess), locationFilter: null }}
         />
       )}
     </DisclosureSection>
