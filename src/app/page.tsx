@@ -1,4 +1,5 @@
 import Link from "next/link";
+import HomeProcessTabs from "@/components/marketing/HomeProcessTabs";
 import { primaryCtaClasses } from "@/lib/ctas";
 import { getActiveProviders } from "@/server/providers";
 
@@ -25,12 +26,42 @@ const HOW_IT_WORKS_STEPS = [
   },
 ];
 const PROCESS_TABS = [
-  { label: "CNC", isActive: true },
-  { label: "3DP", isActive: false },
-  { label: "Sheet Metal", isActive: false },
-  { label: "Injection", isActive: false },
-  { label: "Assembly", isActive: false },
-  { label: "AI Mode", isActive: false },
+  {
+    key: "cnc",
+    label: "CNC",
+    description: "Precision machining for tight tolerances and repeatable runs.",
+    examples: ["Aluminum housings", "Steel shafts", "Prototype fixtures"],
+  },
+  {
+    key: "3dp",
+    label: "3DP",
+    description: "Fast iterations for complex geometry and lightweight parts.",
+    examples: ["SLS brackets", "SLA prototypes", "MJF enclosures"],
+  },
+  {
+    key: "sheet-metal",
+    label: "Sheet Metal",
+    description: "Formed and cut parts with quick turn and scalable volumes.",
+    examples: ["Laser-cut panels", "Brake-formed brackets", "Chassis"],
+  },
+  {
+    key: "injection",
+    label: "Injection",
+    description: "Production tooling for consistent, high-volume plastic parts.",
+    examples: ["ABS housings", "Overmolded grips", "Consumer enclosures"],
+  },
+  {
+    key: "assembly",
+    label: "Assembly",
+    description: "Kitting, sub-assemblies, and final builds end to end.",
+    examples: ["Hardware installs", "Labeling", "Functional tests"],
+  },
+  {
+    key: "ai-mode",
+    label: "AI Mode",
+    description: "Let AI route the best process and supplier mix quickly.",
+    examples: ["Auto-matched suppliers", "Risk flags", "Price targets"],
+  },
 ];
 
 function getProviderInitials(name: string) {
@@ -65,21 +96,7 @@ export default async function HomePage() {
             </p>
           </div>
           <div className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-4 shadow-[0_18px_50px_rgba(2,6,23,0.45)] sm:p-6">
-            <div className="flex flex-wrap items-center gap-2">
-              {PROCESS_TABS.map((tab) => (
-                <button
-                  key={tab.label}
-                  type="button"
-                  className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                    tab.isActive
-                      ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-100 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
-                      : "border-slate-900/70 bg-slate-900/40 text-ink-soft hover:border-slate-700/80 hover:bg-slate-900/70"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            <HomeProcessTabs processes={PROCESS_TABS} />
             <div className="mt-4 rounded-2xl border border-slate-900/70 bg-slate-950/80 p-3">
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[1.2fr,0.6fr,0.9fr,auto] lg:items-stretch">
                 <label className="flex items-center justify-center gap-2 rounded-xl border border-slate-900/70 bg-slate-900/50 px-4 py-3 text-sm font-semibold text-ink transition hover:border-slate-700/80 hover:bg-slate-900/80">
