@@ -110,6 +110,13 @@ export const emailAdapter: ProviderAdapter = {
     lines.push(...buildSection("Files:", files, "No files available"));
     lines.push("");
 
+    const offerLink = normalizeString(args.offerLink);
+    if (offerLink) {
+      lines.push("Quote submission link:");
+      lines.push(`- Submit your quote here (no login required): ${offerLink}`);
+      lines.push("");
+    }
+
     lines.push("Questions:");
     lines.push("- Price (total and unit)");
     lines.push("- Lead time");
