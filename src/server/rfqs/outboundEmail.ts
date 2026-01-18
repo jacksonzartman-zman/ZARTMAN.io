@@ -6,6 +6,7 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { hasColumns } from "@/server/db/schemaContract";
 import type { ProviderRow } from "@/server/providers";
 import type { QuoteFileSource } from "@/server/quotes/types";
 
@@ -302,11 +303,31 @@ export async function buildDestinationOutboundEmail(args: {
     return { ok: false, error: "RFQ destination not found." };
   }
 
+  const [supportsDispatchMode, supportsRfqUrl] = await Promise.all([
+    hasColumns("providers", ["dispatch_mode"]),
+    hasColumns("providers", ["rfq_url"]),
+  ]);
+  const providerSelect = [
+    "id",
+    "name",
+    "provider_type",
+    "quoting_mode",
+    "is_active",
+    "website",
+    "notes",
+    "verification_status",
+    "source",
+    "verified_at",
+    "created_at",
+    supportsDispatchMode ? "dispatch_mode" : null,
+    supportsRfqUrl ? "rfq_url" : null,
+  ]
+    .filter(Boolean)
+    .join(",");
+
   const { data: provider, error: providerError } = await supabaseServer
     .from("providers")
-    .select(
-      "id,name,provider_type,quoting_mode,is_active,website,notes,verification_status,source,verified_at,created_at",
-    )
+    .select(providerSelect)
     .eq("id", destination.provider_id)
     .maybeSingle<ProviderRow>();
 
@@ -384,8 +405,12 @@ export async function buildDestinationOutboundEmail(args: {
     };
   }
 
-  const outbound = adapter.buildOutboundRfq({
+  const outbound = adapter.buildOutbound({
     provider,
+    destination: {
+      id: destination.id,
+      offerLink,
+    },
     quote: {
       id: quote.id,
       title: quoteTitle,
@@ -399,9 +424,12 @@ export async function buildDestinationOutboundEmail(args: {
       company: customerCompany,
       phone: customerPhone,
     },
-    fileLinks: fileLinksResult.links,
-    offerLink,
+    files: fileLinksResult.links,
   });
+
+  if (outbound.mode !== "email") {
+    return { ok: false, error: "This provider is not configured for email dispatch." };
+  }
 
   if (!normalizeString(outbound.subject) || !normalizeString(outbound.body)) {
     return { ok: false, error: "Generated email content was incomplete." };
