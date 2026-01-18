@@ -157,7 +157,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   const pendingDestinations = buildPendingDestinations({
     destinations: rfqDestinations,
     filters: filterContext.filters,
-  }).sort(sortDestinationsByLastUpdate);
+  }).sort(sortDestinationsBySlaUrgency);
   const visiblePendingDestinations = pendingDestinations.slice(0, 6);
   const remainingPendingDestinationCount = Math.max(
     pendingDestinations.length - visiblePendingDestinations.length,
@@ -960,21 +960,37 @@ function buildQuoteSummary(workspaceData: Awaited<ReturnType<typeof loadQuoteWor
   };
 }
 
-function parseDestinationTimestamp(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const ms = Date.parse(value);
-  return Number.isFinite(ms) ? ms : null;
+const DESTINATION_SLA_URGENCY_ORDER: Record<RfqDestinationStatus, number> = {
+  error: 0,
+  draft: 1,
+  queued: 2,
+  sent: 3,
+  viewed: 4,
+  quoted: 5,
+  declined: 6,
+};
+
+function sortDestinationsBySlaUrgency(a: RfqDestination, b: RfqDestination): number {
+  const aUrgency = DESTINATION_SLA_URGENCY_ORDER[a.status] ?? 99;
+  const bUrgency = DESTINATION_SLA_URGENCY_ORDER[b.status] ?? 99;
+  if (aUrgency !== bUrgency) {
+    return aUrgency - bUrgency;
+  }
+  const providerCompare = resolveDestinationProviderSortKey(a).localeCompare(
+    resolveDestinationProviderSortKey(b),
+    undefined,
+    { sensitivity: "base" },
+  );
+  if (providerCompare !== 0) return providerCompare;
+  return a.id.localeCompare(b.id);
 }
 
-function sortDestinationsByLastUpdate(a: RfqDestination, b: RfqDestination): number {
-  const aMs = parseDestinationTimestamp(a.last_status_at);
-  const bMs = parseDestinationTimestamp(b.last_status_at);
-  if (aMs != null && bMs != null && aMs !== bMs) {
-    return bMs - aMs;
+function resolveDestinationProviderSortKey(destination: RfqDestination): string {
+  const name = destination.provider?.name;
+  if (typeof name === "string" && name.trim().length > 0) {
+    return name.trim();
   }
-  if (aMs != null) return -1;
-  if (bMs != null) return 1;
-  return a.id.localeCompare(b.id);
+  return destination.provider_id;
 }
 
 function formatDestinationStatusLabel(status: RfqDestinationStatus): string {
