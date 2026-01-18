@@ -963,6 +963,7 @@ export async function addDestinationsAction(args: {
             process: criteria.process ?? undefined,
             ship_to_state: criteria.shipToState ?? undefined,
             ship_to_country: criteria.shipToCountry ?? undefined,
+            ship_to_postal_code: criteria.shipToPostalCode ?? undefined,
             quantity: typeof criteria.quantity === "number" ? criteria.quantity : undefined,
           }).filter(([, value]) => typeof value !== "undefined"),
         );
