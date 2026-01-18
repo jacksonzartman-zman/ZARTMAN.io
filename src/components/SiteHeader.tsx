@@ -7,16 +7,14 @@ import { BrandMark } from "@/components/BrandMark";
 
 const CENTER_LINKS = [
   { label: "Capabilities", href: "/capabilities" },
+  { label: "Suppliers", href: "/suppliers" },
   { label: "Resources", href: "/resources" },
 ];
 
 export default function SiteHeader() {
   const pathname = usePathname();
-  if (
-    pathname?.startsWith("/customer") ||
-    pathname?.startsWith("/supplier") ||
-    pathname?.startsWith("/provider/offer")
-  ) {
+  const isSupplierPortal = pathname === "/supplier" || pathname?.startsWith("/supplier/");
+  if (pathname?.startsWith("/customer") || isSupplierPortal || pathname?.startsWith("/provider/offer")) {
     return null;
   }
 

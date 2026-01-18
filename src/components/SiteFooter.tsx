@@ -30,6 +30,11 @@ const FOOTER_COLUMNS: {
     links: [
       { label: "Supplier portal", href: "/supplier" },
       {
+        label: "Supplier directory",
+        href: "/suppliers",
+        description: "Browse vetted suppliers by process and location.",
+      },
+      {
         label: "Become a supplier",
         href: "/supplier/signup",
         description:
