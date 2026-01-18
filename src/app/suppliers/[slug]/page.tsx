@@ -61,7 +61,7 @@ export default async function SupplierProfilePage(props: any) {
               {supplier.supplierName}
             </h1>
             <p className="text-base text-ink-muted heading-snug">
-              Review process coverage, location, and capabilities before requesting a quote.
+              Review process coverage, location, and capabilities before starting a supplier search.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
