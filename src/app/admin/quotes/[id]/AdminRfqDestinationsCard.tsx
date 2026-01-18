@@ -28,6 +28,8 @@ import {
   DestinationErrorModal,
   OfferModal,
 } from "@/components/admin/rfq/destinationModals";
+import { CopyTextButton } from "@/components/CopyTextButton";
+import { buildPublicUrl } from "@/lib/publicUrl";
 
 type AdminRfqDestinationsCardProps = {
   quoteId: string;
@@ -376,6 +378,15 @@ export function AdminRfqDestinationsCard({
                 });
                 const offer = offersByProviderId.get(destination.provider_id) ?? null;
                 const offerSummary = offer ? formatOfferSummary(offer) : null;
+                const offerToken =
+                  typeof destination.offer_token === "string" ? destination.offer_token.trim() : "";
+                const offerLink = offerToken
+                  ? buildPublicUrl(`/provider/offer/${offerToken}`)
+                  : "";
+                const copyOfferButtonBaseClass =
+                  "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition";
+                const copyOfferButtonEnabledClass = `${copyOfferButtonBaseClass} hover:border-slate-500 hover:text-white`;
+                const copyOfferButtonDisabledClass = `${copyOfferButtonBaseClass} cursor-not-allowed opacity-60`;
                 return (
                   <tr key={destination.id}>
                     <td className="px-4 py-2 align-top font-medium text-slate-100">
@@ -437,6 +448,23 @@ export function AdminRfqDestinationsCard({
                             {isEmailGenerating ? "Generating..." : "Generate RFQ Email"}
                           </button>
                         ) : null}
+                        {offerToken ? (
+                          <CopyTextButton
+                            text={offerLink}
+                            idleLabel="Copy Offer Link"
+                            className={copyOfferButtonEnabledClass}
+                          />
+                        ) : (
+                          <span title="Token unavailable." className="inline-flex">
+                            <button
+                              type="button"
+                              disabled
+                              className={copyOfferButtonDisabledClass}
+                            >
+                              Copy Offer Link
+                            </button>
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleStatusUpdate(destination.id, "sent")}

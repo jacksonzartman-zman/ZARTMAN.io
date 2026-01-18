@@ -47,6 +47,7 @@ export type AdminOpsInboxCustomer = {
 export type AdminOpsInboxDestination = {
   id: string;
   provider_id: string;
+  offer_token: string | null;
   provider_name: string | null;
   provider_type: string | null;
   quoting_mode: string | null;
@@ -116,6 +117,7 @@ type DestinationRow = {
   id: string | null;
   rfq_id: string | null;
   provider_id: string | null;
+  offer_token?: string | null;
   status: string | null;
   created_at: string | null;
   last_status_at?: string | null;
@@ -548,19 +550,25 @@ async function loadDestinationsByQuoteId(
     return map;
   }
 
-  const [supportsLastStatusAt, supportsSentAt, supportsErrorMessage, providersSupported] =
-    await Promise.all([
-      hasColumns("rfq_destinations", ["last_status_at"]),
-      hasColumns("rfq_destinations", ["sent_at"]),
-      hasColumns("rfq_destinations", ["error_message"]),
-      schemaGate({
-        enabled: true,
-        relation: "providers",
-        requiredColumns: ["name", "provider_type", "quoting_mode"],
-        warnPrefix: "[admin ops inbox]",
-        warnKey: "admin_ops_inbox:providers",
-      }),
-    ]);
+  const [
+    supportsLastStatusAt,
+    supportsSentAt,
+    supportsErrorMessage,
+    supportsOfferToken,
+    providersSupported,
+  ] = await Promise.all([
+    hasColumns("rfq_destinations", ["last_status_at"]),
+    hasColumns("rfq_destinations", ["sent_at"]),
+    hasColumns("rfq_destinations", ["error_message"]),
+    hasColumns("rfq_destinations", ["offer_token"]),
+    schemaGate({
+      enabled: true,
+      relation: "providers",
+      requiredColumns: ["name", "provider_type", "quoting_mode"],
+      warnPrefix: "[admin ops inbox]",
+      warnKey: "admin_ops_inbox:providers",
+    }),
+  ]);
 
   const destinationSelect = [
     "id",
@@ -571,6 +579,7 @@ async function loadDestinationsByQuoteId(
     supportsLastStatusAt ? "last_status_at" : null,
     supportsSentAt ? "sent_at" : null,
     supportsErrorMessage ? "error_message" : null,
+    supportsOfferToken ? "offer_token" : null,
   ]
     .filter(Boolean)
     .join(",");
@@ -642,6 +651,7 @@ async function loadDestinationsByQuoteId(
     const destination: AdminOpsInboxDestination = {
       id: destinationId,
       provider_id: providerId,
+      offer_token: normalizeOptionalString(row?.offer_token),
       provider_name: normalizeOptionalString(row?.provider?.name),
       provider_type: normalizeOptionalString(row?.provider?.provider_type),
       quoting_mode: normalizeOptionalString(row?.provider?.quoting_mode),
