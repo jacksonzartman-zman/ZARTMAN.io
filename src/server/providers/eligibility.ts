@@ -436,11 +436,12 @@ export async function getEligibleProvidersForQuote(
     const processMatch = normalizedCriteria.process
       ? hasMatchingProcess(normalizedCriteria.process, providerProcesses)
       : false;
-    const geoMatch =
+    const geoMatch = Boolean(
       (normalizedCriteria.shipToCountry &&
         providerCountry &&
         normalizedCriteria.shipToCountry === providerCountry) ||
-      (normalizedCriteria.shipToState && providerStates.has(normalizedCriteria.shipToState));
+        (normalizedCriteria.shipToState && providerStates.has(normalizedCriteria.shipToState)),
+    );
     const knownContact = buildKnownContactStatus({ provider, emailColumn });
     const verifiedActive = provider.is_active && provider.verification_status === "verified";
 
