@@ -19,6 +19,7 @@ import {
   BulkDestinationEmailModal,
   DestinationEmailModal,
   DestinationErrorModal,
+  DestinationSubmittedModal,
   DestinationWebFormModal,
   OfferModal,
   type BulkDestinationEmailResult,
@@ -30,6 +31,7 @@ import type { AdminOpsInboxRow } from "@/server/ops/inbox";
 import {
   generateDestinationEmailAction,
   generateDestinationWebFormInstructionsAction,
+  markDestinationSubmittedAction,
   updateDestinationStatusAction,
   upsertRfqOffer,
   type UpsertRfqOfferState,
@@ -82,6 +84,7 @@ const EMPTY_OFFER_STATE: UpsertRfqOfferState = {
 const STATUS_ORDER: DestinationStatusKey[] = [
   "queued",
   "sent",
+  "submitted",
   "error",
   "viewed",
   "quoted",
@@ -119,6 +122,10 @@ export function OpsInboxDispatchDrawer({
   const [errorDestination, setErrorDestination] = useState<AdminOpsInboxRow["destinations"][number] | null>(null);
   const [errorNote, setErrorNote] = useState("");
   const [errorFeedback, setErrorFeedback] = useState<string | null>(null);
+  const [submittedDestination, setSubmittedDestination] =
+    useState<AdminOpsInboxRow["destinations"][number] | null>(null);
+  const [submittedNotes, setSubmittedNotes] = useState("");
+  const [submittedFeedback, setSubmittedFeedback] = useState<string | null>(null);
   const [offerDestination, setOfferDestination] = useState<AdminOpsInboxRow["destinations"][number] | null>(null);
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(EMPTY_OFFER_DRAFT);
   const [offerFieldErrors, setOfferFieldErrors] = useState<Record<string, string>>({});
@@ -302,6 +309,48 @@ export function OpsInboxDispatchDrawer({
     });
   };
 
+  const openSubmittedPrompt = (destination: AdminOpsInboxRow["destinations"][number]) => {
+    setSubmittedFeedback(null);
+    setSubmittedNotes("");
+    setSubmittedDestination(destination);
+  };
+
+  const closeSubmittedPrompt = () => {
+    setSubmittedFeedback(null);
+    setSubmittedNotes("");
+    setSubmittedDestination(null);
+  };
+
+  const submitSubmitted = () => {
+    if (!submittedDestination || pending) return;
+    const trimmedNotes = submittedNotes.trim();
+    if (trimmedNotes.length < 5) {
+      setSubmittedFeedback("Add at least 5 characters of notes.");
+      return;
+    }
+    setSubmittedFeedback(null);
+    startTransition(async () => {
+      const result = await markDestinationSubmittedAction({
+        destinationId: submittedDestination.id,
+        notes: trimmedNotes,
+      });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: result.message });
+        closeSubmittedPrompt();
+        router.refresh();
+        return;
+      }
+      setSubmittedFeedback(result.error);
+    });
+  };
+
+  const handleSubmittedNotesChange = (value: string) => {
+    setSubmittedNotes(value);
+    if (submittedFeedback) {
+      setSubmittedFeedback(null);
+    }
+  };
+
   const openEmailModal = (
     destination: AdminOpsInboxRow["destinations"][number],
     subject: string,
@@ -397,6 +446,9 @@ export function OpsInboxDispatchDrawer({
     setBulkErrorNote("");
     setBulkErrorFeedback(null);
     setBulkErrorPromptOpen(false);
+    setSubmittedDestination(null);
+    setSubmittedNotes("");
+    setSubmittedFeedback(null);
   };
 
   const openBulkErrorPrompt = () => {
@@ -610,6 +662,9 @@ export function OpsInboxDispatchDrawer({
           setBulkErrorNote("");
           setBulkErrorFeedback(null);
           setBulkErrorPromptOpen(false);
+          setSubmittedDestination(null);
+          setSubmittedNotes("");
+          setSubmittedFeedback(null);
           setIsOpen(true);
         }}
         className={clsx(actionClassName, "cursor-pointer")}
@@ -838,6 +893,10 @@ export function OpsInboxDispatchDrawer({
                           statusKey === "unknown"
                             ? { label: "Unknown", className: "border-slate-700 bg-slate-900/40 text-slate-200" }
                             : DESTINATION_STATUS_META[statusKey];
+                        const submittedAtLabel = formatDateTime(destination.submitted_at, {
+                          includeTime: true,
+                          fallback: "-",
+                        });
                         const offer = offersByProviderId.get(destination.provider_id) ?? null;
                         const offerSummary = offer ? formatOfferSummary(offer) : null;
                         const offerToken =
@@ -916,6 +975,9 @@ export function OpsInboxDispatchDrawer({
                                 includeTime: true,
                                 fallback: "-",
                               })}
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              Submitted: {submittedAtLabel}
                             </div>
                             {destination.error_message ? (
                               <p className="mt-2 text-[11px] text-red-200">
@@ -1009,6 +1071,21 @@ export function OpsInboxDispatchDrawer({
                               >
                                 Mark Sent
                               </button>
+                              {isWebFormMode ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openSubmittedPrompt(destination)}
+                                  disabled={pending}
+                                  className={clsx(
+                                    "rounded-full border border-teal-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-100 transition",
+                                    pending
+                                      ? "cursor-not-allowed opacity-60"
+                                      : "hover:border-teal-400 hover:text-white",
+                                  )}
+                                >
+                                  Mark Submitted
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() => openOfferModal(destination)}
@@ -1108,6 +1185,21 @@ export function OpsInboxDispatchDrawer({
         }}
       />
 
+      <DestinationSubmittedModal
+        isOpen={Boolean(submittedDestination)}
+        providerLabel={
+          submittedDestination
+            ? submittedDestination.provider_name || submittedDestination.provider_id
+            : "Provider"
+        }
+        notes={submittedNotes}
+        notesError={submittedFeedback}
+        pending={pending}
+        onClose={closeSubmittedPrompt}
+        onChange={handleSubmittedNotesChange}
+        onSubmit={submitSubmitted}
+      />
+
       <BulkDestinationEmailModal
         isOpen={bulkEmailModalOpen}
         results={bulkEmailResults}
@@ -1147,6 +1239,7 @@ function normalizeStatus(value: string | null | undefined): DestinationStatusKey
     normalized === "draft" ||
     normalized === "queued" ||
     normalized === "sent" ||
+    normalized === "submitted" ||
     normalized === "viewed" ||
     normalized === "quoted" ||
     normalized === "declined" ||

@@ -47,6 +47,7 @@ const DESTINATION_STATUSES = new Set([
   "draft",
   "queued",
   "sent",
+  "submitted",
   "viewed",
   "quoted",
   "declined",
@@ -57,6 +58,7 @@ type DestinationStatus =
   | "draft"
   | "queued"
   | "sent"
+  | "submitted"
   | "viewed"
   | "quoted"
   | "declined"
@@ -89,6 +91,7 @@ export function computeDestinationNeedsAction(
         ? { needsAction: true, reason: "queued_too_long", ageHours }
         : { needsAction: false, reason: null, ageHours };
     case "sent":
+    case "submitted":
     case "viewed":
       return !hasOffer && ageHours > resolvedConfig.sentNoReplyMaxHours
         ? { needsAction: true, reason: "sent_no_reply", ageHours }
@@ -155,7 +158,7 @@ function resolveReferenceDate(
   if (status === "queued") {
     return resolveTimestamp(destination.created_at, destination.last_status_at);
   }
-  if (status === "sent" || status === "viewed") {
+  if (status === "sent" || status === "submitted" || status === "viewed") {
     return resolveTimestamp(
       destination.sent_at,
       destination.last_status_at,

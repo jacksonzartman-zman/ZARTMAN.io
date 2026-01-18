@@ -36,6 +36,7 @@ const QUOTING_MODE_LABELS: Array<{ key: QuotingModeKey; label: string }> = [
 const CONTACTED_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
   "queued",
   "sent",
+  "submitted",
   "viewed",
   "quoted",
   "declined",
@@ -45,6 +46,7 @@ const REPLIED_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set(["quoted", "
 const PENDING_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
   "queued",
   "sent",
+  "submitted",
   "viewed",
 ]);
 

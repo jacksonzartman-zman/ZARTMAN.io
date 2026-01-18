@@ -28,6 +28,7 @@ const PENDING_DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set(
   "draft",
   "queued",
   "sent",
+  "submitted",
   "viewed",
 ]);
 

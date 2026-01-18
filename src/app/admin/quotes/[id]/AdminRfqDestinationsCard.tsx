@@ -17,6 +17,7 @@ import {
   addDestinationsAction,
   generateDestinationEmailAction,
   generateDestinationWebFormInstructionsAction,
+  markDestinationSubmittedAction,
   updateDestinationStatusAction,
   upsertRfqOffer,
   type UpsertRfqOfferState,
@@ -35,6 +36,7 @@ import {
 import {
   DestinationEmailModal,
   DestinationErrorModal,
+  DestinationSubmittedModal,
   DestinationWebFormModal,
   OfferModal,
 } from "@/components/admin/rfq/destinationModals";
@@ -80,6 +82,9 @@ export function AdminRfqDestinationsCard({
   const [errorDestination, setErrorDestination] = useState<RfqDestination | null>(null);
   const [errorNote, setErrorNote] = useState("");
   const [errorFeedback, setErrorFeedback] = useState<string | null>(null);
+  const [submittedDestination, setSubmittedDestination] = useState<RfqDestination | null>(null);
+  const [submittedNotes, setSubmittedNotes] = useState("");
+  const [submittedFeedback, setSubmittedFeedback] = useState<string | null>(null);
   const [offerDestination, setOfferDestination] = useState<RfqDestination | null>(null);
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(EMPTY_OFFER_DRAFT);
   const [offerFieldErrors, setOfferFieldErrors] = useState<Record<string, string>>({});
@@ -316,6 +321,48 @@ export function AdminRfqDestinationsCard({
       }
       setErrorFeedback(result.error);
     });
+  };
+
+  const openSubmittedPrompt = (destination: RfqDestination) => {
+    setSubmittedFeedback(null);
+    setSubmittedNotes("");
+    setSubmittedDestination(destination);
+  };
+
+  const closeSubmittedPrompt = () => {
+    setSubmittedFeedback(null);
+    setSubmittedNotes("");
+    setSubmittedDestination(null);
+  };
+
+  const submitSubmitted = () => {
+    if (!submittedDestination || pending) return;
+    const trimmedNotes = submittedNotes.trim();
+    if (trimmedNotes.length < 5) {
+      setSubmittedFeedback("Add at least 5 characters of notes.");
+      return;
+    }
+    setSubmittedFeedback(null);
+    startTransition(async () => {
+      const result = await markDestinationSubmittedAction({
+        destinationId: submittedDestination.id,
+        notes: trimmedNotes,
+      });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: result.message });
+        closeSubmittedPrompt();
+        router.refresh();
+        return;
+      }
+      setSubmittedFeedback(result.error);
+    });
+  };
+
+  const handleSubmittedNotesChange = (value: string) => {
+    setSubmittedNotes(value);
+    if (submittedFeedback) {
+      setSubmittedFeedback(null);
+    }
   };
 
   const openEmailModal = (destination: RfqDestination, subject: string, body: string) => {
@@ -570,6 +617,9 @@ export function AdminRfqDestinationsCard({
                   Sent At
                 </th>
                 <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Submitted At
+                </th>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Last Update
                 </th>
                 <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -606,6 +656,10 @@ export function AdminRfqDestinationsCard({
                 const statusMeta =
                   DESTINATION_STATUS_META[destination.status] ?? DESTINATION_STATUS_META.draft;
                 const sentAtLabel = formatDateTime(destination.sent_at, {
+                  includeTime: true,
+                  fallback: "-",
+                });
+                const submittedAtLabel = formatDateTime(destination.submitted_at, {
                   includeTime: true,
                   fallback: "-",
                 });
@@ -647,6 +701,7 @@ export function AdminRfqDestinationsCard({
                       </div>
                     </td>
                     <td className="px-4 py-2 align-top text-slate-300">{sentAtLabel}</td>
+                    <td className="px-4 py-2 align-top text-slate-300">{submittedAtLabel}</td>
                     <td className="px-4 py-2 align-top text-slate-300">{lastUpdateLabel}</td>
                     <td className="px-4 py-2 align-top">
                       {offerSummary ? (
@@ -752,6 +807,21 @@ export function AdminRfqDestinationsCard({
                         >
                           Mark Sent
                         </button>
+                        {isWebFormMode ? (
+                          <button
+                            type="button"
+                            onClick={() => openSubmittedPrompt(destination)}
+                            disabled={pending}
+                            className={clsx(
+                              "rounded-full border border-teal-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-100 transition",
+                              pending
+                                ? "cursor-not-allowed opacity-60"
+                                : "hover:border-teal-400 hover:text-white",
+                            )}
+                          >
+                            Mark Submitted
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleStatusUpdate(destination.id, "quoted")}
@@ -859,6 +929,22 @@ export function AdminRfqDestinationsCard({
           if (!webFormDestination) return;
           handleStatusUpdate(webFormDestination.id, "sent");
         }}
+      />
+
+      <DestinationSubmittedModal
+        isOpen={Boolean(submittedDestination)}
+        providerLabel={
+          submittedDestination
+            ? providerById.get(submittedDestination.provider_id)?.name ??
+              submittedDestination.provider_id
+            : "Provider"
+        }
+        notes={submittedNotes}
+        notesError={submittedFeedback}
+        pending={pending}
+        onClose={closeSubmittedPrompt}
+        onChange={handleSubmittedNotesChange}
+        onSubmit={submitSubmitted}
       />
 
       <DestinationErrorModal
