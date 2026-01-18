@@ -29,6 +29,10 @@ import {
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
 import { loadBidsForQuote, type BidRow } from "@/server/bids";
 import { loadCustomerQuoteBidSummaries } from "@/server/customers/bids";
+import type {
+  RfqDestination,
+  RfqDestinationStatus,
+} from "@/server/rfqs/destinations";
 import { requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
@@ -187,6 +191,7 @@ export default async function CustomerQuoteDetailPage({
     filePreviews,
     parts,
     rfqOffers,
+    rfqDestinations,
     messages: quoteMessages,
     messagesError,
     filesMissingCanonical,
@@ -689,6 +694,15 @@ export default async function CustomerQuoteDetailPage({
     ? rfqOffers.find((offer) => offer.id === selectedOfferId) ?? null
     : null;
   const selectionConfirmedAt = quote.selection_confirmed_at ?? null;
+  const destinationCounts = summarizeRfqDestinationCounts(rfqDestinations ?? []);
+  const sortedDestinations = [...(rfqDestinations ?? [])].sort(sortDestinationsByLastUpdate);
+  const maxDestinationRows = 6;
+  const visibleDestinations = sortedDestinations.slice(0, maxDestinationRows);
+  const remainingDestinationCount = Math.max(sortedDestinations.length - visibleDestinations.length, 0);
+  const offersReceivedCount = rfqOffers.length;
+  const offersReceivedLabel = `${offersReceivedCount} offer${
+    offersReceivedCount === 1 ? "" : "s"
+  } received`;
 
   const kickoffTolerances =
     readOptionalUploadMetaString(uploadMeta, [
@@ -1529,6 +1543,112 @@ export default async function CustomerQuoteDetailPage({
     </DisclosureSection>
   );
 
+  const searchingProvidersSection = (
+    <PortalCard
+      title="Searching providers..."
+      description="Dispatch progress updates as providers receive and respond to your RFQ."
+    >
+      <div className="space-y-4">
+        <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-4">
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Queued
+            </dt>
+            <dd className="text-lg font-semibold text-white">{destinationCounts.queued}</dd>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Sent
+            </dt>
+            <dd className="text-lg font-semibold text-white">{destinationCounts.sent}</dd>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Quoted
+            </dt>
+            <dd className="text-lg font-semibold text-white">{destinationCounts.quoted}</dd>
+          </div>
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Error
+            </dt>
+            <dd className="text-lg font-semibold text-white">{destinationCounts.error}</dd>
+          </div>
+        </dl>
+
+        {offersReceivedCount > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-emerald-100">{offersReceivedLabel}</p>
+              <p className="text-xs text-emerald-200">
+                Compare offers to pick the best fit.
+              </p>
+            </div>
+            <Link
+              href="#compare-offers"
+              className="inline-flex items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+            >
+              Compare offers
+            </Link>
+          </div>
+        ) : (
+          <EmptyStateCard
+            title="Offers loading"
+            description="Offers appear as providers respond."
+            tone="info"
+          />
+        )}
+
+        {sortedDestinations.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-400">
+            Providers will appear here as we begin dispatching your RFQ.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-slate-900/60 bg-slate-950/30">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-900/60 bg-slate-950/60">
+                <tr className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <th className="px-4 py-2">Provider</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2">Last update</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-900/60">
+                {visibleDestinations.map((destination, index) => {
+                  const providerLabel = getDestinationProviderLabel(destination, index);
+                  const statusLabel = formatDestinationStatusLabel(destination.status);
+                  const statusTone = destinationStatusTone(destination.status);
+                  const lastUpdateLabel = formatDateTime(destination.last_status_at, {
+                    includeTime: true,
+                    fallback: "—",
+                  });
+
+                  return (
+                    <tr key={destination.id}>
+                      <td className="px-4 py-3 text-slate-100">{providerLabel}</td>
+                      <td className="px-4 py-3">
+                        <TagPill size="sm" tone={statusTone} className="normal-case">
+                          {statusLabel}
+                        </TagPill>
+                      </td>
+                      <td className="px-4 py-3 text-slate-300">{lastUpdateLabel}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {remainingDestinationCount > 0 ? (
+          <p className="text-xs text-slate-400">
+            + {remainingDestinationCount} more provider
+            {remainingDestinationCount === 1 ? "" : "s"} in progress
+          </p>
+        ) : null}
+      </div>
+    </PortalCard>
+  );
+
   const compareOffersSection = (
     <DisclosureSection
       id="compare-offers"
@@ -1702,6 +1822,7 @@ export default async function CustomerQuoteDetailPage({
 
           {orderWorkspaceSection}
           {decisionSection}
+          {searchingProvidersSection}
           {compareOffersSection}
           {selectionConfirmedSection}
           {kickoffSection}
@@ -2242,6 +2363,113 @@ function buildAwardCompareHref(
   params.set("awardSupplierId", supplierId);
   const qs = params.toString();
   return qs ? `?${qs}#award` : "#award";
+}
+
+type DestinationCounts = {
+  queued: number;
+  sent: number;
+  quoted: number;
+  error: number;
+};
+
+function summarizeRfqDestinationCounts(destinations: RfqDestination[]): DestinationCounts {
+  const counts: DestinationCounts = {
+    queued: 0,
+    sent: 0,
+    quoted: 0,
+    error: 0,
+  };
+
+  for (const destination of destinations) {
+    switch (destination.status) {
+      case "draft":
+      case "queued":
+        counts.queued += 1;
+        break;
+      case "sent":
+      case "viewed":
+      case "declined":
+        counts.sent += 1;
+        break;
+      case "quoted":
+        counts.quoted += 1;
+        break;
+      case "error":
+        counts.error += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return counts;
+}
+
+function parseDestinationTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function sortDestinationsByLastUpdate(a: RfqDestination, b: RfqDestination): number {
+  const aMs = parseDestinationTimestamp(a.last_status_at);
+  const bMs = parseDestinationTimestamp(b.last_status_at);
+  if (aMs != null && bMs != null && aMs !== bMs) {
+    return bMs - aMs;
+  }
+  if (aMs != null) return -1;
+  if (bMs != null) return 1;
+  return a.id.localeCompare(b.id);
+}
+
+function formatDestinationStatusLabel(status: RfqDestinationStatus): string {
+  switch (status) {
+    case "draft":
+      return "Draft";
+    case "queued":
+      return "Queued";
+    case "sent":
+      return "Sent";
+    case "viewed":
+      return "Viewed";
+    case "quoted":
+      return "Quoted";
+    case "declined":
+      return "Declined";
+    case "error":
+      return "Error";
+    default:
+      return "Pending";
+  }
+}
+
+function destinationStatusTone(status: RfqDestinationStatus): TagPillTone {
+  switch (status) {
+    case "queued":
+      return "amber";
+    case "sent":
+    case "viewed":
+      return "blue";
+    case "quoted":
+      return "emerald";
+    case "declined":
+    case "error":
+      return "red";
+    case "draft":
+    default:
+      return "slate";
+  }
+}
+
+function getDestinationProviderLabel(
+  destination: RfqDestination,
+  fallbackIndex: number,
+): string {
+  const name = destination.provider?.name;
+  if (typeof name === "string" && name.trim().length > 0) {
+    return name.trim();
+  }
+  return `Provider ${fallbackIndex + 1}`;
 }
 
 function formatMatchHealthLabel(value: unknown): string {

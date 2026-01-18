@@ -24,6 +24,10 @@ import {
   isMissingTableOrColumnError,
 } from "@/server/admin/logging";
 import { getRfqOffers, type RfqOffer } from "@/server/rfqs/offers";
+import {
+  getRfqDestinations,
+  type RfqDestination,
+} from "@/server/rfqs/destinations";
 
 export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
   files: QuoteFileMeta[];
@@ -37,6 +41,7 @@ export type QuoteWorkspaceData = {
   filePreviews: Awaited<ReturnType<typeof getQuoteFilePreviews>>;
   parts: QuotePartWithFiles[];
   rfqOffers: RfqOffer[];
+  rfqDestinations: RfqDestination[];
   messages: QuoteMessageRecord[];
   messagesError?: string | null;
   filesUnavailable?: boolean;
@@ -256,6 +261,7 @@ export async function loadQuoteWorkspaceData(
     const parts = await loadQuotePartsWithFiles(quoteId);
     const includeOffers = Boolean(options?.includeOffers);
     const rfqOffers = includeOffers ? await getRfqOffers(quote.id) : [];
+    const rfqDestinations = await getRfqDestinations(quote.id);
     const legacyDeclared = buildQuoteFilesFromRow(quote);
     const filesMissingCanonical = filePreviews.length === 0 && legacyDeclared.length > 0;
     const legacyFileNames = legacyDeclared.map((f) => f.filename);
@@ -303,6 +309,7 @@ export async function loadQuoteWorkspaceData(
         filePreviews,
         parts,
         rfqOffers,
+        rfqDestinations,
         messages: messages ?? [],
         messagesError,
         filesUnavailable: filesIssue,
