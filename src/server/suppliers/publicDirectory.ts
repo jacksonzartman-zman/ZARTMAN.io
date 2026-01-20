@@ -164,7 +164,7 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
 
     const providers = Array.isArray(data) ? data : [];
     const rows = providers
-      .map((provider) => {
+      .map<PublicSupplierDirectoryRow | null>((provider) => {
         const supplierId = normalizeId(provider?.id);
         if (!supplierId) return null;
         const supplierName = buildSupplierName(provider);
@@ -181,6 +181,7 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
 
         if (!showInDirectory) return null;
         if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC && !isVerified) return null;
+        const certifications: string[] = [];
 
         return {
           supplierId,
@@ -188,14 +189,14 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
           location: supportsCountry ? normalizeText(provider?.country) : null,
           processes: supportsProcesses ? normalizeList(provider?.processes) : [],
           materials: supportsMaterials ? normalizeList(provider?.materials) : [],
-          certifications: [],
+          certifications,
           slug: buildSupplierSlug({ supplierId, supplierName }),
           isVerified,
           isActive,
           showInDirectory,
         };
       })
-      .filter((row): row is PublicSupplierDirectoryRow => Boolean(row));
+      .filter((row): row is PublicSupplierDirectoryRow => row !== null);
 
     return rows.sort(sortDirectoryRows);
   } catch {
@@ -273,6 +274,7 @@ export async function loadPublicSupplierById(
 
     if (!showInDirectory) return null;
     if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC && !isVerified) return null;
+    const certifications: string[] = [];
 
     return {
       supplierId: normalizedId,
@@ -280,7 +282,7 @@ export async function loadPublicSupplierById(
       location: supportsCountry ? normalizeText(data?.country) : null,
       processes: supportsProcesses ? normalizeList(data?.processes) : [],
       materials: supportsMaterials ? normalizeList(data?.materials) : [],
-      certifications: [],
+      certifications,
       slug: buildSupplierSlug({ supplierId: normalizedId, supplierName }),
       isVerified,
       isActive,
