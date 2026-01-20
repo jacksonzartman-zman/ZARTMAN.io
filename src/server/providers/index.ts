@@ -40,6 +40,7 @@ export type ProviderRow = {
   verification_status: ProviderVerificationStatus;
   source: ProviderSource;
   verified_at: string | null;
+  show_in_directory?: boolean | null;
   contacted_at?: string | null;
   created_at: string;
 };
@@ -89,6 +90,7 @@ async function resolveProviderSelectColumns(): Promise<string[]> {
     supportsMaterials,
     supportsCountry,
     supportsStates,
+    supportsShowInDirectory,
   ] = await Promise.all([
     hasColumns(PROVIDERS_TABLE, ["dispatch_mode"]),
     hasColumns(PROVIDERS_TABLE, ["rfq_url"]),
@@ -96,6 +98,7 @@ async function resolveProviderSelectColumns(): Promise<string[]> {
     hasColumns(PROVIDERS_TABLE, ["materials"]),
     hasColumns(PROVIDERS_TABLE, ["country"]),
     hasColumns(PROVIDERS_TABLE, ["states"]),
+    hasColumns(PROVIDERS_TABLE, ["show_in_directory"]),
   ]);
 
   return [
@@ -106,6 +109,7 @@ async function resolveProviderSelectColumns(): Promise<string[]> {
     ...(supportsMaterials ? ["materials"] : []),
     ...(supportsCountry ? ["country"] : []),
     ...(supportsStates ? ["states"] : []),
+    ...(supportsShowInDirectory ? ["show_in_directory"] : []),
   ];
 }
 

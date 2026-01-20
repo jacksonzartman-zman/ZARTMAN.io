@@ -280,9 +280,7 @@ export async function loadQuoteWorkspaceData(
         const isVisibleToCustomer = (providerId: string) => {
           const snapshot = providerStatuses.get(providerId);
           if (!snapshot) return false;
-          const isVerifiedActive = snapshot.is_active && snapshot.verification_status === "verified";
-          const isCustomerInvite = snapshot.source === "customer_invite";
-          return isVerifiedActive || isCustomerInvite;
+          return snapshot.is_active && snapshot.verification_status === "verified";
         };
         const attachProviderStatus = <
           T extends { provider_id: string; provider?: Record<string, unknown> | null },

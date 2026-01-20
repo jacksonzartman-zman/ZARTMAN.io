@@ -13,6 +13,10 @@ const REQUEST_QUOTE_HREF = "/customer/search";
 
 const tagClasses =
   "inline-flex items-center rounded-full border border-slate-800/70 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-ink-soft";
+const unverifiedBadgeClasses =
+  "inline-flex items-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100";
+const unverifiedNote =
+  "Listing is informational. This supplier has not verified their profile.";
 
 type Props = {
   params: { slug: string };
@@ -63,12 +67,20 @@ export default async function SupplierProfilePage(props: any) {
             <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
               Supplier profile
             </p>
-            <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
-              {supplier.supplierName}
-            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
+                {supplier.supplierName}
+              </h1>
+              {!supplier.isVerified ? (
+                <span className={unverifiedBadgeClasses}>Unverified</span>
+              ) : null}
+            </div>
             <p className="text-base text-ink-muted heading-snug">
               Review process coverage, location, and capabilities before starting a supplier search.
             </p>
+            {!supplier.isVerified ? (
+              <p className="text-sm text-amber-100/80">{unverifiedNote}</p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Link href={REQUEST_QUOTE_HREF} className={primaryCtaClasses}>
@@ -113,7 +125,8 @@ export default async function SupplierProfilePage(props: any) {
         </section>
 
         <section className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-6 text-sm text-ink-muted">
-          Need a supplier match fast? Search suppliers and we&apos;ll route your RFQ to the best-fit shops.
+          Need a supplier match fast? Start a supplier search and we&apos;ll review your RFQ before routing
+          it to the best-fit shops.
         </section>
       </div>
     </main>

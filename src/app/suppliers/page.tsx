@@ -13,6 +13,10 @@ const BECOME_SUPPLIER_HREF = "/suppliers/join";
 
 const tagClasses =
   "inline-flex items-center rounded-full border border-slate-800/70 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-ink-soft";
+const unverifiedBadgeClasses =
+  "inline-flex items-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100";
+const unverifiedNote =
+  "Listing is informational. This supplier has not verified their profile.";
 
 function getCapabilityTags(row: PublicSupplierDirectoryRow): string[] {
   const combined = [...row.materials, ...row.certifications];
@@ -53,11 +57,11 @@ export default async function SuppliersDirectoryPage() {
           </p>
           <div className="space-y-4">
             <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
-              Browse vetted suppliers by process, location, and capability.
+              Browse suppliers by process, location, and capability.
             </h1>
             <p className="text-base text-ink-muted heading-snug">
-              This directory highlights shops we trust for CNC, sheet metal, additive, and light assembly work.
-              Every supplier listed here is vetted and updated by the Zartman team.
+              Verified suppliers are vetted and updated by the Zartman team. Unverified listings are shown
+              for coverage planning.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -101,15 +105,23 @@ export default async function SuppliersDirectoryPage() {
                   >
                     <div className="flex flex-col gap-4">
                       <div className="flex flex-col gap-2">
-                        <Link
-                          href={`/suppliers/${supplier.slug}`}
-                          className="text-lg font-semibold text-emerald-100 hover:text-emerald-200"
-                        >
-                          {supplier.supplierName}
-                        </Link>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/suppliers/${supplier.slug}`}
+                            className="text-lg font-semibold text-emerald-100 hover:text-emerald-200"
+                          >
+                            {supplier.supplierName}
+                          </Link>
+                          {!supplier.isVerified ? (
+                            <span className={unverifiedBadgeClasses}>Unverified</span>
+                          ) : null}
+                        </div>
                         <span className="text-sm text-ink-soft">
                           {supplier.location ?? "Location shared during request"}
                         </span>
+                        {!supplier.isVerified ? (
+                          <p className="text-xs text-amber-100/80">{unverifiedNote}</p>
+                        ) : null}
                       </div>
 
                       <div className="grid gap-4 sm:grid-cols-3">
