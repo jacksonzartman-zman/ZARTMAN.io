@@ -1,3 +1,4 @@
+import Link from "next/link";
 import clsx from "clsx";
 
 import { DisclosureSection } from "@/components/DisclosureSection";
@@ -62,7 +63,7 @@ export function CoverageDisclosure({
     <DisclosureSection
       id="coverage"
       title="Coverage"
-      description="Verified, active providers plus your invited suppliers."
+      description="Verified, active providers in the Zartman network."
       defaultOpen={defaultOpen}
       summary={summaryLabel}
       className={clsx("border-slate-900/60 bg-slate-950/40", className)}
@@ -79,8 +80,10 @@ export function CoverageDisclosure({
             <li>Responses arrive as suppliers quote, and we notify you as they land.</li>
           </ul>
           <p className="text-xs text-slate-300">
-            We send RFQs to verified suppliers and any suppliers you invite, and show all responses
-            in one place.
+            We route RFQs to verified, active suppliers. Want to include a supplier not listed?{" "}
+            <Link href="/customer/invite-supplier" className="font-semibold text-slate-100 hover:text-white">
+              Invite them.
+            </Link>
           </p>
         </div>
         <div className="space-y-3">

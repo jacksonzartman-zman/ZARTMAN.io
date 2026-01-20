@@ -1,32 +1,22 @@
+import { SHOW_SUPPLIER_DIRECTORY_PUBLIC } from "@/lib/ui/deprecation";
 import { supabaseServer } from "@/lib/supabaseServer";
-import { schemaGate } from "@/server/db/schemaContract";
-import {
-  handleMissingSupabaseSchema,
-  isMissingColumnError,
-  isMissingSupabaseRelationError,
-} from "@/server/db/schemaErrors";
+import { hasColumns, schemaGate } from "@/server/db/schemaContract";
+import { handleMissingSupabaseSchema, isMissingSupabaseRelationError } from "@/server/db/schemaErrors";
 
-const SUPPLIERS_TABLE = "suppliers";
-const SUPPLIER_COLUMNS = ["id", "company_name", "country"] as const;
-const SUPPLIER_SELECT = SUPPLIER_COLUMNS.join(",");
-
-const CAPABILITIES_TABLE = "supplier_capabilities";
-const CAPABILITY_COLUMNS = ["supplier_id", "process", "materials", "certifications"] as const;
-const CAPABILITY_SELECT = CAPABILITY_COLUMNS.join(",");
+const PROVIDERS_TABLE = "providers";
+const PROVIDER_COLUMNS = ["id", "name"] as const;
 
 const UUID_REGEX = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
-type SupplierRowLite = {
+type ProviderRowLite = {
   id: string;
-  company_name: string | null;
-  country: string | null;
-};
-
-type SupplierCapabilityLiteRow = {
-  supplier_id: string | null;
-  process: string | null;
-  materials: string[] | null;
-  certifications: string[] | null;
+  name: string | null;
+  country?: string | null;
+  processes?: string[] | null;
+  materials?: string[] | null;
+  verification_status?: string | null;
+  is_active?: boolean | null;
+  show_in_directory?: boolean | null;
 };
 
 export type PublicSupplierDirectoryRow = {
@@ -37,12 +27,9 @@ export type PublicSupplierDirectoryRow = {
   materials: string[];
   certifications: string[];
   slug: string;
-};
-
-type CapabilitySummary = {
-  processes: string[];
-  materials: string[];
-  certifications: string[];
+  isVerified: boolean;
+  isActive: boolean;
+  showInDirectory: boolean;
 };
 
 function normalizeId(value: unknown): string {
@@ -83,100 +70,90 @@ export function extractSupplierIdFromSlug(slug: string): string {
   return matches?.[matches.length - 1] ?? "";
 }
 
-function buildSupplierName(row: SupplierRowLite): string {
-  return normalizeText(row.company_name) ?? `Supplier ${normalizeId(row.id).slice(0, 6)}`;
+function buildSupplierName(row: ProviderRowLite): string {
+  return normalizeText(row.name) ?? `Supplier ${normalizeId(row.id).slice(0, 6)}`;
 }
 
-function buildCapabilityMap(rows: SupplierCapabilityLiteRow[]): Map<string, CapabilitySummary> {
-  const map = new Map<string, CapabilitySummary>();
-
-  for (const row of rows ?? []) {
-    const supplierId = normalizeId(row?.supplier_id);
-    if (!supplierId) continue;
-
-    const current = map.get(supplierId) ?? { processes: [], materials: [], certifications: [] };
-    const process = normalizeText(row?.process);
-    if (process) current.processes.push(process);
-
-    normalizeList(row?.materials).forEach((material) => current.materials.push(material));
-    normalizeList(row?.certifications).forEach((cert) => current.certifications.push(cert));
-
-    map.set(supplierId, current);
-  }
-
-  for (const [supplierId, summary] of map) {
-    const processes = Array.from(new Set(summary.processes)).sort((a, b) => a.localeCompare(b));
-    const materials = Array.from(new Set(summary.materials)).sort((a, b) => a.localeCompare(b));
-    const certifications = Array.from(new Set(summary.certifications)).sort((a, b) => a.localeCompare(b));
-    map.set(supplierId, { processes, materials, certifications });
-  }
-
-  return map;
+function normalizeVerificationStatus(value: unknown): "verified" | "unverified" | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "verified") return "verified";
+  if (normalized === "unverified") return "unverified";
+  return null;
 }
 
-async function loadCapabilitySummariesBySupplierIds(
-  supplierIds: string[],
-): Promise<Map<string, CapabilitySummary>> {
-  const ids = Array.from(new Set((supplierIds ?? []).map((id) => normalizeId(id)).filter(Boolean)));
-  if (ids.length === 0) return new Map();
+function resolveShowInDirectory(row: ProviderRowLite, isVerified: boolean, supported: boolean): boolean {
+  if (!supported) return true;
+  if (typeof row.show_in_directory === "boolean") return row.show_in_directory;
+  return isVerified;
+}
 
-  const supported = await schemaGate({
-    enabled: true,
-    relation: CAPABILITIES_TABLE,
-    requiredColumns: [...CAPABILITY_COLUMNS],
-    warnPrefix: "[public suppliers]",
-    warnKey: "public_suppliers:supplier_capabilities",
-  });
-  if (!supported) return new Map();
+function resolveActiveStatus(row: ProviderRowLite, supported: boolean): boolean {
+  if (!supported) return true;
+  return row.is_active === true;
+}
 
-  try {
-    const { data, error } = await supabaseServer
-      .from(CAPABILITIES_TABLE)
-      .select(CAPABILITY_SELECT)
-      .in("supplier_id", ids)
-      .order("created_at", { ascending: true })
-      .limit(2000)
-      .returns<SupplierCapabilityLiteRow[]>();
-    if (error) return new Map();
-
-    return buildCapabilityMap(Array.isArray(data) ? data : []);
-  } catch {
-    return new Map();
-  }
+function sortDirectoryRows(a: PublicSupplierDirectoryRow, b: PublicSupplierDirectoryRow): number {
+  const rank = (row: PublicSupplierDirectoryRow) => {
+    if (row.isVerified) return row.isActive ? 0 : 1;
+    return 2;
+  };
+  const rankDiff = rank(a) - rank(b);
+  if (rankDiff !== 0) return rankDiff;
+  const nameCompare = a.supplierName.localeCompare(b.supplierName, undefined, { sensitivity: "base" });
+  if (nameCompare !== 0) return nameCompare;
+  return a.supplierId.localeCompare(b.supplierId);
 }
 
 export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDirectoryRow[]> {
   const supported = await schemaGate({
     enabled: true,
-    relation: SUPPLIERS_TABLE,
-    requiredColumns: [...SUPPLIER_COLUMNS],
+    relation: PROVIDERS_TABLE,
+    requiredColumns: [...PROVIDER_COLUMNS],
     warnPrefix: "[public suppliers]",
     warnKey: "public_suppliers:directory",
   });
   if (!supported) return [];
 
   try {
-    const buildQuery = (withVerified: boolean) => {
-      let query = supabaseServer.from(SUPPLIERS_TABLE).select(SUPPLIER_SELECT);
-      if (withVerified) {
-        query = query.eq("verified", true);
-      }
-      return query.order("company_name", { ascending: true }).limit(200);
-    };
+    const [
+      supportsCountry,
+      supportsProcesses,
+      supportsMaterials,
+      supportsVerificationStatus,
+      supportsIsActive,
+      supportsShowInDirectory,
+    ] = await Promise.all([
+      hasColumns(PROVIDERS_TABLE, ["country"]),
+      hasColumns(PROVIDERS_TABLE, ["processes"]),
+      hasColumns(PROVIDERS_TABLE, ["materials"]),
+      hasColumns(PROVIDERS_TABLE, ["verification_status"]),
+      hasColumns(PROVIDERS_TABLE, ["is_active"]),
+      hasColumns(PROVIDERS_TABLE, ["show_in_directory"]),
+    ]);
 
-    let data: SupplierRowLite[] | null = null;
-    let error: unknown = null;
+    const selectColumns = [
+      ...PROVIDER_COLUMNS,
+      ...(supportsCountry ? ["country"] : []),
+      ...(supportsProcesses ? ["processes"] : []),
+      ...(supportsMaterials ? ["materials"] : []),
+      ...(supportsVerificationStatus ? ["verification_status"] : []),
+      ...(supportsIsActive ? ["is_active"] : []),
+      ...(supportsShowInDirectory ? ["show_in_directory"] : []),
+    ];
 
-    ({ data, error } = await buildQuery(true).returns<SupplierRowLite[]>());
-
-    if (error && isMissingColumnError(error, "verified")) {
-      ({ data, error } = await buildQuery(false).returns<SupplierRowLite[]>());
+    let query = supabaseServer.from(PROVIDERS_TABLE).select(selectColumns.join(","));
+    if (supportsVerificationStatus && !SHOW_SUPPLIER_DIRECTORY_PUBLIC) {
+      query = query.eq("verification_status", "verified");
     }
+    query = query.order("name", { ascending: true }).limit(200);
+
+    const { data, error } = await query.returns<ProviderRowLite[]>();
 
     if (error) {
       if (isMissingSupabaseRelationError(error)) {
         handleMissingSupabaseSchema({
-          relation: SUPPLIERS_TABLE,
+          relation: PROVIDERS_TABLE,
           error,
           warnPrefix: "[public suppliers]",
           warnKey: "public_suppliers:directory_missing_relation",
@@ -185,31 +162,42 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
       return [];
     }
 
-    const suppliers = Array.isArray(data) ? data : [];
-    const supplierIds = suppliers.map((row) => normalizeId(row?.id)).filter(Boolean);
-    const capabilityMap = await loadCapabilitySummariesBySupplierIds(supplierIds);
-
-    return suppliers
-      .map((supplier) => {
-        const supplierId = normalizeId(supplier?.id);
+    const providers = Array.isArray(data) ? data : [];
+    const rows = providers
+      .map((provider) => {
+        const supplierId = normalizeId(provider?.id);
         if (!supplierId) return null;
-        const supplierName = buildSupplierName(supplier);
-        const capabilities = capabilityMap.get(supplierId) ?? {
-          processes: [],
-          materials: [],
-          certifications: [],
-        };
+        const supplierName = buildSupplierName(provider);
+        const verificationStatus = supportsVerificationStatus
+          ? normalizeVerificationStatus(provider?.verification_status) ?? "unverified"
+          : "verified";
+        const isVerified = verificationStatus === "verified";
+        const isActive = resolveActiveStatus(provider, supportsIsActive);
+        const showInDirectory = resolveShowInDirectory(
+          provider,
+          isVerified,
+          supportsShowInDirectory,
+        );
+
+        if (!showInDirectory) return null;
+        if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC && !isVerified) return null;
+
         return {
           supplierId,
           supplierName,
-          location: normalizeText(supplier?.country),
-          processes: capabilities.processes,
-          materials: capabilities.materials,
-          certifications: capabilities.certifications,
+          location: supportsCountry ? normalizeText(provider?.country) : null,
+          processes: supportsProcesses ? normalizeList(provider?.processes) : [],
+          materials: supportsMaterials ? normalizeList(provider?.materials) : [],
+          certifications: [],
           slug: buildSupplierSlug({ supplierId, supplierName }),
+          isVerified,
+          isActive,
+          showInDirectory,
         };
       })
       .filter((row): row is PublicSupplierDirectoryRow => Boolean(row));
+
+    return rows.sort(sortDirectoryRows);
   } catch {
     return [];
   }
@@ -223,35 +211,50 @@ export async function loadPublicSupplierById(
 
   const supported = await schemaGate({
     enabled: true,
-    relation: SUPPLIERS_TABLE,
-    requiredColumns: [...SUPPLIER_COLUMNS],
+    relation: PROVIDERS_TABLE,
+    requiredColumns: [...PROVIDER_COLUMNS],
     warnPrefix: "[public suppliers]",
     warnKey: "public_suppliers:detail",
   });
   if (!supported) return null;
 
   try {
-    const buildQuery = (withVerified: boolean) => {
-      let query = supabaseServer.from(SUPPLIERS_TABLE).select(SUPPLIER_SELECT).eq("id", normalizedId);
-      if (withVerified) {
-        query = query.eq("verified", true);
-      }
-      return query.maybeSingle<SupplierRowLite>();
-    };
+    const [
+      supportsCountry,
+      supportsProcesses,
+      supportsMaterials,
+      supportsVerificationStatus,
+      supportsIsActive,
+      supportsShowInDirectory,
+    ] = await Promise.all([
+      hasColumns(PROVIDERS_TABLE, ["country"]),
+      hasColumns(PROVIDERS_TABLE, ["processes"]),
+      hasColumns(PROVIDERS_TABLE, ["materials"]),
+      hasColumns(PROVIDERS_TABLE, ["verification_status"]),
+      hasColumns(PROVIDERS_TABLE, ["is_active"]),
+      hasColumns(PROVIDERS_TABLE, ["show_in_directory"]),
+    ]);
 
-    let data: SupplierRowLite | null = null;
-    let error: unknown = null;
+    const selectColumns = [
+      ...PROVIDER_COLUMNS,
+      ...(supportsCountry ? ["country"] : []),
+      ...(supportsProcesses ? ["processes"] : []),
+      ...(supportsMaterials ? ["materials"] : []),
+      ...(supportsVerificationStatus ? ["verification_status"] : []),
+      ...(supportsIsActive ? ["is_active"] : []),
+      ...(supportsShowInDirectory ? ["show_in_directory"] : []),
+    ];
 
-    ({ data, error } = await buildQuery(true));
-
-    if (error && isMissingColumnError(error, "verified")) {
-      ({ data, error } = await buildQuery(false));
-    }
+    const { data, error } = await supabaseServer
+      .from(PROVIDERS_TABLE)
+      .select(selectColumns.join(","))
+      .eq("id", normalizedId)
+      .maybeSingle<ProviderRowLite>();
 
     if (error || !data) {
       if (error && isMissingSupabaseRelationError(error)) {
         handleMissingSupabaseSchema({
-          relation: SUPPLIERS_TABLE,
+          relation: PROVIDERS_TABLE,
           error,
           warnPrefix: "[public suppliers]",
           warnKey: "public_suppliers:detail_missing_relation",
@@ -260,22 +263,28 @@ export async function loadPublicSupplierById(
       return null;
     }
 
-    const capabilityMap = await loadCapabilitySummariesBySupplierIds([normalizedId]);
     const supplierName = buildSupplierName(data);
-    const capabilities = capabilityMap.get(normalizedId) ?? {
-      processes: [],
-      materials: [],
-      certifications: [],
-    };
+    const verificationStatus = supportsVerificationStatus
+      ? normalizeVerificationStatus(data?.verification_status) ?? "unverified"
+      : "verified";
+    const isVerified = verificationStatus === "verified";
+    const isActive = resolveActiveStatus(data, supportsIsActive);
+    const showInDirectory = resolveShowInDirectory(data, isVerified, supportsShowInDirectory);
+
+    if (!showInDirectory) return null;
+    if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC && !isVerified) return null;
 
     return {
       supplierId: normalizedId,
       supplierName,
-      location: normalizeText(data?.country),
-      processes: capabilities.processes,
-      materials: capabilities.materials,
-      certifications: capabilities.certifications,
+      location: supportsCountry ? normalizeText(data?.country) : null,
+      processes: supportsProcesses ? normalizeList(data?.processes) : [],
+      materials: supportsMaterials ? normalizeList(data?.materials) : [],
+      certifications: [],
       slug: buildSupplierSlug({ supplierId: normalizedId, supplierName }),
+      isVerified,
+      isActive,
+      showInDirectory,
     };
   } catch {
     return null;

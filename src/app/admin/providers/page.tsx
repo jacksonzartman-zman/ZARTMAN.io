@@ -19,8 +19,10 @@ import {
   type ProviderType,
   type ProviderVerificationStatus,
 } from "@/server/providers";
+import { hasColumns } from "@/server/db/schemaContract";
 import {
   markProviderContactedAction,
+  toggleProviderDirectoryVisibilityAction,
   toggleProviderActiveAction,
   updateProviderContactAction,
   verifyProviderAction,
@@ -71,6 +73,7 @@ export default async function AdminProvidersPage({
   await requireAdminUser({ redirectTo: "/login" });
 
   const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+  const supportsDirectoryVisibility = await hasColumns("providers", ["show_in_directory"]);
   const activeFilter = parseActiveFilter(usp.get("active"));
   const verificationFilter = parseVerificationFilter(usp.get("verification"));
   const typeFilter = parseTypeFilter(usp.get("type"));
@@ -257,6 +260,10 @@ export default async function AdminProvidersPage({
               const showInviteSummary = provider.source === "customer_invite";
               const outreachSubject = buildOutreachEmailSubject(provider.name);
               const outreachBody = buildOutreachEmailBody(provider.name);
+              const showInDirectory = resolveDirectoryVisibility(provider);
+              const directoryButtonLabel = showInDirectory
+                ? "Hide from directory"
+                : "Show in directory";
               return (
                 <Fragment key={provider.id}>
                   <tr className="bg-slate-950/40 transition hover:bg-slate-900/40">
@@ -367,6 +374,27 @@ export default async function AdminProvidersPage({
                             {provider.is_active ? "Deactivate" : "Activate"}
                           </button>
                         </form>
+                        {supportsDirectoryVisibility ? (
+                          <form action={toggleProviderDirectoryVisibilityAction}>
+                            <input type="hidden" name="providerId" value={provider.id} />
+                            <input
+                              type="hidden"
+                              name="nextShowInDirectory"
+                              value={showInDirectory ? "false" : "true"}
+                            />
+                            <button
+                              type="submit"
+                              className={clsx(
+                                "rounded-full border px-3 py-1 font-semibold transition",
+                                showInDirectory
+                                  ? "border-amber-500/40 text-amber-100 hover:border-amber-400 hover:text-white"
+                                  : "border-emerald-500/40 text-emerald-100 hover:border-emerald-400 hover:text-white",
+                              )}
+                            >
+                              {directoryButtonLabel}
+                            </button>
+                          </form>
+                        ) : null}
                         <details className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
                           <summary className="cursor-pointer font-semibold text-slate-200">
                             Edit contact
@@ -717,4 +745,11 @@ function verificationPill(status: ProviderVerificationStatus): { label: string; 
     return { label: "Verified", className: "border-blue-500/40 bg-blue-500/10 text-blue-100" };
   }
   return { label: "Unverified", className: "border-amber-500/40 bg-amber-500/10 text-amber-100" };
+}
+
+function resolveDirectoryVisibility(provider: ProviderContactRow): boolean {
+  if (typeof provider.show_in_directory === "boolean") {
+    return provider.show_in_directory;
+  }
+  return provider.verification_status === "verified";
 }

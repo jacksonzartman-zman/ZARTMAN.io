@@ -5,7 +5,11 @@ import { getFormString, serializeActionError } from "@/lib/forms";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import { serializeSupabaseError } from "@/server/admin/logging";
-import { logProviderContactedOpsEvent, logProviderStatusOpsEvent } from "@/server/ops/events";
+import {
+  logProviderContactedOpsEvent,
+  logProviderDirectoryVisibilityEvent,
+  logProviderStatusOpsEvent,
+} from "@/server/ops/events";
 import { resolveProviderEmailColumn } from "@/server/providers";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 
@@ -164,6 +168,55 @@ export async function toggleProviderActiveAction(formData: FormData): Promise<vo
     revalidatePath("/admin/providers/pipeline");
   } catch (error) {
     console.error("[admin providers] toggle active crashed", {
+      providerId,
+      error: serializeActionError(error),
+    });
+  }
+}
+
+export async function toggleProviderDirectoryVisibilityAction(formData: FormData): Promise<void> {
+  const providerId = normalizeId(getFormString(formData, "providerId"));
+  const nextShowRaw = getFormString(formData, "nextShowInDirectory");
+  const nextShow =
+    nextShowRaw === "true" ? true : nextShowRaw === "false" ? false : null;
+  if (!providerId || nextShow === null) return;
+
+  try {
+    await requireAdminUser();
+
+    const supported = await schemaGate({
+      enabled: true,
+      relation: "providers",
+      requiredColumns: ["id", "show_in_directory"],
+      warnPrefix: "[admin providers]",
+      warnKey: "admin_providers_toggle_directory",
+    });
+    if (!supported) {
+      return;
+    }
+
+    const { error } = await supabaseServer
+      .from("providers")
+      .update({ show_in_directory: nextShow })
+      .eq("id", providerId);
+
+    if (error) {
+      console.error("[admin providers] toggle directory visibility failed", {
+        providerId,
+        error: serializeSupabaseError(error),
+      });
+      return;
+    }
+
+    await logProviderDirectoryVisibilityEvent({
+      providerId,
+      showInDirectory: nextShow,
+    });
+
+    revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
+  } catch (error) {
+    console.error("[admin providers] toggle directory visibility crashed", {
       providerId,
       error: serializeActionError(error),
     });

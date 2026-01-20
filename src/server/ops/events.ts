@@ -23,6 +23,7 @@ export type OpsEventType =
   | "provider_unverified"
   | "provider_activated"
   | "provider_deactivated"
+  | "provider_directory_visibility_changed"
   | "estimate_shown";
 
 export type LogOpsEventInput = {
@@ -367,6 +368,69 @@ export async function logProviderStatusOpsEvent(
     }
 
     console.warn("[ops events] provider status insert crashed", {
+      eventType,
+      providerId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+}
+
+export type ProviderDirectoryVisibilityOpsEventInput = {
+  providerId: string;
+  showInDirectory: boolean;
+  reason?: string | null;
+};
+
+export async function logProviderDirectoryVisibilityEvent(
+  input: ProviderDirectoryVisibilityOpsEventInput,
+): Promise<void> {
+  const providerId = normalizeOptionalId(input.providerId);
+  const eventType = normalizeEventType("provider_directory_visibility_changed");
+  if (!providerId || !eventType) {
+    return;
+  }
+
+  const payload = sanitizePayload({
+    provider_id: providerId,
+    show_in_directory: input.showInDirectory,
+    reason: normalizeOptionalText(input.reason) ?? undefined,
+  });
+
+  try {
+    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
+      quote_id: null,
+      destination_id: null,
+      event_type: eventType,
+      payload,
+    });
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        const serialized = serializeSupabaseError(error);
+        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+          code: serialized?.code ?? null,
+          message: serialized?.message ?? null,
+        });
+        return;
+      }
+
+      console.warn("[ops events] provider directory visibility insert failed", {
+        eventType,
+        providerId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      const serialized = serializeSupabaseError(error);
+      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+        code: serialized?.code ?? null,
+        message: serialized?.message ?? null,
+      });
+      return;
+    }
+
+    console.warn("[ops events] provider directory visibility insert crashed", {
       eventType,
       providerId,
       error: serializeSupabaseError(error) ?? error,
