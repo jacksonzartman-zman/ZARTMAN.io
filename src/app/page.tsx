@@ -1,7 +1,6 @@
-import Link from "next/link";
-import HomeProcessTabs from "@/components/marketing/HomeProcessTabs";
-import { primaryCtaClasses } from "@/lib/ctas";
+import HomeHeroUploadPanel from "@/components/marketing/HomeHeroUploadPanel";
 import { getActiveProviders } from "@/server/providers";
+import { getServerAuthUser } from "@/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +77,8 @@ function getProviderInitials(name: string) {
 
 export default async function HomePage() {
   const activeProviders = await getActiveProviders();
+  const { user } = await getServerAuthUser({ quiet: true });
+  const isAuthenticated = Boolean(user);
 
   return (
     <main className="main-shell">
@@ -96,45 +97,10 @@ export default async function HomePage() {
             </p>
           </div>
           <div className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-4 shadow-[0_18px_50px_rgba(2,6,23,0.45)] sm:p-6">
-            <HomeProcessTabs processes={PROCESS_TABS} />
-            <div className="mt-4 rounded-2xl border border-slate-900/70 bg-slate-950/80 p-3">
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-[1.2fr,0.6fr,0.9fr,auto] lg:items-stretch">
-                <label className="flex items-center justify-center gap-2 rounded-xl border border-slate-900/70 bg-slate-900/50 px-4 py-3 text-sm font-semibold text-ink transition hover:border-slate-700/80 hover:bg-slate-900/80">
-                  <input
-                    type="file"
-                    accept=".zip,.step,.stp,.iges,.igs,.stl"
-                    className="sr-only"
-                  />
-                  Upload CAD/ZIP
-                </label>
-                <label className="flex flex-col gap-1 rounded-xl border border-slate-900/70 bg-slate-900/50 px-4 py-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-                    Qty
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    placeholder="50"
-                    className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 rounded-xl border border-slate-900/70 bg-slate-900/50 px-4 py-3">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-                    Need-by date
-                  </span>
-                  <input
-                    type="date"
-                    className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
-                  />
-                </label>
-                <Link
-                  href="/customer/search"
-                  className={`${primaryCtaClasses} w-full rounded-2xl px-6 py-3 text-sm lg:w-auto`}
-                >
-                  Search suppliers
-                </Link>
-              </div>
-            </div>
+            <HomeHeroUploadPanel
+              processes={PROCESS_TABS}
+              isAuthenticated={isAuthenticated}
+            />
           </div>
           <div className="flex flex-col gap-2 text-xs text-ink-soft sm:flex-row sm:items-center sm:gap-3">
             {TRUST_SIGNALS.map((signal) => (

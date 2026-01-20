@@ -93,6 +93,7 @@ export type QuoteIntakePayload = {
   phone: string;
   manufacturingProcess: string;
   quantity: string;
+  targetDate: string;
   shippingPostalCode: string;
   exportRestriction: string;
   rfqReason: string;
@@ -240,6 +241,7 @@ export async function persistQuoteIntakeDirectUpload(params: {
         currency: "USD",
         price: null,
         customer_id: customerId,
+        target_date: sanitizeNullable(params.payload.targetDate),
       })
       .select("id")
       .single<{ id: string }>();
@@ -501,6 +503,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
         currency: "USD",
         price: null,
         customer_id: customerId,
+        target_date: sanitizeNullable(params.payload.targetDate),
       })
       .select("id")
       .single<{ id: string }>();
@@ -896,6 +899,7 @@ export async function persistQuoteIntake(
         currency: "USD",
         price: null,
         customer_id: customerId,
+        target_date: sanitizeNullable(payload.targetDate),
       })
       .select("id")
       .single<{ id: string }>();
