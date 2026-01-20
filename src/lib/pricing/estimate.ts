@@ -154,9 +154,10 @@ export function parseQuantity(value: unknown): number | null {
     return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
   }
   if (typeof value !== "string") return null;
-  const cleaned = value.replace(/[^0-9.]/g, "");
-  if (!cleaned) return null;
-  const parsed = Number(cleaned);
+  const cleaned = value.replace(/,/g, " ");
+  const match = cleaned.match(/(\d+(\.\d+)?)/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Math.round(parsed);
 }
