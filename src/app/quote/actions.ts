@@ -516,7 +516,13 @@ export async function finalizeQuoteIntakeDirectUploadAction(
     });
 
     if (!result.ok) {
-      return { ok: false, error: "We couldn’t register your files. Please retry." };
+      const errorMessage = quoteId
+        ? `We couldn’t register your files. Please retry or contact support with Quote ID ${quoteId}.`
+        : "We couldn’t register your files. Please retry or contact support.";
+      return {
+        ok: false,
+        error: errorMessage,
+      };
     }
 
     revalidatePath("/admin");

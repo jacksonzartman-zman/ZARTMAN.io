@@ -16,7 +16,6 @@ import { notifyAdminOnQuoteSubmitted } from "@/server/quotes/notifications";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import {
   buildUploadTargetForQuote,
-  recordQuoteUploadFiles,
   type UploadTarget,
   registerUploadedObjectsForExistingUpload,
 } from "@/server/quotes/uploadFiles";
@@ -602,14 +601,9 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
       supabase: supabaseServer,
     });
     if (!registerResult.ok) {
-      console.error("[quote intake finalize] register uploaded objects failed", {
-        ...logContext,
-        quoteId,
-        uploadId,
-      });
       return {
         ok: false,
-        error: "We couldn’t register your files. Please retry.",
+        error: buildRegisterFilesErrorMessage(quoteId),
         reason: "register-files",
       };
     }
@@ -984,8 +978,7 @@ export async function persistQuoteIntake(
       sizeBytes: file.sizeBytes,
     }));
 
-    // Persist canonical rows (files_valid preferred; fallback files) and
-    // enumerate upload contents (quote_upload_files) when available.
+    // Register uploaded objects using the canonical write model.
     const registerResult = await registerUploadedObjectsForExistingUpload({
       quoteId,
       uploadId,
@@ -993,22 +986,7 @@ export async function persistQuoteIntake(
       supabase: supabaseServer,
     });
 
-    let metadataRecorded = registerResult.ok;
-
-    // Keep legacy ZIP enumeration hook for older deployments that call this directly.
-    // (If `quote_upload_files` exists, the register helper already records it.)
-    if (!registerResult.recorded) {
-      void recordQuoteUploadFiles({
-        quoteId,
-        uploadId,
-        storedFiles: storedFiles.map((file) => ({
-          originalName: file.originalName,
-          sizeBytes: file.sizeBytes,
-          mimeType: file.mimeType,
-          buffer: file.buffer,
-        })),
-      });
-    }
+    const metadataRecorded = registerResult.ok;
 
     return {
       ok: true,
@@ -1027,6 +1005,14 @@ export async function persistQuoteIntake(
       reason: "unexpected-error",
     };
   }
+}
+
+function buildRegisterFilesErrorMessage(quoteId: string): string {
+  const normalized = typeof quoteId === "string" ? quoteId.trim() : "";
+  if (!normalized) {
+    return "We couldn’t register your files. Please retry.";
+  }
+  return `We couldn’t register your files. Please retry or contact support with Quote ID ${normalized}.`;
 }
 
 function buildContactName(first: string, last: string) {
