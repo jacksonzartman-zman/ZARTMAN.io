@@ -22,7 +22,8 @@ export type OpsEventType =
   | "provider_verified"
   | "provider_unverified"
   | "provider_activated"
-  | "provider_deactivated";
+  | "provider_deactivated"
+  | "estimate_shown";
 
 export type LogOpsEventInput = {
   quoteId: string;

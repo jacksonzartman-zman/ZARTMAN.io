@@ -105,6 +105,14 @@ import { isCustomerEmailBridgeEnabled, isCustomerEmailOptedIn } from "@/server/q
 import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
 import { CustomerQuoteMessagesSection } from "./CustomerQuoteMessagesSection";
 import { CustomerQuoteMessagesReadMarker } from "./CustomerQuoteMessagesReadMarker";
+import { EstimateBandCard } from "@/components/EstimateBandCard";
+import {
+  buildPricingEstimate,
+  buildPricingEstimateTelemetry,
+  parseQuantity,
+  type PricingEstimateInput,
+} from "@/lib/pricing/estimate";
+import { logOpsEvent } from "@/server/ops/events";
 
 export const dynamic = "force-dynamic";
 
@@ -662,6 +670,22 @@ export default async function CustomerQuoteDetailPage({
     typeof uploadMeta?.quantity === "string" && uploadMeta.quantity.trim().length > 0
       ? uploadMeta.quantity.trim()
       : null;
+  const estimateInput = buildEstimateInput({ quote, uploadMeta, fileCount });
+  const pricingEstimate = buildPricingEstimate(estimateInput);
+
+  if (pricingEstimate) {
+    const telemetry = buildPricingEstimateTelemetry(estimateInput, pricingEstimate);
+    void logOpsEvent({
+      quoteId: quote.id,
+      eventType: "estimate_shown",
+      payload: {
+        process: telemetry.process,
+        quantity_bucket: telemetry.quantityBucket,
+        urgency_bucket: telemetry.urgencyBucket,
+        confidence: telemetry.confidence,
+      },
+    });
+  }
   const intakeTargetShipDateLabel = derived.targetDateValue
     ? formatDateTime(derived.targetDateValue)
     : null;
@@ -1422,6 +1446,10 @@ export default async function CustomerQuoteDetailPage({
     </section>
   );
 
+  const estimateBandCard = (
+    <EstimateBandCard estimate={pricingEstimate} className="rounded-2xl px-5 py-4" />
+  );
+
   const compareOffersSection = (
     <DisclosureSection
       id="compare-offers"
@@ -1593,6 +1621,7 @@ export default async function CustomerQuoteDetailPage({
             />
             {receiptBanner}
             {searchStatusCard}
+            {estimateBandCard}
             <CoverageDisclosure destinations={rfqDestinations} />
           </div>
 
@@ -2034,6 +2063,21 @@ function readOptionalUploadMetaString(
     }
   }
   return null;
+}
+
+function buildEstimateInput(args: {
+  quote: QuoteWorkspaceData["quote"];
+  uploadMeta: QuoteWorkspaceData["uploadMeta"];
+  fileCount: number;
+}): PricingEstimateInput {
+  const quantity = parseQuantity(args.uploadMeta?.quantity ?? null);
+  return {
+    manufacturing_process: args.uploadMeta?.manufacturing_process ?? null,
+    quantity,
+    need_by_date: args.quote.target_date ?? null,
+    shipping_postal_code: args.uploadMeta?.shipping_postal_code ?? null,
+    num_files: args.fileCount,
+  };
 }
 
 function buildCustomerQuoteSections(args: {

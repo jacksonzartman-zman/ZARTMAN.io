@@ -8,7 +8,7 @@ import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { CustomerQuoteCompareOffers } from "@/app/(portals)/customer/quotes/[id]/CustomerQuoteCompareOffers";
 import { CustomerQuoteRefreshResultsButton } from "@/app/(portals)/customer/quotes/[id]/CustomerQuoteRefreshResultsButton";
 import { CustomerSearchActions } from "@/app/(portals)/customer/search/CustomerSearchActions";
-import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
+import { loadQuoteWorkspaceData, type QuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { formatQuoteId } from "@/app/(portals)/quotes/pageUtils";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
@@ -35,6 +35,14 @@ import { PROVIDER_TYPES } from "@/server/providers";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { CoverageDisclosure } from "@/components/CoverageDisclosure";
 import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
+import { EstimateBandCard } from "@/components/EstimateBandCard";
+import {
+  buildPricingEstimate,
+  buildPricingEstimateTelemetry,
+  parseQuantity,
+  type PricingEstimateInput,
+} from "@/lib/pricing/estimate";
+import { logOpsEvent } from "@/server/ops/events";
 
 type CustomerSearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -189,6 +197,25 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
 
   const activeQuoteSummary = buildQuoteSummary(workspaceData);
   const matchedOnProcess = activeQuoteSummary.process !== "Pending" && activeQuoteSummary.process !== "—";
+  const estimateInput =
+    activeQuote && workspaceData
+      ? buildEstimateInput({ quote: workspaceData.quote, uploadMeta: workspaceData.uploadMeta })
+      : null;
+  const pricingEstimate = estimateInput ? buildPricingEstimate(estimateInput) : null;
+
+  if (activeQuote && pricingEstimate && estimateInput) {
+    const telemetry = buildPricingEstimateTelemetry(estimateInput, pricingEstimate);
+    void logOpsEvent({
+      quoteId: activeQuote.id,
+      eventType: "estimate_shown",
+      payload: {
+        process: telemetry.process,
+        quantity_bucket: telemetry.quantityBucket,
+        urgency_bucket: telemetry.urgencyBucket,
+        confidence: telemetry.confidence,
+      },
+    });
+  }
 
   const clearFiltersHref = buildClearFiltersHref(rawParams.quoteId, rawParams.sort);
   const shareSearchHref = activeQuote ? buildSearchHref(usp, activeQuote.id) : "";
@@ -255,6 +282,11 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           <SummaryTile label="Need-by" value={activeQuoteSummary.needBy} />
           <SummaryTile label="Files" value={activeQuoteSummary.files} />
         </dl>
+        {activeQuote ? (
+          <div className="mt-4">
+            <EstimateBandCard estimate={pricingEstimate} />
+          </div>
+        ) : null}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
@@ -1035,6 +1067,20 @@ function buildQuoteSummary(workspaceData: Awaited<ReturnType<typeof loadQuoteWor
     quantity,
     needBy,
     files: fileLabel,
+  };
+}
+
+function buildEstimateInput(args: {
+  quote: QuoteWorkspaceData["quote"];
+  uploadMeta: QuoteWorkspaceData["uploadMeta"];
+}): PricingEstimateInput {
+  const quantity = parseQuantity(args.uploadMeta?.quantity ?? null);
+  return {
+    manufacturing_process: args.uploadMeta?.manufacturing_process ?? null,
+    quantity,
+    need_by_date: args.quote.target_date ?? null,
+    shipping_postal_code: args.uploadMeta?.shipping_postal_code ?? null,
+    num_files: args.quote.fileCount ?? null,
   };
 }
 
