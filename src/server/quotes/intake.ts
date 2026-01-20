@@ -227,12 +227,56 @@ export async function persistQuoteIntakeDirectUpload(params: {
     });
 
     const primary = filesMeta[0]!;
+    const safePrimaryName = sanitizeFileName(
+      primary.fileName,
+      getFileExtension(primary.fileName),
+    );
+    const pendingStoragePath = buildStorageKey(safePrimaryName);
 
-    // Create the quote first so we can allocate quote-scoped storage paths.
+    const { data: uploadRow, error: uploadError } = await supabaseServer
+      .from("uploads")
+      .insert({
+        file_name: primary.fileName,
+        file_path: pendingStoragePath,
+        mime_type: primary.mimeType,
+        name: contactName,
+        email: contactEmail,
+        company: sanitizeNullable(params.payload.company),
+        notes: sanitizeNullable(params.payload.notes),
+        customer_id: customerId,
+        status: DEFAULT_QUOTE_STATUS,
+        first_name: sanitizeNullable(params.payload.firstName),
+        last_name: sanitizeNullable(params.payload.lastName),
+        phone: sanitizeNullable(params.payload.phone),
+        manufacturing_process: sanitizeNullable(params.payload.manufacturingProcess),
+        quantity: sanitizeNullable(params.payload.quantity),
+        shipping_postal_code: sanitizeNullable(params.payload.shippingPostalCode),
+        export_restriction: sanitizeNullable(params.payload.exportRestriction),
+        rfq_reason: sanitizeNullable(params.payload.rfqReason),
+        itar_acknowledged: params.payload.itarAcknowledged,
+        terms_accepted: params.payload.termsAccepted,
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (uploadError || !uploadRow?.id) {
+      console.error("[quote intake direct] upload insert failed", {
+        ...logContext,
+        error: serializeSupabaseError(uploadError),
+      });
+      return {
+        ok: false,
+        error: "We couldn’t save your upload metadata. Please retry.",
+        reason: "db-insert-upload",
+      };
+    }
+
+    const uploadId = uploadRow.id;
+
     const quoteInsert = await supabaseServer
       .from("quotes")
       .insert({
-        upload_id: null,
+        upload_id: uploadId,
         customer_name: contactName,
         customer_email: contactEmail,
         company: sanitizeNullable(params.payload.company),
@@ -249,6 +293,7 @@ export async function persistQuoteIntakeDirectUpload(params: {
     if (quoteInsert.error || !quoteInsert.data?.id) {
       console.error("[quote intake direct] quote insert failed", {
         ...logContext,
+        uploadId,
         error: serializeSupabaseError(quoteInsert.error),
       });
       return {
@@ -291,58 +336,20 @@ export async function persistQuoteIntakeDirectUpload(params: {
       };
     }
 
-    const { data: uploadRow, error: uploadError } = await supabaseServer
+    const { error: uploadUpdateError } = await supabaseServer
       .from("uploads")
-      .insert({
+      .update({
         quote_id: quoteId,
-        file_name: primary.fileName,
         file_path: primaryTarget.storagePath,
-        mime_type: primary.mimeType,
-        name: contactName,
-        email: contactEmail,
-        company: sanitizeNullable(params.payload.company),
-        notes: sanitizeNullable(params.payload.notes),
-        customer_id: customerId,
         status: DEFAULT_QUOTE_STATUS,
-        first_name: sanitizeNullable(params.payload.firstName),
-        last_name: sanitizeNullable(params.payload.lastName),
-        phone: sanitizeNullable(params.payload.phone),
-        manufacturing_process: sanitizeNullable(params.payload.manufacturingProcess),
-        quantity: sanitizeNullable(params.payload.quantity),
-        shipping_postal_code: sanitizeNullable(params.payload.shippingPostalCode),
-        export_restriction: sanitizeNullable(params.payload.exportRestriction),
-        rfq_reason: sanitizeNullable(params.payload.rfqReason),
-        itar_acknowledged: params.payload.itarAcknowledged,
-        terms_accepted: params.payload.termsAccepted,
       })
-      .select("id")
-      .single<{ id: string }>();
-
-    if (uploadError || !uploadRow?.id) {
-      console.error("[quote intake direct] upload insert failed", {
-        ...logContext,
-        quoteId,
-        error: serializeSupabaseError(uploadError),
-      });
-      return {
-        ok: false,
-        error: "We couldn’t save your upload metadata. Please retry.",
-        reason: "db-insert-upload",
-      };
-    }
-
-    const uploadId = uploadRow.id;
-
-    const { error: quoteUpdateError } = await supabaseServer
-      .from("quotes")
-      .update({ upload_id: uploadId })
-      .eq("id", quoteId);
-    if (quoteUpdateError) {
-      console.error("[quote intake direct] quote upload link failed", {
+      .eq("id", uploadId);
+    if (uploadUpdateError) {
+      console.error("[quote intake direct] upload linkage failed", {
         ...logContext,
         quoteId,
         uploadId,
-        error: serializeSupabaseError(quoteUpdateError),
+        error: serializeSupabaseError(uploadUpdateError),
       });
     }
 
@@ -490,55 +497,9 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     const primary = filesMeta[0]!;
     const primaryTarget = targets[0]!;
 
-    // Create the quote first so we have a quote id to attach uploads/files to.
-    const quoteInsert = await supabaseServer
-      .from("quotes")
-      .insert({
-        upload_id: null,
-        customer_name: contactName,
-        customer_email: contactEmail,
-        company: sanitizeNullable(params.payload.company),
-        file_name: primary.fileName,
-        status: DEFAULT_QUOTE_STATUS,
-        currency: "USD",
-        price: null,
-        customer_id: customerId,
-        target_date: sanitizeNullable(params.payload.targetDate),
-      })
-      .select("id")
-      .single<{ id: string }>();
-
-    if (quoteInsert.error || !quoteInsert.data?.id) {
-      console.error("[quote intake finalize] quote insert failed", {
-        ...logContext,
-        error: serializeSupabaseError(quoteInsert.error),
-      });
-      return {
-        ok: false,
-        error: "We couldn’t create your quote record. Please retry.",
-        reason: "db-insert-quote",
-      };
-    }
-
-    const quoteId = quoteInsert.data.id;
-
-    // Phase 19.3.13: best-effort default email replies for new quotes.
-    // Safe-by-default: helper does not probe when the bridge env flag is off.
-    if (customerId) {
-      try {
-        await applyCustomerEmailDefaultToNewQuote({ quoteId, customerId });
-      } catch {
-        // Never block quote creation.
-      }
-    }
-
-    // Phase 19.3.14: best-effort customer invite email on quote creation.
-    void autoSendCustomerInviteAfterQuoteCreate({ quoteId, customerId });
-
     const { data: uploadRow, error: uploadError } = await supabaseServer
       .from("uploads")
       .insert({
-        quote_id: quoteId,
         file_name: primary.fileName,
         file_path: primaryTarget.storagePath,
         mime_type: primary.mimeType,
@@ -565,7 +526,6 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     if (uploadError || !uploadRow?.id) {
       console.error("[quote intake finalize] upload insert failed", {
         ...logContext,
-        quoteId,
         error: serializeSupabaseError(uploadError),
       });
       return {
@@ -577,16 +537,61 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
 
     const uploadId = uploadRow.id;
 
-    const { error: quoteUpdateError } = await supabaseServer
+    const quoteInsert = await supabaseServer
       .from("quotes")
-      .update({ upload_id: uploadId })
-      .eq("id", quoteId);
-    if (quoteUpdateError) {
-      console.error("[quote intake finalize] quote upload link failed", {
+      .insert({
+        upload_id: uploadId,
+        customer_name: contactName,
+        customer_email: contactEmail,
+        company: sanitizeNullable(params.payload.company),
+        file_name: primary.fileName,
+        status: DEFAULT_QUOTE_STATUS,
+        currency: "USD",
+        price: null,
+        customer_id: customerId,
+        target_date: sanitizeNullable(params.payload.targetDate),
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (quoteInsert.error || !quoteInsert.data?.id) {
+      console.error("[quote intake finalize] quote insert failed", {
+        ...logContext,
+        uploadId,
+        error: serializeSupabaseError(quoteInsert.error),
+      });
+      return {
+        ok: false,
+        error: "We couldn’t create your quote record. Please retry.",
+        reason: "db-insert-quote",
+      };
+    }
+
+    const quoteId = quoteInsert.data.id;
+
+    // Phase 19.3.13: best-effort default email replies for new quotes.
+    // Safe-by-default: helper does not probe when the bridge env flag is off.
+    if (customerId) {
+      try {
+        await applyCustomerEmailDefaultToNewQuote({ quoteId, customerId });
+      } catch {
+        // Never block quote creation.
+      }
+    }
+
+    // Phase 19.3.14: best-effort customer invite email on quote creation.
+    void autoSendCustomerInviteAfterQuoteCreate({ quoteId, customerId });
+
+    const { error: uploadUpdateError } = await supabaseServer
+      .from("uploads")
+      .update({ quote_id: quoteId, status: DEFAULT_QUOTE_STATUS })
+      .eq("id", uploadId);
+    if (uploadUpdateError) {
+      console.error("[quote intake finalize] upload linkage failed", {
         ...logContext,
         quoteId,
         uploadId,
-        error: serializeSupabaseError(quoteUpdateError),
+        error: serializeSupabaseError(uploadUpdateError),
       });
     }
 
