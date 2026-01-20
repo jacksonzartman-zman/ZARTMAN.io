@@ -11,6 +11,7 @@ Required commands (run from repo root):
 ## Manual QA (10 minutes)
 
 - Customer: submit intake → lands on `/customer/search?quote=<id>` → verify status card + filters render
+- Homepage: upload CAD/ZIP → lands on `/customer/search?quote=<id>`
 - Quote detail: "Searching providers..." panel renders with counts + refresh button
 - Offers compare: change sort dropdown; confirm URL query updates and persists on refresh
 - Invite supplier: submit invite; confirm success toast/copy; verify ops event present (if timeline exists)

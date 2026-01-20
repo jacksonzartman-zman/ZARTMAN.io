@@ -339,6 +339,7 @@ export async function prepareQuoteIntakeDirectUploadAction(
       exportRestriction: getString(formData, "exportRestriction"),
       rfqReason: getString(formData, "rfqReason"),
       notes: getString(formData, "notes"),
+      targetDate: getString(formData, "targetDate"),
       itarAcknowledged: parseBoolean(formData.get("itarAcknowledged")),
       termsAccepted: parseBoolean(formData.get("termsAccepted")),
     };
@@ -590,6 +591,7 @@ export async function finalizeQuoteIntakeEphemeralUploadAction(
       exportRestriction: getString(formData, "exportRestriction"),
       rfqReason: getString(formData, "rfqReason"),
       notes: getString(formData, "notes"),
+      targetDate: getString(formData, "targetDate"),
       itarAcknowledged: parseBoolean(formData.get("itarAcknowledged")),
       termsAccepted: parseBoolean(formData.get("termsAccepted")),
     };
@@ -780,6 +782,7 @@ function parseQuoteIntakeFormData(
     exportRestriction: getString(formData, "exportRestriction"),
     rfqReason: getString(formData, "rfqReason"),
     notes: getString(formData, "notes"),
+    targetDate: getString(formData, "targetDate"),
     itarAcknowledged: parseBoolean(formData.get("itarAcknowledged")),
     termsAccepted: parseBoolean(formData.get("termsAccepted")),
   };

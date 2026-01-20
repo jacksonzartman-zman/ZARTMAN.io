@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type ProcessItem = {
+export type ProcessItem = {
   key: string;
   label: string;
   description: string;
@@ -11,12 +11,26 @@ type ProcessItem = {
 
 type HomeProcessTabsProps = {
   processes: ProcessItem[];
+  activeKey?: string;
+  onProcessChange?: (key: string) => void;
 };
 
-export default function HomeProcessTabs({ processes }: HomeProcessTabsProps) {
-  const [activeKey, setActiveKey] = useState(processes[0]?.key ?? "");
+export default function HomeProcessTabs({
+  processes,
+  activeKey,
+  onProcessChange,
+}: HomeProcessTabsProps) {
+  const [internalKey, setInternalKey] = useState(processes[0]?.key ?? "");
+  const resolvedKey = activeKey ?? internalKey;
   const activeProcess =
-    processes.find((process) => process.key === activeKey) ?? processes[0];
+    processes.find((process) => process.key === resolvedKey) ?? processes[0];
+
+  const handleSelect = (key: string) => {
+    if (activeKey === undefined) {
+      setInternalKey(key);
+    }
+    onProcessChange?.(key);
+  };
 
   if (!activeProcess) {
     return null;
@@ -38,7 +52,7 @@ export default function HomeProcessTabs({ processes }: HomeProcessTabsProps) {
               type="button"
               aria-pressed={isActive}
               aria-controls="process-panel"
-              onClick={() => setActiveKey(process.key)}
+              onClick={() => handleSelect(process.key)}
               className={`rounded-full border px-4 py-2 text-xs font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 ${
                 isActive
                   ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-100 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
