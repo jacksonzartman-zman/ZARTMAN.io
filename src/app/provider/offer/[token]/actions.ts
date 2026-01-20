@@ -37,7 +37,7 @@ const OFFER_LEAD_TIME_ERROR = "Enter a lead time in days.";
 const OFFER_CONFIDENCE_ERROR = "Confidence must be between 0 and 100.";
 const OFFER_TEXT_LENGTH_ERROR = "Keep this under 2,000 characters.";
 const MAX_TEXT_LENGTH = 2000;
-const ACTIVE_DESTINATION_STATUSES = new Set(["queued", "sent", "viewed", "quoted"]);
+const ACTIVE_DESTINATION_STATUSES = new Set(["queued", "sent", "submitted", "viewed", "quoted"]);
 
 export async function submitOfferViaTokenAction(
   _prevState: ProviderOfferActionState,

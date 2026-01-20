@@ -32,6 +32,10 @@ export const DESTINATION_STATUS_META: Record<RfqDestinationStatus, StatusMeta> =
     label: "Sent",
     className: "border-blue-500/40 bg-blue-500/10 text-blue-100",
   },
+  submitted: {
+    label: "Submitted",
+    className: "border-teal-500/40 bg-teal-500/10 text-teal-100",
+  },
   viewed: {
     label: "Viewed",
     className: "border-indigo-500/40 bg-indigo-500/10 text-indigo-100",

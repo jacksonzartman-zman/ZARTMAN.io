@@ -1043,9 +1043,10 @@ const DESTINATION_SLA_URGENCY_ORDER: Record<RfqDestinationStatus, number> = {
   draft: 1,
   queued: 2,
   sent: 3,
-  viewed: 4,
-  quoted: 5,
-  declined: 6,
+  submitted: 4,
+  viewed: 5,
+  quoted: 6,
+  declined: 7,
 };
 
 function sortDestinationsBySlaUrgency(a: RfqDestination, b: RfqDestination): number {
@@ -1079,6 +1080,8 @@ function formatDestinationStatusLabel(status: RfqDestinationStatus): string {
       return "Queued";
     case "sent":
       return "Sent";
+    case "submitted":
+      return "Submitted";
     case "viewed":
       return "Viewed";
     case "quoted":
@@ -1097,6 +1100,7 @@ function destinationStatusTone(status: RfqDestinationStatus): TagPillTone {
     case "queued":
       return "amber";
     case "sent":
+    case "submitted":
     case "viewed":
       return "blue";
     case "quoted":

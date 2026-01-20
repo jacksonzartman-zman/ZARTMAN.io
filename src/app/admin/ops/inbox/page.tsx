@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 const DESTINATION_STATUS_VALUES = [
   "queued",
   "sent",
+  "submitted",
   "viewed",
   "quoted",
   "declined",
@@ -25,6 +26,7 @@ const DESTINATION_STATUS_OPTIONS = [
   { value: "all", label: "All" },
   { value: "queued", label: "Queued" },
   { value: "sent", label: "Sent" },
+  { value: "submitted", label: "Submitted" },
   { value: "viewed", label: "Viewed" },
   { value: "quoted", label: "Quoted" },
   { value: "declined", label: "Declined" },
@@ -40,6 +42,7 @@ const DESTINATION_STATUS_META: Record<
 > = {
   queued: { label: "Queued", className: "pill-muted" },
   sent: { label: "Sent", className: "pill-info" },
+  submitted: { label: "Submitted", className: "pill-info" },
   viewed: { label: "Viewed", className: "pill-info" },
   quoted: { label: "Quoted", className: "pill-success" },
   declined: { label: "Declined", className: "pill-warning" },
@@ -377,7 +380,12 @@ export default async function AdminOpsInboxPage({
 function resolveLastActivityMs(row: AdminOpsInboxRow): number {
   let latest = toMs(row.quote.created_at);
   for (const destination of row.destinations) {
-    latest = Math.max(latest, toMs(destination.last_status_at), toMs(destination.sent_at));
+    latest = Math.max(
+      latest,
+      toMs(destination.last_status_at),
+      toMs(destination.sent_at),
+      toMs(destination.submitted_at),
+    );
   }
   latest = Math.max(
     latest,

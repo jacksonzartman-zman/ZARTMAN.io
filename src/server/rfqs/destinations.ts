@@ -10,6 +10,7 @@ export type RfqDestinationStatus =
   | "draft"
   | "queued"
   | "sent"
+  | "submitted"
   | "viewed"
   | "quoted"
   | "declined"
@@ -31,6 +32,9 @@ export type RfqDestination = {
   provider_id: string;
   status: RfqDestinationStatus;
   sent_at: string | null;
+  submitted_at: string | null;
+  submitted_notes: string | null;
+  submitted_by: string | null;
   last_status_at: string;
   external_reference: string | null;
   offer_token: string | null;
@@ -66,6 +70,9 @@ type RawRfqDestinationRow = {
   provider_id: string | null;
   status: string | null;
   sent_at: string | null;
+  submitted_at?: string | null;
+  submitted_notes?: string | null;
+  submitted_by?: string | null;
   last_status_at: string | null;
   external_reference: string | null;
   offer_token?: string | null;
@@ -98,6 +105,9 @@ type RawOfferTokenDestinationRow = {
   provider_id: string | null;
   status: string | null;
   sent_at: string | null;
+  submitted_at?: string | null;
+  submitted_notes?: string | null;
+  submitted_by?: string | null;
   last_status_at: string | null;
   external_reference: string | null;
   error_message: string | null;
@@ -164,6 +174,7 @@ const DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
   "draft",
   "queued",
   "sent",
+  "submitted",
   "viewed",
   "quoted",
   "declined",
@@ -176,17 +187,22 @@ export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[
     return [];
   }
 
-  const [supportsOfferToken, includeProviderCountry] = await Promise.all([
+  const [supportsOfferToken, includeProviderCountry, supportsSubmittedMeta] = await Promise.all([
     hasColumns("rfq_destinations", ["offer_token"]),
     hasColumns("providers", ["country"]),
+    hasColumns("rfq_destinations", ["submitted_at", "submitted_notes", "submitted_by"]),
   ]);
   const providerColumns = ["name", "provider_type", "quoting_mode"];
   if (includeProviderCountry) {
     providerColumns.push("country");
   }
   const destinationProviderSelect = `provider:providers(${providerColumns.join(",")})`;
+  const submittedColumns = supportsSubmittedMeta
+    ? ["submitted_at", "submitted_notes", "submitted_by"]
+    : [];
   const destinationSelect = [
     ...DESTINATION_COLUMNS,
+    ...submittedColumns,
     supportsOfferToken ? "offer_token" : null,
     destinationProviderSelect,
   ]
@@ -324,6 +340,9 @@ function normalizeDestinationRow(row: RawRfqDestinationRow): RfqDestination | nu
     provider_id: providerId,
     status: normalizeDestinationStatus(row?.status),
     sent_at: row?.sent_at ?? null,
+    submitted_at: row?.submitted_at ?? null,
+    submitted_notes: normalizeOptionalText(row?.submitted_notes),
+    submitted_by: normalizeOptionalText(row?.submitted_by),
     last_status_at: lastStatusAt,
     external_reference: row?.external_reference ?? null,
     offer_token: normalizeOptionalText(row?.offer_token),
@@ -363,6 +382,9 @@ function normalizeOfferTokenRow(
       provider_id: providerId,
       status: normalizeDestinationStatus(row?.status),
       sent_at: row?.sent_at ?? null,
+      submitted_at: row?.submitted_at ?? null,
+      submitted_notes: normalizeOptionalText(row?.submitted_notes),
+      submitted_by: normalizeOptionalText(row?.submitted_by),
       last_status_at: lastStatusAt,
       external_reference: row?.external_reference ?? null,
       offer_token: normalizeOptionalText(row?.offer_token),

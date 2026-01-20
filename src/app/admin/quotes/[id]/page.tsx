@@ -3033,6 +3033,10 @@ function renderOpsEventSummary(args: {
       }
       break;
     }
+    case "destination_submitted": {
+      summaryParts.push("Destination submitted");
+      break;
+    }
     case "outbound_email_generated": {
       summaryParts.push("Outbound email draft generated");
       break;

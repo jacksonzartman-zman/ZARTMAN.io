@@ -71,6 +71,7 @@ import {
 import { buildAwardEmail } from "@/server/quotes/awardEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -153,6 +154,11 @@ const ADMIN_DESTINATIONS_GENERIC_ERROR =
   "We couldn't update destinations right now. Please try again.";
 const ADMIN_DESTINATIONS_INPUT_ERROR = "Select at least one provider.";
 const ADMIN_DESTINATION_STATUS_ERROR = "Select a valid destination status.";
+const ADMIN_DESTINATION_SUBMITTED_NOTES_ERROR = "Add at least 5 characters of notes.";
+const ADMIN_DESTINATION_SUBMITTED_SCHEMA_ERROR =
+  "Submission tracking isn't enabled in this environment yet.";
+const ADMIN_DESTINATION_SUBMITTED_ERROR =
+  "We couldn't mark this destination as submitted right now. Please try again.";
 const ADMIN_DESTINATION_EMAIL_ERROR =
   "We couldn't generate this RFQ email right now. Please try again.";
 const ADMIN_DESTINATION_WEB_FORM_ERROR =
@@ -867,10 +873,15 @@ export type UpdateDestinationStatusActionResult =
   | { ok: true; message: string }
   | { ok: false; error: string };
 
+export type MarkDestinationSubmittedActionResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
 const DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
   "draft",
   "queued",
   "sent",
+  "submitted",
   "viewed",
   "quoted",
   "declined",
@@ -1124,6 +1135,121 @@ export async function updateDestinationStatusAction(args: {
       error: serializeActionError(error),
     });
     return { ok: false, error: ADMIN_DESTINATIONS_GENERIC_ERROR };
+  }
+}
+
+export async function markDestinationSubmittedAction(args: {
+  destinationId: string;
+  notes: string;
+}): Promise<MarkDestinationSubmittedActionResult> {
+  const destinationId = normalizeIdInput(args.destinationId);
+  const notes = typeof args.notes === "string" ? args.notes.trim() : "";
+  if (!destinationId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+  if (notes.length < 5) {
+    return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_NOTES_ERROR };
+  }
+
+  try {
+    const adminUser = await requireAdminUser();
+    const schemaReady = await schemaGate({
+      enabled: true,
+      relation: "rfq_destinations",
+      requiredColumns: [
+        "id",
+        "rfq_id",
+        "provider_id",
+        "status",
+        "last_status_at",
+        "submitted_at",
+        "submitted_notes",
+        "submitted_by",
+      ],
+      warnPrefix: "[admin rfq destinations]",
+      warnKey: "admin_rfqs:destination_submitted_missing_schema",
+    });
+    if (!schemaReady) {
+      return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_SCHEMA_ERROR };
+    }
+
+    const { data: destination, error: destinationError } = await supabaseServer
+      .from("rfq_destinations")
+      .select("id,rfq_id,provider_id,status")
+      .eq("id", destinationId)
+      .maybeSingle<{
+        id: string;
+        rfq_id: string | null;
+        provider_id: string | null;
+        status: string | null;
+      }>();
+
+    if (destinationError) {
+      if (isMissingTableOrColumnError(destinationError)) {
+        return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_SCHEMA_ERROR };
+      }
+      console.error("[admin rfq destinations] submitted lookup failed", {
+        destinationId,
+        error: serializeSupabaseError(destinationError),
+      });
+      return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_ERROR };
+    }
+
+    if (!destination?.id) {
+      return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_ERROR };
+    }
+
+    const now = new Date().toISOString();
+    const submittedBy = normalizeIdInput(adminUser.id);
+    const payload: Record<string, unknown> = {
+      status: "submitted",
+      last_status_at: now,
+      submitted_at: now,
+      submitted_notes: notes,
+      submitted_by: submittedBy || null,
+      error_message: null,
+    };
+
+    const { error: updateError } = await supabaseServer
+      .from("rfq_destinations")
+      .update(payload)
+      .eq("id", destinationId);
+
+    if (updateError) {
+      if (isMissingTableOrColumnError(updateError)) {
+        return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_SCHEMA_ERROR };
+      }
+      console.error("[admin rfq destinations] submitted update failed", {
+        destinationId,
+        error: serializeSupabaseError(updateError),
+      });
+      return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_ERROR };
+    }
+
+    const rfqId = normalizeIdInput(destination.rfq_id);
+    const providerId = normalizeIdInput(destination.provider_id);
+    if (rfqId) {
+      await logOpsEvent({
+        quoteId: rfqId,
+        destinationId,
+        eventType: "destination_submitted",
+        payload: {
+          provider_id: providerId || null,
+          destination_id: destinationId,
+          quote_id: rfqId,
+          notes_length: notes.length,
+        },
+      });
+      revalidatePath(`/admin/quotes/${rfqId}`);
+    }
+
+    return { ok: true, message: "Destination marked submitted." };
+  } catch (error) {
+    console.error("[admin rfq destinations] submitted action crashed", {
+      destinationId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_ERROR };
   }
 }
 

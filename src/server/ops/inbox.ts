@@ -58,6 +58,7 @@ export type AdminOpsInboxDestination = {
   created_at: string | null;
   last_status_at: string | null;
   sent_at: string | null;
+  submitted_at: string | null;
   error_message: string | null;
 };
 
@@ -67,6 +68,7 @@ export type AdminOpsInboxSummary = {
   counts: {
     queued: number;
     sent: number;
+    submitted: number;
     viewed: number;
     quoted: number;
     declined: number;
@@ -125,6 +127,7 @@ type DestinationRow = {
   created_at: string | null;
   last_status_at?: string | null;
   sent_at?: string | null;
+  submitted_at?: string | null;
   error_message?: string | null;
   provider?: {
     name?: string | null;
@@ -163,6 +166,7 @@ const MAX_LIMIT = 200;
 const DESTINATION_STATUS_COUNTS = [
   "queued",
   "sent",
+  "submitted",
   "viewed",
   "quoted",
   "declined",
@@ -565,6 +569,7 @@ async function loadDestinationsByQuoteId(
     supportsDispatchMode,
     supportsRfqUrl,
     supportsProviderWebsite,
+    supportsSubmittedAt,
   ] = await Promise.all([
     hasColumns("rfq_destinations", ["last_status_at"]),
     hasColumns("rfq_destinations", ["sent_at"]),
@@ -580,6 +585,7 @@ async function loadDestinationsByQuoteId(
     hasColumns("providers", ["dispatch_mode"]),
     hasColumns("providers", ["rfq_url"]),
     hasColumns("providers", ["website"]),
+    hasColumns("rfq_destinations", ["submitted_at"]),
   ]);
 
   const destinationSelect = [
@@ -590,6 +596,7 @@ async function loadDestinationsByQuoteId(
     "created_at",
     supportsLastStatusAt ? "last_status_at" : null,
     supportsSentAt ? "sent_at" : null,
+    supportsSubmittedAt ? "submitted_at" : null,
     supportsErrorMessage ? "error_message" : null,
     supportsOfferToken ? "offer_token" : null,
   ]
@@ -678,6 +685,7 @@ async function loadDestinationsByQuoteId(
       created_at: normalizeOptionalString(row?.created_at),
       last_status_at: normalizeOptionalString(row?.last_status_at),
       sent_at: normalizeOptionalString(row?.sent_at),
+      submitted_at: normalizeOptionalString(row?.submitted_at),
       error_message: normalizeOptionalString(row?.error_message),
     };
 
@@ -804,6 +812,7 @@ function buildQuoteSummary(
   const counts: Record<DestinationStatusCountKey, number> = {
     queued: 0,
     sent: 0,
+    submitted: 0,
     viewed: 0,
     quoted: 0,
     declined: 0,
