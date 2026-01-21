@@ -65,11 +65,11 @@ export type QuoteIntakeDirectPrepareState =
 
 export type QuoteIntakeDirectFinalizeState =
   | { ok: true; message: string; quoteId: string; uploadId: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; quoteId?: string; uploadId?: string };
 
 export type QuoteIntakeEphemeralFinalizeState =
   | { ok: true; message: string; quoteId: string; uploadId: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; quoteId?: string; uploadId?: string };
 
 export type QuoteIntakeEphemeralUploadTarget = {
   clientFileId: string;
@@ -573,12 +573,19 @@ export async function finalizeQuoteIntakeDirectUploadAction(
     });
 
     if (!result.ok) {
-      const errorMessage = quoteId
-        ? `We couldn’t register your files. Please retry or contact support with Quote ID ${quoteId}.`
+      const referenceParts = [
+        quoteId ? `Quote ID ${quoteId}` : "",
+        uploadId ? `Upload ID ${uploadId}` : "",
+      ].filter(Boolean);
+      const reference = referenceParts.length > 0 ? referenceParts.join(" · ") : "";
+      const errorMessage = reference
+        ? `We couldn’t register your files. Please retry or contact support with ${reference}.`
         : "We couldn’t register your files. Please retry or contact support.";
       return {
         ok: false,
         error: errorMessage,
+        quoteId,
+        uploadId,
       };
     }
 
@@ -659,14 +666,22 @@ export async function finalizeQuoteIntakeEphemeralUploadAction(
       termsAccepted: parseBoolean(formData.get("termsAccepted")),
     };
 
+    const idempotencyKey = getString(formData, "idempotencyKey");
+
     const result = await persistQuoteIntakeFromUploadedTargets({
       payload,
       targets,
       user,
+      idempotencyKey,
     });
 
     if (!result.ok) {
-      return { ok: false, error: result.error || QUOTE_INTAKE_FALLBACK_ERROR };
+      return {
+        ok: false,
+        error: result.error || QUOTE_INTAKE_FALLBACK_ERROR,
+        quoteId: result.quoteId,
+        uploadId: result.uploadId,
+      };
     }
 
     revalidatePath("/admin");
