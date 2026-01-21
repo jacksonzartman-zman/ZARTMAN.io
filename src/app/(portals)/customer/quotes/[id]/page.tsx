@@ -1633,7 +1633,7 @@ export default async function CustomerQuoteDetailPage({
   const decisionHelperCopy = hasSearchOffers
     ? "We'll connect you to finalize details and confirm pricing."
     : null;
-  const shortlistOnlyMode = parseToggle(shortlistedParam);
+  const shortlistOnlyMode = parseToggle(shortlistedParam ?? null);
   const decisionPrimaryCta = hasSearchOffers
     ? { label: "Request introduction", href: "#" }
     : { label: "Invite your supplier", href: "/customer/invite-supplier" };
