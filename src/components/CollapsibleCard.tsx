@@ -3,12 +3,21 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
 import { useEffect, useId, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 type CollapsibleCardProps = {
   title: string;
   description?: string;
   summary?: ReactNode;
   defaultOpen?: boolean;
+  /**
+   * When set, keep the open/closed state synced to a URL search param.
+   * - Open: sets `<urlParamKey>=1`
+   * - Closed: removes `<urlParamKey>`
+   *
+   * This lets server components decide whether to load expensive data.
+   */
+  urlParamKey?: string;
   children: ReactNode;
   className?: string;
   contentClassName?: string;
@@ -20,17 +29,46 @@ export function CollapsibleCard({
   description,
   summary,
   defaultOpen = false,
+  urlParamKey,
   children,
   className,
   contentClassName,
   id,
 }: CollapsibleCardProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const stableId = useId();
   const panelId = useMemo(
     () => `${stableId}-panel`,
     [stableId],
   );
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(() => {
+    if (!urlParamKey) return defaultOpen;
+    const value = searchParams?.get(urlParamKey);
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") {
+      return true;
+    }
+    if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
+      return false;
+    }
+    return defaultOpen;
+  });
+
+  useEffect(() => {
+    if (!urlParamKey) return;
+    const value = searchParams?.get(urlParamKey);
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    const next =
+      normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on"
+        ? true
+        : normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off"
+          ? false
+          : null;
+    if (next === null) return;
+    setOpen((current) => (current === next ? current : next));
+  }, [searchParams, urlParamKey]);
 
   useEffect(() => {
     if (!id) {
@@ -52,6 +90,19 @@ export function CollapsibleCard({
     return () => window.removeEventListener("hashchange", maybeOpenFromHash);
   }, [id]);
 
+  const setOpenWithUrlSync = (nextOpen: boolean) => {
+    setOpen(nextOpen);
+    if (!urlParamKey) return;
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    if (nextOpen) {
+      params.set(urlParamKey, "1");
+    } else {
+      params.delete(urlParamKey);
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
   return (
     <section
       id={id}
@@ -64,7 +115,7 @@ export function CollapsibleCard({
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpenWithUrlSync(!open)}
         className={clsx(
           "flex w-full items-start justify-between gap-4 px-6 py-5 text-left",
           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400/70",

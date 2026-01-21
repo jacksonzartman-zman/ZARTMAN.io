@@ -27,6 +27,7 @@ import { getRfqOffers, type RfqOffer } from "@/server/rfqs/offers";
 import {
   getRfqDestinations,
   type RfqDestination,
+  getRfqDestinationsLite,
 } from "@/server/rfqs/destinations";
 import { getProviderStatusByIds } from "@/server/providers";
 import { listOpsEventsForQuote, type OpsEventRecord } from "@/server/ops/events";
@@ -101,6 +102,11 @@ type LoadQuoteWorkspaceOptions = {
    * When true, include recent ops events for feed enrichment.
    */
   includeOpsEvents?: boolean;
+  /**
+   * When false, fetch a minimal destinations shape (no provider join / detail fields).
+   * Useful when destination details are not visible.
+   */
+  includeDestinationDetails?: boolean;
 };
 
 type SafeQuoteRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
@@ -268,7 +274,10 @@ export async function loadQuoteWorkspaceData(
     const parts = await loadQuotePartsWithFiles(quoteId);
     const includeOffers = Boolean(options?.includeOffers);
     const rfqOffersRaw = includeOffers ? await getRfqOffers(quote.id) : [];
-    const rfqDestinationsRaw = await getRfqDestinations(quote.id);
+    const includeDestinationDetails = options?.includeDestinationDetails ?? true;
+    const rfqDestinationsRaw = includeDestinationDetails
+      ? await getRfqDestinations(quote.id)
+      : await getRfqDestinationsLite(quote.id);
     let rfqOffers = rfqOffersRaw;
     let rfqDestinations = rfqDestinationsRaw;
 
