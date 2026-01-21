@@ -43,7 +43,8 @@ export function CustomerUploadsForm({ quoteId }: { quoteId: string }) {
             Add files
           </p>
           <p className="mt-1 text-sm text-slate-300">
-            Upload CAD, drawings, PDFs, or ZIPs to this RFQ. After upload, files will appear below and can be linked to parts.
+            Upload CAD, drawings, PDFs, or ZIPs to this search request. After upload, files will
+            appear below and can be linked to parts.
           </p>
         </div>
       </div>

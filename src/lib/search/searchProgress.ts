@@ -75,7 +75,7 @@ function buildStatusCopy(
       return {
         statusTag: "Initializing",
         statusHeadline: "Searching providers...",
-        statusDetail: "We are setting up your RFQ and routing it to matched providers.",
+        statusDetail: "We are setting up your search request and routing it to matched providers.",
       };
     case "results_available":
       return {
@@ -89,21 +89,21 @@ function buildStatusCopy(
         statusHeadline: "Search needs attention",
         statusDetail:
           counts.destinations_error > 0
-            ? "Some destinations failed to receive your RFQ. Contact support for help."
-            : "No destinations are still pending. Adjust your search to restart outreach.",
+            ? "Some suppliers could not be contacted for this search request. Contact support for help."
+            : "No suppliers are still pending. Adjust your search to restart outreach.",
       };
     case "no_destinations":
       return {
-        statusTag: "No destinations",
-        statusHeadline: "Add destinations to start your search",
-        statusDetail: "Choose providers to route your RFQ and start collecting offers.",
+        statusTag: "No suppliers contacted",
+        statusHeadline: "Contact suppliers to start your search",
+        statusDetail: "Choose providers to route your search request and start collecting offers.",
       };
     case "searching":
     default:
       return {
         statusTag: "Searching",
         statusHeadline: "Searching providers...",
-        statusDetail: "Track dispatch progress as we route your RFQ to matched providers.",
+        statusDetail: "Track dispatch progress as we route your search request to matched providers.",
       };
   }
 }

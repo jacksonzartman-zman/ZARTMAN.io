@@ -50,8 +50,8 @@ export function CompleteCustomerProfileCard({
       </p>
       <h2 className="mt-2 text-2xl font-semibold text-white">Complete your workspace</h2>
       <p className="mt-1 text-sm text-slate-400">
-        Share the basics about your company so we can link RFQs, quotes, and future orders to your
-        account.
+        Share the basics about your company so we can link search requests, quotes, and future
+        orders to your account.
       </p>
 
       <form action={formAction} className="mt-6 space-y-4">

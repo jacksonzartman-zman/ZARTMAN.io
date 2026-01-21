@@ -77,12 +77,16 @@ export function CoverageDisclosure({
             What happens when you click Search?
           </p>
           <ul className="list-disc space-y-1 pl-5 text-xs text-slate-300">
-            <li>We package your RFQ details and match it to providers by process and volume fit.</li>
-            <li>We dispatch the RFQ through our current workflow and monitor delivery.</li>
+            <li>
+              We package your search request details and match them to suppliers by process and
+              volume fit.
+            </li>
+            <li>We contact a mix of network, marketplace, factory, and broker partners and track outreach.</li>
             <li>Responses arrive as suppliers quote, and we notify you as they land.</li>
           </ul>
           <p className="text-xs text-slate-300">
-            We route RFQs to verified, active suppliers. Want to include a supplier not listed?{" "}
+            We route search requests to verified, active suppliers. Want to include a supplier not
+            listed?{" "}
             <Link href="/customer/invite-supplier" className="font-semibold text-slate-100 hover:text-white">
               Invite them.
             </Link>
@@ -90,7 +94,7 @@ export function CoverageDisclosure({
         </div>
         <div className="space-y-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Which providers will be contacted?
+            Which suppliers will be contacted?
           </p>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">

@@ -56,8 +56,8 @@ export function WorkflowStatusCallout({
       </div>
       <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">
         {nextState
-          ? "Up next once the team advances this RFQ."
-          : "This RFQ has reached the end of the workflow."}
+          ? "Up next once the team advances this search request."
+          : "This search request has reached the end of the workflow."}
       </p>
     </div>
   );

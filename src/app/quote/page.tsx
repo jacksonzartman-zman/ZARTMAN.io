@@ -26,7 +26,8 @@ export default async function QuotePage() {
               Upload your CAD pack to kick off a quote
             </h1>
             <p className="text-sm sm:text-base text-ink-muted">
-              Drag in 5–20 CAD files (STEP, IGES, STL, SolidWorks, or zipped assemblies). We keep every part on the same RFQ so suppliers see the full project context.
+              Drag in 5–20 CAD files (STEP, IGES, STL, SolidWorks, or zipped assemblies). We keep
+              every part on the same search request so suppliers see the full project context.
             </p>
           </div>
           <div className="rounded-2xl border border-line-subtle bg-surface/50 p-4 text-sm text-ink-soft">
@@ -39,7 +40,7 @@ export default async function QuotePage() {
         <section className="max-w-3xl">
           <div className="rounded-2xl border border-line-subtle bg-surface/50 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Your first RFQ in 3 steps
+              Your first search request in 3 steps
             </div>
             <ol className="mt-3 grid gap-3 sm:grid-cols-3">
               <li className="surface-card p-4">
@@ -58,7 +59,7 @@ export default async function QuotePage() {
                 <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
                   Step 3
                 </div>
-                <p className="text-sm text-ink-soft">Review &amp; submit RFQ</p>
+                <p className="text-sm text-ink-soft">Review &amp; submit search request</p>
               </li>
             </ol>
           </div>

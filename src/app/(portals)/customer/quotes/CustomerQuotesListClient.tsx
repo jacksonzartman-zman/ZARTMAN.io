@@ -170,7 +170,7 @@ export function CustomerQuotesListClient({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search RFQs, files, status…"
+            placeholder="Search requests, files, status…"
             className="w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-100 outline-none transition focus:border-emerald-400"
           />
         </label>
@@ -213,9 +213,9 @@ export function CustomerQuotesListClient({
 
       {filteredCount === 0 ? (
         <div className="rounded-2xl border border-slate-900/70 bg-black/40 p-6">
-          <p className="text-sm font-semibold text-slate-100">No RFQs match your search</p>
+          <p className="text-sm font-semibold text-slate-100">No search requests match your filters</p>
           <p className="mt-2 text-sm text-slate-400">
-            Try a different query or clear filters to see all {totalCount} RFQs.
+            Try a different query or clear filters to see all {totalCount} search requests.
           </p>
         </div>
       ) : (
@@ -242,7 +242,8 @@ export function CustomerQuotesListClient({
                   >
                     <span>{section.title}</span>
                     <span className="text-slate-500">
-                      {section.items.length} {section.items.length === 1 ? "RFQ" : "RFQs"}
+                      {section.items.length}{" "}
+                      {section.items.length === 1 ? "search request" : "search requests"}
                     </span>
                   </div>
                   <ul className="divide-y divide-slate-900/70">

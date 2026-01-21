@@ -73,14 +73,14 @@ export default async function CustomerQuotesPage({
       <PortalShell
         workspace="customer"
         title="Quotes"
-        subtitle="All RFQs you’ve submitted, from draft to award."
+        subtitle="All search requests you’ve submitted, from draft to award."
         actions={
           SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
             <Link
               href="/quote"
               className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
             >
-              Start a new RFQ
+              Start a new search
             </Link>
           ) : null
         }
@@ -91,8 +91,8 @@ export default async function CustomerQuotesPage({
             <span className="break-anywhere font-medium text-slate-100">
               {user.email}
             </span>
-            . Complete your customer profile to start tracking RFQs, supplier bids, and messages in
-            one place.
+            . Complete your customer profile to start tracking search requests, supplier bids, and
+            messages in one place.
           </p>
           <Link
             href="/customer"
@@ -138,21 +138,21 @@ export default async function CustomerQuotesPage({
     <PortalShell
       workspace="customer"
       title="Quotes"
-      subtitle="All RFQs you’ve submitted, from draft to award."
+      subtitle="All search requests you’ve submitted, from draft to award."
       actions={
         SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
           <Link
             href="/quote"
             className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
           >
-            Start a new RFQ
+            Start a new search
           </Link>
         ) : null
       }
     >
       <PortalCard
         title="Quotes"
-        description="Track submitted RFQs, award progress, kickoff status, and messages at a glance."
+        description="Track submitted search requests, award progress, kickoff status, and messages at a glance."
       >
         <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
@@ -199,10 +199,10 @@ export default async function CustomerQuotesPage({
             {status || kickoff || hasWinner ? (
               <>
                 <p className="text-sm font-semibold text-slate-100">
-                  No RFQs match these filters
+                  No search requests match these filters
                 </p>
                 <p className="mt-2 text-sm text-slate-400">
-                  Clear filters to see your full list of RFQs.
+                  Clear filters to see your full list of search requests.
                 </p>
                 <div className="mt-4">
                   <Link
@@ -215,9 +215,10 @@ export default async function CustomerQuotesPage({
               </>
             ) : (
               <>
-                <p className="text-sm font-semibold text-slate-100">No RFQs yet</p>
+                <p className="text-sm font-semibold text-slate-100">No search requests yet</p>
                 <p className="mt-2 text-sm text-slate-400">
-                  When you submit an RFQ, we’ll route it to matching suppliers and you’ll see bids and updates here as they come in.
+                  When you submit a search request, we’ll route it to matching suppliers and you’ll
+                  see bids and updates here as they come in.
                 </p>
                 <div className="mt-4">
                   {SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
@@ -225,7 +226,7 @@ export default async function CustomerQuotesPage({
                       href="/quote"
                       className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
                     >
-                      Start an RFQ
+                      Start a search
                     </Link>
                   ) : null}
                 </div>

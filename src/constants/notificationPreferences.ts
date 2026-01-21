@@ -49,7 +49,7 @@ export const SUPPLIER_NOTIFICATION_OPTIONS: NotificationToggleOption[] = [
   buildOption({
     eventType: "quote_message_posted",
     role: "supplier",
-    label: "Messages on assigned RFQs",
+    label: "Messages on assigned search requests",
     description: "Ping me when customers or admins add updates in shared threads.",
   }),
   buildOption({

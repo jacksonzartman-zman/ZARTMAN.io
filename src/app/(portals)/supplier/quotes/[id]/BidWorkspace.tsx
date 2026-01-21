@@ -293,7 +293,7 @@ export function BidWorkspace({
     return (
       <section className="rounded-2xl border border-slate-900 bg-slate-950/40 px-6 py-5">
         <p className="text-sm text-slate-200">
-          Bid workspace available once this RFQ has parts.
+          Bid workspace available once this search request has parts.
         </p>
       </section>
     );

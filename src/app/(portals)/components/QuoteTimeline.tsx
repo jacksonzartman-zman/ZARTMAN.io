@@ -15,7 +15,7 @@ type QuoteTimelineProps = {
 
 /**
  * Shared quote timeline (admin + customer + supplier).
- * - Phase-grouped history (RFQ → Bidding → Award → Kickoff → Execution)
+ * - Phase-grouped history (Search → Bidding → Award → Kickoff → Execution)
  * - Client-side filters (All / Messages / Status changes / Kickoff)
  * - Server-side filtering ensures non-admins only see safe events
  */
@@ -33,12 +33,14 @@ export async function QuoteTimeline({
   });
 
   const events = result.ok ? result.events : [];
+  const rfqPhaseLabel = actorRole === "admin" ? undefined : "Search";
 
   return (
     <QuoteTimelineClient
       rawEvents={events}
       className={clsx(className)}
       emptyState={emptyState}
+      rfqPhaseLabel={rfqPhaseLabel}
     />
   );
 }

@@ -36,26 +36,39 @@ export function QuoteTimelineClient({
   rawEvents,
   className,
   emptyState = "Updates will appear here as files, bids, and selections progress.",
+  rfqPhaseLabel,
 }: {
   rawEvents: QuoteEventRecord[];
   className?: string;
   emptyState?: string;
+  rfqPhaseLabel?: string;
 }) {
   const [filter, setFilter] = useState<TimelineFilterKey>("all");
+  const phaseLabels = useMemo(
+    () => ({
+      ...PHASE_LABELS,
+      rfq: rfqPhaseLabel ?? PHASE_LABELS.rfq,
+    }),
+    [rfqPhaseLabel],
+  );
+  const copyVariant = rfqPhaseLabel ? "search" : "rfq";
 
   const timelineEvents: QuoteTimelineEvent[] = useMemo(() => {
     const events = Array.isArray(rawEvents) ? rawEvents : [];
     const mapped = events.map((event) =>
-      mapRawEventToTimelineEvent({
-        id: event.id,
-        quote_id: event.quote_id,
-        event_type: event.event_type,
-        created_at: event.created_at,
-        actor_role: event.actor_role,
-        // Note: do not pass message body; quote_events metadata only contains safe identifiers.
-        metadata: event.metadata ?? {},
-        payload: event.payload ?? null,
-      }),
+      mapRawEventToTimelineEvent(
+        {
+          id: event.id,
+          quote_id: event.quote_id,
+          event_type: event.event_type,
+          created_at: event.created_at,
+          actor_role: event.actor_role,
+          // Note: do not pass message body; quote_events metadata only contains safe identifiers.
+          metadata: event.metadata ?? {},
+          payload: event.payload ?? null,
+        },
+        { copyVariant },
+      ),
     );
 
     // Chronological order for human-readable history.
@@ -66,7 +79,7 @@ export function QuoteTimelineClient({
     });
 
     return mapped;
-  }, [rawEvents]);
+  }, [rawEvents, copyVariant]);
 
   const filteredEvents = useMemo(() => {
     if (filter === "all") return timelineEvents;
@@ -138,7 +151,7 @@ export function QuoteTimelineClient({
               >
                 <div className="border-b border-slate-900/60 bg-slate-950/50 px-4 py-3 sm:px-5">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                    {PHASE_LABELS[phase]}
+                    {phaseLabels[phase]}
                   </p>
                 </div>
                 <ol className="divide-y divide-slate-900/60">

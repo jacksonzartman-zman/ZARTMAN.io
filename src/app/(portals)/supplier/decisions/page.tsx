@@ -78,7 +78,8 @@ export default async function SupplierDecisionsPage() {
         }
       >
         <p className="text-sm text-slate-400">
-          Share capabilities, certifications, and documents so we know where to route RFQs.
+          Share capabilities, certifications, and documents so we know where to route search
+          requests.
         </p>
       </PortalCard>
     );
@@ -112,7 +113,7 @@ export default async function SupplierDecisionsPage() {
     "your shop";
   const statusMessage =
     attentionDecisions.length > 0
-      ? "Action needed on matched RFQs"
+      ? "Action needed on matched search requests"
       : winDecisions.length > 0
         ? "Kickoff awarded work"
         : lossDecisions.length > 0
@@ -131,7 +132,7 @@ export default async function SupplierDecisionsPage() {
       />
       <PortalCard
         title="Decisions queue"
-        description="Every RFQ that needs pricing or a quick follow-up."
+        description="Every search request that needs pricing or a quick follow-up."
       >
         {hasDecisions ? (
           <div className="space-y-6">
@@ -163,7 +164,7 @@ export default async function SupplierDecisionsPage() {
         ) : (
           <EmptyStateNotice
             title="No bids yet"
-            description="We’ll surface invites, awards, and feedback as soon as buyers route RFQs to you."
+            description="We’ll surface invites, awards, and feedback as soon as buyers route search requests to you."
           />
         )}
       </PortalCard>
@@ -175,8 +176,8 @@ export default async function SupplierDecisionsPage() {
           <li className="flex gap-2">
             <span className="text-slate-500">•</span>
             <p>
-              <span className="font-semibold text-white">RFQ invites</span> appear when a buyer assigns
-              your shop but hasn’t seen a bid yet.
+              <span className="font-semibold text-white">Search request invites</span> appear when a
+              buyer assigns your shop but hasn’t seen a bid yet.
             </p>
           </li>
           <li className="flex gap-2">
@@ -189,7 +190,8 @@ export default async function SupplierDecisionsPage() {
           <li className="flex gap-2">
             <span className="text-slate-500">•</span>
             <p>
-              Clearing the queue keeps your shop top of mind when new RFQs route through Zartman.
+              Clearing the queue keeps your shop top of mind when new search requests route through
+              Zartman.
             </p>
           </li>
         </ul>

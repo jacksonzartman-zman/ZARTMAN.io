@@ -23,14 +23,26 @@ export type FormattedQuoteEvent = {
   groupLabel: string;
 };
 
+type QuoteEventCopyVariant = "rfq" | "search";
+
+type FormatQuoteEventOptions = {
+  copyVariant?: QuoteEventCopyVariant;
+};
+
 /**
  * Central mapping from quote_events (event_type + metadata) -> human UI copy.
  * Keep this logic shared across all portals (admin/customer/supplier).
  */
-export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
+export function formatQuoteEvent(
+  event: QuoteEventRecord,
+  options: FormatQuoteEventOptions = {},
+): FormattedQuoteEvent {
   const type = normalizeEventType(event.event_type);
   const metadata = resolveEventMetadata(event);
   const actorLabel = formatActorLabel(event.actor_role, metadata);
+  const copyVariant = options.copyVariant ?? "rfq";
+  const rfqGroupLabel = copyVariant === "search" ? "Search" : "RFQ";
+  const rfqLabel = copyVariant === "search" ? "Search request" : "RFQ";
 
   if (type === "change_request_created") {
     const changeType =
@@ -145,9 +157,9 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
   if (type === "submitted") {
     return {
       groupKey: "rfq",
-      groupLabel: "RFQ",
-      title: "RFQ submitted",
-      subtitle: "RFQ received and queued for review.",
+      groupLabel: rfqGroupLabel,
+      title: `${rfqLabel} submitted`,
+      subtitle: `${rfqLabel} received and queued for review.`,
       actorLabel,
     };
   }
@@ -156,7 +168,7 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
     const supplierLabel = formatSupplierIdentifier(metadata);
     return {
       groupKey: "rfq",
-      groupLabel: "RFQ",
+      groupLabel: rfqGroupLabel,
       title: "Supplier invited",
       subtitle: supplierLabel ?? undefined,
       actorLabel,
@@ -211,8 +223,8 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
       formatStatusTransitionSubtitle(metadata) ?? "Returned to reviewing bids.";
     return {
       groupKey: "rfq",
-      groupLabel: "RFQ",
-      title: "RFQ reopened",
+      groupLabel: rfqGroupLabel,
+      title: `${rfqLabel} reopened`,
       subtitle,
       actorLabel,
     };
@@ -223,8 +235,8 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
       formatStatusTransitionSubtitle(metadata) ?? "Marked as cancelled.";
     return {
       groupKey: "rfq",
-      groupLabel: "RFQ",
-      title: "RFQ archived",
+      groupLabel: rfqGroupLabel,
+      title: `${rfqLabel} archived`,
       subtitle,
       actorLabel,
     };
@@ -321,7 +333,7 @@ export function formatQuoteEvent(event: QuoteEventRecord): FormattedQuoteEvent {
 
   return {
     groupKey: inferFallbackGroup(event.actor_role),
-    groupLabel: formatGroupLabel(inferFallbackGroup(event.actor_role)),
+    groupLabel: formatGroupLabel(inferFallbackGroup(event.actor_role), copyVariant),
     title: humanizeFallback(type || "event"),
     actorLabel,
   };
@@ -378,10 +390,13 @@ function inferFallbackGroup(role: QuoteEventActorRole): QuoteEventGroupKey {
   return "other";
 }
 
-function formatGroupLabel(group: QuoteEventGroupKey): string {
+function formatGroupLabel(
+  group: QuoteEventGroupKey,
+  copyVariant: QuoteEventCopyVariant = "rfq",
+): string {
   switch (group) {
     case "rfq":
-      return "RFQ";
+      return copyVariant === "search" ? "Search" : "RFQ";
     case "bids":
       return "Bids";
     case "award":

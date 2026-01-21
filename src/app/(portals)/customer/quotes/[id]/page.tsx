@@ -612,7 +612,7 @@ export default async function CustomerQuoteDetailPage({
         "A winning supplier has already been selected for this quote.";
     } else if (!quoteAwardStatusAllowed) {
       customerAwardDisabledReason =
-        "Selecting a winner is unavailable for closed or archived RFQs.";
+        "Selecting a winner is unavailable for closed or archived search requests.";
     }
   }
   const pricedBids = bids.filter(
@@ -757,9 +757,9 @@ export default async function CustomerQuoteDetailPage({
   ]
     .filter(Boolean)
     .join(" · ");
-  const destinationsLabel = `${searchStateCounts.destinations_total} destination${
+  const destinationsLabel = `${searchStateCounts.destinations_total} supplier${
     searchStateCounts.destinations_total === 1 ? "" : "s"
-  }`;
+  } contacted`;
   const offersLabel = `${searchStateCounts.offers_total} offer${
     searchStateCounts.offers_total === 1 ? "" : "s"
   }`;
@@ -950,7 +950,7 @@ export default async function CustomerQuoteDetailPage({
   const awardedByLabel = formatAwardedByLabel(quote.awarded_by_role, {
     perspective: "customer",
   });
-  const headerTitle = `${customerName ?? "RFQ"} · ${formatQuoteId(quote.id)}`;
+  const headerTitle = `${customerName ?? "Search request"} · ${formatQuoteId(quote.id)}`;
   const headerActions = (
     <div className="flex flex-wrap items-center gap-2">
       <CustomerQuoteStatusCtas
@@ -1062,7 +1062,7 @@ export default async function CustomerQuoteDetailPage({
     <section className={clsx(cardClasses, "space-y-5")}>
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          RFQ snapshot
+          Search request snapshot
         </p>
         <h2 className="text-lg font-semibold text-white">Project overview</h2>
       </header>
@@ -1152,7 +1152,8 @@ export default async function CustomerQuoteDetailPage({
         </div>
         {bidsUnavailable ? (
           <p className="text-xs text-slate-400">
-            Bids aren’t available here right now, but your RFQ is still saved and in review. Check Messages for updates.
+            Bids aren’t available here right now, but your search request is still saved and in
+            review. Check Messages for updates.
           </p>
         ) : bidCount === 0 ? (
           <EmptyStateCard
@@ -1226,12 +1227,15 @@ export default async function CustomerQuoteDetailPage({
     <section className="rounded-2xl border border-slate-800 bg-slate-950/50 px-6 py-5">
       <div className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Early RFQ update
+          Early search update
         </p>
-        <h2 className="text-lg font-semibold text-white">We&apos;ve got your RFQ.</h2>
+        <h2 className="text-lg font-semibold text-white">We&apos;ve got your search request.</h2>
       </div>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-200">
-        <li>We&apos;re routing this RFQ to vetted suppliers who match your process and volumes.</li>
+        <li>
+          We&apos;re routing this search request to vetted suppliers who match your process and
+          volumes.
+        </li>
         <li>You&apos;ll start seeing bids here as suppliers respond.</li>
         <li>Once we review bids, we&apos;ll prepare pricing and move the status to Quote prepared.</li>
       </ul>
@@ -1459,7 +1463,7 @@ export default async function CustomerQuoteDetailPage({
         {customerFeedbackAdvisories.length > 0 ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4">
             <p className="text-sm font-semibold text-slate-100">
-              Suppliers flagged the following issues on previous RFQs like this one:
+              Suppliers flagged the following issues on previous search requests like this one:
             </p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
               {customerFeedbackAdvisories.map((entry) => (
@@ -1478,7 +1482,7 @@ export default async function CustomerQuoteDetailPage({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-amber-100">
-                  Your RFQ may get fewer bids.
+                  Your search request may get fewer bids.
                 </p>
                 <p className="mt-1 text-xs text-amber-100/80">
                   Improving completeness can increase supplier response rate.
@@ -1697,7 +1701,7 @@ export default async function CustomerQuoteDetailPage({
       id="timeline"
       className="scroll-mt-24"
       title="Timeline"
-      description="Updates and milestones for this RFQ."
+      description="Updates and milestones for this search request."
       defaultOpen={tabParam === "activity"}
     >
       <QuoteTimeline
@@ -1773,7 +1777,8 @@ export default async function CustomerQuoteDetailPage({
           {kickoffSection}
           {messagesUnavailable ? (
             <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
-              Messages are temporarily unavailable right now. Your RFQ is still saved—refresh to try again.
+              Messages are temporarily unavailable right now. Your search request is still
+              saved—refresh to try again.
             </p>
           ) : null}
           <DisclosureSection

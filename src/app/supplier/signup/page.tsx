@@ -17,8 +17,8 @@ export default function SupplierSignupPage() {
             Become a Zartman supplier
           </h1>
           <p className="max-w-2xl text-sm text-slate-300">
-            Tell us a bit about your shop. We’ll email a one-time magic link so you can finish onboarding
-            and start seeing RFQs.
+            Tell us a bit about your shop. We’ll email a one-time magic link so you can finish
+            onboarding and start seeing search requests.
           </p>
         </header>
 

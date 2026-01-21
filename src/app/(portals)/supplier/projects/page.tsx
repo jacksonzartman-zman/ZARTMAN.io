@@ -109,13 +109,13 @@ export default async function SupplierProjectsPage() {
     >
       <PortalCard
         title="Awarded projects"
-        description="These are RFQs that have been awarded to your shop and are now tracked as projects."
+        description="These are search requests that have been awarded to your shop and are now tracked as projects."
       >
         {projects.length === 0 ? (
           <EmptyStateCard
             title="No projects yet"
             description="When a customer awards your bid, it will show up here as a project."
-            action={{ label: "View RFQs", href: "/supplier/quotes" }}
+            action={{ label: "View search requests", href: "/supplier/quotes" }}
           />
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">

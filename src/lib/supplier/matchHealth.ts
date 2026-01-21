@@ -31,7 +31,7 @@ export type SupplierMatchInsightInput =
     };
 
 /**
- * Scores a supplier↔RFQ pairing using coarse capability signals.
+ * Scores a supplier↔search request pairing using coarse capability signals.
  * Emphasizes process alignment, basic material overlap, and falls back to
  * "limited" when there is evidence of mismatch.
  */
@@ -69,7 +69,7 @@ export function deriveSupplierMatchInsight(
 
   const processMatches = hasMatchingProcess(quoteProcess, profile.processes);
   if (!processMatches) {
-    reasons.push("Supplier processes don't cover this RFQ.");
+    reasons.push("Supplier processes don't cover this search request.");
     return {
       health: "poor",
       reasons,

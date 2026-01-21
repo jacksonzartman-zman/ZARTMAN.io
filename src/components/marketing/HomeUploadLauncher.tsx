@@ -347,7 +347,7 @@ export default function HomeUploadLauncher({
           continue;
         }
         if (next.length >= MAX_FILES_PER_RFQ) {
-          nextError = `Attach up to ${MAX_FILES_PER_RFQ} files per RFQ.`;
+          nextError = `Attach up to ${MAX_FILES_PER_RFQ} files per search request.`;
           break;
         }
         existingKeys.add(key);

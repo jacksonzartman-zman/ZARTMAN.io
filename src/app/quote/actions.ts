@@ -168,7 +168,7 @@ export async function submitQuoteIntakeAction(
   try {
     console.log("[quote intake] action invoked");
     const user = await requireUser({
-      message: "Sign in to submit RFQs.",
+      message: "Sign in to submit search requests.",
     });
     sessionUserId = user.id;
 
@@ -211,7 +211,7 @@ export async function submitQuoteIntakeAction(
       });
       return buildFailureState(
         result.error ||
-          "We couldn’t process your RFQ. Please try again or contact support.",
+          "We couldn’t process your search request. Please try again or contact support.",
         result.fieldErrors,
       );
     }
@@ -352,7 +352,7 @@ export async function prepareQuoteIntakeDirectUploadAction(
 ): Promise<QuoteIntakeDirectPrepareState> {
   try {
     const user = await requireUser({
-      message: "Sign in to submit RFQs.",
+      message: "Sign in to submit search requests.",
     });
 
     const filesMeta = parseFilesMeta(formData);
@@ -541,7 +541,7 @@ export async function finalizeQuoteIntakeDirectUploadAction(
 ): Promise<QuoteIntakeDirectFinalizeState> {
   try {
     await requireUser({
-      message: "Sign in to submit RFQs.",
+      message: "Sign in to submit search requests.",
     });
 
     const quoteId = String(formData.get("quoteId") ?? "").trim();
@@ -612,7 +612,7 @@ export async function finalizeQuoteIntakeEphemeralUploadAction(
 ): Promise<QuoteIntakeEphemeralFinalizeState> {
   try {
     const user = await requireUser({
-      message: "Sign in to submit RFQs.",
+      message: "Sign in to submit search requests.",
     });
 
     const targetsJson = formData.get("targets");

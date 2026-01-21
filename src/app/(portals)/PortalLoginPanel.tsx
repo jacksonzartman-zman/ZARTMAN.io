@@ -140,7 +140,7 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
   const copy = quoteFlow
     ? {
         ...baseCopy,
-        title: "Log in to request a quote",
+        title: "Log in to start a search",
         description:
           "Use your work email and we'll send you a magic link to your customer workspace.",
         cta: "Send magic link",

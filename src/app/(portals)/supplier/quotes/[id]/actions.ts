@@ -143,7 +143,7 @@ export async function saveSupplierBidDraftAction(
     supplierUserEmail: user.email ?? null,
   });
   if (!access.ok) {
-    return { ok: false, error: "Not invited to this RFQ." };
+    return { ok: false, error: "Not invited to this search request." };
   }
 
   try {
@@ -180,7 +180,7 @@ export async function ensureCadMetricsForSupplierQuoteAction(
     supplierId,
     supplierUserEmail: user.email ?? null,
   });
-  if (!access.ok) return { ok: false, error: "Not invited to this RFQ." };
+  if (!access.ok) return { ok: false, error: "Not invited to this search request." };
 
   try {
     await ensureCadFeaturesForQuote(normalizedQuoteId, { maxNew: 10 });
@@ -280,7 +280,7 @@ export async function getUploadTargetsForSupplierQuote(
     supplierUserEmail: user.email ?? null,
   });
   if (!access.ok) {
-    return { status: "error", message: "Not invited to this RFQ." };
+    return { status: "error", message: "Not invited to this search request." };
   }
 
   const filesMeta = parseFilesMeta(formData);
@@ -346,7 +346,7 @@ export async function registerUploadedFilesForSupplierQuote(
     supplierUserEmail: user.email ?? null,
   });
   if (!access.ok) {
-    return { status: "error", message: "Not invited to this RFQ." };
+    return { status: "error", message: "Not invited to this search request." };
   }
 
   try {
@@ -416,7 +416,7 @@ export async function supplierDeclineRfqWithFeedbackAction(
     supplierUserEmail: user.email ?? null,
   });
   if (!access.ok) {
-    return { ok: false, error: "Not invited to this RFQ." };
+    return { ok: false, error: "Not invited to this search request." };
   }
 
   const rawCategories = formData.getAll("categories");

@@ -22,13 +22,13 @@ const MATCHING_POINTS = [
   {
     title: "Curated supplier bench",
     body:
-      "We match your RFQ with a small bench of trusted shops—no auctions, no race-to-the-bottom blast lists.",
+      "We match your search request with a small bench of trusted shops—no auctions, no race-to-the-bottom blast lists.",
   },
   {
     title: "Private routing",
     body:
-      findFaqAnswer("Who sees my CAD files and RFQs?") ??
-      "We only share RFQs and files with suppliers matched to your project—no public job boards or blast lists.",
+      findFaqAnswer("Who sees my CAD files and search requests?") ??
+      "We only share search requests and files with suppliers matched to your project—no public job boards or blast lists.",
   },
   {
     title: "Hands-on monitoring",
@@ -43,7 +43,7 @@ export default function CapabilitiesPage() {
     ? "/quote"
     : "/customer/search";
   const primaryCtaLabel = SHOW_LEGACY_QUOTE_ENTRYPOINTS
-    ? "Start an RFQ"
+    ? "Start a search request"
     : "Search suppliers";
 
   return (
@@ -59,7 +59,7 @@ export default function CapabilitiesPage() {
               What we can help you make
             </h1>
             <p className="text-base text-ink-muted heading-snug">
-              Zartman.io routes CNC, sheet metal, 3D printing, and light assembly work to vetted shops that handle prototypes through recurring low-volume builds. Share your RFQ, keep files private, and get matched with suppliers who already run similar materials and complexity.
+              Zartman.io routes CNC, sheet metal, 3D printing, and light assembly work to vetted shops that handle prototypes through recurring low-volume builds. Share your search request, keep files private, and get matched with suppliers who already run similar materials and complexity.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -85,7 +85,7 @@ export default function CapabilitiesPage() {
               Where we&apos;re strongest
             </h2>
             <p className="max-w-copy text-sm text-ink-muted">
-              These offerings cover most RFQs we route today. Each card spells out the sweet spot and when you might need a different partner.
+              These offerings cover most search requests we route today. Each card spells out the sweet spot and when you might need a different partner.
             </p>
           </header>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -138,7 +138,7 @@ export default function CapabilitiesPage() {
               Approximate ranges so you can sanity-check fit
             </h2>
             <p className="max-w-copy text-sm text-ink-muted">
-              These ranges keep expectations calibrated without over-promising. Send the RFQ if you&apos;re near the edge—we&apos;ll flag it early if it needs a different setup.
+              These ranges keep expectations calibrated without over-promising. Send the search request if you&apos;re near the edge—we&apos;ll flag it early if it needs a different setup.
             </p>
           </header>
           <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -168,7 +168,7 @@ export default function CapabilitiesPage() {
               What we don&apos;t do (yet)
             </p>
             <h2 className="text-lg sm:text-xl font-semibold text-ink heading-tight">
-              If your RFQ looks like this, we&apos;ll recommend other options
+              If your search request looks like this, we&apos;ll recommend other options
             </h2>
             <p className="max-w-copy text-sm text-ink-muted">
               Calling this out early keeps trust high. If you send something in this category we&apos;ll still help you find a better match elsewhere.
@@ -196,7 +196,7 @@ export default function CapabilitiesPage() {
               Same flow as the homepage—just zoomed in on capabilities
             </h2>
             <p className="max-w-copy text-sm text-ink-muted">
-              We keep the marketplace private, curated, and human-supported so RFQs land with the right suppliers the first time.
+              We keep the marketplace private, curated, and human-supported so search requests land with the right suppliers the first time.
             </p>
           </header>
           <ul className="space-y-4">

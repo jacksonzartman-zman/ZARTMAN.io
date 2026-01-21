@@ -12,7 +12,7 @@ export default function AboutPage() {
     ? "/quote"
     : "/customer/search";
   const primaryCtaLabel = SHOW_LEGACY_QUOTE_ENTRYPOINTS
-    ? "start an RFQ"
+    ? "start a search request"
     : "search suppliers";
 
   return (
@@ -24,10 +24,13 @@ export default function AboutPage() {
           </p>
           <div className="space-y-4">
             <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
-              Calmer RFQs, curated shops, real humans.
+              Calmer search requests, curated shops, real humans.
             </h1>
             <p className="text-base text-ink-muted heading-snug">
-              Zartman.io exists because most RFQs still pinball between inboxes, spreadsheets, and endless status calls. We built one calm workspace where buyers can upload parts, route to a trusted bench of shops, and keep every DFM note, bid, and award decision in the same view.
+              Zartman.io exists because most search requests still pinball between inboxes,
+              spreadsheets, and endless status calls. We built one calm workspace where buyers can
+              upload parts, route to a trusted bench of shops, and keep every DFM note, bid, and
+              award decision in the same view.
             </p>
             <p className="text-base text-ink-muted heading-snug">
               The goal isn&apos;t another blast marketplace. It&apos;s a service that pairs vetted suppliers with the right kind of work, keeps conversations private, and steps in when projects get weird so teams can keep moving.
@@ -51,7 +54,7 @@ export default function AboutPage() {
               The people behind it
             </p>
             <h2 className="text-2xl sm:text-3xl font-semibold text-ink heading-tight">
-              Built by people who have lived inside RFQs
+              Built by people who have lived inside search requests
             </h2>
             <p className="text-sm text-ink-muted heading-snug">
               We&apos;ll keep adding more of the crew here. For now, you&apos;re mostly talking to Jackson.
@@ -80,7 +83,7 @@ export default function AboutPage() {
           <ListCard
             eyebrow="How we work with buyers"
             title="A calm cockpit for uploads, bids, and awards"
-            description="We help you keep RFQs private, keep suppliers accountable, and make confident award calls."
+            description="We help you keep search requests private, keep suppliers accountable, and make confident award calls."
             items={BUYER_SUPPORT_POINTS}
           />
           <ListCard

@@ -235,7 +235,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   const contactedSuppliersCount = countContactedSuppliers(rfqDestinations);
   let pendingNextStepsCopy: string | null = null;
   let pendingOffersDescription =
-    "Providers are reviewing your RFQ. We will surface offers here as soon as they respond.";
+    "Providers are reviewing your search request. We will surface offers here as soon as they respond.";
   let showSlaNudge = false;
   let slaNudgeDetail: string | null = null;
   if (activeQuote && workspaceData && totalOfferCount === 0) {
@@ -323,7 +323,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   });
   const showActivityFeed = Boolean(quoteIdParam) || Boolean(recentQuoteForActivity);
   const activityDescription = activeQuote
-    ? "Latest updates as suppliers respond to your RFQ."
+    ? "Latest updates as suppliers respond to your search request."
     : quoteIdParam
       ? "We will show updates as soon as the search is live."
       : "Recent activity from your latest search.";
@@ -563,7 +563,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
               title={initializingSearchProgress?.statusHeadline ?? "Searching providers..."}
               description={
                 initializingSearchProgress?.statusDetail ??
-                "We are setting up your RFQ and routing it to matched providers."
+                "We are setting up your search request and routing it to matched providers."
               }
               action={
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -601,7 +601,10 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
               >
                 <div className="space-y-4">
                   <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-4">
-                    <SummaryStat label="Destinations" value={searchStateCounts.destinations_total} />
+                    <SummaryStat
+                      label="Suppliers contacted"
+                      value={searchStateCounts.destinations_total}
+                    />
                     <SummaryStat label="Pending" value={searchStateCounts.destinations_pending} />
                     <SummaryStat label="Error" value={searchStateCounts.destinations_error} />
                     <SummaryStat label="Offers" value={searchStateCounts.offers_total} />
@@ -732,7 +735,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           ) : quoteIdParam ? null : quotes.length === 0 ? (
             <EmptyStateCard
               title="No searches yet"
-              description="Upload a new RFQ to start comparing pricing and lead times."
+              description="Submit a new search request to start comparing pricing and lead times."
               action={
                 SHOW_LEGACY_QUOTE_ENTRYPOINTS
                   ? { label: "Start a search", href: "/quote" }
@@ -772,8 +775,8 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                               {quote.status}
                             </TagPill>
                             <TagPill size="sm" tone="muted" className="normal-case tracking-normal">
-                              {destinationsCount} destination
-                              {destinationsCount === 1 ? "" : "s"}
+                              {destinationsCount} supplier
+                              {destinationsCount === 1 ? "" : "s"} contacted
                             </TagPill>
                             <TagPill size="sm" tone="muted" className="normal-case tracking-normal">
                               {offersCount} offer{offersCount === 1 ? "" : "s"}

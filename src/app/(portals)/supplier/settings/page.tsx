@@ -50,7 +50,7 @@ export default async function SupplierSettingsPage() {
         </p>
         <h1 className="mt-2 text-2xl font-semibold text-white">Account settings</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Confirm the details we show buyers when routing RFQs to your team.
+          Confirm the details we show buyers when routing search requests to your team.
         </p>
       </section>
 

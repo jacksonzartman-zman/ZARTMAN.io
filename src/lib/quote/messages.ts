@@ -1,5 +1,5 @@
 export const QUOTE_INTAKE_SUCCESS_MESSAGE =
-  "RFQ received – we’ll review and follow up shortly.";
+  "Search request received – we’ll review and follow up shortly.";
 
 export const QUOTE_INTAKE_FALLBACK_ERROR =
-  "Unexpected error while submitting your RFQ. Please retry.";
+  "Unexpected error while submitting your search request. Please retry.";

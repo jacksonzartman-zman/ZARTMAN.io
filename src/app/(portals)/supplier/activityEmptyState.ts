@@ -24,19 +24,19 @@ export function resolveSupplierActivityEmptyState({
     return {
       title: "Workspace activity will appear here",
       description:
-        "We’ll show RFQ and bid activity once we start assigning workspaces through the marketplace.",
+        "We’ll show search request and bid activity once we start assigning workspaces through the marketplace.",
     };
   }
 
   if (supplierExists) {
     return {
       title: "No activity yet",
-      description: "We’ll stream RFQ assignments and bid updates here as they happen.",
+      description: "We’ll stream search request assignments and bid updates here as they happen.",
     };
   }
 
   return {
     title: "Activity unlocks after onboarding",
-    description: "Finish onboarding to start tracking RFQs and bids in this feed.",
+    description: "Finish onboarding to start tracking search requests and bids in this feed.",
   };
 }

@@ -1486,7 +1486,7 @@ export default function UploadBox({
       }
       const nextQuoteId = finalized.quoteId.trim();
       setError(null);
-      setSuccessMessage(finalized.message || "RFQ received.");
+      setSuccessMessage(finalized.message || "Search request received.");
       setFieldErrors({});
       resetUploadState();
       if (nextQuoteId) {
@@ -1591,7 +1591,7 @@ export default function UploadBox({
         {showExplainer ? (
           <div className="mb-6 rounded-2xl border border-white/5 bg-white/5 p-4 text-left shadow-[0_10px_30px_rgba(2,6,23,0.45)]">
             <p className="text-sm font-semibold text-foreground heading-tight">
-              What happens when you submit an RFQ?
+              What happens when you submit a search request?
             </p>
             <ul className="mt-3 space-y-2 text-sm text-muted">
               {UPLOAD_EXPLAINER_POINTS.map((point) => (
@@ -1739,7 +1739,7 @@ export default function UploadBox({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Parts in this RFQ
+                  Parts in this search request
                 </p>
                 <p className="text-sm text-foreground">
                   {state.files.length === 0
@@ -1754,7 +1754,7 @@ export default function UploadBox({
             <div className="mt-4 space-y-2">
               {state.files.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-border/60 px-4 py-3 text-sm text-muted">
-                  Drop multiple STEP/STL files above. All files stay on the same RFQ.
+                  Drop multiple STEP/STL files above. All files stay on the same search request.
                 </p>
               ) : (
                 state.files.map((entry, index) => {
@@ -2530,7 +2530,7 @@ export default function UploadBox({
               htmlFor="rfqReason"
               className="text-xs font-medium text-muted tracking-wide"
             >
-              I&apos;m submitting this RFQ because…
+              I&apos;m submitting this search request because…
             </label>
             <select
               id="rfqReason"
@@ -2574,7 +2574,7 @@ export default function UploadBox({
         <div id="quote-intake-step-submit" className={stepSectionClass("submit")}>
           <StepHeader
             step={4}
-            title="Submit your RFQ"
+            title="Submit your search request"
             subtitle="We’ll confirm receipt and follow up in your quote workspace."
             statusLabel={canSubmit ? "Ready to submit" : "Not ready yet"}
             statusTone={
@@ -2695,7 +2695,7 @@ function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boole
       )}
       aria-busy={pending}
     >
-      {pending ? "Submitting…" : "Submit RFQ"}
+      {pending ? "Submitting…" : "Submit search request"}
     </button>
   );
 }

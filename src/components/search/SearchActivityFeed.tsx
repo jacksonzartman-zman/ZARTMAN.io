@@ -83,7 +83,7 @@ type SearchActivityFeedProps = {
 };
 
 const DEFAULT_TITLE = "Search activity";
-const DEFAULT_DESCRIPTION = "Recent updates as suppliers respond to your RFQ.";
+const DEFAULT_DESCRIPTION = "Recent updates as suppliers respond to your search request.";
 const DEFAULT_EMPTY_STATE = "Activity will appear here once the search starts.";
 
 export function buildSearchActivityFeedEvents({
@@ -119,7 +119,7 @@ export function buildSearchActivityFeedEvents({
       kind: "quote-created",
       timestamp: normalizedCreatedAt,
       title: "Search created",
-      detail: "We received your RFQ and queued it for matching.",
+      detail: "We received your search request and queued it for matching.",
       receipt: quoteReceipt,
     });
   }

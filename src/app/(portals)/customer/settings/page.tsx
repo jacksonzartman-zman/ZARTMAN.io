@@ -100,7 +100,7 @@ export default async function CustomerSettingsPage() {
       <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
         <h2 className="text-lg font-semibold text-white">Company profile</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Update the contact details that appear on shared RFQs and invoices.
+          Update the contact details that appear on shared search requests and invoices.
         </p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <SettingsField label="Company name" value={companyName} />

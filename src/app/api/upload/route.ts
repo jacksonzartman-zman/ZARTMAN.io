@@ -187,12 +187,12 @@ export async function POST(req: NextRequest) {
         sessionEmailPresent: Boolean(normalizedSessionEmail),
       });
       return buildError(
-        "Name is required to submit a quote request.",
+        "Name is required to submit a search request.",
         400,
         {
           step: "validate-contact",
           missingFields: {
-              name: !contactName,
+            name: !contactName,
             email: false,
           },
         },

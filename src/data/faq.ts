@@ -5,12 +5,12 @@ export type FaqItem = {
 
 export const FAQ_ITEMS: FaqItem[] = [
   {
-    question: "Who sees my CAD files and RFQs?",
+    question: "Who sees my CAD files and search requests?",
     answer:
-      "We only share your RFQs and files with suppliers we've matched to your project. No public job boards or blast lists.",
+      "We only share your search requests and files with suppliers we've matched to your project. No public job boards or blast lists.",
   },
   {
-    question: "Do I have to award every RFQ?",
+    question: "Do I have to award every search request?",
     answer:
       "No. Compare quotes and move forward only when you're comfortable with price, lead time, and supplier fit.",
   },

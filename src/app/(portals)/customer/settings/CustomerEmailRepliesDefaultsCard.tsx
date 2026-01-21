@@ -24,7 +24,7 @@ export function CustomerEmailRepliesDefaultsCard(props: {
 
   const status = useMemo(() => {
     if (props.availability.kind !== "ready") return props.availability.message;
-    return enabled ? "Enabled for new RFQs" : "Off by default";
+    return enabled ? "Enabled for new search requests" : "Off by default";
   }, [enabled, props.availability]);
 
   return (
@@ -92,7 +92,7 @@ export function CustomerEmailRepliesDefaultsCard(props: {
         />
         <span className="space-y-1">
           <span className="text-sm font-semibold text-white">
-            Enable email replies by default for new RFQs
+            Enable email replies by default for new search requests
           </span>
           <p className="text-xs text-slate-400">
             {busy ? "Saving…" : enabled ? "On" : "Off"}
@@ -101,7 +101,7 @@ export function CustomerEmailRepliesDefaultsCard(props: {
       </label>
 
       <p className="text-xs text-slate-500">
-        Per-quote email reply controls remain the source of truth for existing RFQs.
+        Per-quote email reply controls remain the source of truth for existing search requests.
       </p>
     </section>
   );
