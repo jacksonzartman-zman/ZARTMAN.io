@@ -37,6 +37,10 @@ import { CoverageDisclosure } from "@/components/CoverageDisclosure";
 import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
 import { EstimateBandCard } from "@/components/EstimateBandCard";
 import {
+  SearchActivityFeed,
+  buildSearchActivityFeedEvents,
+} from "@/components/search/SearchActivityFeed";
+import {
   buildPricingEstimate,
   buildPricingEstimateTelemetry,
   parseQuantity,
@@ -163,6 +167,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   const listCounts = showRecentSearches
     ? await loadSearchListCounts(recentQuotes.map((quote) => quote.id))
     : { offerCounts: new Map(), destinationCounts: new Map() };
+  const recentQuoteForActivity = showRecentSearches ? recentQuotes[0] ?? null : null;
 
   const rfqOffers = workspaceData?.rfqOffers ?? [];
   const rfqDestinations = workspaceData?.rfqDestinations ?? [];
@@ -239,6 +244,37 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
 
   const clearFiltersHref = buildClearFiltersHref(rawParams.quoteId, rawParams.sort);
   const shareSearchHref = activeQuote ? buildSearchHref(usp, activeQuote.id) : "";
+  const activityQuote = workspaceData?.quote
+    ? {
+        id: workspaceData.quote.id,
+        created_at: workspaceData.quote.created_at ?? null,
+        updated_at: workspaceData.quote.updated_at ?? null,
+      }
+    : recentQuoteForActivity
+      ? {
+          id: recentQuoteForActivity.id,
+          created_at: recentQuoteForActivity.createdAt ?? null,
+          updated_at: recentQuoteForActivity.updatedAt ?? null,
+        }
+      : null;
+  const searchActivityEvents = buildSearchActivityFeedEvents({
+    quote: activityQuote,
+    destinations: activeQuote ? rfqDestinations : [],
+    offers: activeQuote ? rfqOffers : [],
+    inviteSupplierHref: activeQuote ? "/customer/invite-supplier" : null,
+    viewResultsHref: !activeQuote && recentQuoteForActivity
+      ? buildSearchHref(usp, recentQuoteForActivity.id)
+      : null,
+  });
+  const showActivityFeed = Boolean(quoteIdParam) || Boolean(recentQuoteForActivity);
+  const activityDescription = activeQuote
+    ? "Latest updates as suppliers respond to your RFQ."
+    : quoteIdParam
+      ? "We will show updates as soon as the search is live."
+      : "Recent activity from your latest search.";
+  const activityEmptyState = quoteIdParam
+    ? "Activity will appear once the search is live."
+    : "Activity will appear here as new updates arrive.";
 
   return (
     <PortalShell
@@ -308,6 +344,15 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           </div>
         ) : null}
       </section>
+
+      {showActivityFeed ? (
+        <SearchActivityFeed
+          className="mt-6"
+          events={searchActivityEvents}
+          description={activityDescription}
+          emptyState={activityEmptyState}
+        />
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
         <aside className="space-y-4">
