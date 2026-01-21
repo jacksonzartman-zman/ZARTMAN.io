@@ -463,8 +463,7 @@ export async function POST(req: NextRequest) {
     };
 
     let metadataRecorded = false;
-    // Persist canonical rows (files_valid preferred; fallback files) and
-    // enumerate upload contents (quote_upload_files) when available.
+    // Register uploaded objects using the canonical write model.
     if (quoteId) {
       const registered = await registerUploadedObjectsForExistingUpload({
         quoteId,
