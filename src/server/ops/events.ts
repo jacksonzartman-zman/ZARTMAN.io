@@ -70,21 +70,21 @@ function queueOpsEventInsert(args: OpsEventInsertArgs) {
   });
 
   try {
-    const insert = supabaseServer.from(OPS_EVENTS_TABLE).insert({
-      quote_id: args.quoteId,
-      destination_id: args.destinationId,
-      event_type: args.eventType,
-      payload: args.payload,
-    });
+    void (async () => {
+      try {
+        const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
+          quote_id: args.quoteId,
+          destination_id: args.destinationId,
+          event_type: args.eventType,
+          payload: args.payload,
+        });
 
-    void insert
-      .then(({ error }) => {
         if (!error) return;
         logOpsEventInsertError(error, args.logLabel, context);
-      })
-      .catch((error) => {
+      } catch (error) {
         logOpsEventInsertError(error, args.logLabel, context);
-      });
+      }
+    })();
   } catch (error) {
     logOpsEventInsertError(error, args.logLabel, context);
   }
