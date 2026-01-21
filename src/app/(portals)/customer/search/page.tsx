@@ -159,7 +159,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     await touchCustomerSavedSearch({ customerId: customer.id, quoteId: activeQuote.id });
   }
 
-  const showRecentSearches = !activeQuote;
+  const showRecentSearches = !activeQuote && !quoteIdParam;
   const listCounts = showRecentSearches
     ? await loadSearchListCounts(recentQuotes.map((quote) => quote.id))
     : { offerCounts: new Map(), destinationCounts: new Map() };
@@ -429,6 +429,30 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             />
           ) : null}
 
+          {!workspaceError && quoteIdParam && !activeQuote ? (
+            <PortalCard
+              title="Searching providers..."
+              description="We’re setting up your RFQ and routing it to matched providers."
+              action={
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <TagPill size="sm" tone="slate" className="normal-case tracking-normal">
+                    Initializing
+                  </TagPill>
+                  <CustomerQuoteRefreshResultsButton quoteId={quoteIdParam} />
+                </div>
+              }
+            >
+              <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+                <p className="text-sm font-semibold text-slate-100">
+                  Quote ID: {quoteIdParam}
+                </p>
+                <p className="text-xs text-slate-400">
+                  We’ll surface status updates here as soon as the search is live.
+                </p>
+              </div>
+            </PortalCard>
+          ) : null}
+
           {activeQuote && workspaceData ? (
             <>
               <PortalCard
@@ -535,7 +559,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                 )}
               </PortalCard>
             </>
-          ) : quotes.length === 0 ? (
+          ) : quoteIdParam ? null : quotes.length === 0 ? (
             <EmptyStateCard
               title="No searches yet"
               description="Upload a new RFQ to start comparing pricing and lead times."
