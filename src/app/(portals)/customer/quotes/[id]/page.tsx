@@ -111,6 +111,7 @@ import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
 import { CustomerQuoteMessagesSection } from "./CustomerQuoteMessagesSection";
 import { CustomerQuoteMessagesReadMarker } from "./CustomerQuoteMessagesReadMarker";
 import { EstimateBandCard } from "@/components/EstimateBandCard";
+import { SearchAlertOptInCard } from "@/app/(portals)/customer/components/SearchAlertOptInCard";
 import {
   buildPricingEstimate,
   buildPricingEstimateTelemetry,
@@ -123,6 +124,8 @@ import {
 } from "@/components/search/SearchActivityFeed";
 import { PendingProvidersTable } from "@/components/search/PendingProvidersTable";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
+import { deriveSearchAlertPreferenceFromOpsEvents } from "@/server/ops/searchAlerts";
+import { getCustomerSearchAlertPreference } from "@/server/customer/savedSearches";
 
 export const dynamic = "force-dynamic";
 
@@ -794,6 +797,16 @@ export default async function CustomerQuoteDetailPage({
     inviteSupplierHref: "/customer/invite-supplier",
     compareOffersHref: rfqOffers.length > 0 ? "#compare-offers" : null,
   });
+
+  const savedSearchAlertPreference = await getCustomerSearchAlertPreference({
+    customerId: customer.id,
+    quoteId: quote.id,
+  });
+  const opsAlertPreference = deriveSearchAlertPreferenceFromOpsEvents(opsEvents ?? []);
+  const searchAlertEnabled =
+    savedSearchAlertPreference.supported && savedSearchAlertPreference.hasRow
+      ? savedSearchAlertPreference.enabled
+      : opsAlertPreference ?? false;
 
   const kickoffTolerances =
     readOptionalUploadMetaString(uploadMeta, [
@@ -1696,6 +1709,15 @@ export default async function CustomerQuoteDetailPage({
             />
             {receiptBanner}
             {searchStatusCard}
+            <SearchAlertOptInCard
+              quoteId={quote.id}
+              initialEnabled={searchAlertEnabled}
+              quoteLabel={primaryFileName}
+              disabled={readOnly}
+              disabledReason={
+                readOnly ? "Search alerts are read-only in this view." : undefined
+              }
+            />
             <SearchActivityFeed
               events={searchActivityEvents}
               description="Latest updates from the search dispatch."

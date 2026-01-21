@@ -32,10 +32,14 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesList, type CustomerQuoteListRow } from "@/server/customer/quotesList";
-import { touchCustomerSavedSearch } from "@/server/customer/savedSearches";
+import {
+  getCustomerSearchAlertPreference,
+  touchCustomerSavedSearch,
+} from "@/server/customer/savedSearches";
 import { schemaGate } from "@/server/db/schemaContract";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import { getOpsSlaSettings } from "@/server/ops/settings";
+import { deriveSearchAlertPreferenceFromOpsEvents } from "@/server/ops/searchAlerts";
 import { type RfqDestination } from "@/server/rfqs/destinations";
 import { type RfqOffer } from "@/server/rfqs/offers";
 import { PROVIDER_TYPES } from "@/server/providers";
@@ -55,6 +59,7 @@ import {
   type PricingEstimateInput,
 } from "@/lib/pricing/estimate";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
+import { SearchAlertOptInCard } from "@/app/(portals)/customer/components/SearchAlertOptInCard";
 
 type CustomerSearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -325,6 +330,20 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   const activityEmptyState = quoteIdParam
     ? "Activity will appear once the search is live."
     : "Activity will appear here as new updates arrive.";
+
+  const savedSearchAlertPreference = activeQuote
+    ? await getCustomerSearchAlertPreference({
+        customerId: customer.id,
+        quoteId: activeQuote.id,
+      })
+    : null;
+  const opsAlertPreference = activeQuote
+    ? deriveSearchAlertPreferenceFromOpsEvents(workspaceData?.opsEvents ?? [])
+    : null;
+  const searchAlertEnabled =
+    savedSearchAlertPreference?.supported && savedSearchAlertPreference.hasRow
+      ? savedSearchAlertPreference.enabled
+      : opsAlertPreference ?? false;
 
   return (
     <PortalShell
@@ -622,6 +641,12 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                   </div>
                 </div>
               </PortalCard>
+
+              <SearchAlertOptInCard
+                quoteId={activeQuote.id}
+                initialEnabled={searchAlertEnabled}
+                quoteLabel={activeQuote.rfqLabel ?? null}
+              />
 
               {showSlaNudge && slaNudgeDetail ? (
                 <section className="rounded-2xl border border-amber-500/30 bg-amber-500/5 px-6 py-5">

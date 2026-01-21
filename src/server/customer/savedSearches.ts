@@ -15,6 +15,7 @@ const SAVED_SEARCHES_COLUMNS = [
   "created_at",
   "last_viewed_at",
 ];
+const SAVED_SEARCHES_ALERT_COLUMN = "search_alerts_enabled";
 const WARN_PREFIX = "[customer_saved_searches]";
 const MAX_LABEL_LENGTH = 120;
 
@@ -23,6 +24,10 @@ type SavedSearchRow = {
   label: string | null;
   created_at: string | null;
   last_viewed_at: string | null;
+};
+
+type SavedSearchAlertRow = {
+  search_alerts_enabled: boolean | null;
 };
 
 type QuoteActivityRow = {
@@ -80,8 +85,18 @@ export type SavedSearchListResult = {
   searches: SavedSearchListItem[];
 };
 
+export type SavedSearchAlertPreference = {
+  supported: boolean;
+  enabled: boolean;
+  hasRow: boolean;
+};
+
 type SavedSearchMutationResult =
   | { ok: true }
+  | { ok: false; reason: "invalid" | "unsupported" | "unknown" };
+
+type SavedSearchAlertMutationResult =
+  | { ok: true; stored: boolean }
   | { ok: false; reason: "invalid" | "unsupported" | "unknown" };
 
 export async function listCustomerSavedSearches(customerId: string): Promise<SavedSearchListResult> {
@@ -394,6 +409,180 @@ export async function touchCustomerSavedSearch(input: {
       warnPrefix: WARN_PREFIX,
       warnKey: "customer_saved_searches:touch_crash_missing_schema",
     });
+  }
+}
+
+export async function getCustomerSearchAlertPreference(input: {
+  customerId: string;
+  quoteId: string;
+}): Promise<SavedSearchAlertPreference> {
+  const customerId = normalizeId(input.customerId);
+  const quoteId = normalizeId(input.quoteId);
+  if (!customerId || !quoteId) {
+    return { supported: false, enabled: false, hasRow: false };
+  }
+
+  const supported = await ensureSavedSearchAlertsSchema("alerts_select");
+  if (!supported || isSupabaseRelationMarkedMissing(SAVED_SEARCHES_RELATION)) {
+    return { supported: false, enabled: false, hasRow: false };
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(SAVED_SEARCHES_RELATION)
+      .select("search_alerts_enabled")
+      .eq("customer_id", customerId)
+      .eq("quote_id", quoteId)
+      .maybeSingle<SavedSearchAlertRow>();
+
+    if (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: SAVED_SEARCHES_RELATION,
+          error,
+          warnPrefix: WARN_PREFIX,
+          warnKey: "customer_saved_searches:alerts_select_missing_schema",
+        })
+      ) {
+        return { supported: false, enabled: false, hasRow: false };
+      }
+      warnOnce(
+        "customer_saved_searches:alerts_select_failed",
+        `${WARN_PREFIX} alerts lookup failed; defaulting disabled`,
+        { code: serializeSupabaseError(error).code },
+      );
+      return { supported: true, enabled: false, hasRow: false };
+    }
+
+    if (!data) {
+      return { supported: true, enabled: false, hasRow: false };
+    }
+
+    return {
+      supported: true,
+      enabled: Boolean(data.search_alerts_enabled),
+      hasRow: true,
+    };
+  } catch (error) {
+    if (
+      handleMissingSupabaseSchema({
+        relation: SAVED_SEARCHES_RELATION,
+        error,
+        warnPrefix: WARN_PREFIX,
+        warnKey: "customer_saved_searches:alerts_select_crash_missing_schema",
+      })
+    ) {
+      return { supported: false, enabled: false, hasRow: false };
+    }
+    warnOnce(
+      "customer_saved_searches:alerts_select_crash",
+      `${WARN_PREFIX} alerts lookup crashed; defaulting disabled`,
+      { error: String(error) },
+    );
+    return { supported: true, enabled: false, hasRow: false };
+  }
+}
+
+export async function setCustomerSearchAlertPreference(input: {
+  customerId: string;
+  quoteId: string;
+  enabled: boolean;
+  label?: string | null;
+}): Promise<SavedSearchAlertMutationResult> {
+  const customerId = normalizeId(input.customerId);
+  const quoteId = normalizeId(input.quoteId);
+  if (!customerId || !quoteId) {
+    return { ok: false, reason: "invalid" };
+  }
+
+  const supported = await ensureSavedSearchAlertsSchema("alerts_upsert");
+  if (!supported || isSupabaseRelationMarkedMissing(SAVED_SEARCHES_RELATION)) {
+    return { ok: false, reason: "unsupported" };
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(SAVED_SEARCHES_RELATION)
+      .update({ search_alerts_enabled: Boolean(input.enabled) })
+      .eq("customer_id", customerId)
+      .eq("quote_id", quoteId)
+      .select("quote_id")
+      .returns<Array<{ quote_id: string | null }>>();
+
+    if (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: SAVED_SEARCHES_RELATION,
+          error,
+          warnPrefix: WARN_PREFIX,
+          warnKey: "customer_saved_searches:alerts_update_missing_schema",
+        })
+      ) {
+        return { ok: false, reason: "unsupported" };
+      }
+      warnOnce(
+        "customer_saved_searches:alerts_update_failed",
+        `${WARN_PREFIX} alerts update failed`,
+        { code: serializeSupabaseError(error).code },
+      );
+      return { ok: false, reason: "unknown" };
+    }
+
+    if (Array.isArray(data) && data.length > 0) {
+      return { ok: true, stored: true };
+    }
+
+    const fallbackLabel = buildSavedSearchFallbackLabel(quoteId);
+    const label =
+      normalizeLabel(input.label) ||
+      normalizeLabel(fallbackLabel) ||
+      `Search ${quoteId.slice(0, 6).toUpperCase()}`;
+
+    const { error: insertError } = await supabaseServer.from(SAVED_SEARCHES_RELATION).insert({
+      customer_id: customerId,
+      quote_id: quoteId,
+      label,
+      last_viewed_at: new Date().toISOString(),
+      search_alerts_enabled: Boolean(input.enabled),
+    });
+
+    if (insertError) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: SAVED_SEARCHES_RELATION,
+          error: insertError,
+          warnPrefix: WARN_PREFIX,
+          warnKey: "customer_saved_searches:alerts_insert_missing_schema",
+        })
+      ) {
+        return { ok: false, reason: "unsupported" };
+      }
+      warnOnce(
+        "customer_saved_searches:alerts_insert_failed",
+        `${WARN_PREFIX} alerts insert failed`,
+        { code: serializeSupabaseError(insertError).code },
+      );
+      return { ok: false, reason: "unknown" };
+    }
+
+    return { ok: true, stored: true };
+  } catch (error) {
+    if (
+      handleMissingSupabaseSchema({
+        relation: SAVED_SEARCHES_RELATION,
+        error,
+        warnPrefix: WARN_PREFIX,
+        warnKey: "customer_saved_searches:alerts_upsert_crash_missing_schema",
+      })
+    ) {
+      return { ok: false, reason: "unsupported" };
+    }
+    warnOnce(
+      "customer_saved_searches:alerts_upsert_crash",
+      `${WARN_PREFIX} alerts upsert crashed`,
+      { error: String(error) },
+    );
+    return { ok: false, reason: "unknown" };
   }
 }
 
@@ -839,6 +1028,24 @@ async function ensureSavedSearchesSchema(warnKey: string): Promise<boolean> {
   return hasSchema;
 }
 
+async function ensureSavedSearchAlertsSchema(warnKey: string): Promise<boolean> {
+  const requiredColumns = [...SAVED_SEARCHES_COLUMNS, SAVED_SEARCHES_ALERT_COLUMN];
+  const hasSchema = await schemaGate({
+    enabled: true,
+    relation: SAVED_SEARCHES_RELATION,
+    requiredColumns,
+    warnPrefix: WARN_PREFIX,
+    warnKey: `customer_saved_searches:${warnKey}`,
+  });
+  if (!hasSchema) {
+    warnOnce(
+      `customer_saved_searches:${warnKey}:missing`,
+      `${WARN_PREFIX} missing alerts schema; skipping`,
+    );
+  }
+  return hasSchema;
+}
+
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -854,6 +1061,13 @@ function normalizeLabel(value: unknown): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
   return trimmed.length > MAX_LABEL_LENGTH ? trimmed.slice(0, MAX_LABEL_LENGTH) : trimmed;
+}
+
+function buildSavedSearchFallbackLabel(quoteId: string): string {
+  if (typeof quoteId !== "string" || !quoteId.trim()) {
+    return "Search alert";
+  }
+  return `Search ${quoteId.trim().slice(0, 6).toUpperCase()}`;
 }
 
 function maxIsoTimestamp(values: Array<string | null | undefined>): string | null {

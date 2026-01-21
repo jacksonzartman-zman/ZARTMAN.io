@@ -12,6 +12,8 @@ export type OpsEventType =
   | "destination_status_updated"
   | "destination_submitted"
   | "customer_saved_search_interest"
+  | "search_alert_enabled"
+  | "search_alert_disabled"
   | "outbound_email_generated"
   | "offer_upserted"
   | "offer_revised"
