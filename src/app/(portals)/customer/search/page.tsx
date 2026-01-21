@@ -36,6 +36,7 @@ import {
   getCustomerSearchAlertPreference,
   touchCustomerSavedSearch,
 } from "@/server/customer/savedSearches";
+import { loadCustomerOfferShortlist } from "@/server/customer/offerShortlist";
 import { schemaGate } from "@/server/db/schemaContract";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import { getOpsSlaSettings } from "@/server/ops/settings";
@@ -344,6 +345,15 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     savedSearchAlertPreference?.supported && savedSearchAlertPreference.hasRow
       ? savedSearchAlertPreference.enabled
       : opsAlertPreference ?? false;
+
+  const offerShortlist = activeQuote
+    ? await loadCustomerOfferShortlist({
+        customerId: customer.id,
+        quoteId: activeQuote.id,
+        opsEvents: workspaceData?.opsEvents ?? [],
+      })
+    : null;
+  const shortlistedOfferIds = offerShortlist?.offerIds ?? [];
 
   return (
     <PortalShell
@@ -702,6 +712,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                     quoteId={activeQuote.id}
                     offers={filteredOffers}
                     selectedOfferId={workspaceData.quote.selected_offer_id ?? null}
+                    shortlistedOfferIds={shortlistedOfferIds}
                     matchContext={{
                       matchedOnProcess,
                       locationFilter: filterContext.filters.location ?? null,

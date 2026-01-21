@@ -127,6 +127,7 @@ import { PendingProvidersTable } from "@/components/search/PendingProvidersTable
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { deriveSearchAlertPreferenceFromOpsEvents } from "@/server/ops/searchAlerts";
 import { getCustomerSearchAlertPreference } from "@/server/customer/savedSearches";
+import { loadCustomerOfferShortlist } from "@/server/customer/offerShortlist";
 
 export const dynamic = "force-dynamic";
 
@@ -835,6 +836,13 @@ export default async function CustomerQuoteDetailPage({
     savedSearchAlertPreference.supported && savedSearchAlertPreference.hasRow
       ? savedSearchAlertPreference.enabled
       : opsAlertPreference ?? false;
+
+  const offerShortlist = await loadCustomerOfferShortlist({
+    customerId: customer.id,
+    quoteId: quote.id,
+    opsEvents: opsEvents ?? [],
+  });
+  const shortlistedOfferIds = offerShortlist.offerIds;
 
   const kickoffTolerances =
     readOptionalUploadMetaString(uploadMeta, [
@@ -1616,6 +1624,7 @@ export default async function CustomerQuoteDetailPage({
           quoteId={quote.id}
           offers={rfqOffers}
           selectedOfferId={selectedOfferId}
+          shortlistedOfferIds={shortlistedOfferIds}
           matchContext={{ matchedOnProcess: Boolean(intakeProcess), locationFilter: null }}
         />
       )}
