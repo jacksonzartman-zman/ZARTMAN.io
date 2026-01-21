@@ -76,7 +76,7 @@ export function SupplierDeclineRfqModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Decline RFQ"
+      aria-label="Decline search request"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -85,10 +85,11 @@ export function SupplierDeclineRfqModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-lg font-semibold text-white">
-              Help improve your RFQ experience
+              Help improve your search request experience
             </h3>
             <p className="mt-1 text-sm text-slate-300">
-              Share why you’re declining so we can route better RFQs and improve intake quality.
+              Share why you’re declining so we can route better search requests and improve intake
+              quality.
             </p>
           </div>
           <button
@@ -179,7 +180,7 @@ function SubmitButton() {
         pending ? "opacity-60" : "",
       )}
     >
-      {pending ? "Submitting..." : "Decline RFQ"}
+      {pending ? "Submitting..." : "Decline search request"}
     </button>
   );
 }

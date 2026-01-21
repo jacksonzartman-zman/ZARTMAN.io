@@ -17,7 +17,8 @@ export default function FaqPage() {
               Frequently asked questions
             </h1>
             <p className="text-base text-ink-muted heading-snug">
-              Straight answers about privacy, control, and how work moves through Zartman.io from RFQ to award.
+              Straight answers about privacy, control, and how work moves through Zartman.io from
+              search request to award.
             </p>
           </div>
         </div>

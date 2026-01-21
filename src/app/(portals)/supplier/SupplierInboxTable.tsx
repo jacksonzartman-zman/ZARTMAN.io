@@ -67,7 +67,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            RFQ
+            Search request
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Files &amp; value
@@ -76,7 +76,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
             Your bid
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            RFQ status
+            Search request status
           </th>
           <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Action

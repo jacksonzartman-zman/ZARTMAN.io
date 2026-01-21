@@ -49,7 +49,7 @@ export function QuoteActivityTimeline({
       {!hasEvents ? (
         <p className="text-xs text-slate-400">
           {emptyState ??
-            "Timeline data will populate once we record RFQ or bid activity."}
+            "Timeline data will populate once we record search request or bid activity."}
         </p>
       ) : (
         <ol className="mt-4 space-y-3 border-l border-slate-800">

@@ -58,7 +58,7 @@ export function CustomerQuoteStatusCtas({
           action={reopenFormAction}
           onSubmit={(event) => {
             const confirmed = window.confirm(
-              "Reopen this RFQ?\n\nThis makes the RFQ active again so invited suppliers can bid. You can archive it later.",
+              "Reopen this search request?\n\nThis makes the search request active again so invited suppliers can bid. You can archive it later.",
             );
             if (!confirmed) {
               event.preventDefault();
@@ -76,7 +76,7 @@ export function CustomerQuoteStatusCtas({
           action={archiveFormAction}
           onSubmit={(event) => {
             const confirmed = window.confirm(
-              "Archive this RFQ?\n\nThis hides it from active lists. Files, messages, and Timeline remain available.",
+              "Archive this search request?\n\nThis hides it from active lists. Files, messages, and Timeline remain available.",
             );
             if (!confirmed) {
               event.preventDefault();

@@ -284,7 +284,7 @@ export default async function CustomerProjectsPage({
                                   href={`/customer/quotes/${project.id}#decision`}
                                   className="font-semibold text-emerald-200 hover:underline"
                                 >
-                                  View RFQ
+                                  View search request
                                 </Link>
                               </div>
                             </div>

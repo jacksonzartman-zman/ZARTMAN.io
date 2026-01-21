@@ -54,7 +54,7 @@ export default async function CustomerMessagesPage() {
     <PortalShell
       workspace="customer"
       title="Messages"
-      subtitle="Conversations across your RFQs and projects."
+      subtitle="Conversations across your search requests and projects."
       actions={
         <Link
           href="/customer"
@@ -66,13 +66,13 @@ export default async function CustomerMessagesPage() {
     >
       <PortalCard
         title="Messages"
-        description="One inbox for every RFQ thread—see what needs your attention and jump back into context."
+        description="One inbox for every search request thread—see what needs your attention and jump back into context."
       >
         {rows.length === 0 ? (
           <EmptyStateCard
             title="No conversations yet"
-            description="Messages will appear here once RFQs are in progress."
-            action={{ label: "View RFQs", href: "/customer/quotes" }}
+            description="Messages will appear here once search requests are in progress."
+            action={{ label: "View search requests", href: "/customer/quotes" }}
           />
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
@@ -80,7 +80,7 @@ export default async function CustomerMessagesPage() {
               <thead className="bg-slate-900/60">
                 <tr>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    RFQ
+                    Search request
                   </th>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Thread

@@ -178,11 +178,11 @@ export default async function SupplierQuotesPage({
       <PortalShell
         workspace="supplier"
         title="Quotes"
-        subtitle="Finish onboarding to start receiving RFQs here."
+        subtitle="Finish onboarding to start receiving search requests here."
       >
         <EmptyStateNotice
           title="Complete supplier onboarding"
-          description="Share capabilities, certifications, and documents so we can route the right RFQs."
+          description="Share capabilities, certifications, and documents so we can route the right search requests."
           action={
             <Link
               href="/supplier/onboarding"
@@ -288,7 +288,7 @@ export default async function SupplierQuotesPage({
     <PortalShell
       workspace="supplier"
       title="Quotes"
-      subtitle="RFQs you’re invited to, have bid on, or have been awarded."
+      subtitle="Search requests you’re invited to, have bid on, or have been awarded."
       actions={
         <div className="flex flex-wrap gap-3">
           <Link
@@ -307,7 +307,7 @@ export default async function SupplierQuotesPage({
       }
     >
       <PortalCard
-        title="RFQs"
+        title="Search requests"
         description="Status, kickoff, messages, and match health at a glance."
       >
         <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
@@ -364,7 +364,7 @@ export default async function SupplierQuotesPage({
             </select>
           </label>
           <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
-            RFQ quality
+            Search request quality
             <select
               name="rfqQuality"
               defaultValue={rfqQualityFilter}
@@ -394,7 +394,7 @@ export default async function SupplierQuotesPage({
         {approvalGateActive ? (
           <div className="rounded-2xl border border-slate-900/70 bg-black/40 p-6">
             <p className="text-sm font-semibold text-slate-100">
-              RFQs unlock after approval
+              Search requests unlock after approval
             </p>
             <p className="mt-2 text-sm text-slate-400">
               We’ll populate this list as soon as your supplier profile is approved.
@@ -405,10 +405,10 @@ export default async function SupplierQuotesPage({
             {hasFilters ? (
               <>
                 <p className="text-sm font-semibold text-slate-100">
-                  No RFQs match these filters
+                  No search requests match these filters
                 </p>
                 <p className="mt-2 text-sm text-slate-400">
-                  Try clearing filters to see all RFQs.
+                  Try clearing filters to see all search requests.
                 </p>
                 <div className="mt-4">
                   <Link
@@ -421,9 +421,10 @@ export default async function SupplierQuotesPage({
               </>
             ) : (
               <>
-                <p className="text-sm font-semibold text-slate-100">No RFQs yet</p>
+                <p className="text-sm font-semibold text-slate-100">No search requests yet</p>
                 <p className="mt-2 text-sm text-slate-400">
-                  No RFQs yet. When customers invite you to bid or we route work your way, RFQs will appear here.
+                  No search requests yet. When customers invite you to bid or we route work your
+                  way, search requests will appear here.
                 </p>
                 <div className="mt-4">
                   <Link
@@ -442,7 +443,7 @@ export default async function SupplierQuotesPage({
               <thead className="bg-slate-900/60">
                 <tr>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    RFQ / Quote
+                    Search request / Quote
                   </th>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Status

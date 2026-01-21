@@ -163,7 +163,7 @@ export function buildSupplierQuoteTimeline(
 }
 
 const QUOTE_STATUS_LABELS: Record<string, string> = {
-  submitted: "RFQ submitted",
+  submitted: "Search request submitted",
   in_review: "Reviewing bids",
   quoted: "Quote prepared",
   approved: "Approved to award",
@@ -185,8 +185,8 @@ function pushRfqSubmittedEvent(
     id: `rfq-submitted:${quote.id}`,
     kind: "rfq-submitted",
     at,
-    title: "RFQ submitted",
-    description: "Your RFQ was submitted to Zartman.io.",
+    title: "Search request submitted",
+    description: "Your search request was submitted to Zartman.io.",
   });
 }
 

@@ -45,7 +45,10 @@ const STATUS_CHANGE_EVENT_TYPES = new Set<string>([
   "reopened",
 ]);
 
-export function mapRawEventToTimelineEvent(raw: RawQuoteEvent): QuoteTimelineEvent {
+export function mapRawEventToTimelineEvent(
+  raw: RawQuoteEvent,
+  options: { copyVariant?: "rfq" | "search" } = {},
+): QuoteTimelineEvent {
   const id = normalizeText(raw?.id) ?? "";
   const quoteId = normalizeText(raw?.quote_id) ?? "";
   const type = normalizeEventType(raw?.event_type);
@@ -68,6 +71,7 @@ export function mapRawEventToTimelineEvent(raw: RawQuoteEvent): QuoteTimelineEve
       metadata,
       payload,
     }),
+    options,
   );
 
   const actorLabel =

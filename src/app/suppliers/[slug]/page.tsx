@@ -67,7 +67,7 @@ export default async function SupplierProfilePage(props: any) {
     : "Review process coverage, location, and capabilities before starting a supplier search.";
   const calloutCopy = needsInviteFlow
     ? "Want to work with this supplier? Request an introduction and we'll follow up after they verify."
-    : "Need a supplier match fast? Start a supplier search and we'll review your RFQ before routing it to the best-fit shops.";
+    : "Need a supplier match fast? Start a supplier search and we'll review your search request before routing it to the best-fit shops.";
 
   return (
     <main className="main-shell">

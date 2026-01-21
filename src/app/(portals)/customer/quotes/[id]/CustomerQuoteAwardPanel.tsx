@@ -193,7 +193,7 @@ export function CustomerQuoteAwardPanel({
             <span>{state.message}</span>
           </p>
           <p className="mt-2 text-xs text-emerald-200">
-            Recorded for this RFQ. You can track progress in Kickoff and Timeline below.
+            Recorded for this search request. You can track progress in Kickoff and Timeline below.
           </p>
           <a href="#kickoff" className="mt-2 inline-flex text-xs font-semibold text-emerald-200 hover:underline">
             Jump to kickoff
@@ -613,7 +613,7 @@ export function CustomerQuoteAwardPanel({
         <p className="text-sm font-semibold text-slate-100">What happens after you select?</p>
         <ul className="list-disc space-y-1 pl-5 text-sm text-slate-300">
           <li>We notify your selected supplier to confirm scope.</li>
-          <li>Your RFQ updates to Awarded for tracking.</li>
+          <li>Your search request updates to Awarded for tracking.</li>
           <li>No purchase order or payment is placed automatically.</li>
         </ul>
       </div>

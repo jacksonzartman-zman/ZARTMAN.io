@@ -59,7 +59,7 @@ export default async function SupplierNotificationsPage() {
     <PortalShell
       workspace="supplier"
       title="Notifications"
-      subtitle="What needs your attention across RFQs, messages, kickoff, and capacity."
+      subtitle="What needs your attention across search requests, messages, kickoff, and capacity."
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Link

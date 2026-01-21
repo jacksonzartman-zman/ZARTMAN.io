@@ -26,15 +26,15 @@ const SupplierJoinPage = ((props: unknown) => {
             </p>
             <div className="space-y-4">
               <h1 className="text-4xl font-semibold text-ink sm:text-5xl heading-tight">
-                Get RFQs from buyers looking to compare options
+                Get search requests from buyers looking to compare options
               </h1>
               <p className="text-base text-ink-muted heading-snug">
                 No subscription &mdash; respond only when it fits
               </p>
             </div>
             <p className="text-sm text-ink-soft">
-              Share your email and we will confirm your shop details, then send
-              matching RFQs when they are a fit.
+              Share your email and we will confirm your shop details, then send matching search
+              requests when they are a fit.
             </p>
           </div>
 

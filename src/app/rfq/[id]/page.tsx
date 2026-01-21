@@ -36,7 +36,8 @@ export default async function RfqWorkspacePage({
         <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
           <h1 className="text-xl font-semibold text-white">Workspace unavailable</h1>
           <p className="mt-2 text-sm text-slate-400">
-            We couldn’t open this RFQ workspace. Double-check the link or ask the Zartman team for access.
+            We couldn’t open this search request workspace. Double-check the link or ask the
+            Zartman team for access.
           </p>
         </section>
       </main>
@@ -47,11 +48,11 @@ export default async function RfqWorkspacePage({
     <main className="mx-auto max-w-5xl px-4 py-10">
       <header className="space-y-3 border-b border-slate-900 pb-6">
         <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
-          Open RFQ workspace
+          Open search request workspace
         </p>
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold text-white">
-            {workspace.rfq.title ?? "Untitled RFQ"}
+            {workspace.rfq.title ?? "Untitled search request"}
           </h1>
           <p className="text-sm text-slate-400">
             Collaborative room for customers, suppliers, and Zartman operations.
@@ -65,7 +66,7 @@ export default async function RfqWorkspacePage({
             </span>
           </span>
           <span>
-            RFQ status:{" "}
+            Search request status:{" "}
             <span className="font-semibold text-slate-100">
               {workspace.rfq.status}
             </span>
@@ -100,7 +101,7 @@ function RfqSummaryCard({ rfq }: { rfq: MarketplaceRfq }) {
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-5">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          RFQ summary
+          Search request summary
         </p>
         <p className="text-sm text-slate-300">
           Quick snapshot of scope, urgency, and current posture.
@@ -143,7 +144,7 @@ function SupplierActivityFeed({
             Supplier activity
           </p>
           <p className="text-sm text-slate-300">
-            Live bids and status changes aggregated for this RFQ.
+            Live bids and status changes aggregated for this search request.
           </p>
         </div>
         <span className="text-xs text-slate-500">
@@ -283,13 +284,13 @@ function FilesAndRevisions({
           Files & revisions
         </p>
         <p className="text-sm text-slate-300">
-          Attachments and historical revisions tied to this RFQ.
+          Attachments and historical revisions tied to this search request.
         </p>
       </header>
 
       {attachments.length === 0 ? (
         <p className="mt-4 rounded-xl border border-dashed border-slate-800 bg-black/20 px-3 py-4 text-sm text-slate-400">
-          No files shared yet. Uploads will appear here once they’re linked to the RFQ.
+          No files shared yet. Uploads will appear here once they’re linked to the search request.
         </p>
       ) : (
         <ul className="mt-4 space-y-3">

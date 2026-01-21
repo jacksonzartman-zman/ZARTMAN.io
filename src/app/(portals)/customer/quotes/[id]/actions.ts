@@ -77,7 +77,7 @@ export type QuoteStatusTransitionState =
   | { ok: false; error: string };
 
 const CUSTOMER_STATUS_TRANSITION_ERROR =
-  "We couldn’t update this RFQ right now. Please try again.";
+  "We couldn’t update this search request right now. Please try again.";
 
 const CUSTOMER_AWARD_BID_ERROR =
   "We couldn’t verify that bid. Refresh and try again.";
@@ -93,7 +93,7 @@ const CUSTOMER_SELECT_OFFER_GENERIC_ERROR =
 const CUSTOMER_SELECT_OFFER_ACCESS_ERROR =
   "We couldn’t confirm your access to this quote.";
 const CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR =
-  "That offer isn’t available for this RFQ.";
+  "That offer isn’t available for this search request.";
 const CUSTOMER_SELECT_OFFER_SUCCESS_MESSAGE = "Offer selection saved.";
 const CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR =
   "We couldn’t confirm your selection. Please try again.";
@@ -193,7 +193,7 @@ export async function archiveCustomerQuoteAction(
     if (!customer) {
       return {
         ok: false,
-        error: "Complete your profile before updating this RFQ.",
+        error: "Complete your profile before updating this search request.",
       };
     }
 
@@ -231,7 +231,7 @@ export async function archiveCustomerQuoteAction(
     revalidatePath("/supplier");
     revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
-    return { ok: true, message: "RFQ archived." };
+    return { ok: true, message: "Search request archived." };
   } catch (error) {
     console.error("[customer quote status] archive crashed", {
       quoteId: normalizedQuoteId,
@@ -257,7 +257,7 @@ export async function reopenCustomerQuoteAction(
     if (!customer) {
       return {
         ok: false,
-        error: "Complete your profile before updating this RFQ.",
+        error: "Complete your profile before updating this search request.",
       };
     }
 
@@ -295,7 +295,7 @@ export async function reopenCustomerQuoteAction(
     revalidatePath("/supplier");
     revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
-    return { ok: true, message: "RFQ reopened." };
+    return { ok: true, message: "Search request reopened." };
   } catch (error) {
     console.error("[customer quote status] reopen crashed", {
       quoteId: normalizedQuoteId,

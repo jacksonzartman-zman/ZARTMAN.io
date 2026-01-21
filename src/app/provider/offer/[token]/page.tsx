@@ -114,7 +114,7 @@ export default async function ProviderOfferPage({ params }: ProviderOfferPagePro
             <h1 className="text-3xl font-semibold text-white">Submit your offer</h1>
             <p className="text-sm text-slate-300">
               You&apos;re submitting an offer for{" "}
-              <span className="font-semibold text-white">{quoteSummary.title}</span> RFQ.
+              <span className="font-semibold text-white">{quoteSummary.title}</span> search request.
             </p>
           </div>
         </header>
@@ -123,7 +123,7 @@ export default async function ProviderOfferPage({ params }: ProviderOfferPagePro
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                RFQ summary
+                Search request summary
               </p>
               <p className="mt-1 text-sm text-slate-300">
                 Quick snapshot of the request you&apos;re quoting.

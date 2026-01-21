@@ -7,10 +7,10 @@ export default function ContactPage() {
     ? "/quote"
     : "/customer/search";
   const fastTrackLabel = SHOW_LEGACY_QUOTE_ENTRYPOINTS
-    ? "Start an RFQ instead"
+    ? "Start a search request instead"
     : "Search suppliers instead";
   const fastTrackCopy = SHOW_LEGACY_QUOTE_ENTRYPOINTS
-    ? "Use this form when you want a walkthrough, help matching jobs to suppliers, or clarity on how we handle files. Ready to award work right now? You can always skip ahead and go straight to the RFQ intake form."
+    ? "Use this form when you want a walkthrough, help matching jobs to suppliers, or clarity on how we handle files. Ready to award work right now? You can always skip ahead and go straight to the search request intake form."
     : "Use this form when you want a walkthrough, help matching jobs to suppliers, or clarity on how we handle files. Ready to award work right now? You can always skip ahead and start a supplier search.";
 
   return (
@@ -21,7 +21,7 @@ export default function ContactPage() {
             Request a live demo
           </p>
           <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
-            Talk through your RFQs with the team behind Zartman.io
+            Talk through your search requests with the team behind Zartman.io
           </h1>
           <p className="text-base text-ink-muted heading-snug">
             {fastTrackCopy}
@@ -63,7 +63,10 @@ export default function ContactPage() {
               </li>
               <li className="flex gap-3">
                 <span aria-hidden className="mt-1 inline-flex h-2 w-2 rounded-full bg-emerald-300/90" />
-                <span>We&apos;ll usually ask for a sample part or recent RFQ so we can give specific guidance.</span>
+                <span>
+                  We&apos;ll usually ask for a sample part or recent search request so we can give
+                  specific guidance.
+                </span>
               </li>
             </ul>
             <p className="text-xs text-ink-soft">

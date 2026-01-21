@@ -94,7 +94,7 @@ export default function ContactForm() {
       <TextareaField
         label="What's on your mind?"
         name="message"
-        placeholder="Share the RFQs you're juggling, current supplier mix, or how you'd like us to help."
+        placeholder="Share the search requests you're juggling, current supplier mix, or how you'd like us to help."
         rows={5}
         required
         disabled={disableFields}
@@ -120,7 +120,7 @@ export default function ContactForm() {
             href="/quote"
             className={clsx(ghostCtaClasses, "w-full justify-center")}
           >
-            Just send an RFQ instead
+            Just start a search instead
           </Link>
         ) : null}
       </div>

@@ -70,7 +70,8 @@ export function CustomerQuoteProjectCard({
           PO details & target dates
         </h2>
         <p className="text-sm text-slate-300">
-          Share your PO number, target ship date, and kickoff notes once this RFQ is awarded.
+          Share your PO number, target ship date, and kickoff notes once this search request is
+          awarded.
         </p>
       </header>
 

@@ -124,7 +124,7 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
       className={clsx(primaryCtaClasses, "w-full justify-center")}
       disabled={isDisabled}
     >
-      {pending ? "Sending..." : "Get RFQs"}
+      {pending ? "Sending..." : "Get search requests"}
     </button>
   );
 }

@@ -12,12 +12,12 @@ const TRUST_SIGNALS = [
 
 const HOW_IT_WORKS_STEPS = [
   {
-    title: "Upload your RFQ",
+    title: "Submit your search request",
     description: "Share CAD files, quantities, and due dates in one place.",
   },
   {
     title: "We route to vetted providers",
-    description: "Your RFQ goes to a small bench—no auctions or spam blasts.",
+    description: "Your search request goes to a small bench—no auctions or spam blasts.",
   },
   {
     title: "Review and award",

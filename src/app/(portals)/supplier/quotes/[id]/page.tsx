@@ -142,7 +142,7 @@ export default async function SupplierQuoteDetailPage({
     return (
       <PortalNoticeCard
         title="Complete onboarding"
-        description="Finish the supplier onboarding form before opening RFQs."
+        description="Finish the supplier onboarding form before opening search requests."
       />
     );
   }
@@ -163,8 +163,8 @@ export default async function SupplierQuoteDetailPage({
 
     return (
       <PortalNoticeCard
-        title="Not invited to this RFQ"
-        description="You can only open RFQs you’ve been invited to (or where you’ve submitted a bid). If you believe you should have access, contact the Zartman team."
+        title="Not invited to this search request"
+        description="You can only open search requests you’ve been invited to (or where you’ve submitted a bid). If you believe you should have access, contact the Zartman team."
       />
     );
   }
@@ -223,7 +223,7 @@ export default async function SupplierQuoteDetailPage({
   } else if (!outboundStatus.enabled) {
     portalEmailDisabledCopy = "Email not configured.";
   } else if (!awardedToSupplier) {
-    portalEmailDisabledCopy = "Email is available after this RFQ is awarded to you.";
+    portalEmailDisabledCopy = "Email is available after this search request is awarded to you.";
   } else if (!isCustomerEmailBridgeEnabled()) {
     portalEmailDisabledCopy = "Customer email replies are off.";
   } else {
@@ -602,7 +602,7 @@ function SupplierQuoteWorkspace({
       : acceptedLock
         ? "Bid is accepted — bidding is locked."
         : closedWindowLock
-          ? "Bidding is closed for this RFQ."
+          ? "Bidding is closed for this search request."
           : "Follow updates in the shared thread below.";
   const bidPillValue =
     existingBid?.status && typeof existingBid.status === "string" && existingBid.status.trim()
@@ -616,7 +616,7 @@ function SupplierQuoteWorkspace({
       ? "Not selected"
       : "Pending";
   const supplierAtAGlancePills = [
-    { key: "rfq", label: "RFQ", value: primaryFileName },
+    { key: "rfq", label: "Search request", value: primaryFileName },
     { key: "files", label: "Files", value: fileCountText },
     {
       key: "bid",
@@ -681,7 +681,8 @@ function SupplierQuoteWorkspace({
       <section className="rounded-2xl border border-slate-800 bg-slate-950/40 px-5 py-4 text-sm text-slate-200">
         <p className="text-base font-semibold text-white">Not selected</p>
         <p className="mt-1 text-slate-300">
-          This RFQ was awarded to another supplier{awardedAtLabel ? ` on ${awardedAtLabel}` : ""}. Keep an eye out for the next opportunity.
+          This search request was awarded to another supplier
+          {awardedAtLabel ? ` on ${awardedAtLabel}` : ""}. Keep an eye out for the next opportunity.
         </p>
       </section>
     )
@@ -714,7 +715,7 @@ function SupplierQuoteWorkspace({
     projectSection = (
       <PortalCard
         title="Project kickoff"
-        description="Stay tuned—project details appear for the supplier that wins the RFQ."
+        description="Stay tuned—project details appear for the supplier that wins the search request."
       >
         <p className="text-sm text-slate-300">
           Keep bidding with your best pricing and lead times. Once a customer selects your proposal, we’ll
@@ -757,7 +758,7 @@ function SupplierQuoteWorkspace({
         ) : null}
         {closedWindowLock ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
-            Bidding is disabled because this RFQ is no longer accepting new proposals.
+            Bidding is disabled because this search request is no longer accepting new proposals.
           </p>
         ) : null}
         {canSubmitBid && !acceptedLock && !closedWindowLock ? (
@@ -788,7 +789,7 @@ function SupplierQuoteWorkspace({
       id="uploads"
       className="scroll-mt-24"
       title="Uploads"
-      description="Shared RFQ files and previews."
+      description="Shared search request files and previews."
       defaultOpen={fileCount > 0}
       summary={
         <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
@@ -998,14 +999,14 @@ function SupplierQuoteWorkspace({
       id="timeline"
       className="scroll-mt-24"
       title="Timeline"
-      description="Updates and milestones for this RFQ."
+      description="Updates and milestones for this search request."
       defaultOpen={false}
     >
       <QuoteTimeline
         quoteId={quote.id}
         actorRole="supplier"
         actorUserId={currentUserId}
-        emptyState="No events yet. Activity will appear here as your RFQ progresses."
+        emptyState="No events yet. Activity will appear here as your search request progresses."
       />
     </DisclosureSection>
   );
@@ -1094,7 +1095,7 @@ function SupplierQuoteWorkspace({
             id="messages"
             className="scroll-mt-24"
             title="Messages"
-            description="Customer, supplier, and admin updates for this RFQ."
+            description="Customer, supplier, and admin updates for this search request."
             defaultOpen={tabParam === "messages"}
             summary={
               quoteMessages.length > 0 ? (
@@ -1117,7 +1118,7 @@ function SupplierQuoteWorkspace({
               viewerRole="supplier"
               markRead={tabParam === "messages"}
               title="Messages"
-              description="Customer, supplier, and admin updates for this RFQ."
+              description="Customer, supplier, and admin updates for this search request."
               portalEmail={{
                 enabled: portalEmailEnabled,
                 recipientRole: "customer",
@@ -1189,8 +1190,8 @@ function SupplierQuoteWorkspace({
                 <CopyTextButton text={replyToAddress} idleLabel="Copy email address" logPrefix="[email_bridge]" />
               </div>
               <p className="text-xs text-slate-500">
-                Tip: keep the <span className="font-semibold text-slate-300">To</span> address unchanged so we can
-                attach your reply to this RFQ.
+                Tip: keep the <span className="font-semibold text-slate-300">To</span> address
+                unchanged so we can attach your reply to this search request.
               </p>
             </div>
           </PortalCard>
@@ -1352,7 +1353,7 @@ function SupplierKickoffLockedCard({ hasWinner }: { hasWinner: boolean }) {
         title={hasWinner ? "Not awarded" : "Kickoff locked"}
         description={
           hasWinner
-            ? "This RFQ was awarded to another supplier. Kickoff tasks remain locked."
+            ? "This search request was awarded to another supplier. Kickoff tasks remain locked."
             : "Kickoff unlocks after you’re selected as the winning supplier."
         }
         secondaryAction={{ label: "Go to bid", href: "#bid" }}
