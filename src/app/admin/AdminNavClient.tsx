@@ -33,6 +33,7 @@ const MORE_LINKS: PortalNavLink[] = [
   { label: "Activity", href: "/admin/activity" },
   { label: "Capacity", href: "/admin/capacity" },
   { label: "Ops inbox", href: "/admin/ops/inbox" },
+  { label: "Ops metrics", href: "/admin/metrics" },
   { label: "Search alerts", href: "/admin/search-alerts" },
   { label: "Suppliers", href: "/admin/suppliers" },
   { label: "Providers", href: "/admin/providers" },
