@@ -11,6 +11,13 @@ import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
+import { formatSlaResponseTime } from "@/lib/ops/sla";
+import {
+  buildPendingProvidersNextStepsCopy,
+  countContactedSuppliers,
+  isDestinationReceived,
+  sortDestinationsBySlaUrgency,
+} from "@/lib/search/pendingProviders";
 import { buildSearchStateSummary, searchStateLabelTone } from "@/lib/search/searchState";
 import { buildSearchProgress } from "@/lib/search/searchProgress";
 import PortalCard from "@/app/(portals)/PortalCard";
@@ -86,6 +93,7 @@ import {
   isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { getOpsSlaSettings } from "@/server/ops/settings";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
 import {
@@ -113,6 +121,7 @@ import {
   SearchActivityFeed,
   buildSearchActivityFeedEvents,
 } from "@/components/search/SearchActivityFeed";
+import { PendingProvidersTable } from "@/components/search/PendingProvidersTable";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 
 export const dynamic = "force-dynamic";
@@ -751,6 +760,27 @@ export default async function CustomerQuoteDetailPage({
     searchStateCounts.offers_total === 1 ? "" : "s"
   }`;
   const searchResultsHref = `/customer/search?quote=${quote.id}`;
+  const pendingDestinations = (rfqDestinations ?? [])
+    .filter((destination) => !isDestinationReceived(destination.status))
+    .sort(sortDestinationsBySlaUrgency);
+  const visiblePendingDestinations = pendingDestinations.slice(0, 6);
+  const remainingPendingDestinationCount = Math.max(
+    pendingDestinations.length - visiblePendingDestinations.length,
+    0,
+  );
+  let pendingNextStepsCopy: string | null = null;
+  let pendingOffersDescription = "No offers yet. We will notify you when quotes arrive.";
+  if (rfqOffers.length === 0) {
+    const slaSettings = await getOpsSlaSettings();
+    const responseTimeLabel = slaSettings.usingFallback
+      ? null
+      : formatSlaResponseTime(slaSettings.config.sentNoReplyMaxHours);
+    pendingNextStepsCopy = buildPendingProvidersNextStepsCopy({
+      contactedCount: countContactedSuppliers(rfqDestinations ?? []),
+      responseTimeLabel,
+    });
+    pendingOffersDescription = `${pendingNextStepsCopy} We will notify you as soon as suppliers respond.`;
+  }
   const searchActivityEvents = buildSearchActivityFeedEvents({
     quote: {
       id: quote.id,
@@ -1507,10 +1537,18 @@ export default async function CustomerQuoteDetailPage({
       }
     >
       {rfqOffers.length === 0 ? (
-        <EmptyStateCard
-          title="Compare offers"
-          description="No offers yet. We'll notify you when quotes arrive."
-        />
+        <div className="space-y-4">
+          <EmptyStateCard
+            title="Offers are on the way"
+            description={pendingOffersDescription}
+            tone="info"
+          />
+          <PendingProvidersTable
+            destinations={visiblePendingDestinations}
+            remainingCount={remainingPendingDestinationCount}
+            matchContext={{ matchedOnProcess: Boolean(intakeProcess), locationFilter: null }}
+          />
+        </div>
       ) : (
         <CustomerQuoteCompareOffers
           quoteId={quote.id}

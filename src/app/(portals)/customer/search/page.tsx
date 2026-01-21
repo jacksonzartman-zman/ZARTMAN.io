@@ -12,8 +12,15 @@ import { loadQuoteWorkspaceData, type QuoteWorkspaceData } from "@/app/(portals)
 import { formatQuoteId } from "@/app/(portals)/quotes/pageUtils";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatSlaResponseTime } from "@/lib/ops/sla";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
+import {
+  buildPendingProvidersNextStepsCopy,
+  countContactedSuppliers,
+  isDestinationReceived,
+  sortDestinationsBySlaUrgency,
+} from "@/lib/search/pendingProviders";
 import { buildSearchStateSummary, searchStateLabelTone } from "@/lib/search/searchState";
 import {
   buildSearchProgress,
@@ -21,7 +28,6 @@ import {
   EMPTY_SEARCH_STATE_TIMESTAMPS,
 } from "@/lib/search/searchProgress";
 import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
-import { decorateProviderForCustomerDisplay } from "@/lib/providers/customerDisplay";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
@@ -29,7 +35,8 @@ import { loadCustomerQuotesList, type CustomerQuoteListRow } from "@/server/cust
 import { touchCustomerSavedSearch } from "@/server/customer/savedSearches";
 import { schemaGate } from "@/server/db/schemaContract";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
-import { type RfqDestination, type RfqDestinationStatus } from "@/server/rfqs/destinations";
+import { getOpsSlaSettings } from "@/server/ops/settings";
+import { type RfqDestination } from "@/server/rfqs/destinations";
 import { type RfqOffer } from "@/server/rfqs/offers";
 import { PROVIDER_TYPES } from "@/server/providers";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
@@ -40,6 +47,7 @@ import {
   SearchActivityFeed,
   buildSearchActivityFeedEvents,
 } from "@/components/search/SearchActivityFeed";
+import { PendingProvidersTable } from "@/components/search/PendingProvidersTable";
 import {
   buildPricingEstimate,
   buildPricingEstimateTelemetry,
@@ -219,6 +227,20 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
 
   const offerCount = filteredOffers.length;
   const totalOfferCount = searchStateCounts.offers_total;
+  let pendingNextStepsCopy: string | null = null;
+  let pendingOffersDescription =
+    "Providers are reviewing your RFQ. We will surface offers here as soon as they respond.";
+  if (activeQuote && workspaceData && totalOfferCount === 0) {
+    const slaSettings = await getOpsSlaSettings();
+    const responseTimeLabel = slaSettings.usingFallback
+      ? null
+      : formatSlaResponseTime(slaSettings.config.sentNoReplyMaxHours);
+    pendingNextStepsCopy = buildPendingProvidersNextStepsCopy({
+      contactedCount: countContactedSuppliers(rfqDestinations),
+      responseTimeLabel,
+    });
+    pendingOffersDescription = `${pendingNextStepsCopy} We will surface offers here as soon as they respond.`;
+  }
 
   const activeQuoteSummary = buildQuoteSummary(workspaceData);
   const matchedOnProcess = activeQuoteSummary.process !== "Pending" && activeQuoteSummary.process !== "—";
@@ -608,17 +630,17 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                   <div className="space-y-4">
                     <EmptyStateCard
                       title="Offers are on the way"
-                      description="Providers are reviewing your RFQ. We'll surface offers here as soon as they respond."
+                      description={pendingOffersDescription}
                       tone="info"
                     />
-                    {renderDestinationsTable({
-                      destinations: visiblePendingDestinations,
-                      remainingCount: remainingPendingDestinationCount,
-                      matchContext: {
+                    <PendingProvidersTable
+                      destinations={visiblePendingDestinations}
+                      remainingCount={remainingPendingDestinationCount}
+                      matchContext={{
                         matchedOnProcess,
                         locationFilter: filterContext.filters.location ?? null,
-                      },
-                    })}
+                      }}
+                    />
                   </div>
                 ) : (
                   <EmptyStateCard
@@ -943,96 +965,6 @@ function parseOfferAmount(value: number | string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function isDestinationReceived(status: RfqDestinationStatus): boolean {
-  return status === "quoted" || status === "declined";
-}
-
-function renderDestinationsTable(args: {
-  destinations: RfqDestination[];
-  remainingCount: number;
-  matchContext?: {
-    matchedOnProcess?: boolean;
-    locationFilter?: string | null;
-  };
-}) {
-  if (args.destinations.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-400">
-        Providers will appear here once dispatch begins.
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="overflow-hidden rounded-xl border border-slate-900/60 bg-slate-950/30">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-900/60 bg-slate-950/60">
-            <tr className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              <th className="px-4 py-2">Provider</th>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Last update</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-900/60">
-            {args.destinations.map((destination, index) => {
-              const providerLabel = getDestinationProviderLabel(destination, index);
-              const providerTypeLabel = formatEnumLabel(destination.provider?.provider_type);
-              const statusLabel = formatDestinationStatusLabel(destination.status);
-              const statusTone = destinationStatusTone(destination.status);
-              const lastUpdateLabel = formatDateTime(destination.last_status_at, {
-                includeTime: true,
-                fallback: "—",
-              });
-              const providerDisplay = decorateProviderForCustomerDisplay(destination.provider, {
-                matchedOnProcess: args.matchContext?.matchedOnProcess,
-                locationFilter: args.matchContext?.locationFilter ?? null,
-                previousActivity: isDestinationReceived(destination.status),
-              });
-              const whyShownLabel =
-                providerDisplay.whyShownTags.length > 0
-                  ? `Matched on: ${providerDisplay.whyShownTags.join(", ")}`
-                  : null;
-
-              return (
-                <tr key={destination.id}>
-                  <td className="px-4 py-3 text-slate-100">
-                    <div className="flex flex-col gap-1">
-                      <span>{providerLabel}</span>
-                      {providerTypeLabel ? (
-                        <TagPill size="sm" tone="muted" className="w-fit normal-case tracking-normal">
-                          {providerTypeLabel}
-                        </TagPill>
-                      ) : null}
-                      <p className="text-[11px] text-slate-400">
-                        Source: {providerDisplay.sourceLabel}
-                      </p>
-                      {whyShownLabel ? (
-                        <p className="text-[11px] text-slate-500">{whyShownLabel}</p>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <TagPill size="sm" tone={statusTone} className="normal-case">
-                      {statusLabel}
-                    </TagPill>
-                  </td>
-                  <td className="px-4 py-3 text-slate-300">{lastUpdateLabel}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {args.remainingCount > 0 ? (
-        <p className="text-xs text-slate-400">
-          + {args.remainingCount} more provider{args.remainingCount === 1 ? "" : "s"} in progress
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 function buildSearchHref(usp: URLSearchParams, quoteId: string): string {
   const params = new URLSearchParams();
   for (const [key, value] of usp.entries()) {
@@ -1183,82 +1115,6 @@ function buildEstimateInput(args: {
   };
 }
 
-const DESTINATION_SLA_URGENCY_ORDER: Record<RfqDestinationStatus, number> = {
-  error: 0,
-  draft: 1,
-  queued: 2,
-  sent: 3,
-  submitted: 4,
-  viewed: 5,
-  quoted: 6,
-  declined: 7,
-};
-
-function sortDestinationsBySlaUrgency(a: RfqDestination, b: RfqDestination): number {
-  const aUrgency = DESTINATION_SLA_URGENCY_ORDER[a.status] ?? 99;
-  const bUrgency = DESTINATION_SLA_URGENCY_ORDER[b.status] ?? 99;
-  if (aUrgency !== bUrgency) {
-    return aUrgency - bUrgency;
-  }
-  const providerCompare = resolveDestinationProviderSortKey(a).localeCompare(
-    resolveDestinationProviderSortKey(b),
-    undefined,
-    { sensitivity: "base" },
-  );
-  if (providerCompare !== 0) return providerCompare;
-  return a.id.localeCompare(b.id);
-}
-
-function resolveDestinationProviderSortKey(destination: RfqDestination): string {
-  const name = destination.provider?.name;
-  if (typeof name === "string" && name.trim().length > 0) {
-    return name.trim();
-  }
-  return destination.provider_id;
-}
-
-function formatDestinationStatusLabel(status: RfqDestinationStatus): string {
-  switch (status) {
-    case "draft":
-      return "Draft";
-    case "queued":
-      return "Queued";
-    case "sent":
-      return "Sent";
-    case "submitted":
-      return "Submitted";
-    case "viewed":
-      return "Viewed";
-    case "quoted":
-      return "Quoted";
-    case "declined":
-      return "Declined";
-    case "error":
-      return "Error";
-    default:
-      return "Pending";
-  }
-}
-
-function destinationStatusTone(status: RfqDestinationStatus): TagPillTone {
-  switch (status) {
-    case "queued":
-      return "amber";
-    case "sent":
-    case "submitted":
-    case "viewed":
-      return "blue";
-    case "quoted":
-      return "emerald";
-    case "declined":
-    case "error":
-      return "red";
-    case "draft":
-    default:
-      return "slate";
-  }
-}
-
 function formatEnumLabel(value?: string | null): string {
   if (!value) return "";
   const collapsed = value.replace(/[_-]+/g, " ").trim();
@@ -1267,14 +1123,6 @@ function formatEnumLabel(value?: string | null): string {
     .split(" ")
     .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
     .join(" ");
-}
-
-function getDestinationProviderLabel(destination: RfqDestination, fallbackIndex: number): string {
-  const name = destination.provider?.name;
-  if (typeof name === "string" && name.trim().length > 0) {
-    return name.trim();
-  }
-  return `Provider ${fallbackIndex + 1}`;
 }
 
 function deriveSearchStatusTone(statusLabel: string): TagPillTone {
