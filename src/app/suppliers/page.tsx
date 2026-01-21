@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { SHOW_SUPPLIER_DIRECTORY_PUBLIC } from "@/lib/ui/deprecation";
 import {
@@ -15,8 +16,11 @@ const tagClasses =
   "inline-flex items-center rounded-full border border-slate-800/70 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-ink-soft";
 const unverifiedBadgeClasses =
   "inline-flex items-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100";
+const inactiveBadgeClasses =
+  "inline-flex items-center rounded-full border border-slate-500/40 bg-slate-800/40 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-100";
 const unverifiedNote =
   "Listing is informational. This supplier has not verified their profile.";
+const inactiveNote = "Listing is informational. This supplier is currently inactive.";
 
 function getCapabilityTags(row: PublicSupplierDirectoryRow): string[] {
   const combined = [...row.materials, ...row.certifications];
@@ -45,6 +49,10 @@ function TagList({ items, emptyLabel }: { items: string[]; emptyLabel: string })
 }
 
 export default async function SuppliersDirectoryPage() {
+  if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC) {
+    notFound();
+  }
+
   const suppliers = await loadPublicSuppliersDirectory();
   const isEmpty = suppliers.length === 0;
 
@@ -115,12 +123,18 @@ export default async function SuppliersDirectoryPage() {
                           {!supplier.isVerified ? (
                             <span className={unverifiedBadgeClasses}>Unverified</span>
                           ) : null}
+                          {!supplier.isActive ? (
+                            <span className={inactiveBadgeClasses}>Inactive</span>
+                          ) : null}
                         </div>
                         <span className="text-sm text-ink-soft">
                           {supplier.location ?? "Location shared during request"}
                         </span>
                         {!supplier.isVerified ? (
                           <p className="text-xs text-amber-100/80">{unverifiedNote}</p>
+                        ) : null}
+                        {!supplier.isActive ? (
+                          <p className="text-xs text-slate-200/80">{inactiveNote}</p>
                         ) : null}
                       </div>
 

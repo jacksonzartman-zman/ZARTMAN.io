@@ -19,6 +19,15 @@ type ProviderRowLite = {
   show_in_directory?: boolean | null;
 };
 
+type ProviderDirectorySupport = {
+  supportsCountry: boolean;
+  supportsProcesses: boolean;
+  supportsMaterials: boolean;
+  supportsVerificationStatus: boolean;
+  supportsIsActive: boolean;
+  supportsShowInDirectory: boolean;
+};
+
 export type PublicSupplierDirectoryRow = {
   supplierId: string;
   supplierName: string;
@@ -93,10 +102,48 @@ function resolveActiveStatus(row: ProviderRowLite, supported: boolean): boolean 
   return row.is_active === true;
 }
 
+function buildPublicDirectoryRow(
+  provider: ProviderRowLite,
+  support: ProviderDirectorySupport,
+): PublicSupplierDirectoryRow | null {
+  const supplierId = normalizeId(provider?.id);
+  if (!supplierId) return null;
+  const supplierName = buildSupplierName(provider);
+  const verificationStatus = support.supportsVerificationStatus
+    ? normalizeVerificationStatus(provider?.verification_status) ?? "unverified"
+    : "verified";
+  const isVerified = verificationStatus === "verified";
+  const isActive = resolveActiveStatus(provider, support.supportsIsActive);
+  const showInDirectory = resolveShowInDirectory(
+    provider,
+    isVerified,
+    support.supportsShowInDirectory,
+  );
+
+  if (!showInDirectory) return null;
+  if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC && !isVerified) return null;
+
+  const processes: string[] = support.supportsProcesses ? normalizeList(provider?.processes) : [];
+  const materials: string[] = support.supportsMaterials ? normalizeList(provider?.materials) : [];
+  const certifications: string[] = [];
+
+  return {
+    supplierId,
+    supplierName,
+    location: support.supportsCountry ? normalizeText(provider?.country) : null,
+    processes,
+    materials,
+    certifications,
+    slug: buildSupplierSlug({ supplierId, supplierName }),
+    isVerified,
+    isActive,
+    showInDirectory,
+  };
+}
+
 function sortDirectoryRows(a: PublicSupplierDirectoryRow, b: PublicSupplierDirectoryRow): number {
   const rank = (row: PublicSupplierDirectoryRow) => {
-    if (row.isVerified) return row.isActive ? 0 : 1;
-    return 2;
+    return row.isVerified && row.isActive && row.showInDirectory ? 0 : 1;
   };
   const rankDiff = rank(a) - rank(b);
   if (rankDiff !== 0) return rankDiff;
@@ -163,40 +210,20 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
     }
 
     const providers = Array.isArray(data) ? data : [];
-    const rows = providers
-      .map<PublicSupplierDirectoryRow | null>((provider) => {
-        const supplierId = normalizeId(provider?.id);
-        if (!supplierId) return null;
-        const supplierName = buildSupplierName(provider);
-        const verificationStatus = supportsVerificationStatus
-          ? normalizeVerificationStatus(provider?.verification_status) ?? "unverified"
-          : "verified";
-        const isVerified = verificationStatus === "verified";
-        const isActive = resolveActiveStatus(provider, supportsIsActive);
-        const showInDirectory = resolveShowInDirectory(
-          provider,
-          isVerified,
-          supportsShowInDirectory,
-        );
+    const support: ProviderDirectorySupport = {
+      supportsCountry,
+      supportsProcesses,
+      supportsMaterials,
+      supportsVerificationStatus,
+      supportsIsActive,
+      supportsShowInDirectory,
+    };
+    const rows: PublicSupplierDirectoryRow[] = [];
 
-        if (!showInDirectory) return null;
-        if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC && !isVerified) return null;
-        const certifications: string[] = [];
-
-        return {
-          supplierId,
-          supplierName,
-          location: supportsCountry ? normalizeText(provider?.country) : null,
-          processes: supportsProcesses ? normalizeList(provider?.processes) : [],
-          materials: supportsMaterials ? normalizeList(provider?.materials) : [],
-          certifications,
-          slug: buildSupplierSlug({ supplierId, supplierName }),
-          isVerified,
-          isActive,
-          showInDirectory,
-        };
-      })
-      .filter((row): row is PublicSupplierDirectoryRow => row !== null);
+    for (const provider of providers) {
+      const row = buildPublicDirectoryRow(provider, support);
+      if (row) rows.push(row);
+    }
 
     return rows.sort(sortDirectoryRows);
   } catch {
@@ -264,30 +291,19 @@ export async function loadPublicSupplierById(
       return null;
     }
 
-    const supplierName = buildSupplierName(data);
-    const verificationStatus = supportsVerificationStatus
-      ? normalizeVerificationStatus(data?.verification_status) ?? "unverified"
-      : "verified";
-    const isVerified = verificationStatus === "verified";
-    const isActive = resolveActiveStatus(data, supportsIsActive);
-    const showInDirectory = resolveShowInDirectory(data, isVerified, supportsShowInDirectory);
-
-    if (!showInDirectory) return null;
-    if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC && !isVerified) return null;
-    const certifications: string[] = [];
-
-    return {
-      supplierId: normalizedId,
-      supplierName,
-      location: supportsCountry ? normalizeText(data?.country) : null,
-      processes: supportsProcesses ? normalizeList(data?.processes) : [],
-      materials: supportsMaterials ? normalizeList(data?.materials) : [],
-      certifications,
-      slug: buildSupplierSlug({ supplierId: normalizedId, supplierName }),
-      isVerified,
-      isActive,
-      showInDirectory,
+    const support: ProviderDirectorySupport = {
+      supportsCountry,
+      supportsProcesses,
+      supportsMaterials,
+      supportsVerificationStatus,
+      supportsIsActive,
+      supportsShowInDirectory,
     };
+
+    const row = buildPublicDirectoryRow(data, support);
+    if (!row) return null;
+
+    return row;
   } catch {
     return null;
   }

@@ -15,8 +15,11 @@ const tagClasses =
   "inline-flex items-center rounded-full border border-slate-800/70 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-ink-soft";
 const unverifiedBadgeClasses =
   "inline-flex items-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100";
+const inactiveBadgeClasses =
+  "inline-flex items-center rounded-full border border-slate-500/40 bg-slate-800/40 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-100";
 const unverifiedNote =
   "Listing is informational. This supplier has not verified their profile.";
+const inactiveNote = "Listing is informational. This supplier is currently inactive.";
 
 type Props = {
   params: { slug: string };
@@ -41,6 +44,10 @@ function TagList({ items, emptyLabel }: { items: string[]; emptyLabel: string })
 
 export default async function SupplierProfilePage(props: any) {
   const { params } = props as Props;
+  if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC) {
+    notFound();
+  }
+
   const supplierId = extractSupplierIdFromSlug(params.slug);
   if (!supplierId) {
     notFound();
@@ -74,12 +81,18 @@ export default async function SupplierProfilePage(props: any) {
               {!supplier.isVerified ? (
                 <span className={unverifiedBadgeClasses}>Unverified</span>
               ) : null}
+              {!supplier.isActive ? (
+                <span className={inactiveBadgeClasses}>Inactive</span>
+              ) : null}
             </div>
             <p className="text-base text-ink-muted heading-snug">
               Review process coverage, location, and capabilities before starting a supplier search.
             </p>
             {!supplier.isVerified ? (
               <p className="text-sm text-amber-100/80">{unverifiedNote}</p>
+            ) : null}
+            {!supplier.isActive ? (
+              <p className="text-sm text-slate-200/80">{inactiveNote}</p>
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-3">
