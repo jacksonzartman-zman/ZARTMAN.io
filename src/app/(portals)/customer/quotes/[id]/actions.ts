@@ -18,6 +18,7 @@ import { getCustomerByUserId } from "@/server/customers";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import { upsertQuoteProject } from "@/server/quotes/projects";
 import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
+import { updateCustomerOfferShortlist } from "@/server/customer/offerShortlist";
 import {
   customerCreateQuotePart,
   customerUpdateQuotePartFiles,
@@ -64,6 +65,13 @@ export type SelectOfferActionState = {
   selectedOfferId?: string | null;
 };
 
+export type OfferShortlistActionState = {
+  ok: boolean;
+  error?: string | null;
+  offerId?: string | null;
+  shortlisted?: boolean;
+};
+
 export type ConfirmSelectionActionResult =
   | { ok: true; message: string }
   | { ok: false; error: string };
@@ -95,6 +103,12 @@ const CUSTOMER_SELECT_OFFER_ACCESS_ERROR =
 const CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR =
   "That offer isn’t available for this search request.";
 const CUSTOMER_SELECT_OFFER_SUCCESS_MESSAGE = "Offer selection saved.";
+const CUSTOMER_SHORTLIST_GENERIC_ERROR =
+  "We couldn’t update your shortlist. Please try again.";
+const CUSTOMER_SHORTLIST_ACCESS_ERROR =
+  "We couldn’t confirm your access to this quote.";
+const CUSTOMER_SHORTLIST_NOT_FOUND_ERROR =
+  "That offer isn’t available for this search request.";
 const CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR =
   "We couldn’t confirm your selection. Please try again.";
 const CUSTOMER_CONFIRM_SELECTION_ACCESS_ERROR =
@@ -815,6 +829,109 @@ export async function selectOfferAction(
       error: serializeActionError(error),
     });
     return { ok: false, error: CUSTOMER_SELECT_OFFER_GENERIC_ERROR };
+  }
+}
+
+export async function toggleOfferShortlistAction(args: {
+  quoteId: string;
+  offerId: string;
+  shortlisted: boolean;
+}): Promise<OfferShortlistActionState> {
+  const quoteId = normalizeId(args.quoteId);
+  const offerId = normalizeId(args.offerId);
+  const shortlisted = Boolean(args.shortlisted);
+
+  if (!quoteId || !offerId) {
+    return { ok: false, error: CUSTOMER_SHORTLIST_GENERIC_ERROR };
+  }
+
+  try {
+    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${quoteId}`);
+    const customer = await getCustomerByUserId(user.id);
+    if (!customer) {
+      return { ok: false, error: CUSTOMER_SHORTLIST_ACCESS_ERROR };
+    }
+
+    const { data: quoteRow, error: quoteError } = await supabaseServer
+      .from("quotes")
+      .select("id,customer_id,customer_email")
+      .eq("id", quoteId)
+      .maybeSingle<CustomerOfferQuoteRow>();
+
+    if (quoteError) {
+      console.error("[customer offer shortlist] quote lookup failed", {
+        quoteId,
+        error: serializeActionError(quoteError),
+      });
+      return { ok: false, error: CUSTOMER_SHORTLIST_GENERIC_ERROR };
+    }
+
+    if (!quoteRow) {
+      return { ok: false, error: "Quote not found." };
+    }
+
+    const quoteCustomerId = normalizeId(quoteRow.customer_id ?? null);
+    const customerIdMatches =
+      Boolean(quoteCustomerId) && quoteCustomerId === customer.id;
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.customer_email ?? null);
+    const normalizedCustomerEmail = normalizeEmailInput(customer.email);
+    const customerEmailMatches =
+      Boolean(normalizedQuoteEmail) &&
+      Boolean(normalizedCustomerEmail) &&
+      normalizedQuoteEmail === normalizedCustomerEmail;
+
+    if (!customerIdMatches && !customerEmailMatches) {
+      console.warn("[customer offer shortlist] access denied", {
+        quoteId,
+        userId: user.id,
+        customerId: customer.id,
+      });
+      return { ok: false, error: CUSTOMER_SHORTLIST_ACCESS_ERROR };
+    }
+
+    const { data: offerRow, error: offerError } = await supabaseServer
+      .from("rfq_offers")
+      .select("id,rfq_id,provider_id")
+      .eq("id", offerId)
+      .maybeSingle<CustomerOfferRow>();
+
+    if (offerError) {
+      console.error("[customer offer shortlist] offer lookup failed", {
+        quoteId,
+        offerId,
+        error: serializeActionError(offerError),
+      });
+      return { ok: false, error: CUSTOMER_SHORTLIST_GENERIC_ERROR };
+    }
+
+    if (!offerRow || offerRow.rfq_id !== quoteId) {
+      return { ok: false, error: CUSTOMER_SHORTLIST_NOT_FOUND_ERROR };
+    }
+
+    const result = await updateCustomerOfferShortlist({
+      customerId: customer.id,
+      quoteId,
+      offerId,
+      shortlisted,
+      providerId: offerRow.provider_id ?? null,
+    });
+
+    if (!result.ok) {
+      return { ok: false, error: CUSTOMER_SHORTLIST_GENERIC_ERROR };
+    }
+
+    revalidatePath(`/customer/quotes/${quoteId}`);
+    revalidatePath("/customer/search");
+    revalidatePath("/customer/saved");
+
+    return { ok: true, offerId, shortlisted };
+  } catch (error) {
+    console.error("[customer offer shortlist] crashed", {
+      quoteId,
+      offerId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_SHORTLIST_GENERIC_ERROR };
   }
 }
 

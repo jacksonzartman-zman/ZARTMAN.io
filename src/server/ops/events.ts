@@ -20,6 +20,8 @@ export type OpsEventType =
   | "offer_upserted"
   | "offer_revised"
   | "offer_selected"
+  | "offer_shortlisted"
+  | "offer_unshortlisted"
   | "message_posted"
   | "supplier_join_requested"
   | "supplier_invited"

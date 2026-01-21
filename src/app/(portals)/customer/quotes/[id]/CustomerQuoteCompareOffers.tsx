@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
 import { TagPill } from "@/components/shared/primitives/TagPill";
@@ -12,7 +12,11 @@ import {
 } from "@/lib/aggregator/scoring";
 import { decorateProviderForCustomerDisplay } from "@/lib/providers/customerDisplay";
 import type { RfqOffer } from "@/server/rfqs/offers";
-import { selectOfferAction, type SelectOfferActionState } from "./actions";
+import {
+  selectOfferAction,
+  toggleOfferShortlistAction,
+  type SelectOfferActionState,
+} from "./actions";
 
 type SortKey = "bestValue" | "fastest" | "lowestPrice" | "lowestRisk";
 type SortDirection = "asc" | "desc";
@@ -21,6 +25,7 @@ type CustomerQuoteCompareOffersProps = {
   quoteId: string;
   offers: RfqOffer[];
   selectedOfferId?: string | null;
+  shortlistedOfferIds?: string[];
   matchContext?: {
     matchedOnProcess?: boolean;
     locationFilter?: string | null;
@@ -76,6 +81,7 @@ export function CustomerQuoteCompareOffers({
   quoteId,
   offers,
   selectedOfferId,
+  shortlistedOfferIds: shortlistedOfferIdsProp,
   matchContext,
 }: CustomerQuoteCompareOffersProps) {
   const router = useRouter();
@@ -85,12 +91,19 @@ export function CustomerQuoteCompareOffers({
     selectOfferAction,
     INITIAL_SELECT_STATE,
   );
+  const [pendingShortlist, startTransition] = useTransition();
+  const [shortlistError, setShortlistError] = useState<string | null>(null);
+  const [pendingShortlistOfferId, setPendingShortlistOfferId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>(() =>
     resolveSortKey(searchParams.get(SORT_PARAM_KEY)),
   );
   const [showBadgeWinnersOnly, setShowBadgeWinnersOnly] = useState(false);
   const [showLowRiskOnly, setShowLowRiskOnly] = useState(false);
+  const [showShortlistedOnly, setShowShortlistedOnly] = useState(false);
   const [expandedOfferId, setExpandedOfferId] = useState<string | null>(null);
+  const [shortlistedOfferIds, setShortlistedOfferIds] = useState<Set<string>>(
+    () => new Set(normalizeOfferIds(shortlistedOfferIdsProp)),
+  );
 
   const decoratedOffers = useMemo(
     () => decorateOffersForCompare(offers),
@@ -99,7 +112,15 @@ export function CustomerQuoteCompareOffers({
 
   const resolvedSelectedOfferId = state.selectedOfferId ?? selectedOfferId ?? null;
   const selectionLocked = Boolean(resolvedSelectedOfferId);
-  const hasQuickFilters = showBadgeWinnersOnly || showLowRiskOnly;
+  const hasQuickFilters = showBadgeWinnersOnly || showLowRiskOnly || showShortlistedOnly;
+
+  const shortlistedCount = useMemo(() => {
+    if (shortlistedOfferIds.size === 0) return 0;
+    return decoratedOffers.reduce(
+      (count, offer) => (shortlistedOfferIds.has(offer.id) ? count + 1 : count),
+      0,
+    );
+  }, [decoratedOffers, shortlistedOfferIds]);
 
   useEffect(() => {
     if (!state.ok || !state.selectedOfferId) return;
@@ -118,6 +139,57 @@ export function CustomerQuoteCompareOffers({
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, router, searchParams, sortKey]);
 
+  useEffect(() => {
+    setShortlistedOfferIds(new Set(normalizeOfferIds(shortlistedOfferIdsProp)));
+  }, [shortlistedOfferIdsProp]);
+
+  const handleShortlistToggle = useCallback(
+    (offerId: string) => {
+      if (pendingShortlistOfferId) return;
+      const wasShortlisted = shortlistedOfferIds.has(offerId);
+      const nextShortlisted = !wasShortlisted;
+
+      setShortlistError(null);
+      setShortlistedOfferIds((prev) => {
+        const next = new Set(prev);
+        if (nextShortlisted) {
+          next.add(offerId);
+        } else {
+          next.delete(offerId);
+        }
+        return next;
+      });
+
+      setPendingShortlistOfferId(offerId);
+      startTransition(async () => {
+        try {
+          const result = await toggleOfferShortlistAction({
+            quoteId,
+            offerId,
+            shortlisted: nextShortlisted,
+          });
+          if (!result.ok) {
+            setShortlistError(
+              result.error ?? "We couldn’t update your shortlist. Please try again.",
+            );
+            setShortlistedOfferIds((prev) => {
+              const next = new Set(prev);
+              if (wasShortlisted) {
+                next.add(offerId);
+              } else {
+                next.delete(offerId);
+              }
+              return next;
+            });
+          }
+        } finally {
+          setPendingShortlistOfferId(null);
+        }
+      });
+    },
+    [pendingShortlistOfferId, quoteId, shortlistedOfferIds, startTransition],
+  );
+
   const filteredOffers = useMemo(() => {
     let next = decoratedOffers;
     if (showBadgeWinnersOnly) {
@@ -126,8 +198,11 @@ export function CustomerQuoteCompareOffers({
     if (showLowRiskOnly) {
       next = next.filter((offer) => offer.riskFlagCount === 0);
     }
+    if (showShortlistedOnly) {
+      next = next.filter((offer) => shortlistedOfferIds.has(offer.id));
+    }
     return next;
-  }, [decoratedOffers, showBadgeWinnersOnly, showLowRiskOnly]);
+  }, [decoratedOffers, showBadgeWinnersOnly, showLowRiskOnly, showShortlistedOnly, shortlistedOfferIds]);
 
   const sortedOffers = useMemo(() => {
     const sorted = [...filteredOffers];
@@ -149,6 +224,11 @@ export function CustomerQuoteCompareOffers({
       {!state.ok && state.error ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
           {state.error}
+        </p>
+      ) : null}
+      {shortlistError ? (
+        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          {shortlistError}
         </p>
       ) : null}
 
@@ -202,7 +282,27 @@ export function CustomerQuoteCompareOffers({
               >
                 No risk flags
               </button>
+              <button
+                type="button"
+                onClick={() => setShowShortlistedOnly((prev) => !prev)}
+                aria-pressed={showShortlistedOnly}
+                className={clsx(
+                  "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition",
+                  showShortlistedOnly
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-400 hover:text-white",
+                )}
+              >
+                Shortlisted only
+              </button>
             </div>
+            <TagPill
+              size="sm"
+              tone={shortlistedCount > 0 ? "emerald" : "slate"}
+              className="normal-case tracking-normal"
+            >
+              Shortlisted: {shortlistedCount}
+            </TagPill>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -228,6 +328,7 @@ export function CustomerQuoteCompareOffers({
                       onClick={() => {
                         setShowBadgeWinnersOnly(false);
                         setShowLowRiskOnly(false);
+                        setShowShortlistedOnly(false);
                       }}
                       className="text-xs font-semibold text-slate-300 underline-offset-4 hover:underline"
                     >
@@ -239,6 +340,9 @@ export function CustomerQuoteCompareOffers({
                 sortedOffers.map((offer, index) => {
                   const isSelected = resolvedSelectedOfferId === offer.id;
                   const dimNonWinner = selectionLocked && !isSelected;
+                  const isShortlisted = shortlistedOfferIds.has(offer.id);
+                  const isShortlistPending =
+                    pendingShortlist && pendingShortlistOfferId === offer.id;
                   const providerType = formatEnumLabel(offer.provider?.provider_type);
                   const providerMode = formatEnumLabel(offer.provider?.quoting_mode);
                   const providerMetaLabel =
@@ -365,14 +469,22 @@ export function CustomerQuoteCompareOffers({
                           </div>
                         </td>
                         <td className="px-5 py-4 align-top text-right">
-                          <form action={formAction}>
-                            <input type="hidden" name="quoteId" value={quoteId} />
-                            <input type="hidden" name="offerId" value={offer.id} />
-                            <SelectOfferButton
-                              disabled={selectionLocked && !isSelected}
-                              selected={isSelected}
+                          <div className="inline-flex items-center justify-end gap-2">
+                            <ShortlistToggleButton
+                              shortlisted={isShortlisted}
+                              pending={isShortlistPending}
+                              disabled={pendingShortlist}
+                              onClick={() => handleShortlistToggle(offer.id)}
                             />
-                          </form>
+                            <form action={formAction}>
+                              <input type="hidden" name="quoteId" value={quoteId} />
+                              <input type="hidden" name="offerId" value={offer.id} />
+                              <SelectOfferButton
+                                disabled={selectionLocked && !isSelected}
+                                selected={isSelected}
+                              />
+                            </form>
+                          </div>
                         </td>
                       </tr>
                       {expandedOfferId === offer.id ? (
@@ -427,6 +539,57 @@ function SelectOfferButton({
     >
       {label}
     </button>
+  );
+}
+
+function ShortlistToggleButton({
+  shortlisted,
+  pending,
+  disabled,
+  onClick,
+}: {
+  shortlisted: boolean;
+  pending: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const label = shortlisted ? "Remove from shortlist" : "Add to shortlist";
+  const isDisabled = disabled || pending;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isDisabled}
+      aria-pressed={shortlisted}
+      aria-label={label}
+      title={label}
+      className={clsx(
+        "inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs transition",
+        shortlisted
+          ? "border-amber-400/70 bg-amber-500/15 text-amber-200"
+          : "border-slate-800/80 bg-slate-950/50 text-slate-400 hover:border-amber-400/60 hover:text-amber-200",
+        isDisabled &&
+          "cursor-not-allowed border-slate-800/80 text-slate-500 hover:border-slate-800/80 hover:text-slate-500",
+      )}
+    >
+      <StarIcon className="h-4 w-4" filled={shortlisted} />
+    </button>
+  );
+}
+
+function StarIcon({ className, filled }: { className?: string; filled?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={1.4}
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M10 1.6l2.7 5.47 6.04.88-4.37 4.26 1.03 6.02L10 15.6l-5.4 2.83 1.03-6.02-4.37-4.26 6.04-.88L10 1.6z" />
+    </svg>
   );
 }
 
@@ -523,4 +686,12 @@ function resolveCompletenessMeta(score: number): (typeof COMPLETENESS_LEVELS)[nu
     COMPLETENESS_LEVELS.find((level) => normalized >= level.minScore) ??
     COMPLETENESS_LEVELS[COMPLETENESS_LEVELS.length - 1]
   );
+}
+
+function normalizeOfferIds(value: string[] | null | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  const normalized = value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter(Boolean);
+  return Array.from(new Set(normalized));
 }
