@@ -42,7 +42,7 @@ import {
   parseQuantity,
   type PricingEstimateInput,
 } from "@/lib/pricing/estimate";
-import { logOpsEvent } from "@/server/ops/events";
+import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 
 type CustomerSearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -89,6 +89,10 @@ const DEFAULT_SORT_PARAM: SortParamValue = "bestValue";
 
 export default async function CustomerSearchPage({ searchParams }: CustomerSearchPageProps) {
   const user = await requireCustomerSessionOrRedirect("/customer/search");
+  const opsEventSessionKey = buildOpsEventSessionKey({
+    userId: user.id,
+    lastSignInAt: user.last_sign_in_at ?? null,
+  });
   const customer = await getCustomerByUserId(user.id);
 
   if (!customer) {
@@ -208,6 +212,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     void logOpsEvent({
       quoteId: activeQuote.id,
       eventType: "estimate_shown",
+      dedupeKey: opsEventSessionKey,
       payload: {
         process: telemetry.process,
         quantity_bucket: telemetry.quantityBucket,
