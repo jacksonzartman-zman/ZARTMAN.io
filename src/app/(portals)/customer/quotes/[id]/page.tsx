@@ -109,6 +109,10 @@ import {
   parseQuantity,
   type PricingEstimateInput,
 } from "@/lib/pricing/estimate";
+import {
+  SearchActivityFeed,
+  buildSearchActivityFeedEvents,
+} from "@/components/search/SearchActivityFeed";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 
 export const dynamic = "force-dynamic";
@@ -745,6 +749,17 @@ export default async function CustomerQuoteDetailPage({
     searchStateCounts.offers_total === 1 ? "" : "s"
   }`;
   const searchResultsHref = `/customer/search?quote=${quote.id}`;
+  const searchActivityEvents = buildSearchActivityFeedEvents({
+    quote: {
+      id: quote.id,
+      created_at: quote.created_at ?? null,
+      updated_at: quote.updated_at ?? null,
+    },
+    destinations: rfqDestinations ?? [],
+    offers: rfqOffers ?? [],
+    inviteSupplierHref: "/customer/invite-supplier",
+    compareOffersHref: rfqOffers.length > 0 ? "#compare-offers" : null,
+  });
 
   const kickoffTolerances =
     readOptionalUploadMetaString(uploadMeta, [
@@ -1639,6 +1654,11 @@ export default async function CustomerQuoteDetailPage({
             />
             {receiptBanner}
             {searchStatusCard}
+            <SearchActivityFeed
+              events={searchActivityEvents}
+              description="Latest updates from the search dispatch."
+              maxVisible={3}
+            />
             {estimateBandCard}
             <CoverageDisclosure destinations={rfqDestinations} />
           </div>

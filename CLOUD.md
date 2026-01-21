@@ -19,20 +19,27 @@ Goal: one checklist to validate the full metasearch loop end-to-end.
    `/customer/search?quote=<id>`.
 3) Verify the search status card renders and does not show noisy recent
    searches.
-4) From results, open the quote detail page; confirm it is accessible and shows
-   a consistent "Searching providers..." status.
-5) Confirm the estimate band renders with its disclaimer; ensure no
+4) Confirm the Search activity feed renders near the status card; refresh the
+   page and ensure it updates (timestamps, new entries).
+5) From results, open the quote detail page; confirm it is accessible, shows a
+   consistent "Searching providers..." status, and includes the Search activity
+   feed under the status card.
+6) Confirm the estimate band renders with its disclaimer; ensure no
    ops_events insert failures are surfaced to the UI.
 
 ### Admin/Ops flow
 
-6) Open admin quote detail → destination picker → add providers (eligible
+7) Open admin quote detail → destination picker → add providers (eligible
    prioritized + show-all toggle).
-7) Dispatch 1 email provider + 1 web-form provider; confirm ops inbox
-   counts/timestamps update.
-8) Mark the web-form destination as submitted with notes; confirm
-   submitted_at displays and ops inbox revalidates.
-9) Confirm providers pipeline page can verify + activate a provider and show
+8) Dispatch 1 email provider + 1 web-form provider; confirm ops inbox
+   counts/timestamps update, then refresh the customer search/quote view to see
+   dispatch-started entries in the activity feed.
+9) Mark the web-form destination as submitted with notes; confirm
+   submitted_at displays and ops inbox revalidates, then refresh the customer
+   view to see the supplier submission entry.
+10) Submit a provider offer (if available) and refresh the customer
+   search/quote view to confirm an offer received/revised entry appears.
+11) Confirm providers pipeline page can verify + activate a provider and show
    status timeline events.
 
 ### Smoke Test IDs
