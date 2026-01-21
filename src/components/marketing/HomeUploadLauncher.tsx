@@ -22,11 +22,17 @@ import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits"
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { QUOTE_INTAKE_FALLBACK_ERROR } from "@/lib/quote/messages";
 import {
+  buildSearchProgress,
+  EMPTY_SEARCH_STATE_COUNTS,
+  EMPTY_SEARCH_STATE_TIMESTAMPS,
+} from "@/lib/search/searchProgress";
+import {
   finalizeQuoteIntakeEphemeralUploadAction,
   prepareQuoteIntakeEphemeralUploadAction,
   type QuoteIntakeEphemeralUploadTarget,
 } from "@/app/quote/actions";
 import { supabaseBrowser } from "@/lib/supabase.client";
+import { TagPill } from "@/components/shared/primitives/TagPill";
 
 type SelectedCadFile = {
   id: string;
@@ -696,6 +702,19 @@ export default function HomeUploadLauncher({
 
   const progressLabel =
     submissionStep !== "idle" ? SUBMISSION_STATUS_LABELS[submissionStep] : null;
+  const postRedirectHref = redirectingQuoteId
+    ? `/customer/search?quote=${encodeURIComponent(redirectingQuoteId)}`
+    : null;
+  const postRedirectProgress = redirectingQuoteId
+    ? buildSearchProgress({
+        counts: EMPTY_SEARCH_STATE_COUNTS,
+        timestamps: EMPTY_SEARCH_STATE_TIMESTAMPS,
+        statusLabel: "searching",
+        recommendedAction: "refresh",
+        quoteId: redirectingQuoteId,
+        isInitializing: true,
+      })
+    : null;
   const loginHref = useMemo(() => {
     const params = new URLSearchParams();
     if (processKey) {
@@ -800,6 +819,32 @@ export default function HomeUploadLauncher({
                   aria-live="polite"
                 >
                   {progressLabel}
+                </div>
+              ) : null}
+
+              {postRedirectProgress ? (
+                <div className="rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-ink">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-ink">
+                        {postRedirectProgress.statusHeadline}
+                      </p>
+                      <p className="text-xs text-ink-soft">{postRedirectProgress.statusDetail}</p>
+                    </div>
+                    <TagPill size="sm" tone="slate" className="normal-case tracking-normal">
+                      {postRedirectProgress.statusTag}
+                    </TagPill>
+                  </div>
+                  {postRedirectHref ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Link
+                        href={postRedirectHref}
+                        className={`${secondaryCtaClasses} rounded-full px-4 py-2 text-xs`}
+                      >
+                        Open search
+                      </Link>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
