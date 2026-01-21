@@ -154,7 +154,8 @@ const ADMIN_DESTINATIONS_GENERIC_ERROR =
   "We couldn't update destinations right now. Please try again.";
 const ADMIN_DESTINATIONS_INPUT_ERROR = "Select at least one provider.";
 const ADMIN_DESTINATION_STATUS_ERROR = "Select a valid destination status.";
-const ADMIN_DESTINATION_SUBMITTED_NOTES_ERROR = "Add at least 5 characters of notes.";
+const ADMIN_DESTINATION_SUBMITTED_NOTES_ERROR =
+  "Add at least 5 characters of notes for web form submissions.";
 const ADMIN_DESTINATION_SUBMITTED_SCHEMA_ERROR =
   "Submission tracking isn't enabled in this environment yet.";
 const ADMIN_DESTINATION_SUBMITTED_ERROR =
@@ -1141,14 +1142,18 @@ export async function updateDestinationStatusAction(args: {
 
 export async function markDestinationSubmittedAction(args: {
   destinationId: string;
-  notes: string;
+  notes?: string | null;
+  dispatchMode?: string | null;
 }): Promise<MarkDestinationSubmittedActionResult> {
   const destinationId = normalizeIdInput(args.destinationId);
   const notes = typeof args.notes === "string" ? args.notes.trim() : "";
+  const dispatchMode =
+    typeof args.dispatchMode === "string" ? args.dispatchMode.trim().toLowerCase() : "";
+  const requiresNotes = dispatchMode === "web_form";
   if (!destinationId) {
     return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
   }
-  if (notes.length < 5) {
+  if (requiresNotes && notes.length < 5) {
     return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_NOTES_ERROR };
   }
 
@@ -1202,11 +1207,12 @@ export async function markDestinationSubmittedAction(args: {
 
     const now = new Date().toISOString();
     const submittedBy = normalizeIdInput(adminUser.id);
+    const submittedNotes = notes.length > 0 ? notes : null;
     const payload: Record<string, unknown> = {
       status: "submitted",
       last_status_at: now,
       submitted_at: now,
-      submitted_notes: notes,
+      submitted_notes: submittedNotes,
       submitted_by: submittedBy || null,
       error_message: null,
     };

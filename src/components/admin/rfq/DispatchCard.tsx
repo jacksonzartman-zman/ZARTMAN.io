@@ -4,7 +4,7 @@ import clsx from "clsx";
 import type { ReactNode } from "react";
 
 type DispatchMode = "email" | "mailto" | "web_form" | "api" | "unknown";
-type DispatchStatus = "not_sent" | "submitted" | "offer_received";
+type DispatchStatus = "not_started" | "in_progress" | "submitted" | "offer_received";
 
 type DispatchCardProps = {
   providerLabel: string;
@@ -14,6 +14,7 @@ type DispatchCardProps = {
   dispatchStatus: DispatchStatus;
   dispatchStartedLabel: string;
   submittedLabel: string;
+  submittedMetaLabel?: string;
   lastUpdateLabel: string;
   offerSummary: string | null;
   errorMessage?: string | null;
@@ -52,9 +53,13 @@ const DISPATCH_MODE_META: Record<DispatchMode, { label: string; className: strin
 };
 
 const DISPATCH_STATUS_META: Record<DispatchStatus, { label: string; className: string }> = {
-  not_sent: {
-    label: "Not sent",
+  not_started: {
+    label: "Not started",
     className: "border-slate-700 bg-slate-900/40 text-slate-200",
+  },
+  in_progress: {
+    label: "In progress",
+    className: "border-blue-500/40 bg-blue-500/10 text-blue-100",
   },
   submitted: {
     label: "Submitted",
@@ -74,6 +79,7 @@ export function DispatchCard({
   dispatchStatus,
   dispatchStartedLabel,
   submittedLabel,
+  submittedMetaLabel,
   lastUpdateLabel,
   offerSummary,
   errorMessage,
@@ -88,6 +94,8 @@ export function DispatchCard({
   const subtitle = subtitleParts.length > 0 ? subtitleParts.join(" · ") : null;
   const dispatchModeMeta = DISPATCH_MODE_META[dispatchMode];
   const dispatchStatusMeta = DISPATCH_STATUS_META[dispatchStatus];
+  const submittedMeta = submittedMetaLabel ?? `Submitted: ${submittedLabel}`;
+  const hasActions = Boolean(primaryAction || secondaryAction || markSubmittedAction);
 
   const leadingContent = leadingControl ? (
     <label className="flex items-start gap-3">
@@ -123,7 +131,7 @@ export function DispatchCard({
 
       <div className="mt-3 grid gap-2 text-[11px] text-slate-500 sm:grid-cols-3">
         <div>Dispatch started: {dispatchStartedLabel}</div>
-        <div>Submitted: {submittedLabel}</div>
+        <div>{submittedMeta}</div>
         <div>Last update: {lastUpdateLabel}</div>
       </div>
 
@@ -135,11 +143,13 @@ export function DispatchCard({
         Offer: {offerSummary ?? "No offer yet"}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {primaryAction}
-        {secondaryAction}
-        {markSubmittedAction}
-      </div>
+      {hasActions ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {primaryAction}
+          {secondaryAction}
+          {markSubmittedAction}
+        </div>
+      ) : null}
 
       {extraActions ? <div className="mt-3 flex flex-wrap gap-2">{extraActions}</div> : null}
     </div>

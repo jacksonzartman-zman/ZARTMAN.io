@@ -80,6 +80,7 @@ type DestinationSubmittedModalProps = {
   providerLabel: string;
   notes: string;
   notesError: string | null;
+  requiresNotes?: boolean;
   pending: boolean;
   onClose: () => void;
   onChange: (value: string) => void;
@@ -708,18 +709,26 @@ export function DestinationSubmittedModal({
   providerLabel,
   notes,
   notesError,
+  requiresNotes = false,
   pending,
   onClose,
   onChange,
   onSubmit,
 }: DestinationSubmittedModalProps) {
   if (!isOpen) return null;
+  const resolvedTitle = requiresNotes ? "Mark web form submitted" : "Mark submitted";
+  const resolvedDescription = requiresNotes
+    ? "Capture proof of submission for"
+    : "Confirm the dispatch submission for";
+  const resolvedPlaceholder = requiresNotes
+    ? "Add the confirmation number, screenshots, or other proof..."
+    : "Optional notes about the submission...";
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Mark web form submitted"
+      aria-label={resolvedTitle}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -727,9 +736,9 @@ export function DestinationSubmittedModal({
       <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-lg font-semibold text-white">Mark web form submitted</h3>
+            <h3 className="text-lg font-semibold text-white">{resolvedTitle}</h3>
             <p className="mt-1 text-sm text-slate-300">
-              Capture proof of submission for{" "}
+              {resolvedDescription}{" "}
               <span className="font-semibold text-slate-100">{providerLabel}</span>.
             </p>
           </div>
@@ -751,10 +760,12 @@ export function DestinationSubmittedModal({
             onChange={(event) => onChange(event.target.value)}
             rows={4}
             className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-            placeholder="Add the confirmation number, screenshots, or other proof..."
+            placeholder={resolvedPlaceholder}
             maxLength={2000}
           />
-          <p className="text-xs text-slate-500">Minimum 5 characters required.</p>
+          <p className="text-xs text-slate-500">
+            {requiresNotes ? "Minimum 5 characters required." : "Notes are optional."}
+          </p>
           {notesError ? (
             <p className="text-sm text-amber-200" role="alert">
               {notesError}
