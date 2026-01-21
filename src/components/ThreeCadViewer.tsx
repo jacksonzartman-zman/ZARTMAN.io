@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
@@ -476,7 +476,7 @@ export function ThreeCadViewer({
     return classification.ok ? classification.type : null;
   }, [cadKind, resolvedCadKind, classification]);
 
-  const setViewerState = (next: {
+  const setViewerState = useCallback((next: {
     status: ViewerStatus;
     cadKind?: CadKindOrUnknown;
     message?: string | null;
@@ -495,9 +495,9 @@ export function ThreeCadViewer({
       cadKind: nextCadKind,
       errorReason: nextReason ?? undefined,
     });
-  };
+  }, []);
 
-  const disposeCurrentModel = () => {
+  const disposeCurrentModel = useCallback(() => {
     const rt = runtimeRef.current;
     const model = modelRootRef.current;
     if (!rt || !model) return;
@@ -505,9 +505,9 @@ export function ThreeCadViewer({
     disposeObject3D(model);
     modelRootRef.current = null;
     modelMetricsRef.current = null;
-  };
+  }, []);
 
-  const disposeGrid = (rt: NonNullable<typeof runtimeRef.current>) => {
+  const disposeGrid = useCallback((rt: NonNullable<typeof runtimeRef.current>) => {
     if (!gridRef.current) return;
     rt.scene.remove(gridRef.current);
     gridRef.current.geometry?.dispose?.();
@@ -515,17 +515,17 @@ export function ThreeCadViewer({
     if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
     else mat?.dispose?.();
     gridRef.current = null;
-  };
+  }, []);
 
-  const disposeAxes = (rt: NonNullable<typeof runtimeRef.current>) => {
+  const disposeAxes = useCallback((rt: NonNullable<typeof runtimeRef.current>) => {
     if (!axesRef.current) return;
     rt.scene.remove(axesRef.current);
     axesRef.current.geometry?.dispose?.();
     ((axesRef.current.material as unknown) as THREE.Material)?.dispose?.();
     axesRef.current = null;
-  };
+  }, []);
 
-  const computeModelMetrics = (model: THREE.Object3D): ModelMetrics | null => {
+  const computeModelMetrics = useCallback((model: THREE.Object3D): ModelMetrics | null => {
     model.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(model);
     if (!Number.isFinite(box.min.x) || !Number.isFinite(box.max.x)) return null;
@@ -538,9 +538,9 @@ export function ThreeCadViewer({
     const minZ = box.min.z;
 
     return { boxSize, maxDim, radius, minZ };
-  };
+  }, []);
 
-  const rebuildHelpers = () => {
+  const rebuildHelpers = useCallback(() => {
     const rt = runtimeRef.current;
     const model = modelRootRef.current;
     if (!rt || !model) return;
@@ -591,18 +591,18 @@ export function ThreeCadViewer({
     } else {
       disposeAxes(rt);
     }
-  };
+  }, [disposeAxes, disposeGrid, computeModelMetrics, showAxes, showGrid]);
 
-  const updateRendererToContainer = (rt: NonNullable<typeof runtimeRef.current>) => {
+  const updateRendererToContainer = useCallback((rt: NonNullable<typeof runtimeRef.current>) => {
     const { width, height } = getContainerRenderSize(rt.container, rt.renderer);
     containerSizeRef.current = { width, height };
     rt.renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
     rt.renderer.setSize(width, height, false);
     rt.camera.aspect = width / height;
     rt.camera.updateProjectionMatrix();
-  };
+  }, []);
 
-  const handleFit = () => {
+  const handleFit = useCallback(() => {
     const rt = runtimeRef.current;
     const model = modelRootRef.current;
     if (!rt || !model) return;
@@ -612,7 +612,7 @@ export function ThreeCadViewer({
     fitAndCenter(model, rt.camera, rt.controls, rt.renderer.domElement);
     rt.controls.saveState();
     rebuildHelpers();
-  };
+  }, [rebuildHelpers, updateRendererToContainer]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -732,16 +732,12 @@ export function ThreeCadViewer({
       runtimeRef.current = null;
     };
     // Mount-only: keep WebGL objects stable across rerenders.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [disposeAxes, disposeCurrentModel, disposeGrid, setViewerState]);
 
   // Keep helper presence in sync with overlay toggles.
   useEffect(() => {
     rebuildHelpers();
-  }, [showGrid]);
-  useEffect(() => {
-    rebuildHelpers();
-  }, [showAxes]);
+  }, [rebuildHelpers]);
 
   useEffect(() => {
     const rt = runtimeRef.current;
@@ -974,7 +970,18 @@ export function ThreeCadViewer({
       window.clearTimeout(timeoutId);
       abort.abort();
     };
-  }, [effectiveUrl, cadKind, classification.ok, classification.type, effectiveFileName]);
+  }, [
+    effectiveUrl,
+    cadKind,
+    classification.ok,
+    classification.type,
+    effectiveFileName,
+    computeModelMetrics,
+    disposeCurrentModel,
+    rebuildHelpers,
+    setViewerState,
+    updateRendererToContainer,
+  ]);
 
   const containerStyle =
     typeof height === "number" && Number.isFinite(height) && height > 0

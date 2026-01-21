@@ -69,7 +69,7 @@ export function CustomerPartsSection({
   aiSuggestions?: AiPartSuggestion[] | null;
   aiModelVersion?: string | null;
 }) {
-  const partsList = Array.isArray(parts) ? parts : [];
+  const partsList = useMemo(() => (Array.isArray(parts) ? parts : []), [parts]);
   const uploadFiles = flattenUploadGroups(Array.isArray(uploadGroups) ? uploadGroups : []);
   const hasAnyFiles = uploadFiles.length > 0;
   const { perPart, summary } = computePartsCoverage(partsList);
