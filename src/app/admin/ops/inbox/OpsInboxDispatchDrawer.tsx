@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { computeDestinationNeedsAction, type SlaConfig } from "@/lib/ops/sla";
 import {
@@ -42,6 +43,7 @@ import { resolveDispatchModeValue } from "@/lib/adapters/providerDispatchMode";
 import {
   getDestinationDispatchReadiness,
   resolveEffectiveDispatchMode,
+  type EffectiveDispatchMode,
 } from "@/lib/ops/dispatchReadiness";
 import { recordDispatchStarted } from "@/lib/ops/dispatchStartedClient";
 
@@ -132,6 +134,8 @@ export function OpsInboxDispatchDrawer({
     useState<AdminOpsInboxRow["destinations"][number] | null>(null);
   const [submittedNotes, setSubmittedNotes] = useState("");
   const [submittedFeedback, setSubmittedFeedback] = useState<string | null>(null);
+  const [submittedDispatchMode, setSubmittedDispatchMode] =
+    useState<EffectiveDispatchMode | null>(null);
   const [offerDestination, setOfferDestination] = useState<AdminOpsInboxRow["destinations"][number] | null>(null);
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(EMPTY_OFFER_DRAFT);
   const [offerFieldErrors, setOfferFieldErrors] = useState<Record<string, string>>({});
@@ -313,23 +317,29 @@ export function OpsInboxDispatchDrawer({
     });
   };
 
-  const openSubmittedPrompt = (destination: AdminOpsInboxRow["destinations"][number]) => {
+  const openSubmittedPrompt = (
+    destination: AdminOpsInboxRow["destinations"][number],
+    dispatchMode: EffectiveDispatchMode,
+  ) => {
     setSubmittedFeedback(null);
     setSubmittedNotes("");
     setSubmittedDestination(destination);
+    setSubmittedDispatchMode(dispatchMode);
   };
 
   const closeSubmittedPrompt = () => {
     setSubmittedFeedback(null);
     setSubmittedNotes("");
     setSubmittedDestination(null);
+    setSubmittedDispatchMode(null);
   };
 
   const submitSubmitted = () => {
     if (!submittedDestination || pending) return;
     const trimmedNotes = submittedNotes.trim();
-    if (trimmedNotes.length < 5) {
-      setSubmittedFeedback("Add at least 5 characters of notes.");
+    const requiresNotes = submittedDispatchMode === "web_form";
+    if (requiresNotes && trimmedNotes.length < 5) {
+      setSubmittedFeedback("Add at least 5 characters of notes for web form submissions.");
       return;
     }
     setSubmittedFeedback(null);
@@ -337,6 +347,7 @@ export function OpsInboxDispatchDrawer({
       const result = await markDestinationSubmittedAction({
         destinationId: submittedDestination.id,
         notes: trimmedNotes,
+        dispatchMode: submittedDispatchMode ?? undefined,
       });
       if (result.ok) {
         setFeedback({ tone: "success", message: result.message });
@@ -532,6 +543,7 @@ export function OpsInboxDispatchDrawer({
     setSubmittedDestination(null);
     setSubmittedNotes("");
     setSubmittedFeedback(null);
+    setSubmittedDispatchMode(null);
     setDispatchStartedById({});
     setEmailPackagesById({});
     setEmailLoadingId(null);
@@ -755,6 +767,7 @@ export function OpsInboxDispatchDrawer({
           setSubmittedDestination(null);
           setSubmittedNotes("");
           setSubmittedFeedback(null);
+          setSubmittedDispatchMode(null);
           setDispatchStartedById({});
           setEmailPackagesById({});
           setEmailLoadingId(null);
@@ -981,19 +994,31 @@ export function OpsInboxDispatchDrawer({
                         const isWebFormGenerating = webFormLoadingId === destination.id;
                         const emailError = emailErrorsById[destination.id];
                         const webFormError = webFormErrorsById[destination.id];
+                        const dispatchStartedAt =
+                          dispatchStartedById[destination.id] ?? destination.dispatch_started_at;
+                        const hasSubmitted = Boolean(destination.submitted_at);
+                        const hasDispatchStarted = Boolean(dispatchStartedAt);
                         const dispatchStatus = offersByProviderId.has(destination.provider_id)
                           ? "offer_received"
-                          : destination.status === "submitted"
+                          : hasSubmitted
                             ? "submitted"
-                            : "not_sent";
-                        const dispatchStartedLabel = formatDateTime(
-                          dispatchStartedById[destination.id] ?? destination.dispatch_started_at,
-                          { includeTime: true, fallback: "-" },
-                        );
+                            : hasDispatchStarted
+                              ? "in_progress"
+                              : "not_started";
+                        const dispatchStartedLabel = formatDateTime(dispatchStartedAt, {
+                          includeTime: true,
+                          fallback: "-",
+                        });
                         const submittedAtLabel = formatDateTime(destination.submitted_at, {
                           includeTime: true,
                           fallback: "-",
                         });
+                        const submittedRelativeLabel = formatRelativeTimeFromTimestamp(
+                          toTimestamp(destination.submitted_at),
+                        );
+                        const submittedMetaLabel = hasSubmitted
+                          ? `Submitted ${submittedRelativeLabel ?? submittedAtLabel}`
+                          : undefined;
                         const lastUpdateLabel = formatDateTime(destination.last_status_at, {
                           includeTime: true,
                           fallback: "-",
@@ -1028,7 +1053,7 @@ export function OpsInboxDispatchDrawer({
                           "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition";
                         const copyOfferButtonEnabledClass = `${copyOfferButtonBase} hover:border-slate-500 hover:text-white`;
                         const copyOfferButtonDisabledClass = `${copyOfferButtonBase} cursor-not-allowed opacity-60`;
-                        const dispatchActions = (
+                        const dispatchActions = hasSubmitted ? null : (
                           <DispatchActions
                             dispatchMode={dispatchMode}
                             dispatchReadiness={dispatchReadiness}
@@ -1040,7 +1065,7 @@ export function OpsInboxDispatchDrawer({
                             onCopyEmail={() => handleCopyEmail(destination)}
                             onCopyMailto={() => handleCopyMailto(destination, providerEmail)}
                             onCopyInstructions={() => handleCopyWebFormInstructions(destination)}
-                            onMarkSubmitted={() => openSubmittedPrompt(destination)}
+                            onMarkSubmitted={() => openSubmittedPrompt(destination, dispatchMode)}
                             onDispatchStarted={() => handleDispatchStarted(destination.id)}
                           />
                         );
@@ -1055,6 +1080,7 @@ export function OpsInboxDispatchDrawer({
                             dispatchStatus={dispatchStatus}
                             dispatchStartedLabel={dispatchStartedLabel}
                             submittedLabel={submittedAtLabel}
+                            submittedMetaLabel={submittedMetaLabel}
                             lastUpdateLabel={lastUpdateLabel}
                             offerSummary={offerSummary}
                             errorMessage={destination.error_message}
@@ -1185,6 +1211,7 @@ export function OpsInboxDispatchDrawer({
         }
         notes={submittedNotes}
         notesError={submittedFeedback}
+        requiresNotes={submittedDispatchMode === "web_form"}
         pending={pending}
         onClose={closeSubmittedPrompt}
         onChange={handleSubmittedNotesChange}

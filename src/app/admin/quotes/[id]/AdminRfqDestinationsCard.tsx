@@ -24,6 +24,7 @@ import {
 } from "./actions";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import type { RfqOffer } from "@/server/rfqs/offers";
 import {
   EMPTY_OFFER_DRAFT,
@@ -45,6 +46,7 @@ import { buildPublicUrl } from "@/lib/publicUrl";
 import {
   getDestinationDispatchReadiness,
   resolveEffectiveDispatchMode,
+  type EffectiveDispatchMode,
 } from "@/lib/ops/dispatchReadiness";
 import { recordDispatchStarted } from "@/lib/ops/dispatchStartedClient";
 
@@ -91,6 +93,8 @@ export function AdminRfqDestinationsCard({
   const [submittedDestination, setSubmittedDestination] = useState<RfqDestination | null>(null);
   const [submittedNotes, setSubmittedNotes] = useState("");
   const [submittedFeedback, setSubmittedFeedback] = useState<string | null>(null);
+  const [submittedDispatchMode, setSubmittedDispatchMode] =
+    useState<EffectiveDispatchMode | null>(null);
   const [offerDestination, setOfferDestination] = useState<RfqDestination | null>(null);
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(EMPTY_OFFER_DRAFT);
   const [offerFieldErrors, setOfferFieldErrors] = useState<Record<string, string>>({});
@@ -329,23 +333,26 @@ export function AdminRfqDestinationsCard({
     });
   };
 
-  const openSubmittedPrompt = (destination: RfqDestination) => {
+  const openSubmittedPrompt = (destination: RfqDestination, dispatchMode: EffectiveDispatchMode) => {
     setSubmittedFeedback(null);
     setSubmittedNotes("");
     setSubmittedDestination(destination);
+    setSubmittedDispatchMode(dispatchMode);
   };
 
   const closeSubmittedPrompt = () => {
     setSubmittedFeedback(null);
     setSubmittedNotes("");
     setSubmittedDestination(null);
+    setSubmittedDispatchMode(null);
   };
 
   const submitSubmitted = () => {
     if (!submittedDestination || pending) return;
     const trimmedNotes = submittedNotes.trim();
-    if (trimmedNotes.length < 5) {
-      setSubmittedFeedback("Add at least 5 characters of notes.");
+    const requiresNotes = submittedDispatchMode === "web_form";
+    if (requiresNotes && trimmedNotes.length < 5) {
+      setSubmittedFeedback("Add at least 5 characters of notes for web form submissions.");
       return;
     }
     setSubmittedFeedback(null);
@@ -353,6 +360,7 @@ export function AdminRfqDestinationsCard({
       const result = await markDestinationSubmittedAction({
         destinationId: submittedDestination.id,
         notes: trimmedNotes,
+        dispatchMode: submittedDispatchMode ?? undefined,
       });
       if (result.ok) {
         setFeedback({ tone: "success", message: result.message });
@@ -747,19 +755,31 @@ export function AdminRfqDestinationsCard({
               const offerLink = offerToken
                 ? buildPublicUrl(`/provider/offer/${offerToken}`)
                 : "";
+              const dispatchStartedAt =
+                dispatchStartedById[destination.id] ?? destination.dispatch_started_at;
+              const hasSubmitted = Boolean(destination.submitted_at);
+              const hasDispatchStarted = Boolean(dispatchStartedAt);
               const dispatchStatus = offer
                 ? "offer_received"
-                : destination.status === "submitted"
+                : hasSubmitted
                   ? "submitted"
-                  : "not_sent";
+                  : hasDispatchStarted
+                    ? "in_progress"
+                    : "not_started";
               const dispatchStartedLabel = formatDateTime(
-                dispatchStartedById[destination.id] ?? destination.dispatch_started_at,
+                dispatchStartedAt,
                 { includeTime: true, fallback: "-" },
               );
               const submittedAtLabel = formatDateTime(destination.submitted_at, {
                 includeTime: true,
                 fallback: "-",
               });
+              const submittedRelativeLabel = formatRelativeTimeFromTimestamp(
+                toTimestamp(destination.submitted_at),
+              );
+              const submittedMetaLabel = hasSubmitted
+                ? `Submitted ${submittedRelativeLabel ?? submittedAtLabel}`
+                : undefined;
               const lastUpdateLabel = formatDateTime(destination.last_status_at, {
                 includeTime: true,
                 fallback: "-",
@@ -768,7 +788,7 @@ export function AdminRfqDestinationsCard({
                 "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition";
               const copyOfferButtonEnabledClass = `${copyOfferButtonBase} hover:border-slate-500 hover:text-white`;
               const copyOfferButtonDisabledClass = `${copyOfferButtonBase} cursor-not-allowed opacity-60`;
-              const dispatchActions = (
+              const dispatchActions = hasSubmitted ? null : (
                 <DispatchActions
                   dispatchMode={dispatchMode}
                   dispatchReadiness={dispatchReadiness}
@@ -780,7 +800,7 @@ export function AdminRfqDestinationsCard({
                   onCopyEmail={() => handleCopyEmail(destination)}
                   onCopyMailto={() => handleCopyMailto(destination, providerEmail)}
                   onCopyInstructions={() => handleCopyWebFormInstructions(destination)}
-                  onMarkSubmitted={() => openSubmittedPrompt(destination)}
+                  onMarkSubmitted={() => openSubmittedPrompt(destination, dispatchMode)}
                   onDispatchStarted={() => handleDispatchStarted(destination.id)}
                 />
               );
@@ -795,6 +815,7 @@ export function AdminRfqDestinationsCard({
                   dispatchStatus={dispatchStatus}
                   dispatchStartedLabel={dispatchStartedLabel}
                   submittedLabel={submittedAtLabel}
+                  submittedMetaLabel={submittedMetaLabel}
                   lastUpdateLabel={lastUpdateLabel}
                   offerSummary={offerSummary}
                   errorMessage={destination.error_message}
@@ -930,6 +951,7 @@ export function AdminRfqDestinationsCard({
         }
         notes={submittedNotes}
         notesError={submittedFeedback}
+        requiresNotes={submittedDispatchMode === "web_form"}
         pending={pending}
         onClose={closeSubmittedPrompt}
         onChange={handleSubmittedNotesChange}
