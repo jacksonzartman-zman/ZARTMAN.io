@@ -1601,14 +1601,12 @@ export default async function CustomerQuoteDetailPage({
     : null;
   const decisionPrimaryCta = hasSearchOffers
     ? { label: "Request introduction", href: messagesHref }
-    : showSlaNudge
-      ? { label: "Invite your supplier", href: "/customer/invite-supplier" }
-      : { label: "We're waiting on responses", disabled: true };
+    : { label: "Invite your supplier", href: "/customer/invite-supplier" };
   const decisionSecondaryCta = hasSearchOffers
-    ? null
+    ? { label: "Share", kind: "share" as const }
     : showSlaNudge
-      ? { label: "Share this search", kind: "share" as const }
-      : { label: "Invite your supplier", href: "/customer/invite-supplier" };
+      ? { label: "Share", kind: "share" as const }
+      : null;
   const decisionCtaRow = (
     <CustomerQuoteDecisionCtaRow
       statusLabel={searchProgress.statusTag}

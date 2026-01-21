@@ -23,13 +23,13 @@ type CustomerQuoteDecisionCtaRowProps = {
 
 const SHARE_RESET_MS = 2200;
 const PRIMARY_ACTIVE_CLASSES =
-  "inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-black transition hover:bg-emerald-400";
+  "inline-flex min-h-11 items-center justify-center rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-black shadow-sm transition hover:bg-emerald-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400";
 const PRIMARY_DISABLED_CLASSES =
-  "cursor-not-allowed bg-slate-800 text-slate-300 hover:bg-slate-800";
+  "cursor-not-allowed bg-slate-800 text-slate-400 shadow-none hover:bg-slate-800";
 const SECONDARY_ACTIVE_CLASSES =
-  "inline-flex items-center justify-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white";
+  "inline-flex min-h-11 items-center justify-center text-sm font-semibold text-slate-300 transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500";
 const SECONDARY_DISABLED_CLASSES =
-  "cursor-not-allowed border-slate-800 text-slate-500 hover:border-slate-800 hover:text-slate-500";
+  "cursor-not-allowed text-slate-500 hover:text-slate-500";
 
 export function CustomerQuoteDecisionCtaRow({
   statusLabel,
@@ -82,7 +82,7 @@ export function CustomerQuoteDecisionCtaRow({
 
   return (
     <section
-      className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-5 py-4"
+      className="rounded-2xl border border-slate-900/60 bg-slate-950/50 px-5 py-4"
       aria-label="Decision actions"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -94,7 +94,7 @@ export function CustomerQuoteDecisionCtaRow({
             <p className="mt-1 text-sm text-slate-300">{helperCopy}</p>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-4">
           {secondary ? (
             secondary.kind === "share" ? (
               <button
