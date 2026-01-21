@@ -18,21 +18,63 @@ const unverifiedBadgeClasses =
   "inline-flex items-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100";
 const inactiveBadgeClasses =
   "inline-flex items-center rounded-full border border-slate-500/40 bg-slate-800/40 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-100";
+const invitedBadgeClasses =
+  "inline-flex items-center rounded-full border border-sky-400/40 bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-100";
 const unverifiedNote =
   "Listing is informational. This supplier has not verified their profile.";
 const inactiveNote = "Listing is informational. This supplier is currently inactive.";
+const invitedExplanation =
+  "We list verified suppliers in search results. Invited suppliers appear here only until they verify.";
+const COVERAGE_TAG_LIMIT = 12;
+const INVITED_SUPPLIER_THRESHOLD = 12;
+const INVITED_SOURCES = new Set(["customer_invite", "csv_import"]);
 
 function getCapabilityTags(row: PublicSupplierDirectoryRow): string[] {
   const combined = [...row.materials, ...row.certifications];
   return Array.from(new Set(combined));
 }
 
-function TagList({ items, emptyLabel }: { items: string[]; emptyLabel: string }) {
+function normalizeCoverageValue(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function buildCoverageList(values: Array<string | null | undefined>): string[] {
+  const unique = new Map<string, string>();
+  for (const value of values) {
+    const normalized = normalizeCoverageValue(value);
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (!unique.has(key)) {
+      unique.set(key, normalized);
+    }
+  }
+  return Array.from(unique.values()).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  );
+}
+
+function isInvitedPendingSupplier(supplier: PublicSupplierDirectoryRow): boolean {
+  const source = supplier.source ?? "";
+  const normalizedSource = source.trim().toLowerCase();
+  if (!INVITED_SOURCES.has(normalizedSource)) return false;
+  return (!supplier.isVerified || !supplier.isActive) && supplier.showInDirectory;
+}
+
+function TagList({
+  items,
+  emptyLabel,
+  max = 4,
+}: {
+  items: string[];
+  emptyLabel: string;
+  max?: number;
+}) {
   if (items.length === 0) {
     return <span className="text-sm text-ink-muted">{emptyLabel}</span>;
   }
 
-  const max = 4;
   const visible = items.slice(0, max);
   const remaining = items.length - visible.length;
 
@@ -54,7 +96,24 @@ export default async function SuppliersDirectoryPage() {
   }
 
   const suppliers = await loadPublicSuppliersDirectory();
-  const isEmpty = suppliers.length === 0;
+  const verifiedSuppliers = suppliers.filter(
+    (supplier) => supplier.isVerified && supplier.isActive && supplier.showInDirectory,
+  );
+  const coverageProcesses = buildCoverageList(
+    verifiedSuppliers.flatMap((supplier) => supplier.processes),
+  );
+  const coverageLocations = buildCoverageList(
+    verifiedSuppliers.map((supplier) => supplier.location),
+  );
+  const invitedSuppliers = suppliers.filter(isInvitedPendingSupplier);
+  const invitedSupplierIds = new Set(invitedSuppliers.map((supplier) => supplier.supplierId));
+  const directorySuppliers = suppliers.filter(
+    (supplier) => !invitedSupplierIds.has(supplier.supplierId),
+  );
+  const shouldShowInvitedSuppliers =
+    verifiedSuppliers.length < INVITED_SUPPLIER_THRESHOLD && invitedSuppliers.length > 0;
+  const invitedSuppliersToShow = shouldShowInvitedSuppliers ? invitedSuppliers : [];
+  const isEmpty = directorySuppliers.length === 0;
 
   return (
     <main className="main-shell">
@@ -68,8 +127,8 @@ export default async function SuppliersDirectoryPage() {
               Browse suppliers by process, location, and capability.
             </h1>
             <p className="text-base text-ink-muted heading-snug">
-              Verified suppliers are vetted and updated by the Zartman team. Unverified listings are shown
-              for coverage planning.
+              Verified suppliers are vetted and updated by the Zartman team. Coverage areas below reflect
+              verified, active suppliers.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -87,13 +146,50 @@ export default async function SuppliersDirectoryPage() {
         <section className="space-y-5">
           <header className="flex flex-wrap items-center justify-between gap-3">
             <div>
+              <h2 className="text-xl font-semibold text-ink heading-tight">Coverage areas</h2>
+              <p className="text-sm text-ink-muted">
+                Processes and locations represented by verified suppliers.
+              </p>
+            </div>
+            <span className="text-xs text-ink-soft">
+              {verifiedSuppliers.length} verified supplier
+              {verifiedSuppliers.length === 1 ? "" : "s"}
+            </span>
+          </header>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <article className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-ink-soft">Processes</p>
+              <div className="mt-3">
+                <TagList
+                  items={coverageProcesses}
+                  emptyLabel="Coverage details are updating."
+                  max={COVERAGE_TAG_LIMIT}
+                />
+              </div>
+            </article>
+            <article className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-ink-soft">Locations</p>
+              <div className="mt-3">
+                <TagList
+                  items={coverageLocations}
+                  emptyLabel="Location coverage is updating."
+                  max={COVERAGE_TAG_LIMIT}
+                />
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section className="space-y-5">
+          <header className="flex flex-wrap items-center justify-between gap-3">
+            <div>
               <h2 className="text-xl font-semibold text-ink heading-tight">Directory</h2>
               <p className="text-sm text-ink-muted">
                 Click a supplier to view their process coverage and certifications.
               </p>
             </div>
             <span className="text-xs text-ink-soft">
-              {suppliers.length} supplier{suppliers.length === 1 ? "" : "s"}
+              {directorySuppliers.length} supplier{directorySuppliers.length === 1 ? "" : "s"}
             </span>
           </header>
 
@@ -104,7 +200,7 @@ export default async function SuppliersDirectoryPage() {
             </div>
           ) : (
             <div className="grid gap-4">
-              {suppliers.map((supplier) => {
+              {directorySuppliers.map((supplier) => {
                 const capabilityTags = getCapabilityTags(supplier);
                 return (
                   <article
@@ -176,6 +272,74 @@ export default async function SuppliersDirectoryPage() {
             </div>
           )}
         </section>
+
+        {shouldShowInvitedSuppliers ? (
+          <section className="space-y-5">
+            <header className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold text-ink heading-tight">
+                  Invited suppliers (pending)
+                </h2>
+                <span className="text-xs text-ink-soft">
+                  {invitedSuppliersToShow.length} invited supplier
+                  {invitedSuppliersToShow.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <p className="text-sm text-ink-muted">{invitedExplanation}</p>
+            </header>
+            <div className="grid gap-4">
+              {invitedSuppliersToShow.map((supplier) => (
+                <article
+                  key={supplier.supplierId}
+                  className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-6 shadow-[0_14px_40px_rgba(2,6,23,0.35)]"
+                >
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/suppliers/${supplier.slug}`}
+                          className="text-lg font-semibold text-emerald-100 hover:text-emerald-200"
+                        >
+                          {supplier.supplierName}
+                        </Link>
+                        <span className={invitedBadgeClasses}>Invited (pending verification)</span>
+                      </div>
+                      <span className="text-sm text-ink-soft">
+                        {supplier.location ?? "Location shared during request"}
+                      </span>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-ink-soft">
+                          Process
+                        </p>
+                        <TagList items={supplier.processes} emptyLabel="Processes shared on request" />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-ink-soft">
+                          Location
+                        </p>
+                        <p className="text-sm text-ink-muted">
+                          {supplier.location ?? "Location shared during request"}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-ink-soft">
+                          Capabilities
+                        </p>
+                        <TagList
+                          items={getCapabilityTags(supplier)}
+                          emptyLabel="Capabilities shared on request"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
       </div>
     </main>
   );
