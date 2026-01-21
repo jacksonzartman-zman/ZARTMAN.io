@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
 
-type DispatchMode = "email" | "web_form" | "api" | "unknown";
+type DispatchMode = "email" | "mailto" | "web_form" | "api" | "unknown";
 type DispatchStatus = "not_sent" | "submitted" | "offer_received";
 
 type DispatchCardProps = {
@@ -31,6 +31,10 @@ const BADGE_BASE_CLASS =
 const DISPATCH_MODE_META: Record<DispatchMode, { label: string; className: string }> = {
   email: {
     label: "Email",
+    className: "border-indigo-500/40 bg-indigo-500/10 text-indigo-100",
+  },
+  mailto: {
+    label: "Mailto",
     className: "border-indigo-500/40 bg-indigo-500/10 text-indigo-100",
   },
   web_form: {
