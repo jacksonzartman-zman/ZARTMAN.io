@@ -112,7 +112,7 @@ import {
   parseQuantity,
   type PricingEstimateInput,
 } from "@/lib/pricing/estimate";
-import { logOpsEvent } from "@/server/ops/events";
+import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +138,10 @@ export default async function CustomerQuoteDetailPage({
   ]);
 
   const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${quoteId}`);
+  const opsEventSessionKey = buildOpsEventSessionKey({
+    userId: user.id,
+    lastSignInAt: user.last_sign_in_at ?? null,
+  });
   const emailParam = getSearchParamValue(resolvedSearchParams, "email");
   const overrideEmail = normalizeEmailInput(emailParam);
   const focusParam = getSearchParamValue(resolvedSearchParams, "focus");
@@ -678,6 +682,7 @@ export default async function CustomerQuoteDetailPage({
     void logOpsEvent({
       quoteId: quote.id,
       eventType: "estimate_shown",
+      dedupeKey: opsEventSessionKey,
       payload: {
         process: telemetry.process,
         quantity_bucket: telemetry.quantityBucket,

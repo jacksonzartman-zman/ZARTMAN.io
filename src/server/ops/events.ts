@@ -4,6 +4,7 @@ import {
   serializeSupabaseError,
   warnOnce,
 } from "@/server/admin/logging";
+import { debugOnce } from "@/server/db/schemaErrors";
 
 export type OpsEventType =
   | "destination_added"
@@ -31,6 +32,7 @@ export type LogOpsEventInput = {
   destinationId?: string | null;
   eventType: OpsEventType;
   payload?: Record<string, unknown> | null;
+  dedupeKey?: string | null;
 };
 
 export type OpsEventRecord = {
@@ -48,6 +50,90 @@ export type ListOpsEventsResult =
 
 const OPS_EVENTS_TABLE = "ops_events";
 const OPS_EVENTS_SELECT = "id,quote_id,destination_id,event_type,payload,created_at";
+const OPS_EVENT_DEDUPE_KEYS = new Set<string>();
+
+type OpsEventInsertArgs = {
+  quoteId: string | null;
+  destinationId: string | null;
+  eventType: OpsEventType;
+  payload: Record<string, unknown>;
+  context?: Record<string, unknown>;
+  logLabel: string;
+};
+
+function queueOpsEventInsert(args: OpsEventInsertArgs) {
+  const context = sanitizePayload({
+    quoteId: args.quoteId,
+    destinationId: args.destinationId,
+    eventType: args.eventType,
+    ...(args.context ?? {}),
+  });
+
+  try {
+    void (async () => {
+      try {
+        const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
+          quote_id: args.quoteId,
+          destination_id: args.destinationId,
+          event_type: args.eventType,
+          payload: args.payload,
+        });
+
+        if (!error) return;
+        logOpsEventInsertError(error, args.logLabel, context);
+      } catch (error) {
+        logOpsEventInsertError(error, args.logLabel, context);
+      }
+    })();
+  } catch (error) {
+    logOpsEventInsertError(error, args.logLabel, context);
+  }
+}
+
+function logOpsEventInsertError(error: unknown, label: string, context: Record<string, unknown>) {
+  if (isMissingTableOrColumnError(error)) {
+    const serialized = serializeSupabaseError(error);
+    warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
+      code: serialized?.code ?? null,
+      message: serialized?.message ?? null,
+    });
+    return;
+  }
+
+  console.debug(`[ops events] ${label}`, {
+    ...context,
+    error: serializeSupabaseError(error) ?? error,
+  });
+}
+
+function shouldSkipEstimateShown(args: {
+  quoteId: string;
+  eventType: OpsEventType;
+  dedupeKey?: string | null;
+}): boolean {
+  if (args.eventType !== "estimate_shown") {
+    return false;
+  }
+  const sessionKey = normalizeOptionalId(args.dedupeKey);
+  if (!sessionKey) {
+    return false;
+  }
+
+  const key = `${args.eventType}:${args.quoteId}:${sessionKey}`;
+  if (OPS_EVENT_DEDUPE_KEYS.has(key)) {
+    debugOnce(
+      `ops_events:estimate_shown:dedupe:${key}`,
+      "[ops events] estimate_shown deduped",
+      {
+        quoteId: args.quoteId,
+      },
+    );
+    return true;
+  }
+
+  OPS_EVENT_DEDUPE_KEYS.add(key);
+  return false;
+}
 
 export async function logOpsEvent(input: LogOpsEventInput): Promise<void> {
   const quoteId = normalizeId(input.quoteId);
@@ -58,49 +144,18 @@ export async function logOpsEvent(input: LogOpsEventInput): Promise<void> {
   }
 
   const payload = sanitizePayload(input.payload);
-
-  try {
-    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
-      quote_id: quoteId,
-      destination_id: destinationId ?? null,
-      event_type: eventType,
-      payload,
-    });
-
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        const serialized = serializeSupabaseError(error);
-        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-          code: serialized?.code ?? null,
-          message: serialized?.message ?? null,
-        });
-        return;
-      }
-
-      console.warn("[ops events] insert failed", {
-        quoteId,
-        destinationId,
-        eventType,
-        error: serializeSupabaseError(error) ?? error,
-      });
-    }
-  } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      const serialized = serializeSupabaseError(error);
-      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-        code: serialized?.code ?? null,
-        message: serialized?.message ?? null,
-      });
-      return;
-    }
-
-    console.warn("[ops events] insert crashed", {
-      quoteId,
-      destinationId,
-      eventType,
-      error: serializeSupabaseError(error) ?? error,
-    });
+  if (shouldSkipEstimateShown({ quoteId, eventType, dedupeKey: input.dedupeKey })) {
+    return;
   }
+
+  queueOpsEventInsert({
+    quoteId,
+    destinationId: destinationId ?? null,
+    eventType,
+    payload,
+    logLabel: "insert failed",
+    context: { source: "logOpsEvent" },
+  });
 }
 
 export type SupplierJoinOpsEventInput = {
@@ -126,46 +181,17 @@ export async function logSupplierJoinOpsEvent(
     source,
   });
 
-  try {
-    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
-      quote_id: null,
-      destination_id: null,
-      event_type: eventType,
-      payload,
-    });
-
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        const serialized = serializeSupabaseError(error);
-        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-          code: serialized?.code ?? null,
-          message: serialized?.message ?? null,
-        });
-        return;
-      }
-
-      console.warn("[ops events] supplier join insert failed", {
-        eventType,
-        email,
-        error: serializeSupabaseError(error) ?? error,
-      });
-    }
-  } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      const serialized = serializeSupabaseError(error);
-      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-        code: serialized?.code ?? null,
-        message: serialized?.message ?? null,
-      });
-      return;
-    }
-
-    console.warn("[ops events] supplier join insert crashed", {
-      eventType,
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "supplier join insert failed",
+    context: {
       email,
-      error: serializeSupabaseError(error) ?? error,
-    });
-  }
+      source: "logSupplierJoinOpsEvent",
+    },
+  });
 }
 
 export type SupplierInvitedOpsEventInput = {
@@ -204,46 +230,17 @@ export async function logSupplierInvitedOpsEvent(
     provider_id: normalizeOptionalId(input.providerId) ?? undefined,
   });
 
-  try {
-    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
-      quote_id: null,
-      destination_id: null,
-      event_type: eventType,
-      payload,
-    });
-
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        const serialized = serializeSupabaseError(error);
-        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-          code: serialized?.code ?? null,
-          message: serialized?.message ?? null,
-        });
-        return;
-      }
-
-      console.warn("[ops events] supplier invite insert failed", {
-        eventType,
-        email,
-        error: serializeSupabaseError(error) ?? error,
-      });
-    }
-  } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      const serialized = serializeSupabaseError(error);
-      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-        code: serialized?.code ?? null,
-        message: serialized?.message ?? null,
-      });
-      return;
-    }
-
-    console.warn("[ops events] supplier invite insert crashed", {
-      eventType,
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "supplier invite insert failed",
+    context: {
       email,
-      error: serializeSupabaseError(error) ?? error,
-    });
-  }
+      source: "logSupplierInvitedOpsEvent",
+    },
+  });
 }
 
 export type ProviderContactedOpsEventInput = {
@@ -267,46 +264,17 @@ export async function logProviderContactedOpsEvent(
     provider_email: normalizeEmail(input.providerEmail) ?? undefined,
   });
 
-  try {
-    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
-      quote_id: null,
-      destination_id: null,
-      event_type: eventType,
-      payload,
-    });
-
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        const serialized = serializeSupabaseError(error);
-        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-          code: serialized?.code ?? null,
-          message: serialized?.message ?? null,
-        });
-        return;
-      }
-
-      console.warn("[ops events] provider contacted insert failed", {
-        eventType,
-        providerId,
-        error: serializeSupabaseError(error) ?? error,
-      });
-    }
-  } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      const serialized = serializeSupabaseError(error);
-      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-        code: serialized?.code ?? null,
-        message: serialized?.message ?? null,
-      });
-      return;
-    }
-
-    console.warn("[ops events] provider contacted insert crashed", {
-      eventType,
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "provider contacted insert failed",
+    context: {
       providerId,
-      error: serializeSupabaseError(error) ?? error,
-    });
-  }
+      source: "logProviderContactedOpsEvent",
+    },
+  });
 }
 
 export type ProviderStatusOpsEventInput = {
@@ -333,46 +301,17 @@ export async function logProviderStatusOpsEvent(
     ...(input.snapshot ?? {}),
   });
 
-  try {
-    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
-      quote_id: null,
-      destination_id: null,
-      event_type: eventType,
-      payload,
-    });
-
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        const serialized = serializeSupabaseError(error);
-        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-          code: serialized?.code ?? null,
-          message: serialized?.message ?? null,
-        });
-        return;
-      }
-
-      console.warn("[ops events] provider status insert failed", {
-        eventType,
-        providerId,
-        error: serializeSupabaseError(error) ?? error,
-      });
-    }
-  } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      const serialized = serializeSupabaseError(error);
-      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-        code: serialized?.code ?? null,
-        message: serialized?.message ?? null,
-      });
-      return;
-    }
-
-    console.warn("[ops events] provider status insert crashed", {
-      eventType,
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "provider status insert failed",
+    context: {
       providerId,
-      error: serializeSupabaseError(error) ?? error,
-    });
-  }
+      source: "logProviderStatusOpsEvent",
+    },
+  });
 }
 
 export type ProviderDirectoryVisibilityOpsEventInput = {
@@ -396,46 +335,17 @@ export async function logProviderDirectoryVisibilityEvent(
     reason: normalizeOptionalText(input.reason) ?? undefined,
   });
 
-  try {
-    const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
-      quote_id: null,
-      destination_id: null,
-      event_type: eventType,
-      payload,
-    });
-
-    if (error) {
-      if (isMissingTableOrColumnError(error)) {
-        const serialized = serializeSupabaseError(error);
-        warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-          code: serialized?.code ?? null,
-          message: serialized?.message ?? null,
-        });
-        return;
-      }
-
-      console.warn("[ops events] provider directory visibility insert failed", {
-        eventType,
-        providerId,
-        error: serializeSupabaseError(error) ?? error,
-      });
-    }
-  } catch (error) {
-    if (isMissingTableOrColumnError(error)) {
-      const serialized = serializeSupabaseError(error);
-      warnOnce("ops_events:missing_schema", "[ops events] missing schema; skipping", {
-        code: serialized?.code ?? null,
-        message: serialized?.message ?? null,
-      });
-      return;
-    }
-
-    console.warn("[ops events] provider directory visibility insert crashed", {
-      eventType,
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "provider directory visibility insert failed",
+    context: {
       providerId,
-      error: serializeSupabaseError(error) ?? error,
-    });
-  }
+      source: "logProviderDirectoryVisibilityEvent",
+    },
+  });
 }
 
 export async function listOpsEventsForQuote(
@@ -610,6 +520,18 @@ function normalizeText(value: unknown): string {
 function normalizeOptionalText(value: unknown): string | null {
   const normalized = normalizeText(value);
   return normalized.length > 0 ? normalized : null;
+}
+
+export function buildOpsEventSessionKey(input: {
+  userId: string;
+  lastSignInAt?: string | null;
+}): string {
+  const userId = normalizeId(input.userId);
+  if (!userId) {
+    return "";
+  }
+  const sessionStamp = normalizeOptionalText(input.lastSignInAt);
+  return sessionStamp ? `${userId}:${sessionStamp}` : userId;
 }
 
 function normalizeOptionalId(value: unknown): string | null {
