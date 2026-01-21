@@ -595,6 +595,14 @@ export default function UploadBox({
     ? Boolean(previewDiagnosticsPending[selectedPart.id])
     : false;
   const selectedStorageProof = selectedPart ? storageProof[selectedPart.id] ?? { status: "unknown" as const } : null;
+  const previewUnavailable = Boolean(
+    selectedPart &&
+      selectedUploadStatus === "uploaded" &&
+      (!selectedUploadedRef?.token || !selectedCadKind),
+  );
+  const previewFallbackMessage = previewUnavailable
+    ? "Preview unavailable."
+    : "Select a CAD file to preview it in 3D.";
 
   const runPreviewTest = useCallback(
     async (input: { fileId: string; previewUrl: string }) => {
@@ -1764,6 +1772,7 @@ export default function UploadBox({
                     extension: null,
                   });
                   const cadKind = kindInfo.ok ? kindInfo.type : null;
+                  const canPreview = Boolean(previewRef?.token) && Boolean(cadKind);
                   return (
                     <div
                       key={entry.id}
@@ -1793,9 +1802,9 @@ export default function UploadBox({
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {uploaded && previewRef ? (
+                        {uploaded ? (
                           <>
-                            {cadKind ? (
+                            {canPreview ? (
                               <button
                                 type="button"
                                 onClick={(event) => {
@@ -1904,7 +1913,7 @@ export default function UploadBox({
               <CadViewerPanel
                 file={null}
                 fileName={selectedPart?.file.name}
-                fallbackMessage="Select a CAD file to preview it in 3D."
+                fallbackMessage={previewFallbackMessage}
                 onGeometryStats={viewerGeometryHandler}
               />
             )}

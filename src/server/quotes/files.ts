@@ -68,6 +68,19 @@ function isAllowedCadBucket(bucket: string): bucket is "cad_uploads" | "cad_prev
 }
 
 const CAD_SIGNED_URL_TTL_SECONDS = 60 * 60;
+const STEP_PREVIEW_PREFIX = "step-stl/v1/";
+
+function normalizePreviewPath(bucket: string, path: string): string {
+  if (bucket !== "cad_previews") return path;
+  let next = path;
+  while (next.startsWith(`${STEP_PREVIEW_PREFIX}${STEP_PREVIEW_PREFIX}`)) {
+    next = STEP_PREVIEW_PREFIX + next.slice(STEP_PREVIEW_PREFIX.length * 2);
+  }
+  if (next.startsWith(`${STEP_PREVIEW_PREFIX}v1/`)) {
+    next = `${STEP_PREVIEW_PREFIX}${next.slice(`${STEP_PREVIEW_PREFIX}v1/`.length)}`;
+  }
+  return next;
+}
 
 export type QuoteFilePreviewOptions = {
   onFilesError?: (error: unknown) => void;
@@ -329,6 +342,8 @@ function normalizeBucketAndPath(input: {
   path = path.replace(/^\/+/, "");
   path = path.replace(/\/{2,}/g, "/");
   if (!path) return null;
+
+  path = normalizePreviewPath(bucket, path);
 
   return { bucket, path };
 }
