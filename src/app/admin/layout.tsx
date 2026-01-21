@@ -6,6 +6,8 @@ import AdminGate from "./AdminGate";
 import { ADMIN_COOKIE_NAME } from "./constants";
 import { requireUser } from "@/server/auth";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   // Explicit auth check (safe-deny). Admin pages are never meant for anonymous users.
   await requireUser({ redirectTo: "/login" });
