@@ -1125,6 +1125,7 @@ export async function updateDestinationStatusAction(args: {
 
     if (rfqId) {
       revalidatePath(`/admin/quotes/${rfqId}`);
+      revalidatePath("/admin/ops/inbox");
     }
 
     return { ok: true, message: "Destination updated." };
@@ -1241,6 +1242,7 @@ export async function markDestinationSubmittedAction(args: {
         },
       });
       revalidatePath(`/admin/quotes/${rfqId}`);
+      revalidatePath("/admin/ops/inbox");
     }
 
     return { ok: true, message: "Destination marked submitted." };

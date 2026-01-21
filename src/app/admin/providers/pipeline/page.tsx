@@ -11,6 +11,7 @@ import {
   verifyProviderAction,
 } from "@/app/admin/providers/actions";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatShortId } from "@/lib/awards";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import { requireAdminUser } from "@/server/auth";
 import { listOpsEventsForProvider, type OpsEventRecord } from "@/server/ops/events";
@@ -444,6 +445,17 @@ function formatOpsEventTypeLabel(value: string): string {
 function renderProviderOpsEventSummary(event: OpsEventRecord): string {
   const payload = event.payload ?? {};
   switch (event.event_type) {
+    case "destination_submitted": {
+      const quoteId = resolvePayloadString(payload, "quote_id");
+      const destinationId = resolvePayloadString(payload, "destination_id");
+      const details = [
+        quoteId ? `Quote ${formatShortId(quoteId)}` : null,
+        destinationId ? `Dest ${formatShortId(destinationId)}` : null,
+      ].filter((detail): detail is string => Boolean(detail));
+      return details.length > 0
+        ? `Destination submitted (${details.join(" / ")})`
+        : "Destination submitted";
+    }
     case "provider_contacted": {
       const email = resolvePayloadString(payload, "provider_email");
       return email ? `Outreach logged (${email})` : "Outreach logged";
