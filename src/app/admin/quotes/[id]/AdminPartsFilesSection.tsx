@@ -186,7 +186,10 @@ function PartCard({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const maxLabel = formatMaxUploadSize();
 
-  const uploadGroupsSafe = Array.isArray(uploadGroups) ? uploadGroups : [];
+  const uploadGroupsSafe = useMemo(
+    () => (Array.isArray(uploadGroups) ? uploadGroups : []),
+    [uploadGroups],
+  );
   const drawingAccept =
     ".pdf,.dwg,.dxf,.step,.stp,.igs,.iges,.sldprt,.prt,.stl,.zip";
 
