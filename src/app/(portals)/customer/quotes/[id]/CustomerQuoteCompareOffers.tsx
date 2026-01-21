@@ -5,7 +5,11 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
 import { TagPill } from "@/components/shared/primitives/TagPill";
-import { decorateOffersForCompare, type DecoratedRfqOffer } from "@/lib/aggregator/scoring";
+import {
+  decorateOffersForCompare,
+  scoreOfferCompleteness,
+  type DecoratedRfqOffer,
+} from "@/lib/aggregator/scoring";
 import { decorateProviderForCustomerDisplay } from "@/lib/providers/customerDisplay";
 import type { RfqOffer } from "@/server/rfqs/offers";
 import { selectOfferAction, type SelectOfferActionState } from "./actions";
@@ -33,6 +37,12 @@ const BADGE_TONE: Record<string, "emerald" | "blue" | "amber"> = {
   Fastest: "blue",
   "Lowest Risk": "amber",
 };
+
+const COMPLETENESS_LEVELS = [
+  { label: "High", minScore: 80, tone: "emerald" },
+  { label: "Med", minScore: 50, tone: "amber" },
+  { label: "Low", minScore: 0, tone: "red" },
+] as const;
 
 const SORT_PARAM_KEY = "sort";
 const SORT_KEYS: SortKey[] = ["bestValue", "fastest", "lowestPrice", "lowestRisk"];
@@ -247,7 +257,23 @@ export function CustomerQuoteCompareOffers({
                   const confidenceLabel =
                     typeof offer.confidenceValue === "number" ? offer.confidenceValue : "-";
                   const showRankReason = index < 3;
-                  const rankReason = showRankReason ? buildRankReason(offer) : null;
+                  const completeness = scoreOfferCompleteness(offer);
+                  const completenessMeta = resolveCompletenessMeta(completeness.score);
+                  const completenessTitle =
+                    completeness.missing.length > 0
+                      ? completeness.missing.join(", ")
+                      : `Score ${completeness.score}`;
+                  const completenessNote =
+                    completenessMeta.label !== "High"
+                      ? `Completeness: ${completenessMeta.label}${
+                          completeness.missing.length > 0
+                            ? ` (${completeness.missing.join(", ")})`
+                            : ""
+                        }`
+                      : null;
+                  const rankReason = showRankReason
+                    ? buildRankReason(offer, completenessNote)
+                    : null;
                   const whyShownLabel =
                     providerDisplay.whyShownTags.length > 0
                       ? `Matched on: ${providerDisplay.whyShownTags.join(", ")}`
@@ -313,19 +339,24 @@ export function CustomerQuoteCompareOffers({
                         </td>
                         <td className="px-5 py-4 align-top">
                           <div className="space-y-2">
-                            {offer.badges.length > 0 ? (
-                              <div className="flex flex-wrap gap-1.5">
-                                {offer.badges.map((badge) => (
-                                  <TagPill
-                                    key={badge}
-                                    size="sm"
-                                    tone={BADGE_TONE[badge] ?? "slate"}
-                                  >
-                                    {badge}
-                                  </TagPill>
-                                ))}
-                              </div>
-                            ) : null}
+                            <div className="flex flex-wrap gap-1.5">
+                              <TagPill
+                                size="sm"
+                                tone={completenessMeta.tone}
+                                title={completenessTitle}
+                              >
+                                Completeness: {completenessMeta.label}
+                              </TagPill>
+                              {offer.badges.map((badge) => (
+                                <TagPill
+                                  key={badge}
+                                  size="sm"
+                                  tone={BADGE_TONE[badge] ?? "slate"}
+                                >
+                                  {badge}
+                                </TagPill>
+                              ))}
+                            </div>
                             {rankReason ? (
                               <p className="text-[11px] text-slate-500">
                                 Why this is ranked here: {rankReason}
@@ -444,12 +475,13 @@ function compareBy(...comparisons: number[]): number {
   return 0;
 }
 
-function buildRankReason(offer: DecoratedRfqOffer): string {
+function buildRankReason(offer: DecoratedRfqOffer, completenessNote?: string | null): string {
   for (const badge of offer.badges) {
     const reason = RANK_REASON_BY_BADGE[badge];
-    if (reason) return reason;
+    if (reason) return completenessNote ? `${reason}. ${completenessNote}` : reason;
   }
-  return "Ranked by price, lead time, confidence, and risk flags";
+  const base = "Ranked by price, lead time, confidence, and risk flags";
+  return completenessNote ? `${base}. ${completenessNote}` : base;
 }
 
 function compareProviderName(a: DecoratedRfqOffer, b: DecoratedRfqOffer): number {
@@ -483,4 +515,12 @@ function formatEnumLabel(value?: string | null): string {
     .split(" ")
     .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
     .join(" ");
+}
+
+function resolveCompletenessMeta(score: number): (typeof COMPLETENESS_LEVELS)[number] {
+  const normalized = Number.isFinite(score) ? score : 0;
+  return (
+    COMPLETENESS_LEVELS.find((level) => normalized >= level.minScore) ??
+    COMPLETENESS_LEVELS[COMPLETENESS_LEVELS.length - 1]
+  );
 }

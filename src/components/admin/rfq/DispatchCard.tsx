@@ -17,6 +17,7 @@ type DispatchCardProps = {
   submittedMetaLabel?: string;
   lastUpdateLabel: string;
   offerSummary: string | null;
+  completenessWarning?: string | null;
   errorMessage?: string | null;
   primaryAction: ReactNode;
   secondaryAction: ReactNode;
@@ -82,6 +83,7 @@ export function DispatchCard({
   submittedMetaLabel,
   lastUpdateLabel,
   offerSummary,
+  completenessWarning,
   errorMessage,
   primaryAction,
   secondaryAction,
@@ -142,6 +144,12 @@ export function DispatchCard({
       <div className="mt-2 text-[11px] text-slate-400">
         Offer: {offerSummary ?? "No offer yet"}
       </div>
+
+      {completenessWarning ? (
+        <p className="mt-2 text-[11px] text-amber-200" role="alert">
+          {completenessWarning}
+        </p>
+      ) : null}
 
       {hasActions ? (
         <div className="mt-3 flex flex-wrap items-center gap-2">

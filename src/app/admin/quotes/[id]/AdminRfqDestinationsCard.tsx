@@ -33,6 +33,7 @@ import {
   formatOfferSummary,
   type OfferDraft,
 } from "@/components/admin/rfq/destinationHelpers";
+import { scoreOfferCompleteness } from "@/lib/aggregator/scoring";
 import {
   DestinationErrorModal,
   DestinationSubmittedModal,
@@ -750,6 +751,7 @@ export function AdminRfqDestinationsCard({
               const webFormError = webFormErrorsById[destination.id];
               const offer = offersByProviderId.get(destination.provider_id) ?? null;
               const offerSummary = offer ? formatOfferSummary(offer) : null;
+              const offerCompletenessWarning = offer ? buildOfferCompletenessWarning(offer) : null;
               const offerToken =
                 typeof destination.offer_token === "string" ? destination.offer_token.trim() : "";
               const offerLink = offerToken
@@ -818,6 +820,7 @@ export function AdminRfqDestinationsCard({
                   submittedMetaLabel={submittedMetaLabel}
                   lastUpdateLabel={lastUpdateLabel}
                   offerSummary={offerSummary}
+                  completenessWarning={offerCompletenessWarning}
                   errorMessage={destination.error_message}
                   primaryAction={dispatchActions}
                   secondaryAction={null}
@@ -969,5 +972,22 @@ export function AdminRfqDestinationsCard({
       />
     </div>
   );
+}
+
+function buildOfferCompletenessWarning(offer: RfqOffer): string | null {
+  const completeness = scoreOfferCompleteness(offer);
+  const missingLeadTime = completeness.missing.includes("Missing lead time");
+  const missingPrice = !completeness.isActionable;
+  if (!missingLeadTime && !missingPrice) {
+    return null;
+  }
+  const missingLabels: string[] = [];
+  if (missingPrice) {
+    missingLabels.push("price");
+  }
+  if (missingLeadTime) {
+    missingLabels.push("lead time");
+  }
+  return `Incomplete offer: missing ${missingLabels.join(" and ")}.`;
 }
 

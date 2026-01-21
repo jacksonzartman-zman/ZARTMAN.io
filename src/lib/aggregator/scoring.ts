@@ -14,6 +14,12 @@ const SCORE_WEIGHTS = {
   riskPenalty: 0.08,
 };
 
+const COMPLETENESS_WEIGHTS = {
+  totalPrice: 50,
+  unitPrice: 15,
+  leadTime: 35,
+};
+
 export type DecoratedRfqOffer = RfqOffer & {
   badges: string[];
   rankScore: number;
@@ -24,6 +30,12 @@ export type DecoratedRfqOffer = RfqOffer & {
   confidenceValue: number | null;
   riskFlagCount: number;
   providerName: string;
+};
+
+export type OfferCompletenessScore = {
+  score: number;
+  missing: string[];
+  isActionable: boolean;
 };
 
 export function decorateOffersForCompare(offers: RfqOffer[]): DecoratedRfqOffer[] {
@@ -95,6 +107,39 @@ export function decorateOffersForCompare(offers: RfqOffer[]): DecoratedRfqOffer[
       badges,
     };
   });
+}
+
+export function scoreOfferCompleteness(offer: RfqOffer): OfferCompletenessScore {
+  const totalPriceValue = toFiniteNumber(offer.total_price);
+  const unitPriceValue = toFiniteNumber(offer.unit_price);
+  const minLeadTime = toFiniteNumber(offer.lead_time_days_min);
+  const maxLeadTime = toFiniteNumber(offer.lead_time_days_max);
+  const hasTotalPrice = typeof totalPriceValue === "number";
+  const hasUnitPrice = typeof unitPriceValue === "number";
+  const hasLeadTime = typeof minLeadTime === "number" || typeof maxLeadTime === "number";
+  const missing: string[] = [];
+
+  if (!hasTotalPrice) {
+    missing.push("Missing total price");
+  }
+  if (!hasUnitPrice) {
+    missing.push("Missing unit price");
+  }
+  if (!hasLeadTime) {
+    missing.push("Missing lead time");
+  }
+
+  const score = clampScore(
+    (hasTotalPrice ? COMPLETENESS_WEIGHTS.totalPrice : 0) +
+      (hasUnitPrice ? COMPLETENESS_WEIGHTS.unitPrice : 0) +
+      (hasLeadTime ? COMPLETENESS_WEIGHTS.leadTime : 0),
+  );
+
+  return {
+    score,
+    missing,
+    isActionable: hasTotalPrice || hasUnitPrice,
+  };
 }
 
 function resolveProviderName(offer: RfqOffer): string {
@@ -253,6 +298,11 @@ function toFiniteNumber(value: number | string | null): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function clampScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function minNumeric(values: Array<number | null>): number | null {
