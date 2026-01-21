@@ -53,12 +53,22 @@ const DESTINATION_STATUS_META: Record<
 };
 
 type NeedsActionChip = {
-  key: "needsReplyCount" | "errorsCount" | "queuedStaleCount" | "messageNeedsReplyCount";
+  key:
+    | "needsReplyCount"
+    | "errorsCount"
+    | "queuedStaleCount"
+    | "messageNeedsReplyCount"
+    | "introRequestsCount";
   label: string;
   className: string;
 };
 
 const NEEDS_ACTION_CHIPS: NeedsActionChip[] = [
+  {
+    key: "introRequestsCount",
+    label: "Intro requests",
+    className: "pill-info",
+  },
   {
     key: "needsReplyCount",
     label: "Needs reply",
@@ -90,6 +100,7 @@ export default async function AdminOpsInboxPage({
 
   const needsActionOnly = parseToggle(usp.get("needsAction"));
   const messageNeedsReplyOnly = parseToggle(usp.get("messageNeedsReply"));
+  const introRequestedOnly = parseToggle(usp.get("introRequested"));
   const selectedOnly = parseToggle(usp.get("selected"));
   const destinationStatus = normalizeDestinationStatus(usp.get("destinationStatus"));
   const providerId = normalizeFilterValue(usp.get("provider"));
@@ -102,6 +113,7 @@ export default async function AdminOpsInboxPage({
       filters: {
         needsActionOnly,
         messageNeedsReplyOnly,
+        introRequestedOnly,
         selectedOnly,
         destinationStatus: destinationStatus === "all" ? null : destinationStatus,
         providerId: providerId || null,
@@ -133,6 +145,7 @@ export default async function AdminOpsInboxPage({
   const hasFilters =
     needsActionOnly ||
     messageNeedsReplyOnly ||
+    introRequestedOnly ||
     selectedOnly ||
     destinationStatus !== "all" ||
     providerId.length > 0;
@@ -222,6 +235,17 @@ export default async function AdminOpsInboxPage({
                 className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
               />
               Message needs reply only
+            </label>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+              <input
+                type="checkbox"
+                name="introRequested"
+                value="1"
+                defaultChecked={introRequestedOnly}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+              />
+              Intro requests only
             </label>
 
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">

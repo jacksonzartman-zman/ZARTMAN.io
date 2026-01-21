@@ -10,7 +10,8 @@ type DecisionCta = {
   label: string;
   href?: string;
   disabled?: boolean;
-  kind?: "share";
+  kind?: "share" | "button";
+  onClick?: () => void;
 };
 
 type CustomerQuoteDecisionCtaRowProps = {
@@ -64,7 +65,8 @@ export function CustomerQuoteDecisionCtaRow({
     setShareStatus(copied ? "copied" : "error");
   }, [sharePath]);
 
-  const primaryDisabled = Boolean(primary.disabled) || !primary.href;
+  const primaryIsButton = primary.kind === "button";
+  const primaryDisabled = Boolean(primary.disabled) || (primaryIsButton ? !primary.onClick : !primary.href);
   const primaryClasses = clsx(
     PRIMARY_ACTIVE_CLASSES,
     primaryDisabled && PRIMARY_DISABLED_CLASSES,
@@ -117,6 +119,10 @@ export function CustomerQuoteDecisionCtaRow({
           ) : null}
           {primaryDisabled ? (
             <button type="button" disabled className={primaryClasses}>
+              {primary.label}
+            </button>
+          ) : primaryIsButton ? (
+            <button type="button" onClick={primary.onClick} className={primaryClasses}>
               {primary.label}
             </button>
           ) : (
