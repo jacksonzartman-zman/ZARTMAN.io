@@ -208,12 +208,15 @@ export async function persistQuoteIntakeDirectUpload(params: {
     sanitizeNullable(params.payload.company) ||
     contactEmail;
 
+  let idempotencyKey = normalizeIdempotencyKey(params.idempotencyKey);
+
   const logContext = {
     userId: user.id,
     contactEmail,
     sessionEmail,
     primaryFileName: filesMeta[0]?.fileName ?? null,
     fileCount: filesMeta.length,
+    idempotencyKey: idempotencyKey ?? null,
   };
 
   try {
@@ -395,6 +398,8 @@ export type QuoteIntakeFromUploadedTargetsResult =
       error: string;
       fieldErrors?: QuoteIntakeFieldErrors;
       reason?: string;
+      quoteId?: string;
+      uploadId?: string;
     };
 
 /**
@@ -409,6 +414,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
   targets: UploadTarget[];
   user: User;
   options?: { contactEmailOverride?: string | null };
+  idempotencyKey?: string | null;
 }): Promise<QuoteIntakeFromUploadedTargetsResult> {
   const { user } = params;
   const sessionEmail = normalizeEmailInput(user.email ?? null);
@@ -476,12 +482,15 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     sanitizeNullable(params.payload.company) ||
     contactEmail;
 
+  let idempotencyKey = normalizeIdempotencyKey(params.idempotencyKey);
+
   const logContext = {
     userId: user.id,
     contactEmail,
     sessionEmail,
     primaryFileName: filesMeta[0]?.fileName ?? null,
     fileCount: filesMeta.length,
+    idempotencyKey: idempotencyKey ?? null,
   };
 
   try {
@@ -496,9 +505,121 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     const primary = filesMeta[0]!;
     const primaryTarget = targets[0]!;
 
-    const { data: uploadRow, error: uploadError } = await supabaseServer
-      .from("uploads")
-      .insert({
+    let uploadId: string | null = null;
+    let quoteId: string | null = null;
+
+    const loadExistingUpload = async (): Promise<{
+      id: string;
+      quote_id: string | null;
+    } | null> => {
+      if (!idempotencyKey) return null;
+      try {
+        const { data, error } = await supabaseServer
+          .from("uploads")
+          .select("id,quote_id")
+          .eq("intake_idempotency_key", idempotencyKey)
+          .maybeSingle<{ id: string; quote_id: string | null }>();
+        if (error) {
+          if (isMissingTableOrColumnError(error)) {
+            idempotencyKey = null;
+            return null;
+          }
+          console.warn("[quote intake finalize] idempotency lookup failed", {
+            ...logContext,
+            error: serializeSupabaseError(error),
+          });
+          return null;
+        }
+        return data?.id ? data : null;
+      } catch (error) {
+        if (isMissingTableOrColumnError(error)) {
+          idempotencyKey = null;
+          return null;
+        }
+        console.warn("[quote intake finalize] idempotency lookup crashed", {
+          ...logContext,
+          error: serializeSupabaseError(error),
+        });
+        return null;
+      }
+    };
+
+    const loadQuoteIdForUpload = async (existingUploadId: string): Promise<string | null> => {
+      const normalizedUploadId = normalizeReferenceId(existingUploadId);
+      if (!normalizedUploadId) return null;
+      try {
+        const { data, error } = await supabaseServer
+          .from("quotes")
+          .select("id")
+          .eq("upload_id", normalizedUploadId)
+          .maybeSingle<{ id: string }>();
+        if (error) {
+          console.warn("[quote intake finalize] quote lookup failed", {
+            ...logContext,
+            uploadId: normalizedUploadId,
+            error: serializeSupabaseError(error),
+          });
+          return null;
+        }
+        return normalizeReferenceId(data?.id ?? null) || null;
+      } catch (error) {
+        console.warn("[quote intake finalize] quote lookup crashed", {
+          ...logContext,
+          uploadId: normalizedUploadId,
+          error: serializeSupabaseError(error),
+        });
+        return null;
+      }
+    };
+
+    const registerExisting = async (existingUploadId: string, existingQuoteId: string) => {
+      const registerResult = await registerUploadedObjectsForExistingUpload({
+        quoteId: existingQuoteId,
+        uploadId: existingUploadId,
+        targets,
+        supabase: supabaseServer,
+      });
+      if (!registerResult.ok) {
+        return {
+          ok: false as const,
+          error: buildRegisterFilesErrorMessage(existingQuoteId, existingUploadId),
+          reason: "register-files",
+          quoteId: existingQuoteId,
+          uploadId: existingUploadId,
+        };
+      }
+      return { ok: true as const, uploadId: existingUploadId, quoteId: existingQuoteId };
+    };
+
+    const existingUpload = await loadExistingUpload();
+    if (existingUpload?.id) {
+      uploadId = normalizeReferenceId(existingUpload.id);
+      quoteId = normalizeReferenceId(existingUpload.quote_id);
+      if (uploadId && !quoteId) {
+        quoteId = await loadQuoteIdForUpload(uploadId);
+        if (quoteId) {
+          const { error: updateError } = await supabaseServer
+            .from("uploads")
+            .update({ quote_id: quoteId })
+            .eq("id", uploadId);
+          if (updateError) {
+            console.warn("[quote intake finalize] idempotency upload update failed", {
+              ...logContext,
+              uploadId,
+              quoteId,
+              error: serializeSupabaseError(updateError),
+            });
+          }
+        }
+      }
+
+      if (uploadId && quoteId) {
+        return registerExisting(uploadId, quoteId);
+      }
+    }
+
+    const buildUploadPayload = () => {
+      const payload: Record<string, unknown> = {
         file_name: primary.fileName,
         file_path: primaryTarget.storagePath,
         mime_type: primary.mimeType,
@@ -518,15 +639,62 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
         rfq_reason: sanitizeNullable(params.payload.rfqReason),
         itar_acknowledged: params.payload.itarAcknowledged,
         terms_accepted: params.payload.termsAccepted,
-      })
-      .select("id")
-      .single<{ id: string }>();
+      };
+      if (idempotencyKey) {
+        payload.intake_idempotency_key = idempotencyKey;
+      }
+      return payload;
+    };
 
-    if (uploadError || !uploadRow?.id) {
-      console.error("[quote intake finalize] upload insert failed", {
-        ...logContext,
-        error: serializeSupabaseError(uploadError),
-      });
+    if (!uploadId) {
+      let uploadPayload = buildUploadPayload();
+      let uploadResult = await supabaseServer
+        .from("uploads")
+        .insert(uploadPayload)
+        .select("id")
+        .single<{ id: string }>();
+
+      if (uploadResult.error && idempotencyKey && isMissingTableOrColumnError(uploadResult.error)) {
+        idempotencyKey = null;
+        uploadPayload = buildUploadPayload();
+        uploadResult = await supabaseServer
+          .from("uploads")
+          .insert(uploadPayload)
+          .select("id")
+          .single<{ id: string }>();
+      }
+
+      if (uploadResult.error || !uploadResult.data?.id) {
+        if (uploadResult.error && idempotencyKey && isUniqueViolation(uploadResult.error)) {
+          const retryExisting = await loadExistingUpload();
+          if (retryExisting?.id) {
+            uploadId = normalizeReferenceId(retryExisting.id);
+            quoteId = normalizeReferenceId(retryExisting.quote_id);
+            if (uploadId && !quoteId) {
+              quoteId = await loadQuoteIdForUpload(uploadId);
+            }
+            if (uploadId && quoteId) {
+              return registerExisting(uploadId, quoteId);
+            }
+          }
+        }
+
+        console.error("[quote intake finalize] upload insert failed", {
+          ...logContext,
+          error: serializeSupabaseError(uploadResult.error),
+        });
+        return {
+          ok: false,
+          error: "We couldn’t save your upload metadata. Please retry.",
+          reason: "db-insert-upload",
+          uploadId: uploadId ?? undefined,
+        };
+      }
+
+      uploadId = uploadResult.data.id;
+    }
+
+    if (!uploadId) {
       return {
         ok: false,
         error: "We couldn’t save your upload metadata. Please retry.",
@@ -534,12 +702,12 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
       };
     }
 
-    const uploadId = uploadRow.id;
+    const ensuredUploadId = uploadId;
 
     const quoteInsert = await supabaseServer
       .from("quotes")
       .insert({
-        upload_id: uploadId,
+        upload_id: ensuredUploadId,
         customer_name: contactName,
         customer_email: contactEmail,
         company: sanitizeNullable(params.payload.company),
@@ -556,17 +724,21 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     if (quoteInsert.error || !quoteInsert.data?.id) {
       console.error("[quote intake finalize] quote insert failed", {
         ...logContext,
-        uploadId,
+        uploadId: ensuredUploadId,
         error: serializeSupabaseError(quoteInsert.error),
       });
       return {
         ok: false,
-        error: "We couldn’t create your quote record. Please retry.",
+        error: appendSupportReference(
+          "We couldn’t create your quote record. Please retry.",
+          { uploadId },
+        ),
         reason: "db-insert-quote",
+        uploadId: ensuredUploadId,
       };
     }
 
-    const quoteId = quoteInsert.data.id;
+    quoteId = quoteInsert.data.id;
 
     // Phase 19.3.13: best-effort default email replies for new quotes.
     // Safe-by-default: helper does not probe when the bridge env flag is off.
@@ -584,27 +756,29 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     const { error: uploadUpdateError } = await supabaseServer
       .from("uploads")
       .update({ quote_id: quoteId, status: DEFAULT_QUOTE_STATUS })
-      .eq("id", uploadId);
+      .eq("id", ensuredUploadId);
     if (uploadUpdateError) {
       console.error("[quote intake finalize] upload linkage failed", {
         ...logContext,
         quoteId,
-        uploadId,
+        uploadId: ensuredUploadId,
         error: serializeSupabaseError(uploadUpdateError),
       });
     }
 
     const registerResult = await registerUploadedObjectsForExistingUpload({
       quoteId,
-      uploadId,
+      uploadId: ensuredUploadId,
       targets,
       supabase: supabaseServer,
     });
     if (!registerResult.ok) {
       return {
         ok: false,
-        error: buildRegisterFilesErrorMessage(quoteId),
+        error: buildRegisterFilesErrorMessage(quoteId, ensuredUploadId),
         reason: "register-files",
+        quoteId,
+        uploadId: ensuredUploadId,
       };
     }
 
@@ -614,7 +788,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
       actorRole: "customer",
       actorUserId: user.id,
       metadata: {
-        upload_id: uploadId,
+        upload_id: ensuredUploadId,
         contact_email: contactEmail,
         contact_name: contactName,
         company: sanitizeNullable(params.payload.company),
@@ -630,7 +804,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
       fileName: primary.fileName,
     });
 
-    return { ok: true, uploadId, quoteId };
+    return { ok: true, uploadId: ensuredUploadId, quoteId };
   } catch (error) {
     console.error("[quote intake finalize] failed", {
       ...logContext,
@@ -1007,12 +1181,54 @@ export async function persistQuoteIntake(
   }
 }
 
-function buildRegisterFilesErrorMessage(quoteId: string): string {
-  const normalized = typeof quoteId === "string" ? quoteId.trim() : "";
-  if (!normalized) {
+function buildRegisterFilesErrorMessage(quoteId: string, uploadId?: string | null): string {
+  const reference = buildSupportReference({
+    quoteId,
+    uploadId,
+  });
+  if (!reference) {
     return "We couldn’t register your files. Please retry.";
   }
-  return `We couldn’t register your files. Please retry or contact support with Quote ID ${normalized}.`;
+  return `We couldn’t register your files. Please retry or contact support with ${reference}.`;
+}
+
+function appendSupportReference(
+  message: string,
+  ids: { quoteId?: string | null; uploadId?: string | null },
+): string {
+  const normalizedQuoteId = normalizeReferenceId(ids.quoteId);
+  const normalizedUploadId = normalizeReferenceId(ids.uploadId);
+  if (!normalizedQuoteId && !normalizedUploadId) {
+    return message;
+  }
+  const hasQuote = /quote id/i.test(message);
+  const hasUpload = /upload id/i.test(message);
+  const parts: string[] = [];
+  if (normalizedQuoteId && !hasQuote) {
+    parts.push(`Quote ID ${normalizedQuoteId}`);
+  }
+  if (normalizedUploadId && !hasUpload) {
+    parts.push(`Upload ID ${normalizedUploadId}`);
+  }
+  if (parts.length === 0) {
+    return message;
+  }
+  const trimmed = message.trim();
+  const punctuated = trimmed.endsWith(".") ? trimmed : `${trimmed}.`;
+  return `${punctuated} ${parts.join(" · ")}.`;
+}
+
+function buildSupportReference(ids: { quoteId?: string | null; uploadId?: string | null }): string {
+  const normalizedQuoteId = normalizeReferenceId(ids.quoteId);
+  const normalizedUploadId = normalizeReferenceId(ids.uploadId);
+  const parts: string[] = [];
+  if (normalizedQuoteId) {
+    parts.push(`Quote ID ${normalizedQuoteId}`);
+  }
+  if (normalizedUploadId) {
+    parts.push(`Upload ID ${normalizedUploadId}`);
+  }
+  return parts.join(" · ");
 }
 
 function buildContactName(first: string, last: string) {
@@ -1149,6 +1365,24 @@ export function normalizeEmailInput(value?: string | null): string | null {
   }
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeReferenceId(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "";
+}
+
+function normalizeIdempotencyKey(value: unknown): string | null {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!raw) return null;
+  if (!/^[a-f0-9]{16,128}$/.test(raw)) return null;
+  return raw;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  const serialized = serializeSupabaseError(error);
+  return serialized.code === "23505";
 }
 
 async function autoSendCustomerInviteAfterQuoteCreate(args: {

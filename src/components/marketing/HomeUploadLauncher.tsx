@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
@@ -38,7 +46,9 @@ type SubmissionStep = "idle" | "creating" | "uploading" | "starting";
 type SubmitError = {
   message: string;
   quoteId?: string;
+  uploadId?: string;
   retryable: boolean;
+  continueHref?: string;
 };
 
 type HomeUploadLauncherProps = {
@@ -54,6 +64,7 @@ type HomeUploadLauncherProps = {
 const MAX_FILES_PER_RFQ = 20;
 const EXPORT_RESTRICTION_DEFAULT = "Not applicable / None";
 const MAX_UPLOAD_SIZE_LABEL = formatMaxUploadSize();
+const SESSION_STORAGE_KEY = "home_upload_session_id";
 
 const FILE_TYPE_ERROR_MESSAGE = `Unsupported file type. Please upload ${CAD_FILE_TYPE_DESCRIPTION}.`;
 
@@ -63,27 +74,49 @@ const SUBMISSION_STATUS_LABELS: Record<Exclude<SubmissionStep, "idle">, string> 
   starting: "Starting search...",
 };
 
-const parseSubmitError = (message: string): { message: string; quoteId?: string } => {
+const parseSubmitError = (
+  message: string,
+): {
+  message: string;
+  quoteId?: string;
+  uploadId?: string;
+} => {
   const normalized = message.trim().replace(/\s+/g, " ");
   if (!normalized) {
     return { message: QUOTE_INTAKE_FALLBACK_ERROR };
   }
 
-  const match = normalized.match(/Quote ID ([A-Za-z0-9-]+)/i);
-  if (!match) {
+  const quoteMatch = normalized.match(/Quote ID ([A-Za-z0-9-]+)/i);
+  const uploadMatch = normalized.match(/Upload ID ([A-Za-z0-9-]+)/i);
+  if (!quoteMatch && !uploadMatch) {
     return { message: normalized };
   }
 
-  const quoteId = match[1];
-  let cleaned = normalized.replace(/(?:with\s+)?Quote ID [A-Za-z0-9-]+\.?/i, "").trim();
+  const quoteId = quoteMatch?.[1];
+  const uploadId = uploadMatch?.[1];
+  let cleaned = normalized
+    .replace(/(?:with\s+)?Quote ID [A-Za-z0-9-]+\.?/i, "")
+    .replace(/(?:with\s+)?Upload ID [A-Za-z0-9-]+\.?/i, "")
+    .trim();
+  cleaned = cleaned.replace(/\s*[·•]\s*/g, " ").replace(/\s+with\s*$/i, "");
   cleaned = cleaned.replace(/\s+\./g, ".").trim();
-  return { message: cleaned || normalized, quoteId };
+  return { message: cleaned || normalized, quoteId, uploadId };
 };
 
-const buildSubmitError = (message: string, retryable: boolean): SubmitError => ({
-  ...parseSubmitError(message),
-  retryable,
-});
+const buildSubmitError = (
+  message: string,
+  retryable: boolean,
+  detail?: { quoteId?: string; uploadId?: string; continueHref?: string },
+): SubmitError => {
+  const parsed = parseSubmitError(message);
+  return {
+    message: parsed.message,
+    quoteId: detail?.quoteId ?? parsed.quoteId,
+    uploadId: detail?.uploadId ?? parsed.uploadId,
+    retryable,
+    continueHref: detail?.continueHref,
+  };
+};
 
 const formatStorageUploadError = (input: unknown): string => {
   const message =
@@ -120,6 +153,34 @@ const createSelectedCadFile = (file: File): SelectedCadFile => ({
   key: buildFileKey(file),
   file,
 });
+
+const hashString = async (value: string): Promise<string> => {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.subtle !== "undefined" &&
+    typeof TextEncoder !== "undefined"
+  ) {
+    const data = new TextEncoder().encode(value);
+    const digest = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(digest))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  let hashA = 0;
+  let hashB = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    hashA = (hashA * 31 + code) >>> 0;
+    hashB = (hashB * 33 + code) >>> 0;
+  }
+  return `${hashA.toString(16).padStart(8, "0")}${hashB.toString(16).padStart(8, "0")}`;
+};
+
+const buildFileListHash = async (files: SelectedCadFile[]): Promise<string> => {
+  const keys = files.map((entry) => entry.key).sort();
+  return hashString(keys.join("|"));
+};
 
 const buildPrefillContact = (user: User | null): PrefillContact | null => {
   if (!user) return null;
@@ -178,13 +239,32 @@ export default function HomeUploadLauncher({
   const [needByDate, setNeedByDate] = useState(initialNeedByDate);
   const [submitError, setSubmitError] = useState<SubmitError | null>(null);
   const [submissionStep, setSubmissionStep] = useState<SubmissionStep>("idle");
+  const [lastFailedStep, setLastFailedStep] = useState<SubmissionStep | null>(null);
+  const [redirectingQuoteId, setRedirectingQuoteId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const preparedTargetsRef = useRef<QuoteIntakeEphemeralUploadTarget[] | null>(null);
+  const uploadedFileIdsRef = useRef<Set<string>>(new Set());
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const idempotencyFingerprintRef = useRef<string | null>(null);
+  const redirectTimerRef = useRef<number | null>(null);
+  const redirectingQuoteIdRef = useRef<string | null>(null);
+  const activeStepRef = useRef<SubmissionStep>("idle");
+  const lastFileSignatureRef = useRef<string>("");
 
   const hasFiles = selectedFiles.length > 0;
-  const canSubmit = isAuthenticated && hasFiles && !isSubmitting;
+  const isRedirecting = Boolean(redirectingQuoteId);
+  const canSubmit = isAuthenticated && hasFiles && !isSubmitting && !isRedirecting;
+
+  const clearRedirectTimer = useCallback(() => {
+    if (redirectTimerRef.current !== null) {
+      clearTimeout(redirectTimerRef.current);
+      redirectTimerRef.current = null;
+    }
+  }, []);
 
   const resetState = useCallback(() => {
+    clearRedirectTimer();
     setSelectedFiles([]);
     setQuantity("");
     setNeedByDate("");
@@ -192,8 +272,22 @@ export default function HomeUploadLauncher({
     setIsDragging(false);
     setIsSubmitting(false);
     setSubmissionStep("idle");
+    setLastFailedStep(null);
+    setRedirectingQuoteId(null);
     sessionIdRef.current = null;
-  }, []);
+    preparedTargetsRef.current = null;
+    uploadedFileIdsRef.current = new Set();
+    idempotencyKeyRef.current = null;
+    idempotencyFingerprintRef.current = null;
+    redirectingQuoteIdRef.current = null;
+    activeStepRef.current = "idle";
+  }, [clearRedirectTimer]);
+
+  useEffect(() => {
+    return () => {
+      clearRedirectTimer();
+    };
+  }, [clearRedirectTimer]);
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
@@ -203,11 +297,24 @@ export default function HomeUploadLauncher({
   const ensureSessionId = useCallback((): string => {
     const existing = sessionIdRef.current;
     if (existing) return existing;
+    const stored =
+      typeof window !== "undefined" ? window.sessionStorage.getItem(SESSION_STORAGE_KEY) : null;
+    if (stored && /^[a-zA-Z0-9_-]{8,128}$/.test(stored)) {
+      sessionIdRef.current = stored;
+      return stored;
+    }
     const next =
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID().replace(/-/g, "")
         : `${Date.now().toString(36)}${Math.random().toString(16).slice(2)}`;
     sessionIdRef.current = next;
+    if (typeof window !== "undefined") {
+      try {
+        window.sessionStorage.setItem(SESSION_STORAGE_KEY, next);
+      } catch {
+        // Ignore storage failures (e.g. blocked cookies).
+      }
+    }
     return next;
   }, []);
 
@@ -272,6 +379,37 @@ export default function HomeUploadLauncher({
     setSelectedFiles((prev) => prev.filter((entry) => entry.id !== id));
   }, []);
 
+  const fileSignature = useMemo(() => {
+    if (selectedFiles.length === 0) return "";
+    return selectedFiles
+      .map((entry) => entry.key)
+      .sort()
+      .join("|");
+  }, [selectedFiles]);
+
+  useEffect(() => {
+    if (!fileSignature) {
+      preparedTargetsRef.current = null;
+      uploadedFileIdsRef.current = new Set();
+      idempotencyKeyRef.current = null;
+      idempotencyFingerprintRef.current = null;
+      lastFileSignatureRef.current = "";
+      setSubmitError(null);
+      setLastFailedStep(null);
+      return;
+    }
+
+    if (lastFileSignatureRef.current && lastFileSignatureRef.current !== fileSignature) {
+      preparedTargetsRef.current = null;
+      uploadedFileIdsRef.current = new Set();
+      idempotencyKeyRef.current = null;
+      idempotencyFingerprintRef.current = null;
+      setSubmitError(null);
+      setLastFailedStep(null);
+    }
+    lastFileSignatureRef.current = fileSignature;
+  }, [fileSignature]);
+
   const orderedTargets = useMemo(() => {
     return selectedFiles.map((entry) => ({
       clientFileId: entry.id,
@@ -295,6 +433,9 @@ export default function HomeUploadLauncher({
       const sb = supabaseBrowser();
 
       for (const entry of selectedFiles) {
+        if (uploadedFileIdsRef.current.has(entry.id)) {
+          continue;
+        }
         const target = targetMap.get(entry.id);
         if (!target) {
           throw new Error("Missing upload target for one or more files.");
@@ -307,115 +448,251 @@ export default function HomeUploadLauncher({
           });
 
         if (uploadError) {
+          const rawMessage =
+            typeof (uploadError as { message?: unknown })?.message === "string"
+              ? String((uploadError as { message?: unknown }).message).toLowerCase()
+              : "";
+          if (rawMessage.includes("already exists") || rawMessage.includes("duplicate")) {
+            uploadedFileIdsRef.current.add(entry.id);
+            continue;
+          }
           throw new Error(formatStorageUploadError(uploadError));
         }
+        uploadedFileIdsRef.current.add(entry.id);
       }
     },
     [selectedFiles],
   );
 
-  const handleSubmit = useCallback(async () => {
-    if (!isAuthenticated) {
-      setSubmitError(buildSubmitError("Please sign in to upload parts and start a search.", false));
-      return;
-    }
-    if (!hasFiles) {
-      setSubmitError(buildSubmitError("Attach at least one CAD file before submitting.", false));
-      return;
-    }
-    if (!quantity.trim()) {
-      setSubmitError(buildSubmitError("Share the quantity or volumes you need.", false));
-      return;
-    }
-    if (!manufacturingProcess) {
-      setSubmitError(buildSubmitError("Select a manufacturing process before submitting.", false));
-      return;
+  const setActiveStep = useCallback((step: SubmissionStep) => {
+    activeStepRef.current = step;
+    setSubmissionStep(step);
+  }, []);
+
+  const areUploadsComplete = useCallback(() => {
+    return selectedFiles.every((entry) => uploadedFileIdsRef.current.has(entry.id));
+  }, [selectedFiles]);
+
+  const getIdempotencyKey = useCallback(async () => {
+    const sessionId = ensureSessionId();
+    const fileHash = await buildFileListHash(selectedFiles);
+    const fingerprint = [
+      sessionId,
+      fileHash,
+      manufacturingProcess.trim(),
+      quantity.trim(),
+      needByDate.trim(),
+    ].join("|");
+
+    if (idempotencyFingerprintRef.current === fingerprint && idempotencyKeyRef.current) {
+      return idempotencyKeyRef.current;
     }
 
-    setIsSubmitting(true);
-    setSubmitError(null);
-    setSubmissionStep("creating");
+    const key = await hashString(fingerprint);
+    idempotencyFingerprintRef.current = fingerprint;
+    idempotencyKeyRef.current = key;
+    return key;
+  }, [ensureSessionId, manufacturingProcess, needByDate, quantity, selectedFiles]);
 
-    try {
-      const sb = supabaseBrowser();
-      const { data } = await sb.auth.getUser();
-      const prefill = buildPrefillContact(data.user ?? null);
-      if (!prefill) {
+  const attemptRedirect = useCallback(
+    (quoteId: string, uploadId?: string | null) => {
+      const trimmedQuoteId = quoteId.trim();
+      if (!trimmedQuoteId) {
+        setSubmitError(buildSubmitError(QUOTE_INTAKE_FALLBACK_ERROR, true));
+        return;
+      }
+
+      const continueHref = `/customer/search?quote=${encodeURIComponent(trimmedQuoteId)}`;
+      redirectingQuoteIdRef.current = trimmedQuoteId;
+      setRedirectingQuoteId(trimmedQuoteId);
+
+      const currentLocation =
+        typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : "";
+
+      try {
+        router.push(continueHref);
+      } catch (error) {
+        redirectingQuoteIdRef.current = null;
+        setRedirectingQuoteId(null);
+        activeStepRef.current = "idle";
+        setSubmitError(
+          buildSubmitError("We created your quote, but couldn’t redirect automatically.", false, {
+            quoteId: trimmedQuoteId,
+            uploadId: uploadId ?? undefined,
+            continueHref,
+          }),
+        );
+        setSubmissionStep("idle");
+        return;
+      }
+
+      if (typeof window !== "undefined") {
+        clearRedirectTimer();
+        redirectTimerRef.current = window.setTimeout(() => {
+          const now = `${window.location.pathname}${window.location.search}`;
+          if (now === currentLocation) {
+            redirectingQuoteIdRef.current = null;
+            setRedirectingQuoteId(null);
+            activeStepRef.current = "idle";
+            setSubmissionStep("idle");
+            setSubmitError(
+              buildSubmitError("We created your quote, but couldn’t redirect automatically.", false, {
+                quoteId: trimmedQuoteId,
+                uploadId: uploadId ?? undefined,
+                continueHref,
+              }),
+            );
+          }
+        }, 1500);
+      }
+    },
+    [clearRedirectTimer, router],
+  );
+
+  const runSubmission = useCallback(
+    async (startAt: SubmissionStep) => {
+      if (isSubmitting || isRedirecting) return;
+      const normalizedStart = startAt === "idle" ? "creating" : startAt;
+      if (!isAuthenticated) {
         setSubmitError(buildSubmitError("Please sign in to upload parts and start a search.", false));
         return;
       }
-
-      const prepared = await prepareTargets();
-      if (!prepared.ok) {
-        setSubmitError(
-          buildSubmitError(prepared.error || QUOTE_INTAKE_FALLBACK_ERROR, true),
-        );
+      if (!hasFiles) {
+        setSubmitError(buildSubmitError("Attach at least one CAD file before submitting.", false));
+        return;
+      }
+      if (!quantity.trim()) {
+        setSubmitError(buildSubmitError("Share the quantity or volumes you need.", false));
+        return;
+      }
+      if (!manufacturingProcess) {
+        setSubmitError(buildSubmitError("Select a manufacturing process before submitting.", false));
         return;
       }
 
-      setSubmissionStep("uploading");
-      await uploadFiles(prepared.targets);
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setLastFailedStep(null);
+      activeStepRef.current = "idle";
 
-      const finalizeTargets = prepared.targets.map((target) => ({
-        storagePath: target.storagePath,
-        bucketId: target.bucketId,
-        fileName: target.fileName,
-        mimeType: target.mimeType,
-        sizeBytes: target.sizeBytes,
-      }));
+      try {
+        const sb = supabaseBrowser();
+        const { data } = await sb.auth.getUser();
+        const prefill = buildPrefillContact(data.user ?? null);
+        if (!prefill) {
+          setSubmitError(buildSubmitError("Please sign in to upload parts and start a search.", false));
+          return;
+        }
 
-      const finalizeForm = new FormData();
-      finalizeForm.set("targets", JSON.stringify(finalizeTargets));
-      finalizeForm.set("firstName", prefill.firstName);
-      finalizeForm.set("lastName", prefill.lastName);
-      finalizeForm.set("email", prefill.email);
-      finalizeForm.set("company", "");
-      finalizeForm.set("phone", "");
-      finalizeForm.set("manufacturingProcess", manufacturingProcess);
-      finalizeForm.set("quantity", quantity.trim());
-      finalizeForm.set("shippingPostalCode", "");
-      finalizeForm.set("exportRestriction", EXPORT_RESTRICTION_DEFAULT);
-      finalizeForm.set("rfqReason", "");
-      finalizeForm.set("notes", "");
-      finalizeForm.set("targetDate", needByDate);
-      finalizeForm.set("itarAcknowledged", "true");
-      finalizeForm.set("termsAccepted", "true");
+        let targets = preparedTargetsRef.current;
+        if (!targets) {
+          setActiveStep("creating");
+          const prepared = await prepareTargets();
+          if (!prepared.ok) {
+            setLastFailedStep("creating");
+            setSubmitError(buildSubmitError(prepared.error || QUOTE_INTAKE_FALLBACK_ERROR, true));
+            return;
+          }
+          targets = prepared.targets;
+          preparedTargetsRef.current = targets;
+        }
 
-      setSubmissionStep("starting");
-      const finalized = await finalizeQuoteIntakeEphemeralUploadAction(finalizeForm);
-      if (!finalized.ok) {
-        setSubmitError(
-          buildSubmitError(finalized.error || QUOTE_INTAKE_FALLBACK_ERROR, true),
-        );
-        return;
+        const uploadsComplete = areUploadsComplete();
+        if (!uploadsComplete) {
+          setActiveStep("uploading");
+          await uploadFiles(targets);
+        }
+
+        setActiveStep("starting");
+        const finalizeTargets = targets.map((target) => ({
+          storagePath: target.storagePath,
+          bucketId: target.bucketId,
+          fileName: target.fileName,
+          mimeType: target.mimeType,
+          sizeBytes: target.sizeBytes,
+        }));
+
+        const idempotencyKey = await getIdempotencyKey();
+        const finalizeForm = new FormData();
+        finalizeForm.set("targets", JSON.stringify(finalizeTargets));
+        finalizeForm.set("firstName", prefill.firstName);
+        finalizeForm.set("lastName", prefill.lastName);
+        finalizeForm.set("email", prefill.email);
+        finalizeForm.set("company", "");
+        finalizeForm.set("phone", "");
+        finalizeForm.set("manufacturingProcess", manufacturingProcess);
+        finalizeForm.set("quantity", quantity.trim());
+        finalizeForm.set("shippingPostalCode", "");
+        finalizeForm.set("exportRestriction", EXPORT_RESTRICTION_DEFAULT);
+        finalizeForm.set("rfqReason", "");
+        finalizeForm.set("notes", "");
+        finalizeForm.set("targetDate", needByDate);
+        finalizeForm.set("itarAcknowledged", "true");
+        finalizeForm.set("termsAccepted", "true");
+        finalizeForm.set("idempotencyKey", idempotencyKey);
+
+        const finalized = await finalizeQuoteIntakeEphemeralUploadAction(finalizeForm);
+        if (!finalized.ok) {
+          setLastFailedStep("starting");
+          setSubmitError(
+            buildSubmitError(finalized.error || QUOTE_INTAKE_FALLBACK_ERROR, true, {
+              quoteId: finalized.quoteId,
+              uploadId: finalized.uploadId,
+            }),
+          );
+          return;
+        }
+
+        const quoteId = finalized.quoteId?.trim();
+        if (quoteId) {
+          attemptRedirect(quoteId, finalized.uploadId);
+        } else {
+          setLastFailedStep("starting");
+          setSubmitError(
+            buildSubmitError(QUOTE_INTAKE_FALLBACK_ERROR, true, {
+              uploadId: finalized.uploadId,
+            }),
+          );
+        }
+      } catch (submitError) {
+        const message = submitError instanceof Error ? submitError.message.trim() : "";
+        const failedStep =
+          activeStepRef.current !== "idle" ? activeStepRef.current : normalizedStart;
+        setLastFailedStep(failedStep === "idle" ? "creating" : failedStep);
+        setSubmitError(buildSubmitError(message || QUOTE_INTAKE_FALLBACK_ERROR, true));
+      } finally {
+        setIsSubmitting(false);
+        if (!redirectingQuoteIdRef.current) {
+          setSubmissionStep("idle");
+          activeStepRef.current = "idle";
+        }
       }
+    },
+    [
+      areUploadsComplete,
+      attemptRedirect,
+      getIdempotencyKey,
+      hasFiles,
+      isAuthenticated,
+      isRedirecting,
+      isSubmitting,
+      manufacturingProcess,
+      needByDate,
+      prepareTargets,
+      quantity,
+      setActiveStep,
+      uploadFiles,
+    ],
+  );
 
-      const quoteId = finalized.quoteId?.trim();
-      if (quoteId) {
-        handleClose();
-        router.push(`/customer/search?quote=${encodeURIComponent(quoteId)}`);
-      } else {
-        setSubmitError(buildSubmitError(QUOTE_INTAKE_FALLBACK_ERROR, true));
-      }
-    } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message.trim() : "";
-      setSubmitError(buildSubmitError(message || QUOTE_INTAKE_FALLBACK_ERROR, true));
-    } finally {
-      setIsSubmitting(false);
-      setSubmissionStep("idle");
-    }
-  }, [
-    isAuthenticated,
-    hasFiles,
-    quantity,
-    manufacturingProcess,
-    prepareTargets,
-    uploadFiles,
-    needByDate,
-    router,
-    handleClose,
-  ]);
+  const handleSubmit = useCallback(() => {
+    void runSubmission("creating");
+  }, [runSubmission]);
+
+  const handleRetry = useCallback(() => {
+    const retryStep = lastFailedStep && lastFailedStep !== "idle" ? lastFailedStep : "creating";
+    void runSubmission(retryStep);
+  }, [lastFailedStep, runSubmission]);
 
   const progressLabel =
     submissionStep !== "idle" ? SUBMISSION_STATUS_LABELS[submissionStep] : null;
@@ -490,14 +767,29 @@ export default function HomeUploadLauncher({
                   {submitError.quoteId ? (
                     <p className="mt-1 text-xs text-red-200">Quote ID: {submitError.quoteId}</p>
                   ) : null}
-                  {submitError.retryable ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleSubmit()}
-                      className={`${secondaryCtaClasses} mt-3 rounded-full px-4 py-2 text-xs`}
-                    >
-                      Try again
-                    </button>
+                  {submitError.uploadId ? (
+                    <p className="mt-1 text-xs text-red-200">Upload ID: {submitError.uploadId}</p>
+                  ) : null}
+                  {submitError.retryable || submitError.continueHref ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {submitError.retryable ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleRetry()}
+                          className={`${secondaryCtaClasses} rounded-full px-4 py-2 text-xs`}
+                        >
+                          Try again
+                        </button>
+                      ) : null}
+                      {submitError.continueHref ? (
+                        <Link
+                          href={submitError.continueHref}
+                          className={`${secondaryCtaClasses} rounded-full px-4 py-2 text-xs`}
+                        >
+                          Continue
+                        </Link>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               ) : null}
