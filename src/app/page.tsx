@@ -64,7 +64,7 @@ const PROCESS_TABS = [
 ];
 
 type HomePageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 function resolveSearchParam(value: string | string[] | undefined): string | null {
@@ -92,12 +92,13 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   const activeProviders = await getActiveProviders();
   const { user } = await getServerAuthUser({ quiet: true });
   const isAuthenticated = Boolean(user);
-  const processParam = resolveSearchParam(searchParams?.process);
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const processParam = resolveSearchParam(resolvedSearchParams?.process);
   const initialProcessKey =
     PROCESS_TABS.find((process) => process.key === processParam)?.key ?? null;
-  const initialQuantity = resolveSearchParam(searchParams?.qty);
-  const initialNeedByDate = resolveSearchParam(searchParams?.needBy);
-  const uploadFlag = resolveSearchParam(searchParams?.upload);
+  const initialQuantity = resolveSearchParam(resolvedSearchParams?.qty);
+  const initialNeedByDate = resolveSearchParam(resolvedSearchParams?.needBy);
+  const uploadFlag = resolveSearchParam(resolvedSearchParams?.upload);
   const autoOpenUpload = uploadFlag === "1" || uploadFlag === "true";
 
   return (
