@@ -152,7 +152,7 @@ export function AdminRfqDestinationsCard({
   );
 
   const sortByEligibility = useCallback(
-    (list: ProviderRow[]) => {
+    (list: ProviderContactRow[]) => {
       return [...list].sort((a, b) => {
         const rankA = eligibilityRankById.get(a.id);
         const rankB = eligibilityRankById.get(b.id);
