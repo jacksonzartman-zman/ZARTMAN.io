@@ -227,19 +227,43 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
 
   const offerCount = filteredOffers.length;
   const totalOfferCount = searchStateCounts.offers_total;
+  const contactedSuppliersCount = countContactedSuppliers(rfqDestinations);
   let pendingNextStepsCopy: string | null = null;
   let pendingOffersDescription =
     "Providers are reviewing your RFQ. We will surface offers here as soon as they respond.";
+  let showSlaNudge = false;
+  let slaNudgeDetail: string | null = null;
   if (activeQuote && workspaceData && totalOfferCount === 0) {
     const slaSettings = await getOpsSlaSettings();
     const responseTimeLabel = slaSettings.usingFallback
       ? null
       : formatSlaResponseTime(slaSettings.config.sentNoReplyMaxHours);
     pendingNextStepsCopy = buildPendingProvidersNextStepsCopy({
-      contactedCount: countContactedSuppliers(rfqDestinations),
+      contactedCount: contactedSuppliersCount,
       responseTimeLabel,
     });
     pendingOffersDescription = `${pendingNextStepsCopy} We will surface offers here as soon as they respond.`;
+    const lastOutreachTimestamp = toTimestamp(searchStateSummary.timestamps.last_destination_activity_at);
+    const elapsedSinceOutreachLabel = normalizeElapsedLabel(searchProgress.lastUpdatedLabel);
+    const thresholdHours = slaSettings.config.sentNoReplyMaxHours;
+    const thresholdMs = Number.isFinite(thresholdHours) ? thresholdHours * 60 * 60 * 1000 : null;
+    const elapsedMs =
+      typeof lastOutreachTimestamp === "number" ? Date.now() - lastOutreachTimestamp : null;
+    const exceedsSla =
+      typeof elapsedMs === "number" &&
+      elapsedMs > 0 &&
+      typeof thresholdMs === "number" &&
+      thresholdMs > 0 &&
+      elapsedMs > thresholdMs;
+    showSlaNudge =
+      searchStateCounts.destinations_total > 0 &&
+      contactedSuppliersCount > 0 &&
+      exceedsSla &&
+      Boolean(elapsedSinceOutreachLabel);
+    if (showSlaNudge && elapsedSinceOutreachLabel) {
+      const supplierLabel = contactedSuppliersCount === 1 ? "supplier" : "suppliers";
+      slaNudgeDetail = `We've reached out to ${contactedSuppliersCount} ${supplierLabel}; it's been ${elapsedSinceOutreachLabel} since outreach.`;
+    }
   }
 
   const activeQuoteSummary = buildQuoteSummary(workspaceData);
@@ -599,6 +623,35 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                 </div>
               </PortalCard>
 
+              {showSlaNudge && slaNudgeDetail ? (
+                <section className="rounded-2xl border border-amber-500/30 bg-amber-500/5 px-6 py-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">
+                        Response follow-up
+                      </p>
+                      <h2 className="text-lg font-semibold text-white">
+                        Still waiting on supplier responses
+                      </h2>
+                      <p className="text-sm text-amber-100/80">{slaNudgeDetail}</p>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <CustomerQuoteRefreshResultsButton quoteId={activeQuote.id} />
+                        <Link href="/customer/invite-supplier" className={secondaryCtaClasses}>
+                          Invite supplier
+                        </Link>
+                      </div>
+                      <CustomerSearchActions
+                        quoteId={activeQuote.id}
+                        sharePath={shareSearchHref}
+                        quoteLabel={activeQuote.rfqLabel ?? null}
+                      />
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
               <CoverageDisclosure destinations={rfqDestinations} />
 
               <PortalCard
@@ -786,6 +839,13 @@ function parseSearchFilters(usp: URLSearchParams): SearchFilters {
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeElapsedLabel(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/^Last updated\s+/i, "").replace(/\s+ago$/i, "").trim();
 }
 
 function normalizeFilterValue(value: unknown): string | null {
