@@ -54,6 +54,18 @@ const DESTINATION_STATUSES = new Set([
   "error",
 ]);
 
+export function formatSlaResponseTime(hours: number): string | null {
+  if (!Number.isFinite(hours) || hours <= 0) {
+    return null;
+  }
+  const roundedHours = Math.max(1, Math.round(hours));
+  if (roundedHours < 24) {
+    return `within ${roundedHours} hour${roundedHours === 1 ? "" : "s"}`;
+  }
+  const days = Math.max(1, Math.ceil(roundedHours / 24));
+  return `within ${days} day${days === 1 ? "" : "s"}`;
+}
+
 type DestinationStatus =
   | "draft"
   | "queued"
