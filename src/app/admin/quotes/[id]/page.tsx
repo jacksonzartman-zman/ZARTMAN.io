@@ -2493,6 +2493,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   providers={providers}
                   destinations={rfqDestinations}
                   offers={rfqOffers}
+                  providerEmailColumn={providersResult.emailColumn}
                   providerEligibility={providerEligibility}
                 />
               </div>

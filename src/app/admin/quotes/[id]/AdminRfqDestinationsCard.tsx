@@ -10,7 +10,7 @@ import {
   type ChangeEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import type { ProviderRow } from "@/server/providers";
+import type { ProviderContactRow, ProviderEmailColumn } from "@/server/providers";
 import type { EligibleProvidersForQuoteResult } from "@/server/providers/eligibility";
 import type { RfqDestination, RfqDestinationStatus } from "@/server/rfqs/destinations";
 import {
@@ -26,7 +26,6 @@ import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import type { RfqOffer } from "@/server/rfqs/offers";
 import {
-  DESTINATION_STATUS_META,
   EMPTY_OFFER_DRAFT,
   buildOfferDraft,
   formatEnumLabel,
@@ -34,21 +33,23 @@ import {
   type OfferDraft,
 } from "@/components/admin/rfq/destinationHelpers";
 import {
-  DestinationEmailModal,
   DestinationErrorModal,
   DestinationSubmittedModal,
-  DestinationWebFormModal,
   OfferModal,
 } from "@/components/admin/rfq/destinationModals";
+import { DispatchCard } from "@/components/admin/rfq/DispatchCard";
 import { CopyTextButton } from "@/components/CopyTextButton";
+import { buildMailtoUrl } from "@/lib/adapters/mailtoAdapter";
 import { buildPublicUrl } from "@/lib/publicUrl";
 import { resolveDispatchModeValue } from "@/lib/adapters/providerDispatchMode";
+import { recordDispatchStarted } from "@/lib/ops/dispatchStartedClient";
 
 type AdminRfqDestinationsCardProps = {
   quoteId: string;
-  providers: ProviderRow[];
+  providers: ProviderContactRow[];
   destinations: RfqDestination[];
   offers: RfqOffer[];
+  providerEmailColumn?: ProviderEmailColumn | null;
   providerEligibility?: EligibleProvidersForQuoteResult | null;
 };
 
@@ -65,7 +66,7 @@ const EMPTY_OFFER_STATE: UpsertRfqOfferState = {
   offerId: "",
 };
 
-const isVerifiedActiveProvider = (provider: ProviderRow) =>
+const isVerifiedActiveProvider = (provider: ProviderContactRow) =>
   provider.is_active && provider.verification_status === "verified";
 
 export function AdminRfqDestinationsCard({
@@ -73,6 +74,7 @@ export function AdminRfqDestinationsCard({
   providers,
   destinations,
   offers,
+  providerEmailColumn,
   providerEligibility,
 }: AdminRfqDestinationsCardProps) {
   const router = useRouter();
@@ -89,22 +91,22 @@ export function AdminRfqDestinationsCard({
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(EMPTY_OFFER_DRAFT);
   const [offerFieldErrors, setOfferFieldErrors] = useState<Record<string, string>>({});
   const [offerError, setOfferError] = useState<string | null>(null);
-  const [emailDestination, setEmailDestination] = useState<RfqDestination | null>(null);
-  const [emailPackage, setEmailPackage] = useState<{ subject: string; body: string } | null>(null);
+  const [dispatchStartedById, setDispatchStartedById] = useState<Record<string, string>>({});
+  const [emailPackagesById, setEmailPackagesById] = useState<
+    Record<string, { subject: string; body: string }>
+  >({});
   const [emailLoadingId, setEmailLoadingId] = useState<string | null>(null);
   const [emailErrorsById, setEmailErrorsById] = useState<Record<string, string>>({});
-  const [webFormDestination, setWebFormDestination] = useState<RfqDestination | null>(null);
-  const [webFormPackage, setWebFormPackage] = useState<{
-    url: string;
-    instructions: string;
-  } | null>(null);
+  const [webFormPackagesById, setWebFormPackagesById] = useState<
+    Record<string, { url: string; instructions: string }>
+  >({});
   const [webFormLoadingId, setWebFormLoadingId] = useState<string | null>(null);
   const [webFormErrorsById, setWebFormErrorsById] = useState<Record<string, string>>({});
   const [showAllProviders, setShowAllProviders] = useState(false);
   const [includeUnverifiedProviders, setIncludeUnverifiedProviders] = useState(false);
 
   const providerById = useMemo(() => {
-    const map = new Map<string, ProviderRow>();
+    const map = new Map<string, ProviderContactRow>();
     for (const provider of providers) {
       map.set(provider.id, provider);
     }
@@ -150,7 +152,7 @@ export function AdminRfqDestinationsCard({
   );
 
   const sortByEligibility = useCallback(
-    (list: ProviderRow[]) => {
+    (list: ProviderContactRow[]) => {
       return [...list].sort((a, b) => {
         const rankA = eligibilityRankById.get(a.id);
         const rankB = eligibilityRankById.get(b.id);
@@ -365,60 +367,171 @@ export function AdminRfqDestinationsCard({
     }
   };
 
-  const openEmailModal = (destination: RfqDestination, subject: string, body: string) => {
-    setEmailDestination(destination);
-    setEmailPackage({ subject, body });
+  const resolveProviderEmail = useCallback(
+    (provider: ProviderContactRow | null | undefined) => {
+      if (!provider) return "";
+      if (providerEmailColumn === "primary_email" && provider.primary_email) {
+        return provider.primary_email.trim();
+      }
+      if (providerEmailColumn === "email" && provider.email) {
+        return provider.email.trim();
+      }
+      if (providerEmailColumn === "contact_email" && provider.contact_email) {
+        return provider.contact_email.trim();
+      }
+      const fallback = provider.primary_email ?? provider.email ?? provider.contact_email ?? "";
+      return typeof fallback === "string" ? fallback.trim() : "";
+    },
+    [providerEmailColumn],
+  );
+
+  const buildEmailCopyText = (subject: string, body: string) => {
+    const trimmedSubject = subject.trim();
+    const trimmedBody = body.trim();
+    if (trimmedSubject && trimmedBody) {
+      return `Subject: ${trimmedSubject}\n\n${trimmedBody}`;
+    }
+    if (trimmedBody) return trimmedBody;
+    if (trimmedSubject) return `Subject: ${trimmedSubject}`;
+    return "";
   };
 
-  const closeEmailModal = () => {
-    setEmailDestination(null);
-    setEmailPackage(null);
+  const handleDispatchStarted = (destinationId: string) => {
+    const normalized = destinationId.trim();
+    if (!normalized) return;
+    setDispatchStartedById((prev) =>
+      prev[normalized] ? prev : { ...prev, [normalized]: new Date().toISOString() },
+    );
+    recordDispatchStarted(normalized);
   };
 
-  const handleGenerateEmail = (destination: RfqDestination) => {
+  const loadEmailPackage = async (destination: RfqDestination) => {
+    const cached = emailPackagesById[destination.id];
+    if (cached) return cached;
+    const result = await generateDestinationEmailAction({
+      quoteId,
+      destinationId: destination.id,
+    });
+    if (!result.ok) {
+      setEmailErrorsById((prev) => ({ ...prev, [destination.id]: result.error }));
+      return null;
+    }
+    const next = { subject: result.subject, body: result.body };
+    setEmailPackagesById((prev) => ({ ...prev, [destination.id]: next }));
+    return next;
+  };
+
+  const loadWebFormPackage = async (destination: RfqDestination) => {
+    const cached = webFormPackagesById[destination.id];
+    if (cached) return cached;
+    const result = await generateDestinationWebFormInstructionsAction({
+      destinationId: destination.id,
+    });
+    if (!result.ok) {
+      setWebFormErrorsById((prev) => ({ ...prev, [destination.id]: result.error }));
+      return null;
+    }
+    const next = { url: result.url, instructions: result.instructions };
+    setWebFormPackagesById((prev) => ({ ...prev, [destination.id]: next }));
+    return next;
+  };
+
+  const handleCopyEmail = (destination: RfqDestination) => {
     if (pending) return;
+    setFeedback(null);
     setEmailErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
-    setEmailDestination(null);
-    setEmailPackage(null);
     setEmailLoadingId(destination.id);
+    handleDispatchStarted(destination.id);
     startTransition(async () => {
-      const result = await generateDestinationEmailAction({
-        quoteId,
-        destinationId: destination.id,
-      });
-      if (result.ok) {
-        openEmailModal(destination, result.subject, result.body);
-      } else {
-        setEmailErrorsById((prev) => ({ ...prev, [destination.id]: result.error }));
+      const packageResult = await loadEmailPackage(destination);
+      if (!packageResult) {
+        setEmailLoadingId(null);
+        return;
+      }
+      const emailText = buildEmailCopyText(packageResult.subject, packageResult.body);
+      if (!emailText) {
+        setEmailErrorsById((prev) => ({
+          ...prev,
+          [destination.id]: "Email content was empty.",
+        }));
+        setEmailLoadingId(null);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(emailText);
+        setFeedback({ tone: "success", message: "Email copied." });
+      } catch (error) {
+        console.error("[dispatch copy] email copy failed", error);
+        setEmailErrorsById((prev) => ({
+          ...prev,
+          [destination.id]: "Unable to copy email.",
+        }));
       }
       setEmailLoadingId(null);
     });
   };
 
-  const openWebFormModal = (destination: RfqDestination, url: string, instructions: string) => {
-    setWebFormDestination(destination);
-    setWebFormPackage({ url, instructions });
-  };
-
-  const closeWebFormModal = () => {
-    setWebFormDestination(null);
-    setWebFormPackage(null);
-  };
-
-  const handleGenerateWebFormInstructions = (destination: RfqDestination) => {
-    if (pending) return;
-    setWebFormErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
-    setWebFormDestination(null);
-    setWebFormPackage(null);
-    setWebFormLoadingId(destination.id);
+  const handleCopyMailto = (destination: RfqDestination, providerEmail: string) => {
+    if (pending || !providerEmail) return;
+    setFeedback(null);
+    setEmailErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
+    setEmailLoadingId(destination.id);
+    handleDispatchStarted(destination.id);
     startTransition(async () => {
-      const result = await generateDestinationWebFormInstructionsAction({
-        destinationId: destination.id,
+      const packageResult = await loadEmailPackage(destination);
+      if (!packageResult) {
+        setEmailLoadingId(null);
+        return;
+      }
+      const mailto = buildMailtoUrl({
+        to: providerEmail,
+        subject: packageResult.subject,
+        body: packageResult.body,
       });
-      if (result.ok) {
-        openWebFormModal(destination, result.url, result.instructions);
-      } else {
-        setWebFormErrorsById((prev) => ({ ...prev, [destination.id]: result.error }));
+      try {
+        await navigator.clipboard.writeText(mailto);
+        setFeedback({ tone: "success", message: "Mailto link copied." });
+      } catch (error) {
+        console.error("[dispatch copy] mailto copy failed", error);
+        setEmailErrorsById((prev) => ({
+          ...prev,
+          [destination.id]: "Unable to copy mailto link.",
+        }));
+      }
+      setEmailLoadingId(null);
+    });
+  };
+
+  const handleCopyWebFormInstructions = (destination: RfqDestination) => {
+    if (pending) return;
+    setFeedback(null);
+    setWebFormErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
+    setWebFormLoadingId(destination.id);
+    handleDispatchStarted(destination.id);
+    startTransition(async () => {
+      const packageResult = await loadWebFormPackage(destination);
+      if (!packageResult) {
+        setWebFormLoadingId(null);
+        return;
+      }
+      const instructions = packageResult.instructions.trim();
+      if (!instructions) {
+        setWebFormErrorsById((prev) => ({
+          ...prev,
+          [destination.id]: "Instructions were empty.",
+        }));
+        setWebFormLoadingId(null);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(instructions);
+        setFeedback({ tone: "success", message: "Web-form instructions copied." });
+      } catch (error) {
+        console.error("[dispatch copy] instructions copy failed", error);
+        setWebFormErrorsById((prev) => ({
+          ...prev,
+          [destination.id]: "Unable to copy instructions.",
+        }));
       }
       setWebFormLoadingId(null);
     });
@@ -598,286 +711,279 @@ export function AdminRfqDestinationsCard({
             No destinations yet. Use the picker above to add providers.
           </div>
         ) : (
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-950/40">
-              <tr>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Provider
-                </th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Type
-                </th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Mode
-                </th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Status
-                </th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Sent At
-                </th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Submitted At
-                </th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Last Update
-                </th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Offer
-                </th>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-900/60">
-              {destinations.map((destination) => {
-                const providerRecord = providerById.get(destination.provider_id) ?? null;
-                const providerFallback = destination.provider ?? null;
-                const providerName =
-                  providerRecord?.name ?? providerFallback?.name ?? destination.provider_id;
-                const providerType = formatEnumLabel(
-                  providerRecord?.provider_type ?? providerFallback?.provider_type,
-                );
-                const providerMode = formatEnumLabel(
-                  providerRecord?.quoting_mode ?? providerFallback?.quoting_mode,
-                );
-                const dispatchMode = resolveDispatchModeValue(
-                  providerRecord?.dispatch_mode,
-                  providerRecord?.quoting_mode ?? providerFallback?.quoting_mode ?? null,
-                );
-                const isEmailMode = dispatchMode === "email";
-                const isWebFormMode = dispatchMode === "web_form";
-                const webFormUrl = providerRecord?.rfq_url ?? providerRecord?.website ?? "";
-                const isEmailGenerating = pending && emailLoadingId === destination.id;
-                const isWebFormGenerating = pending && webFormLoadingId === destination.id;
-                const emailError = emailErrorsById[destination.id];
-                const webFormError = webFormErrorsById[destination.id];
-                const statusMeta =
-                  DESTINATION_STATUS_META[destination.status] ?? DESTINATION_STATUS_META.draft;
-                const sentAtLabel = formatDateTime(destination.sent_at, {
-                  includeTime: true,
-                  fallback: "-",
-                });
-                const submittedAtLabel = formatDateTime(destination.submitted_at, {
-                  includeTime: true,
-                  fallback: "-",
-                });
-                const lastUpdateLabel = formatDateTime(destination.last_status_at, {
-                  includeTime: true,
-                  fallback: "-",
-                });
-                const offer = offersByProviderId.get(destination.provider_id) ?? null;
-                const offerSummary = offer ? formatOfferSummary(offer) : null;
-                const offerToken =
-                  typeof destination.offer_token === "string" ? destination.offer_token.trim() : "";
-                const offerLink = offerToken
-                  ? buildPublicUrl(`/provider/offer/${offerToken}`)
-                  : "";
-                const copyOfferButtonBaseClass =
-                  "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition";
-                const copyOfferButtonEnabledClass = `${copyOfferButtonBaseClass} hover:border-slate-500 hover:text-white`;
-                const copyOfferButtonDisabledClass = `${copyOfferButtonBaseClass} cursor-not-allowed opacity-60`;
-                return (
-                  <tr key={destination.id}>
-                    <td className="px-4 py-2 align-top font-medium text-slate-100">
-                      {providerName}
-                    </td>
-                    <td className="px-4 py-2 align-top text-slate-300">{providerType}</td>
-                    <td className="px-4 py-2 align-top text-slate-300">{providerMode}</td>
-                    <td className="px-4 py-2 align-top">
-                      <div className="flex flex-col gap-1">
-                        <span
-                          className={clsx(
-                            "inline-flex w-fit items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
-                            statusMeta.className,
-                          )}
-                        >
-                          {statusMeta.label}
-                        </span>
-                        {destination.status === "error" && destination.error_message ? (
-                          <p className="text-[11px] text-red-200">{destination.error_message}</p>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 align-top text-slate-300">{sentAtLabel}</td>
-                    <td className="px-4 py-2 align-top text-slate-300">{submittedAtLabel}</td>
-                    <td className="px-4 py-2 align-top text-slate-300">{lastUpdateLabel}</td>
-                    <td className="px-4 py-2 align-top">
-                      {offerSummary ? (
-                        <p className="text-xs text-slate-200">{offerSummary}</p>
-                      ) : (
-                        <p className="text-xs text-slate-500">No offer yet</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 align-top">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openOfferModal(destination)}
-                          disabled={pending}
-                          className={clsx(
-                            "rounded-full border border-emerald-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-100 transition",
-                            pending
-                              ? "cursor-not-allowed opacity-60"
-                              : "hover:border-emerald-400 hover:text-white",
-                          )}
-                        >
-                          Add / Edit Offer
-                        </button>
-                        {isEmailMode ? (
-                          <button
-                            type="button"
-                            onClick={() => handleGenerateEmail(destination)}
-                            disabled={pending || isEmailGenerating}
-                            className={clsx(
-                              "rounded-full border border-indigo-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition",
-                              pending || isEmailGenerating
-                                ? "cursor-not-allowed opacity-60"
-                                : "hover:border-indigo-400 hover:text-white",
-                            )}
-                          >
-                            {isEmailGenerating ? "Generating..." : "Generate RFQ Email"}
-                          </button>
-                        ) : null}
-                        {isWebFormMode ? (
-                          webFormUrl ? (
-                            <a
-                              href={webFormUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className={copyOfferButtonEnabledClass}
-                            >
-                              Open RFQ page
-                            </a>
-                          ) : (
-                            <span title="RFQ URL unavailable." className="inline-flex">
-                              <button
-                                type="button"
-                                disabled
-                                className={copyOfferButtonDisabledClass}
-                              >
-                                Open RFQ page
-                              </button>
-                            </span>
-                          )
-                        ) : null}
-                        {isWebFormMode ? (
-                          <button
-                            type="button"
-                            onClick={() => handleGenerateWebFormInstructions(destination)}
-                            disabled={pending || isWebFormGenerating}
-                            className={clsx(
-                              "rounded-full border border-indigo-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition",
-                              pending || isWebFormGenerating
-                                ? "cursor-not-allowed opacity-60"
-                                : "hover:border-indigo-400 hover:text-white",
-                            )}
-                          >
-                            {isWebFormGenerating ? "Generating..." : "Generate RFQ Instructions"}
-                          </button>
-                        ) : null}
-                        {offerToken ? (
-                          <CopyTextButton
-                            text={offerLink}
-                            idleLabel="Copy Offer Link"
-                            className={copyOfferButtonEnabledClass}
-                          />
-                        ) : (
-                          <span title="Token unavailable." className="inline-flex">
-                            <button
-                              type="button"
-                              disabled
-                              className={copyOfferButtonDisabledClass}
-                            >
-                              Copy Offer Link
-                            </button>
-                          </span>
+          <div className="space-y-3 px-4 py-4">
+            {destinations.map((destination) => {
+              const providerRecord = providerById.get(destination.provider_id) ?? null;
+              const providerFallback = destination.provider ?? null;
+              const providerName =
+                providerRecord?.name ?? providerFallback?.name ?? destination.provider_id;
+              const providerType = formatEnumLabel(
+                providerRecord?.provider_type ?? providerFallback?.provider_type,
+              );
+              const providerMode = formatEnumLabel(
+                providerRecord?.quoting_mode ?? providerFallback?.quoting_mode,
+              );
+              const dispatchModeValue = resolveDispatchModeValue(
+                providerRecord?.dispatch_mode,
+                providerRecord?.quoting_mode ?? providerFallback?.quoting_mode ?? null,
+              );
+              const dispatchMode =
+                dispatchModeValue === "email"
+                  ? "email"
+                  : dispatchModeValue === "web_form"
+                    ? "web_form"
+                    : dispatchModeValue === "api"
+                      ? "api"
+                      : "unknown";
+              const isEmailMode = dispatchModeValue === "email";
+              const isWebFormMode = dispatchModeValue === "web_form";
+              const providerEmail = resolveProviderEmail(providerRecord);
+              const webFormUrl = providerRecord?.rfq_url ?? providerRecord?.website ?? "";
+              const isEmailGenerating = emailLoadingId === destination.id;
+              const isWebFormGenerating = webFormLoadingId === destination.id;
+              const emailError = emailErrorsById[destination.id];
+              const webFormError = webFormErrorsById[destination.id];
+              const offer = offersByProviderId.get(destination.provider_id) ?? null;
+              const offerSummary = offer ? formatOfferSummary(offer) : null;
+              const offerToken =
+                typeof destination.offer_token === "string" ? destination.offer_token.trim() : "";
+              const offerLink = offerToken
+                ? buildPublicUrl(`/provider/offer/${offerToken}`)
+                : "";
+              const dispatchStatus = offer
+                ? "offer_received"
+                : destination.status === "submitted"
+                  ? "submitted"
+                  : "not_sent";
+              const dispatchStartedLabel = formatDateTime(
+                dispatchStartedById[destination.id] ?? destination.dispatch_started_at,
+                { includeTime: true, fallback: "-" },
+              );
+              const submittedAtLabel = formatDateTime(destination.submitted_at, {
+                includeTime: true,
+                fallback: "-",
+              });
+              const lastUpdateLabel = formatDateTime(destination.last_status_at, {
+                includeTime: true,
+                fallback: "-",
+              });
+              const dispatchPrimaryButtonBase =
+                "rounded-full border border-indigo-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition";
+              const dispatchPrimaryEnabledClass = `${dispatchPrimaryButtonBase} hover:border-indigo-400 hover:text-white`;
+              const dispatchPrimaryDisabledClass = `${dispatchPrimaryButtonBase} cursor-not-allowed opacity-60`;
+              const dispatchSecondaryButtonBase =
+                "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition";
+              const dispatchSecondaryEnabledClass = `${dispatchSecondaryButtonBase} hover:border-slate-500 hover:text-white`;
+              const dispatchSecondaryDisabledClass = `${dispatchSecondaryButtonBase} cursor-not-allowed opacity-60`;
+              const markSubmittedButtonBase =
+                "rounded-full border border-teal-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-100 transition";
+              const markSubmittedEnabledClass = `${markSubmittedButtonBase} hover:border-teal-400 hover:text-white`;
+              const markSubmittedDisabledClass = `${markSubmittedButtonBase} cursor-not-allowed opacity-60`;
+              const copyOfferButtonEnabledClass = `${dispatchSecondaryButtonBase} hover:border-slate-500 hover:text-white`;
+              const copyOfferButtonDisabledClass = `${dispatchSecondaryButtonBase} cursor-not-allowed opacity-60`;
+
+              const primaryAction = isEmailMode ? (
+                <button
+                  type="button"
+                  onClick={() => handleCopyEmail(destination)}
+                  disabled={pending || isEmailGenerating}
+                  className={
+                    pending || isEmailGenerating
+                      ? dispatchPrimaryDisabledClass
+                      : dispatchPrimaryEnabledClass
+                  }
+                >
+                  {isEmailGenerating ? "Copying..." : "Copy email"}
+                </button>
+              ) : isWebFormMode && webFormUrl ? (
+                <a
+                  href={webFormUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    if (pending) {
+                      event.preventDefault();
+                      return;
+                    }
+                    handleDispatchStarted(destination.id);
+                  }}
+                  className={pending ? dispatchPrimaryDisabledClass : dispatchPrimaryEnabledClass}
+                >
+                  Open form
+                </a>
+              ) : isWebFormMode ? (
+                <span title="RFQ URL unavailable." className="inline-flex">
+                  <button type="button" disabled className={dispatchPrimaryDisabledClass}>
+                    Open form
+                  </button>
+                </span>
+              ) : (
+                <button type="button" disabled className={dispatchPrimaryDisabledClass}>
+                  Dispatch unavailable
+                </button>
+              );
+
+              const secondaryAction = isEmailMode ? (
+                <span title={providerEmail ? "" : "Provider email unavailable."} className="inline-flex">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyMailto(destination, providerEmail)}
+                    disabled={pending || isEmailGenerating || !providerEmail}
+                    className={
+                      pending || isEmailGenerating || !providerEmail
+                        ? dispatchSecondaryDisabledClass
+                        : dispatchSecondaryEnabledClass
+                    }
+                  >
+                    Copy mailto link
+                  </button>
+                </span>
+              ) : isWebFormMode ? (
+                <button
+                  type="button"
+                  onClick={() => handleCopyWebFormInstructions(destination)}
+                  disabled={pending || isWebFormGenerating}
+                  className={
+                    pending || isWebFormGenerating
+                      ? dispatchSecondaryDisabledClass
+                      : dispatchSecondaryEnabledClass
+                  }
+                >
+                  {isWebFormGenerating ? "Copying..." : "Copy web-form instructions"}
+                </button>
+              ) : (
+                <button type="button" disabled className={dispatchSecondaryDisabledClass}>
+                  Dispatch unavailable
+                </button>
+              );
+
+              const markSubmittedAction = isWebFormMode ? (
+                <button
+                  type="button"
+                  onClick={() => openSubmittedPrompt(destination)}
+                  disabled={pending}
+                  className={pending ? markSubmittedDisabledClass : markSubmittedEnabledClass}
+                >
+                  Mark submitted
+                </button>
+              ) : null;
+
+              return (
+                <DispatchCard
+                  key={destination.id}
+                  providerLabel={providerName}
+                  providerTypeLabel={providerType}
+                  providerModeLabel={providerMode}
+                  dispatchMode={dispatchMode}
+                  dispatchStatus={dispatchStatus}
+                  dispatchStartedLabel={dispatchStartedLabel}
+                  submittedLabel={submittedAtLabel}
+                  lastUpdateLabel={lastUpdateLabel}
+                  offerSummary={offerSummary}
+                  errorMessage={destination.error_message}
+                  primaryAction={primaryAction}
+                  secondaryAction={secondaryAction}
+                  markSubmittedAction={markSubmittedAction}
+                  extraActions={
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openOfferModal(destination)}
+                        disabled={pending}
+                        className={clsx(
+                          "rounded-full border border-emerald-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-100 transition",
+                          pending
+                            ? "cursor-not-allowed opacity-60"
+                            : "hover:border-emerald-400 hover:text-white",
                         )}
-                        <button
-                          type="button"
-                          onClick={() => handleStatusUpdate(destination.id, "sent")}
-                          disabled={pending}
-                          className={clsx(
-                            "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
-                            pending
-                              ? "cursor-not-allowed opacity-60"
-                              : "hover:border-slate-500 hover:text-white",
-                          )}
-                        >
-                          Mark Sent
-                        </button>
-                        {isWebFormMode ? (
+                      >
+                        Add / Edit Offer
+                      </button>
+                      {offerToken ? (
+                        <CopyTextButton
+                          text={offerLink}
+                          idleLabel="Copy Offer Link"
+                          className={copyOfferButtonEnabledClass}
+                        />
+                      ) : (
+                        <span title="Token unavailable." className="inline-flex">
                           <button
                             type="button"
-                            onClick={() => openSubmittedPrompt(destination)}
-                            disabled={pending}
-                            className={clsx(
-                              "rounded-full border border-teal-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-100 transition",
-                              pending
-                                ? "cursor-not-allowed opacity-60"
-                                : "hover:border-teal-400 hover:text-white",
-                            )}
+                            disabled
+                            className={copyOfferButtonDisabledClass}
                           >
-                            Mark Submitted
+                            Copy Offer Link
                           </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => handleStatusUpdate(destination.id, "quoted")}
-                          disabled={pending}
-                          className={clsx(
-                            "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
-                            pending
-                              ? "cursor-not-allowed opacity-60"
-                              : "hover:border-slate-500 hover:text-white",
-                          )}
-                        >
-                          Mark Quoted
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleStatusUpdate(destination.id, "declined")}
-                          disabled={pending}
-                          className={clsx(
-                            "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
-                            pending
-                              ? "cursor-not-allowed opacity-60"
-                              : "hover:border-slate-500 hover:text-white",
-                          )}
-                        >
-                          Mark Declined
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openErrorPrompt(destination)}
-                          disabled={pending}
-                          className={clsx(
-                            "rounded-full border border-red-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-100 transition",
-                            pending
-                              ? "cursor-not-allowed opacity-60"
-                              : "hover:border-red-400 hover:text-white",
-                          )}
-                        >
-                          Mark Error
-                        </button>
-                        {emailError ? (
-                          <p className="basis-full text-xs text-amber-200" role="alert">
-                            {emailError}
-                          </p>
-                        ) : null}
-                        {webFormError ? (
-                          <p className="basis-full text-xs text-amber-200" role="alert">
-                            {webFormError}
-                          </p>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleStatusUpdate(destination.id, "sent")}
+                        disabled={pending}
+                        className={clsx(
+                          "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
+                          pending
+                            ? "cursor-not-allowed opacity-60"
+                            : "hover:border-slate-500 hover:text-white",
+                        )}
+                      >
+                        Mark Sent
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStatusUpdate(destination.id, "quoted")}
+                        disabled={pending}
+                        className={clsx(
+                          "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
+                          pending
+                            ? "cursor-not-allowed opacity-60"
+                            : "hover:border-slate-500 hover:text-white",
+                        )}
+                      >
+                        Mark Quoted
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStatusUpdate(destination.id, "declined")}
+                        disabled={pending}
+                        className={clsx(
+                          "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition",
+                          pending
+                            ? "cursor-not-allowed opacity-60"
+                            : "hover:border-slate-500 hover:text-white",
+                        )}
+                      >
+                        Mark Declined
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openErrorPrompt(destination)}
+                        disabled={pending}
+                        className={clsx(
+                          "rounded-full border border-red-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-red-100 transition",
+                          pending
+                            ? "cursor-not-allowed opacity-60"
+                            : "hover:border-red-400 hover:text-white",
+                        )}
+                      >
+                        Mark Error
+                      </button>
+                      {emailError ? (
+                        <p className="basis-full text-xs text-amber-200" role="alert">
+                          {emailError}
+                        </p>
+                      ) : null}
+                      {webFormError ? (
+                        <p className="basis-full text-xs text-amber-200" role="alert">
+                          {webFormError}
+                        </p>
+                      ) : null}
+                    </>
+                  }
+                />
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -895,40 +1001,6 @@ export function AdminRfqDestinationsCard({
         onClose={closeOfferModal}
         onChange={updateOfferField}
         onSubmit={submitOffer}
-      />
-
-      <DestinationEmailModal
-        isOpen={Boolean(emailDestination && emailPackage)}
-        providerLabel={
-          emailDestination
-            ? providerById.get(emailDestination.provider_id)?.name ?? emailDestination.provider_id
-            : "Provider"
-        }
-        subject={emailPackage?.subject ?? ""}
-        body={emailPackage?.body ?? ""}
-        pending={pending}
-        onClose={closeEmailModal}
-        onMarkSent={() => {
-          if (!emailDestination) return;
-          handleStatusUpdate(emailDestination.id, "sent");
-        }}
-      />
-
-      <DestinationWebFormModal
-        isOpen={Boolean(webFormDestination && webFormPackage)}
-        providerLabel={
-          webFormDestination
-            ? providerById.get(webFormDestination.provider_id)?.name ?? webFormDestination.provider_id
-            : "Provider"
-        }
-        url={webFormPackage?.url ?? ""}
-        instructions={webFormPackage?.instructions ?? ""}
-        pending={pending}
-        onClose={closeWebFormModal}
-        onMarkSent={() => {
-          if (!webFormDestination) return;
-          handleStatusUpdate(webFormDestination.id, "sent");
-        }}
       />
 
       <DestinationSubmittedModal
