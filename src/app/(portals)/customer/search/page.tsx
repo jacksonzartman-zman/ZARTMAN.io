@@ -258,8 +258,10 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           updated_at: recentQuoteForActivity.updatedAt ?? null,
         }
       : null;
+  const activityQuoteHref = activityQuote ? `/customer/quotes/${activityQuote.id}` : null;
   const searchActivityEvents = buildSearchActivityFeedEvents({
     quote: activityQuote,
+    quoteHref: activityQuoteHref,
     destinations: activeQuote ? rfqDestinations : [],
     offers: activeQuote ? rfqOffers : [],
     opsEvents: activeQuote ? workspaceData?.opsEvents ?? [] : [],
