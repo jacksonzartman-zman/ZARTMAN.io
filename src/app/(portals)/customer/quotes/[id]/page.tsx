@@ -757,6 +757,7 @@ export default async function CustomerQuoteDetailPage({
       created_at: quote.created_at ?? null,
       updated_at: quote.updated_at ?? null,
     },
+    quoteHref: `/customer/quotes/${quote.id}`,
     destinations: rfqDestinations ?? [],
     offers: rfqOffers ?? [],
     opsEvents: opsEvents ?? [],

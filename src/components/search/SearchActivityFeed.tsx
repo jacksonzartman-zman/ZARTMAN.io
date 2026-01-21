@@ -1,6 +1,9 @@
 import clsx from "clsx";
 import Link from "next/link";
 
+import { CopyTextButton } from "@/components/CopyTextButton";
+import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
+import { resolveDispatchModeValue } from "@/lib/adapters/providerDispatchMode";
 import { formatDateTime } from "@/lib/formatDate";
 import {
   formatRelativeTimeCompactFromTimestamp,
@@ -20,6 +23,22 @@ type SearchActivityEventKind =
   | "supplier-invited"
   | "estimate-shown";
 
+export type SearchActivityReceiptAction =
+  | { type: "copy"; label: string; value: string; copiedLabel?: string }
+  | { type: "link"; label: string; href: string };
+
+type SearchActivityReceiptBadge = {
+  label: string;
+  tone?: TagPillTone | "muted";
+};
+
+export type SearchActivityReceipt = {
+  label: string;
+  href?: string | null;
+  badge?: SearchActivityReceiptBadge | null;
+  actions?: SearchActivityReceiptAction[] | null;
+};
+
 export type SearchActivityFeedEvent = {
   id: string;
   timestamp: string;
@@ -28,6 +47,7 @@ export type SearchActivityFeedEvent = {
   ctaLabel?: string;
   ctaHref?: string;
   kind?: SearchActivityEventKind;
+  receipt?: SearchActivityReceipt | null;
 };
 
 type SearchActivityQuote = {
@@ -38,6 +58,7 @@ type SearchActivityQuote = {
 
 type SearchActivityFeedInput = {
   quote: SearchActivityQuote | null;
+  quoteHref?: string | null;
   destinations?: RfqDestination[] | null;
   offers?: RfqOffer[] | null;
   opsEvents?: OpsEventRecord[] | null;
@@ -46,12 +67,18 @@ type SearchActivityFeedInput = {
   compareOffersHref?: string | null;
 };
 
+type SearchActivityReceiptContext = {
+  quoteId: string;
+  quoteHref: string | null;
+};
+
 type SearchActivityFeedProps = {
   events: SearchActivityFeedEvent[];
   title?: string;
   description?: string;
   emptyState?: string;
   maxVisible?: number;
+  showReceiptActions?: boolean;
   className?: string;
 };
 
@@ -61,6 +88,7 @@ const DEFAULT_EMPTY_STATE = "Activity will appear here once the search starts.";
 
 export function buildSearchActivityFeedEvents({
   quote,
+  quoteHref,
   destinations,
   offers,
   opsEvents,
@@ -73,6 +101,8 @@ export function buildSearchActivityFeedEvents({
   }
 
   const events: SearchActivityFeedEvent[] = [];
+  const receiptContext = buildReceiptContext(quote, quoteHref);
+  const quoteReceipt = buildReceipt(receiptContext);
   const normalizedCreatedAt = normalizeTimestamp(quote.created_at);
   const normalizedUpdatedAt = normalizeTimestamp(quote.updated_at);
   const destinationList = Array.isArray(destinations) ? destinations : [];
@@ -90,6 +120,7 @@ export function buildSearchActivityFeedEvents({
       timestamp: normalizedCreatedAt,
       title: "Search created",
       detail: "We received your RFQ and queued it for matching.",
+      receipt: quoteReceipt,
     });
   }
 
@@ -100,11 +131,19 @@ export function buildSearchActivityFeedEvents({
       timestamp: normalizedUpdatedAt,
       title: "Search updated",
       detail: "Search details were refreshed.",
+      receipt: quoteReceipt,
     });
   }
 
   for (const destination of destinationList) {
     const providerLabel = resolveProviderLabel(destination.provider?.name ?? null);
+    const dispatchBadge = resolveDispatchBadge(destination.provider?.quoting_mode);
+    const providerReceipt = buildReceipt({ ...receiptContext, providerLabel });
+    const dispatchReceipt = buildReceipt({
+      ...receiptContext,
+      providerLabel,
+      badge: dispatchBadge,
+    });
     const dispatchStartedAt = normalizeTimestamp(destination.dispatch_started_at);
     if (dispatchStartedAt) {
       events.push({
@@ -113,6 +152,7 @@ export function buildSearchActivityFeedEvents({
         timestamp: dispatchStartedAt,
         title: "Dispatch started",
         detail: providerLabel ? `Sent to ${providerLabel}` : null,
+        receipt: dispatchReceipt,
       });
     }
 
@@ -125,12 +165,14 @@ export function buildSearchActivityFeedEvents({
         timestamp: submittedAt,
         title: "Supplier submitted response",
         detail: providerLabel ? `From ${providerLabel}` : null,
+        receipt: providerReceipt,
       });
     }
   }
 
   for (const offer of offerList) {
     const providerLabel = resolveProviderLabel(offer.provider?.name ?? null);
+    const providerReceipt = buildReceipt({ ...receiptContext, providerLabel });
     const revisedAt = normalizeTimestamp(readOfferRevisionTimestamp(offer));
     const receivedAt = normalizeTimestamp(offer.received_at ?? offer.created_at);
     const status = (offer.status ?? "").trim().toLowerCase();
@@ -143,6 +185,7 @@ export function buildSearchActivityFeedEvents({
         timestamp,
         title: "Offer revised",
         detail: providerLabel ? `From ${providerLabel}` : null,
+        receipt: providerReceipt,
       });
     } else if (receivedAt) {
       events.push({
@@ -151,6 +194,7 @@ export function buildSearchActivityFeedEvents({
         timestamp: receivedAt,
         title: "Offer received",
         detail: providerLabel ? `From ${providerLabel}` : null,
+        receipt: providerReceipt,
       });
     }
   }
@@ -161,6 +205,7 @@ export function buildSearchActivityFeedEvents({
         opsEvents: opsEventList,
         destinationById,
         submittedDestinationIds,
+        receiptContext,
       }),
     );
   }
@@ -207,6 +252,7 @@ export function SearchActivityFeed({
   description = DEFAULT_DESCRIPTION,
   emptyState = DEFAULT_EMPTY_STATE,
   maxVisible = 4,
+  showReceiptActions = false,
   className,
 }: SearchActivityFeedProps) {
   const sortedEvents = sortSearchActivityEvents(events);
@@ -235,7 +281,11 @@ export function SearchActivityFeed({
         <div className="mt-3 space-y-3">
           <ol className="space-y-3 border-l border-slate-800">
             {visibleEvents.map((event) => (
-              <SearchActivityFeedRow key={event.id} event={event} />
+              <SearchActivityFeedRow
+                key={event.id}
+                event={event}
+                showReceiptActions={showReceiptActions}
+              />
             ))}
           </ol>
           {hiddenEvents.length > 0 ? (
@@ -250,7 +300,11 @@ export function SearchActivityFeed({
               </summary>
               <ol className="mt-3 space-y-3 border-l border-slate-800">
                 {hiddenEvents.map((event) => (
-                  <SearchActivityFeedRow key={event.id} event={event} />
+                  <SearchActivityFeedRow
+                    key={event.id}
+                    event={event}
+                    showReceiptActions={showReceiptActions}
+                  />
                 ))}
               </ol>
             </details>
@@ -261,16 +315,23 @@ export function SearchActivityFeed({
   );
 }
 
-function SearchActivityFeedRow({ event }: { event: SearchActivityFeedEvent }) {
+function SearchActivityFeedRow({
+  event,
+  showReceiptActions,
+}: {
+  event: SearchActivityFeedEvent;
+  showReceiptActions: boolean;
+}) {
   const absoluteLabel = formatDateTime(event.timestamp, { includeTime: true });
   const relativeLabel = formatRelativeTimeCompactFromTimestamp(
     toTimestamp(event.timestamp),
   );
   const timeLabel = relativeLabel ?? absoluteLabel;
   const cta = renderCta(event);
+  const receipt = renderReceipt(event, showReceiptActions);
 
   return (
-    <li className="relative pl-5">
+    <li className="group relative pl-5">
       <span className="absolute left-0 top-2 h-2 w-2 rounded-full bg-emerald-400" />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
@@ -278,6 +339,7 @@ function SearchActivityFeedRow({ event }: { event: SearchActivityFeedEvent }) {
           {event.detail ? (
             <p className="text-xs text-slate-400">{event.detail}</p>
           ) : null}
+          {receipt ? <div>{receipt}</div> : null}
           {cta ? <div>{cta}</div> : null}
         </div>
         <time
@@ -297,29 +359,93 @@ function renderCta(event: SearchActivityFeedEvent) {
     return null;
   }
 
-  const classes =
-    "text-xs font-semibold text-emerald-200 hover:text-emerald-100";
-  const isExternal =
-    event.ctaHref.startsWith("http") || event.ctaHref.startsWith("mailto:");
+  const classes = "text-xs font-semibold text-emerald-200 hover:text-emerald-100";
+  return renderLink(event.ctaHref, classes, event.ctaLabel);
+}
 
-  if (isExternal) {
+function renderReceipt(event: SearchActivityFeedEvent, showReceiptActions: boolean) {
+  const receipt = event.receipt;
+  if (!receipt) {
+    return null;
+  }
+
+  const label = normalizeReceiptText(receipt.label);
+  if (!label) {
+    return null;
+  }
+
+  const href = normalizeReceiptHref(receipt.href);
+  const badgeLabel = normalizeReceiptText(receipt.badge?.label ?? null);
+  const badgeTone = receipt.badge?.tone ?? "muted";
+  const actions = showReceiptActions ? normalizeReceiptActions(receipt.actions) : [];
+
+  const labelClasses =
+    "inline-flex max-w-[18rem] items-center truncate text-[11px] font-semibold text-slate-400 hover:text-slate-200";
+  const actionContainerClasses =
+    "flex flex-wrap items-center gap-2 text-[11px] text-emerald-200 opacity-70 transition group-hover:opacity-100 group-focus-within:opacity-100";
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+      {href ? (
+        renderLink(href, labelClasses, label)
+      ) : (
+        <span className={labelClasses}>{label}</span>
+      )}
+      {badgeLabel ? (
+        <TagPill tone={badgeTone} size="sm">
+          {badgeLabel}
+        </TagPill>
+      ) : null}
+      {actions.length > 0 ? (
+        <div className={actionContainerClasses}>
+          {actions.map((action, index) => (
+            <span key={`${action.type}:${action.label}:${index}`}>
+              {renderReceiptAction(action)}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function renderReceiptAction(action: SearchActivityReceiptAction) {
+  const actionClasses =
+    "rounded-none border-0 bg-transparent p-0 text-[11px] font-semibold text-emerald-200 hover:text-emerald-100 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-60";
+
+  if (action.type === "copy") {
     return (
-      <a
-        href={event.ctaHref}
-        className={classes}
-        rel="noreferrer"
-        target="_blank"
-      >
-        {event.ctaLabel}
+      <CopyTextButton
+        text={action.value}
+        idleLabel={action.label}
+        copiedLabel={action.copiedLabel}
+        className={actionClasses}
+        logPrefix="[search activity feed]"
+      />
+    );
+  }
+
+  return renderLink(action.href, actionClasses, action.label);
+}
+
+function renderLink(href: string, className: string, label: string) {
+  if (isExternalHref(href)) {
+    return (
+      <a href={href} className={className} rel="noreferrer" target="_blank">
+        {label}
       </a>
     );
   }
 
   return (
-    <Link href={event.ctaHref} className={classes}>
-      {event.ctaLabel}
+    <Link href={href} className={className}>
+      {label}
     </Link>
   );
+}
+
+function isExternalHref(href: string) {
+  return href.startsWith("http") || href.startsWith("mailto:");
 }
 
 function sortSearchActivityEvents(
@@ -365,6 +491,112 @@ function attachCta(
   return next;
 }
 
+function buildReceiptContext(
+  quote: SearchActivityQuote,
+  quoteHref?: string | null,
+): SearchActivityReceiptContext {
+  return {
+    quoteId: quote.id,
+    quoteHref: normalizeReceiptHref(quoteHref),
+  };
+}
+
+function buildReceipt(args: {
+  providerLabel?: string | null;
+  providerHref?: string | null;
+  quoteId?: string | null;
+  quoteHref?: string | null;
+  badge?: SearchActivityReceiptBadge | null;
+  actions?: SearchActivityReceiptAction[] | null;
+}): SearchActivityReceipt | null {
+  const providerLabel = normalizeReceiptText(args.providerLabel);
+  const label = providerLabel ?? buildQuoteReceiptLabel(args.quoteId);
+  if (!label) {
+    return null;
+  }
+
+  const href = normalizeReceiptHref(args.providerHref ?? args.quoteHref);
+  const badgeLabel = normalizeReceiptText(args.badge?.label);
+  const badge = badgeLabel ? { label: badgeLabel, tone: args.badge?.tone } : null;
+  const actions = normalizeReceiptActions(args.actions);
+
+  return {
+    label,
+    href,
+    badge,
+    actions: actions.length > 0 ? actions : null,
+  };
+}
+
+function resolveDispatchBadge(quotingMode?: string | null): SearchActivityReceiptBadge | null {
+  const mode = resolveDispatchModeValue(null, quotingMode);
+  if (!mode) {
+    return null;
+  }
+
+  const label = mode === "web_form" ? "Web form" : mode === "email" ? "Email" : "API";
+  const tone = mode === "email" ? "blue" : mode === "web_form" ? "purple" : "amber";
+
+  return { label, tone };
+}
+
+function buildQuoteReceiptLabel(quoteId?: string | null): string | null {
+  if (!quoteId) {
+    return null;
+  }
+
+  return `Quote ${formatQuoteId(quoteId)}`;
+}
+
+function formatQuoteId(id: string): string {
+  return id.startsWith("Q-") ? id : `#${id.slice(0, 6)}`;
+}
+
+function normalizeReceiptText(value?: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeReceiptHref(value?: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeReceiptActions(
+  actions?: SearchActivityReceiptAction[] | null,
+): SearchActivityReceiptAction[] {
+  if (!Array.isArray(actions)) {
+    return [];
+  }
+
+  const normalized: SearchActivityReceiptAction[] = [];
+
+  for (const action of actions) {
+    const label = normalizeReceiptText(action.label);
+    if (!label) continue;
+
+    if (action.type === "copy") {
+      const value = normalizeReceiptText(action.value);
+      if (!value) continue;
+      const copiedLabel = normalizeReceiptText(action.copiedLabel);
+      normalized.push({
+        type: "copy",
+        label,
+        value,
+        copiedLabel: copiedLabel ?? undefined,
+      });
+    } else if (action.type === "link") {
+      const href = normalizeReceiptHref(action.href);
+      if (!href) continue;
+      normalized.push({ type: "link", label, href });
+    }
+  }
+
+  return normalized;
+}
+
 function normalizeTimestamp(value?: string | null): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -394,6 +626,7 @@ function buildOpsActivityEvents(args: {
   opsEvents: OpsEventRecord[];
   destinationById: Map<string, RfqDestination>;
   submittedDestinationIds: Set<string>;
+  receiptContext: SearchActivityReceiptContext;
 }): SearchActivityFeedEvent[] {
   const events: SearchActivityFeedEvent[] = [];
   let latestEstimate:
@@ -423,12 +656,14 @@ function buildOpsActivityEvents(args: {
         "supplierName",
         "supplier",
       ]);
+      const receipt = buildReceipt({ ...args.receiptContext, providerLabel: supplierName });
       events.push({
         id: `supplier-invited:${opsEvent.id}`,
         kind: "supplier-invited",
         timestamp,
         title: "Supplier invited",
         detail: supplierName ? `Invited ${supplierName}` : null,
+        receipt,
       });
       continue;
     }
@@ -444,6 +679,7 @@ function buildOpsActivityEvents(args: {
       const destination = args.destinationById.get(destinationId);
       if (!destination) continue;
       const providerLabel = resolveProviderLabel(destination.provider?.name ?? null);
+      const receipt = buildReceipt({ ...args.receiptContext, providerLabel });
       seenDestinationIds.add(destinationId);
       events.push({
         id: `destination-submitted:${destinationId}`,
@@ -451,6 +687,7 @@ function buildOpsActivityEvents(args: {
         timestamp,
         title: "Supplier submitted response",
         detail: providerLabel ? `From ${providerLabel}` : null,
+        receipt,
       });
     }
   }
@@ -462,6 +699,7 @@ function buildOpsActivityEvents(args: {
       timestamp: latestEstimate.timestamp,
       title: "Estimate ready",
       detail: "Pricing estimate is available.",
+      receipt: buildReceipt(args.receiptContext),
     });
   }
 
