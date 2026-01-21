@@ -10,6 +10,7 @@ import {
 } from "@/server/suppliers/publicDirectory";
 
 const REQUEST_QUOTE_HREF = "/customer/search";
+const INVITE_SUPPLIER_HREF = "/customer/invite-supplier";
 
 const tagClasses =
   "inline-flex items-center rounded-full border border-slate-800/70 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-ink-soft";
@@ -18,8 +19,9 @@ const unverifiedBadgeClasses =
 const inactiveBadgeClasses =
   "inline-flex items-center rounded-full border border-slate-500/40 bg-slate-800/40 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-100";
 const unverifiedNote =
-  "Listing is informational. This supplier has not verified their profile.";
-const inactiveNote = "Listing is informational. This supplier is currently inactive.";
+  "Listing is informational. Request an introduction to work with this supplier.";
+const inactiveNote =
+  "Listing is informational. This supplier is currently inactive; request an introduction to confirm availability.";
 
 type Props = {
   params: { slug: string };
@@ -57,6 +59,15 @@ export default async function SupplierProfilePage(props: any) {
   if (!supplier) {
     notFound();
   }
+  const needsInviteFlow = !supplier.isVerified || !supplier.isActive;
+  const primaryCtaHref = needsInviteFlow ? INVITE_SUPPLIER_HREF : REQUEST_QUOTE_HREF;
+  const primaryCtaLabel = needsInviteFlow ? "Request introduction" : "Search suppliers";
+  const summaryCopy = needsInviteFlow
+    ? "Review process coverage, location, and capabilities before requesting an introduction."
+    : "Review process coverage, location, and capabilities before starting a supplier search.";
+  const calloutCopy = needsInviteFlow
+    ? "Want to work with this supplier? Request an introduction and we'll follow up after they verify."
+    : "Need a supplier match fast? Start a supplier search and we'll review your RFQ before routing it to the best-fit shops.";
 
   return (
     <main className="main-shell">
@@ -85,9 +96,7 @@ export default async function SupplierProfilePage(props: any) {
                 <span className={inactiveBadgeClasses}>Inactive</span>
               ) : null}
             </div>
-            <p className="text-base text-ink-muted heading-snug">
-              Review process coverage, location, and capabilities before starting a supplier search.
-            </p>
+            <p className="text-base text-ink-muted heading-snug">{summaryCopy}</p>
             {!supplier.isVerified ? (
               <p className="text-sm text-amber-100/80">{unverifiedNote}</p>
             ) : null}
@@ -96,8 +105,8 @@ export default async function SupplierProfilePage(props: any) {
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Link href={REQUEST_QUOTE_HREF} className={primaryCtaClasses}>
-              Search suppliers
+            <Link href={primaryCtaHref} className={primaryCtaClasses}>
+              {primaryCtaLabel}
             </Link>
             {SHOW_SUPPLIER_DIRECTORY_PUBLIC ? (
               <Link href="/suppliers" className={secondaryCtaClasses}>
@@ -138,8 +147,7 @@ export default async function SupplierProfilePage(props: any) {
         </section>
 
         <section className="rounded-3xl border border-slate-900/70 bg-slate-950/60 p-6 text-sm text-ink-muted">
-          Need a supplier match fast? Start a supplier search and we&apos;ll review your RFQ before routing
-          it to the best-fit shops.
+          {calloutCopy}
         </section>
       </div>
     </main>
