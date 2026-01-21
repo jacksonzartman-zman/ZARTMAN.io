@@ -105,6 +105,59 @@ type QuoteRowForSuggestion = {
   customer_email: string | null;
 };
 
+function normalizePreviewTokenPath(bucketId: string, storagePath: string): string {
+  const rawBucket = typeof bucketId === "string" ? bucketId.trim() : "";
+  let key = typeof storagePath === "string" ? storagePath.trim() : "";
+  if (!key) return "";
+  key = key.replace(/^\/+/, "");
+  if (rawBucket && key.startsWith(`${rawBucket}/`)) {
+    key = key.slice(rawBucket.length + 1);
+  } else if (rawBucket === "cad_uploads" && key.startsWith("cad-uploads/")) {
+    key = key.slice("cad-uploads/".length);
+  } else if (rawBucket === "cad_previews" && key.startsWith("cad-previews/")) {
+    key = key.slice("cad-previews/".length);
+  }
+  return key.replace(/^\/+/, "");
+}
+
+function safeSignPreviewToken(args: {
+  userId: string;
+  bucketId: string;
+  storagePath: string;
+  exp: number;
+  quoteId?: string | null;
+  uploadId?: string | null;
+}): string {
+  const normalizedPath = normalizePreviewTokenPath(args.bucketId, args.storagePath);
+  if (!normalizedPath) {
+    console.warn("[quote intake] preview token path missing", {
+      quoteId: args.quoteId ?? null,
+      uploadId: args.uploadId ?? null,
+      bucket: args.bucketId,
+      path: args.storagePath,
+    });
+    return "";
+  }
+  try {
+    return signPreviewToken({
+      userId: args.userId,
+      bucket: args.bucketId,
+      path: normalizedPath,
+      exp: args.exp,
+    });
+  } catch (error) {
+    console.warn("[quote intake] preview token sign failed", {
+      quoteId: args.quoteId ?? null,
+      uploadId: args.uploadId ?? null,
+      bucket: args.bucketId,
+      path: normalizedPath,
+      objectKey: `${args.bucketId}/${normalizedPath}`,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return "";
+  }
+}
+
 export async function submitQuoteIntakeAction(
   _prevState: QuoteIntakeActionState,
   formData: FormData,
@@ -383,11 +436,13 @@ export async function prepareQuoteIntakeDirectUploadAction(
         fileName: t.originalFileName,
         mimeType: t.mimeType,
         sizeBytes: t.sizeBytes,
-        previewToken: signPreviewToken({
+        previewToken: safeSignPreviewToken({
           userId: user.id,
-          bucket: t.bucketId,
-          path: t.storagePath,
+          bucketId: t.bucketId,
+          storagePath: t.storagePath,
           exp,
+          quoteId: result.quoteId,
+          uploadId: result.uploadId,
         }),
       })),
     };
@@ -452,11 +507,13 @@ export async function prepareQuoteIntakeEphemeralUploadAction(
         fileName: f.fileName,
         mimeType: f.mimeType,
         sizeBytes: f.sizeBytes,
-        previewToken: signPreviewToken({
+        previewToken: safeSignPreviewToken({
           userId: user.id,
-          bucket: bucketId,
-          path: storagePath,
+          bucketId,
+          storagePath,
           exp,
+          quoteId: null,
+          uploadId: null,
         }),
       };
     });

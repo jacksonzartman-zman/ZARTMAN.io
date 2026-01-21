@@ -11,6 +11,7 @@ type CadKind = "step" | "stl" | "obj" | "glb";
 const MAX_PREVIEW_BYTES = 50 * 1024 * 1024; // 50MB
 const STEP_PREVIEW_BUCKET = "cad_previews";
 const LOG_CAD_PREVIEW_API = process.env.LOG_CAD_PREVIEW_API === "1";
+const STEP_PREVIEW_PREFIX = "step-stl/v1/";
 
 function normalizeBucket(input: unknown): string {
   const raw = typeof input === "string" ? input.trim() : "";
@@ -30,6 +31,24 @@ function normalizePath(value: unknown): string {
   return raw.replace(/^\/+/, "");
 }
 
+function collapseDuplicatePrefix(path: string, prefix: string): string {
+  const normalizedPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  let next = path;
+  while (next.startsWith(`${normalizedPrefix}${normalizedPrefix}`)) {
+    next = normalizedPrefix + next.slice(normalizedPrefix.length * 2);
+  }
+  return next;
+}
+
+function normalizePreviewObjectKey(path: string): string {
+  let next = path;
+  next = collapseDuplicatePrefix(next, STEP_PREVIEW_PREFIX);
+  if (next.startsWith(`${STEP_PREVIEW_PREFIX}v1/`)) {
+    next = `${STEP_PREVIEW_PREFIX}${next.slice(`${STEP_PREVIEW_PREFIX}v1/`.length)}`;
+  }
+  return next;
+}
+
 function normalizeStorageObjectKey(bucket: string, path: string): string {
   const b = normalizeBucket(bucket);
   let key = normalizePath(path);
@@ -40,6 +59,13 @@ function normalizeStorageObjectKey(bucket: string, path: string): string {
   // Legacy alias: cad-uploads prefix inside key (should not exist in canonical rows, but can).
   if (b === "cad_uploads" && key.startsWith("cad-uploads/")) {
     key = key.slice("cad-uploads/".length);
+  }
+  if (b === "cad_previews" && key.startsWith("cad-previews/")) {
+    key = key.slice("cad-previews/".length);
+  }
+  key = normalizePath(key);
+  if (b === "cad_previews") {
+    key = normalizePreviewObjectKey(key);
   }
   return normalizePath(key);
 }
@@ -254,34 +280,58 @@ async function downloadViaSignedUrl(
     console.log("[cad-preview]", { rid, stage, ...(extra ?? {}) });
   };
 
-  log("storage_signed_url_start", { bucket, path, target });
-  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresSeconds);
+  const normalizedBucket = normalizeBucket(bucket);
+  const normalizedPath = normalizeStorageObjectKey(normalizedBucket, path);
+  if (!normalizedBucket || !normalizedPath) {
+    log("storage_signed_url_failed", {
+      bucket: normalizedBucket || bucket,
+      path: normalizedPath || path,
+      target,
+      message: "missing_bucket_or_path",
+    });
+    throw new StorageSignedUrlError({
+      bucket: normalizedBucket || bucket,
+      path: normalizedPath || path,
+      target,
+      message: "Missing bucket or path for signed URL",
+    });
+  }
+
+  log("storage_signed_url_start", { bucket: normalizedBucket, path: normalizedPath, target });
+  const { data, error } = await supabase.storage
+    .from(normalizedBucket)
+    .createSignedUrl(normalizedPath, expiresSeconds);
   const errInfo = storageErrorForLog(error);
   const signedUrl = data?.signedUrl ?? null;
   if (error || !signedUrl) {
     log("storage_signed_url_failed", {
-      bucket,
-      path,
+      bucket: normalizedBucket,
+      path: normalizedPath,
       target,
       message: errInfo?.message ?? (error ? String(error) : "missing_signed_url"),
       status: errInfo?.status,
     });
     throw new StorageSignedUrlError({
-      bucket,
-      path,
+      bucket: normalizedBucket,
+      path: normalizedPath,
       target,
       message: errInfo?.message ?? "Failed to create signed URL",
       status: errInfo?.status,
     });
   }
 
-  log("storage_fetch_start", { bucket, path, target });
+  log("storage_fetch_start", { bucket: normalizedBucket, path: normalizedPath, target });
   const res = await fetch(signedUrl, { cache: "no-store" });
   if (!res.ok) {
-    log("storage_fetch_failed", { bucket, path, target, status: res.status });
+    log("storage_fetch_failed", {
+      bucket: normalizedBucket,
+      path: normalizedPath,
+      target,
+      status: res.status,
+    });
     throw new StorageFetchError({
-      bucket,
-      path,
+      bucket: normalizedBucket,
+      path: normalizedPath,
       target,
       status: res.status,
       message: `Signed URL fetch failed (${res.status})`,
@@ -301,8 +351,16 @@ async function downloadViaSignedUrlWithFallback(
   rid: string,
   target: string,
 ): Promise<SignedUrlDownloadResult & { resolvedPath: string }> {
-  const downloaded = await downloadViaSignedUrl(supabase, bucket, path, expiresSeconds, rid, target);
-  return { ...downloaded, resolvedPath: path };
+  const normalizedPath = normalizeStorageObjectKey(bucket, path) || path;
+  const downloaded = await downloadViaSignedUrl(
+    supabase,
+    bucket,
+    normalizedPath,
+    expiresSeconds,
+    rid,
+    target,
+  );
+  return { ...downloaded, resolvedPath: normalizedPath };
 }
 
 function getServiceSupabase(input: { requestId: string }):
@@ -501,6 +559,20 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const rawPath = path;
+  const normalizedPath = normalizeStorageObjectKey(bucket, path);
+  if (!normalizedPath) {
+    log("start", {
+      tokenPresent: Boolean(token),
+      bucket,
+      path: rawPath || null,
+      kind: kindParam || null,
+    });
+    return NextResponse.json({ error: "missing_bucket_or_path", requestId }, { status: 400 });
+  }
+  const pathWasNormalized = normalizedPath !== rawPath;
+  path = normalizedPath;
+
   const inferredKind = inferCadKind(path, kindParam);
   log("start", {
     tokenPresent: Boolean(token),
@@ -618,16 +690,34 @@ export async function GET(req: NextRequest) {
         sourcePath: path,
         sourceFileName: fileName,
       });
-      const legacyPreviewPath =
+      const legacyPreviewPaths = new Set<string>();
+      const legacyBucket =
         decodedBucketBeforeNormalize &&
         decodedBucketBeforeNormalize.trim() &&
         decodedBucketBeforeNormalize !== bucket
-          ? buildStepStlPreviewPath({
-              sourceBucket: decodedBucketBeforeNormalize,
-              sourcePath: path,
-              sourceFileName: fileName,
-            })
+          ? decodedBucketBeforeNormalize
           : null;
+      if (legacyBucket) {
+        legacyPreviewPaths.add(
+          buildStepStlPreviewPath({
+            sourceBucket: legacyBucket,
+            sourcePath: rawPath,
+            sourceFileName: fileName,
+          }),
+        );
+      }
+      if (pathWasNormalized) {
+        legacyPreviewPaths.add(
+          buildStepStlPreviewPath({
+            sourceBucket: bucket,
+            sourcePath: rawPath,
+            sourceFileName: fileName,
+          }),
+        );
+      }
+      const legacyPreviewPathList = Array.from(legacyPreviewPaths).filter(
+        (item) => item && item !== canonicalPreviewPath,
+      );
 
       // 1) Cache hit: if preview exists, serve it directly.
       if (tokenPresent) {
@@ -664,7 +754,7 @@ export async function GET(req: NextRequest) {
           path: canonicalPreviewPath,
           previewBucket: STEP_PREVIEW_BUCKET,
           previewPath: canonicalPreviewPath,
-          previewPathLegacy: legacyPreviewPath,
+          previewPathLegacy: legacyPreviewPathList.length > 0 ? legacyPreviewPathList : null,
         });
         const { data: cachedBlob, error: cachedError } = await storageSupabase.storage
           .from(STEP_PREVIEW_BUCKET)
@@ -695,65 +785,67 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      if (legacyPreviewPath) {
-        if (tokenPresent) {
-          try {
-            const downloaded = await downloadViaSignedUrl(
-              storageSupabase,
-              STEP_PREVIEW_BUCKET,
-              legacyPreviewPath,
-              60,
-              requestId,
-              "preview_legacy_key",
-            );
-            const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
-            logStep("hit", {
-              source: "cache_hit_legacy_key",
-              previewBucket: STEP_PREVIEW_BUCKET,
-              previewPath: legacyPreviewPath,
-            });
-            const body = downloaded.bytes.buffer.slice(
-              downloaded.bytes.byteOffset,
-              downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
-            ) as ArrayBuffer;
-            return new NextResponse(body, {
-              status: 200,
-              headers: {
-                "Content-Type": downloaded.contentType ?? contentTypeFor("step"),
-                "Content-Disposition": buildContentDisposition(disposition, filename),
-                "Cache-Control": "no-store",
-              },
-            });
-          } catch {
-            // continue to source
-          }
-        } else {
-          const { data: legacyBlob, error: legacyError } = await storageSupabase.storage
-            .from(STEP_PREVIEW_BUCKET)
-            .download(legacyPreviewPath);
-          if (!legacyError && legacyBlob) {
-            const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
-            logStep("hit", {
-              source: "cache_hit_legacy_key",
-              previewBucket: STEP_PREVIEW_BUCKET,
-              previewPath: legacyPreviewPath,
-            });
-            return new NextResponse(legacyBlob.stream(), {
-              status: 200,
-              headers: {
-                "Content-Type": contentTypeFor("step"),
-                "Content-Disposition": buildContentDisposition(disposition, filename),
-                "Cache-Control": "no-store",
-              },
-            });
-          }
-          if (legacyError) {
-            logStep("storage_download_failed", {
-              target: "preview_legacy_key",
-              bucket: STEP_PREVIEW_BUCKET,
-              path: legacyPreviewPath,
-              error: storageErrorForLog(legacyError) ?? safeErrorForLog(legacyError),
-            });
+      if (legacyPreviewPathList.length > 0) {
+        for (const legacyPath of legacyPreviewPathList) {
+          if (tokenPresent) {
+            try {
+              const downloaded = await downloadViaSignedUrl(
+                storageSupabase,
+                STEP_PREVIEW_BUCKET,
+                legacyPath,
+                60,
+                requestId,
+                "preview_legacy_key",
+              );
+              const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
+              logStep("hit", {
+                source: "cache_hit_legacy_key",
+                previewBucket: STEP_PREVIEW_BUCKET,
+                previewPath: legacyPath,
+              });
+              const body = downloaded.bytes.buffer.slice(
+                downloaded.bytes.byteOffset,
+                downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
+              ) as ArrayBuffer;
+              return new NextResponse(body, {
+                status: 200,
+                headers: {
+                  "Content-Type": downloaded.contentType ?? contentTypeFor("step"),
+                  "Content-Disposition": buildContentDisposition(disposition, filename),
+                  "Cache-Control": "no-store",
+                },
+              });
+            } catch {
+              // try next legacy key
+            }
+          } else {
+            const { data: legacyBlob, error: legacyError } = await storageSupabase.storage
+              .from(STEP_PREVIEW_BUCKET)
+              .download(legacyPath);
+            if (!legacyError && legacyBlob) {
+              const filename = `${(fileName ?? "preview").replace(/\.(step|stp)$/i, "")}.stl`;
+              logStep("hit", {
+                source: "cache_hit_legacy_key",
+                previewBucket: STEP_PREVIEW_BUCKET,
+                previewPath: legacyPath,
+              });
+              return new NextResponse(legacyBlob.stream(), {
+                status: 200,
+                headers: {
+                  "Content-Type": contentTypeFor("step"),
+                  "Content-Disposition": buildContentDisposition(disposition, filename),
+                  "Cache-Control": "no-store",
+                },
+              });
+            }
+            if (legacyError) {
+              logStep("storage_download_failed", {
+                target: "preview_legacy_key",
+                bucket: STEP_PREVIEW_BUCKET,
+                path: legacyPath,
+                error: storageErrorForLog(legacyError) ?? safeErrorForLog(legacyError),
+              });
+            }
           }
         }
       }
