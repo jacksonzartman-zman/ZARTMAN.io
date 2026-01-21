@@ -42,6 +42,7 @@ import { CopyTextButton } from "@/components/CopyTextButton";
 import { buildMailtoUrl } from "@/lib/adapters/mailtoAdapter";
 import { buildPublicUrl } from "@/lib/publicUrl";
 import { resolveDispatchModeValue } from "@/lib/adapters/providerDispatchMode";
+import { getDestinationDispatchReadiness } from "@/lib/ops/dispatchReadiness";
 import { recordDispatchStarted } from "@/lib/ops/dispatchStartedClient";
 
 type AdminRfqDestinationsCardProps = {
@@ -738,7 +739,18 @@ export function AdminRfqDestinationsCard({
               const isEmailMode = dispatchModeValue === "email";
               const isWebFormMode = dispatchModeValue === "web_form";
               const providerEmail = resolveProviderEmail(providerRecord);
-              const webFormUrl = providerRecord?.rfq_url ?? providerRecord?.website ?? "";
+              const webFormUrl = providerRecord?.rfq_url ?? "";
+              const dispatchReadiness = getDestinationDispatchReadiness({
+                id: destination.id,
+                dispatch_mode: providerRecord?.dispatch_mode ?? null,
+                quoting_mode:
+                  providerRecord?.quoting_mode ?? providerFallback?.quoting_mode ?? null,
+                provider_email: providerEmail,
+                provider_rfq_url: providerRecord?.rfq_url ?? null,
+              });
+              const dispatchBlockingReasonsTitle = dispatchReadiness.blockingReasons
+                .map((reason) => `- ${reason}`)
+                .join("\n");
               const isEmailGenerating = emailLoadingId === destination.id;
               const isWebFormGenerating = webFormLoadingId === destination.id;
               const emailError = emailErrorsById[destination.id];
@@ -782,7 +794,13 @@ export function AdminRfqDestinationsCard({
               const copyOfferButtonEnabledClass = `${dispatchSecondaryButtonBase} hover:border-slate-500 hover:text-white`;
               const copyOfferButtonDisabledClass = `${dispatchSecondaryButtonBase} cursor-not-allowed opacity-60`;
 
-              const primaryAction = isEmailMode ? (
+              const primaryAction = !dispatchReadiness.isReady ? (
+                <span title={dispatchBlockingReasonsTitle} className="inline-flex">
+                  <button type="button" disabled className={dispatchPrimaryDisabledClass}>
+                    {isEmailMode ? "Copy email" : isWebFormMode ? "Open form" : "Dispatch unavailable"}
+                  </button>
+                </span>
+              ) : isEmailMode ? (
                 <button
                   type="button"
                   onClick={() => handleCopyEmail(destination)}
@@ -811,12 +829,6 @@ export function AdminRfqDestinationsCard({
                 >
                   Open form
                 </a>
-              ) : isWebFormMode ? (
-                <span title="RFQ URL unavailable." className="inline-flex">
-                  <button type="button" disabled className={dispatchPrimaryDisabledClass}>
-                    Open form
-                  </button>
-                </span>
               ) : (
                 <button type="button" disabled className={dispatchPrimaryDisabledClass}>
                   Dispatch unavailable

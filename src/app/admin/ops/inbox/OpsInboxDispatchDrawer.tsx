@@ -38,6 +38,7 @@ import {
 } from "@/app/admin/quotes/[id]/actions";
 import { buildPublicUrl } from "@/lib/publicUrl";
 import { resolveDispatchModeValue } from "@/lib/adapters/providerDispatchMode";
+import { getDestinationDispatchReadiness } from "@/lib/ops/dispatchReadiness";
 import { recordDispatchStarted } from "@/lib/ops/dispatchStartedClient";
 
 type OpsInboxDispatchDrawerProps = {
@@ -986,8 +987,11 @@ export function OpsInboxDispatchDrawer({
                         const isEmailMode = dispatchMode === "email";
                         const isWebFormMode = dispatchMode === "web_form";
                         const providerEmail = destination.provider_email ?? "";
-                        const webFormUrl =
-                          destination.provider_rfq_url || destination.provider_website || "";
+                        const webFormUrl = destination.provider_rfq_url || "";
+                        const dispatchReadiness = getDestinationDispatchReadiness(destination);
+                        const dispatchBlockingReasonsTitle = dispatchReadiness.blockingReasons
+                          .map((reason) => `- ${reason}`)
+                          .join("\n");
                         const isEmailGenerating = emailLoadingId === destination.id;
                         const isWebFormGenerating = webFormLoadingId === destination.id;
                         const emailError = emailErrorsById[destination.id];
@@ -1050,7 +1054,17 @@ export function OpsInboxDispatchDrawer({
                         const copyOfferButtonEnabledClass = `${dispatchSecondaryButtonBase} hover:border-slate-500 hover:text-white`;
                         const copyOfferButtonDisabledClass = `${dispatchSecondaryButtonBase} cursor-not-allowed opacity-60`;
 
-                        const primaryAction = isEmailMode ? (
+                        const primaryAction = !dispatchReadiness.isReady ? (
+                          <span title={dispatchBlockingReasonsTitle} className="inline-flex">
+                            <button type="button" disabled className={dispatchPrimaryDisabledClass}>
+                              {isEmailMode
+                                ? "Copy email"
+                                : isWebFormMode
+                                  ? "Open form"
+                                  : "Dispatch unavailable"}
+                            </button>
+                          </span>
+                        ) : isEmailMode ? (
                           <button
                             type="button"
                             onClick={() => handleCopyEmail(destination)}
@@ -1081,12 +1095,6 @@ export function OpsInboxDispatchDrawer({
                           >
                             Open form
                           </a>
-                        ) : isWebFormMode ? (
-                          <span title="RFQ URL unavailable." className="inline-flex">
-                            <button type="button" disabled className={dispatchPrimaryDisabledClass}>
-                              Open form
-                            </button>
-                          </span>
                         ) : (
                           <button type="button" disabled className={dispatchPrimaryDisabledClass}>
                             Dispatch unavailable
