@@ -262,6 +262,105 @@ export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[
   }
 }
 
+type RawRfqDestinationLiteRow = {
+  id: string | null;
+  rfq_id: string | null;
+  provider_id: string | null;
+  status: string | null;
+  sent_at: string | null;
+  last_status_at: string | null;
+  external_reference: string | null;
+  error_message: string | null;
+  created_at: string | null;
+};
+
+/**
+ * Performance-oriented destination fetch used for customer portal summary states.
+ * Avoids expensive provider joins and schema-probing for optional columns.
+ *
+ * Returned rows are normalized into `RfqDestination` with optional fields set to null.
+ */
+export async function getRfqDestinationsLite(rfqId: string): Promise<RfqDestination[]> {
+  const normalizedId = normalizeId(rfqId);
+  if (!normalizedId) {
+    return [];
+  }
+
+  const destinationSelect = DESTINATION_COLUMNS.join(",");
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("rfq_destinations")
+      .select(destinationSelect)
+      .eq("rfq_id", normalizedId)
+      .order("created_at", { ascending: true })
+      .returns<RawRfqDestinationLiteRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[rfq destinations] missing schema; returning empty (lite)", {
+          rfqId: normalizedId,
+          supabaseError: serializeSupabaseError(error),
+        });
+        return [];
+      }
+      console.error("[rfq destinations] query failed (lite)", {
+        rfqId: normalizedId,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return [];
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    return rows
+      .map((row) => {
+        const id = normalizeId(row?.id);
+        const rfqId = normalizeId(row?.rfq_id);
+        const providerId = normalizeId(row?.provider_id);
+        if (!id || !rfqId || !providerId) {
+          return null;
+        }
+
+        const createdAt = row?.created_at ?? new Date().toISOString();
+        const lastStatusAt = row?.last_status_at ?? createdAt;
+
+        const destination: RfqDestination = {
+          id,
+          rfq_id: rfqId,
+          provider_id: providerId,
+          status: normalizeDestinationStatus(row?.status),
+          dispatch_started_at: null,
+          sent_at: row?.sent_at ?? null,
+          submitted_at: null,
+          submitted_notes: null,
+          submitted_by: null,
+          last_status_at: lastStatusAt,
+          external_reference: row?.external_reference ?? null,
+          offer_token: null,
+          error_message: row?.error_message ?? null,
+          created_at: createdAt,
+          provider: null,
+        };
+
+        return destination;
+      })
+      .filter((row): row is RfqDestination => Boolean(row));
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[rfq destinations] missing schema; returning empty (lite)", {
+        rfqId: normalizedId,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return [];
+    }
+    console.error("[rfq destinations] unexpected error (lite)", {
+      rfqId: normalizedId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return [];
+  }
+}
+
 export async function getDestinationByOfferToken(
   token: string,
 ): Promise<RfqDestinationOfferTokenContext | null> {

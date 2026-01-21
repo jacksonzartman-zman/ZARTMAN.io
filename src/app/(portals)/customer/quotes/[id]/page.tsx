@@ -129,6 +129,7 @@ import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { deriveSearchAlertPreferenceFromOpsEvents } from "@/server/ops/searchAlerts";
 import { getCustomerSearchAlertPreference } from "@/server/customer/savedSearches";
 import { loadCustomerOfferShortlist } from "@/server/customer/offerShortlist";
+import { debugOnce } from "@/server/db/schemaErrors";
 
 export const dynamic = "force-dynamic";
 
@@ -164,6 +165,8 @@ export default async function CustomerQuoteDetailPage({
   const tabParam = getSearchParamValue(resolvedSearchParams, "tab");
   const awardSupplierIdParam = getSearchParamValue(resolvedSearchParams, "awardSupplierId");
   const demoParam = getSearchParamValue(resolvedSearchParams, "demo");
+  const whatsHappeningParam = getSearchParamValue(resolvedSearchParams, "happening");
+  const loadWhatsHappeningData = whatsHappeningParam === "1";
   const messagesHref = buildQuoteTabHref(resolvedSearchParams, "messages", "#messages");
   const customer = await getCustomerByUserId(user.id);
   const showDemoModeBanner = demoParam === "1";
@@ -185,12 +188,26 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
+  debugOnce(
+    loadWhatsHappeningData
+      ? "customer_quote:whats_happening:loaded"
+      : "customer_quote:whats_happening:skipped",
+    loadWhatsHappeningData
+      ? "[customer quote] whats happening datasets enabled"
+      : "[customer quote] whats happening datasets skipped",
+    {
+      quoteId,
+      happeningParam: whatsHappeningParam ?? null,
+    },
+  );
+
   const workspaceResult = await loadQuoteWorkspaceData(quoteId, {
     safeOnly: true,
     viewerUserId: user.id,
     viewerRole: "customer",
     includeOffers: true,
-    includeOpsEvents: true,
+    includeOpsEvents: loadWhatsHappeningData,
+    includeDestinationDetails: loadWhatsHappeningData,
   });
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[customer quote] load failed", {
@@ -767,14 +784,6 @@ export default async function CustomerQuoteDetailPage({
   }`;
   const searchResultsHref = `/customer/search?quote=${quote.id}`;
   const hasSearchOffers = searchStateCounts.offers_total > 0;
-  const pendingDestinations = (rfqDestinations ?? [])
-    .filter((destination) => !isDestinationReceived(destination.status))
-    .sort(sortDestinationsBySlaUrgency);
-  const visiblePendingDestinations = pendingDestinations.slice(0, 6);
-  const remainingPendingDestinationCount = Math.max(
-    pendingDestinations.length - visiblePendingDestinations.length,
-    0,
-  );
   const contactedSuppliersCount = countContactedSuppliers(rfqDestinations ?? []);
   let pendingNextStepsCopy: string | null = null;
   let pendingOffersDescription = "No offers yet. We will notify you when quotes arrive.";
@@ -815,19 +824,21 @@ export default async function CustomerQuoteDetailPage({
       exceedsSla &&
       Boolean(elapsedSinceOutreachLabel);
   }
-  const searchActivityEvents = buildSearchActivityFeedEvents({
-    quote: {
-      id: quote.id,
-      created_at: quote.created_at ?? null,
-      updated_at: quote.updated_at ?? null,
-    },
-    quoteHref: `/customer/quotes/${quote.id}`,
-    destinations: rfqDestinations ?? [],
-    offers: rfqOffers ?? [],
-    opsEvents: opsEvents ?? [],
-    inviteSupplierHref: "/customer/invite-supplier",
-    compareOffersHref: rfqOffers.length > 0 ? "#compare-offers" : null,
-  });
+  const searchActivityEvents = loadWhatsHappeningData
+    ? buildSearchActivityFeedEvents({
+        quote: {
+          id: quote.id,
+          created_at: quote.created_at ?? null,
+          updated_at: quote.updated_at ?? null,
+        },
+        quoteHref: `/customer/quotes/${quote.id}`,
+        destinations: rfqDestinations ?? [],
+        offers: rfqOffers ?? [],
+        opsEvents: opsEvents ?? [],
+        inviteSupplierHref: "/customer/invite-supplier",
+        compareOffersHref: rfqOffers.length > 0 ? "#compare-offers" : null,
+      })
+    : [];
 
   const savedSearchAlertPreference = await getCustomerSearchAlertPreference({
     customerId: customer.id,
@@ -1568,27 +1579,48 @@ export default async function CustomerQuoteDetailPage({
     </section>
   );
 
+  const pendingDestinations = loadWhatsHappeningData
+    ? (rfqDestinations ?? [])
+        .filter((destination) => !isDestinationReceived(destination.status))
+        .sort(sortDestinationsBySlaUrgency)
+    : [];
+  const visiblePendingDestinations = loadWhatsHappeningData
+    ? pendingDestinations.slice(0, 6)
+    : [];
+  const remainingPendingDestinationCount = loadWhatsHappeningData
+    ? Math.max(pendingDestinations.length - visiblePendingDestinations.length, 0)
+    : 0;
+
   const searchLoopSection = (
     <CollapsibleCard
       title="What’s happening with my request?"
       description="Search status, pending providers, and coverage details."
-      defaultOpen={rfqOffers.length === 0 || showSlaNudge}
+      defaultOpen={loadWhatsHappeningData}
+      urlParamKey="happening"
       contentClassName="space-y-4"
     >
-      {searchStatusCard}
-      {pendingDestinations.length > 0 ? (
-        <PendingProvidersTable
-          destinations={visiblePendingDestinations}
-          remainingCount={remainingPendingDestinationCount}
-          matchContext={{ matchedOnProcess: Boolean(intakeProcess), locationFilter: null }}
-        />
-      ) : null}
-      <SearchActivityFeed
-        events={searchActivityEvents}
-        description="Latest updates from the search dispatch."
-        maxVisible={3}
-      />
-      <CoverageDisclosure destinations={rfqDestinations} showSummary={false} />
+      {loadWhatsHappeningData ? (
+        <>
+          {searchStatusCard}
+          {pendingDestinations.length > 0 ? (
+            <PendingProvidersTable
+              destinations={visiblePendingDestinations}
+              remainingCount={remainingPendingDestinationCount}
+              matchContext={{ matchedOnProcess: Boolean(intakeProcess), locationFilter: null }}
+            />
+          ) : null}
+          <SearchActivityFeed
+            events={searchActivityEvents}
+            description="Latest updates from the search dispatch."
+            maxVisible={3}
+          />
+          <CoverageDisclosure destinations={rfqDestinations} showSummary={false} />
+        </>
+      ) : (
+        <div className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-400">
+          Open this section to load recent activity, coverage breakdowns, and pending provider details.
+        </div>
+      )}
     </CollapsibleCard>
   );
 
