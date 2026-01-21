@@ -43,7 +43,8 @@ export async function listProviderPipelineRows(args: {
     const contacted = Boolean(provider.contacted_at);
     const isVerified = provider.verification_status === "verified";
     const isActive = provider.is_active;
-    const needsResearch = !emailValue && !rfqUrlValue;
+    const hasWebsite = Boolean(websiteValue || rfqUrlValue);
+    const needsResearch = !emailValue || !hasWebsite;
 
     return {
       provider,
