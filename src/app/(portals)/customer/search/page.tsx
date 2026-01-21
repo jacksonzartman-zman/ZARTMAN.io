@@ -149,6 +149,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
       viewerUserId: user.id,
       viewerRole: "customer",
       includeOffers: true,
+      includeOpsEvents: true,
     });
     if (!workspaceResult.ok || !workspaceResult.data) {
       workspaceError = workspaceResult.error ?? "Unable to load this search.";
@@ -261,6 +262,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     quote: activityQuote,
     destinations: activeQuote ? rfqDestinations : [],
     offers: activeQuote ? rfqOffers : [],
+    opsEvents: activeQuote ? workspaceData?.opsEvents ?? [] : [],
     inviteSupplierHref: activeQuote ? "/customer/invite-supplier" : null,
     viewResultsHref: !activeQuote && recentQuoteForActivity
       ? buildSearchHref(usp, recentQuoteForActivity.id)

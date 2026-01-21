@@ -29,6 +29,7 @@ import {
   type RfqDestination,
 } from "@/server/rfqs/destinations";
 import { getProviderStatusByIds } from "@/server/providers";
+import { listOpsEventsForQuote, type OpsEventRecord } from "@/server/ops/events";
 
 export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
   files: QuoteFileMeta[];
@@ -43,6 +44,7 @@ export type QuoteWorkspaceData = {
   parts: QuotePartWithFiles[];
   rfqOffers: RfqOffer[];
   rfqDestinations: RfqDestination[];
+  opsEvents?: OpsEventRecord[];
   messages: QuoteMessageRecord[];
   messagesError?: string | null;
   filesUnavailable?: boolean;
@@ -95,6 +97,10 @@ type LoadQuoteWorkspaceOptions = {
    * When true, fetch normalized offers for admin comparison views.
    */
   includeOffers?: boolean;
+  /**
+   * When true, include recent ops events for feed enrichment.
+   */
+  includeOpsEvents?: boolean;
 };
 
 type SafeQuoteRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
@@ -349,6 +355,11 @@ export async function loadQuoteWorkspaceData(
         : messagesResult.missing
           ? "missing_schema"
           : "message-load-error";
+    const includeOpsEvents = Boolean(options?.includeOpsEvents);
+    const opsEventsResult = includeOpsEvents
+      ? await listOpsEventsForQuote(enrichedQuote.id, { limit: 25 })
+      : null;
+    const opsEvents = opsEventsResult?.ok ? opsEventsResult.events : [];
 
     const filesIssue = filesUnavailable || filesErrorLogged;
 
@@ -362,6 +373,7 @@ export async function loadQuoteWorkspaceData(
         parts,
         rfqOffers,
         rfqDestinations,
+        opsEvents: includeOpsEvents ? opsEvents : undefined,
         messages: messages ?? [],
         messagesError,
         filesUnavailable: filesIssue,

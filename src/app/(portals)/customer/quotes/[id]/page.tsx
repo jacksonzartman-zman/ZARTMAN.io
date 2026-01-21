@@ -175,6 +175,7 @@ export default async function CustomerQuoteDetailPage({
     viewerUserId: user.id,
     viewerRole: "customer",
     includeOffers: true,
+    includeOpsEvents: true,
   });
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[customer quote] load failed", {
@@ -205,6 +206,7 @@ export default async function CustomerQuoteDetailPage({
     parts,
     rfqOffers,
     rfqDestinations,
+    opsEvents,
     messages: quoteMessages,
     messagesError,
     filesMissingCanonical,
@@ -757,6 +759,7 @@ export default async function CustomerQuoteDetailPage({
     },
     destinations: rfqDestinations ?? [],
     offers: rfqOffers ?? [],
+    opsEvents: opsEvents ?? [],
     inviteSupplierHref: "/customer/invite-supplier",
     compareOffersHref: rfqOffers.length > 0 ? "#compare-offers" : null,
   });
