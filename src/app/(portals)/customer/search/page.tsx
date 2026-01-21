@@ -86,6 +86,7 @@ type SearchParamsSnapshot = {
   maxPrice: string;
   location: string;
   sort: string;
+  shortlisted: string;
 };
 
 type CountMap = Map<string, number>;
@@ -99,6 +100,7 @@ const FILTER_PARAM_KEYS = [
   "maxPrice",
   "location",
   "sort",
+  "shortlisted",
 ] as const;
 
 const SORT_PARAM_VALUES = ["bestValue", "fastest", "lowestPrice", "lowestRisk"] as const;
@@ -441,6 +443,9 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                 <input type="hidden" name="quote" value={activeQuote.id} />
               ) : null}
               <input type="hidden" name="sort" value={rawParams.sort} />
+              {rawParams.shortlisted ? (
+                <input type="hidden" name="shortlisted" value={rawParams.shortlisted} />
+              ) : null}
               {!activeQuote ? (
                 <p className="text-xs text-slate-400">
                   Select a search to apply filters to provider results.
@@ -850,6 +855,7 @@ function snapshotSearchParams(usp: URLSearchParams): SearchParamsSnapshot {
     maxPrice: usp.get("maxPrice") ?? "",
     location: usp.get("location") ?? "",
     sort: usp.get("sort") ?? "",
+    shortlisted: usp.get("shortlisted") ?? "",
   };
 }
 

@@ -50,6 +50,7 @@ const COMPLETENESS_LEVELS = [
 ] as const;
 
 const SORT_PARAM_KEY = "sort";
+const SHORTLIST_PARAM_KEY = "shortlisted";
 const SORT_KEYS: SortKey[] = ["bestValue", "fastest", "lowestPrice", "lowestRisk"];
 const DEFAULT_SORT_KEY: SortKey = "bestValue";
 
@@ -77,6 +78,12 @@ function resolveSortKey(value: string | null): SortKey {
   return parseSortKey(value) ?? DEFAULT_SORT_KEY;
 }
 
+function parseShortlistedOnly(value: string | null): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
 export function CustomerQuoteCompareOffers({
   quoteId,
   offers,
@@ -99,7 +106,9 @@ export function CustomerQuoteCompareOffers({
   );
   const [showBadgeWinnersOnly, setShowBadgeWinnersOnly] = useState(false);
   const [showLowRiskOnly, setShowLowRiskOnly] = useState(false);
-  const [showShortlistedOnly, setShowShortlistedOnly] = useState(false);
+  const [showShortlistedOnly, setShowShortlistedOnly] = useState(() =>
+    parseShortlistedOnly(searchParams.get(SHORTLIST_PARAM_KEY)),
+  );
   const [expandedOfferId, setExpandedOfferId] = useState<string | null>(null);
   const [shortlistedOfferIds, setShortlistedOfferIds] = useState<Set<string>>(
     () => new Set(normalizeOfferIds(shortlistedOfferIdsProp)),
@@ -133,11 +142,30 @@ export function CustomerQuoteCompareOffers({
   }, [searchParams]);
 
   useEffect(() => {
+    const nextShortlistedOnly = parseShortlistedOnly(searchParams.get(SHORTLIST_PARAM_KEY));
+    setShowShortlistedOnly((current) => (current === nextShortlistedOnly ? current : nextShortlistedOnly));
+  }, [searchParams]);
+
+  useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     if (params.get(SORT_PARAM_KEY) === sortKey) return;
     params.set(SORT_PARAM_KEY, sortKey);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, router, searchParams, sortKey]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const shouldSet = showShortlistedOnly;
+    const currentValue = params.get(SHORTLIST_PARAM_KEY);
+    const isSet = parseShortlistedOnly(currentValue);
+    if (shouldSet === isSet) return;
+    if (shouldSet) {
+      params.set(SHORTLIST_PARAM_KEY, "1");
+    } else {
+      params.delete(SHORTLIST_PARAM_KEY);
+    }
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams, showShortlistedOnly]);
 
   useEffect(() => {
     setShortlistedOfferIds(new Set(normalizeOfferIds(shortlistedOfferIdsProp)));
@@ -234,12 +262,47 @@ export function CustomerQuoteCompareOffers({
 
       <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
         <div className="border-b border-slate-900/60 px-5 py-4">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-            Compare offers
-          </p>
-          <p className="mt-1 text-sm text-slate-300">
-            Compare pricing, lead time, and fit. Select the provider you want to proceed with.
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Compare offers
+              </p>
+              <p className="mt-1 text-sm text-slate-300">
+                Compare pricing, lead time, and fit. Select the provider you want to proceed with.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-200">
+                <span>View shortlisted</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={showShortlistedOnly}
+                  onClick={() => setShowShortlistedOnly((prev) => !prev)}
+                  className={clsx(
+                    "relative inline-flex h-6 w-11 items-center rounded-full border transition",
+                    showShortlistedOnly
+                      ? "border-emerald-400/60 bg-emerald-500/20"
+                      : "border-slate-800 bg-slate-950/40",
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      "inline-block h-5 w-5 rounded-full bg-white/90 transition",
+                      showShortlistedOnly ? "translate-x-5" : "translate-x-0.5",
+                    )}
+                  />
+                </button>
+              </label>
+              <TagPill
+                size="sm"
+                tone={shortlistedCount > 0 ? "emerald" : "slate"}
+                className="normal-case tracking-normal"
+              >
+                Shortlisted: {shortlistedCount}
+              </TagPill>
+            </div>
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               Sort
@@ -282,27 +345,7 @@ export function CustomerQuoteCompareOffers({
               >
                 No risk flags
               </button>
-              <button
-                type="button"
-                onClick={() => setShowShortlistedOnly((prev) => !prev)}
-                aria-pressed={showShortlistedOnly}
-                className={clsx(
-                  "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide transition",
-                  showShortlistedOnly
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-400 hover:text-white",
-                )}
-              >
-                Shortlisted only
-              </button>
             </div>
-            <TagPill
-              size="sm"
-              tone={shortlistedCount > 0 ? "emerald" : "slate"}
-              className="normal-case tracking-normal"
-            >
-              Shortlisted: {shortlistedCount}
-            </TagPill>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -319,7 +362,24 @@ export function CustomerQuoteCompareOffers({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-900/60">
-              {sortedOffers.length === 0 && hasQuickFilters ? (
+              {showShortlistedOnly && shortlistedCount === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-6 text-sm text-slate-300">
+                    No offers shortlisted yet.{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowBadgeWinnersOnly(false);
+                        setShowLowRiskOnly(false);
+                        setShowShortlistedOnly(false);
+                      }}
+                      className="text-xs font-semibold text-slate-100 underline-offset-4 hover:underline"
+                    >
+                      Show all offers
+                    </button>
+                  </td>
+                </tr>
+              ) : sortedOffers.length === 0 && hasQuickFilters ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-6 text-sm text-slate-400">
                     No offers match these quick filters.{" "}
