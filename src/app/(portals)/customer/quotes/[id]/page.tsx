@@ -11,11 +11,8 @@ import type { ReactNode } from "react";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
-import {
-  buildSearchStateSummary,
-  formatSearchStateLabel,
-  searchStateLabelTone,
-} from "@/lib/search/searchState";
+import { buildSearchStateSummary, searchStateLabelTone } from "@/lib/search/searchState";
+import { buildSearchProgress } from "@/lib/search/searchProgress";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
@@ -726,10 +723,21 @@ export default async function CustomerQuoteDetailPage({
     offers: rfqOffers ?? [],
   });
   const searchStateCounts = searchStateSummary.counts;
-  const searchStateLabel = formatSearchStateLabel(searchStateSummary.status_label);
   const searchStateTone = searchStateLabelTone(searchStateSummary.status_label);
-  const searchStatusLabel =
-    searchStateSummary.status_label === "results_available" ? "Results" : searchStateLabel;
+  const searchProgress = buildSearchProgress({
+    counts: searchStateSummary.counts,
+    timestamps: searchStateSummary.timestamps,
+    statusLabel: searchStateSummary.status_label,
+    recommendedAction: searchStateSummary.recommended_action,
+    quoteId: quote.id,
+  });
+  const searchStatusLabel = searchProgress.statusTag;
+  const searchStatusMeta = [
+    searchProgress.statusDetail,
+    searchProgress.lastUpdatedLabel,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const destinationsLabel = `${searchStateCounts.destinations_total} destination${
     searchStateCounts.destinations_total === 1 ? "" : "s"
   }`;
@@ -1425,18 +1433,23 @@ export default async function CustomerQuoteDetailPage({
       aria-label="Search status"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Status
-            </span>
-            <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
-              {searchStatusLabel}
-            </TagPill>
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Status
+              </span>
+              <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
+                {searchStatusLabel}
+              </TagPill>
+            </div>
+            <p className="text-sm text-slate-200">
+              {destinationsLabel} | {offersLabel}
+            </p>
           </div>
-          <p className="text-sm text-slate-200">
-            {destinationsLabel} | {offersLabel}
-          </p>
+          {searchStatusMeta ? (
+            <p className="text-xs text-slate-400">{searchStatusMeta}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link

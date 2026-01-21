@@ -14,12 +14,12 @@ import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
+import { buildSearchStateSummary, searchStateLabelTone } from "@/lib/search/searchState";
 import {
-  buildSearchStateSummary,
-  formatSearchStateActionLabel,
-  formatSearchStateLabel,
-  searchStateLabelTone,
-} from "@/lib/search/searchState";
+  buildSearchProgress,
+  EMPTY_SEARCH_STATE_COUNTS,
+  EMPTY_SEARCH_STATE_TIMESTAMPS,
+} from "@/lib/search/searchProgress";
 import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import { decorateProviderForCustomerDisplay } from "@/lib/providers/customerDisplay";
 import { supabaseServer } from "@/lib/supabaseServer";
@@ -178,14 +178,29 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     offers: rfqOffers,
   });
   const searchStateCounts = searchStateSummary.counts;
-  const searchStateLabel = formatSearchStateLabel(searchStateSummary.status_label);
   const searchStateTone = searchStateLabelTone(searchStateSummary.status_label);
-  const searchStateAction = searchStateSummary.recommended_action;
-  const searchStateActionLabel = formatSearchStateActionLabel(searchStateAction);
-  const searchStateActionHref =
-    searchStateAction === "adjust_search"
-      ? `/customer/quotes/${activeQuote?.id ?? ""}#uploads`
-      : "mailto:support@zartman.app";
+  const searchProgress = buildSearchProgress({
+    counts: searchStateSummary.counts,
+    timestamps: searchStateSummary.timestamps,
+    statusLabel: searchStateSummary.status_label,
+    recommendedAction: searchStateSummary.recommended_action,
+    quoteId: activeQuote?.id ?? null,
+  });
+  const initializingSearchProgress = quoteIdParam
+    ? buildSearchProgress({
+        counts: EMPTY_SEARCH_STATE_COUNTS,
+        timestamps: EMPTY_SEARCH_STATE_TIMESTAMPS,
+        statusLabel: "searching",
+        recommendedAction: "refresh",
+        quoteId: quoteIdParam,
+        isInitializing: true,
+      })
+    : null;
+  const searchProgressActionLabel = searchProgress.recommendedActionLabel;
+  const searchProgressActionHref = searchProgress.recommendedActionHref;
+  const searchProgressActionIsMailto = Boolean(
+    searchProgressActionHref && searchProgressActionHref.startsWith("mailto:"),
+  );
   const pendingDestinations = buildPendingDestinations({
     destinations: rfqDestinations,
     filters: filterContext.filters,
@@ -431,12 +446,15 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
 
           {!workspaceError && quoteIdParam && !activeQuote ? (
             <PortalCard
-              title="Searching providers..."
-              description="We’re setting up your RFQ and routing it to matched providers."
+              title={initializingSearchProgress?.statusHeadline ?? "Searching providers..."}
+              description={
+                initializingSearchProgress?.statusDetail ??
+                "We are setting up your RFQ and routing it to matched providers."
+              }
               action={
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <TagPill size="sm" tone="slate" className="normal-case tracking-normal">
-                    Initializing
+                    {initializingSearchProgress?.statusTag ?? "Initializing"}
                   </TagPill>
                   <CustomerQuoteRefreshResultsButton quoteId={quoteIdParam} />
                 </div>
@@ -456,12 +474,12 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           {activeQuote && workspaceData ? (
             <>
               <PortalCard
-                title="Searching providers..."
-                description="Track dispatch progress as we route your RFQ to matched providers."
+                title={searchProgress.statusHeadline}
+                description={searchProgress.statusDetail}
                 action={
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
-                      {searchStateLabel}
+                      {searchProgress.statusTag}
                     </TagPill>
                     <CustomerQuoteRefreshResultsButton quoteId={activeQuote.id} />
                   </div>
@@ -474,22 +492,25 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                     <SummaryStat label="Error" value={searchStateCounts.destinations_error} />
                     <SummaryStat label="Offers" value={searchStateCounts.offers_total} />
                   </dl>
-                  {searchStateAction !== "refresh" ? (
+                  {searchProgress.lastUpdatedLabel ? (
+                    <p className="text-xs text-slate-500">{searchProgress.lastUpdatedLabel}</p>
+                  ) : null}
+                  {searchProgressActionLabel && searchProgressActionHref ? (
                     <p className="text-xs text-slate-400">
                       Next step:{" "}
-                      {searchStateAction === "contact_support" ? (
+                      {searchProgressActionIsMailto ? (
                         <a
-                          href={searchStateActionHref}
+                          href={searchProgressActionHref}
                           className="font-semibold text-slate-100 hover:text-white"
                         >
-                          {searchStateActionLabel}
+                          {searchProgressActionLabel}
                         </a>
                       ) : (
                         <Link
-                          href={searchStateActionHref}
+                          href={searchProgressActionHref}
                           className="font-semibold text-slate-100 hover:text-white"
                         >
-                          {searchStateActionLabel}
+                          {searchProgressActionLabel}
                         </Link>
                       )}
                     </p>
