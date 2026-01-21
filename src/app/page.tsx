@@ -63,6 +63,19 @@ const PROCESS_TABS = [
   },
 ];
 
+type HomePageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function resolveSearchParam(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function getProviderInitials(name: string) {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) {
@@ -75,10 +88,18 @@ function getProviderInitials(name: string) {
     .join("");
 }
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: HomePageProps) {
   const activeProviders = await getActiveProviders();
   const { user } = await getServerAuthUser({ quiet: true });
   const isAuthenticated = Boolean(user);
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const processParam = resolveSearchParam(resolvedSearchParams?.process);
+  const initialProcessKey =
+    PROCESS_TABS.find((process) => process.key === processParam)?.key ?? null;
+  const initialQuantity = resolveSearchParam(resolvedSearchParams?.qty);
+  const initialNeedByDate = resolveSearchParam(resolvedSearchParams?.needBy);
+  const uploadFlag = resolveSearchParam(resolvedSearchParams?.upload);
+  const autoOpenUpload = uploadFlag === "1" || uploadFlag === "true";
 
   return (
     <main className="main-shell">
@@ -100,6 +121,10 @@ export default async function HomePage() {
             <HomeHeroUploadPanel
               processes={PROCESS_TABS}
               isAuthenticated={isAuthenticated}
+              initialProcessKey={initialProcessKey}
+              initialQuantity={initialQuantity ?? undefined}
+              initialNeedByDate={initialNeedByDate ?? undefined}
+              autoOpenUpload={autoOpenUpload}
             />
           </div>
           <div className="flex flex-col gap-2 text-xs text-ink-soft sm:flex-row sm:items-center sm:gap-3">

@@ -11,7 +11,7 @@ import {
   isAllowedCadFileName,
 } from "@/lib/cadFileTypes";
 import { formatMaxUploadSize, isFileTooLarge } from "@/lib/uploads/uploadLimits";
-import { primaryCtaClasses } from "@/lib/ctas";
+import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { QUOTE_INTAKE_FALLBACK_ERROR } from "@/lib/quote/messages";
 import {
   finalizeQuoteIntakeEphemeralUploadAction,
@@ -33,10 +33,22 @@ type PrefillContact = {
   displayName: string;
 };
 
+type SubmissionStep = "idle" | "creating" | "uploading" | "starting";
+
+type SubmitError = {
+  message: string;
+  quoteId?: string;
+  retryable: boolean;
+};
+
 type HomeUploadLauncherProps = {
   isAuthenticated: boolean;
   manufacturingProcess: string;
   processLabel?: string;
+  processKey?: string;
+  initialQuantity?: string;
+  initialNeedByDate?: string;
+  autoOpen?: boolean;
 };
 
 const MAX_FILES_PER_RFQ = 20;
@@ -44,6 +56,34 @@ const EXPORT_RESTRICTION_DEFAULT = "Not applicable / None";
 const MAX_UPLOAD_SIZE_LABEL = formatMaxUploadSize();
 
 const FILE_TYPE_ERROR_MESSAGE = `Unsupported file type. Please upload ${CAD_FILE_TYPE_DESCRIPTION}.`;
+
+const SUBMISSION_STATUS_LABELS: Record<Exclude<SubmissionStep, "idle">, string> = {
+  creating: "Creating quote...",
+  uploading: "Uploading files...",
+  starting: "Starting search...",
+};
+
+const parseSubmitError = (message: string): { message: string; quoteId?: string } => {
+  const normalized = message.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return { message: QUOTE_INTAKE_FALLBACK_ERROR };
+  }
+
+  const match = normalized.match(/Quote ID ([A-Za-z0-9-]+)/i);
+  if (!match) {
+    return { message: normalized };
+  }
+
+  const quoteId = match[1];
+  let cleaned = normalized.replace(/(?:with\s+)?Quote ID [A-Za-z0-9-]+\.?/i, "").trim();
+  cleaned = cleaned.replace(/\s+\./g, ".").trim();
+  return { message: cleaned || normalized, quoteId };
+};
+
+const buildSubmitError = (message: string, retryable: boolean): SubmitError => ({
+  ...parseSubmitError(message),
+  retryable,
+});
 
 const formatStorageUploadError = (input: unknown): string => {
   const message =
@@ -124,15 +164,20 @@ export default function HomeUploadLauncher({
   isAuthenticated,
   manufacturingProcess,
   processLabel,
+  processKey,
+  initialQuantity = "",
+  initialNeedByDate = "",
+  autoOpen = false,
 }: HomeUploadLauncherProps) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(autoOpen);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<SelectedCadFile[]>([]);
-  const [quantity, setQuantity] = useState("");
-  const [needByDate, setNeedByDate] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState(initialQuantity);
+  const [needByDate, setNeedByDate] = useState(initialNeedByDate);
+  const [submitError, setSubmitError] = useState<SubmitError | null>(null);
+  const [submissionStep, setSubmissionStep] = useState<SubmissionStep>("idle");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sessionIdRef = useRef<string | null>(null);
 
@@ -143,9 +188,10 @@ export default function HomeUploadLauncher({
     setSelectedFiles([]);
     setQuantity("");
     setNeedByDate("");
-    setError(null);
+    setSubmitError(null);
     setIsDragging(false);
     setIsSubmitting(false);
+    setSubmissionStep("idle");
     sessionIdRef.current = null;
   }, []);
 
@@ -198,7 +244,7 @@ export default function HomeUploadLauncher({
       return next;
     });
 
-    setError(nextError);
+    setSubmitError(nextError ? buildSubmitError(nextError, false) : null);
   }, []);
 
   const handleFilePickerChange = useCallback(
@@ -270,40 +316,44 @@ export default function HomeUploadLauncher({
 
   const handleSubmit = useCallback(async () => {
     if (!isAuthenticated) {
-      setError("Please sign in to upload parts and start a search.");
+      setSubmitError(buildSubmitError("Please sign in to upload parts and start a search.", false));
       return;
     }
     if (!hasFiles) {
-      setError("Attach at least one CAD file before submitting.");
+      setSubmitError(buildSubmitError("Attach at least one CAD file before submitting.", false));
       return;
     }
     if (!quantity.trim()) {
-      setError("Share the quantity or volumes you need.");
+      setSubmitError(buildSubmitError("Share the quantity or volumes you need.", false));
       return;
     }
     if (!manufacturingProcess) {
-      setError("Select a manufacturing process before submitting.");
+      setSubmitError(buildSubmitError("Select a manufacturing process before submitting.", false));
       return;
     }
 
     setIsSubmitting(true);
-    setError(null);
+    setSubmitError(null);
+    setSubmissionStep("creating");
 
     try {
       const sb = supabaseBrowser();
       const { data } = await sb.auth.getUser();
       const prefill = buildPrefillContact(data.user ?? null);
       if (!prefill) {
-        setError("Please sign in to upload parts and start a search.");
+        setSubmitError(buildSubmitError("Please sign in to upload parts and start a search.", false));
         return;
       }
 
       const prepared = await prepareTargets();
       if (!prepared.ok) {
-        setError(prepared.error || QUOTE_INTAKE_FALLBACK_ERROR);
+        setSubmitError(
+          buildSubmitError(prepared.error || QUOTE_INTAKE_FALLBACK_ERROR, true),
+        );
         return;
       }
 
+      setSubmissionStep("uploading");
       await uploadFiles(prepared.targets);
 
       const finalizeTargets = prepared.targets.map((target) => ({
@@ -331,24 +381,29 @@ export default function HomeUploadLauncher({
       finalizeForm.set("itarAcknowledged", "true");
       finalizeForm.set("termsAccepted", "true");
 
+      setSubmissionStep("starting");
       const finalized = await finalizeQuoteIntakeEphemeralUploadAction(finalizeForm);
       if (!finalized.ok) {
-        setError(finalized.error || QUOTE_INTAKE_FALLBACK_ERROR);
+        setSubmitError(
+          buildSubmitError(finalized.error || QUOTE_INTAKE_FALLBACK_ERROR, true),
+        );
         return;
       }
 
       const quoteId = finalized.quoteId?.trim();
       if (quoteId) {
+        handleClose();
         router.push(`/customer/search?quote=${encodeURIComponent(quoteId)}`);
       } else {
-        setError(QUOTE_INTAKE_FALLBACK_ERROR);
+        setSubmitError(buildSubmitError(QUOTE_INTAKE_FALLBACK_ERROR, true));
       }
     } catch (submitError) {
       const message =
         submitError instanceof Error ? submitError.message.trim() : "";
-      setError(message || QUOTE_INTAKE_FALLBACK_ERROR);
+      setSubmitError(buildSubmitError(message || QUOTE_INTAKE_FALLBACK_ERROR, true));
     } finally {
       setIsSubmitting(false);
+      setSubmissionStep("idle");
     }
   }, [
     isAuthenticated,
@@ -359,7 +414,27 @@ export default function HomeUploadLauncher({
     uploadFiles,
     needByDate,
     router,
+    handleClose,
   ]);
+
+  const progressLabel =
+    submissionStep !== "idle" ? SUBMISSION_STATUS_LABELS[submissionStep] : null;
+  const loginHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (processKey) {
+      params.set("process", processKey);
+    }
+    const trimmedQuantity = quantity.trim();
+    if (trimmedQuantity) {
+      params.set("qty", trimmedQuantity);
+    }
+    if (needByDate) {
+      params.set("needBy", needByDate);
+    }
+    params.set("upload", "1");
+    const nextPath = params.toString() ? `/?${params.toString()}` : "/";
+    return `/login?next=${encodeURIComponent(nextPath)}`;
+  }, [processKey, quantity, needByDate]);
 
   return (
     <>
@@ -402,134 +477,151 @@ export default function HomeUploadLauncher({
               </button>
             </div>
 
-            {!isAuthenticated ? (
-              <div className="mt-6 rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4 text-sm text-ink">
-                <p>Please sign in to upload parts and start a search.</p>
-                <Link
-                  href="/login?next=/customer/search"
-                  className={`${primaryCtaClasses} mt-4 inline-flex rounded-full px-4 py-2 text-sm`}
-                >
-                  Sign in
-                </Link>
-              </div>
-            ) : (
-              <div className="mt-6 space-y-5">
-                {error ? (
-                  <div className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                    {error}
-                  </div>
-                ) : null}
+            <div className="mt-6 space-y-5">
+              {!isAuthenticated ? (
+                <div className="rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-xs text-ink-soft">
+                  Sign in to upload parts and start a search.
+                </div>
+              ) : null}
 
-                <div className="rounded-2xl border border-slate-900/70 bg-slate-950/70 p-4">
-                  <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.3em] text-ink-soft">
-                    <span>Files</span>
-                    <span>{selectedFiles.length}/{MAX_FILES_PER_RFQ}</span>
-                  </div>
-                  <div
-                    className={clsx(
-                      "mt-3 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 text-center text-sm text-ink-muted transition",
-                      isDragging
-                        ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-100"
-                        : "border-slate-900/70 hover:border-slate-700/80",
-                    )}
-                    onDragEnter={(event) => {
-                      event.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                    }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <span className="text-sm font-semibold text-ink">
-                      Drag and drop CAD or ZIP files
-                    </span>
-                    <span className="text-xs text-ink-soft">
-                      {CAD_FILE_TYPE_DESCRIPTION} · Max {MAX_UPLOAD_SIZE_LABEL} per file
-                    </span>
+              {submitError ? (
+                <div className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                  <p className="font-semibold text-red-100">{submitError.message}</p>
+                  {submitError.quoteId ? (
+                    <p className="mt-1 text-xs text-red-200">Quote ID: {submitError.quoteId}</p>
+                  ) : null}
+                  {submitError.retryable ? (
                     <button
                       type="button"
-                      className="mt-2 rounded-full border border-slate-800/80 px-4 py-2 text-xs font-semibold text-ink-soft transition hover:border-slate-700 hover:text-ink"
+                      onClick={() => void handleSubmit()}
+                      className={`${secondaryCtaClasses} mt-3 rounded-full px-4 py-2 text-xs`}
                     >
-                      Choose files
+                      Try again
                     </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept={CAD_ACCEPT_STRING}
-                      multiple
-                      className="sr-only"
-                      onChange={handleFilePickerChange}
-                    />
-                  </div>
+                  ) : null}
+                </div>
+              ) : null}
 
-                  {hasFiles ? (
-                    <ul className="mt-4 space-y-2 text-sm text-ink">
-                      {selectedFiles.map((entry) => (
-                        <li
-                          key={entry.id}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-900/70 bg-slate-950/60 px-3 py-2"
-                        >
-                          <div>
-                            <p className="font-medium text-ink">{entry.file.name}</p>
-                            <p className="text-xs text-ink-soft">
-                              {(entry.file.size / 1024 / 1024).toFixed(2)} MB
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveFile(entry.id)}
-                            className="text-xs font-semibold text-ink-soft transition hover:text-ink"
-                          >
-                            Remove
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-3 text-xs text-ink-soft">
-                      Selected file names will appear here.
-                    </p>
+              {progressLabel ? (
+                <div
+                  className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100"
+                  aria-live="polite"
+                >
+                  {progressLabel}
+                </div>
+              ) : null}
+
+              <div className="rounded-2xl border border-slate-900/70 bg-slate-950/70 p-4">
+                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.3em] text-ink-soft">
+                  <span>Files</span>
+                  <span>{selectedFiles.length}/{MAX_FILES_PER_RFQ}</span>
+                </div>
+                <div
+                  className={clsx(
+                    "mt-3 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 text-center text-sm text-ink-muted transition",
+                    isDragging
+                      ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-100"
+                      : "border-slate-900/70 hover:border-slate-700/80",
                   )}
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="flex flex-col gap-1 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-ink">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-                      Qty
-                    </span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={quantity}
-                      onChange={(event) => setQuantity(event.target.value)}
-                      placeholder="50"
-                      className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-ink">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-                      Need-by date
-                    </span>
-                    <input
-                      type="date"
-                      value={needByDate}
-                      onChange={(event) => setNeedByDate(event.target.value)}
-                      className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
-                    />
-                  </label>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-xs text-ink-soft">
-                  <span>
-                    Process: <span className="font-semibold text-ink">{processLabel || manufacturingProcess}</span>
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <span className="text-sm font-semibold text-ink">
+                    Drag and drop CAD or ZIP files
                   </span>
-                  <span>We’ll route your files to vetted suppliers.</span>
+                  <span className="text-xs text-ink-soft">
+                    {CAD_FILE_TYPE_DESCRIPTION} · Max {MAX_UPLOAD_SIZE_LABEL} per file
+                  </span>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-full border border-slate-800/80 px-4 py-2 text-xs font-semibold text-ink-soft transition hover:border-slate-700 hover:text-ink"
+                  >
+                    Choose files
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={CAD_ACCEPT_STRING}
+                    multiple
+                    className="sr-only"
+                    onChange={handleFilePickerChange}
+                  />
                 </div>
 
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {hasFiles ? (
+                  <ul className="mt-4 space-y-2 text-sm text-ink">
+                    {selectedFiles.map((entry) => (
+                      <li
+                        key={entry.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-900/70 bg-slate-950/60 px-3 py-2"
+                      >
+                        <div>
+                          <p className="font-medium text-ink">{entry.file.name}</p>
+                          <p className="text-xs text-ink-soft">
+                            {(entry.file.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveFile(entry.id)}
+                          className="text-xs font-semibold text-ink-soft transition hover:text-ink"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-xs text-ink-soft">
+                    Selected file names will appear here.
+                  </p>
+                )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex flex-col gap-1 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-ink">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                    Qty
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={quantity}
+                    onChange={(event) => setQuantity(event.target.value)}
+                    placeholder="50"
+                    className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-ink">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                    Need-by date
+                  </span>
+                  <input
+                    type="date"
+                    value={needByDate}
+                    onChange={(event) => setNeedByDate(event.target.value)}
+                    className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
+                  />
+                </label>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-xs text-ink-soft">
+                <span>
+                  Process: <span className="font-semibold text-ink">{processLabel || manufacturingProcess}</span>
+                </span>
+                <span>We’ll route your files to vetted suppliers.</span>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {isAuthenticated ? (
                   <button
                     type="button"
                     onClick={handleSubmit}
@@ -540,14 +632,21 @@ export default function HomeUploadLauncher({
                       !canSubmit && "cursor-not-allowed opacity-60",
                     )}
                   >
-                    {isSubmitting ? "Starting search..." : "Start search"}
+                    {progressLabel ?? "Start search"}
                   </button>
-                  <span className="text-xs text-ink-soft">
-                    By uploading, you agree to start a quote intake.
-                  </span>
-                </div>
+                ) : (
+                  <Link
+                    href={loginHref}
+                    className={clsx(primaryCtaClasses, "rounded-full px-6 py-3 text-sm")}
+                  >
+                    Sign in to start search
+                  </Link>
+                )}
+                <span className="text-xs text-ink-soft">
+                  By uploading, you agree to start a quote intake.
+                </span>
               </div>
-            )}
+            </div>
           </div>
         </div>
       ) : null}

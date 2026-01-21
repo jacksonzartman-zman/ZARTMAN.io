@@ -1,12 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import HomeProcessTabs, { type ProcessItem } from "@/components/marketing/HomeProcessTabs";
 import HomeUploadLauncher from "@/components/marketing/HomeUploadLauncher";
 
 type HomeHeroUploadPanelProps = {
   processes: ProcessItem[];
   isAuthenticated: boolean;
+  initialProcessKey?: string | null;
+  initialQuantity?: string;
+  initialNeedByDate?: string;
+  autoOpenUpload?: boolean;
 };
 
 const PROCESS_LABEL_OVERRIDES: Record<string, string> = {
@@ -21,8 +25,25 @@ const PROCESS_LABEL_OVERRIDES: Record<string, string> = {
 export default function HomeHeroUploadPanel({
   processes,
   isAuthenticated,
+  initialProcessKey,
+  initialQuantity,
+  initialNeedByDate,
+  autoOpenUpload,
 }: HomeHeroUploadPanelProps) {
-  const [activeKey, setActiveKey] = useState(processes[0]?.key ?? "");
+  const initialKey = useMemo(() => {
+    if (initialProcessKey && processes.some((process) => process.key === initialProcessKey)) {
+      return initialProcessKey;
+    }
+    return processes[0]?.key ?? "";
+  }, [initialProcessKey, processes]);
+  const [activeKey, setActiveKey] = useState(initialKey);
+
+  useEffect(() => {
+    if (!initialKey) {
+      return;
+    }
+    setActiveKey(initialKey);
+  }, [initialKey]);
   const activeProcess = useMemo(
     () => processes.find((process) => process.key === activeKey) ?? processes[0],
     [activeKey, processes],
@@ -48,6 +69,10 @@ export default function HomeHeroUploadPanel({
               isAuthenticated={isAuthenticated}
               manufacturingProcess={manufacturingProcess}
               processLabel={activeProcess?.label}
+              processKey={activeProcess?.key}
+              initialQuantity={initialQuantity}
+              initialNeedByDate={initialNeedByDate}
+              autoOpen={autoOpenUpload}
             />
           </div>
         </div>
