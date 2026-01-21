@@ -208,15 +208,12 @@ export async function persistQuoteIntakeDirectUpload(params: {
     sanitizeNullable(params.payload.company) ||
     contactEmail;
 
-  let idempotencyKey = normalizeIdempotencyKey(params.idempotencyKey);
-
   const logContext = {
     userId: user.id,
     contactEmail,
     sessionEmail,
     primaryFileName: filesMeta[0]?.fileName ?? null,
     fileCount: filesMeta.length,
-    idempotencyKey: idempotencyKey ?? null,
   };
 
   try {

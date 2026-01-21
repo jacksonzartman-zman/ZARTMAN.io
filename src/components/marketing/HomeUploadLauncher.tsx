@@ -658,7 +658,7 @@ export default function HomeUploadLauncher({
         const message = submitError instanceof Error ? submitError.message.trim() : "";
         const failedStep =
           activeStepRef.current !== "idle" ? activeStepRef.current : normalizedStart;
-        setLastFailedStep(failedStep === "idle" ? "creating" : failedStep);
+        setLastFailedStep(failedStep);
         setSubmitError(buildSubmitError(message || QUOTE_INTAKE_FALLBACK_ERROR, true));
       } finally {
         setIsSubmitting(false);
