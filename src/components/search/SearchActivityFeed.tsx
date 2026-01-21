@@ -6,6 +6,7 @@ import {
   formatRelativeTimeCompactFromTimestamp,
   toTimestamp,
 } from "@/lib/relativeTime";
+import type { OpsEventRecord } from "@/server/ops/events";
 import type { RfqDestination } from "@/server/rfqs/destinations";
 import type { RfqOffer } from "@/server/rfqs/offers";
 
@@ -15,7 +16,9 @@ type SearchActivityEventKind =
   | "dispatch-started"
   | "destination-submitted"
   | "offer-received"
-  | "offer-revised";
+  | "offer-revised"
+  | "supplier-invited"
+  | "estimate-shown";
 
 export type SearchActivityFeedEvent = {
   id: string;
@@ -37,6 +40,7 @@ type SearchActivityFeedInput = {
   quote: SearchActivityQuote | null;
   destinations?: RfqDestination[] | null;
   offers?: RfqOffer[] | null;
+  opsEvents?: OpsEventRecord[] | null;
   inviteSupplierHref?: string | null;
   viewResultsHref?: string | null;
   compareOffersHref?: string | null;
@@ -59,6 +63,7 @@ export function buildSearchActivityFeedEvents({
   quote,
   destinations,
   offers,
+  opsEvents,
   inviteSupplierHref,
   viewResultsHref,
   compareOffersHref,
@@ -72,6 +77,11 @@ export function buildSearchActivityFeedEvents({
   const normalizedUpdatedAt = normalizeTimestamp(quote.updated_at);
   const destinationList = Array.isArray(destinations) ? destinations : [];
   const offerList = Array.isArray(offers) ? offers : [];
+  const opsEventList = Array.isArray(opsEvents) ? opsEvents : [];
+  const destinationById = new Map(
+    destinationList.map((destination) => [destination.id, destination]),
+  );
+  const submittedDestinationIds = new Set<string>();
 
   if (normalizedCreatedAt) {
     events.push({
@@ -108,6 +118,7 @@ export function buildSearchActivityFeedEvents({
 
     const submittedAt = normalizeTimestamp(destination.submitted_at);
     if (submittedAt) {
+      submittedDestinationIds.add(destination.id);
       events.push({
         id: `destination-submitted:${destination.id}`,
         kind: "destination-submitted",
@@ -142,6 +153,16 @@ export function buildSearchActivityFeedEvents({
         detail: providerLabel ? `From ${providerLabel}` : null,
       });
     }
+  }
+
+  if (opsEventList.length > 0) {
+    events.push(
+      ...buildOpsActivityEvents({
+        opsEvents: opsEventList,
+        destinationById,
+        submittedDestinationIds,
+      }),
+    );
   }
 
   let sorted = sortSearchActivityEvents(events);
@@ -367,4 +388,119 @@ type RfqOfferWithRevision = RfqOffer & {
 function readOfferRevisionTimestamp(offer: RfqOffer): string | null {
   const revision = offer as RfqOfferWithRevision;
   return revision.revised_received_at ?? revision.revised_at ?? null;
+}
+
+function buildOpsActivityEvents(args: {
+  opsEvents: OpsEventRecord[];
+  destinationById: Map<string, RfqDestination>;
+  submittedDestinationIds: Set<string>;
+}): SearchActivityFeedEvent[] {
+  const events: SearchActivityFeedEvent[] = [];
+  let latestEstimate:
+    | { record: OpsEventRecord; timestamp: string; ms: number }
+    | null = null;
+  const seenDestinationIds = new Set<string>();
+
+  for (const opsEvent of args.opsEvents) {
+    const timestamp = normalizeTimestamp(opsEvent.created_at);
+    if (!timestamp) continue;
+
+    if (opsEvent.event_type === "estimate_shown") {
+      const ms = Date.parse(timestamp);
+      if (!Number.isFinite(ms)) continue;
+      if (!latestEstimate || ms > latestEstimate.ms) {
+        latestEstimate = { record: opsEvent, timestamp, ms };
+      }
+      continue;
+    }
+
+    if (opsEvent.event_type === "supplier_invited") {
+      if (!isCustomerInitiatedSupplierInvite(opsEvent.payload)) {
+        continue;
+      }
+      const supplierName = readOpsPayloadText(opsEvent.payload, [
+        "supplier_name",
+        "supplierName",
+        "supplier",
+      ]);
+      events.push({
+        id: `supplier-invited:${opsEvent.id}`,
+        kind: "supplier-invited",
+        timestamp,
+        title: "Supplier invited",
+        detail: supplierName ? `Invited ${supplierName}` : null,
+      });
+      continue;
+    }
+
+    if (opsEvent.event_type === "destination_submitted") {
+      const destinationId =
+        typeof opsEvent.destination_id === "string"
+          ? opsEvent.destination_id.trim()
+          : "";
+      if (!destinationId) continue;
+      if (args.submittedDestinationIds.has(destinationId)) continue;
+      if (seenDestinationIds.has(destinationId)) continue;
+      const destination = args.destinationById.get(destinationId);
+      if (!destination) continue;
+      const providerLabel = resolveProviderLabel(destination.provider?.name ?? null);
+      seenDestinationIds.add(destinationId);
+      events.push({
+        id: `destination-submitted:${destinationId}`,
+        kind: "destination-submitted",
+        timestamp,
+        title: "Supplier submitted response",
+        detail: providerLabel ? `From ${providerLabel}` : null,
+      });
+    }
+  }
+
+  if (latestEstimate) {
+    events.push({
+      id: `estimate-shown:${latestEstimate.record.id}`,
+      kind: "estimate-shown",
+      timestamp: latestEstimate.timestamp,
+      title: "Estimate ready",
+      detail: "Pricing estimate is available.",
+    });
+  }
+
+  return events;
+}
+
+function isCustomerInitiatedSupplierInvite(payload: Record<string, unknown>): boolean {
+  return Boolean(
+    readOpsPayloadText(payload, [
+      "customer_id",
+      "customerId",
+      "customer_email",
+      "customerEmail",
+      "user_id",
+      "userId",
+    ]),
+  );
+}
+
+function readOpsPayloadText(
+  payload: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const raw = payload[key];
+    if (typeof raw !== "string") continue;
+    const normalized = normalizePayloadText(raw);
+    if (!normalized) continue;
+    return truncateText(normalized, 120);
+  }
+  return null;
+}
+
+function normalizePayloadText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value;
+  const trimmed = value.slice(0, Math.max(0, maxLength - 3)).trim();
+  return trimmed ? `${trimmed}...` : value.slice(0, maxLength);
 }
