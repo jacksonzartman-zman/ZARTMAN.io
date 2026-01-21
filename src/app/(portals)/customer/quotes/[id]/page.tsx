@@ -12,6 +12,7 @@ import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
 import { formatSlaResponseTime } from "@/lib/ops/sla";
+import { toTimestamp } from "@/lib/relativeTime";
 import {
   buildPendingProvidersNextStepsCopy,
   countContactedSuppliers,
@@ -771,18 +772,45 @@ export default async function CustomerQuoteDetailPage({
     pendingDestinations.length - visiblePendingDestinations.length,
     0,
   );
+  const contactedSuppliersCount = countContactedSuppliers(rfqDestinations ?? []);
   let pendingNextStepsCopy: string | null = null;
   let pendingOffersDescription = "No offers yet. We will notify you when quotes arrive.";
+  let showSlaNudge = false;
   if (rfqOffers.length === 0) {
     const slaSettings = await getOpsSlaSettings();
     const responseTimeLabel = slaSettings.usingFallback
       ? null
       : formatSlaResponseTime(slaSettings.config.sentNoReplyMaxHours);
     pendingNextStepsCopy = buildPendingProvidersNextStepsCopy({
-      contactedCount: countContactedSuppliers(rfqDestinations ?? []),
+      contactedCount: contactedSuppliersCount,
       responseTimeLabel,
     });
     pendingOffersDescription = `${pendingNextStepsCopy} We will notify you as soon as suppliers respond.`;
+    const lastOutreachTimestamp = toTimestamp(
+      searchStateSummary.timestamps.last_destination_activity_at,
+    );
+    const elapsedSinceOutreachLabel = normalizeElapsedLabel(
+      searchProgress.lastUpdatedLabel,
+    );
+    const thresholdHours = slaSettings.config.sentNoReplyMaxHours;
+    const thresholdMs = Number.isFinite(thresholdHours)
+      ? thresholdHours * 60 * 60 * 1000
+      : null;
+    const elapsedMs =
+      typeof lastOutreachTimestamp === "number"
+        ? Date.now() - lastOutreachTimestamp
+        : null;
+    const exceedsSla =
+      typeof elapsedMs === "number" &&
+      elapsedMs > 0 &&
+      typeof thresholdMs === "number" &&
+      thresholdMs > 0 &&
+      elapsedMs > thresholdMs;
+    showSlaNudge =
+      searchStateCounts.destinations_total > 0 &&
+      contactedSuppliersCount > 0 &&
+      exceedsSla &&
+      Boolean(elapsedSinceOutreachLabel);
   }
   const searchActivityEvents = buildSearchActivityFeedEvents({
     quote: {
@@ -1526,6 +1554,30 @@ export default async function CustomerQuoteDetailPage({
     </section>
   );
 
+  const searchLoopSection = (
+    <CollapsibleCard
+      title="What’s happening with my request?"
+      description="Search status, pending providers, and coverage details."
+      defaultOpen={rfqOffers.length === 0 || showSlaNudge}
+      contentClassName="space-y-4"
+    >
+      {searchStatusCard}
+      {pendingDestinations.length > 0 ? (
+        <PendingProvidersTable
+          destinations={visiblePendingDestinations}
+          remainingCount={remainingPendingDestinationCount}
+          matchContext={{ matchedOnProcess: Boolean(intakeProcess), locationFilter: null }}
+        />
+      ) : null}
+      <SearchActivityFeed
+        events={searchActivityEvents}
+        description="Latest updates from the search dispatch."
+        maxVisible={3}
+      />
+      <CoverageDisclosure destinations={rfqDestinations} showSummary={false} />
+    </CollapsibleCard>
+  );
+
   const estimateBandCard = (
     <EstimateBandCard estimate={pricingEstimate} className="rounded-2xl px-5 py-4" />
   );
@@ -1550,18 +1602,11 @@ export default async function CustomerQuoteDetailPage({
       }
     >
       {rfqOffers.length === 0 ? (
-        <div className="space-y-4">
-          <EmptyStateCard
-            title="Offers are on the way"
-            description={pendingOffersDescription}
-            tone="info"
-          />
-          <PendingProvidersTable
-            destinations={visiblePendingDestinations}
-            remainingCount={remainingPendingDestinationCount}
-            matchContext={{ matchedOnProcess: Boolean(intakeProcess), locationFilter: null }}
-          />
-        </div>
+        <EmptyStateCard
+          title="Offers are on the way"
+          description={pendingOffersDescription}
+          tone="info"
+        />
       ) : (
         <CustomerQuoteCompareOffers
           quoteId={quote.id}
@@ -1624,8 +1669,8 @@ export default async function CustomerQuoteDetailPage({
         ) : !quoteHasWinner ? (
           <EmptyStateCard
             title="Kickoff starts after selection"
-            description="Review bids in Decision to confirm a supplier. Kickoff becomes available right after."
-            action={{ label: "Go to decision", href: "#decision" }}
+            description="Compare offers to confirm a supplier. Kickoff becomes available right after."
+            action={{ label: "Go to compare offers", href: "#compare-offers" }}
           />
         ) : (
           <KickoffChecklistCard
@@ -1708,29 +1753,23 @@ export default async function CustomerQuoteDetailPage({
               updatedAtText={updatedAtText}
             />
             {receiptBanner}
-            {searchStatusCard}
-            <SearchAlertOptInCard
-              quoteId={quote.id}
-              initialEnabled={searchAlertEnabled}
-              quoteLabel={primaryFileName}
-              disabled={readOnly}
-              disabledReason={
-                readOnly ? "Search alerts are read-only in this view." : undefined
-              }
-            />
-            <SearchActivityFeed
-              events={searchActivityEvents}
-              description="Latest updates from the search dispatch."
-              maxVisible={3}
-            />
-            {estimateBandCard}
-            <CoverageDisclosure destinations={rfqDestinations} />
           </div>
 
-          {orderWorkspaceSection}
-          {decisionSection}
           {compareOffersSection}
           {selectionConfirmedSection}
+          {searchLoopSection}
+          <SearchAlertOptInCard
+            quoteId={quote.id}
+            initialEnabled={searchAlertEnabled}
+            quoteLabel={primaryFileName}
+            disabled={readOnly}
+            disabledReason={
+              readOnly ? "Search alerts are read-only in this view." : undefined
+            }
+          />
+          {estimateBandCard}
+          {orderWorkspaceSection}
+          {decisionSection}
           {kickoffSection}
           {messagesUnavailable ? (
             <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
@@ -2210,18 +2249,18 @@ function buildCustomerQuoteSections(args: {
 
   return [
     {
-      key: "decision",
-      label: "Decision",
-      href: "#decision",
-      badge: decisionBadge,
-      tone: args.hasWinner ? "neutral" : args.bidCount > 0 ? "info" : "neutral",
-    },
-    {
       key: "compare-offers",
       label: "Compare offers",
       href: "#compare-offers",
       badge: compareBadge,
       tone: args.offerCount > 0 ? "info" : "neutral",
+    },
+    {
+      key: "decision",
+      label: "Decision",
+      href: "#decision",
+      badge: decisionBadge,
+      tone: args.hasWinner ? "neutral" : args.bidCount > 0 ? "info" : "neutral",
     },
     {
       key: "kickoff",
@@ -2265,6 +2304,13 @@ function buildQuoteTabHref(
   params.set("tab", tabValue);
   const qs = params.toString();
   return qs ? `?${qs}${hash}` : `${hash}`;
+}
+
+function normalizeElapsedLabel(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.replace(/^Last updated\s+/i, "").replace(/\s+ago$/i, "").trim();
 }
 
 function PortalNoticeCard({

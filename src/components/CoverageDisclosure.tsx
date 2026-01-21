@@ -8,6 +8,7 @@ type CoverageDisclosureProps = {
   destinations?: RfqDestination[];
   defaultOpen?: boolean;
   className?: string;
+  showSummary?: boolean;
 };
 
 type ProviderTypeKey = "network" | "marketplace" | "factory" | "broker";
@@ -55,9 +56,10 @@ export function CoverageDisclosure({
   destinations = [],
   defaultOpen = false,
   className,
+  showSummary = true,
 }: CoverageDisclosureProps) {
   const counts = buildCoverageCounts(destinations);
-  const summaryLabel = buildCoverageSummary(counts);
+  const summaryLabel = showSummary ? buildCoverageSummary(counts) : undefined;
 
   return (
     <DisclosureSection
