@@ -14,6 +14,7 @@ export type OpsEventType =
   | "customer_saved_search_interest"
   | "search_alert_enabled"
   | "search_alert_disabled"
+  | "search_alert_notified"
   | "outbound_email_generated"
   | "offer_upserted"
   | "offer_revised"
