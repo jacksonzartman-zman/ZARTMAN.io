@@ -8,15 +8,39 @@ Required commands (run from repo root):
 - `npm run lint` (uses Next.js ESLint). If this fails in CI, reproduce locally with Node 18+ after `npm ci` and run it from the repo root; load your `.env.local` if linted modules read env vars at import time.
 - `npm run build`
 
-## Manual QA (10 minutes)
+## Manual QA — Metasearch Smoke Test (10–15 minutes)
 
-- Customer: submit intake → lands on `/customer/search?quote=<id>` → verify status card + filters render
-- Homepage: upload CAD/ZIP → lands on `/customer/search?quote=<id>`
-- Quote detail: "Searching providers..." panel renders with counts + refresh button
-- Offers compare: change sort dropdown; confirm URL query updates and persists on refresh
-- Invite supplier: submit invite; confirm success toast/copy; verify ops event present (if timeline exists)
-- Admin: providers review page shows customer-invite filter; mark contacted works; ops event logged
-- Provider: open provider offer link; submit offer; verify confirmation and revision behavior
+Goal: one checklist to validate the full metasearch loop end-to-end.
+
+### Customer flow
+
+1) Log in as a customer.
+2) Homepage → pick process tab → upload STEP → start search → lands on
+   `/customer/search?quote=<id>`.
+3) Verify the search status card renders and does not show noisy recent
+   searches.
+4) From results, open the quote detail page; confirm it is accessible and shows
+   a consistent "Searching providers..." status.
+5) Confirm the estimate band renders with its disclaimer; ensure no
+   ops_events insert failures are surfaced to the UI.
+
+### Admin/Ops flow
+
+6) Open admin quote detail → destination picker → add providers (eligible
+   prioritized + show-all toggle).
+7) Dispatch 1 email provider + 1 web-form provider; confirm ops inbox
+   counts/timestamps update.
+8) Mark the web-form destination as submitted with notes; confirm
+   submitted_at displays and ops inbox revalidates.
+9) Confirm providers pipeline page can verify + activate a provider and show
+   status timeline events.
+
+### Smoke Test IDs
+
+Paste identifiers used during QA for traceability:
+- quoteId:
+- providerId (email):
+- providerId (web-form):
 
 ## DB-contract checks
 
