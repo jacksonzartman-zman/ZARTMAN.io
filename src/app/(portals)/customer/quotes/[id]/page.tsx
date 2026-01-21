@@ -130,6 +130,7 @@ import { deriveSearchAlertPreferenceFromOpsEvents } from "@/server/ops/searchAle
 import { getCustomerSearchAlertPreference } from "@/server/customer/savedSearches";
 import { loadCustomerOfferShortlist } from "@/server/customer/offerShortlist";
 import { debugOnce } from "@/server/db/schemaErrors";
+import { CustomerQuoteIntroRequestCtaRow } from "./CustomerQuoteIntroRequestCtaRow";
 
 export const dynamic = "force-dynamic";
 
@@ -166,6 +167,7 @@ export default async function CustomerQuoteDetailPage({
   const awardSupplierIdParam = getSearchParamValue(resolvedSearchParams, "awardSupplierId");
   const demoParam = getSearchParamValue(resolvedSearchParams, "demo");
   const whatsHappeningParam = getSearchParamValue(resolvedSearchParams, "happening");
+  const shortlistedParam = getSearchParamValue(resolvedSearchParams, "shortlisted");
   const loadWhatsHappeningData = whatsHappeningParam === "1";
   const messagesHref = buildQuoteTabHref(resolvedSearchParams, "messages", "#messages");
   const customer = await getCustomerByUserId(user.id);
@@ -1631,15 +1633,29 @@ export default async function CustomerQuoteDetailPage({
   const decisionHelperCopy = hasSearchOffers
     ? "We'll connect you to finalize details and confirm pricing."
     : null;
+  const shortlistOnlyMode = parseToggle(shortlistedParam);
   const decisionPrimaryCta = hasSearchOffers
-    ? { label: "Request introduction", href: messagesHref }
+    ? { label: "Request introduction", href: "#" }
     : { label: "Invite your supplier", href: "/customer/invite-supplier" };
   const decisionSecondaryCta = hasSearchOffers
     ? { label: "Share", kind: "share" as const }
     : showSlaNudge
       ? { label: "Share", kind: "share" as const }
       : null;
-  const decisionCtaRow = (
+  const decisionCtaRow = hasSearchOffers ? (
+    <CustomerQuoteIntroRequestCtaRow
+      quoteId={quote.id}
+      offers={rfqOffers}
+      shortlistedOfferIds={shortlistedOfferIds}
+      shortlistOnlyMode={shortlistOnlyMode}
+      defaultEmail={customer.email ?? user.email ?? quote.customer_email ?? null}
+      defaultCompany={companyName ?? null}
+      statusLabel={searchProgress.statusTag}
+      helperCopy={decisionHelperCopy}
+      secondary={decisionSecondaryCta}
+      sharePath={searchResultsHref}
+    />
+  ) : (
     <CustomerQuoteDecisionCtaRow
       statusLabel={searchProgress.statusTag}
       helperCopy={decisionHelperCopy}
@@ -2381,6 +2397,12 @@ function normalizeElapsedLabel(value: string | null | undefined): string | null 
   const trimmed = value.trim();
   if (!trimmed) return null;
   return trimmed.replace(/^Last updated\s+/i, "").replace(/\s+ago$/i, "").trim();
+}
+
+function parseToggle(value: string | null): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "on" || normalized === "yes";
 }
 
 function PortalNoticeCard({

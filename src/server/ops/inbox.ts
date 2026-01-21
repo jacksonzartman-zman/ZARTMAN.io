@@ -25,6 +25,7 @@ export type AdminOpsInboxFilters = {
   status?: string | null;
   needsActionOnly?: boolean | null;
   messageNeedsReplyOnly?: boolean | null;
+  introRequestedOnly?: boolean | null;
   providerId?: string | null;
   destinationStatus?: string | null;
   selectedOnly?: boolean | null;
@@ -82,6 +83,8 @@ export type AdminOpsInboxSummary = {
   errorsCount: number;
   queuedStaleCount: number;
   messageNeedsReplyCount: number;
+  introRequestsCount: number;
+  lastIntroRequestedAt: string | null;
   lastCustomerMessageAt: string | null;
   lastAdminMessageAt: string | null;
   topReasons: Array<Exclude<SlaReason, null>>;
@@ -308,6 +311,8 @@ export async function getAdminOpsInboxRows(
     loadQuoteMessageRollups(quoteIds),
   ]);
 
+  const introRequestsByQuoteId = await loadIntroRequestsByQuoteId(quoteIds);
+
   const now = new Date();
   const emptyMessageState: AdminMessageReplyState = {
     needsReply: false,
@@ -324,7 +329,16 @@ export async function getAdminOpsInboxRows(
     const offers = offersByQuoteId.get(quoteId) ?? [];
     const messageRollup = messageRollupsByQuoteId[quoteId] ?? null;
     const messageState = messageRollup ? computeAdminReplyState(messageRollup) : emptyMessageState;
-    const summary = buildQuoteSummary(destinations, offers, now, slaConfig, messageState);
+    const introMeta = introRequestsByQuoteId.get(quoteId) ?? { count: 0, latestAt: null };
+    const summary = buildQuoteSummary(
+      destinations,
+      offers,
+      now,
+      slaConfig,
+      messageState,
+      introMeta.count,
+      introMeta.latestAt,
+    );
 
     const row: AdminOpsInboxRow = {
       quote: {
@@ -448,6 +462,7 @@ function normalizeFilters(raw?: AdminOpsInboxFilters) {
     status: status ? status.toLowerCase() : null,
     needsActionOnly: Boolean(raw?.needsActionOnly),
     messageNeedsReplyOnly: Boolean(raw?.messageNeedsReplyOnly),
+    introRequestedOnly: Boolean(raw?.introRequestedOnly),
     providerId,
     destinationStatus: destinationStatus ? destinationStatus.toLowerCase() : null,
     selectedOnly: Boolean(raw?.selectedOnly),
@@ -827,6 +842,8 @@ function buildQuoteSummary(
   now: Date,
   slaConfig: SlaConfig,
   messageState: AdminMessageReplyState,
+  introRequestsCount: number,
+  lastIntroRequestedAt: string | null,
 ): AdminOpsInboxSummary {
   const counts: Record<DestinationStatusCountKey, number> = {
     queued: 0,
@@ -887,14 +904,17 @@ function buildQuoteSummary(
   );
 
   const messageNeedsReplyCount = messageState.needsReply ? 1 : 0;
+  const introNeedsAction = introRequestsCount > 0 ? 1 : 0;
 
   return {
     counts,
-    needsActionCount: needs.needsActionCount + messageNeedsReplyCount,
+    needsActionCount: needs.needsActionCount + messageNeedsReplyCount + introNeedsAction,
     needsReplyCount: needs.needsReplyCount,
     errorsCount: needs.errorsCount,
     queuedStaleCount: needs.queuedStaleCount,
     messageNeedsReplyCount,
+    introRequestsCount,
+    lastIntroRequestedAt,
     lastCustomerMessageAt: messageState.lastCustomerMessageAt,
     lastAdminMessageAt: messageState.lastAdminMessageAt,
     topReasons: buildTopReasons(reasonCounts),
@@ -952,5 +972,82 @@ function passesFilters(
     return false;
   }
 
+  if (filters.introRequestedOnly && row.summary.introRequestsCount <= 0) {
+    return false;
+  }
+
   return true;
+}
+
+async function loadIntroRequestsByQuoteId(
+  quoteIds: string[],
+): Promise<Map<string, { count: number; latestAt: string | null }>> {
+  const map = new Map<string, { count: number; latestAt: string | null }>();
+  if (quoteIds.length === 0) return map;
+
+  const supported = await schemaGate({
+    enabled: true,
+    relation: "ops_events",
+    requiredColumns: ["quote_id", "event_type", "created_at"],
+    warnPrefix: "[admin ops inbox]",
+    warnKey: "admin_ops_inbox:ops_events",
+  });
+  if (!supported) return map;
+
+  type OpsEventRow = { quote_id: string | null; created_at: string | null };
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("ops_events")
+      .select("quote_id,created_at")
+      .eq("event_type", "customer_intro_requested")
+      .in("quote_id", quoteIds)
+      .order("created_at", { ascending: false })
+      .returns<OpsEventRow[]>();
+
+    if (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: "ops_events",
+          error,
+          warnPrefix: "[admin ops inbox]",
+          warnKey: "admin_ops_inbox:ops_events_missing_schema",
+        })
+      ) {
+        return map;
+      }
+      console.warn("[admin ops inbox] intro requests query failed", {
+        error: serializeSupabaseError(error),
+      });
+      return map;
+    }
+
+    for (const row of Array.isArray(data) ? data : []) {
+      const quoteId = normalizeId(row?.quote_id);
+      if (!quoteId) continue;
+      const createdAt = normalizeOptionalString(row?.created_at);
+      const existing = map.get(quoteId) ?? { count: 0, latestAt: null };
+      const latestAt = existing.latestAt ?? createdAt;
+      map.set(quoteId, {
+        count: existing.count + 1,
+        latestAt,
+      });
+    }
+  } catch (error) {
+    if (
+      handleMissingSupabaseSchema({
+        relation: "ops_events",
+        error,
+        warnPrefix: "[admin ops inbox]",
+        warnKey: "admin_ops_inbox:ops_events_missing_schema_crash",
+      })
+    ) {
+      return map;
+    }
+    console.warn("[admin ops inbox] intro requests query crashed", {
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
 }

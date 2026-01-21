@@ -26,6 +26,7 @@ Goal: one checklist to validate the full metasearch loop end-to-end.
    feed under the status card.
 6) Confirm the estimate band renders with its disclaimer; ensure no
    ops_events insert failures are surfaced to the UI.
+6.1) If offers exist: click "Request introduction" → submit the modal → confirm the success state ("We’ll connect you shortly") displays.
 
 ### Admin/Ops flow
 
