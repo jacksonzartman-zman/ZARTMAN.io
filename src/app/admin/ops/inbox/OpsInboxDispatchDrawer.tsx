@@ -22,6 +22,7 @@ import {
   OfferModal,
   type BulkDestinationEmailResult,
 } from "@/components/admin/rfq/destinationModals";
+import { DispatchActions } from "@/components/admin/rfq/DispatchActions";
 import { DispatchCard } from "@/components/admin/rfq/DispatchCard";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import { buildMailtoUrl } from "@/lib/adapters/mailtoAdapter";
@@ -38,7 +39,10 @@ import {
 } from "@/app/admin/quotes/[id]/actions";
 import { buildPublicUrl } from "@/lib/publicUrl";
 import { resolveDispatchModeValue } from "@/lib/adapters/providerDispatchMode";
-import { getDestinationDispatchReadiness } from "@/lib/ops/dispatchReadiness";
+import {
+  getDestinationDispatchReadiness,
+  resolveEffectiveDispatchMode,
+} from "@/lib/ops/dispatchReadiness";
 import { recordDispatchStarted } from "@/lib/ops/dispatchStartedClient";
 
 type OpsInboxDispatchDrawerProps = {
@@ -368,7 +372,7 @@ export function OpsInboxDispatchDrawer({
     setDispatchStartedById((prev) =>
       prev[normalized] ? prev : { ...prev, [normalized]: new Date().toISOString() },
     );
-    recordDispatchStarted(normalized);
+    recordDispatchStarted({ destinationId: normalized, quoteId: row.quote.id });
   };
 
   const loadEmailPackage = async (destination: AdminOpsInboxRow["destinations"][number]) => {
@@ -407,7 +411,6 @@ export function OpsInboxDispatchDrawer({
     setFeedback(null);
     setEmailErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
     setEmailLoadingId(destination.id);
-    handleDispatchStarted(destination.id);
     startTransition(async () => {
       const packageResult = await loadEmailPackage(destination);
       if (!packageResult) {
@@ -445,7 +448,6 @@ export function OpsInboxDispatchDrawer({
     setFeedback(null);
     setEmailErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
     setEmailLoadingId(destination.id);
-    handleDispatchStarted(destination.id);
     startTransition(async () => {
       const packageResult = await loadEmailPackage(destination);
       if (!packageResult) {
@@ -476,7 +478,6 @@ export function OpsInboxDispatchDrawer({
     setFeedback(null);
     setWebFormErrorsById((prev) => ({ ...prev, [destination.id]: "" }));
     setWebFormLoadingId(destination.id);
-    handleDispatchStarted(destination.id);
     startTransition(async () => {
       const packageResult = await loadWebFormPackage(destination);
       if (!packageResult) {
@@ -972,26 +973,10 @@ export function OpsInboxDispatchDrawer({
                           destination.provider_name || destination.provider_id || "Provider";
                         const providerType = formatEnumLabel(destination.provider_type);
                         const providerMode = formatEnumLabel(destination.quoting_mode);
-                        const dispatchMode = resolveDispatchModeValue(
-                          destination.dispatch_mode,
-                          destination.quoting_mode,
-                        );
-                        const dispatchModeValue =
-                          dispatchMode === "email"
-                            ? "email"
-                            : dispatchMode === "web_form"
-                              ? "web_form"
-                              : dispatchMode === "api"
-                                ? "api"
-                                : "unknown";
-                        const isEmailMode = dispatchMode === "email";
-                        const isWebFormMode = dispatchMode === "web_form";
+                        const dispatchMode = resolveEffectiveDispatchMode(destination);
                         const providerEmail = destination.provider_email ?? "";
                         const webFormUrl = destination.provider_rfq_url || "";
                         const dispatchReadiness = getDestinationDispatchReadiness(destination);
-                        const dispatchBlockingReasonsTitle = dispatchReadiness.blockingReasons
-                          .map((reason) => `- ${reason}`)
-                          .join("\n");
                         const isEmailGenerating = emailLoadingId === destination.id;
                         const isWebFormGenerating = webFormLoadingId === destination.id;
                         const emailError = emailErrorsById[destination.id];
@@ -1039,115 +1024,26 @@ export function OpsInboxDispatchDrawer({
                             ? NEEDS_ACTION_META[needsActionResult.reason]
                             : null;
                         const isSelected = selectedDestinationIds.has(destination.id);
-                        const dispatchPrimaryButtonBase =
-                          "rounded-full border border-indigo-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-100 transition";
-                        const dispatchPrimaryEnabledClass = `${dispatchPrimaryButtonBase} hover:border-indigo-400 hover:text-white`;
-                        const dispatchPrimaryDisabledClass = `${dispatchPrimaryButtonBase} cursor-not-allowed opacity-60`;
-                        const dispatchSecondaryButtonBase =
+                        const copyOfferButtonBase =
                           "rounded-full border border-slate-700 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-200 transition";
-                        const dispatchSecondaryEnabledClass = `${dispatchSecondaryButtonBase} hover:border-slate-500 hover:text-white`;
-                        const dispatchSecondaryDisabledClass = `${dispatchSecondaryButtonBase} cursor-not-allowed opacity-60`;
-                        const markSubmittedButtonBase =
-                          "rounded-full border border-teal-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-teal-100 transition";
-                        const markSubmittedEnabledClass = `${markSubmittedButtonBase} hover:border-teal-400 hover:text-white`;
-                        const markSubmittedDisabledClass = `${markSubmittedButtonBase} cursor-not-allowed opacity-60`;
-                        const copyOfferButtonEnabledClass = `${dispatchSecondaryButtonBase} hover:border-slate-500 hover:text-white`;
-                        const copyOfferButtonDisabledClass = `${dispatchSecondaryButtonBase} cursor-not-allowed opacity-60`;
-
-                        const primaryAction = !dispatchReadiness.isReady ? (
-                          <span title={dispatchBlockingReasonsTitle} className="inline-flex">
-                            <button type="button" disabled className={dispatchPrimaryDisabledClass}>
-                              {isEmailMode
-                                ? "Copy email"
-                                : isWebFormMode
-                                  ? "Open form"
-                                  : "Dispatch unavailable"}
-                            </button>
-                          </span>
-                        ) : isEmailMode ? (
-                          <button
-                            type="button"
-                            onClick={() => handleCopyEmail(destination)}
-                            disabled={pending || isEmailGenerating}
-                            className={
-                              pending || isEmailGenerating
-                                ? dispatchPrimaryDisabledClass
-                                : dispatchPrimaryEnabledClass
-                            }
-                          >
-                            {isEmailGenerating ? "Copying..." : "Copy email"}
-                          </button>
-                        ) : isWebFormMode && webFormUrl ? (
-                          <a
-                            href={webFormUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(event) => {
-                              if (pending) {
-                                event.preventDefault();
-                                return;
-                              }
-                              handleDispatchStarted(destination.id);
-                            }}
-                            className={
-                              pending ? dispatchPrimaryDisabledClass : dispatchPrimaryEnabledClass
-                            }
-                          >
-                            Open form
-                          </a>
-                        ) : (
-                          <button type="button" disabled className={dispatchPrimaryDisabledClass}>
-                            Dispatch unavailable
-                          </button>
+                        const copyOfferButtonEnabledClass = `${copyOfferButtonBase} hover:border-slate-500 hover:text-white`;
+                        const copyOfferButtonDisabledClass = `${copyOfferButtonBase} cursor-not-allowed opacity-60`;
+                        const dispatchActions = (
+                          <DispatchActions
+                            dispatchMode={dispatchMode}
+                            dispatchReadiness={dispatchReadiness}
+                            pending={pending}
+                            isEmailGenerating={isEmailGenerating}
+                            isWebFormGenerating={isWebFormGenerating}
+                            providerEmail={providerEmail}
+                            webFormUrl={webFormUrl}
+                            onCopyEmail={() => handleCopyEmail(destination)}
+                            onCopyMailto={() => handleCopyMailto(destination, providerEmail)}
+                            onCopyInstructions={() => handleCopyWebFormInstructions(destination)}
+                            onMarkSubmitted={() => openSubmittedPrompt(destination)}
+                            onDispatchStarted={() => handleDispatchStarted(destination.id)}
+                          />
                         );
-
-                        const secondaryAction = isEmailMode ? (
-                          <span
-                            title={providerEmail ? "" : "Provider email unavailable."}
-                            className="inline-flex"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => handleCopyMailto(destination, providerEmail)}
-                              disabled={pending || isEmailGenerating || !providerEmail}
-                              className={
-                                pending || isEmailGenerating || !providerEmail
-                                  ? dispatchSecondaryDisabledClass
-                                  : dispatchSecondaryEnabledClass
-                              }
-                            >
-                              Copy mailto link
-                            </button>
-                          </span>
-                        ) : isWebFormMode ? (
-                          <button
-                            type="button"
-                            onClick={() => handleCopyWebFormInstructions(destination)}
-                            disabled={pending || isWebFormGenerating}
-                            className={
-                              pending || isWebFormGenerating
-                                ? dispatchSecondaryDisabledClass
-                                : dispatchSecondaryEnabledClass
-                            }
-                          >
-                            {isWebFormGenerating ? "Copying..." : "Copy web-form instructions"}
-                          </button>
-                        ) : (
-                          <button type="button" disabled className={dispatchSecondaryDisabledClass}>
-                            Dispatch unavailable
-                          </button>
-                        );
-
-                        const markSubmittedAction = isWebFormMode ? (
-                          <button
-                            type="button"
-                            onClick={() => openSubmittedPrompt(destination)}
-                            disabled={pending}
-                            className={pending ? markSubmittedDisabledClass : markSubmittedEnabledClass}
-                          >
-                            Mark submitted
-                          </button>
-                        ) : null;
 
                         return (
                           <DispatchCard
@@ -1155,16 +1051,16 @@ export function OpsInboxDispatchDrawer({
                             providerLabel={providerLabel}
                             providerTypeLabel={providerType}
                             providerModeLabel={providerMode}
-                            dispatchMode={dispatchModeValue}
+                            dispatchMode={dispatchMode}
                             dispatchStatus={dispatchStatus}
                             dispatchStartedLabel={dispatchStartedLabel}
                             submittedLabel={submittedAtLabel}
                             lastUpdateLabel={lastUpdateLabel}
                             offerSummary={offerSummary}
                             errorMessage={destination.error_message}
-                            primaryAction={primaryAction}
-                            secondaryAction={secondaryAction}
-                            markSubmittedAction={markSubmittedAction}
+                            primaryAction={dispatchActions}
+                            secondaryAction={null}
+                            markSubmittedAction={null}
                             leadingControl={
                               <input
                                 type="checkbox"

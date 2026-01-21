@@ -26,7 +26,7 @@ export type DispatchReadinessDestination = {
   } | null;
 };
 
-type EffectiveDispatchMode = "email" | "mailto" | "web_form" | "api" | "unknown";
+export type EffectiveDispatchMode = "email" | "mailto" | "web_form" | "api" | "unknown";
 
 const loggedNotReady = new Set<string>();
 
@@ -39,7 +39,7 @@ function normalizeLower(value: unknown): string {
   return normalizeString(value).toLowerCase();
 }
 
-function resolveEffectiveDispatchMode(
+export function resolveEffectiveDispatchMode(
   destination: DispatchReadinessDestination,
 ): EffectiveDispatchMode {
   const rawDispatchMode = normalizeLower(destination.dispatch_mode);
