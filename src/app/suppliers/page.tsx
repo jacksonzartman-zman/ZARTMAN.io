@@ -10,6 +10,7 @@ import {
 } from "@/server/suppliers/publicDirectory";
 
 const REQUEST_QUOTE_HREF = "/customer/search";
+const INVITE_SUPPLIER_HREF = "/customer/invite-supplier";
 const BECOME_SUPPLIER_HREF = "/suppliers/join";
 
 const tagClasses =
@@ -21,10 +22,11 @@ const inactiveBadgeClasses =
 const invitedBadgeClasses =
   "inline-flex items-center rounded-full border border-sky-400/40 bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-100";
 const unverifiedNote =
-  "Listing is informational. This supplier has not verified their profile.";
-const inactiveNote = "Listing is informational. This supplier is currently inactive.";
+  "Listing is informational. Request an introduction to work with this supplier.";
+const inactiveNote =
+  "Listing is informational. This supplier is currently inactive; request an introduction to confirm availability.";
 const invitedExplanation =
-  "We list verified suppliers in search results. Invited suppliers appear here only until they verify.";
+  "Invited suppliers are pending verification and are not available for instant quotes. Request an introduction to work with them.";
 const COVERAGE_TAG_LIMIT = 12;
 const INVITED_SUPPLIER_THRESHOLD = 12;
 const INVITED_SOURCES = new Set(["customer_invite", "csv_import"]);
@@ -202,6 +204,14 @@ export default async function SuppliersDirectoryPage() {
             <div className="grid gap-4">
               {directorySuppliers.map((supplier) => {
                 const capabilityTags = getCapabilityTags(supplier);
+                const isInstantQuoteReady =
+                  supplier.isVerified && supplier.isActive && supplier.showInDirectory;
+                const supplierCtaHref = isInstantQuoteReady
+                  ? `/suppliers/${supplier.slug}`
+                  : INVITE_SUPPLIER_HREF;
+                const supplierCtaLabel = isInstantQuoteReady
+                  ? "View profile"
+                  : "Request introduction";
                 return (
                   <article
                     key={supplier.supplierId}
@@ -259,10 +269,10 @@ export default async function SuppliersDirectoryPage() {
 
                       <div>
                         <Link
-                          href={`/suppliers/${supplier.slug}`}
+                          href={supplierCtaHref}
                           className="text-sm font-semibold text-emerald-200 hover:text-emerald-100"
                         >
-                          View profile <span aria-hidden="true">→</span>
+                          {supplierCtaLabel} <span aria-hidden="true">→</span>
                         </Link>
                       </div>
                     </div>
@@ -278,7 +288,7 @@ export default async function SuppliersDirectoryPage() {
             <header className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-xl font-semibold text-ink heading-tight">
-                  Invited suppliers (pending)
+                  Invited suppliers (pending verification)
                 </h2>
                 <span className="text-xs text-ink-soft">
                   {invitedSuppliersToShow.length} invited supplier
