@@ -17,6 +17,7 @@ type ProviderRowLite = {
   verification_status?: string | null;
   is_active?: boolean | null;
   show_in_directory?: boolean | null;
+  source?: string | null;
 };
 
 type ProviderDirectorySupport = {
@@ -26,6 +27,7 @@ type ProviderDirectorySupport = {
   supportsVerificationStatus: boolean;
   supportsIsActive: boolean;
   supportsShowInDirectory: boolean;
+  supportsSource: boolean;
 };
 
 export type PublicSupplierDirectoryRow = {
@@ -35,6 +37,7 @@ export type PublicSupplierDirectoryRow = {
   processes: string[];
   materials: string[];
   certifications: string[];
+  source: string | null;
   slug: string;
   isVerified: boolean;
   isActive: boolean;
@@ -48,6 +51,12 @@ function normalizeId(value: unknown): string {
 function normalizeText(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeToken(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;
 }
 
@@ -119,6 +128,7 @@ function buildPublicDirectoryRow(
     isVerified,
     support.supportsShowInDirectory,
   );
+  const source = support.supportsSource ? normalizeToken(provider?.source) : null;
 
   if (!showInDirectory) return null;
   if (!SHOW_SUPPLIER_DIRECTORY_PUBLIC && !isVerified) return null;
@@ -134,6 +144,7 @@ function buildPublicDirectoryRow(
     processes,
     materials,
     certifications,
+    source,
     slug: buildSupplierSlug({ supplierId, supplierName }),
     isVerified,
     isActive,
@@ -170,6 +181,7 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
       supportsVerificationStatus,
       supportsIsActive,
       supportsShowInDirectory,
+      supportsSource,
     ] = await Promise.all([
       hasColumns(PROVIDERS_TABLE, ["country"]),
       hasColumns(PROVIDERS_TABLE, ["processes"]),
@@ -177,6 +189,7 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
       hasColumns(PROVIDERS_TABLE, ["verification_status"]),
       hasColumns(PROVIDERS_TABLE, ["is_active"]),
       hasColumns(PROVIDERS_TABLE, ["show_in_directory"]),
+      hasColumns(PROVIDERS_TABLE, ["source"]),
     ]);
 
     const selectColumns = [
@@ -187,6 +200,7 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
       ...(supportsVerificationStatus ? ["verification_status"] : []),
       ...(supportsIsActive ? ["is_active"] : []),
       ...(supportsShowInDirectory ? ["show_in_directory"] : []),
+      ...(supportsSource ? ["source"] : []),
     ];
 
     let query = supabaseServer.from(PROVIDERS_TABLE).select(selectColumns.join(","));
@@ -217,6 +231,7 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
       supportsVerificationStatus,
       supportsIsActive,
       supportsShowInDirectory,
+      supportsSource,
     };
     const rows: PublicSupplierDirectoryRow[] = [];
 
@@ -254,6 +269,7 @@ export async function loadPublicSupplierById(
       supportsVerificationStatus,
       supportsIsActive,
       supportsShowInDirectory,
+      supportsSource,
     ] = await Promise.all([
       hasColumns(PROVIDERS_TABLE, ["country"]),
       hasColumns(PROVIDERS_TABLE, ["processes"]),
@@ -261,6 +277,7 @@ export async function loadPublicSupplierById(
       hasColumns(PROVIDERS_TABLE, ["verification_status"]),
       hasColumns(PROVIDERS_TABLE, ["is_active"]),
       hasColumns(PROVIDERS_TABLE, ["show_in_directory"]),
+      hasColumns(PROVIDERS_TABLE, ["source"]),
     ]);
 
     const selectColumns = [
@@ -271,6 +288,7 @@ export async function loadPublicSupplierById(
       ...(supportsVerificationStatus ? ["verification_status"] : []),
       ...(supportsIsActive ? ["is_active"] : []),
       ...(supportsShowInDirectory ? ["show_in_directory"] : []),
+      ...(supportsSource ? ["source"] : []),
     ];
 
     const { data, error } = await supabaseServer
@@ -298,6 +316,7 @@ export async function loadPublicSupplierById(
       supportsVerificationStatus,
       supportsIsActive,
       supportsShowInDirectory,
+      supportsSource,
     };
 
     const row = buildPublicDirectoryRow(data, support);
