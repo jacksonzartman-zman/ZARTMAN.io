@@ -64,6 +64,7 @@ import { postCustomerQuoteMessageAction } from "./actions";
 import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
 import { CustomerQuoteCompareOffers } from "./CustomerQuoteCompareOffers";
 import { CustomerQuoteSelectionConfirmation } from "./CustomerQuoteSelectionConfirmation";
+import { CustomerQuoteDecisionCtaRow } from "./CustomerQuoteDecisionCtaRow";
 import {
   getCustomerKickoffSummary,
   type CustomerKickoffSummary,
@@ -765,6 +766,7 @@ export default async function CustomerQuoteDetailPage({
     searchStateCounts.offers_total === 1 ? "" : "s"
   }`;
   const searchResultsHref = `/customer/search?quote=${quote.id}`;
+  const hasSearchOffers = searchStateCounts.offers_total > 0;
   const pendingDestinations = (rfqDestinations ?? [])
     .filter((destination) => !isDestinationReceived(destination.status))
     .sort(sortDestinationsBySlaUrgency);
@@ -1594,6 +1596,29 @@ export default async function CustomerQuoteDetailPage({
     <EstimateBandCard estimate={pricingEstimate} className="rounded-2xl px-5 py-4" />
   );
 
+  const decisionHelperCopy = hasSearchOffers
+    ? "We'll connect you to finalize details and confirm pricing."
+    : null;
+  const decisionPrimaryCta = hasSearchOffers
+    ? { label: "Request introduction", href: messagesHref }
+    : showSlaNudge
+      ? { label: "Invite your supplier", href: "/customer/invite-supplier" }
+      : { label: "We're waiting on responses", disabled: true };
+  const decisionSecondaryCta = hasSearchOffers
+    ? null
+    : showSlaNudge
+      ? { label: "Share this search", kind: "share" as const }
+      : { label: "Invite your supplier", href: "/customer/invite-supplier" };
+  const decisionCtaRow = (
+    <CustomerQuoteDecisionCtaRow
+      statusLabel={searchProgress.statusTag}
+      helperCopy={decisionHelperCopy}
+      primary={decisionPrimaryCta}
+      secondary={decisionSecondaryCta}
+      sharePath={searchResultsHref}
+    />
+  );
+
   const compareOffersSection = (
     <DisclosureSection
       id="compare-offers"
@@ -1768,6 +1793,7 @@ export default async function CustomerQuoteDetailPage({
             {receiptBanner}
           </div>
 
+          {decisionCtaRow}
           {compareOffersSection}
           {selectionConfirmedSection}
           {searchLoopSection}
