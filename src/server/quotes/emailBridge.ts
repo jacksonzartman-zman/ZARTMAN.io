@@ -2,7 +2,13 @@ import crypto from "node:crypto";
 
 import { supabaseServer } from "@/lib/supabaseServer";
 import { schemaGate } from "@/server/db/schemaContract";
-import { debugOnce, isMissingTableOrColumnError, serializeSupabaseError, warnOnce } from "@/server/db/schemaErrors";
+import {
+  debugOnce,
+  isMissingColumnError,
+  isMissingTableOrColumnError,
+  serializeSupabaseError,
+  warnOnce,
+} from "@/server/db/schemaErrors";
 import { isCustomerEmailOptedIn } from "@/server/quotes/customerEmailPrefs";
 
 export type InboundEmailAttachment = {
@@ -620,28 +626,32 @@ async function isLikelyDuplicateInboundMessage(args: {
 
     const readMetaFingerprint = (meta: unknown): string | null => readMetaString(meta, "fingerprint");
 
-    // Try to load a small recent window with metadata. If schema drifts, fall back.
-    let query = supabaseServer
-      .from(QUOTE_MESSAGES_RELATION)
-      .select("id,body,created_at,metadata")
-      .eq("quote_id", quoteId)
-      .eq("sender_role", senderRole)
-      .eq("sender_id", senderId)
-      .order("created_at", { ascending: false })
-      .limit(MAX_SCAN) as any;
+    const metadataSupported = await schemaGate({
+      enabled: true,
+      relation: QUOTE_MESSAGES_RELATION,
+      requiredColumns: ["metadata"],
+      warnPrefix: WARN_PREFIX,
+      warnKey: "email_bridge:quote_messages_metadata",
+    });
 
-    let result = (await query) as { data?: any[]; error?: unknown };
-    if (result.error && isMissingTableOrColumnError(result.error)) {
-      // Fallback: metadata/created_at might be missing on some schemas; retry with minimal columns.
-      const fallbackQuery = supabaseServer
+    const runQuery = async (select: string, orderBy: "created_at" | "id") => {
+      const query = supabaseServer
         .from(QUOTE_MESSAGES_RELATION)
-        .select("id,body,created_at")
+        .select(select)
         .eq("quote_id", quoteId)
         .eq("sender_role", senderRole)
         .eq("sender_id", senderId)
-        .order("id", { ascending: false })
-        .limit(5) as any;
-      result = (await fallbackQuery) as { data?: any[]; error?: unknown };
+        .order(orderBy, { ascending: false })
+        .limit(orderBy === "created_at" ? MAX_SCAN : 5) as any;
+      return (await query) as { data?: any[]; error?: unknown };
+    };
+
+    const primarySelect = metadataSupported ? "id,body,created_at,metadata" : "id,body,created_at";
+    let result = await runQuery(primarySelect, "created_at");
+    if (result.error && isMissingTableOrColumnError(result.error)) {
+      const allowMetadata = metadataSupported && !isMissingColumnError(result.error, "metadata");
+      const fallbackSelect = allowMetadata ? "id,body,metadata" : "id,body";
+      result = await runQuery(fallbackSelect, "id");
     }
 
     if (result.error) {
@@ -860,7 +870,8 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
     }
 
     const serialized = serializeSupabaseError(extendedError);
-    warnOnce("email_bridge:insert_extended_failed", `${WARN_PREFIX} insert degraded; retrying minimal`, {
+    const logOnce = isMissingTableOrColumnError(extendedError) ? debugOnce : warnOnce;
+    logOnce("email_bridge:insert_extended_failed", `${WARN_PREFIX} insert degraded; retrying minimal`, {
       code: serialized.code,
       message: serialized.message,
     });
@@ -870,12 +881,24 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
       body: `${body}${attachSuffixLine}`,
     });
     if (baseError) {
+      if (isMissingTableOrColumnError(baseError)) {
+        debugOnce("email_bridge:insert_missing_schema", `${WARN_PREFIX} insert skipped; missing schema`, {
+          code: serializeSupabaseError(baseError).code ?? null,
+        });
+        return { ok: false, error: "write_failed", httpStatus: 200 };
+      }
       console.error(`${WARN_PREFIX} insert failed`, { error: serializeSupabaseError(baseError) ?? baseError });
       return { ok: false, error: "write_failed", httpStatus: 200 };
     }
 
     return { ok: true };
   } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      debugOnce("email_bridge:insert_missing_schema_crash", `${WARN_PREFIX} insert skipped; missing schema`, {
+        code: serializeSupabaseError(error).code ?? null,
+      });
+      return { ok: false, error: "write_failed", httpStatus: 200 };
+    }
     console.error(`${WARN_PREFIX} insert crashed`, { error });
     return { ok: false, error: "write_failed", httpStatus: 200 };
   }
@@ -1013,7 +1036,8 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
     }
 
     const serialized = serializeSupabaseError(extendedError);
-    warnOnce("email_bridge:customer_insert_extended_failed", `${WARN_PREFIX} insert degraded; retrying minimal`, {
+    const logOnce = isMissingTableOrColumnError(extendedError) ? debugOnce : warnOnce;
+    logOnce("email_bridge:customer_insert_extended_failed", `${WARN_PREFIX} insert degraded; retrying minimal`, {
       code: serialized.code,
       message: serialized.message,
     });
@@ -1023,12 +1047,24 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
       body: `${body}${attachSuffixLine}`,
     });
     if (baseError) {
+      if (isMissingTableOrColumnError(baseError)) {
+        debugOnce("email_bridge:customer_insert_missing_schema", `${WARN_PREFIX} insert skipped; missing schema`, {
+          code: serializeSupabaseError(baseError).code ?? null,
+        });
+        return { ok: false, error: "write_failed", httpStatus: 200 };
+      }
       console.error(`${WARN_PREFIX} insert failed`, { error: serializeSupabaseError(baseError) ?? baseError });
       return { ok: false, error: "write_failed", httpStatus: 200 };
     }
 
     return { ok: true };
   } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      debugOnce("email_bridge:customer_insert_missing_schema_crash", `${WARN_PREFIX} insert skipped; missing schema`, {
+        code: serializeSupabaseError(error).code ?? null,
+      });
+      return { ok: false, error: "write_failed", httpStatus: 200 };
+    }
     console.error(`${WARN_PREFIX} insert crashed`, { error });
     return { ok: false, error: "write_failed", httpStatus: 200 };
   }

@@ -12,6 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import { signPreviewToken } from "@/server/cadPreviewToken";
 import { hasColumns } from "@/server/db/schemaContract";
+import { debugOnce } from "@/server/db/schemaErrors";
 
 export type QuoteMessageSenderRole =
   | "admin"
@@ -224,7 +225,6 @@ async function buildQuoteMessagesMinimalSelect(): Promise<string> {
   if (await hasQuoteMessagesColumn("updated_at")) cols.push("updated_at");
   if (await hasQuoteMessagesColumn("sender_name")) cols.push("sender_name");
   if (await hasQuoteMessagesColumn("metadata")) cols.push("metadata");
-  if (await hasQuoteMessagesColumn("provider_message_id")) cols.push("provider_message_id");
 
   // Intentionally excluded:
   // - sender_email (do not select by default; do not expose to UI models)
@@ -339,7 +339,8 @@ export async function loadQuoteMessages(
           : [];
       } else if (isSupabaseSelectIncompatibleError(attempt1.error)) {
         const serialized = serializeSupabaseError(attempt1.error);
-        warnOnce(
+        const logOnce = isMissingTableOrColumnError(attempt1.error) ? debugOnce : warnOnce;
+        logOnce(
           "quote_messages:select_incompatible",
           "[quote_messages] select incompatible; falling back",
           { code: serialized.code, message: serialized.message },
@@ -505,13 +506,20 @@ export async function createQuoteMessage(
         : isUniqueConstraintError(error)
           ? "validation"
           : "unknown";
-      console.error("[quote messages] insert failed", {
-        quoteId: normalizedQuoteId,
-        senderId: normalizedSenderId,
-        senderRole: normalizedSenderRole,
-        error: serialized ?? error,
-        reason,
-      });
+      if (isMissingTableOrColumnError(error)) {
+        debugOnce("quote_messages:insert_missing_schema", "[quote_messages] insert failed; missing schema", {
+          code: serialized.code,
+          message: serialized.message,
+        });
+      } else {
+        console.error("[quote messages] insert failed", {
+          quoteId: normalizedQuoteId,
+          senderId: normalizedSenderId,
+          senderRole: normalizedSenderRole,
+          error: serialized ?? error,
+          reason,
+        });
+      }
       return {
         ok: false,
         message: null,
@@ -573,6 +581,19 @@ export async function createQuoteMessage(
         message: null,
         reason: "unauthorized",
         error: serializeSupabaseError(error) ?? error,
+      };
+    }
+    if (isMissingTableOrColumnError(error)) {
+      const serialized = serializeSupabaseError(error);
+      debugOnce("quote_messages:insert_missing_schema_crash", "[quote_messages] insert failed; missing schema", {
+        code: serialized.code,
+        message: serialized.message,
+      });
+      return {
+        ok: false,
+        message: null,
+        reason: "schema_error",
+        error: serialized ?? error,
       };
     }
     console.error("[quote messages] insert failed", {
