@@ -31,6 +31,7 @@ export type RfqDestination = {
   rfq_id: string;
   provider_id: string;
   status: RfqDestinationStatus;
+  dispatch_started_at: string | null;
   sent_at: string | null;
   submitted_at: string | null;
   submitted_notes: string | null;
@@ -69,6 +70,7 @@ type RawRfqDestinationRow = {
   rfq_id: string | null;
   provider_id: string | null;
   status: string | null;
+  dispatch_started_at?: string | null;
   sent_at: string | null;
   submitted_at?: string | null;
   submitted_notes?: string | null;
@@ -104,6 +106,7 @@ type RawOfferTokenDestinationRow = {
   rfq_id: string | null;
   provider_id: string | null;
   status: string | null;
+  dispatch_started_at?: string | null;
   sent_at: string | null;
   submitted_at?: string | null;
   submitted_notes?: string | null;
@@ -187,10 +190,16 @@ export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[
     return [];
   }
 
-  const [supportsOfferToken, includeProviderCountry, supportsSubmittedMeta] = await Promise.all([
+  const [
+    supportsOfferToken,
+    includeProviderCountry,
+    supportsSubmittedMeta,
+    supportsDispatchStartedAt,
+  ] = await Promise.all([
     hasColumns("rfq_destinations", ["offer_token"]),
     hasColumns("providers", ["country"]),
     hasColumns("rfq_destinations", ["submitted_at", "submitted_notes", "submitted_by"]),
+    hasColumns("rfq_destinations", ["dispatch_started_at"]),
   ]);
   const providerColumns = ["name", "provider_type", "quoting_mode"];
   if (includeProviderCountry) {
@@ -202,6 +211,7 @@ export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[
     : [];
   const destinationSelect = [
     ...DESTINATION_COLUMNS,
+    supportsDispatchStartedAt ? "dispatch_started_at" : null,
     ...submittedColumns,
     supportsOfferToken ? "offer_token" : null,
     destinationProviderSelect,
@@ -339,6 +349,7 @@ function normalizeDestinationRow(row: RawRfqDestinationRow): RfqDestination | nu
     rfq_id: rfqId,
     provider_id: providerId,
     status: normalizeDestinationStatus(row?.status),
+    dispatch_started_at: row?.dispatch_started_at ?? null,
     sent_at: row?.sent_at ?? null,
     submitted_at: row?.submitted_at ?? null,
     submitted_notes: normalizeOptionalText(row?.submitted_notes),
@@ -381,6 +392,7 @@ function normalizeOfferTokenRow(
       rfq_id: rfqId,
       provider_id: providerId,
       status: normalizeDestinationStatus(row?.status),
+      dispatch_started_at: row?.dispatch_started_at ?? null,
       sent_at: row?.sent_at ?? null,
       submitted_at: row?.submitted_at ?? null,
       submitted_notes: normalizeOptionalText(row?.submitted_notes),

@@ -14,6 +14,7 @@ import { requireAdminUser } from "@/server/auth";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 import { getOpsSlaConfig } from "@/server/ops/settings";
 import { parseRfqOfferStatus, type RfqOffer } from "@/server/rfqs/offers";
+import { resolveProviderEmailColumn } from "@/server/providers";
 import {
   computeAdminReplyState,
   loadQuoteMessageRollups,
@@ -49,6 +50,7 @@ export type AdminOpsInboxDestination = {
   provider_id: string;
   offer_token: string | null;
   provider_name: string | null;
+  provider_email: string | null;
   provider_type: string | null;
   quoting_mode: string | null;
   dispatch_mode: string | null;
@@ -57,6 +59,7 @@ export type AdminOpsInboxDestination = {
   status: string | null;
   created_at: string | null;
   last_status_at: string | null;
+  dispatch_started_at: string | null;
   sent_at: string | null;
   submitted_at: string | null;
   error_message: string | null;
@@ -126,6 +129,7 @@ type DestinationRow = {
   status: string | null;
   created_at: string | null;
   last_status_at?: string | null;
+  dispatch_started_at?: string | null;
   sent_at?: string | null;
   submitted_at?: string | null;
   error_message?: string | null;
@@ -136,6 +140,9 @@ type DestinationRow = {
     dispatch_mode?: string | null;
     website?: string | null;
     rfq_url?: string | null;
+    primary_email?: string | null;
+    email?: string | null;
+    contact_email?: string | null;
   } | null;
 };
 
@@ -570,6 +577,8 @@ async function loadDestinationsByQuoteId(
     supportsRfqUrl,
     supportsProviderWebsite,
     supportsSubmittedAt,
+    supportsDispatchStartedAt,
+    providerEmailColumn,
   ] = await Promise.all([
     hasColumns("rfq_destinations", ["last_status_at"]),
     hasColumns("rfq_destinations", ["sent_at"]),
@@ -586,6 +595,8 @@ async function loadDestinationsByQuoteId(
     hasColumns("providers", ["rfq_url"]),
     hasColumns("providers", ["website"]),
     hasColumns("rfq_destinations", ["submitted_at"]),
+    hasColumns("rfq_destinations", ["dispatch_started_at"]),
+    resolveProviderEmailColumn(),
   ]);
 
   const destinationSelect = [
@@ -595,6 +606,7 @@ async function loadDestinationsByQuoteId(
     "status",
     "created_at",
     supportsLastStatusAt ? "last_status_at" : null,
+    supportsDispatchStartedAt ? "dispatch_started_at" : null,
     supportsSentAt ? "sent_at" : null,
     supportsSubmittedAt ? "submitted_at" : null,
     supportsErrorMessage ? "error_message" : null,
@@ -607,6 +619,7 @@ async function loadDestinationsByQuoteId(
   if (supportsDispatchMode) providerColumns.push("dispatch_mode");
   if (supportsRfqUrl) providerColumns.push("rfq_url");
   if (supportsProviderWebsite) providerColumns.push("website");
+  if (providerEmailColumn) providerColumns.push(providerEmailColumn);
   const withProviderSelect = providersSupported
     ? `${destinationSelect},provider:providers(${providerColumns.join(",")})`
     : destinationSelect;
@@ -676,6 +689,11 @@ async function loadDestinationsByQuoteId(
       provider_id: providerId,
       offer_token: normalizeOptionalString(row?.offer_token),
       provider_name: normalizeOptionalString(row?.provider?.name),
+      provider_email: normalizeOptionalString(
+        providerEmailColumn && row?.provider
+          ? (row.provider as Record<string, unknown>)[providerEmailColumn]
+          : null,
+      ),
       provider_type: normalizeOptionalString(row?.provider?.provider_type),
       quoting_mode: normalizeOptionalString(row?.provider?.quoting_mode),
       dispatch_mode: normalizeOptionalString(row?.provider?.dispatch_mode),
@@ -684,6 +702,7 @@ async function loadDestinationsByQuoteId(
       status: normalizeOptionalString(row?.status),
       created_at: normalizeOptionalString(row?.created_at),
       last_status_at: normalizeOptionalString(row?.last_status_at),
+      dispatch_started_at: normalizeOptionalString(row?.dispatch_started_at),
       sent_at: normalizeOptionalString(row?.sent_at),
       submitted_at: normalizeOptionalString(row?.submitted_at),
       error_message: normalizeOptionalString(row?.error_message),
