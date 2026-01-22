@@ -17,6 +17,7 @@ import { formatDateTime } from "@/lib/formatDate";
 import { formatShortId } from "@/lib/awards";
 import type { OpsEventRecord } from "@/server/ops/events";
 import type { ProviderPipelineRow } from "@/server/providers/pipeline";
+import type { ProviderCapabilityMatchHealth } from "@/lib/provider/capabilityMatch";
 
 type ProviderPipelineTableBodyProps = {
   rows: ProviderPipelineRow[];
@@ -158,7 +159,7 @@ export default function ProviderPipelineTableBody({
   return (
     <>
       <tr className="bg-slate-950/60">
-        <td colSpan={6} className="px-5 py-4">
+        <td colSpan={7} className="px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -254,6 +255,8 @@ function ProviderPipelineRowDisplay({
 }) {
   const { provider, emailValue, websiteValue, rfqUrlValue, contacted, needsResearch, isVerified, isActive } =
     row;
+  const matchPill = capabilityMatchPill(row.capabilityMatch.health);
+  const matchTitle = buildCapabilityMatchTitle(row.capabilityMatch);
   const websiteHref = normalizeWebsiteHref(websiteValue);
   const rfqUrlHref = normalizeWebsiteHref(rfqUrlValue);
   const openWebsiteHref = websiteHref ?? rfqUrlHref;
@@ -334,6 +337,81 @@ function ProviderPipelineRowDisplay({
               <span className="text-slate-500">RFQ URL —</span>
             )}
           </div>
+        </td>
+        <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+          <details className="group min-w-[140px]">
+            <summary
+              className={clsx(
+                "inline-flex cursor-pointer list-none items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                matchPill.className,
+              )}
+              title={matchTitle}
+            >
+              {matchPill.label}
+              {typeof row.capabilityMatch.score === "number" ? (
+                <span className="font-mono text-[10px] opacity-80">{row.capabilityMatch.score}</span>
+              ) : null}
+            </summary>
+            {row.capabilityMatch.health !== "unknown" ? (
+              <div className="mt-2 space-y-2 rounded-xl border border-slate-900/60 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
+                {row.capabilityMatch.mismatchReasons.length > 0 ? (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Mismatch reasons
+                    </p>
+                    <ul className="mt-1 list-disc pl-4">
+                      {row.capabilityMatch.mismatchReasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {row.capabilityMatch.partialMatches.length > 0 ? (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Partial matches
+                    </p>
+                    <ul className="mt-1 list-disc pl-4">
+                      {row.capabilityMatch.partialMatches.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {row.capabilityMatch.matches.length > 0 ? (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Matches
+                    </p>
+                    <ul className="mt-1 list-disc pl-4">
+                      {row.capabilityMatch.matches.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {typeof row.capabilityMatch.score === "number" ? (
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Score breakdown
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                      {row.capabilityMatch.breakdown
+                        .filter((item) => item.available)
+                        .map((item) => (
+                          <li key={item.key} className="flex justify-between gap-3">
+                            <span className="text-slate-300">{item.label}</span>
+                            <span className="font-mono text-slate-400">
+                              {item.earned}/{item.weight}
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </details>
         </td>
         <td className={clsx(adminTableCellClass, "px-5 py-4")}>
           <div className="flex flex-wrap items-center gap-2">
@@ -426,7 +504,7 @@ function ProviderPipelineRowDisplay({
         </td>
       </tr>
       <tr className="bg-slate-950/30">
-        <td colSpan={6} className="px-5 pb-5">
+        <td colSpan={7} className="px-5 pb-5">
           <details className="rounded-xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
             <summary className="cursor-pointer font-semibold text-slate-200">
               Ops timeline ({opsEvents.length})
@@ -672,4 +750,38 @@ function hasResponseNotesFlag(notes: string | null): boolean {
     if (trimmed.startsWith("#response")) return true;
     return false;
   });
+}
+
+function capabilityMatchPill(
+  health: ProviderCapabilityMatchHealth,
+): { label: string; className: string } {
+  switch (health) {
+    case "match":
+      return { label: "Match", className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" };
+    case "partial":
+      return { label: "Partial", className: "border-amber-500/40 bg-amber-500/10 text-amber-100" };
+    case "mismatch":
+      return { label: "Mismatch", className: "border-red-500/40 bg-red-500/10 text-red-100" };
+    default:
+      return { label: "—", className: "border-slate-800 bg-slate-950/60 text-slate-200" };
+  }
+}
+
+function buildCapabilityMatchTitle(
+  assessment: ProviderPipelineRow["capabilityMatch"],
+): string {
+  const parts: string[] = [];
+  if (assessment.mismatchReasons.length > 0) {
+    parts.push(`Mismatch: ${assessment.mismatchReasons.join(" ")}`);
+  }
+  if (assessment.partialMatches.length > 0) {
+    parts.push(`Partial: ${assessment.partialMatches.join(" ")}`);
+  }
+  if (assessment.matches.length > 0) {
+    parts.push(`Matches: ${assessment.matches.join(" ")}`);
+  }
+  if (typeof assessment.score === "number") {
+    parts.push(`Score: ${assessment.score}`);
+  }
+  return parts.join(" · ") || "Match health unavailable";
 }
