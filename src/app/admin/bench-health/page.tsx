@@ -1,11 +1,13 @@
 import AdminDashboardShell from "@/app/admin/AdminDashboardShell";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import BenchHealthTable from "./BenchHealthTable";
+import { BenchDemandGaps } from "@/app/admin/bench-health/BenchDemandGaps";
 import {
   loadBenchHealthDirectory,
   type SupplierBenchHealth,
 } from "@/server/admin/benchHealth";
 import { requireAdminUser } from "@/server/auth";
+import { loadBenchDemandSummary } from "@/server/admin/benchDemand";
 
 export const dynamic = "force-dynamic";
 
@@ -36,18 +38,25 @@ export default async function AdminBenchHealthPage({
   const status = normalizeStatus(usp.get("status"));
   const sort = normalizeSort(usp.get("sort"));
 
-  const rows = await loadBenchHealthDirectory({
-    q: q.trim() || null,
-    status,
-    sort,
-    limit: 200,
-  });
+  const [rows, demandSummary] = await Promise.all([
+    loadBenchHealthDirectory({
+      q: q.trim() || null,
+      status,
+      sort,
+      limit: 200,
+    }),
+    loadBenchDemandSummary(),
+  ]);
 
   return (
     <AdminDashboardShell
       title="Bench health"
       description="Operational view of supplier responsiveness and activity."
     >
+      <div className="mb-6">
+        <BenchDemandGaps summary={demandSummary} />
+      </div>
+
       <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-5">
         <form method="GET" action="/admin/bench-health" className="flex flex-col gap-3 lg:flex-row lg:items-end">
           <label className="flex flex-col gap-2">
