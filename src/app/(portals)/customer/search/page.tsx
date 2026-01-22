@@ -65,6 +65,7 @@ import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { SearchAlertOptInCard } from "@/app/(portals)/customer/components/SearchAlertOptInCard";
 import { computeCustomerCoverageConfidence } from "@/server/customer/coverageConfidence";
 import { buildCustomerCompareOffers } from "@/server/customer/compareOffers";
+import { userHasTeamAccessToQuote } from "@/server/customerTeams";
 
 type CustomerSearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -156,12 +157,60 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     {},
   );
 
-  const selectedQuote = quotes.find((quote) => quote.id === quoteIdParam) ?? null;
+  let selectedQuote = quotes.find((quote) => quote.id === quoteIdParam) ?? null;
   const recentQuotes = quotes.slice(0, 8);
 
   let activeQuote = selectedQuote;
   let workspaceData = null;
   let workspaceError: string | null = null;
+
+  // If the user is following a shared link (quote=...) but it isn't in their
+  // email-derived list, fall back to team-based access (Phase 20.1.3).
+  if (!activeQuote && quoteIdParam) {
+    try {
+      const teamAccess = await userHasTeamAccessToQuote({ quoteId: quoteIdParam, userId: user.id });
+      if (teamAccess) {
+        const { data } = await supabaseServer
+          .from("quotes_with_uploads")
+          .select("id,customer_email,created_at,updated_at,file_name,status")
+          .eq("id", quoteIdParam)
+          .maybeSingle<{
+            id: string;
+            customer_email: string | null;
+            created_at: string | null;
+            updated_at: string | null;
+            file_name: string | null;
+            status: string | null;
+          }>();
+
+        if (data?.id) {
+          // Minimal shape to let the search workspace render.
+          selectedQuote = {
+            id: data.id,
+            createdAt: data.created_at ?? new Date().toISOString(),
+            updatedAt: data.updated_at ?? null,
+            rfqLabel: "Shared search request",
+            status: (data.status ?? "Submitted").trim() || "Submitted",
+            hasWinner: false,
+            kickoffStatus: "n/a",
+            bidsCount: 0,
+            primaryFileName: data.file_name ?? null,
+            bestPriceAmount: null,
+            bestPriceCurrency: null,
+            bestLeadTimeDays: null,
+            selectedPriceAmount: null,
+            selectedPriceCurrency: null,
+            selectedLeadTimeDays: null,
+            unreadMessagesCount: 0,
+            lastActivityAt: data.updated_at ?? data.created_at ?? null,
+          };
+          activeQuote = selectedQuote;
+        }
+      }
+    } catch {
+      // Fail-soft: keep existing behavior.
+    }
+  }
 
   if (activeQuote) {
     const workspaceResult = await loadQuoteWorkspaceData(activeQuote.id, {

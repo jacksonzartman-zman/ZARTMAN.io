@@ -10,7 +10,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "tsx tests/*.test.ts"
   },
   "dependencies": {
     "@react-three/drei": "^9.103.0",

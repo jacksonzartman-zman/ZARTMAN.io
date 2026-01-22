@@ -8,6 +8,10 @@ import { logOpsEvent } from "@/server/ops/events";
 import { getEmailOutboundStatus, getEmailSender } from "@/server/quotes/emailOutbound";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { serializeSupabaseError } from "@/server/admin/logging";
+import {
+  addExistingUsersToCustomerDefaultTeamByEmail,
+  setQuoteTeamIdIfMissing,
+} from "@/server/customerTeams";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -245,6 +249,31 @@ export async function POST(req: Request) {
 
     const shareUrl = buildPublicUrl(`/customer/search?quote=${encodeURIComponent(quoteId)}`);
 
+    // Best-effort: if customer teams schema exists, attach this quote to the customer's team
+    // and add any *existing* users (by email) to that team.
+    let teamGrantSummary: { enabled: boolean; teamId?: string; added?: number } = { enabled: false };
+    try {
+      const teamName =
+        typeof customer.company_name === "string" && customer.company_name.trim().length > 0
+          ? `${customer.company_name.trim()} team`
+          : "Team";
+
+      const teamGrant = await addExistingUsersToCustomerDefaultTeamByEmail({
+        customerAccountId: customer.id,
+        ownerUserId: customer.user_id ?? user.id,
+        teamName,
+        emails: normalizedEmails,
+      });
+
+      if (teamGrant.ok) {
+        teamGrantSummary = { enabled: true, teamId: teamGrant.teamId, added: teamGrant.added };
+        await setQuoteTeamIdIfMissing({ quoteId, teamId: teamGrant.teamId });
+      }
+    } catch (error) {
+      // Fail-soft: do not block invite emails or copy-link fallback.
+      console.warn(`${WARN_PREFIX} team membership best-effort failed`, { quoteId, error });
+    }
+
     const sendResult = await sendInviteEmails({
       toEmails: normalizedEmails,
       customerEmail: customer.email ?? user.email ?? quoteRow.customer_email ?? null,
@@ -262,6 +291,7 @@ export async function POST(req: Request) {
         sent_count: sendResult.ok ? sendResult.sent : 0,
         status: sendResult.ok ? "sent" : sendResult.error,
         source: "customer_quote_page",
+        team_grant: teamGrantSummary,
       },
     });
 

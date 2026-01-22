@@ -122,6 +122,8 @@ import { CustomerProjectTimelineStrip } from "./CustomerProjectTimelineStrip";
 import { hasCustomerIntroRequested } from "@/server/customer/introRequests";
 import { computeCustomerCoverageConfidence } from "@/server/customer/coverageConfidence";
 import { buildCustomerCompareOffers } from "@/server/customer/compareOffers";
+import { userHasTeamAccessToQuote } from "@/server/customerTeams";
+import { canCustomerViewQuote } from "@/server/customerTeams/access";
 
 export const dynamic = "force-dynamic";
 
@@ -267,13 +269,24 @@ export default async function CustomerQuoteDetailPage({
     normalizedQuoteEmail &&
     normalizedQuoteEmail === overrideEmail;
 
-  if (!quoteCustomerMatches && !overrideMatchesQuote) {
+  const teamAccess = !quoteCustomerMatches && !overrideMatchesQuote
+    ? await userHasTeamAccessToQuote({ quoteId: quote.id, userId: user.id })
+    : false;
+
+  const allowed = canCustomerViewQuote({
+    emailMatchesCustomerAccount: quoteCustomerMatches,
+    overrideEmailMatchesQuote: overrideMatchesQuote,
+    teamMembershipGrantsAccess: teamAccess,
+  });
+
+  if (!allowed) {
     console.error("Customer portal: access denied", {
       quoteId,
       identityEmail: customerEmail,
       overrideEmail,
       quoteEmail: quote.customer_email,
       customerId: customer.id,
+      teamAccess,
     });
     return (
       <PortalNoticeCard
