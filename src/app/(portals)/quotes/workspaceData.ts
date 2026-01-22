@@ -31,6 +31,10 @@ import {
 } from "@/server/rfqs/destinations";
 import { getProviderStatusByIds } from "@/server/providers";
 import { listOpsEventsForQuote, type OpsEventRecord } from "@/server/ops/events";
+import {
+  getCustomerKickoffSummary,
+  type CustomerKickoffSummary,
+} from "@/server/quotes/kickoffSummary";
 
 export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
   files: QuoteFileMeta[];
@@ -45,6 +49,11 @@ export type QuoteWorkspaceData = {
   parts: QuotePartWithFiles[];
   rfqOffers: RfqOffer[];
   rfqDestinations: RfqDestination[];
+  /**
+   * Customer-safe kickoff summary (counts + safe next pending title).
+   * Only included when `includeKickoffSummary` is enabled.
+   */
+  kickoffSummary?: CustomerKickoffSummary;
   opsEvents?: OpsEventRecord[];
   messages: QuoteMessageRecord[];
   messagesError?: string | null;
@@ -107,6 +116,10 @@ type LoadQuoteWorkspaceOptions = {
    * Useful when destination details are not visible.
    */
   includeDestinationDetails?: boolean;
+  /**
+   * When true, include a customer-safe kickoff progress summary.
+   */
+  includeKickoffSummary?: boolean;
 };
 
 type SafeQuoteRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
@@ -370,6 +383,16 @@ export async function loadQuoteWorkspaceData(
       : null;
     const opsEvents = opsEventsResult?.ok ? opsEventsResult.events : [];
 
+    const includeKickoffSummary = Boolean(options?.includeKickoffSummary);
+    const kickoffCompletedAt =
+      (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? null;
+    const kickoffSummary = includeKickoffSummary
+      ? await getCustomerKickoffSummary(enrichedQuote.id, {
+          awardedSupplierId: enrichedQuote.awarded_supplier_id ?? null,
+          kickoffCompletedAt,
+        })
+      : undefined;
+
     const filesIssue = filesUnavailable || filesErrorLogged;
 
     return {
@@ -382,6 +405,7 @@ export async function loadQuoteWorkspaceData(
         parts,
         rfqOffers,
         rfqDestinations,
+        kickoffSummary: includeKickoffSummary ? kickoffSummary : undefined,
         opsEvents: includeOpsEvents ? opsEvents : undefined,
         messages: messages ?? [],
         messagesError,
