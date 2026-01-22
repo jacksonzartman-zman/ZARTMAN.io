@@ -50,6 +50,25 @@ Paste identifiers used during QA for traceability:
 - providerId (email):
 - providerId (web-form):
 
+## Manual QA — Admin Discover Suppliers (5 minutes)
+
+Goal: validate the “supplier discovered → provider pipeline” growth loop.
+
+1) Log in as an admin.
+2) Open `/admin/suppliers/discover`.
+3) In **New supplier lead**, enter:
+   - Company name (required)
+   - Website (required)
+   - Email (optional)
+   - Select a few process/material tags
+4) Click **Create discovered provider**.
+5) Confirm a success banner appears and click **View discovered providers in pipeline →**.
+6) Confirm the provider appears in `/admin/providers/pipeline` with:
+   - Source shown as “Discovered”
+   - Status: **Inactive** + **Unverified**
+   - Directory hidden (if `show_in_directory` exists)
+7) Expand **Ops timeline** for the row and confirm a `supplier_discovered` event is present (if the DB supports that event type).
+
 ## DB-contract checks
 
 Optional check:

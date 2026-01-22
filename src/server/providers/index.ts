@@ -327,6 +327,8 @@ export type CreateProviderStubInput = {
   name: string;
   email?: string | null;
   website?: string | null;
+  processes?: string[] | null;
+  materials?: string[] | null;
   notes?: string | null;
 };
 
@@ -379,13 +381,27 @@ async function createProviderStub(
   const normalizedEmail = normalizeEmail(input.email);
   const normalizedNotes = normalizeOptionalText(input.notes);
   const normalizedWebsite = normalizeWebsite(input.website);
+  const normalizedProcesses = normalizeTagList(input.processes);
+  const normalizedMaterials = normalizeTagList(input.materials);
   const inviteDomain = input.includeInviteDomain ? normalizeDomainFromEmail(normalizedEmail) : null;
   const websiteFromDomain = inviteDomain ? normalizeWebsiteFromDomain(inviteDomain) : null;
   const preferredWebsite = normalizedWebsite ?? websiteFromDomain;
 
   const needsNotesColumn = Boolean(normalizedNotes || normalizedEmail || normalizedWebsite || inviteDomain);
   const needsWebsiteColumn = Boolean(preferredWebsite);
-  const [supportsVerificationStatus, supportsSource, supportsNotes, supportsWebsite, supportsIsVerified, emailColumn] =
+  const needsProcessesColumn = normalizedProcesses.length > 0;
+  const needsMaterialsColumn = normalizedMaterials.length > 0;
+  const [
+    supportsVerificationStatus,
+    supportsSource,
+    supportsNotes,
+    supportsWebsite,
+    supportsIsVerified,
+    emailColumn,
+    supportsProcesses,
+    supportsMaterials,
+    supportsShowInDirectory,
+  ] =
     await Promise.all([
       hasColumns(PROVIDERS_TABLE, ["verification_status"]),
       hasColumns(PROVIDERS_TABLE, ["source"]),
@@ -393,6 +409,9 @@ async function createProviderStub(
       needsWebsiteColumn ? hasColumns(PROVIDERS_TABLE, ["website"]) : Promise.resolve(false),
       hasColumns(PROVIDERS_TABLE, ["is_verified"]),
       resolveProviderEmailColumn(),
+      needsProcessesColumn ? hasColumns(PROVIDERS_TABLE, ["processes"]) : Promise.resolve(false),
+      needsMaterialsColumn ? hasColumns(PROVIDERS_TABLE, ["materials"]) : Promise.resolve(false),
+      hasColumns(PROVIDERS_TABLE, ["show_in_directory"]),
     ]);
 
   const payload: Record<string, unknown> = {
@@ -413,6 +432,15 @@ async function createProviderStub(
   }
   if (supportsWebsite && preferredWebsite) {
     payload.website = preferredWebsite;
+  }
+  if (supportsProcesses && normalizedProcesses.length > 0) {
+    payload.processes = normalizedProcesses;
+  }
+  if (supportsMaterials && normalizedMaterials.length > 0) {
+    payload.materials = normalizedMaterials;
+  }
+  if (supportsShowInDirectory && input.source === "discovered") {
+    payload.show_in_directory = false;
   }
   if (supportsNotes) {
     const includeWebsiteLine = Boolean(normalizedWebsite && !supportsWebsite);
@@ -515,6 +543,15 @@ function normalizeWebsiteFromDomain(domain: string): string | null {
   } catch {
     return null;
   }
+}
+
+function normalizeTagList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const normalized = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0)
+    .map((value) => value.toLowerCase());
+  return Array.from(new Set(normalized));
 }
 
 function buildInviteNotes({
