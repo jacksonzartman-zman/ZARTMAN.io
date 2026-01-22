@@ -191,7 +191,7 @@ function buildBadge(id: CustomerTrustBadgeId): CustomerTrustBadge {
 export async function buildCustomerCompareOffers(
   offers: RfqOffer[],
 ): Promise<CustomerCompareOffer[]> {
-  const normalized: Array<CustomerCompareOffer & { _isVerifiedSupplier: boolean }> = (offers ?? []).map((offer) => {
+  const normalized = (offers ?? []).map((offer) => {
     const providerName = resolveProviderName(offer);
     const totalPriceValue = toFiniteNumber(offer.total_price);
     const leadTimeDaysAverage = resolveLeadTimeAverage(
@@ -204,7 +204,7 @@ export async function buildCustomerCompareOffers(
         : "";
     const isVerifiedSupplier = verificationRaw === "verified" || verificationRaw === "";
 
-    return {
+    const safeOffer: CustomerCompareOffer = {
       id: offer.id,
       rfq_id: offer.rfq_id,
       provider_id: offer.provider_id,
@@ -226,20 +226,21 @@ export async function buildCustomerCompareOffers(
       totalPriceValue,
       leadTimeDaysAverage,
       trustBadges: [],
-      _isVerifiedSupplier: isVerifiedSupplier,
     };
+
+    return { safeOffer, isVerifiedSupplier };
   });
 
-  const supplierIds = normalized.map((o) => o.provider_id).filter(Boolean);
+  const supplierIds = normalized.map((o) => o.safeOffer.provider_id).filter(Boolean);
   const matchHealthBySupplierId = await loadMatchHealthBySupplierId(supplierIds);
 
-  const bestValueOfferId = pickBestValueOfferId(normalized);
+  const bestValueOfferId = pickBestValueOfferId(normalized.map((o) => o.safeOffer));
 
-  return normalized.map((offer) => {
+  return normalized.map(({ safeOffer: offer, isVerifiedSupplier }) => {
     const badges: CustomerTrustBadge[] = [];
 
     // Verified supplier: customer-safe, and should never mention routing/ops.
-    if (offer._isVerifiedSupplier) {
+    if (isVerifiedSupplier) {
       badges.push(buildBadge("verified_supplier"));
     }
 
@@ -257,10 +258,7 @@ export async function buildCustomerCompareOffers(
       badges.push(buildBadge("great_fit"));
     }
 
-    // Strip internal-only helper flags before returning to the client.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { _isVerifiedSupplier, ...safeOffer } = offer;
-    return { ...safeOffer, trustBadges: badges };
+    return { ...offer, trustBadges: badges };
   });
 }
 
