@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { InviteTeammateModal } from "./InviteTeammateModal";
 
 type ShareStatus = "idle" | "copied" | "error";
 
@@ -15,6 +16,7 @@ type DecisionCta = {
 };
 
 type CustomerQuoteDecisionCtaRowProps = {
+  quoteId?: string;
   statusLabel: string;
   helperCopy?: string | null;
   primary: DecisionCta;
@@ -33,6 +35,7 @@ const SECONDARY_DISABLED_CLASSES =
   "cursor-not-allowed text-slate-500 hover:text-slate-500";
 
 export function CustomerQuoteDecisionCtaRow({
+  quoteId,
   statusLabel,
   helperCopy,
   primary,
@@ -40,6 +43,7 @@ export function CustomerQuoteDecisionCtaRow({
   sharePath,
 }: CustomerQuoteDecisionCtaRowProps) {
   const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   useEffect(() => {
     if (shareStatus === "idle") return;
@@ -82,57 +86,84 @@ export function CustomerQuoteDecisionCtaRow({
     secondaryDisabled && SECONDARY_DISABLED_CLASSES,
   );
 
+  const inviteDisabled = !quoteId || !sharePath;
+  const inviteClasses = clsx(
+    SECONDARY_ACTIVE_CLASSES,
+    inviteDisabled && SECONDARY_DISABLED_CLASSES,
+  );
+
   return (
-    <section
-      className="rounded-2xl border border-slate-900/60 bg-slate-950/50 px-5 py-4"
-      aria-label="Decision actions"
-    >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            {statusLabel}
-          </p>
-          {helperCopy ? (
-            <p className="mt-1 text-sm text-slate-300">{helperCopy}</p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-4">
-          {secondary ? (
-            secondary.kind === "share" ? (
-              <button
-                type="button"
-                onClick={handleShare}
-                disabled={secondaryDisabled}
-                className={secondaryClasses}
-              >
-                {shareLabel}
+    <>
+      <section
+        className="rounded-2xl border border-slate-900/60 bg-slate-950/50 px-5 py-4"
+        aria-label="Decision actions"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {statusLabel}
+            </p>
+            {helperCopy ? (
+              <p className="mt-1 text-sm text-slate-300">{helperCopy}</p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-4">
+            {secondary ? (
+              secondary.kind === "share" ? (
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  disabled={secondaryDisabled}
+                  className={secondaryClasses}
+                >
+                  {shareLabel}
+                </button>
+              ) : secondaryDisabled ? (
+                <button type="button" disabled className={secondaryClasses}>
+                  {secondary.label}
+                </button>
+              ) : (
+                <Link href={secondary.href ?? "#"} className={secondaryClasses}>
+                  {secondary.label}
+                </Link>
+              )
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => setInviteOpen(true)}
+              disabled={inviteDisabled}
+              className={inviteClasses}
+            >
+              Invite teammate
+            </button>
+
+            {primaryDisabled ? (
+              <button type="button" disabled className={primaryClasses}>
+                {primary.label}
               </button>
-            ) : secondaryDisabled ? (
-              <button type="button" disabled className={secondaryClasses}>
-                {secondary.label}
+            ) : primaryIsButton ? (
+              <button type="button" onClick={primary.onClick} className={primaryClasses}>
+                {primary.label}
               </button>
             ) : (
-              <Link href={secondary.href ?? "#"} className={secondaryClasses}>
-                {secondary.label}
+              <Link href={primary.href ?? "#"} className={primaryClasses}>
+                {primary.label}
               </Link>
-            )
-          ) : null}
-          {primaryDisabled ? (
-            <button type="button" disabled className={primaryClasses}>
-              {primary.label}
-            </button>
-          ) : primaryIsButton ? (
-            <button type="button" onClick={primary.onClick} className={primaryClasses}>
-              {primary.label}
-            </button>
-          ) : (
-            <Link href={primary.href ?? "#"} className={primaryClasses}>
-              {primary.label}
-            </Link>
-          )}
+            )}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      {quoteId && sharePath ? (
+        <InviteTeammateModal
+          open={inviteOpen}
+          onClose={() => setInviteOpen(false)}
+          quoteId={quoteId}
+          sharePath={sharePath}
+        />
+      ) : null}
+    </>
   );
 }
 

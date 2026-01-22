@@ -41,6 +41,7 @@ export function CustomerQuoteIntroRequestCtaRow({
   return (
     <>
       <CustomerQuoteDecisionCtaRow
+        quoteId={quoteId}
         statusLabel={statusLabel}
         helperCopy={helperCopy}
         primary={{

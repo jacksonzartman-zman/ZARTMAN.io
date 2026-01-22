@@ -40,6 +40,7 @@ export type OpsEventType =
   | "provider_activated"
   | "provider_deactivated"
   | "provider_directory_visibility_changed"
+  | "customer_teammate_invited"
   | "estimate_shown"
   | "bench_gap_task_event";
 
