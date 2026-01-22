@@ -2,6 +2,11 @@ import crypto from "crypto";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { sendNotificationEmail } from "@/server/notifications/email";
 import { serializeSupabaseError } from "@/server/admin/logging";
+import {
+  ensureCustomerDefaultTeam,
+  listCustomerTeamMembers as listCustomerTeamMemberRows,
+} from "@/server/customerTeams";
+import { isCustomerTeamsSchemaReady } from "@/server/customerTeams/schema";
 
 export type CustomerInviteStatus = "pending" | "accepted" | "revoked";
 
@@ -28,7 +33,7 @@ export type CustomerTeamMember = {
   userId: string;
   email: string | null;
   statusLabel: "Active";
-  roleLabel: "Member";
+  roleLabel: "Owner" | "Member";
 };
 
 function normalizeText(value: unknown): string {
@@ -367,6 +372,39 @@ export async function acceptCustomerInvite(args: {
       return { ok: false, error: "We couldn’t accept that invite. Please try again.", reason: "write_failed" };
     }
 
+    // Best-effort: also add to customer team membership when teams schema exists.
+    try {
+      if (await isCustomerTeamsSchemaReady()) {
+        const { data: customerRow } = await supabaseServer
+          .from("customers")
+          .select("id,company_name,user_id")
+          .eq("id", customerId)
+          .maybeSingle<{ id: string; company_name: string | null; user_id: string | null }>();
+
+        const teamName =
+          customerRow?.company_name?.trim()
+            ? `${customerRow.company_name.trim()} team`
+            : "Team";
+
+        const ensured = await ensureCustomerDefaultTeam({
+          customerAccountId: customerId,
+          teamName,
+          ownerUserId: customerRow?.user_id ?? null,
+        });
+
+        if (ensured.ok) {
+          await supabaseServer
+            .from("customer_team_members")
+            .upsert(
+              { team_id: ensured.teamId, user_id: userId, role: "member" },
+              { onConflict: "team_id,user_id" },
+            );
+        }
+      }
+    } catch {
+      // Fail-soft.
+    }
+
     return { ok: true, customerId };
   } catch (error) {
     console.error("[customer invites] accept failed", {
@@ -388,38 +426,57 @@ export async function listCustomerTeamMembers(args: {
 
   type CustomerUserRow = { user_id: string; created_at: string };
 
-  const userIds = new Set<string>();
-  if (ownerUserId) userIds.add(ownerUserId);
-
-  const { data } = await supabaseServer
-    .from("customer_users")
-    .select("user_id,created_at")
-    .eq("customer_id", customerId)
-    .order("created_at", { ascending: true })
-    .returns<CustomerUserRow[]>();
-
-  for (const row of data ?? []) {
-    const id = normalizeText(row?.user_id);
-    if (id) userIds.add(id);
-  }
-
   const resolved: CustomerTeamMember[] = [];
 
-  for (const userId of Array.from(userIds)) {
+  // Prefer the new team schema when present; fall back to legacy customer_users.
+  const userRoles = new Map<string, CustomerTeamMember["roleLabel"]>();
+
+  if (await isCustomerTeamsSchemaReady()) {
+    const memberRows = await listCustomerTeamMemberRows({ customerAccountId: customerId });
+    for (const row of memberRows) {
+      const id = normalizeText(row?.user_id);
+      if (!id) continue;
+      const roleLabel: CustomerTeamMember["roleLabel"] = row.role === "owner" ? "Owner" : "Member";
+      userRoles.set(id, roleLabel);
+    }
+  }
+
+  if (userRoles.size === 0) {
+    const userIds = new Set<string>();
+    if (ownerUserId) userIds.add(ownerUserId);
+
+    const { data } = await supabaseServer
+      .from("customer_users")
+      .select("user_id,created_at")
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: true })
+      .returns<CustomerUserRow[]>();
+
+    for (const row of data ?? []) {
+      const id = normalizeText(row?.user_id);
+      if (id) userIds.add(id);
+    }
+
+    for (const userId of Array.from(userIds)) {
+      userRoles.set(userId, "Member");
+    }
+  }
+
+  for (const [userId, roleLabel] of userRoles.entries()) {
     try {
       const { data, error } = await supabaseServer.auth.admin.getUserById(userId);
       if (error) {
-        resolved.push({ userId, email: null, statusLabel: "Active", roleLabel: "Member" });
+        resolved.push({ userId, email: null, statusLabel: "Active", roleLabel });
         continue;
       }
       resolved.push({
         userId,
         email: data.user?.email ?? null,
         statusLabel: "Active",
-        roleLabel: "Member",
+        roleLabel,
       });
     } catch {
-      resolved.push({ userId, email: null, statusLabel: "Active", roleLabel: "Member" });
+      resolved.push({ userId, email: null, statusLabel: "Active", roleLabel });
     }
   }
 

@@ -1,5 +1,6 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { isCustomerTeamsSchemaReady } from "@/server/customerTeams/schema";
 
 const CUSTOMER_SELECT_COLUMNS = "id,user_id,email,company_name,created_at";
 
@@ -73,6 +74,54 @@ export async function getCustomerByUserId(
 
     if (data) {
       return data;
+    }
+
+    // Team memberships (Phase 20.1.3): if the customer teams schema is present,
+    // allow users to resolve a customer account via customer_team_members -> customer_teams.
+    try {
+      if (await isCustomerTeamsSchemaReady()) {
+        type TeamMembershipRow = {
+          team_id: string;
+          customer_teams?: { customer_account_id?: string | null } | null;
+        };
+
+        const membership = await supabaseServer
+          .from("customer_team_members")
+          .select("team_id,customer_teams(customer_account_id)")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle<TeamMembershipRow>();
+
+        const customerId =
+          typeof membership.data?.customer_teams?.customer_account_id === "string"
+            ? membership.data.customer_teams.customer_account_id
+            : "";
+
+        if (!membership.error && customerId) {
+          const { data: customer, error: customerError } = await supabaseServer
+            .from("customers")
+            .select(CUSTOMER_SELECT_COLUMNS)
+            .eq("id", customerId)
+            .maybeSingle<CustomerRow>();
+
+          if (customerError) {
+            console.error("getCustomerByUserId: team membership customer lookup failed", {
+              userId,
+              customerId,
+              error: customerError,
+            });
+          } else if (customer) {
+            return customer;
+          }
+        }
+      }
+    } catch (error) {
+      // Fail-soft: fall back to legacy membership resolution.
+      console.error("getCustomerByUserId: team membership lookup failed", {
+        userId,
+        error,
+      });
     }
 
     // Team memberships: customers can have multiple portal users via customer_users.
