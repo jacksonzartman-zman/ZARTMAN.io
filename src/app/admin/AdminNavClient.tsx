@@ -40,6 +40,7 @@ const MORE_LINKS: PortalNavLink[] = [
   { label: "Pipeline", href: "/admin/providers/pipeline" },
   { label: "Provider import", href: "/admin/providers/import" },
   { label: "Bench health", href: "/admin/bench-health" },
+  { label: "Bench tasks", href: "/admin/bench-health/tasks" },
   { label: "System health", href: "/admin/system-health" },
   { label: "Email ops", href: "/admin/email-ops" },
 ];
