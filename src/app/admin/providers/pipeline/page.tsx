@@ -17,6 +17,7 @@ export const dynamic = "force-dynamic";
 
 type MatchFilter = "all" | "mismatch" | "partial";
 type SourceFilter = "all" | "discovered";
+type DiscoveryFilter = "all" | "incomplete";
 
 const PIPELINE_FILTERS: Array<{ value: ProviderPipelineView; label: string }> = [
   { value: "queue", label: "Queue" },
@@ -39,12 +40,14 @@ export default async function AdminProviderPipelinePage({
   const searchInput = normalizeSearchInput(usp.get("search"));
   const matchFilter = parseMatchFilter(usp.get("match"));
   const sourceFilter = parseSourceFilter(usp.get("source"));
+  const discoveryFilter = parseDiscoveryFilter(usp.get("discovery"));
 
   const { rows, emailColumn } = await listProviderPipelineRows({
     view,
     search: searchInput,
     match: matchFilter,
     source: sourceFilter === "all" ? null : ("discovered" satisfies ProviderSource),
+    discovery: discoveryFilter === "all" ? null : "incomplete",
   });
 
   const supportsDirectoryVisibility = await hasColumns("providers", ["show_in_directory"]);
@@ -74,6 +77,14 @@ export default async function AdminProviderPipelinePage({
     search: searchInput,
     match: matchFilter,
     source: sourceFilter === "discovered" ? "all" : "discovered",
+    discovery: discoveryFilter,
+  });
+  const incompleteDiscoveryHref = buildPipelineFilterHref({
+    view,
+    search: searchInput,
+    match: matchFilter,
+    source: sourceFilter,
+    discovery: discoveryFilter === "incomplete" ? "all" : "incomplete",
   });
 
   return (
@@ -112,6 +123,11 @@ export default async function AdminProviderPipelinePage({
           })}
           <FilterChip label="Discovered" href={discoveredHref} active={sourceFilter === "discovered"} />
           <FilterChip
+            label="Incomplete discovery"
+            href={incompleteDiscoveryHref}
+            active={discoveryFilter === "incomplete"}
+          />
+          <FilterChip
             label="Mismatch only"
             href={mismatchOnlyHref}
             active={matchFilter === "mismatch"}
@@ -130,6 +146,7 @@ export default async function AdminProviderPipelinePage({
             <input type="hidden" name="match" value={matchFilter} />
           ) : null}
           {sourceFilter !== "all" ? <input type="hidden" name="source" value={sourceFilter} /> : null}
+          {discoveryFilter !== "all" ? <input type="hidden" name="discovery" value={discoveryFilter} /> : null}
           <label className="flex w-full min-w-[220px] flex-1 flex-col gap-2 sm:w-auto">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               Search
@@ -165,6 +182,7 @@ export default async function AdminProviderPipelinePage({
             <th className="px-5 py-4">Contact</th>
             <th className="px-5 py-4">Match health</th>
             <th className="px-5 py-4">Status</th>
+              <th className="px-5 py-4">Discovery complete</th>
             <th className="px-5 py-4">Next action</th>
             <th className="px-5 py-4">Actions</th>
           </tr>
@@ -172,7 +190,7 @@ export default async function AdminProviderPipelinePage({
         body={
           isEmpty ? (
             <tr>
-              <td colSpan={7} className="px-6 py-12 text-center text-base text-slate-300">
+                <td colSpan={8} className="px-6 py-12 text-center text-base text-slate-300">
                 <p className="font-medium text-slate-100">No providers found</p>
                 <p className="mt-2 text-sm text-slate-400">
                   Adjust the filters to see more providers in the pipeline.
@@ -262,6 +280,7 @@ function buildPipelineFilterHref(args: {
   search?: string | null;
   match?: MatchFilter;
   source?: SourceFilter;
+  discovery?: DiscoveryFilter;
 }): string {
   const params = new URLSearchParams();
   if (args.view && args.view !== "queue") {
@@ -275,6 +294,9 @@ function buildPipelineFilterHref(args: {
   }
   if (args.source && args.source !== "all") {
     params.set("source", args.source);
+  }
+  if (args.discovery && args.discovery !== "all") {
+    params.set("discovery", args.discovery);
   }
   const qs = params.toString();
   return qs ? `/admin/providers/pipeline?${qs}` : "/admin/providers/pipeline";
@@ -296,5 +318,11 @@ function parseMatchFilter(value: unknown): MatchFilter {
 function parseSourceFilter(value: unknown): SourceFilter {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (normalized === "discovered") return "discovered";
+  return "all";
+}
+
+function parseDiscoveryFilter(value: unknown): DiscoveryFilter {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "incomplete") return "incomplete";
   return "all";
 }

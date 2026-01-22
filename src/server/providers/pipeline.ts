@@ -5,6 +5,7 @@ import {
   type ProviderEmailColumn,
 } from "@/server/providers";
 import { assessProviderCapabilityMatch } from "@/lib/provider/capabilityMatch";
+import { assessDiscoveryCompleteness } from "@/lib/provider/discoveryCompleteness";
 
 export type ProviderPipelineView =
   | "queue"
@@ -20,6 +21,7 @@ export type ProviderPipelineRow = {
   emailValue: string | null;
   websiteValue: string | null;
   rfqUrlValue: string | null;
+  discoveryComplete: boolean;
   contacted: boolean;
   needsResearch: boolean;
   isVerified: boolean;
@@ -32,12 +34,14 @@ export async function listProviderPipelineRows(args: {
   search?: string | null;
   match?: "all" | "mismatch" | "partial" | null;
   source?: ProviderSource | null;
+  discovery?: "all" | "incomplete" | null;
 }): Promise<{ rows: ProviderPipelineRow[]; emailColumn: ProviderEmailColumn | null }> {
   const { providers, emailColumn } = await listProvidersWithContact();
   const view = normalizeView(args.view);
   const search = normalizeSearchTerm(args.search);
   const matchFilter = normalizeMatchFilter(args.match);
   const source = normalizeSource(args.source);
+  const discoveryFilter = normalizeDiscoveryFilter(args.discovery);
 
   const rows = providers.map((provider) => {
     const rawEmailValue = readEmailValue(provider, emailColumn);
@@ -50,8 +54,16 @@ export async function listProviderPipelineRows(args: {
     const contacted = Boolean(provider.contacted_at);
     const isVerified = provider.verification_status === "verified";
     const isActive = provider.is_active;
+    const discovery = assessDiscoveryCompleteness({
+      name: provider.name,
+      email: emailValue,
+      website: websiteValue || rfqUrlValue,
+      processes: provider.processes,
+    });
+    const discoveryComplete = discovery.complete;
     const hasWebsite = Boolean(websiteValue || rfqUrlValue);
-    const needsResearch = !emailValue || !hasWebsite;
+    const needsResearch =
+      provider.source === "discovered" ? !discoveryComplete : !emailValue || !hasWebsite;
     const capabilityMatch = assessProviderCapabilityMatch({
       processes: provider.processes,
       materials: provider.materials,
@@ -64,6 +76,7 @@ export async function listProviderPipelineRows(args: {
       emailValue,
       websiteValue,
       rfqUrlValue,
+      discoveryComplete,
       contacted,
       needsResearch,
       isVerified,
@@ -77,6 +90,7 @@ export async function listProviderPipelineRows(args: {
     if (!matchesSearch(row, search)) return false;
     if (!matchesMatchFilter(row, matchFilter)) return false;
     if (!matchesSource(row, source)) return false;
+    if (!matchesDiscoveryFilter(row, discoveryFilter)) return false;
     return true;
   });
 
@@ -158,6 +172,22 @@ function normalizeSource(value: ProviderSource | null | undefined): ProviderSour
 function matchesSource(row: ProviderPipelineRow, source: ProviderSource | null): boolean {
   if (!source) return true;
   return row.provider.source === source;
+}
+
+function normalizeDiscoveryFilter(
+  value: "all" | "incomplete" | null | undefined,
+): "all" | "incomplete" {
+  if (value === "incomplete") return "incomplete";
+  return "all";
+}
+
+function matchesDiscoveryFilter(
+  row: ProviderPipelineRow,
+  filter: ReturnType<typeof normalizeDiscoveryFilter>,
+): boolean {
+  if (filter !== "incomplete") return true;
+  if (row.provider.source !== "discovered") return false;
+  return !row.discoveryComplete;
 }
 
 function readEmailValue(provider: ProviderContactRow, column: ProviderEmailColumn | null): string | null {
