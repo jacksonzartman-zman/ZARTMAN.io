@@ -59,6 +59,8 @@ type NeedsActionChip = {
     | "errorsCount"
     | "queuedStaleCount"
     | "messageNeedsReplyCount"
+    | "threadNeedsReplyCount"
+    | "threadReplyOverdueCount"
     | "introRequestsCount";
   label: string;
   className: string;
@@ -72,13 +74,23 @@ const NEEDS_ACTION_CHIPS: NeedsActionChip[] = [
   },
   {
     key: "needsReplyCount",
-    label: "Needs reply",
+    label: "Offer needs reply",
     className: "pill-warning",
   },
   {
     key: "messageNeedsReplyCount",
     label: "Msg Needs Reply",
     className: "pill-warning",
+  },
+  {
+    key: "threadNeedsReplyCount",
+    label: "Needs reply",
+    className: "pill-warning",
+  },
+  {
+    key: "threadReplyOverdueCount",
+    label: "Overdue",
+    className: "border-red-400/60 bg-red-500/15 text-red-100",
   },
   {
     key: "errorsCount",
@@ -101,6 +113,8 @@ export default async function AdminOpsInboxPage({
 
   const needsActionOnly = parseToggle(usp.get("needsAction"));
   const messageNeedsReplyOnly = parseToggle(usp.get("messageNeedsReply"));
+  const threadNeedsReplyOnly = parseToggle(usp.get("needsReply"));
+  const threadOverdueOnly = parseToggle(usp.get("overdue"));
   const introRequestedOnly = parseToggle(usp.get("introRequested"));
   const selectedOnly = parseToggle(usp.get("selected"));
   const destinationStatus = normalizeDestinationStatus(usp.get("destinationStatus"));
@@ -114,6 +128,8 @@ export default async function AdminOpsInboxPage({
       filters: {
         needsActionOnly,
         messageNeedsReplyOnly,
+        threadNeedsReplyOnly,
+        threadOverdueOnly,
         introRequestedOnly,
         selectedOnly,
         destinationStatus: destinationStatus === "all" ? null : destinationStatus,
@@ -152,6 +168,8 @@ export default async function AdminOpsInboxPage({
   const hasFilters =
     needsActionOnly ||
     messageNeedsReplyOnly ||
+    threadNeedsReplyOnly ||
+    threadOverdueOnly ||
     introRequestedOnly ||
     selectedOnly ||
     destinationStatus !== "all" ||
@@ -261,6 +279,28 @@ export default async function AdminOpsInboxPage({
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <input
                 type="checkbox"
+                name="needsReply"
+                value="1"
+                defaultChecked={threadNeedsReplyOnly}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+              />
+              Needs reply only
+            </label>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+              <input
+                type="checkbox"
+                name="overdue"
+                value="1"
+                defaultChecked={threadOverdueOnly}
+                className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+              />
+              Overdue only
+            </label>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+              <input
+                type="checkbox"
                 name="introRequested"
                 value="1"
                 defaultChecked={introRequestedOnly}
@@ -333,7 +373,11 @@ export default async function AdminOpsInboxPage({
                     key={row.quote.id}
                     className={clsx(
                       "transition hover:bg-slate-900/40",
-                      hasIntroRequests ? "bg-emerald-500/5" : "bg-slate-950/40",
+                  row.summary.threadReplyOverdueCount > 0
+                    ? "bg-red-500/5"
+                    : hasIntroRequests
+                      ? "bg-emerald-500/5"
+                      : "bg-slate-950/40",
                     )}
                   >
                     <td className={clsx(adminTableCellClass, "px-5 py-4")}>
@@ -455,6 +499,7 @@ function resolveLastActivityMs(row: AdminOpsInboxRow): number {
   latest = Math.max(
     latest,
     toMs(row.summary.lastCustomerMessageAt),
+    toMs(row.summary.lastSupplierMessageAt),
     toMs(row.summary.lastAdminMessageAt),
   );
   return latest;

@@ -14,11 +14,13 @@ import { formatDateTime } from "@/lib/formatDate";
 import { formatAwardedByLabel, formatShortId } from "@/lib/awards";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getQuoteMessages } from "@/server/messages/quoteMessages";
+import { computeNeedsReplySummary } from "@/server/messages/needsReply";
 import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import { getCustomerReplyToAddress, getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
 import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
 import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 import { CopyTextButton } from "@/components/CopyTextButton";
+import { getOpsMessageReplyMaxHours } from "@/server/ops/settings";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
 import {
@@ -677,6 +679,10 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       messageRollup?.lastMessageAt ?? threadSla?.lastMessageAt ?? null;
     const lastMessage = quoteMessages.length > 0 ? quoteMessages[quoteMessages.length - 1] : null;
     const lastMessagePreview = lastMessage ? truncateThreadPreview(lastMessage.body, 80) : null;
+    const messageReplyMaxHours = await getOpsMessageReplyMaxHours();
+    const customerSupplierNeedsReply = computeNeedsReplySummary(quoteMessages, {
+      slaWindowHours: messageReplyMaxHours,
+    });
     const bidsResult = await loadBidsForQuote(quote.id);
     const bidAggregateMap = await loadQuoteBidAggregates([quote.id]);
     const bidAggregate = bidAggregateMap[quote.id];
@@ -1593,6 +1599,30 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
             Messages are temporarily unavailable. Refresh the page to try again.
           </p>
+        ) : null}
+        {!messagesUnavailable &&
+        (customerSupplierNeedsReply.supplierOwesReply || customerSupplierNeedsReply.customerOwesReply) ? (
+          <div
+            className={clsx(
+              "rounded-xl border px-5 py-3 text-sm",
+              customerSupplierNeedsReply.supplierReplyOverdue || customerSupplierNeedsReply.customerReplyOverdue
+                ? "border-red-500/30 bg-red-500/10 text-red-100"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-100",
+            )}
+          >
+            <p className="font-semibold text-white">
+              {customerSupplierNeedsReply.supplierReplyOverdue || customerSupplierNeedsReply.customerReplyOverdue
+                ? "Overdue reply"
+                : "Needs reply"}
+            </p>
+            <p className="mt-1 text-xs">
+              {customerSupplierNeedsReply.supplierOwesReply
+                ? "Supplier owes the next reply in this thread."
+                : customerSupplierNeedsReply.customerOwesReply
+                  ? "Customer owes the next reply in this thread."
+                  : null}
+            </p>
+          </div>
         ) : null}
         <QuoteMessagesThread
           quoteId={quote.id}

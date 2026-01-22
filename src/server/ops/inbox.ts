@@ -5,6 +5,7 @@ import {
   type SlaConfig,
   type SlaReason,
 } from "@/lib/ops/sla";
+import { computeNeedsReplySummary } from "@/server/messages/needsReply";
 import {
   handleMissingSupabaseSchema,
   serializeSupabaseError,
@@ -12,7 +13,7 @@ import {
 } from "@/server/admin/logging";
 import { requireAdminUser } from "@/server/auth";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
-import { getOpsSlaConfig } from "@/server/ops/settings";
+import { getOpsSlaSettings } from "@/server/ops/settings";
 import { parseRfqOfferStatus, type RfqOffer } from "@/server/rfqs/offers";
 import { resolveProviderEmailColumn } from "@/server/providers";
 import {
@@ -25,6 +26,8 @@ export type AdminOpsInboxFilters = {
   status?: string | null;
   needsActionOnly?: boolean | null;
   messageNeedsReplyOnly?: boolean | null;
+  threadNeedsReplyOnly?: boolean | null;
+  threadOverdueOnly?: boolean | null;
   introRequestedOnly?: boolean | null;
   providerId?: string | null;
   destinationStatus?: string | null;
@@ -83,10 +86,13 @@ export type AdminOpsInboxSummary = {
   errorsCount: number;
   queuedStaleCount: number;
   messageNeedsReplyCount: number;
+  threadNeedsReplyCount: number;
+  threadReplyOverdueCount: number;
   introRequestsCount: number;
   introRequestProviderIds: string[];
   lastIntroRequestedAt: string | null;
   lastCustomerMessageAt: string | null;
+  lastSupplierMessageAt: string | null;
   lastAdminMessageAt: string | null;
   topReasons: Array<Exclude<SlaReason, null>>;
 };
@@ -212,7 +218,9 @@ export async function getAdminOpsInboxRows(
 ): Promise<AdminOpsInboxRow[]> {
   await requireAdminUser();
 
-  const slaConfig = args.slaConfig ?? (await getOpsSlaConfig());
+  const opsSettings = await getOpsSlaSettings();
+  const slaConfig = args.slaConfig ?? opsSettings.config;
+  const messageReplyMaxHours = opsSettings.messageReplyMaxHours;
   const limit = normalizeLimit(args.limit);
   const offset = normalizeOffset(args.offset);
   if (limit <= 0) {
@@ -330,6 +338,15 @@ export async function getAdminOpsInboxRows(
     const offers = offersByQuoteId.get(quoteId) ?? [];
     const messageRollup = messageRollupsByQuoteId[quoteId] ?? null;
     const messageState = messageRollup ? computeAdminReplyState(messageRollup) : emptyMessageState;
+    const threadSummary = messageRollup
+      ? computeNeedsReplySummary(
+          [
+            { sender_role: "customer", created_at: messageRollup.lastCustomerAt },
+            { sender_role: "supplier", created_at: messageRollup.lastSupplierAt },
+          ],
+          { slaWindowHours: messageReplyMaxHours, now },
+        )
+      : null;
     const introMeta =
       introRequestsByQuoteId.get(quoteId) ?? { count: 0, latestAt: null, providerIds: [] };
     const summary = buildQuoteSummary(
@@ -338,6 +355,7 @@ export async function getAdminOpsInboxRows(
       now,
       slaConfig,
       messageState,
+      threadSummary,
       introMeta.count,
       introMeta.providerIds,
       introMeta.latestAt,
@@ -465,6 +483,8 @@ function normalizeFilters(raw?: AdminOpsInboxFilters) {
     status: status ? status.toLowerCase() : null,
     needsActionOnly: Boolean(raw?.needsActionOnly),
     messageNeedsReplyOnly: Boolean(raw?.messageNeedsReplyOnly),
+    threadNeedsReplyOnly: Boolean(raw?.threadNeedsReplyOnly),
+    threadOverdueOnly: Boolean(raw?.threadOverdueOnly),
     introRequestedOnly: Boolean(raw?.introRequestedOnly),
     providerId,
     destinationStatus: destinationStatus ? destinationStatus.toLowerCase() : null,
@@ -845,6 +865,7 @@ function buildQuoteSummary(
   now: Date,
   slaConfig: SlaConfig,
   messageState: AdminMessageReplyState,
+  threadSummary: ReturnType<typeof computeNeedsReplySummary> | null,
   introRequestsCount: number,
   introRequestProviderIds: string[],
   lastIntroRequestedAt: string | null,
@@ -908,19 +929,30 @@ function buildQuoteSummary(
   );
 
   const messageNeedsReplyCount = messageState.needsReply ? 1 : 0;
+  const threadNeedsReplyCount =
+    threadSummary && (threadSummary.customerOwesReply || threadSummary.supplierOwesReply) ? 1 : 0;
+  const threadReplyOverdueCount =
+    threadSummary && (threadSummary.customerReplyOverdue || threadSummary.supplierReplyOverdue) ? 1 : 0;
   const introNeedsAction = introRequestsCount > 0 ? 1 : 0;
 
   return {
     counts,
-    needsActionCount: needs.needsActionCount + messageNeedsReplyCount + introNeedsAction,
+    needsActionCount:
+      needs.needsActionCount +
+      messageNeedsReplyCount +
+      threadNeedsReplyCount +
+      introNeedsAction,
     needsReplyCount: needs.needsReplyCount,
     errorsCount: needs.errorsCount,
     queuedStaleCount: needs.queuedStaleCount,
     messageNeedsReplyCount,
+    threadNeedsReplyCount,
+    threadReplyOverdueCount,
     introRequestsCount,
     introRequestProviderIds,
     lastIntroRequestedAt,
     lastCustomerMessageAt: messageState.lastCustomerMessageAt,
+    lastSupplierMessageAt: threadSummary?.lastSupplierMessageAt ?? null,
     lastAdminMessageAt: messageState.lastAdminMessageAt,
     topReasons: buildTopReasons(reasonCounts),
   };
@@ -974,6 +1006,14 @@ function passesFilters(
   }
 
   if (filters.messageNeedsReplyOnly && row.summary.messageNeedsReplyCount <= 0) {
+    return false;
+  }
+
+  if (filters.threadNeedsReplyOnly && row.summary.threadNeedsReplyCount <= 0) {
+    return false;
+  }
+
+  if (filters.threadOverdueOnly && row.summary.threadReplyOverdueCount <= 0) {
     return false;
   }
 

@@ -7,7 +7,10 @@ import {
 import { schemaGate } from "@/server/db/schemaContract";
 
 const OPS_SETTINGS_TABLE = "ops_settings";
-const OPS_SETTINGS_SELECT = "id,queued_max_hours,sent_no_reply_max_hours,updated_at";
+const MESSAGE_REPLY_MAX_HOURS_COLUMN = "message_reply_max_hours";
+const DEFAULT_MESSAGE_REPLY_MAX_HOURS = 24;
+
+const OPS_SETTINGS_SELECT_BASE = "id,queued_max_hours,sent_no_reply_max_hours,updated_at";
 const OPS_SETTINGS_COLUMNS = [
   "id",
   "queued_max_hours",
@@ -19,21 +22,34 @@ type OpsSettingsRow = {
   id: string | null;
   queued_max_hours: number | null;
   sent_no_reply_max_hours: number | null;
+  message_reply_max_hours?: number | null;
   updated_at: string | null;
 };
 
 export type OpsSlaSettings = {
   config: SlaConfig;
+  /**
+   * Messaging SLA for customer<->supplier reply expectations (hours).
+   * Defaults to 24 when not configured.
+   */
+  messageReplyMaxHours: number;
   rowId: string | null;
   updatedAt: string | null;
   usingFallback: boolean;
+  /**
+   * True when `message_reply_max_hours` was unavailable (missing column / schema drift)
+   * and we fell back to the default value.
+   */
+  messageReplyUsingFallback: boolean;
 };
 
 const FALLBACK_SETTINGS: OpsSlaSettings = {
   config: DEFAULT_SLA_CONFIG,
+  messageReplyMaxHours: DEFAULT_MESSAGE_REPLY_MAX_HOURS,
   rowId: null,
   updatedAt: null,
   usingFallback: true,
+  messageReplyUsingFallback: true,
 };
 
 export async function getOpsSlaConfig(): Promise<SlaConfig> {
@@ -53,10 +69,21 @@ export async function getOpsSlaSettings(): Promise<OpsSlaSettings> {
     return FALLBACK_SETTINGS;
   }
 
+  const supportsMessageReplyMaxHours = await schemaGate({
+    enabled: true,
+    relation: OPS_SETTINGS_TABLE,
+    requiredColumns: [MESSAGE_REPLY_MAX_HOURS_COLUMN],
+    warnPrefix: "[ops settings]",
+    warnKey: "ops_settings:message_reply_max_hours_missing",
+  });
+  const opsSettingsSelect = supportsMessageReplyMaxHours
+    ? `${OPS_SETTINGS_SELECT_BASE},${MESSAGE_REPLY_MAX_HOURS_COLUMN}`
+    : OPS_SETTINGS_SELECT_BASE;
+
   try {
     const { data, error } = await supabaseServer
       .from(OPS_SETTINGS_TABLE)
-      .select(OPS_SETTINGS_SELECT)
+      .select(opsSettingsSelect)
       .order("updated_at", { ascending: false })
       .limit(1)
       .returns<OpsSettingsRow[]>();
@@ -82,9 +109,11 @@ export async function getOpsSlaSettings(): Promise<OpsSlaSettings> {
     if (!row) {
       return {
         config: DEFAULT_SLA_CONFIG,
+        messageReplyMaxHours: DEFAULT_MESSAGE_REPLY_MAX_HOURS,
         rowId: null,
         updatedAt: null,
         usingFallback: false,
+        messageReplyUsingFallback: !supportsMessageReplyMaxHours,
       };
     }
 
@@ -96,6 +125,12 @@ export async function getOpsSlaSettings(): Promise<OpsSlaSettings> {
       row.sent_no_reply_max_hours,
       DEFAULT_SLA_CONFIG.sentNoReplyMaxHours,
     );
+    const messageReplyMaxHours = supportsMessageReplyMaxHours
+      ? normalizeHours(
+          row.message_reply_max_hours,
+          DEFAULT_MESSAGE_REPLY_MAX_HOURS,
+        )
+      : DEFAULT_MESSAGE_REPLY_MAX_HOURS;
 
     return {
       config: {
@@ -103,9 +138,11 @@ export async function getOpsSlaSettings(): Promise<OpsSlaSettings> {
         sentNoReplyMaxHours,
         errorAlwaysNeedsAction: DEFAULT_SLA_CONFIG.errorAlwaysNeedsAction,
       },
+      messageReplyMaxHours,
       rowId: normalizeId(row.id),
       updatedAt: normalizeOptionalString(row.updated_at),
       usingFallback: false,
+      messageReplyUsingFallback: !supportsMessageReplyMaxHours,
     };
   } catch (error) {
     if (
@@ -125,6 +162,14 @@ export async function getOpsSlaSettings(): Promise<OpsSlaSettings> {
   }
 }
 
+export async function getOpsMessageReplyMaxHours(): Promise<number> {
+  const settings = await getOpsSlaSettings();
+  const value = settings.messageReplyMaxHours;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : DEFAULT_MESSAGE_REPLY_MAX_HOURS;
+}
+
 export type UpsertOpsSlaSettingsResult =
   | { ok: true }
   | { ok: false; error: string };
@@ -132,6 +177,7 @@ export type UpsertOpsSlaSettingsResult =
 export async function upsertOpsSlaSettings(input: {
   queuedMaxHours: number;
   sentNoReplyMaxHours: number;
+  messageReplyMaxHours?: number;
 }): Promise<UpsertOpsSlaSettingsResult> {
   const supported = await schemaGate({
     enabled: true,
@@ -144,9 +190,27 @@ export async function upsertOpsSlaSettings(input: {
     return { ok: false, error: "Ops settings table is unavailable." };
   }
 
+  const supportsMessageReplyMaxHours = await schemaGate({
+    enabled: true,
+    relation: OPS_SETTINGS_TABLE,
+    requiredColumns: [MESSAGE_REPLY_MAX_HOURS_COLUMN],
+    warnPrefix: "[ops settings]",
+    warnKey: "ops_settings:message_reply_max_hours_missing_write",
+  });
+
   const payload = {
     queued_max_hours: Math.round(input.queuedMaxHours),
     sent_no_reply_max_hours: Math.round(input.sentNoReplyMaxHours),
+    ...(supportsMessageReplyMaxHours
+      ? {
+          message_reply_max_hours: Math.round(
+            typeof input.messageReplyMaxHours === "number" &&
+              Number.isFinite(input.messageReplyMaxHours)
+              ? input.messageReplyMaxHours
+              : DEFAULT_MESSAGE_REPLY_MAX_HOURS,
+          ),
+        }
+      : {}),
     updated_at: new Date().toISOString(),
   };
 

@@ -17,8 +17,10 @@ export default async function AdminOpsSettingsPage() {
       <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 p-6">
         <OpsSlaSettingsForm
           initialConfig={settings.config}
+          messageReplyMaxHours={settings.messageReplyMaxHours}
           updatedAt={settings.updatedAt}
           usingFallback={settings.usingFallback}
+          messageReplyUsingFallback={settings.messageReplyUsingFallback}
         />
       </section>
     </AdminDashboardShell>

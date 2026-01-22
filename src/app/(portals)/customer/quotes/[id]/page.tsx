@@ -88,7 +88,8 @@ import {
   isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
-import { getOpsSlaSettings } from "@/server/ops/settings";
+import { getOpsMessageReplyMaxHours, getOpsSlaSettings } from "@/server/ops/settings";
+import { computeNeedsReplySummary } from "@/server/messages/needsReply";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
 import {
@@ -1856,6 +1857,11 @@ export default async function CustomerQuoteDetailPage({
     messagesHref,
   });
 
+  const messageReplyMaxHours = await getOpsMessageReplyMaxHours();
+  const customerSupplierNeedsReply = computeNeedsReplySummary(quoteMessages, {
+    slaWindowHours: messageReplyMaxHours,
+  });
+
   return (
     <PortalShell
       workspace="customer"
@@ -1905,6 +1911,15 @@ export default async function CustomerQuoteDetailPage({
             enabled={tabParam === "messages"}
             currentUserId={user.id}
           />
+          {customerSupplierNeedsReply.supplierOwesReply ? (
+            <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+              Waiting for supplier reply.
+            </p>
+          ) : customerSupplierNeedsReply.customerOwesReply ? (
+            <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+              Supplier is waiting for your reply.
+            </p>
+          ) : null}
           <div id="email-replies">
             <CustomerEmailRepliesCard
               quoteId={quote.id}

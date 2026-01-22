@@ -59,10 +59,12 @@ import {
 } from "@/server/quotes/projects";
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
 import { QuoteMessagesThread } from "@/app/(portals)/shared/QuoteMessagesThread";
+import { computeNeedsReplySummary } from "@/server/messages/needsReply";
 import {
   loadQuoteMessages,
   type QuoteMessageRecord,
 } from "@/server/quotes/messages";
+import { getOpsMessageReplyMaxHours } from "@/server/ops/settings";
 import { getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import {
@@ -294,6 +296,10 @@ export default async function SupplierQuoteDetailPage({
   }
   const quoteMessages = messagesResult.messages;
   const messagesUnavailable = !messagesResult.ok;
+  const messageReplyMaxHours = await getOpsMessageReplyMaxHours();
+  const customerSupplierNeedsReply = computeNeedsReplySummary(quoteMessages, {
+    slaWindowHours: messageReplyMaxHours,
+  });
 
   const unreadSummary = await loadUnreadMessageSummary({
     quoteIds: [quoteId],
@@ -351,6 +357,7 @@ export default async function SupplierQuoteDetailPage({
       messagesUnreadCount={messagesUnreadCount}
       postMessageAction={supplierPostMessageAction}
       currentUserId={user.id}
+      customerSupplierNeedsReply={customerSupplierNeedsReply}
       project={project}
       projectUnavailable={projectUnavailable}
       kickoffTasks={kickoffTasks}
@@ -390,6 +397,7 @@ function SupplierQuoteWorkspace({
   messagesUnreadCount,
   postMessageAction,
   currentUserId,
+  customerSupplierNeedsReply,
   project,
   projectUnavailable,
   kickoffTasks,
@@ -428,6 +436,7 @@ function SupplierQuoteWorkspace({
     formData: FormData,
   ) => Promise<QuoteMessageFormState>;
   currentUserId: string;
+  customerSupplierNeedsReply: ReturnType<typeof computeNeedsReplySummary>;
   project: QuoteProjectRecord | null;
   projectUnavailable: boolean;
   kickoffTasks: QuoteKickoffTask[];
@@ -1090,6 +1099,15 @@ function SupplierQuoteWorkspace({
               )
             }
           >
+            {customerSupplierNeedsReply.customerOwesReply ? (
+              <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+                Waiting for customer reply.
+              </p>
+            ) : customerSupplierNeedsReply.supplierOwesReply ? (
+              <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+                Customer is waiting for your reply.
+              </p>
+            ) : null}
             <QuoteMessagesThread
               quoteId={quote.id}
               messages={quoteMessages}
