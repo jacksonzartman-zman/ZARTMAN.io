@@ -1,5 +1,3 @@
-import { schemaGate } from "@/server/db/schemaContract";
-
 export const CUSTOMER_TEAMS_SCHEMA = {
   teams: {
     relation: "customer_teams",
@@ -24,6 +22,10 @@ export function deriveCustomerTeamsFeatureEnabledFromSchema(input: {
 }
 
 export async function isCustomerTeamsSchemaReady(): Promise<boolean> {
+  // NOTE: imported lazily to keep this module safe to import in unit tests
+  // (which may not have Supabase env vars configured).
+  const { schemaGate } = await import("@/server/db/schemaContract");
+
   const [hasTeams, hasMembers, hasQuotesTeamId] = await Promise.all([
     schemaGate({
       enabled: true,

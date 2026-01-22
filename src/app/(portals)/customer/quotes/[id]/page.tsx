@@ -263,11 +263,12 @@ export default async function CustomerQuoteDetailPage({
     normalizedQuoteEmail === customerEmail;
   const usingOverride =
     Boolean(overrideEmail) && overrideEmail !== customerEmail;
-  const overrideMatchesQuote =
+  const overrideMatchesQuote = Boolean(
     usingOverride &&
-    overrideEmail &&
-    normalizedQuoteEmail &&
-    normalizedQuoteEmail === overrideEmail;
+      overrideEmail &&
+      normalizedQuoteEmail &&
+      normalizedQuoteEmail === overrideEmail,
+  );
 
   const teamAccess = !quoteCustomerMatches && !overrideMatchesQuote
     ? await userHasTeamAccessToQuote({ quoteId: quote.id, userId: user.id })
