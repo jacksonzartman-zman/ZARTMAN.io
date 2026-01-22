@@ -1,6 +1,13 @@
 import Link from "next/link";
 import clsx from "clsx";
 import type { BenchDemandSummary, BenchDemandBucketRow } from "@/server/admin/benchDemand";
+import { createBenchGapTaskAction, discoverSuppliersFromGapTaskAction } from "@/app/admin/bench-health/actions";
+import {
+  compositeKey,
+  listBenchGapTasksByKeys,
+  type BenchGapTaskRecord,
+  type BenchGapTaskStatus,
+} from "@/server/admin/benchGapTasks";
 
 function CountCell({ value }: { value: number }) {
   return <span className="font-semibold tabular-nums text-slate-100">{value.toLocaleString()}</span>;
@@ -14,18 +21,20 @@ function SecondaryStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function Table({
+async function Table({
   title,
   description,
   rows7,
   rows30,
   ctaMode,
+  dimension,
 }: {
   title: string;
   description: string;
   rows7: BenchDemandBucketRow[];
   rows30: BenchDemandBucketRow[];
   ctaMode: "process" | "none";
+  dimension: "process" | "material" | "location";
 }) {
   const byKey7 = new Map(rows7.map((r) => [r.key, r]));
   const byKey30 = new Map(rows30.map((r) => [r.key, r]));
@@ -45,6 +54,135 @@ function Table({
     })
     .slice(0, 10);
 
+  // Load tasks for these gaps (best-effort, schema gated).
+  const windows = ["7d", "30d"];
+  let tasksSupported = false;
+  let byCompositeKey = new Map<string, BenchGapTaskRecord>();
+  try {
+    const result = await listBenchGapTasksByKeys({
+      dimension,
+      keys: combined.map((r) => r.key),
+      windows,
+    });
+    tasksSupported = result.supported;
+    byCompositeKey = result.byCompositeKey;
+  } catch {
+    tasksSupported = false;
+    byCompositeKey = new Map<string, BenchGapTaskRecord>();
+  }
+
+  function statusLabel(status: BenchGapTaskStatus): string {
+    if (status === "in_progress") return "In progress";
+    if (status === "closed") return "Closed";
+    return "Open";
+  }
+
+  function statusPillClasses(status: BenchGapTaskStatus): string {
+    switch (status) {
+      case "closed":
+        return "border-slate-800 bg-slate-950/60 text-slate-300";
+      case "in_progress":
+        return "border-blue-500/40 bg-blue-500/10 text-blue-100";
+      case "open":
+      default:
+        return "border-amber-500/40 bg-amber-500/10 text-amber-100";
+    }
+  }
+
+  function taskLinkHref(task: BenchGapTaskRecord): string {
+    const params = new URLSearchParams();
+    params.set("dimension", task.dimension);
+    params.set("status", "all");
+    params.set("window", task.window);
+    params.set("q", task.key);
+    params.set("highlight", task.id);
+    return `/admin/bench-health/tasks?${params.toString()}`;
+  }
+
+  function renderTaskControls(args: {
+    key: string;
+    label: string;
+    window: "7d" | "30d";
+    unmet: number;
+    ctaHref: string | null;
+    ctaLabel: string | null;
+  }) {
+    const existing = tasksSupported
+      ? byCompositeKey.get(compositeKey({ dimension, key: args.key, window: args.window }))
+      : null;
+
+    const canCreate = args.unmet > 0 && !existing;
+    const canOpen = Boolean(existing);
+
+    const createForm = canCreate ? (
+      <form action={createBenchGapTaskAction} className="inline-flex">
+        <input type="hidden" name="dimension" value={dimension} />
+        <input type="hidden" name="key" value={args.key} />
+        <input type="hidden" name="window" value={args.window} />
+        <button
+          type="submit"
+          className="inline-flex rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100 hover:border-emerald-400 hover:text-white"
+        >
+          Create gap task
+        </button>
+      </form>
+    ) : null;
+
+    const openLink = canOpen && existing ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href={taskLinkHref(existing)} className="inline-flex items-center gap-2">
+          <span
+            className={clsx(
+              "inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide",
+              statusPillClasses(existing.status),
+            )}
+          >
+            {statusLabel(existing.status)}
+          </span>
+          <span className="text-xs font-semibold text-emerald-200 hover:text-emerald-100">
+            Open task →
+          </span>
+        </Link>
+      </div>
+    ) : null;
+
+    const discover =
+      args.ctaHref && args.ctaLabel && existing ? (
+        <form action={discoverSuppliersFromGapTaskAction} className="inline-flex">
+          <input type="hidden" name="href" value={args.ctaHref} />
+          <input type="hidden" name="gapTaskId" value={existing.id} />
+          <input type="hidden" name="dimension" value={dimension} />
+          <input type="hidden" name="key" value={args.key} />
+          <input type="hidden" name="window" value={args.window} />
+          <button
+            type="submit"
+            className="inline-flex rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100 hover:border-emerald-400 hover:text-white"
+          >
+            {args.ctaLabel} →
+          </button>
+        </form>
+      ) : args.ctaHref && args.ctaLabel ? (
+        <Link
+          href={args.ctaHref}
+          className="inline-flex rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100 hover:border-emerald-400 hover:text-white"
+        >
+          {args.ctaLabel} →
+        </Link>
+      ) : null;
+
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            {args.window}
+          </span>
+          {openLink ?? createForm ?? <span className="text-xs text-slate-500">—</span>}
+        </div>
+        {discover ? <div className="pl-[3.1rem]">{discover}</div> : null}
+      </div>
+    );
+  }
+
   return (
     <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -53,7 +191,6 @@ function Table({
           <p className="mt-1 text-sm text-slate-400">{description}</p>
         </div>
       </div>
-
       {combined.length === 0 ? (
         <p className="mt-4 text-sm text-slate-400">No unmet demand detected in these windows.</p>
       ) : (
@@ -65,14 +202,14 @@ function Table({
                 <th className="px-4 py-3 text-right">7d</th>
                 <th className="px-4 py-3 text-right">30d</th>
                 <th className="px-4 py-3 text-left">Detail</th>
-                {ctaMode === "process" ? <th className="px-4 py-3 text-left">Action</th> : null}
+                <th className="px-4 py-3 text-left">Playbook</th>
               </tr>
             </thead>
             <tbody>
               {combined.map(({ key, label, r7, r30 }) => {
                 const row = r30 ?? r7;
                 const cta = row?.cta ?? null;
-                const ctaHref =
+                const discoverHref =
                   ctaMode === "process" && cta?.process
                     ? (() => {
                         const params = new URLSearchParams();
@@ -81,6 +218,7 @@ function Table({
                         return `/admin/suppliers/discover?${params.toString()}`;
                       })()
                     : null;
+
                 return (
                   <tr
                     key={key}
@@ -115,20 +253,26 @@ function Table({
                         ) : null}
                       </div>
                     </td>
-                    {ctaMode === "process" ? (
-                      <td className="px-4 py-3">
-                        {ctaHref ? (
-                          <Link
-                            href={ctaHref}
-                            className="inline-flex rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100 hover:border-emerald-400 hover:text-white"
-                          >
-                            Discover suppliers →
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-slate-500">—</span>
-                        )}
-                      </td>
-                    ) : null}
+                    <td className="px-4 py-3">
+                      <div className="space-y-3">
+                        {renderTaskControls({
+                          key,
+                          label,
+                          window: "30d",
+                          unmet: r30?.unmetSearchCount ?? 0,
+                          ctaHref: discoverHref,
+                          ctaLabel: ctaMode === "process" ? "Discover suppliers" : null,
+                        })}
+                        {renderTaskControls({
+                          key,
+                          label,
+                          window: "7d",
+                          unmet: r7?.unmetSearchCount ?? 0,
+                          ctaHref: discoverHref,
+                          ctaLabel: ctaMode === "process" ? "Discover suppliers" : null,
+                        })}
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -178,6 +322,7 @@ export function BenchDemandGaps({ summary }: { summary: BenchDemandSummary }) {
           rows7={w7.processes}
           rows30={w30.processes}
           ctaMode="process"
+          dimension="process"
         />
         <Table
           title="Top unmet materials"
@@ -185,6 +330,7 @@ export function BenchDemandGaps({ summary }: { summary: BenchDemandSummary }) {
           rows7={w7.materials}
           rows30={w30.materials}
           ctaMode="none"
+          dimension="material"
         />
       </div>
 
@@ -194,6 +340,7 @@ export function BenchDemandGaps({ summary }: { summary: BenchDemandSummary }) {
         rows7={w7.locations}
         rows30={w30.locations}
         ctaMode="none"
+        dimension="location"
       />
     </div>
   );

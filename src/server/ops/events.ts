@@ -40,7 +40,8 @@ export type OpsEventType =
   | "provider_activated"
   | "provider_deactivated"
   | "provider_directory_visibility_changed"
-  | "estimate_shown";
+  | "estimate_shown"
+  | "bench_gap_task_event";
 
 export type LogOpsEventInput = {
   quoteId: string;
@@ -531,6 +532,46 @@ export async function logProviderDirectoryVisibilityEvent(
     context: {
       providerId,
       source: "logProviderDirectoryVisibilityEvent",
+    },
+  });
+}
+
+export type BenchGapTaskOpsEventInput = {
+  gapTaskId: string;
+  action: "discover_suppliers_clicked" | "task_created" | "status_changed";
+  dimension?: string | null;
+  key?: string | null;
+  window?: string | null;
+  href?: string | null;
+  context?: Record<string, unknown> | null;
+};
+
+export async function logBenchGapTaskOpsEvent(input: BenchGapTaskOpsEventInput): Promise<void> {
+  const gapTaskId = normalizeOptionalId(input.gapTaskId);
+  const eventType = normalizeEventType("bench_gap_task_event");
+  if (!gapTaskId || !eventType) {
+    return;
+  }
+
+  const payload = sanitizePayload({
+    gap_task_id: gapTaskId,
+    action: normalizeOptionalText(input.action) ?? undefined,
+    dimension: normalizeOptionalText(input.dimension) ?? undefined,
+    key: normalizeOptionalText(input.key) ?? undefined,
+    window: normalizeOptionalText(input.window) ?? undefined,
+    href: normalizeOptionalText(input.href) ?? undefined,
+    ...(input.context ?? {}),
+  });
+
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "bench gap task event insert failed",
+    context: {
+      gapTaskId,
+      source: "logBenchGapTaskOpsEvent",
     },
   });
 }
