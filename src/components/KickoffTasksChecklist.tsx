@@ -24,6 +24,12 @@ export type KickoffTasksChecklistUpdate = {
   taskKey: string;
   status: KickoffTaskStatus;
   blockedReason?: string | null;
+  /**
+   * Admin-only optional overrides. Suppliers/customers should not be allowed to
+   * change copy; server-side enforcement is required.
+   */
+  title?: string;
+  description?: string | null;
 };
 
 export type KickoffTasksChecklistUpdateResult =
@@ -69,6 +75,10 @@ export function KickoffTasksChecklist({ tasks, role, onUpdate }: KickoffTasksChe
   const [blockingTaskKey, setBlockingTaskKey] = useState<string | null>(null);
   const [blockReasonDraft, setBlockReasonDraft] = useState<string>("");
 
+  const [editingTaskKey, setEditingTaskKey] = useState<string | null>(null);
+  const [titleDraft, setTitleDraft] = useState<string>("");
+  const [descriptionDraft, setDescriptionDraft] = useState<string>("");
+
   useEffect(() => {
     setLocalTasks(sorted);
   }, [sorted]);
@@ -91,11 +101,20 @@ export function KickoffTasksChecklist({ tasks, role, onUpdate }: KickoffTasksChe
 
     setResult(null);
     setPendingTaskKey(task.taskKey);
+    setEditingTaskKey(null);
 
     const previous = task;
     const nowIso = new Date().toISOString();
     const nextStatus = update.status;
     const nextBlockedReason = normalizeText(update.blockedReason) || null;
+    const nextTitle =
+      typeof update.title === "string" ? normalizeText(update.title) : null;
+    const nextDescription =
+      update.description === null
+        ? null
+        : typeof update.description === "string"
+          ? normalizeText(update.description) || null
+          : null;
 
     // Optimistic patch.
     if (nextStatus === "complete") {
@@ -119,6 +138,21 @@ export function KickoffTasksChecklist({ tasks, role, onUpdate }: KickoffTasksChe
         completedAt: null,
         updatedAt: nowIso,
       });
+    }
+
+    if (typeof update.title !== "undefined") {
+      // Prevent empty titles from flashing in UI; server will validate too.
+      if (nextTitle) {
+        applyLocalPatch(task.taskKey, { title: nextTitle, updatedAt: nowIso });
+      } else {
+        revertLocalTask(task.taskKey, previous);
+        setPendingTaskKey(null);
+        setResult({ ok: false, error: "Title can’t be empty." });
+        return;
+      }
+    }
+    if (typeof update.description !== "undefined") {
+      applyLocalPatch(task.taskKey, { description: nextDescription, updatedAt: nowIso });
     }
 
     startTransition(() => {
@@ -180,6 +214,8 @@ export function KickoffTasksChecklist({ tasks, role, onUpdate }: KickoffTasksChe
 
           const completedAtLabel = formatCompletedAtLabel(task.completedAt);
           const showBlockEditor = canEdit && blockingTaskKey === task.taskKey;
+          const canEditCopy = role === "admin";
+          const showCopyEditor = canEditCopy && editingTaskKey === task.taskKey;
 
           const primaryAction = (() => {
             if (!canEdit) return null;
@@ -244,10 +280,80 @@ export function KickoffTasksChecklist({ tasks, role, onUpdate }: KickoffTasksChe
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1 space-y-1">
-                  <p className="text-sm font-semibold text-white">{task.title}</p>
-                  {task.description ? (
-                    <p className="text-sm text-slate-300">{task.description}</p>
-                  ) : null}
+                  {showCopyEditor ? (
+                    <div className="space-y-2">
+                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Title
+                      </label>
+                      <input
+                        value={titleDraft}
+                        onChange={(e) => setTitleDraft(e.target.value)}
+                        disabled={disabledRow}
+                        className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none disabled:opacity-60"
+                        placeholder="Task title"
+                        maxLength={120}
+                      />
+                      <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Description (optional)
+                      </label>
+                      <textarea
+                        value={descriptionDraft}
+                        onChange={(e) => setDescriptionDraft(e.target.value)}
+                        disabled={disabledRow}
+                        rows={2}
+                        className="w-full resize-y rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none disabled:opacity-60"
+                        placeholder="Add context for ops/supplier…"
+                        maxLength={240}
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={disabledRow || !normalizeText(titleDraft)}
+                          onClick={() => {
+                            const nextTitle = normalizeText(titleDraft);
+                            if (!nextTitle) return;
+                            void submitUpdate(task, {
+                              taskKey: task.taskKey,
+                              status: task.status,
+                              blockedReason: task.blockedReason,
+                              title: nextTitle,
+                              description: normalizeText(descriptionDraft) || null,
+                            }).finally(() => {
+                              setEditingTaskKey(null);
+                              setTitleDraft("");
+                              setDescriptionDraft("");
+                            });
+                          }}
+                          className={clsx(
+                            "rounded-full border px-3 py-2 text-xs font-semibold transition",
+                            "border-blue-500/40 bg-blue-500/10 text-blue-100 hover:border-blue-400 hover:text-white",
+                            "disabled:cursor-not-allowed disabled:opacity-60",
+                          )}
+                        >
+                          Save text
+                        </button>
+                        <button
+                          type="button"
+                          disabled={disabledRow}
+                          onClick={() => {
+                            setEditingTaskKey(null);
+                            setTitleDraft("");
+                            setDescriptionDraft("");
+                          }}
+                          className="text-xs font-semibold text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-white">{task.title}</p>
+                      {task.description ? (
+                        <p className="text-sm text-slate-300">{task.description}</p>
+                      ) : null}
+                    </>
+                  )}
                   {task.status === "blocked" && task.blockedReason ? (
                     <p className="text-xs text-amber-200/90">{task.blockedReason}</p>
                   ) : null}
@@ -332,6 +438,25 @@ export function KickoffTasksChecklist({ tasks, role, onUpdate }: KickoffTasksChe
                     {task.status === "complete" ? "Complete" : task.status === "blocked" ? "Blocked" : "Pending"}
                   </span>
                   <div className="flex justify-end">{primaryAction}</div>
+                  {canEditCopy && !showCopyEditor ? (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        disabled={disabledRow}
+                        onClick={() => {
+                          setResult(null);
+                          setBlockingTaskKey(null);
+                          setBlockReasonDraft("");
+                          setEditingTaskKey(task.taskKey);
+                          setTitleDraft(task.title ?? "");
+                          setDescriptionDraft(task.description ?? "");
+                        }}
+                        className="text-xs font-semibold text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline disabled:opacity-60"
+                      >
+                        Edit text…
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </li>

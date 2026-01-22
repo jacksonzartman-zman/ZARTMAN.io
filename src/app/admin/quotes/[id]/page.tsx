@@ -59,12 +59,11 @@ import {
 } from "@/server/quotes/projects";
 import { AdminQuoteProjectCard } from "./AdminQuoteProjectCard";
 import {
-  loadQuoteKickoffTasksForSupplier,
-  summarizeKickoffTasks,
-  formatKickoffSummaryLabel,
-  type SupplierKickoffTasksResult,
+  ensureDefaultKickoffTasksForQuote,
+  getKickoffTasksForQuote,
+  type QuoteKickoffTask,
 } from "@/server/quotes/kickoffTasks";
-import { AdminKickoffTasksCard } from "./AdminKickoffTasksCard";
+import { AdminKickoffReviewCard } from "./AdminKickoffReviewCard";
 import {
   resolveKickoffProgressBasis,
   formatKickoffTasksRatio,
@@ -815,17 +814,65 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         : null) ??
       bids.find((bid) => isWinningBidStatus(bid?.status)) ??
       null;
-    let supplierKickoffTasksResult: SupplierKickoffTasksResult | null = null;
-    if (winningBidRow?.supplier_id) {
-      supplierKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
-        quote.id,
-        winningBidRow.supplier_id,
-      );
+    let quoteKickoffTasks: QuoteKickoffTask[] = [];
+    let kickoffTasksUnavailable = false;
+    if (hasWinningBid) {
+      const kickoffSchemaReady = await schemaGate({
+        enabled: true,
+        relation: "quote_kickoff_tasks",
+        requiredColumns: [
+          "id",
+          "quote_id",
+          "task_key",
+          "title",
+          "description",
+          "sort_order",
+          "status",
+          "completed_at",
+          "completed_by_user_id",
+          "blocked_reason",
+          "created_at",
+          "updated_at",
+        ],
+        warnPrefix: "[admin kickoff review]",
+        warnKey: "admin_kickoff_review:missing_schema",
+      });
+
+      if (!kickoffSchemaReady) {
+        kickoffTasksUnavailable = true;
+      } else {
+        try {
+          await ensureDefaultKickoffTasksForQuote(quote.id);
+        } catch (error) {
+          // Best-effort: do not fail page render on seed issues.
+        }
+        quoteKickoffTasks = await getKickoffTasksForQuote(quote.id);
+      }
     }
-    const kickoffSummary =
-      supplierKickoffTasksResult?.ok
-        ? summarizeKickoffTasks(supplierKickoffTasksResult.tasks)
-        : null;
+
+    const kickoffTotalCount = quoteKickoffTasks.length;
+    const kickoffCompletedCount = quoteKickoffTasks.filter((t) => t.status === "complete").length;
+    const kickoffStatus =
+      kickoffTotalCount === 0 || kickoffCompletedCount === 0
+        ? "not-started"
+        : kickoffCompletedCount >= kickoffTotalCount
+          ? "complete"
+          : "in-progress";
+    const kickoffLastUpdatedAt = (() => {
+      let bestTs: number | null = null;
+      let bestIso: string | null = null;
+      for (const task of quoteKickoffTasks) {
+        const iso = typeof task.updatedAt === "string" ? task.updatedAt.trim() : "";
+        if (!iso) continue;
+        const ts = Date.parse(iso);
+        if (!Number.isFinite(ts)) continue;
+        if (bestTs === null || ts > bestTs) {
+          bestTs = ts;
+          bestIso = iso;
+        }
+      }
+      return bestIso;
+    })();
     const kickoffCompleteFromQuote =
       typeof (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ===
         "string" &&
@@ -834,36 +881,39 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const kickoffSummaryLabel = hasWinningBid
       ? kickoffCompleteFromQuote
         ? "Kickoff complete"
-        : kickoffSummary
-          ? formatKickoffSummaryLabel(kickoffSummary)
-        : supplierKickoffTasksResult?.reason === "schema-missing"
+        : kickoffTasksUnavailable
           ? "Checklist unavailable in this environment"
-          : "Checklist unavailable"
+          : kickoffTotalCount === 0
+            ? "Kickoff not started"
+            : kickoffStatus === "complete"
+              ? "Kickoff complete"
+              : kickoffStatus === "in-progress"
+                ? `In progress (${kickoffCompletedCount} of ${kickoffTotalCount} tasks complete)`
+                : "Kickoff not started"
       : "Waiting for winner";
     const kickoffSummaryTone =
-      kickoffCompleteFromQuote || kickoffSummary?.status === "complete"
+      kickoffCompleteFromQuote || kickoffStatus === "complete"
         ? "text-emerald-300"
-        : kickoffSummary?.status === "in-progress"
+        : kickoffStatus === "in-progress"
           ? "text-blue-200"
           : "text-slate-200";
     const kickoffStatusValue =
-      kickoffCompleteFromQuote || kickoffSummary?.status === "complete"
+      kickoffCompleteFromQuote || kickoffStatus === "complete"
         ? "Complete"
-        : kickoffSummary?.status === "in-progress"
+        : kickoffStatus === "in-progress"
           ? "In progress"
-          : kickoffSummary?.status === "not-started"
+          : kickoffStatus === "not-started"
             ? "Not started"
             : "—";
-    const kickoffCompletedValue = kickoffSummary
-      ? `${kickoffSummary.completedCount} / ${kickoffSummary.totalCount}`
-      : "—";
-    const kickoffLastUpdatedValue = kickoffSummary?.lastUpdatedAt
-      ? formatRelativeTimeFromTimestamp(toTimestamp(kickoffSummary.lastUpdatedAt)) ?? "—"
+    const kickoffCompletedValue =
+      kickoffTotalCount > 0 ? `${kickoffCompletedCount} / ${kickoffTotalCount}` : "—";
+    const kickoffLastUpdatedValue = kickoffLastUpdatedAt
+      ? formatRelativeTimeFromTimestamp(toTimestamp(kickoffLastUpdatedAt)) ?? "—"
       : "—";
     const kickoffProgressBasis = resolveKickoffProgressBasis({
       kickoffCompletedAt: (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? null,
-      completedCount: kickoffSummary?.completedCount ?? null,
-      totalCount: kickoffSummary?.totalCount ?? null,
+      completedCount: kickoffTotalCount > 0 ? kickoffCompletedCount : null,
+      totalCount: kickoffTotalCount > 0 ? kickoffTotalCount : null,
     });
     const kickoffProgressRatio = formatKickoffTasksRatio(kickoffProgressBasis);
 
@@ -2612,14 +2662,20 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 className={cardClasses}
               />
               <div className="mt-4">
-                <AdminKickoffTasksCard
+                <AdminKickoffReviewCard
+                  quoteId={quote.id}
                   hasWinner={hasWinningBid}
-                  tasks={
-                    supplierKickoffTasksResult?.ok
-                      ? supplierKickoffTasksResult.tasks
-                      : []
-                  }
-                  unavailable={hasWinningBid && !(supplierKickoffTasksResult?.ok ?? false)}
+                  tasks={quoteKickoffTasks.map((task) => ({
+                    taskKey: task.taskKey,
+                    title: task.title,
+                    description: task.description,
+                    sortOrder: task.sortOrder,
+                    status: task.status,
+                    completedAt: task.completedAt,
+                    blockedReason: task.blockedReason,
+                    updatedAt: task.updatedAt,
+                  }))}
+                  unavailable={hasWinningBid && kickoffTasksUnavailable}
                 />
               </div>
             </DisclosureSection>

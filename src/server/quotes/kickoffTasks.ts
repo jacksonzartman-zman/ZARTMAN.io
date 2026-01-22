@@ -1266,6 +1266,8 @@ export async function updateKickoffTaskStatusAction(args: {
   taskKey: string;
   status: QuoteKickoffTaskStatus;
   blockedReason?: string | null;
+  title?: string;
+  description?: string | null;
 }): Promise<UpdateKickoffTaskStatusActionResult> {
   "use server";
 
@@ -1273,22 +1275,50 @@ export async function updateKickoffTaskStatusAction(args: {
   const taskKey = normalizeId(args.taskKey);
   const nextStatus = normalizeQuoteKickoffTaskStatus(args.status);
   const blockedReason = normalizeOptionalText(args.blockedReason);
+  const hasTitleUpdate = typeof args.title !== "undefined";
+  const hasDescriptionUpdate = typeof args.description !== "undefined";
+  const nextTitleRaw = hasTitleUpdate ? args.title : null;
+  const nextDescriptionRaw = hasDescriptionUpdate ? args.description : null;
+  const nextTitle =
+    typeof nextTitleRaw === "string" ? nextTitleRaw.trim() : null;
+  const nextDescription =
+    nextDescriptionRaw === null
+      ? null
+      : typeof nextDescriptionRaw === "string"
+        ? normalizeOptionalText(nextDescriptionRaw)
+        : null;
   if (!quoteId || !taskKey || !nextStatus) {
     return { ok: false, error: "invalid_input" };
   }
+  if (hasTitleUpdate && !nextTitle) {
+    return { ok: false, error: "invalid_title" };
+  }
+  if (hasTitleUpdate && nextTitle && nextTitle.length > 120) {
+    return { ok: false, error: "invalid_title" };
+  }
+  if (hasDescriptionUpdate && !(nextDescriptionRaw === null || typeof nextDescriptionRaw === "string")) {
+    return { ok: false, error: "invalid_description" };
+  }
+  if (hasDescriptionUpdate && typeof nextDescriptionRaw === "string" && nextDescriptionRaw.length > 240) {
+    return { ok: false, error: "invalid_description" };
+  }
+
+  const requiredColumns = [
+    "quote_id",
+    "task_key",
+    "status",
+    "completed_at",
+    "completed_by_user_id",
+    "blocked_reason",
+    "updated_at",
+  ];
+  if (hasTitleUpdate) requiredColumns.push("title");
+  if (hasDescriptionUpdate) requiredColumns.push("description");
 
   const schemaReady = await schemaGate({
     enabled: true,
     relation: QUOTE_KICKOFF_TASKS_TABLE,
-    requiredColumns: [
-      "quote_id",
-      "task_key",
-      "status",
-      "completed_at",
-      "completed_by_user_id",
-      "blocked_reason",
-      "updated_at",
-    ],
+    requiredColumns,
     warnPrefix: "[kickoff quote tasks]",
     warnKey: "kickoff_quote_tasks:update_missing_schema",
   });
@@ -1313,6 +1343,10 @@ export async function updateKickoffTaskStatusAction(args: {
     const user = await requireUser();
     actorUserId = normalizeId(user.id) || null;
     actorRole = "supplier";
+
+    if (hasTitleUpdate || hasDescriptionUpdate) {
+      return { ok: false, error: "forbidden" };
+    }
 
     const profile = await loadSupplierProfileByUserId(user.id);
     supplierId = normalizeId(profile?.supplier?.id ?? null) || null;
@@ -1407,6 +1441,13 @@ export async function updateKickoffTaskStatusAction(args: {
     updatePayload.blocked_reason = null;
     updatePayload.completed_at = null;
     updatePayload.completed_by_user_id = null;
+  }
+
+  if (isAdmin && hasTitleUpdate) {
+    updatePayload.title = nextTitle;
+  }
+  if (isAdmin && hasDescriptionUpdate) {
+    updatePayload.description = nextDescription;
   }
 
   const { error: updateError } = await supabaseServer
