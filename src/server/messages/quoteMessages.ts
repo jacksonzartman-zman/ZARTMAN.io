@@ -15,6 +15,7 @@ import {
 } from "@/server/auth";
 import { logOpsEvent } from "@/server/ops/events";
 import type { QuoteMessageRecord, QuoteMessageSenderRole } from "@/server/quotes/messages";
+import { hasColumns } from "@/server/db/schemaContract";
 
 export type QuoteMessageAuthorRole =
   | "admin"
@@ -69,6 +70,7 @@ const MAX_MESSAGE_LENGTH = 4000;
 let forceLegacyInsert = false;
 
 const DEBUG_ONCE_KEYS = new Set<string>();
+const QUOTE_MESSAGES_COLUMN_CACHE = new Map<string, boolean>();
 
 function debugOnce(key: string, message: string, context?: Record<string, unknown>) {
   if (DEBUG_ONCE_KEYS.has(key)) return;
@@ -78,6 +80,16 @@ function debugOnce(key: string, message: string, context?: Record<string, unknow
     return;
   }
   console.debug(message);
+}
+
+async function hasQuoteMessagesColumn(column: string): Promise<boolean> {
+  const key = typeof column === "string" ? column.trim() : "";
+  if (!key) return false;
+  const cached = QUOTE_MESSAGES_COLUMN_CACHE.get(key);
+  if (typeof cached === "boolean") return cached;
+  const ok = await hasColumns(QUOTE_MESSAGES_RELATION, [key]);
+  QUOTE_MESSAGES_COLUMN_CACHE.set(key, ok);
+  return ok;
 }
 
 function normalizeId(value?: string | null): string {
@@ -345,6 +357,47 @@ function sortMessagesByCreatedAt(messages: QuoteMessageRecord[]): QuoteMessageRe
   });
 }
 
+async function buildQuoteMessagesSelect(args: {
+  variant: "new" | "legacy";
+  includeMetadata: boolean;
+}): Promise<string> {
+  // NOTE:
+  // We intentionally avoid `select("*")` because PostgREST expands `*` using its schema cache.
+  // If the cache references columns that are not present in this DB (ex: metadata / provider_message_id),
+  // `select("*")` will error with undefined_column noise.
+  //
+  // Instead, we use explicit selects with a new/legacy fallback.
+  const cols: string[] = ["id", "quote_id", "created_at"];
+
+  // Optional-ish across variants.
+  if (await hasQuoteMessagesColumn("provider_id")) cols.push("provider_id");
+  if (await hasQuoteMessagesColumn("sender_name")) cols.push("sender_name");
+  if (await hasQuoteMessagesColumn("updated_at")) cols.push("updated_at");
+
+  if (args.variant === "new") {
+    cols.push("message");
+    if (await hasQuoteMessagesColumn("author_role")) cols.push("author_role");
+    if (await hasQuoteMessagesColumn("author_user_id")) cols.push("author_user_id");
+    if (await hasQuoteMessagesColumn("sender_id")) cols.push("sender_id");
+    if (await hasQuoteMessagesColumn("sender_role")) cols.push("sender_role");
+    if (await hasQuoteMessagesColumn("author_type")) cols.push("author_type");
+  } else {
+    cols.push("body");
+    if (await hasQuoteMessagesColumn("sender_role")) cols.push("sender_role");
+    if (await hasQuoteMessagesColumn("sender_id")) cols.push("sender_id");
+    if (await hasQuoteMessagesColumn("author_role")) cols.push("author_role");
+    if (await hasQuoteMessagesColumn("author_user_id")) cols.push("author_user_id");
+    if (await hasQuoteMessagesColumn("author_type")) cols.push("author_type");
+  }
+
+  if (args.includeMetadata && (await hasQuoteMessagesColumn("metadata"))) {
+    cols.push("metadata");
+  }
+
+  // Stable select regardless of duplicates.
+  return Array.from(new Set(cols)).join(",");
+}
+
 export async function getQuoteMessages({
   quoteId,
   limit = 50,
@@ -368,21 +421,47 @@ export async function getQuoteMessages({
   }
 
   try {
-    const { data, error } = await supabaseServer
-      .from(QUOTE_MESSAGES_RELATION)
-      .select("*")
-      .eq("quote_id", normalizedQuoteId)
-      .order("created_at", { ascending: false })
-      .limit(cappedLimit)
-      .returns<Record<string, unknown>[]>();
+    const includeMetadata = await hasQuoteMessagesColumn("metadata");
+
+    const run = async (columns: string) => {
+      const { data, error } = await supabaseServer
+        .from(QUOTE_MESSAGES_RELATION)
+        .select(columns as any)
+        .eq("quote_id", normalizedQuoteId)
+        .order("created_at", { ascending: false })
+        .limit(cappedLimit)
+        .returns<Record<string, unknown>[]>();
+      return { data, error };
+    };
+
+    // Prefer new schema, fall back to legacy. Never use `select("*")`.
+    const selectNew = await buildQuoteMessagesSelect({ variant: "new", includeMetadata });
+    let { data, error } = await run(selectNew);
+    if (error && isMissingTableOrColumnError(error)) {
+      debugOnce(
+        "quote_messages:select_new_failed_missing_column",
+        "[quote_messages] new select failed; retrying legacy",
+        { code: serializeSupabaseError(error)?.code ?? null },
+      );
+      const selectLegacy = await buildQuoteMessagesSelect({ variant: "legacy", includeMetadata });
+      ({ data, error } = await run(selectLegacy));
+    }
 
     if (error) {
-      if (isMissingSupabaseRelationError(error) || isMissingTableOrColumnError(error)) {
+      // Only mark the whole relation missing when the relation itself is missing.
+      // Missing columns should degrade gracefully (no crash; no blanket disable).
+      if (isMissingSupabaseRelationError(error)) {
         markSupabaseRelationMissing(QUOTE_MESSAGES_RELATION);
-        debugOnce("quote_messages:missing_schema", "[quote_messages] missing schema; skipping", {
+        debugOnce("quote_messages:missing_relation", "[quote_messages] missing relation; skipping", {
           code: serializeSupabaseError(error)?.code ?? null,
         });
         return { ok: false, missing: true, messages: [] };
+      }
+      if (isMissingTableOrColumnError(error)) {
+        debugOnce("quote_messages:missing_column", "[quote_messages] schema drift; returning empty thread", {
+          code: serializeSupabaseError(error)?.code ?? null,
+        });
+        return { ok: true, missing: false, messages: [] };
       }
       console.error("[quote_messages] load failed", {
         quoteId: normalizedQuoteId,
@@ -418,12 +497,18 @@ export async function getQuoteMessages({
       messages: decorated,
     };
   } catch (error) {
-    if (isMissingSupabaseRelationError(error) || isMissingTableOrColumnError(error)) {
+    if (isMissingSupabaseRelationError(error)) {
       markSupabaseRelationMissing(QUOTE_MESSAGES_RELATION);
-      debugOnce("quote_messages:missing_schema_crash", "[quote_messages] missing schema; skipping", {
+      debugOnce("quote_messages:missing_relation_crash", "[quote_messages] missing relation; skipping", {
         code: serializeSupabaseError(error)?.code ?? null,
       });
       return { ok: false, missing: true, messages: [] };
+    }
+    if (isMissingTableOrColumnError(error)) {
+      debugOnce("quote_messages:missing_column_crash", "[quote_messages] schema drift; returning empty thread", {
+        code: serializeSupabaseError(error)?.code ?? null,
+      });
+      return { ok: true, missing: false, messages: [] };
     }
     console.error("[quote_messages] load crashed", {
       quoteId: normalizedQuoteId,
@@ -547,11 +632,16 @@ export async function postQuoteMessage(
     body,
   };
 
-  const runInsert = async (payload: Record<string, unknown>) => {
+  const runInsert = async (payload: Record<string, unknown>, variant: "new" | "legacy") => {
+    const includeMetadata = await hasQuoteMessagesColumn("metadata");
+    const select = await buildQuoteMessagesSelect({
+      variant,
+      includeMetadata,
+    });
     const { data, error } = await supabase
       .from(QUOTE_MESSAGES_RELATION)
       .insert(payload)
-      .select("*")
+      .select(select as any)
       .single<Record<string, unknown>>();
     return { data, error };
   };
@@ -560,7 +650,7 @@ export async function postQuoteMessage(
   let insertError: unknown = null;
 
   if (!forceLegacyInsert) {
-    const attempt = await runInsert(payloadNew);
+    const attempt = await runInsert(payloadNew, "new");
     if (!attempt.error && attempt.data) {
       row = attempt.data;
     } else if (attempt.error) {
@@ -581,7 +671,7 @@ export async function postQuoteMessage(
   }
 
   if (!row && forceLegacyInsert) {
-    const attempt = await runInsert(payloadLegacy);
+    const attempt = await runInsert(payloadLegacy, "legacy");
     if (!attempt.error && attempt.data) {
       row = attempt.data;
     } else if (attempt.error) {
