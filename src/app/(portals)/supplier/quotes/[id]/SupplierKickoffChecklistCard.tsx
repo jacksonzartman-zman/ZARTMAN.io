@@ -18,22 +18,35 @@ import { updateSupplierKickoffTaskStatusAction } from "./actions";
 type SupplierKickoffChecklistCardProps = {
   quoteId: string;
   tasks: KickoffTaskRow[];
+  summary?: {
+    completedCount: number;
+    blockedCount: number;
+    pendingCount: number;
+    total: number;
+    percentComplete: number;
+  } | null;
   readOnly?: boolean;
 };
 
 export function SupplierKickoffChecklistCard({
   quoteId,
   tasks,
+  summary = null,
   readOnly = false,
 }: SupplierKickoffChecklistCardProps) {
   const router = useRouter();
   const hasTasks = Array.isArray(tasks) && tasks.length > 0;
 
-  const completedCount = useMemo(
-    () => (Array.isArray(tasks) ? tasks.filter((t) => t.status === "complete").length : 0),
-    [tasks],
-  );
-  const totalCount = Array.isArray(tasks) ? tasks.length : 0;
+  const derived = useMemo(() => {
+    if (summary) {
+      return { completedCount: summary.completedCount, totalCount: summary.total };
+    }
+    const completedCount = Array.isArray(tasks)
+      ? tasks.filter((t) => t.status === "complete").length
+      : 0;
+    const totalCount = Array.isArray(tasks) ? tasks.length : 0;
+    return { completedCount, totalCount };
+  }, [summary, tasks]);
 
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
@@ -48,7 +61,7 @@ export function SupplierKickoffChecklistCard({
             </h2>
           </div>
           <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
-            {totalCount > 0 ? `${completedCount}/${totalCount} complete` : "—"}
+            {derived.totalCount > 0 ? `${derived.completedCount}/${derived.totalCount} complete` : "—"}
           </span>
         </div>
         <p className="text-sm text-slate-300">

@@ -1060,7 +1060,7 @@ export default async function CustomerQuoteDetailPage({
             Kickoff checklist
           </dt>
           <dd className={clsx("font-medium", kickoffSummaryToneClass)}>
-            {kickoffSummaryLabel}
+            Kickoff: {kickoffCompletionLabel}
           </dd>
         </div>
         <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
@@ -1231,7 +1231,7 @@ export default async function CustomerQuoteDetailPage({
         winningSupplierName={winningSupplierName}
         winningBidAmountLabel={winningBidPriceLabel}
         winningBidLeadTimeLabel={winningBidLeadTimeLabel}
-        kickoffSummaryLabel={kickoffSummaryLabel}
+        kickoffCompletionLabel={kickoffCompletionLabel}
         kickoffSummaryStatus={kickoffSummaryStatus}
       />
     ) : null;
@@ -2203,7 +2203,7 @@ function CustomerProjectSnapshotCard({
   winningSupplierName,
   winningBidAmountLabel,
   winningBidLeadTimeLabel,
-  kickoffSummaryLabel,
+  kickoffCompletionLabel,
   kickoffSummaryStatus,
 }: {
   project: QuoteProjectRecord;
@@ -2211,7 +2211,7 @@ function CustomerProjectSnapshotCard({
   winningSupplierName?: string | null;
   winningBidAmountLabel: string;
   winningBidLeadTimeLabel: string;
-  kickoffSummaryLabel: string;
+  kickoffCompletionLabel: string;
   kickoffSummaryStatus: string | null;
 }) {
   const createdAtLabel = project?.created_at
@@ -2250,7 +2250,7 @@ function CustomerProjectSnapshotCard({
       </dl>
       <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
         <TagPill size="md" tone="slate" className="normal-case tracking-normal">
-          Kickoff: {kickoffSummaryLabel}
+          Kickoff: {kickoffCompletionLabel}
         </TagPill>
         <span>Supplier workspace link available after kickoff</span>
       </div>

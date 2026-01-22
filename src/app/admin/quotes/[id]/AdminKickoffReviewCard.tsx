@@ -12,11 +12,20 @@ import {
   type KickoffTasksChecklistUpdateResult,
 } from "@/components/KickoffTasksChecklist";
 import { updateAdminKickoffTaskAction } from "./actions";
+import { AdminKickoffUpdateRequestButton } from "./AdminKickoffUpdateRequestButton";
 
 type AdminKickoffReviewCardProps = {
   quoteId: string;
   hasWinner: boolean;
   tasks: KickoffTaskRow[];
+  summary?: {
+    completedCount: number;
+    blockedCount: number;
+    pendingCount: number;
+    total: number;
+    percentComplete: number;
+  } | null;
+  kickoffStalled?: boolean;
   unavailable?: boolean;
   className?: string;
 };
@@ -25,17 +34,34 @@ export function AdminKickoffReviewCard({
   quoteId,
   hasWinner,
   tasks,
+  summary = null,
+  kickoffStalled = false,
   unavailable = false,
   className,
 }: AdminKickoffReviewCardProps) {
   const router = useRouter();
   const hasTasks = Array.isArray(tasks) && tasks.length > 0;
 
-  const completedCount = useMemo(
-    () => (Array.isArray(tasks) ? tasks.filter((t) => t.status === "complete").length : 0),
-    [tasks],
-  );
-  const totalCount = Array.isArray(tasks) ? tasks.length : 0;
+  const derived = useMemo(() => {
+    if (summary) {
+      return {
+        completedCount: summary.completedCount,
+        blockedCount: summary.blockedCount,
+        totalCount: summary.total,
+        percentComplete: summary.percentComplete,
+      };
+    }
+    const completedCount = Array.isArray(tasks)
+      ? tasks.filter((t) => t.status === "complete").length
+      : 0;
+    const blockedCount = Array.isArray(tasks)
+      ? tasks.filter((t) => t.status === "blocked").length
+      : 0;
+    const totalCount = Array.isArray(tasks) ? tasks.length : 0;
+    const percentComplete =
+      totalCount > 0 ? Math.max(0, Math.min(100, Math.round((completedCount / totalCount) * 100))) : 0;
+    return { completedCount, blockedCount, totalCount, percentComplete };
+  }, [summary, tasks]);
 
   if (!hasWinner) {
     return (
@@ -81,13 +107,44 @@ export function AdminKickoffReviewCard({
               Is the winner moving?
             </h2>
           </div>
-          <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
-            {totalCount > 0 ? `${completedCount}/${totalCount} complete` : "—"}
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {derived.totalCount > 0 ? (
+              <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+                {derived.completedCount}/{derived.totalCount} complete
+              </span>
+            ) : (
+              <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+                —
+              </span>
+            )}
+            {derived.blockedCount > 0 ? (
+              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-100">
+                {derived.blockedCount} blocked
+              </span>
+            ) : null}
+            {kickoffStalled ? (
+              <span className="rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-100">
+                Kickoff stalled
+              </span>
+            ) : null}
+          </div>
         </div>
         <p className="text-sm text-slate-300">
           Update task status as you confirm progress with the awarded supplier. Admin edits revalidate this page.
         </p>
+        {kickoffStalled ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm text-amber-50">
+            <div className="min-w-0">
+              <p className="font-semibold text-white">
+                Kickoff looks stalled.
+              </p>
+              <p className="mt-1 text-xs text-amber-100/80">
+                Awarded &gt; 72h ago, low completion (&lt; 40%), and no recent kickoff updates.
+              </p>
+            </div>
+            <AdminKickoffUpdateRequestButton quoteId={quoteId} />
+          </div>
+        ) : null}
       </header>
 
       {!hasTasks ? (

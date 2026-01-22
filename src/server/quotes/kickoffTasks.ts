@@ -1032,6 +1032,48 @@ export type QuoteKickoffTask = {
   updatedAt: string;
 };
 
+export type KickoffCompletionSummary = {
+  completedCount: number;
+  blockedCount: number;
+  pendingCount: number;
+  total: number;
+  percentComplete: number;
+};
+
+/**
+ * Shared kickoff completion summary for quote-level kickoff tasks.
+ *
+ * Notes:
+ * - Blocked tasks count toward total but not completion.
+ * - `percentComplete` is a rounded integer in [0, 100].
+ * - Fail-soft: unknown statuses are treated as pending.
+ */
+export function buildKickoffCompletionSummary(
+  tasks: Array<{ status?: QuoteKickoffTaskStatus | null | undefined }> | null | undefined,
+): KickoffCompletionSummary {
+  const rows = Array.isArray(tasks) ? tasks : [];
+  let completedCount = 0;
+  let blockedCount = 0;
+  let pendingCount = 0;
+
+  for (const task of rows) {
+    const status = typeof task?.status === "string" ? task.status : null;
+    if (status === "complete") {
+      completedCount += 1;
+    } else if (status === "blocked") {
+      blockedCount += 1;
+    } else {
+      pendingCount += 1;
+    }
+  }
+
+  const total = rows.length;
+  const percentComplete =
+    total > 0 ? Math.max(0, Math.min(100, Math.round((completedCount / total) * 100))) : 0;
+
+  return { completedCount, blockedCount, pendingCount, total, percentComplete };
+}
+
 const DEFAULT_QUOTE_KICKOFF_TASKS: Array<{
   taskKey: string;
   title: string;
