@@ -16,8 +16,9 @@ import { toTimestamp } from "@/lib/relativeTime";
 import {
   countContactedSuppliers,
 } from "@/lib/search/pendingProviders";
-import { buildSearchStateSummary, searchStateLabelTone } from "@/lib/search/searchState";
+import { buildSearchStateSummary } from "@/lib/search/searchState";
 import { buildSearchProgress } from "@/lib/search/searchProgress";
+import { buildCustomerProjectTimeline } from "@/lib/quote/customerProjectTimeline";
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
@@ -107,23 +108,17 @@ import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
 import { CustomerQuoteMessagesSection } from "./CustomerQuoteMessagesSection";
 import { CustomerQuoteMessagesReadMarker } from "./CustomerQuoteMessagesReadMarker";
 import { EstimateBandCard } from "@/components/EstimateBandCard";
-import { SearchAlertOptInCard } from "@/app/(portals)/customer/components/SearchAlertOptInCard";
 import {
   buildPricingEstimate,
   buildPricingEstimateTelemetry,
   parseQuantity,
   type PricingEstimateInput,
 } from "@/lib/pricing/estimate";
-import {
-  SearchActivityFeed,
-  buildSearchActivityFeedEvents,
-} from "@/components/search/SearchActivityFeed";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
-import { deriveSearchAlertPreferenceFromOpsEvents } from "@/server/ops/searchAlerts";
-import { getCustomerSearchAlertPreference } from "@/server/customer/savedSearches";
 import { loadCustomerOfferShortlist } from "@/server/customer/offerShortlist";
-import { debugOnce } from "@/server/db/schemaErrors";
 import { CustomerQuoteIntroRequestCtaRow } from "./CustomerQuoteIntroRequestCtaRow";
+import { CustomerProjectTimelineStrip } from "./CustomerProjectTimelineStrip";
+import { hasCustomerIntroRequested } from "@/server/customer/introRequests";
 
 export const dynamic = "force-dynamic";
 
@@ -159,9 +154,7 @@ export default async function CustomerQuoteDetailPage({
   const tabParam = getSearchParamValue(resolvedSearchParams, "tab");
   const awardSupplierIdParam = getSearchParamValue(resolvedSearchParams, "awardSupplierId");
   const demoParam = getSearchParamValue(resolvedSearchParams, "demo");
-  const whatsHappeningParam = getSearchParamValue(resolvedSearchParams, "happening");
   const shortlistedParam = getSearchParamValue(resolvedSearchParams, "shortlisted");
-  const loadWhatsHappeningData = whatsHappeningParam === "1";
   const messagesHref = buildQuoteTabHref(resolvedSearchParams, "messages", "#messages");
   const customer = await getCustomerByUserId(user.id);
   const showDemoModeBanner = demoParam === "1";
@@ -183,26 +176,13 @@ export default async function CustomerQuoteDetailPage({
     );
   }
 
-  debugOnce(
-    loadWhatsHappeningData
-      ? "customer_quote:whats_happening:loaded"
-      : "customer_quote:whats_happening:skipped",
-    loadWhatsHappeningData
-      ? "[customer quote] whats happening datasets enabled"
-      : "[customer quote] whats happening datasets skipped",
-    {
-      quoteId,
-      happeningParam: whatsHappeningParam ?? null,
-    },
-  );
-
   const workspaceResult = await loadQuoteWorkspaceData(quoteId, {
     safeOnly: true,
     viewerUserId: user.id,
     viewerRole: "customer",
     includeOffers: true,
-    includeOpsEvents: loadWhatsHappeningData,
-    includeDestinationDetails: loadWhatsHappeningData,
+    includeOpsEvents: false,
+    includeDestinationDetails: false,
   });
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[customer quote] load failed", {
@@ -247,6 +227,7 @@ export default async function CustomerQuoteDetailPage({
     bidsResult,
     projectResult,
     customerKickoffSummary,
+    introRequested,
   ] = await Promise.all([
     loadCustomerQuoteBidSummaries({
       quoteId: quote.id,
@@ -257,6 +238,7 @@ export default async function CustomerQuoteDetailPage({
     loadBidsForQuote(quote.id),
     loadQuoteProjectForQuote(quote.id),
     getCustomerKickoffSummary(quote.id),
+    hasCustomerIntroRequested(quote.id),
   ]);
   const customerBidSummaries = customerBidSummariesResult.ok
     ? customerBidSummariesResult.bids
@@ -598,6 +580,9 @@ export default async function CustomerQuoteDetailPage({
     totalCount: customerKickoffSummary.totalTasks ?? null,
   });
   const kickoffTasksRatio = formatKickoffTasksRatio(kickoffProgressBasis);
+  const kickoffStarted =
+    customerKickoffSummary.totalTasks > 0 &&
+    customerKickoffSummary.completedTasks + customerKickoffSummary.blockedTasks > 0;
   const kickoffTasksRowValue = kickoffProgressBasis.isComplete
     ? "Complete"
     : kickoffTasksRatio
@@ -760,7 +745,6 @@ export default async function CustomerQuoteDetailPage({
     offers: rfqOffers ?? [],
   });
   const searchStateCounts = searchStateSummary.counts;
-  const searchStateTone = searchStateLabelTone(searchStateSummary.status_label);
   const searchProgress = buildSearchProgress({
     counts: searchStateSummary.counts,
     timestamps: searchStateSummary.timestamps,
@@ -769,12 +753,6 @@ export default async function CustomerQuoteDetailPage({
     quoteId: quote.id,
   });
   const searchStatusLabel = searchProgress.statusTag;
-  const searchStatusMeta = [
-    searchProgress.statusDetail,
-    searchProgress.lastUpdatedLabel,
-  ]
-    .filter(Boolean)
-    .join(" · ");
   const searchResultsHref = `/customer/search?quote=${quote.id}`;
   const hasSearchOffers = searchStateCounts.offers_total > 0;
   const contactedSuppliersCount = countContactedSuppliers(rfqDestinations ?? []);
@@ -811,33 +789,6 @@ export default async function CustomerQuoteDetailPage({
       exceedsSla &&
       Boolean(slaElapsedLabel);
   }
-  const searchActivityEvents = loadWhatsHappeningData
-    ? buildSearchActivityFeedEvents({
-        quote: {
-          id: quote.id,
-          created_at: quote.created_at ?? null,
-          updated_at: quote.updated_at ?? null,
-        },
-        quoteHref: `/customer/quotes/${quote.id}`,
-        // Customer view: keep this high-level and avoid supplier-by-supplier outreach mechanics.
-        destinations: [],
-        offers: rfqOffers ?? [],
-        opsEvents: opsEvents ?? [],
-        inviteSupplierHref: "/customer/invite-supplier",
-        compareOffersHref: rfqOffers.length > 0 ? "#compare-offers" : null,
-      })
-    : [];
-
-  const savedSearchAlertPreference = await getCustomerSearchAlertPreference({
-    customerId: customer.id,
-    quoteId: quote.id,
-  });
-  const opsAlertPreference = deriveSearchAlertPreferenceFromOpsEvents(opsEvents ?? []);
-  const searchAlertEnabled =
-    savedSearchAlertPreference.supported && savedSearchAlertPreference.hasRow
-      ? savedSearchAlertPreference.enabled
-      : opsAlertPreference ?? false;
-
   const offerShortlist = await loadCustomerOfferShortlist({
     customerId: customer.id,
     quoteId: quote.id,
@@ -1529,100 +1480,17 @@ export default async function CustomerQuoteDetailPage({
     </DisclosureSection>
   );
 
-  const suppliersContactedLabel = `${contactedSuppliersCount} supplier${
-    contactedSuppliersCount === 1 ? "" : "s"
-  } contacted`;
-  const searchStatusTimestamp =
-    searchProgress.lastUpdatedLabel ??
-    (updatedAtText ? `Last updated ${updatedAtText}` : null);
-
-  const whatsHappeningSummaryCard = (
-    <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Status
-            </span>
-            <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
-              {searchStatusLabel}
-            </TagPill>
-          </div>
-          {searchStatusMeta ? (
-            <p className="text-xs text-slate-400">{searchStatusMeta}</p>
-          ) : null}
-        </div>
-        <dl className="grid gap-2 text-right text-xs text-slate-300 sm:grid-cols-3">
-          <div>
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Suppliers contacted
-            </dt>
-            <dd className="text-sm font-semibold text-slate-100">{contactedSuppliersCount}</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Offers received
-            </dt>
-            <dd className="text-sm font-semibold text-slate-100">{rfqOffers.length}</dd>
-          </div>
-          <div>
-            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Awaiting replies
-            </dt>
-            <dd className="text-sm font-semibold text-slate-100">
-              {Math.max(searchStateCounts.destinations_pending, 0)}
-            </dd>
-          </div>
-        </dl>
-      </div>
-      {searchStatusTimestamp ? (
-        <p className="mt-2 text-xs text-slate-400">{searchStatusTimestamp}</p>
-      ) : null}
-    </section>
-  );
-
-  const searchLoopSection = (
-    <CollapsibleCard
-      title="What’s happening with my request?"
-      description="High-level progress and recent updates."
-      defaultOpen={loadWhatsHappeningData}
-      urlParamKey="happening"
-      contentClassName="space-y-4"
-    >
-      {loadWhatsHappeningData ? (
-        <>
-          {whatsHappeningSummaryCard}
-          <SearchActivityFeed
-            events={searchActivityEvents}
-            description="Recent updates as offers arrive."
-            maxVisible={3}
-          />
-          {showSlaNudge ? (
-            <section className="rounded-2xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm text-amber-100">
-              <p className="font-semibold text-white">No supplier replies yet.</p>
-              <p className="mt-1 text-xs text-amber-100/80">
-                {slaElapsedLabel ? `It’s been ${slaElapsedLabel} since outreach. ` : ""}
-                {slaResponseTimeLabel
-                  ? `We typically follow up if we don’t hear back in ~${slaResponseTimeLabel}.`
-                  : "We’ll keep following up and notify you as soon as offers arrive."}
-              </p>
-            </section>
-          ) : null}
-          <SearchAlertOptInCard
-            quoteId={quote.id}
-            initialEnabled={searchAlertEnabled}
-            quoteLabel={primaryFileName}
-            disabled={readOnly}
-            disabledReason={readOnly ? "Search alerts are read-only in this view." : undefined}
-          />
-        </>
-      ) : (
-        <div className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-400">
-          Open this section to load recent updates and progress.
-        </div>
-      )}
-    </CollapsibleCard>
-  );
+  const normalizedProjectStatus =
+    typeof project?.status === "string" ? project.status.trim().toLowerCase() : "";
+  const inProduction =
+    normalizedProjectStatus === "production" || normalizedProjectStatus === "in_production";
+  const projectTimeline = buildCustomerProjectTimeline({
+    offersCount: rfqOffers.length,
+    introRequested,
+    supplierAwarded: quoteHasWinner,
+    kickoffStarted: kickoffStarted || customerKickoffSummary.isComplete,
+    inProduction,
+  });
 
   const estimateBandCard = (
     <EstimateBandCard estimate={pricingEstimate} className="rounded-2xl px-5 py-4" />
@@ -1874,9 +1742,9 @@ export default async function CustomerQuoteDetailPage({
       {showDemoModeBanner ? <DemoModeBanner /> : null}
       <div className="space-y-6">
         {awardedSupplierCard}
+        <CustomerProjectTimelineStrip steps={projectTimeline.steps} />
         {decisionCtaRow}
         {compareOffersSection}
-        {searchLoopSection}
         {selectionConfirmedSection}
         {estimateBandCard}
         {orderWorkspaceSection}
