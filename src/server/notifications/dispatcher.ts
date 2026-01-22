@@ -25,6 +25,7 @@ export type DispatchEmailNotificationArgs = NotificationDispatchContext & {
   subject: string;
   previewText?: string;
   html: string;
+  replyTo?: string;
   skipIfMissingRecipient?: boolean;
 };
 
@@ -54,6 +55,7 @@ export async function dispatchEmailNotification(
     subject,
     previewText,
     html,
+    replyTo,
     skipIfMissingRecipient = true,
     ...context
   } = args;
@@ -95,6 +97,7 @@ export async function dispatchEmailNotification(
         subject,
         previewText,
         html,
+        replyTo,
       }),
   );
 }

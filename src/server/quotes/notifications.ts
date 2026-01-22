@@ -17,6 +17,7 @@ import type {
 } from "@/server/quotes/notificationTypes";
 import { buildQuoteFilesFromRow } from "@/server/quotes/files";
 import { getQuoteStatusLabel, type QuoteStatus } from "@/server/quotes/status";
+import { getCustomerReplyToAddress, getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
 import {
   loadSupplierById,
   loadSupplierByPrimaryEmail,
@@ -309,6 +310,12 @@ export async function notifyOnNewQuoteMessage(
     return;
   }
 
+  const authorType = (message.sender_role ?? "").toString().trim().toLowerCase();
+  const supplierNameForCustomerSubject =
+    authorType === "supplier" && recipients.some((r) => r.type === "customer")
+      ? (await resolveSupplierRecipientForQuote(quote.id))?.label ?? null
+      : null;
+
   await Promise.allSettled(
     recipients.map((recipient) => {
       const recipientUserId =
@@ -323,6 +330,14 @@ export async function notifyOnNewQuoteMessage(
           : recipient.type === "supplier"
             ? "supplier"
             : "admin";
+
+      const emailContent = buildQuoteMessageNotificationEmail({
+        message,
+        quote,
+        recipient,
+        supplierNameForCustomerSubject,
+        customerId: customer?.id ?? null,
+      });
 
       return dispatchEmailNotification({
         eventType: "quote_message_posted",
@@ -342,9 +357,10 @@ export async function notifyOnNewQuoteMessage(
           recipientType: recipient.type,
           messageId: message.id,
         },
-        subject: `New message on ${getQuoteTitle(quote)}`,
-        previewText: `${recipient.label} received a new message on ${getQuoteTitle(quote)}`,
-        html: buildMessageHtml(message, quote, recipient),
+        subject: emailContent.subject,
+        previewText: emailContent.previewText,
+        html: emailContent.html,
+        ...(emailContent.replyTo ? { replyTo: emailContent.replyTo } : {}),
       });
     }),
   );
@@ -694,28 +710,137 @@ async function resolveSupplierRecipientForQuote(
   }
 }
 
-function buildMessageHtml(
-  message: QuoteMessageRecord,
-  quote: QuoteContactInfo,
-  recipient: MessageRecipient,
-) {
-  const href = buildPortalLink(
-    recipient.type === "supplier"
-      ? `/supplier/quotes/${quote.id}`
-      : recipient.type === "admin"
-        ? `/admin/quotes/${quote.id}`
-        : `/customer/quotes/${quote.id}`,
+function buildQuoteMessageNotificationEmail(args: {
+  message: QuoteMessageRecord;
+  quote: QuoteContactInfo;
+  recipient: MessageRecipient;
+  supplierNameForCustomerSubject: string | null;
+  customerId: string | null;
+}): { subject: string; previewText: string; html: string; replyTo?: string } {
+  const authorType = (args.message.sender_role ?? "").toString().trim().toLowerCase();
+  const quoteTitle = getQuoteTitle(args.quote);
+  const safeSenderLabel =
+    sanitizeCopy(args.message.sender_name) ??
+    (authorType === "supplier"
+      ? "Your supplier"
+      : authorType === "customer"
+        ? "Customer"
+        : authorType === "admin"
+          ? "Zartman"
+          : "Someone");
+
+  const preview = sanitizeCopy(truncateCopy(args.message.body, 220)) ?? "New message";
+  const previewText = preview;
+  const safePreviewBlock = sanitizeCopy(truncateCopy(args.message.body, 600)) ?? "";
+
+  const messagesHref = buildPortalLink(
+    args.recipient.type === "supplier"
+      ? `/supplier/quotes/${args.quote.id}?tab=messages#messages`
+      : args.recipient.type === "customer"
+        ? `/customer/quotes/${args.quote.id}?tab=messages#messages`
+        : `/admin/quotes/${args.quote.id}#messages`,
   );
-  return `
-    <p>${recipient.label},</p>
-    <p><strong>${message.sender_name ?? "A teammate"}</strong> posted a new message on <strong>${getQuoteTitle(
-      quote,
-    )}</strong>.</p>
-    <blockquote style="border-left:4px solid #94a3b8;padding:0.5rem 1rem;color:#0f172a;">${
-      message.body
-    }</blockquote>
-    <p><a href="${href}">Open the workspace</a> to reply.</p>
-  `;
+
+  const replyTo =
+    args.recipient.type === "customer" && args.customerId
+      ? (() => {
+          const result = getCustomerReplyToAddress({
+            quoteId: args.quote.id,
+            customerId: args.customerId,
+          });
+          return result.ok ? result.address : undefined;
+        })()
+      : args.recipient.type === "supplier" && args.recipient.supplier?.id
+        ? (() => {
+            const result = getSupplierReplyToAddress({
+              quoteId: args.quote.id,
+              supplierId: args.recipient.supplier.id,
+            });
+            return result.ok ? result.address : undefined;
+          })()
+        : undefined;
+
+  if (args.recipient.type === "customer") {
+    const supplierName =
+      sanitizeCopy(args.supplierNameForCustomerSubject) ??
+      (authorType === "supplier" ? safeSenderLabel : null) ??
+      "a supplier";
+    const subject =
+      authorType === "supplier"
+        ? `New message from ${supplierName} about your search request`
+        : `New message about your search request: ${quoteTitle}`;
+
+    const introLine =
+      authorType === "supplier"
+        ? `<p><strong>${supplierName}</strong> sent you a message about your search request.</p>`
+        : `<p><strong>${safeSenderLabel}</strong> sent you a message about your search request.</p>`;
+
+    return {
+      subject,
+      previewText,
+      replyTo,
+      html: `
+        <p>${sanitizeCopy(args.recipient.label) ?? "Hi"},</p>
+        ${introLine}
+        ${
+          safePreviewBlock
+            ? `<blockquote style="border-left:4px solid #94a3b8;padding:0.5rem 1rem;color:#0f172a;margin:16px 0;">${safePreviewBlock}</blockquote>`
+            : ""
+        }
+        <p><a href="${messagesHref}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;">Open Messages</a></p>
+        <p style="margin-top:12px;">You can reply by email or in the portal.</p>
+      `,
+    };
+  }
+
+  if (args.recipient.type === "supplier") {
+    const customerLabel =
+      sanitizeCopy(args.quote.customer_name) ??
+      sanitizeCopy(args.quote.company) ??
+      "A customer";
+    const subject =
+      authorType === "customer"
+        ? `Customer question about ${quoteTitle}`
+        : `New message about ${quoteTitle}`;
+
+    const introLine =
+      authorType === "customer"
+        ? `<p><strong>${customerLabel}</strong> asked a question about <strong>${quoteTitle}</strong>.</p>`
+        : `<p><strong>${safeSenderLabel}</strong> sent you a message about <strong>${quoteTitle}</strong>.</p>`;
+
+    return {
+      subject,
+      previewText,
+      replyTo,
+      html: `
+        <p>${sanitizeCopy(args.recipient.label) ?? "Hi"},</p>
+        ${introLine}
+        ${
+          safePreviewBlock
+            ? `<blockquote style="border-left:4px solid #94a3b8;padding:0.5rem 1rem;color:#0f172a;margin:16px 0;">${safePreviewBlock}</blockquote>`
+            : ""
+        }
+        <p><a href="${messagesHref}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:8px;">Open Messages</a></p>
+        <p style="margin-top:12px;">You can reply by email or in the portal.</p>
+      `,
+    };
+  }
+
+  // Admin (unchanged; keep copy functional and compact).
+  return {
+    subject: `New message on ${quoteTitle}`,
+    previewText: `${safeSenderLabel}: ${preview}`,
+    html: `
+      <p>${sanitizeCopy(args.recipient.label) ?? "Hi"},</p>
+      <p><strong>${safeSenderLabel}</strong> posted a new message on <strong>${quoteTitle}</strong>.</p>
+      ${
+        safePreviewBlock
+          ? `<blockquote style="border-left:4px solid #94a3b8;padding:0.5rem 1rem;color:#0f172a;margin:16px 0;">${safePreviewBlock}</blockquote>`
+          : ""
+      }
+      <p><a href="${messagesHref}">Open Messages</a></p>
+    `,
+  };
 }
 
 function buildLosingBidHtml(args: {
