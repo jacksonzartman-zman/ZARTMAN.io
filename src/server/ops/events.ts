@@ -41,6 +41,8 @@ export type OpsEventType =
   | "provider_deactivated"
   | "provider_directory_visibility_changed"
   | "customer_teammate_invited"
+  | "customer_team_invite_created"
+  | "customer_team_invite_accepted"
   | "estimate_shown"
   | "bench_gap_task_event";
 
@@ -50,6 +52,11 @@ export type LogOpsEventInput = {
   eventType: OpsEventType;
   payload?: Record<string, unknown> | null;
   dedupeKey?: string | null;
+};
+
+export type LogOpsEventNoQuoteInput = {
+  eventType: OpsEventType;
+  payload?: Record<string, unknown> | null;
 };
 
 export type OpsEventRecord = {
@@ -204,6 +211,23 @@ export async function logOpsEvent(input: LogOpsEventInput): Promise<void> {
     payload,
     logLabel: "insert failed",
     context: { source: "logOpsEvent" },
+  });
+}
+
+export async function logOpsEventNoQuote(input: LogOpsEventNoQuoteInput): Promise<void> {
+  const eventType = normalizeEventType(input.eventType);
+  if (!eventType) {
+    return;
+  }
+  const payload = sanitizePayload(input.payload);
+
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "insert failed",
+    context: { source: "logOpsEventNoQuote" },
   });
 }
 

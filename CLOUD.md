@@ -50,6 +50,25 @@ Paste identifiers used during QA for traceability:
 - providerId (email):
 - providerId (web-form):
 
+## Manual QA — Customer Teammate Invites (Phase 20.1.4) (5–10 minutes)
+
+Goal: validate product-native team invites: create → (optional) email → accept → team membership.
+
+1) Log in as a customer and open a quote page (e.g. `/customer/quotes/<id>`).
+2) Click **Invite teammate** (the modal used for sharing a search request).
+3) Enter an email (use a second account email you can log in with) and submit.
+4) Confirm the modal shows an **Invited** success state.
+5) If email is configured: open the invite email and click **Accept invite**.
+   - If email is not configured: use the copied link (or copy from customer team page if available) and open it.
+6) On `/customer/team/invite/[token]`:
+   - If logged out, confirm it prompts login and login continues the accept flow (via `next=`).
+   - If logged in as the invited email, confirm it accepts and redirects to the intended next page (defaults to `/customer`).
+7) Verify the accepting user can now access the customer portal as a team member (team membership is `customer_team_members`).
+
+Smoke Test IDs:
+- invite token:
+- team_id:
+
 ## Manual QA — Admin Discover Suppliers (5 minutes)
 
 Goal: validate the “supplier discovered → provider pipeline” growth loop.

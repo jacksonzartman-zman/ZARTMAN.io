@@ -4,14 +4,17 @@ import { buildPublicUrl } from "@/lib/publicUrl";
 import { UnauthorizedError, requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { sendNotificationEmail } from "@/server/notifications/email";
-import { logOpsEvent } from "@/server/ops/events";
+import { logOpsEvent, logOpsEventNoQuote } from "@/server/ops/events";
 import { getEmailOutboundStatus, getEmailSender } from "@/server/quotes/emailOutbound";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { serializeSupabaseError } from "@/server/admin/logging";
 import {
   addExistingUsersToCustomerDefaultTeamByEmail,
+  ensureCustomerDefaultTeam,
   setQuoteTeamIdIfMissing,
 } from "@/server/customerTeams";
+import { buildCustomerTeamInviteLink, createCustomerTeamInvite } from "@/server/customerTeams/invites";
+import { isCustomerTeamInvitesSchemaReady } from "@/server/customerTeams/schema";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,6 +117,48 @@ function buildInviteEmail(args: {
   };
 }
 
+function buildTeamInviteEmail(args: {
+  customerEmail: string | null;
+  inviteUrl: string;
+  message: string | null;
+}): { subject: string; html: string; text: string; replyTo?: string } {
+  const customerEmail = normalizeEmail(args.customerEmail);
+  const safeLink = args.inviteUrl;
+  const note = args.message?.trim() ? args.message.trim() : null;
+
+  const subject = "You’ve been invited to join a Zartman team";
+  const previewText = "A teammate invited you to join their team.";
+
+  const html = `
+    <div style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; line-height: 1.4;">
+      <p><strong>A teammate invited you to join their Zartman team.</strong></p>
+      ${note ? `<p style="white-space: pre-wrap;">${escapeHtml(note)}</p>` : ""}
+      <p><a href="${escapeHtml(safeLink)}">Accept invite</a></p>
+      <p style="color:#94a3b8;font-size:12px;">If you weren’t expecting this, you can ignore this email.</p>
+      <div style="display:none;font-size:1px;color:#fefefe;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">${escapeHtml(
+        previewText,
+      )}</div>
+    </div>
+  `;
+
+  const lines: string[] = [
+    "A teammate invited you to join their Zartman team.",
+    note ? "" : "",
+    note ? note : "",
+    "",
+    `Accept invite: ${safeLink}`,
+    "",
+    "If you weren’t expecting this, you can ignore this email.",
+  ].filter((line) => typeof line === "string");
+
+  return {
+    subject,
+    html,
+    text: lines.join("\n").trim(),
+    ...(customerEmail ? { replyTo: customerEmail } : {}),
+  };
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -195,6 +240,71 @@ async function sendInviteEmails(args: {
   return { ok: true, provider: "postmark", sent: okCount };
 }
 
+async function sendTeamInviteEmails(args: {
+  to: Array<{ email: string; inviteUrl: string }>;
+  customerEmail: string | null;
+  message: string | null;
+}): Promise<
+  | { ok: true; provider: "resend" | "postmark"; sent: number }
+  | { ok: false; error: "not_configured" | "send_failed" }
+> {
+  if (args.to.length === 0) {
+    return { ok: true, provider: "resend", sent: 0 };
+  }
+
+  if (await canSendViaResend()) {
+    await Promise.allSettled(
+      args.to.map((item) => {
+        const email = buildTeamInviteEmail({
+          customerEmail: args.customerEmail,
+          inviteUrl: item.inviteUrl,
+          message: args.message,
+        });
+        return sendNotificationEmail({
+          to: item.email,
+          subject: email.subject,
+          previewText: "A teammate invited you to join their team.",
+          html: email.html,
+          ...(email.replyTo ? { replyTo: email.replyTo } : {}),
+        });
+      }),
+    );
+    // `sendNotificationEmail` is fail-soft; assume delivered best-effort.
+    return { ok: true, provider: "resend", sent: args.to.length };
+  }
+
+  const outboundStatus = getEmailOutboundStatus();
+  if (!outboundStatus.enabled) {
+    return { ok: false, error: "not_configured" };
+  }
+
+  const sender = getEmailSender();
+  const sends = await Promise.allSettled(
+    args.to.map((item) => {
+      const email = buildTeamInviteEmail({
+        customerEmail: args.customerEmail,
+        inviteUrl: item.inviteUrl,
+        message: args.message,
+      });
+      return sender.send({
+        to: item.email,
+        subject: email.subject,
+        text: email.text,
+        html: email.html,
+        replyTo: email.replyTo ?? "no-reply@zartman.io",
+        metadata: {
+          kind: "customer_team_invite",
+        },
+      });
+    }),
+  );
+  const okCount = sends.filter((r) => r.status === "fulfilled" && r.value.ok).length;
+  if (okCount === 0) {
+    return { ok: false, error: "send_failed" };
+  }
+  return { ok: true, provider: "postmark", sent: okCount };
+}
+
 export async function POST(req: Request) {
   try {
     const user = await requireUser({ redirectTo: "/customer/quotes" });
@@ -248,15 +358,27 @@ export async function POST(req: Request) {
     }
 
     const shareUrl = buildPublicUrl(`/customer/search?quote=${encodeURIComponent(quoteId)}`);
+    const nextPath = `/customer/search?quote=${encodeURIComponent(quoteId)}`;
 
     // Best-effort: if customer teams schema exists, attach this quote to the customer's team
     // and add any *existing* users (by email) to that team.
     let teamGrantSummary: { enabled: boolean; teamId?: string; added?: number } = { enabled: false };
+    let ensuredTeamId: string | null = null;
     try {
       const teamName =
         typeof customer.company_name === "string" && customer.company_name.trim().length > 0
           ? `${customer.company_name.trim()} team`
           : "Team";
+
+      const ensured = await ensureCustomerDefaultTeam({
+        customerAccountId: customer.id,
+        ownerUserId: customer.user_id ?? user.id,
+        teamName,
+      });
+      if (ensured.ok) {
+        ensuredTeamId = ensured.teamId;
+        await setQuoteTeamIdIfMissing({ quoteId, teamId: ensured.teamId });
+      }
 
       const teamGrant = await addExistingUsersToCustomerDefaultTeamByEmail({
         customerAccountId: customer.id,
@@ -268,12 +390,70 @@ export async function POST(req: Request) {
       if (teamGrant.ok) {
         teamGrantSummary = { enabled: true, teamId: teamGrant.teamId, added: teamGrant.added };
         await setQuoteTeamIdIfMissing({ quoteId, teamId: teamGrant.teamId });
+        ensuredTeamId = ensuredTeamId ?? teamGrant.teamId;
       }
     } catch (error) {
       // Fail-soft: do not block invite emails or copy-link fallback.
       console.warn(`${WARN_PREFIX} team membership best-effort failed`, { quoteId, error });
     }
 
+    // Phase 20.1.4: product-native team invites (schema-gated).
+    if (ensuredTeamId && (await isCustomerTeamInvitesSchemaReady())) {
+      const created: Array<{ email: string; inviteUrl: string }> = [];
+      const inviteLinks: string[] = [];
+      for (const email of normalizedEmails) {
+        const createdInvite = await createCustomerTeamInvite({
+          teamId: ensuredTeamId,
+          invitedEmail: email,
+          invitedByUserId: user.id,
+        });
+        if (!createdInvite.ok) {
+          continue;
+        }
+        const inviteUrl = buildCustomerTeamInviteLink({
+          token: createdInvite.invite.token,
+          nextPath,
+        });
+        created.push({ email, inviteUrl });
+        inviteLinks.push(inviteUrl);
+      }
+
+      const sendResult = await sendTeamInviteEmails({
+        to: created,
+        customerEmail: customer.email ?? user.email ?? quoteRow.customer_email ?? null,
+        message: messageNormalized,
+      });
+
+      void logOpsEventNoQuote({
+        eventType: "customer_team_invite_created",
+        payload: {
+          team_id: ensuredTeamId,
+          quote_id: quoteId,
+          recipient_count: normalizedEmails.length,
+          created_count: created.length,
+          emailed_count: sendResult.ok ? sendResult.sent : 0,
+          recipient_domains: recipientDomains(normalizedEmails),
+          provider: sendResult.ok ? sendResult.provider : "none",
+          status: sendResult.ok ? "sent" : sendResult.error,
+          source: "customer_quote_page",
+          team_grant: teamGrantSummary,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          ok: true,
+          invited: created.length,
+          emailed: sendResult.ok ? sendResult.sent : 0,
+          provider: sendResult.ok ? sendResult.provider : "none",
+          shareUrl,
+          inviteLinks: sendResult.ok && sendResult.sent > 0 ? undefined : inviteLinks,
+        },
+        { status: 200 },
+      );
+    }
+
+    // Fallback: legacy "share search request" email (schema not ready).
     const sendResult = await sendInviteEmails({
       toEmails: normalizedEmails,
       customerEmail: customer.email ?? user.email ?? quoteRow.customer_email ?? null,
