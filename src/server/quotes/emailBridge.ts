@@ -653,7 +653,9 @@ async function isLikelyDuplicateInboundMessage(args: {
           code: serializeSupabaseError(result.error).code ?? null,
         });
       }
-      return { deduped: false, fingerprint: null };
+      // Fail-open but keep deterministic keys so the inserted row can still
+      // carry metadata for later replays.
+      return { deduped: false, fingerprint, dedupeKey };
     }
 
     const rows = Array.isArray(result.data) ? result.data : [];
