@@ -36,8 +36,10 @@ import {
 import { scoreOfferCompleteness } from "@/lib/aggregator/scoring";
 import {
   DestinationErrorModal,
+  DestinationMismatchOverrideModal,
   DestinationSubmittedModal,
   OfferModal,
+  type DestinationMismatchOverrideItem,
 } from "@/components/admin/rfq/destinationModals";
 import { DispatchActions } from "@/components/admin/rfq/DispatchActions";
 import { DispatchCard } from "@/components/admin/rfq/DispatchCard";
@@ -50,6 +52,7 @@ import {
   type EffectiveDispatchMode,
 } from "@/lib/ops/dispatchReadiness";
 import { recordDispatchStarted } from "@/lib/ops/dispatchStartedClient";
+import { deriveProviderQuoteMismatch } from "@/lib/provider/quoteMismatch";
 
 type AdminRfqDestinationsCardProps = {
   quoteId: string;
@@ -96,6 +99,12 @@ export function AdminRfqDestinationsCard({
   const [submittedFeedback, setSubmittedFeedback] = useState<string | null>(null);
   const [submittedDispatchMode, setSubmittedDispatchMode] =
     useState<EffectiveDispatchMode | null>(null);
+  const [mismatchOverrideItems, setMismatchOverrideItems] = useState<
+    DestinationMismatchOverrideItem[]
+  >([]);
+  const [mismatchOverrideReason, setMismatchOverrideReason] = useState("");
+  const [mismatchOverrideError, setMismatchOverrideError] = useState<string | null>(null);
+  const [mismatchOverrideOpen, setMismatchOverrideOpen] = useState(false);
   const [offerDestination, setOfferDestination] = useState<RfqDestination | null>(null);
   const [offerDraft, setOfferDraft] = useState<OfferDraft>(EMPTY_OFFER_DRAFT);
   const [offerFieldErrors, setOfferFieldErrors] = useState<Record<string, string>>({});
@@ -160,6 +169,33 @@ export function AdminRfqDestinationsCard({
       providerEligibility?.criteria?.shipToCountry,
   );
 
+  const mismatchByProviderId = useMemo(() => {
+    const quoteProcess = providerEligibility?.criteria?.process ?? null;
+    const map = new Map<string, ReturnType<typeof deriveProviderQuoteMismatch>>();
+    for (const provider of providers) {
+      map.set(
+        provider.id,
+        deriveProviderQuoteMismatch({
+          quoteProcess,
+          quoteMaterialRequirements: null,
+          providerProcesses: provider.processes ?? null,
+          providerMaterials: provider.materials ?? null,
+        }),
+      );
+    }
+    return map;
+  }, [providerEligibility?.criteria?.process, providers]);
+
+  const mismatchedProviderIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [providerId, mismatch] of mismatchByProviderId.entries()) {
+      if (mismatch.isMismatch) {
+        ids.add(providerId);
+      }
+    }
+    return ids;
+  }, [mismatchByProviderId]);
+
   const sortByEligibility = useCallback(
     (list: ProviderContactRow[]) => {
       return [...list].sort((a, b) => {
@@ -191,17 +227,32 @@ export function AdminRfqDestinationsCard({
   const showEligibleOnly = hasEligibilityCriteria && !showAllProviders;
 
   const visibleVerifiedProviders = useMemo(() => {
-    return showEligibleOnly
+    const base = showEligibleOnly
       ? sortedVerifiedProviders.filter((provider) => eligibleProviderIds.has(provider.id))
       : sortedVerifiedProviders;
-  }, [eligibleProviderIds, showEligibleOnly, sortedVerifiedProviders]);
+    return showAllProviders ? base : base.filter((provider) => !mismatchedProviderIds.has(provider.id));
+  }, [
+    eligibleProviderIds,
+    mismatchedProviderIds,
+    showAllProviders,
+    showEligibleOnly,
+    sortedVerifiedProviders,
+  ]);
 
   const visibleReviewProviders = useMemo(() => {
     if (!includeUnverifiedProviders) return [];
-    return showEligibleOnly
+    const base = showEligibleOnly
       ? sortedReviewProviders.filter((provider) => eligibleProviderIds.has(provider.id))
       : sortedReviewProviders;
-  }, [eligibleProviderIds, includeUnverifiedProviders, showEligibleOnly, sortedReviewProviders]);
+    return showAllProviders ? base : base.filter((provider) => !mismatchedProviderIds.has(provider.id));
+  }, [
+    eligibleProviderIds,
+    includeUnverifiedProviders,
+    mismatchedProviderIds,
+    showAllProviders,
+    showEligibleOnly,
+    sortedReviewProviders,
+  ]);
 
   const visibleProviders = useMemo(() => {
     return includeUnverifiedProviders
@@ -225,6 +276,28 @@ export function AdminRfqDestinationsCard({
   const handleAddDestinations = () => {
     if (selectedProviderIds.length === 0 || pending) return;
     setFeedback(null);
+
+    const mismatchedSelected = selectedProviderIds.filter((providerId) =>
+      mismatchedProviderIds.has(providerId),
+    );
+
+    if (mismatchedSelected.length > 0) {
+      const items: DestinationMismatchOverrideItem[] = mismatchedSelected.map((providerId) => {
+        const provider = providerById.get(providerId);
+        const mismatch = mismatchByProviderId.get(providerId);
+        return {
+          providerId,
+          providerLabel: provider?.name ?? providerId,
+          mismatchReasonLabels: mismatch?.mismatchReasonLabels ?? ["Mismatch"],
+        };
+      });
+      setMismatchOverrideItems(items);
+      setMismatchOverrideReason("");
+      setMismatchOverrideError(null);
+      setMismatchOverrideOpen(true);
+      return;
+    }
+
     startTransition(async () => {
       const result = await addDestinationsAction({
         quoteId,
@@ -237,6 +310,38 @@ export function AdminRfqDestinationsCard({
         return;
       }
       setFeedback({ tone: "error", message: result.error });
+    });
+  };
+
+  const closeMismatchOverride = () => {
+    setMismatchOverrideOpen(false);
+    setMismatchOverrideItems([]);
+    setMismatchOverrideReason("");
+    setMismatchOverrideError(null);
+  };
+
+  const submitMismatchOverride = () => {
+    if (selectedProviderIds.length === 0 || pending) return;
+    const trimmed = mismatchOverrideReason.trim();
+    if (trimmed.length < 5) {
+      setMismatchOverrideError("Add at least 5 characters of override reason.");
+      return;
+    }
+    setMismatchOverrideError(null);
+    startTransition(async () => {
+      const result = await addDestinationsAction({
+        quoteId,
+        providerIds: selectedProviderIds,
+        mismatchOverrideReason: trimmed,
+      });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: result.message });
+        closeMismatchOverride();
+        setSelectedProviderIds([]);
+        router.refresh();
+        return;
+      }
+      setMismatchOverrideError(result.error);
     });
   };
 
@@ -559,6 +664,10 @@ export function AdminRfqDestinationsCard({
     selectedNeedsReviewCount > 0
       ? `${selectedNeedsReviewCount} unverified or inactive`
       : null;
+  const selectedMismatchCount = selectedProviderIds.filter((providerId) =>
+    mismatchedProviderIds.has(providerId),
+  ).length;
+  const selectedMismatchLabel = selectedMismatchCount > 0 ? `${selectedMismatchCount} mismatch` : null;
 
   const emptyProviderLabel = showEligibleOnly
     ? includeUnverifiedProviders
@@ -624,6 +733,9 @@ export function AdminRfqDestinationsCard({
                           return (
                             <option key={provider.id} value={provider.id}>
                               {provider.name} ({typeLabel}, {modeLabel})
+                              {showAllProviders && mismatchByProviderId.get(provider.id)?.isMismatch
+                                ? " — Mismatch"
+                                : ""}
                             </option>
                           );
                         })}
@@ -642,6 +754,9 @@ export function AdminRfqDestinationsCard({
                           return (
                             <option key={provider.id} value={provider.id}>
                               {provider.name} ({typeLabel}, {modeLabel}){statusNote}
+                              {showAllProviders && mismatchByProviderId.get(provider.id)?.isMismatch
+                                ? " — Mismatch"
+                                : ""}
                             </option>
                           );
                         })}
@@ -655,6 +770,9 @@ export function AdminRfqDestinationsCard({
                     return (
                       <option key={provider.id} value={provider.id}>
                         {provider.name} ({typeLabel}, {modeLabel})
+                        {showAllProviders && mismatchByProviderId.get(provider.id)?.isMismatch
+                          ? " — Mismatch"
+                          : ""}
                       </option>
                     );
                   })
@@ -663,6 +781,7 @@ export function AdminRfqDestinationsCard({
               <div className="text-xs text-slate-500">
                 <p>{selectedCountLabel}</p>
                 {selectedNeedsReviewLabel ? <p>{selectedNeedsReviewLabel}</p> : null}
+                {selectedMismatchLabel ? <p className="text-amber-200">{selectedMismatchLabel}</p> : null}
               </div>
               <label className="flex items-center gap-2 text-xs text-slate-400">
                 <input
@@ -675,7 +794,7 @@ export function AdminRfqDestinationsCard({
               </label>
               {showEligibleOnly ? (
                 <p className="text-xs text-slate-500">
-                  Eligible providers match the intake process or ship-to location.
+                  Eligible providers match the intake process or ship-to location. Mismatches stay hidden unless “Show all providers” is enabled.
                 </p>
               ) : null}
               <label className="flex items-center gap-2 text-xs text-slate-400">
@@ -969,6 +1088,22 @@ export function AdminRfqDestinationsCard({
         onClose={closeErrorPrompt}
         onChange={setErrorNote}
         onSubmit={submitError}
+      />
+
+      <DestinationMismatchOverrideModal
+        isOpen={mismatchOverrideOpen}
+        items={mismatchOverrideItems}
+        overrideReason={mismatchOverrideReason}
+        error={mismatchOverrideError}
+        pending={pending}
+        onClose={closeMismatchOverride}
+        onChange={(value) => {
+          setMismatchOverrideReason(value);
+          if (mismatchOverrideError) {
+            setMismatchOverrideError(null);
+          }
+        }}
+        onSubmit={submitMismatchOverride}
       />
     </div>
   );

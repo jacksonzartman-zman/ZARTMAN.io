@@ -38,6 +38,7 @@ export type RfqDestination = {
   submitted_by: string | null;
   last_status_at: string;
   external_reference: string | null;
+  notes: string | null;
   offer_token: string | null;
   error_message: string | null;
   created_at: string;
@@ -77,6 +78,7 @@ type RawRfqDestinationRow = {
   submitted_by?: string | null;
   last_status_at: string | null;
   external_reference: string | null;
+  notes?: string | null;
   offer_token?: string | null;
   error_message: string | null;
   created_at: string | null;
@@ -195,11 +197,13 @@ export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[
     includeProviderCountry,
     supportsSubmittedMeta,
     supportsDispatchStartedAt,
+    supportsDestinationNotes,
   ] = await Promise.all([
     hasColumns("rfq_destinations", ["offer_token"]),
     hasColumns("providers", ["country"]),
     hasColumns("rfq_destinations", ["submitted_at", "submitted_notes", "submitted_by"]),
     hasColumns("rfq_destinations", ["dispatch_started_at"]),
+    hasColumns("rfq_destinations", ["notes"]),
   ]);
   const providerColumns = ["name", "provider_type", "quoting_mode"];
   if (includeProviderCountry) {
@@ -213,6 +217,7 @@ export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[
     ...DESTINATION_COLUMNS,
     supportsDispatchStartedAt ? "dispatch_started_at" : null,
     ...submittedColumns,
+    supportsDestinationNotes ? "notes" : null,
     supportsOfferToken ? "offer_token" : null,
     destinationProviderSelect,
   ]
@@ -336,6 +341,7 @@ export async function getRfqDestinationsLite(rfqId: string): Promise<RfqDestinat
           submitted_by: null,
           last_status_at: lastStatusAt,
           external_reference: row?.external_reference ?? null,
+          notes: null,
           offer_token: null,
           error_message: row?.error_message ?? null,
           created_at: createdAt,
@@ -455,6 +461,7 @@ function normalizeDestinationRow(row: RawRfqDestinationRow): RfqDestination | nu
     submitted_by: normalizeOptionalText(row?.submitted_by),
     last_status_at: lastStatusAt,
     external_reference: row?.external_reference ?? null,
+    notes: normalizeOptionalText(row?.notes),
     offer_token: normalizeOptionalText(row?.offer_token),
     error_message: row?.error_message ?? null,
     created_at: createdAt,
@@ -498,6 +505,7 @@ function normalizeOfferTokenRow(
       submitted_by: normalizeOptionalText(row?.submitted_by),
       last_status_at: lastStatusAt,
       external_reference: row?.external_reference ?? null,
+      notes: null,
       offer_token: normalizeOptionalText(row?.offer_token),
       error_message: row?.error_message ?? null,
       created_at: createdAt,
