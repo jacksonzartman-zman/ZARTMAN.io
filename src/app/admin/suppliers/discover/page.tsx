@@ -135,7 +135,7 @@ export default async function AdminSupplierDiscoveryPage({
             className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
             role="alert"
           >
-            We couldn't create this supplier right now. Please confirm required fields and try again.
+            We couldn&apos;t create this supplier right now. Please confirm required fields and try again.
           </div>
         ) : null}
 
