@@ -71,12 +71,13 @@ import {
 import { buildAwardEmail } from "@/server/quotes/awardEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
-import { schemaGate } from "@/server/db/schemaContract";
+import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 import {
   ensureDefaultKickoffTasksForQuote,
   updateKickoffTaskStatusAction,
   type QuoteKickoffTaskStatus,
 } from "@/server/quotes/kickoffTasks";
+import { deriveProviderQuoteMismatch } from "@/lib/provider/quoteMismatch";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -178,6 +179,8 @@ const ADMIN_RFQ_OFFER_LEAD_TIME_RANGE_ERROR =
 const ADMIN_DESTINATIONS_GENERIC_ERROR =
   "We couldn't update destinations right now. Please try again.";
 const ADMIN_DESTINATIONS_INPUT_ERROR = "Select at least one provider.";
+const ADMIN_DESTINATIONS_MISMATCH_OVERRIDE_ERROR =
+  "Mismatch selected. Add a short override reason to continue.";
 const ADMIN_DESTINATION_STATUS_ERROR = "Select a valid destination status.";
 const ADMIN_DESTINATION_SUBMITTED_NOTES_ERROR =
   "Add at least 5 characters of notes for web form submissions.";
@@ -1210,9 +1213,12 @@ const DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
 export async function addDestinationsAction(args: {
   quoteId: string;
   providerIds: string[];
+  mismatchOverrideReason?: string | null;
 }): Promise<AddDestinationsActionResult> {
   const normalizedQuoteId = normalizeIdInput(args.quoteId);
   const providerIds = Array.isArray(args.providerIds) ? args.providerIds : [];
+  const mismatchOverrideReason =
+    typeof args.mismatchOverrideReason === "string" ? args.mismatchOverrideReason.trim() : "";
   const normalizedProviders = providerIds
     .map((providerId) => normalizeIdInput(providerId))
     .filter(Boolean);
@@ -1227,6 +1233,59 @@ export async function addDestinationsAction(args: {
 
   try {
     await requireAdminUser();
+
+    const criteria = await resolveProviderEligibilityCriteriaForQuote(normalizedQuoteId);
+
+    // Mismatch guardrails (process/material): if clearly a mismatch, require override reason.
+    // NOTE: material requirements are not currently available for quotes, but this is wired
+    // for extension via deriveProviderQuoteMismatch().
+    let mismatchReasonsByProviderId = new Map<string, string[]>();
+    try {
+      const [supportsProcesses, supportsMaterials] = await Promise.all([
+        hasColumns("providers", ["processes"]),
+        hasColumns("providers", ["materials"]),
+      ]);
+      const selectColumns = [
+        "id",
+        supportsProcesses ? "processes" : null,
+        supportsMaterials ? "materials" : null,
+      ]
+        .filter(Boolean)
+        .join(",");
+      const { data } = await supabaseServer
+        .from("providers")
+        .select(selectColumns)
+        .in("id", uniqueProviders)
+        .returns<Array<{ id: string; processes?: string[] | null; materials?: string[] | null }>>();
+      const rows = Array.isArray(data) ? data : [];
+      for (const row of rows) {
+        const providerId = normalizeIdInput(row?.id);
+        if (!providerId) continue;
+        const mismatch = deriveProviderQuoteMismatch({
+          quoteProcess: criteria.process ?? null,
+          quoteMaterialRequirements: null,
+          providerProcesses: row?.processes ?? null,
+          providerMaterials: row?.materials ?? null,
+        });
+        if (mismatch.isMismatch) {
+          mismatchReasonsByProviderId.set(providerId, mismatch.mismatchReasons);
+        }
+      }
+    } catch (error) {
+      console.warn("[admin rfq destinations] mismatch evaluation skipped", {
+        quoteId: normalizedQuoteId,
+        error: serializeActionError(error),
+      });
+      mismatchReasonsByProviderId = new Map();
+    }
+
+    const mismatchedProviderIds = uniqueProviders.filter((providerId) =>
+      mismatchReasonsByProviderId.has(providerId),
+    );
+    const overrideReasonPresent = mismatchOverrideReason.length > 0;
+    if (mismatchedProviderIds.length > 0 && !overrideReasonPresent) {
+      return { ok: false, error: ADMIN_DESTINATIONS_MISMATCH_OVERRIDE_ERROR };
+    }
 
     const { data: existingRows, error: existingError } = await supabaseServer
       .from("rfq_destinations")
@@ -1253,15 +1312,21 @@ export async function addDestinationsAction(args: {
     );
 
     const now = new Date().toISOString();
+    const supportsDestinationNotes = await hasColumns("rfq_destinations", ["notes"]);
     const newRows = uniqueProviders
       .filter((providerId) => !existingProviderIds.has(providerId))
-      .map((providerId) => ({
-        rfq_id: normalizedQuoteId,
-        provider_id: providerId,
-        status: "queued",
-        last_status_at: now,
-        error_message: null,
-      }));
+      .map((providerId) => {
+        const mismatchReasons = mismatchReasonsByProviderId.get(providerId) ?? [];
+        const shouldAttachNotes = supportsDestinationNotes && mismatchReasons.length > 0;
+        return {
+          rfq_id: normalizedQuoteId,
+          provider_id: providerId,
+          status: "queued",
+          last_status_at: now,
+          error_message: null,
+          ...(shouldAttachNotes ? { notes: mismatchOverrideReason || null } : {}),
+        };
+      });
 
     if (newRows.length > 0) {
       const { error: insertError } = await supabaseServer
@@ -1286,7 +1351,6 @@ export async function addDestinationsAction(args: {
 
     if (newRows.length > 0) {
       try {
-        const criteria = await resolveProviderEligibilityCriteriaForQuote(normalizedQuoteId);
         const eligibility = await getEligibleProvidersForQuote(normalizedQuoteId, criteria);
         const criteriaPayload = Object.fromEntries(
           Object.entries({
@@ -1319,6 +1383,24 @@ export async function addDestinationsAction(args: {
             eventType: "destination_added",
             payload: {
               provider_id: row.provider_id,
+            },
+          }),
+        ),
+      );
+
+      const mismatchEventRows = newRows.filter(
+        (row) => (mismatchReasonsByProviderId.get(row.provider_id) ?? []).length > 0,
+      );
+      await Promise.all(
+        mismatchEventRows.map((row) =>
+          logOpsEvent({
+            quoteId: normalizedQuoteId,
+            eventType: "destination_added_with_mismatch",
+            payload: {
+              quote_id: normalizedQuoteId,
+              provider_id: row.provider_id,
+              mismatch_reasons: mismatchReasonsByProviderId.get(row.provider_id) ?? [],
+              override_reason_present: overrideReasonPresent,
             },
           }),
         ),

@@ -87,6 +87,23 @@ type DestinationSubmittedModalProps = {
   onSubmit: () => void;
 };
 
+export type DestinationMismatchOverrideItem = {
+  providerId: string;
+  providerLabel: string;
+  mismatchReasonLabels: string[];
+};
+
+type DestinationMismatchOverrideModalProps = {
+  isOpen: boolean;
+  items: DestinationMismatchOverrideItem[];
+  overrideReason: string;
+  error: string | null;
+  pending: boolean;
+  onClose: () => void;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+};
+
 export function OfferModal({
   isOpen,
   providerLabel,
@@ -790,6 +807,123 @@ export function DestinationSubmittedModal({
               )}
             >
               {pending ? "Saving..." : "Mark submitted"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DestinationMismatchOverrideModal({
+  isOpen,
+  items,
+  overrideReason,
+  error,
+  pending,
+  onClose,
+  onChange,
+  onSubmit,
+}: DestinationMismatchOverrideModalProps) {
+  if (!isOpen) return null;
+  const countLabel = `${items.length} mismatched provider${items.length === 1 ? "" : "s"}`;
+  const tooltip = items
+    .flatMap((item) => item.mismatchReasonLabels)
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .join("\n");
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Override mismatch"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-xl rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Mismatch override required</h3>
+            <p className="mt-1 text-sm text-slate-300">
+              You selected {countLabel}. Add a short reason to make the exception explicit.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-4">
+          <div className="rounded-xl border border-slate-900/60 bg-slate-950/50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Selected mismatches
+              </p>
+              <span
+                className="text-xs font-semibold text-slate-300"
+                title={tooltip || undefined}
+              >
+                Why mismatch?
+              </span>
+            </div>
+            <ul className="mt-2 space-y-1 text-sm text-slate-200">
+              {items.map((item) => (
+                <li key={item.providerId} className="flex items-start justify-between gap-3">
+                  <span>{item.providerLabel}</span>
+                  <span className="text-xs text-slate-500" title={item.mismatchReasonLabels.join("\n")}>
+                    Mismatch
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Override reason
+            </label>
+            <textarea
+              value={overrideReason}
+              onChange={(event) => onChange(event.target.value)}
+              rows={4}
+              className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-amber-400 focus:outline-none"
+              placeholder="e.g. customer requested this shop, special capability not captured in profile…"
+              maxLength={500}
+            />
+            <p className="text-xs text-slate-500">Stored on destination notes.</p>
+          </div>
+
+          {error ? (
+            <p className="text-sm text-amber-200" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={pending}
+              className={clsx(
+                secondaryCtaClasses,
+                ctaSizeClasses.sm,
+                pending ? "cursor-not-allowed opacity-60" : null,
+              )}
+            >
+              {pending ? "Adding..." : "Add destinations"}
             </button>
           </div>
         </div>

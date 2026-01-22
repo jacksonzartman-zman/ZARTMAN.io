@@ -8,6 +8,7 @@ import { debugOnce } from "@/server/db/schemaErrors";
 
 export type OpsEventType =
   | "destination_added"
+  | "destination_added_with_mismatch"
   | "destinations_added"
   | "destination_status_updated"
   | "destination_submitted"
