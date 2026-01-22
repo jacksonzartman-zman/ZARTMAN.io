@@ -121,6 +121,7 @@ import { CustomerQuoteIntroRequestCtaRow } from "./CustomerQuoteIntroRequestCtaR
 import { CustomerProjectTimelineStrip } from "./CustomerProjectTimelineStrip";
 import { hasCustomerIntroRequested } from "@/server/customer/introRequests";
 import { computeCustomerCoverageConfidence } from "@/server/customer/coverageConfidence";
+import { buildCustomerCompareOffers } from "@/server/customer/compareOffers";
 
 export const dynamic = "force-dynamic";
 
@@ -224,12 +225,15 @@ export default async function CustomerQuoteDetailPage({
     legacyFileNames,
   } = workspaceResult.data;
   const messagesUnavailable = Boolean(messagesError);
+  const customerCompareOffersPromise =
+    rfqOffers.length > 0 ? buildCustomerCompareOffers(rfqOffers) : Promise.resolve([]);
   const [
     customerBidSummariesResult,
     bidsResult,
     projectResult,
     customerKickoffSummary,
     introRequested,
+    customerCompareOffers,
   ] = await Promise.all([
     loadCustomerQuoteBidSummaries({
       quoteId: quote.id,
@@ -241,6 +245,7 @@ export default async function CustomerQuoteDetailPage({
     loadQuoteProjectForQuote(quote.id),
     getCustomerKickoffSummary(quote.id),
     hasCustomerIntroRequested(quote.id),
+    customerCompareOffersPromise,
   ]);
   const customerBidSummaries = customerBidSummariesResult.ok
     ? customerBidSummariesResult.bids
@@ -746,7 +751,7 @@ export default async function CustomerQuoteDetailPage({
       : "Pending";
   const selectedOfferId = quote.selected_offer_id ?? null;
   const selectedOffer = selectedOfferId
-    ? rfqOffers.find((offer) => offer.id === selectedOfferId) ?? null
+    ? customerCompareOffers.find((offer) => offer.id === selectedOfferId) ?? null
     : null;
   const selectionConfirmedAt = quote.selection_confirmed_at ?? null;
   const searchStateSummary = buildSearchStateSummary({
@@ -1572,7 +1577,7 @@ export default async function CustomerQuoteDetailPage({
   ) : hasSearchOffers ? (
     <CustomerQuoteIntroRequestCtaRow
       quoteId={quote.id}
-      offers={rfqOffers}
+      offers={customerCompareOffers}
       shortlistedOfferIds={shortlistedOfferIds}
       shortlistOnlyMode={shortlistOnlyMode}
       defaultEmail={customer.email ?? user.email ?? quote.customer_email ?? null}
@@ -1621,7 +1626,7 @@ export default async function CustomerQuoteDetailPage({
       ) : (
         <CustomerQuoteCompareOffers
           quoteId={quote.id}
-          offers={rfqOffers}
+          offers={customerCompareOffers}
           selectedOfferId={selectedOfferId}
           shortlistedOfferIds={shortlistedOfferIds}
           awardLocked={quoteHasWinner}

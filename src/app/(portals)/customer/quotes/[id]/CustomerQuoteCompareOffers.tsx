@@ -6,11 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
 import { TagPill } from "@/components/shared/primitives/TagPill";
 import { RequestIntroductionModal } from "./RequestIntroductionModal";
-import {
-  decorateOffersForCompare,
-  type DecoratedRfqOffer,
-} from "@/lib/aggregator/scoring";
-import type { RfqOffer } from "@/server/rfqs/offers";
+import type { CustomerCompareOffer } from "@/lib/customerTrustBadges";
 import {
   selectOfferAction,
   toggleOfferShortlistAction,
@@ -28,7 +24,7 @@ type SortDirection = "asc" | "desc";
 
 type CustomerQuoteCompareOffersProps = {
   quoteId: string;
-  offers: RfqOffer[];
+  offers: CustomerCompareOffer[];
   selectedOfferId?: string | null;
   shortlistedOfferIds?: string[];
   awardLocked?: boolean;
@@ -46,12 +42,6 @@ type CustomerQuoteCompareOffersProps = {
 const INITIAL_SELECT_STATE: SelectOfferActionState = {
   ok: true,
   message: null,
-};
-
-const BADGE_TONE: Record<string, "emerald" | "blue" | "amber"> = {
-  "Best Value": "emerald",
-  Fastest: "blue",
-  "Lowest Risk": "amber",
 };
 
 const SORT_PARAM_KEY = "sort";
@@ -121,10 +111,7 @@ export function CustomerQuoteCompareOffers({
   );
   const [introModalOpen, setIntroModalOpen] = useState(false);
 
-  const decoratedOffers = useMemo(
-    () => decorateOffersForCompare(offers),
-    [offers],
-  );
+  const decoratedOffers = useMemo(() => offers, [offers]);
 
   const resolvedSelectedOfferId = state.selectedOfferId ?? selectedOfferId ?? null;
   const awardLocked = Boolean(awardLockedProp);
@@ -251,7 +238,8 @@ export function CustomerQuoteCompareOffers({
   const filteredOffers = useMemo(() => {
     let next = decoratedOffers;
     if (showBadgeWinnersOnly) {
-      next = next.filter((offer) => offer.badges.length > 0);
+      // "Badge picks" should highlight decision-support badges (not baseline verification).
+      next = next.filter((offer) => offer.trustBadges.some((badge) => badge.highlight));
     }
     if (showShortlistedOnly) {
       next = next.filter((offer) => shortlistedOfferIds.has(offer.id));
@@ -477,13 +465,14 @@ export function CustomerQuoteCompareOffers({
                         <td className="px-5 py-4 align-top">
                           <div className="space-y-2">
                             <div className="flex flex-wrap gap-1.5">
-                              {offer.badges.map((badge) => (
+                              {offer.trustBadges.map((badge) => (
                                 <TagPill
-                                  key={badge}
+                                  key={badge.id}
                                   size="sm"
-                                  tone={BADGE_TONE[badge] ?? "slate"}
+                                  tone={badge.tone}
+                                  title={badge.tooltip}
                                 >
-                                  {badge}
+                                  {badge.label}
                                 </TagPill>
                               ))}
                             </div>
@@ -629,13 +618,12 @@ function StarIcon({ className, filled }: { className?: string; filled?: boolean 
   );
 }
 
-function compareOffers(a: DecoratedRfqOffer, b: DecoratedRfqOffer, sortKey: SortKey): number {
+function compareOffers(a: CustomerCompareOffer, b: CustomerCompareOffer, sortKey: SortKey): number {
   switch (sortKey) {
     case "lowestPrice": {
       return compareBy(
         compareNullableNumber(a.totalPriceValue, b.totalPriceValue, "asc"),
         compareNullableNumber(a.leadTimeDaysAverage, b.leadTimeDaysAverage, "asc"),
-        compareNullableNumber(a.rankScore, b.rankScore, "desc"),
         compareProviderName(a, b),
       );
     }
@@ -643,14 +631,15 @@ function compareOffers(a: DecoratedRfqOffer, b: DecoratedRfqOffer, sortKey: Sort
       return compareBy(
         compareNullableNumber(a.leadTimeDaysAverage, b.leadTimeDaysAverage, "asc"),
         compareNullableNumber(a.totalPriceValue, b.totalPriceValue, "asc"),
-        compareNullableNumber(a.rankScore, b.rankScore, "desc"),
         compareProviderName(a, b),
       );
     }
     case "bestValue":
     default: {
+      const aBest = a.trustBadges.some((badge) => badge.id === "best_value");
+      const bBest = b.trustBadges.some((badge) => badge.id === "best_value");
       return compareBy(
-        compareNullableNumber(a.rankScore, b.rankScore, "desc"),
+        aBest === bBest ? 0 : aBest ? -1 : 1,
         compareNullableNumber(a.leadTimeDaysAverage, b.leadTimeDaysAverage, "asc"),
         compareNullableNumber(a.totalPriceValue, b.totalPriceValue, "asc"),
         compareProviderName(a, b),
@@ -666,8 +655,8 @@ function compareBy(...comparisons: number[]): number {
   return 0;
 }
 
-function compareProviderName(a: DecoratedRfqOffer, b: DecoratedRfqOffer): number {
-  const nameCompare = a.providerName.localeCompare(b.providerName);
+function compareProviderName(a: CustomerCompareOffer, b: CustomerCompareOffer): number {
+  const nameCompare = (a.providerName ?? "").localeCompare(b.providerName ?? "");
   if (nameCompare !== 0) return nameCompare;
   return a.provider_id.localeCompare(b.provider_id);
 }
@@ -687,16 +676,6 @@ function compareNullableNumber(
   if (aValue !== null) return -1;
   if (bValue !== null) return 1;
   return 0;
-}
-
-function formatEnumLabel(value?: string | null): string {
-  if (!value) return "";
-  const collapsed = value.replace(/[_-]+/g, " ").trim();
-  if (!collapsed) return "";
-  return collapsed
-    .split(" ")
-    .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
-    .join(" ");
 }
 
 function normalizeOfferIds(value: string[] | null | undefined): string[] {

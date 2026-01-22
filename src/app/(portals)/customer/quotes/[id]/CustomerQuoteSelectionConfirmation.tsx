@@ -8,7 +8,7 @@ import { TagPill } from "@/components/shared/primitives/TagPill";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatCurrency } from "@/lib/formatCurrency";
 import type { QuoteFileItem } from "@/app/admin/quotes/[id]/QuoteFilesCard";
-import type { RfqOffer } from "@/server/rfqs/offers";
+import type { CustomerCompareOffer } from "@/lib/customerTrustBadges";
 import {
   confirmSelectionAction,
   type ConfirmSelectionActionResult,
@@ -16,7 +16,7 @@ import {
 
 type CustomerQuoteSelectionConfirmationProps = {
   quoteId: string;
-  selectedOffer: RfqOffer | null;
+  selectedOffer: CustomerCompareOffer | null;
   selectionConfirmedAt: string | null;
   poNumber: string | null;
   shipTo: string | null;
@@ -379,13 +379,12 @@ function FieldTextarea({
   );
 }
 
-function resolveProviderName(offer: RfqOffer | null): string {
+function resolveProviderName(offer: CustomerCompareOffer | null): string {
   if (!offer) return "Supplier details unavailable";
-  const name = typeof offer.provider?.name === "string" ? offer.provider.name.trim() : "";
-  return name || offer.provider_id || "Supplier";
+  return offer.providerName?.trim() || offer.provider_id || "Supplier";
 }
 
-function formatOfferPrice(offer: RfqOffer | null): string {
+function formatOfferPrice(offer: CustomerCompareOffer | null): string {
   if (!offer) return "Pending";
   const totalValue = toFiniteNumber(offer.total_price);
   if (typeof totalValue === "number") {
@@ -401,7 +400,7 @@ function formatOfferPrice(offer: RfqOffer | null): string {
   return "Pending";
 }
 
-function formatOfferLeadTime(offer: RfqOffer | null): string {
+function formatOfferLeadTime(offer: CustomerCompareOffer | null): string {
   if (!offer) return "Pending";
   const minDays = offer.lead_time_days_min;
   const maxDays = offer.lead_time_days_max;
