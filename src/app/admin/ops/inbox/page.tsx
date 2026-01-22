@@ -9,6 +9,7 @@ import { getAdminOpsInboxRows, type AdminOpsInboxRow } from "@/server/ops/inbox"
 import { getOpsSlaConfig } from "@/server/ops/settings";
 import { listProviders } from "@/server/providers";
 import { OpsInboxDispatchDrawer } from "./OpsInboxDispatchDrawer";
+import { IntroRequestsHandleButton } from "./IntroRequestsHandleButton";
 
 export const dynamic = "force-dynamic";
 
@@ -123,6 +124,10 @@ export default async function AdminOpsInboxPage({
     listProviders(),
   ]);
 
+  const providerLabelById = Object.fromEntries(
+    providers.map((provider) => [provider.id, provider.name]),
+  );
+
   const preparedRows = rows.map((row) => {
     const lastActivityMs = resolveLastActivityMs(row);
     return {
@@ -131,6 +136,8 @@ export default async function AdminOpsInboxPage({
       needsAction: row.summary.needsActionCount > 0,
     };
   });
+
+  const introQueueCount = preparedRows.reduce((acc, item) => acc + (item.row.summary.introRequestsCount ?? 0), 0);
 
   const sortedRows = preparedRows.sort((a, b) => {
     if (a.needsAction !== b.needsAction) {
@@ -155,13 +162,27 @@ export default async function AdminOpsInboxPage({
     ctaSizeClasses.sm,
     "min-w-[5.5rem] justify-center",
   );
+  const introPresetHref = "/admin/ops/inbox?introRequested=1";
   const headerActions = (
-    <Link
-      href="/admin/ops/settings"
-      className={clsx(secondaryCtaClasses, ctaSizeClasses.sm)}
-    >
-      SLA settings
-    </Link>
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <Link
+        href={introPresetHref}
+        className={clsx(
+          ctaSizeClasses.sm,
+          introRequestedOnly
+            ? "rounded-xl border border-emerald-400/60 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-100"
+            : "rounded-xl border border-emerald-400/40 bg-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-400",
+        )}
+      >
+        Intro Requests{introQueueCount > 0 ? ` (${introQueueCount})` : ""}
+      </Link>
+      <Link
+        href="/admin/ops/settings"
+        className={clsx(secondaryCtaClasses, ctaSizeClasses.sm)}
+      >
+        SLA settings
+      </Link>
+    </div>
   );
 
   return (
@@ -305,9 +326,16 @@ export default async function AdminOpsInboxPage({
                   row.customer.name?.trim() || row.customer.email?.trim() || "—";
                 const email = row.customer.email?.trim() || "";
                 const lastActivity = lastActivityMs > 0 ? new Date(lastActivityMs) : null;
+                const hasIntroRequests = (row.summary.introRequestsCount ?? 0) > 0;
 
                 return (
-                  <tr key={row.quote.id} className="bg-slate-950/40 transition hover:bg-slate-900/40">
+                  <tr
+                    key={row.quote.id}
+                    className={clsx(
+                      "transition hover:bg-slate-900/40",
+                      hasIntroRequests ? "bg-emerald-500/5" : "bg-slate-950/40",
+                    )}
+                  >
                     <td className={clsx(adminTableCellClass, "px-5 py-4")}>
                       <div className="flex flex-col">
                         <Link
@@ -318,6 +346,11 @@ export default async function AdminOpsInboxPage({
                         </Link>
                         {row.quote.title && row.quote.title.trim() !== row.quote.id ? (
                           <span className="text-xs text-slate-500">{row.quote.id}</span>
+                        ) : null}
+                        {hasIntroRequests ? (
+                          <span className="mt-1 inline-flex w-fit rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-100">
+                            Intro requested
+                          </span>
                         ) : null}
                       </div>
                     </td>
@@ -383,6 +416,14 @@ export default async function AdminOpsInboxPage({
                         <Link href={quoteHref} className={actionButtonClass}>
                           Open
                         </Link>
+                        {hasIntroRequests ? (
+                          <IntroRequestsHandleButton
+                            quoteId={row.quote.id}
+                            providerIds={row.summary.introRequestProviderIds ?? []}
+                            providerLabelById={providerLabelById}
+                            actionClassName={actionButtonClass}
+                          />
+                        ) : null}
                         <OpsInboxDispatchDrawer
                           row={row}
                           actionClassName={actionButtonClass}

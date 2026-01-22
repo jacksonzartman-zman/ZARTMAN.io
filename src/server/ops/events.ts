@@ -14,6 +14,7 @@ export type OpsEventType =
   | "destination_dispatch_started"
   | "customer_saved_search_interest"
   | "customer_intro_requested"
+  | "customer_intro_handled"
   | "search_alert_enabled"
   | "search_alert_disabled"
   | "search_alert_notified"
@@ -107,10 +108,42 @@ function logOpsEventInsertError(error: unknown, label: string, context: Record<s
     return;
   }
 
+  if (isOpsEventsEventTypeConstraintViolation(error)) {
+    const serialized = serializeSupabaseError(error);
+    // Schema drift case: app is trying to write a new event_type, but the DB check constraint
+    // hasn't been migrated yet. Treat as a quiet no-op (single warning per process).
+    warnOnce(
+      "ops_events:unsupported_event_type",
+      "[ops events] unsupported event type; skipping",
+      {
+        code: serialized?.code ?? null,
+        message: serialized?.message ?? null,
+      },
+    );
+    return;
+  }
+
   console.debug(`[ops events] ${label}`, {
     ...context,
     error: serializeSupabaseError(error) ?? error,
   });
+}
+
+function isOpsEventsEventTypeConstraintViolation(error: unknown): boolean {
+  const serialized = serializeSupabaseError(error);
+  const code = typeof serialized?.code === "string" ? serialized.code : "";
+  if (code !== "23514") {
+    return false;
+  }
+
+  const blob = `${serialized?.message ?? ""} ${serialized?.details ?? ""} ${serialized?.hint ?? ""}`
+    .toLowerCase()
+    .trim();
+  if (!blob) {
+    return true;
+  }
+
+  return blob.includes("ops_events_event_type_check") || blob.includes("check constraint");
 }
 
 function shouldSkipEstimateShown(args: {

@@ -84,6 +84,7 @@ export type AdminOpsInboxSummary = {
   queuedStaleCount: number;
   messageNeedsReplyCount: number;
   introRequestsCount: number;
+  introRequestProviderIds: string[];
   lastIntroRequestedAt: string | null;
   lastCustomerMessageAt: string | null;
   lastAdminMessageAt: string | null;
@@ -329,7 +330,8 @@ export async function getAdminOpsInboxRows(
     const offers = offersByQuoteId.get(quoteId) ?? [];
     const messageRollup = messageRollupsByQuoteId[quoteId] ?? null;
     const messageState = messageRollup ? computeAdminReplyState(messageRollup) : emptyMessageState;
-    const introMeta = introRequestsByQuoteId.get(quoteId) ?? { count: 0, latestAt: null };
+    const introMeta =
+      introRequestsByQuoteId.get(quoteId) ?? { count: 0, latestAt: null, providerIds: [] };
     const summary = buildQuoteSummary(
       destinations,
       offers,
@@ -337,6 +339,7 @@ export async function getAdminOpsInboxRows(
       slaConfig,
       messageState,
       introMeta.count,
+      introMeta.providerIds,
       introMeta.latestAt,
     );
 
@@ -843,6 +846,7 @@ function buildQuoteSummary(
   slaConfig: SlaConfig,
   messageState: AdminMessageReplyState,
   introRequestsCount: number,
+  introRequestProviderIds: string[],
   lastIntroRequestedAt: string | null,
 ): AdminOpsInboxSummary {
   const counts: Record<DestinationStatusCountKey, number> = {
@@ -914,6 +918,7 @@ function buildQuoteSummary(
     queuedStaleCount: needs.queuedStaleCount,
     messageNeedsReplyCount,
     introRequestsCount,
+    introRequestProviderIds,
     lastIntroRequestedAt,
     lastCustomerMessageAt: messageState.lastCustomerMessageAt,
     lastAdminMessageAt: messageState.lastAdminMessageAt,
@@ -981,26 +986,31 @@ function passesFilters(
 
 async function loadIntroRequestsByQuoteId(
   quoteIds: string[],
-): Promise<Map<string, { count: number; latestAt: string | null }>> {
-  const map = new Map<string, { count: number; latestAt: string | null }>();
+): Promise<Map<string, { count: number; latestAt: string | null; providerIds: string[] }>> {
+  const map = new Map<string, { count: number; latestAt: string | null; providerIds: string[] }>();
   if (quoteIds.length === 0) return map;
 
   const supported = await schemaGate({
     enabled: true,
     relation: "ops_events",
-    requiredColumns: ["quote_id", "event_type", "created_at"],
+    requiredColumns: ["quote_id", "event_type", "created_at", "payload"],
     warnPrefix: "[admin ops inbox]",
     warnKey: "admin_ops_inbox:ops_events",
   });
   if (!supported) return map;
 
-  type OpsEventRow = { quote_id: string | null; created_at: string | null };
+  type OpsEventRow = {
+    quote_id: string | null;
+    event_type: string | null;
+    created_at: string | null;
+    provider_id: string | null;
+  };
 
   try {
     const { data, error } = await supabaseServer
       .from("ops_events")
-      .select("quote_id,created_at")
-      .eq("event_type", "customer_intro_requested")
+      .select("quote_id,event_type,created_at,provider_id:payload->>provider_id")
+      .in("event_type", ["customer_intro_requested", "customer_intro_handled"])
       .in("quote_id", quoteIds)
       .order("created_at", { ascending: false })
       .returns<OpsEventRow[]>();
@@ -1022,15 +1032,61 @@ async function loadIntroRequestsByQuoteId(
       return map;
     }
 
+    const latestRequestedAtByKey = new Map<string, string>();
+    const latestHandledAtByKey = new Map<string, string>();
+
     for (const row of Array.isArray(data) ? data : []) {
       const quoteId = normalizeId(row?.quote_id);
-      if (!quoteId) continue;
+      const providerId = normalizeOptionalString(row?.provider_id);
+      const eventType = normalizeOptionalString(row?.event_type);
       const createdAt = normalizeOptionalString(row?.created_at);
-      const existing = map.get(quoteId) ?? { count: 0, latestAt: null };
-      const latestAt = existing.latestAt ?? createdAt;
+      if (!quoteId || !providerId || !eventType || !createdAt) continue;
+
+      const key = `${quoteId}:${providerId}`;
+      if (eventType === "customer_intro_requested") {
+        const existing = latestRequestedAtByKey.get(key);
+        if (!existing || createdAt > existing) {
+          latestRequestedAtByKey.set(key, createdAt);
+        }
+        continue;
+      }
+      if (eventType === "customer_intro_handled") {
+        const existing = latestHandledAtByKey.get(key);
+        if (!existing || createdAt > existing) {
+          latestHandledAtByKey.set(key, createdAt);
+        }
+      }
+    }
+
+    const pendingProvidersByQuoteId = new Map<string, { providerIds: string[]; latestAt: string }>();
+
+    for (const [key, requestedAt] of latestRequestedAtByKey.entries()) {
+      const handledAt = latestHandledAtByKey.get(key) ?? null;
+      if (handledAt && handledAt >= requestedAt) {
+        continue;
+      }
+
+      const [quoteId, providerId] = key.split(":");
+      if (!quoteId || !providerId) continue;
+
+      const existing = pendingProvidersByQuoteId.get(quoteId);
+      if (!existing) {
+        pendingProvidersByQuoteId.set(quoteId, { providerIds: [providerId], latestAt: requestedAt });
+        continue;
+      }
+      if (!existing.providerIds.includes(providerId)) {
+        existing.providerIds.push(providerId);
+      }
+      if (requestedAt > existing.latestAt) {
+        existing.latestAt = requestedAt;
+      }
+    }
+
+    for (const [quoteId, pending] of pendingProvidersByQuoteId.entries()) {
       map.set(quoteId, {
-        count: existing.count + 1,
-        latestAt,
+        count: pending.providerIds.length,
+        latestAt: pending.latestAt ?? null,
+        providerIds: pending.providerIds,
       });
     }
   } catch (error) {
