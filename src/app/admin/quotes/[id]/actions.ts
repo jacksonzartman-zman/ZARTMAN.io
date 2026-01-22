@@ -72,7 +72,11 @@ import { buildAwardEmail } from "@/server/quotes/awardEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { schemaGate } from "@/server/db/schemaContract";
-import { ensureDefaultKickoffTasksForQuote } from "@/server/quotes/kickoffTasks";
+import {
+  ensureDefaultKickoffTasksForQuote,
+  updateKickoffTaskStatusAction,
+  type QuoteKickoffTaskStatus,
+} from "@/server/quotes/kickoffTasks";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -187,6 +191,70 @@ const ADMIN_DESTINATION_WEB_FORM_ERROR =
   "We couldn't generate the RFQ instructions right now. Please try again.";
 const ADMIN_AWARD_EMAIL_ERROR =
   "We couldn't generate the award email right now. Please try again.";
+
+export async function updateAdminKickoffTaskAction(args: {
+  quoteId: string;
+  taskKey: string;
+  status: QuoteKickoffTaskStatus;
+  blockedReason?: string | null;
+  title?: string;
+  description?: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const quoteId = normalizeIdInput(args.quoteId);
+  const taskKey = normalizeIdInput(args.taskKey);
+  const status = args.status;
+  const blockedReason =
+    args.blockedReason === null
+      ? null
+      : typeof args.blockedReason === "string"
+        ? args.blockedReason
+        : undefined;
+  const title = typeof args.title === "string" ? args.title : undefined;
+  const description =
+    typeof args.description === "undefined"
+      ? undefined
+      : args.description === null
+        ? null
+        : typeof args.description === "string"
+          ? args.description
+          : undefined;
+
+  if (!quoteId || !taskKey) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+    // Ensure tasks exist (idempotent) so edits don't race older awards.
+    await ensureDefaultKickoffTasksForQuote(quoteId);
+
+    const result = await updateKickoffTaskStatusAction({
+      quoteId,
+      taskKey,
+      status,
+      blockedReason,
+      title,
+      description,
+    });
+
+    if (!result.ok) {
+      return { ok: false, error: "We couldn’t update kickoff tasks. Please try again." };
+    }
+
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    revalidatePath(`/supplier/quotes/${quoteId}`);
+    revalidatePath(`/customer/quotes/${quoteId}`);
+
+    return { ok: true };
+  } catch (error) {
+    console.error("[admin kickoff review] update crashed", {
+      quoteId,
+      taskKey,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: "We couldn’t update kickoff tasks. Please try again." };
+  }
+}
 
 export async function submitAwardFeedbackAction(
   quoteId: string,
