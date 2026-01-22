@@ -8,6 +8,29 @@ Required commands (run from repo root):
 - `npm run lint` (uses Next.js ESLint). If this fails in CI, reproduce locally with Node 18+ after `npm ci` and run it from the repo root; load your `.env.local` if linted modules read env vars at import time.
 - `npm run build`
 
+## Demo checklist (Investor demo)
+
+Pre-req: set `DEMO_MODE=true` (default is off). Demo tooling is **blocked in production** even if the flag is set.
+
+### Customer flow checkpoints
+
+1) Open the seeded workspace: `/customer/search?quote=<id>&demo=1`
+2) Confirm the page renders (no crashes) and shows **2–3 offers** in **Offers returned** / **Compare offers**.
+3) Open `/customer/quotes/<id>` and confirm Compare Offers + Decision CTAs render (even if destinations/activity are empty).
+4) Click **Request introduction** and confirm the modal opens and submits without errors.
+
+### Admin flow checkpoints
+
+1) Log in, unlock admin, open `/admin/quotes`.
+2) Confirm **Create demo search request** button appears only when `DEMO_MODE=true`.
+3) Click it and confirm it redirects to the customer search page for the new quote.
+4) Open `/admin/quotes/<id>` and confirm destinations/offers panels render (missing schema should degrade, not crash).
+
+### Supplier flow checkpoints
+
+1) From `/admin/quotes/<id>`, copy a provider offer link (token) if destinations exist.
+2) Open `/provider/offer/<token>` and confirm the page renders and can submit/update an offer.
+
 ## Manual QA — Metasearch Smoke Test (10–15 minutes)
 
 Goal: one checklist to validate the full metasearch loop end-to-end.
