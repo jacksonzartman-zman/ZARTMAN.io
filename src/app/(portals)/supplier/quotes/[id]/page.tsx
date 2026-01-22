@@ -88,6 +88,7 @@ import { QuoteAtAGlanceBar } from "@/components/QuoteAtAGlanceBar";
 import { resolvePrimaryAction } from "@/lib/quote/resolvePrimaryAction";
 import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
+import { TagPill } from "@/components/shared/primitives/TagPill";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 import { loadSupplierBidDraft, type SupplierBidDraft } from "@/server/suppliers";
@@ -666,9 +667,12 @@ function SupplierQuoteWorkspace({
   const winnerCallout = quoteHasWinner ? (
     awardedToSupplier ? (
       <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-50">
-        <p className="text-base font-semibold text-emerald-100">
-          Awarded to you
-        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <TagPill size="sm" tone="emerald">
+            Awarded
+          </TagPill>
+          <p className="text-base font-semibold text-emerald-100">Awarded to you</p>
+        </div>
         <p className="mt-1 text-emerald-50/80">
           {awardedAtLabel ? `Awarded ${awardedAtLabel}. ` : null}
           We&apos;re coordinating kickoff now. Use the checklist below to lock in materials, timing, and any handoff notes.
@@ -676,6 +680,20 @@ function SupplierQuoteWorkspace({
         <p className="mt-2 text-xs text-emerald-200">
           Awarded by {awardedByLabel}
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <a
+            href="#kickoff"
+            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-black transition hover:bg-emerald-400"
+          >
+            Go to kickoff
+          </a>
+          <a
+            href="#messages"
+            className="inline-flex items-center rounded-full border border-emerald-500/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
+          >
+            Open messages
+          </a>
+        </div>
       </section>
     ) : (
       <section className="rounded-2xl border border-slate-800 bg-slate-950/40 px-5 py-4 text-sm text-slate-200">

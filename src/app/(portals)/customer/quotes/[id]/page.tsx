@@ -1627,6 +1627,46 @@ export default async function CustomerQuoteDetailPage({
     <EstimateBandCard estimate={pricingEstimate} className="rounded-2xl px-5 py-4" />
   );
 
+  const awardedSupplierCard = quoteHasWinner ? (
+    <PortalCard
+      title="Awarded supplier"
+      description="Your selection is recorded. Next: contact the awarded supplier to confirm scope and timing."
+      action={
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={messagesHref}
+            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-black transition hover:bg-emerald-400"
+          >
+            Contact awarded supplier
+          </Link>
+          <a
+            href="#kickoff"
+            className="inline-flex items-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
+          >
+            View kickoff
+          </a>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
+            Awarded
+          </TagPill>
+          {awardedAtLabel ? (
+            <span className="text-xs uppercase tracking-wide text-emerald-200">
+              Awarded {awardedAtLabel}
+            </span>
+          ) : null}
+        </div>
+        <p className="text-base font-semibold text-white">{winningSupplierName ?? "Supplier"}</p>
+        <p className="text-xs text-slate-300">
+          {winningBidPriceLabel} &middot; Lead time {winningBidLeadTimeLabel}
+        </p>
+      </div>
+    </PortalCard>
+  ) : null;
+
   const decisionHelperCopy = hasSearchOffers
     ? "We'll connect you to finalize details and confirm pricing."
     : null;
@@ -1639,7 +1679,15 @@ export default async function CustomerQuoteDetailPage({
     : showSlaNudge
       ? { label: "Share", kind: "share" as const }
       : null;
-  const decisionCtaRow = hasSearchOffers ? (
+  const decisionCtaRow = quoteHasWinner ? (
+    <CustomerQuoteDecisionCtaRow
+      statusLabel="Awarded"
+      helperCopy={`Awarded to ${winningSupplierName}. Contact your awarded supplier to confirm details.`}
+      primary={{ label: "Contact awarded supplier", href: messagesHref }}
+      secondary={{ label: "View kickoff", href: "#kickoff" }}
+      sharePath={searchResultsHref}
+    />
+  ) : hasSearchOffers ? (
     <CustomerQuoteIntroRequestCtaRow
       quoteId={quote.id}
       offers={rfqOffers}
@@ -1693,6 +1741,12 @@ export default async function CustomerQuoteDetailPage({
           offers={rfqOffers}
           selectedOfferId={selectedOfferId}
           shortlistedOfferIds={shortlistedOfferIds}
+          awardLocked={quoteHasWinner}
+          awardLockedCopy={
+            quoteHasWinner
+              ? `This request has been awarded to ${winningSupplierName}. Offers are shown for reference.`
+              : null
+          }
           matchContext={{ matchedOnProcess: Boolean(intakeProcess), locationFilter: null }}
         />
       )}
@@ -1813,6 +1867,7 @@ export default async function CustomerQuoteDetailPage({
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
       {showDemoModeBanner ? <DemoModeBanner /> : null}
       <div className="space-y-6">
+        {awardedSupplierCard}
         {decisionCtaRow}
         {compareOffersSection}
         {searchLoopSection}
