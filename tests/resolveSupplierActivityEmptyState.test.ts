@@ -22,7 +22,7 @@ const supplierExistsCopy = resolveSupplierActivityEmptyState({
 
 assert.strictEqual(
   supplierExistsCopy?.description,
-  "We’ll stream RFQ assignments and bid updates here as they happen.",
+  "We’ll stream search request assignments and bid updates here as they happen.",
   "Supplier copy mismatch",
 );
 
