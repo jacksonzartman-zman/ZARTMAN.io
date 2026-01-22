@@ -21,6 +21,7 @@ import {
   loadQuoteMessageRollups,
   type AdminMessageReplyState,
 } from "@/server/quotes/messageState";
+import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
 
 export type AdminOpsInboxFilters = {
   status?: string | null;
@@ -94,6 +95,11 @@ export type AdminOpsInboxSummary = {
   lastCustomerMessageAt: string | null;
   lastSupplierMessageAt: string | null;
   lastAdminMessageAt: string | null;
+  lastMessageAt: string | null;
+  lastMessagePreview: string | null;
+  threadOwedReplyBy: "customer" | "supplier" | null;
+  threadLastMessageAt: string | null;
+  threadLastMessageSenderRole: "customer" | "supplier" | null;
   topReasons: Array<Exclude<SlaReason, null>>;
 };
 
@@ -216,7 +222,7 @@ type DestinationStatusCountKey = (typeof DESTINATION_STATUS_COUNTS)[number];
 export async function getAdminOpsInboxRows(
   args: AdminOpsInboxArgs = {},
 ): Promise<AdminOpsInboxRow[]> {
-  await requireAdminUser();
+  const adminUser = await requireAdminUser();
 
   const opsSettings = await getOpsSlaSettings();
   const slaConfig = args.slaConfig ?? opsSettings.config;
@@ -314,6 +320,15 @@ export async function getAdminOpsInboxRows(
   const customerByQuoteId = seedCustomerMap(quotes);
   await hydrateCustomerInfo({ quoteIds, customerByQuoteId });
 
+  const unreadByQuoteId =
+    adminUser?.id && quoteIds.length > 0
+      ? await loadUnreadMessageSummary({
+          quoteIds,
+          userId: adminUser.id,
+          previewMaxLen: 120,
+        })
+      : {};
+
   const [destinationsByQuoteId, offersByQuoteId, messageRollupsByQuoteId] = await Promise.all([
     loadDestinationsByQuoteId(quoteIds),
     loadOffersByQuoteId(quoteIds),
@@ -349,6 +364,12 @@ export async function getAdminOpsInboxRows(
       : null;
     const introMeta =
       introRequestsByQuoteId.get(quoteId) ?? { count: 0, latestAt: null, providerIds: [] };
+    const lastMessage = unreadByQuoteId[quoteId]?.lastMessage ?? null;
+    const lastMessageAt = typeof lastMessage?.created_at === "string" ? lastMessage.created_at : null;
+    const lastMessagePreview =
+      typeof lastMessage?.body === "string" && lastMessage.body.trim().length > 0
+        ? lastMessage.body.trim()
+        : null;
     const summary = buildQuoteSummary(
       destinations,
       offers,
@@ -359,6 +380,8 @@ export async function getAdminOpsInboxRows(
       introMeta.count,
       introMeta.providerIds,
       introMeta.latestAt,
+      lastMessageAt,
+      lastMessagePreview,
     );
 
     const row: AdminOpsInboxRow = {
@@ -869,6 +892,8 @@ function buildQuoteSummary(
   introRequestsCount: number,
   introRequestProviderIds: string[],
   lastIntroRequestedAt: string | null,
+  lastMessageAt: string | null,
+  lastMessagePreview: string | null,
 ): AdminOpsInboxSummary {
   const counts: Record<DestinationStatusCountKey, number> = {
     queued: 0,
@@ -934,6 +959,11 @@ function buildQuoteSummary(
   const threadReplyOverdueCount =
     threadSummary && (threadSummary.customerReplyOverdue || threadSummary.supplierReplyOverdue) ? 1 : 0;
   const introNeedsAction = introRequestsCount > 0 ? 1 : 0;
+  const threadOwedReplyBy = threadSummary?.customerOwesReply
+    ? "customer"
+    : threadSummary?.supplierOwesReply
+      ? "supplier"
+      : null;
 
   return {
     counts,
@@ -954,6 +984,11 @@ function buildQuoteSummary(
     lastCustomerMessageAt: messageState.lastCustomerMessageAt,
     lastSupplierMessageAt: threadSummary?.lastSupplierMessageAt ?? null,
     lastAdminMessageAt: messageState.lastAdminMessageAt,
+    lastMessageAt,
+    lastMessagePreview,
+    threadOwedReplyBy,
+    threadLastMessageAt: threadSummary?.lastThreadMessageAt ?? null,
+    threadLastMessageSenderRole: threadSummary?.lastThreadMessageSenderRole ?? null,
     topReasons: buildTopReasons(reasonCounts),
   };
 }

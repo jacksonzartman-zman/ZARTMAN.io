@@ -133,11 +133,20 @@ export async function markQuoteMessagesRead(input: {
 export async function loadUnreadMessageSummary(input: {
   quoteIds: string[];
   userId: string;
+  /**
+   * Max preview length for last-message body (default: 80).
+   * NOTE: This is a UI affordance; keep the query stable and fail-soft.
+   */
+  previewMaxLen?: number;
 }): Promise<Record<string, QuoteUnreadMessageSummary>> {
   const userId = normalizeId(input.userId);
   const quoteIds = (Array.isArray(input.quoteIds) ? input.quoteIds : [])
     .map((id) => normalizeId(id))
     .filter(Boolean);
+  const previewMaxLen =
+    typeof input.previewMaxLen === "number" && Number.isFinite(input.previewMaxLen)
+      ? Math.max(20, Math.min(Math.floor(input.previewMaxLen), 400))
+      : 80;
 
   const result: Record<string, QuoteUnreadMessageSummary> = {};
   for (const quoteId of quoteIds) {
@@ -269,7 +278,7 @@ export async function loadUnreadMessageSummary(input: {
         const summary = result[row.quote_id];
         if (!summary) continue;
         summary.lastMessage = {
-          body: truncatePreview(row.body, 80),
+          body: truncatePreview(row.body, previewMaxLen),
           created_at: row.created_at,
           sender_role: row.sender_role ?? "admin",
           sender_id: normalizeId(row.sender_id) || null,
