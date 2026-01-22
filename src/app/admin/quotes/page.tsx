@@ -57,6 +57,8 @@ import {
   loadQuoteMessageRollups,
   type QuoteMessageRollup,
 } from "@/server/quotes/messageState";
+import { isDemoModeEnabled } from "@/server/demo/demoMode";
+import { createDemoSearchRequestAction } from "./demoActions";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +68,7 @@ export default async function AdminQuotesPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+  const demoSeedStatus = (usp.get("demoSeed") ?? "").trim().toLowerCase();
   const listState = parseListState(usp, ADMIN_QUOTES_LIST_STATE_CONFIG);
   const currentView = normalizeAdminQuotesView(usp.get("view") ?? null);
   const partsCoverageFilter = normalizePartsCoverageFilter(usp.get("partsCoverage"));
@@ -300,7 +303,23 @@ export default async function AdminQuotesPage({
     : baseHasMore;
 
   return (
-    <AdminDashboardShell title="Quotes" description="Recent quotes created from uploads.">
+    <AdminDashboardShell
+      title="Quotes"
+      description="Recent quotes created from uploads."
+      actions={
+        isDemoModeEnabled() ? (
+          <form action={createDemoSearchRequestAction}>
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-100 transition hover:border-amber-400 hover:bg-amber-500/15"
+              title="Create a deterministic demo customer quote + 2-3 offers."
+            >
+              Create demo search request
+            </button>
+          </form>
+        ) : null
+      }
+    >
       {!inboxResult.ok ? (
         <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-950/30 px-6 py-4 text-sm text-red-100">
           <p>We couldn’t load quotes. Try refreshing the page.</p>
@@ -317,41 +336,47 @@ export default async function AdminQuotesPage({
           Inbox activity is temporarily unavailable in this environment (schema mismatch). Showing an empty list.
         </div>
       ) : null}
-        <AdminFiltersBar
-          filters={
-            <div className="flex flex-col gap-3">
-              <AdminQuotesViewFilter currentView={currentView} basePath="/admin/quotes" />
-              <AdminQuotesInboxControls basePath="/admin/quotes" />
-            </div>
-          }
-          search={
-            <AdminSearchInput
-              initialValue={searchTerm}
-              basePath="/admin/quotes"
-              placeholder="Search by customer, email, company, file, or status..."
-              listStateConfig={ADMIN_QUOTES_LIST_STATE_CONFIG}
-            />
-          }
-        />
-        <div className="mt-6 overflow-x-auto">
-          <div className="inline-block min-w-full align-middle">
-            <QuotesTable
-              quotes={pagedQuotes}
-              totalCount={effectiveTotalCount}
-              currentView={currentView as AdminQuotesView}
-              searchTerm={normalizedSearch}
-            />
-            <TablePaginationControls
-              basePath="/admin/quotes"
-              page={page}
-              pageSize={pageSize}
-              hasMore={effectiveHasMore}
-              totalCount={effectiveTotalCount}
-              rowsOnPage={pagedQuotes.length}
-              listStateConfig={ADMIN_QUOTES_LIST_STATE_CONFIG}
-            />
-          </div>
+      {demoSeedStatus === "error" ? (
+        <div className="mb-4 rounded-2xl border border-rose-500/30 bg-rose-950/20 px-6 py-4 text-sm text-rose-100">
+          We couldn’t create demo data in this environment. Confirm `DEMO_MODE=true` and that the
+          required tables exist (quotes, customers, providers, rfq_offers).
         </div>
+      ) : null}
+      <AdminFiltersBar
+        filters={
+          <div className="flex flex-col gap-3">
+            <AdminQuotesViewFilter currentView={currentView} basePath="/admin/quotes" />
+            <AdminQuotesInboxControls basePath="/admin/quotes" />
+          </div>
+        }
+        search={
+          <AdminSearchInput
+            initialValue={searchTerm}
+            basePath="/admin/quotes"
+            placeholder="Search by customer, email, company, file, or status..."
+            listStateConfig={ADMIN_QUOTES_LIST_STATE_CONFIG}
+          />
+        }
+      />
+      <div className="mt-6 overflow-x-auto">
+        <div className="inline-block min-w-full align-middle">
+          <QuotesTable
+            quotes={pagedQuotes}
+            totalCount={effectiveTotalCount}
+            currentView={currentView as AdminQuotesView}
+            searchTerm={normalizedSearch}
+          />
+          <TablePaginationControls
+            basePath="/admin/quotes"
+            page={page}
+            pageSize={pageSize}
+            hasMore={effectiveHasMore}
+            totalCount={effectiveTotalCount}
+            rowsOnPage={pagedQuotes.length}
+            listStateConfig={ADMIN_QUOTES_LIST_STATE_CONFIG}
+          />
+        </div>
+      </div>
     </AdminDashboardShell>
   );
 }
