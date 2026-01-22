@@ -2,8 +2,7 @@
 
 import clsx from "clsx";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { decorateOffersForCompare } from "@/lib/aggregator/scoring";
-import type { RfqOffer } from "@/server/rfqs/offers";
+import type { CustomerCompareOffer } from "@/lib/customerTrustBadges";
 
 type ModalMode = "form" | "success";
 
@@ -11,7 +10,7 @@ type RequestIntroductionModalProps = {
   open: boolean;
   onClose: () => void;
   quoteId: string;
-  offers: RfqOffer[];
+  offers: CustomerCompareOffer[];
   shortlistedOfferIds?: string[] | null;
   shortlistOnlyMode?: boolean;
   defaultEmail?: string | null;
@@ -38,15 +37,19 @@ function normalizeOfferIds(value: string[] | null | undefined): Set<string> {
   return new Set(value.map((v) => normalizeId(v)).filter(Boolean));
 }
 
-function compareOffersBestValue(a: ReturnType<typeof decorateOffersForCompare>[number], b: ReturnType<typeof decorateOffersForCompare>[number]): number {
-  const rank = (b.rankScore ?? 0) - (a.rankScore ?? 0);
-  if (rank !== 0) return rank;
+function compareOffersBestValue(a: CustomerCompareOffer, b: CustomerCompareOffer): number {
+  const aBest = a.trustBadges.some((badge) => badge.id === "best_value");
+  const bBest = b.trustBadges.some((badge) => badge.id === "best_value");
+  if (aBest !== bBest) return aBest ? -1 : 1;
+
   const leadA = typeof a.leadTimeDaysAverage === "number" ? a.leadTimeDaysAverage : Number.POSITIVE_INFINITY;
   const leadB = typeof b.leadTimeDaysAverage === "number" ? b.leadTimeDaysAverage : Number.POSITIVE_INFINITY;
   if (leadA !== leadB) return leadA - leadB;
+
   const priceA = typeof a.totalPriceValue === "number" ? a.totalPriceValue : Number.POSITIVE_INFINITY;
   const priceB = typeof b.totalPriceValue === "number" ? b.totalPriceValue : Number.POSITIVE_INFINITY;
   if (priceA !== priceB) return priceA - priceB;
+
   return (a.providerName ?? "").localeCompare(b.providerName ?? "");
 }
 
@@ -73,17 +76,15 @@ export function RequestIntroductionModal({
     [shortlistedOfferIds],
   );
 
-  const decoratedOffers = useMemo(() => decorateOffersForCompare(offers), [offers]);
-
   const offerOptions = useMemo(() => {
-    const sorted = [...decoratedOffers].sort(compareOffersBestValue);
+    const sorted = [...offers].sort(compareOffersBestValue);
     return sorted.map((offer) => ({
       offerId: offer.id,
       providerId: offer.provider_id,
       label: offer.providerName || offer.provider_id,
       shortlisted: shortlistedSet.has(offer.id),
     }));
-  }, [decoratedOffers, shortlistedSet]);
+  }, [offers, shortlistedSet]);
 
   const recommendedOfferId = useMemo(() => {
     if (offerOptions.length === 0) return "";

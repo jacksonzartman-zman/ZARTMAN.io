@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { RfqOffer } from "@/server/rfqs/offers";
+import type { CustomerCompareOffer } from "@/lib/customerTrustBadges";
 import { CustomerQuoteDecisionCtaRow } from "./CustomerQuoteDecisionCtaRow";
 import { RequestIntroductionModal } from "./RequestIntroductionModal";
 import { saveIntroRequestedState } from "./introRequestClientState";
@@ -26,7 +26,7 @@ export function CustomerQuoteIntroRequestCtaRow({
   sharePath,
 }: {
   quoteId: string;
-  offers: RfqOffer[];
+  offers: CustomerCompareOffer[];
   shortlistedOfferIds?: string[] | null;
   shortlistOnlyMode?: boolean;
   defaultEmail?: string | null;
