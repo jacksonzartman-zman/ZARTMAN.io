@@ -540,12 +540,22 @@ export async function finalizeAwardAfterRpc({
     revalidateAwardedPaths(normalizedQuoteId);
   }
 
-  void dispatchWinnerNotification({
-    quoteId: normalizedQuoteId,
-    bidId: normalizedBidId,
-    caller: normalizedActorRole,
-    actorUserId: normalizedActorUserId,
-  });
+  // Notifications should be best-effort but also reliable in serverless contexts:
+  // await the dispatch so the process isn't torn down before sending.
+  try {
+    await dispatchWinnerNotification({
+      quoteId: normalizedQuoteId,
+      bidId: normalizedBidId,
+      caller: normalizedActorRole,
+      actorUserId: normalizedActorUserId,
+    });
+  } catch (error) {
+    // Fail-soft: never block award finalization on notification infra.
+    console.warn("[award] winner notification dispatch crashed", {
+      ...logContext,
+      error: serializeActionError(error),
+    });
+  }
 
   return { ok: true, awardedAt };
 }

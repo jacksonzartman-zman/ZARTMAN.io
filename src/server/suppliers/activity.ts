@@ -227,7 +227,7 @@ function buildWinnerEvent(
     id: `supplier-winner:${bid.id}`,
     quoteId: quote.id,
     type: "winner_selected",
-    title: `Your offer was selected for ${getQuoteTitle(quote)}`,
+    title: `You’ve been selected for ${getQuoteTitle(quote)}`,
     description: formatBidSummary(bid),
     timestamp: safeTimestamp(bid.updated_at ?? bid.created_at),
     href: `/supplier/quotes/${quote.id}`,

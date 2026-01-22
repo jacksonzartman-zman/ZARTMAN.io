@@ -392,10 +392,10 @@ export async function notifyOnWinningBidSelected(
           actorRole: params.actor.role,
           actorUserId: params.actor.userId,
         },
-        subject: `Your offer was selected – ${quoteTitle}`,
-        previewText: `We selected your offer for ${quoteTitle}.`,
+        subject: `You’ve been selected – ${quoteTitle}`,
+        previewText: `You’ve been selected for ${quoteTitle}.`,
         html: `
-          <p>Good news — your offer for <strong>${quoteTitle}</strong> was selected.</p>
+          <p><strong>You’ve been selected</strong> for <strong>${quoteTitle}</strong>.</p>
           <p><strong>Price:</strong> ${formattedPrice}<br/>
           <strong>Lead time:</strong> ${leadTimeLabel}</p>
           <p><a href="${supplierLink}">Open the supplier workspace</a> to review next steps.</p>
@@ -430,8 +430,8 @@ export async function notifyOnWinningBidSelected(
           actorRole: params.actor.role,
           actorUserId: params.actor.userId,
         },
-        subject: "Supplier selected for your search request",
-        previewText: `You selected a supplier for ${quoteTitle}.`,
+        subject: `Confirmation: supplier selected – ${quoteTitle}`,
+        previewText: `Your selection is confirmed for ${quoteTitle}.`,
         html: `
           <p>You selected <strong>${params.supplier.company_name ?? "a supplier"}</strong> for <strong>${quoteTitle}</strong>.</p>
           <p><strong>Selected offer:</strong> ${formattedPrice} (${leadTimeLabel})</p>
