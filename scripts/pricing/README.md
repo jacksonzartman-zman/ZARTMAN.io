@@ -52,3 +52,32 @@ npx tsx scripts/pricing/convertPricingNumbersToCsv.ts \
   --in data/pricing_for_algo.txt \
   --out data/pricing_for_algo.cleaned.csv
 ```
+
+## `buildPricingPriors.ts`
+
+Builds compact pricing priors (p10/p50/p90) from the canonical CSV output of `convertPricingNumbersToCsv.ts`.
+
+### Output
+
+- Writes a deterministic JSON artifact to `/tmp/pricing_priors.json` by default.
+- Optionally upserts into Supabase `public.pricing_priors` when service-role env vars exist.
+
+### Usage
+
+```bash
+npx tsx scripts/pricing/buildPricingPriors.ts \
+  --in data/pricing_for_algo.cleaned.csv \
+  --out /tmp/pricing_priors.json
+```
+
+To force/disable upsert:
+
+```bash
+npx tsx scripts/pricing/buildPricingPriors.ts --upsert
+npx tsx scripts/pricing/buildPricingPriors.ts --noUpsert
+```
+
+Supabase env vars (service role):
+
+- `NEXT_PUBLIC_SUPABASE_URL` (preferred) or `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
