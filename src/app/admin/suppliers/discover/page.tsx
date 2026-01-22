@@ -11,6 +11,7 @@ import {
 import { discoverSupplierAction, updateSupplierDiscoveryAction } from "@/app/admin/suppliers/discover/actions";
 import Link from "next/link";
 import { getProviderWithContactById, type ProviderContactRow, type ProviderEmailColumn } from "@/server/providers";
+import { MATERIAL_TAGS, PROCESS_TAGS } from "@/lib/provider/discoveryTags";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +87,11 @@ export default async function AdminSupplierDiscoveryPage({
     typeof usp.get("editProviderId") === "string" ? usp.get("editProviderId") : null;
   const updated = usp.get("updated") === "1";
   const hasError = usp.get("error") === "1" || usp.get("error") === "missing";
+
+  // Deep-link prefill (bench health CTA).
+  const prefillProcesses = normalizeTagQueryParams(usp, "process");
+  const prefillMaterials = normalizeTagQueryParams(usp, "material");
+  const hasPrefill = prefillProcesses.size > 0 || prefillMaterials.size > 0;
 
   const editProviderResult = editProviderId ? await getProviderWithContactById(editProviderId) : null;
   const editProvider = editProviderResult?.provider ?? null;
@@ -327,6 +333,18 @@ export default async function AdminSupplierDiscoveryPage({
           Creates an inactive, unverified provider stub with source set to discovered and hidden from the directory.
         </p>
 
+        {hasPrefill ? (
+          <div className="mt-4 rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-100" role="status">
+            Prefilled tags:{" "}
+            {[
+              prefillProcesses.size > 0 ? `process ${Array.from(prefillProcesses).join(", ")}` : null,
+              prefillMaterials.size > 0 ? `material ${Array.from(prefillMaterials).join(", ")}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        ) : null}
+
         {created ? (
           <div
             className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100"
@@ -398,17 +416,21 @@ export default async function AdminSupplierDiscoveryPage({
               Process tags
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-200">
-              {PROCESS_TAGS.map((tag) => (
-                <label key={tag} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="processes"
-                    value={tag}
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
-                  />
-                  <span>{tag}</span>
-                </label>
-              ))}
+              {PROCESS_TAGS.map((tag) => {
+                const checked = prefillProcesses.has(tag.toLowerCase());
+                return (
+                  <label key={tag} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name="processes"
+                      value={tag}
+                      defaultChecked={checked}
+                      className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+                    />
+                    <span>{tag}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -417,17 +439,21 @@ export default async function AdminSupplierDiscoveryPage({
               Material tags
             </p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-200">
-              {MATERIAL_TAGS.map((tag) => (
-                <label key={tag} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="materials"
-                    value={tag}
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
-                  />
-                  <span>{tag}</span>
-                </label>
-              ))}
+              {MATERIAL_TAGS.map((tag) => {
+                const checked = prefillMaterials.has(tag.toLowerCase());
+                return (
+                  <label key={tag} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name="materials"
+                      value={tag}
+                      defaultChecked={checked}
+                      className="h-4 w-4 rounded border border-slate-700 bg-slate-950/60 text-emerald-500"
+                    />
+                    <span>{tag}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
@@ -548,28 +574,15 @@ export default async function AdminSupplierDiscoveryPage({
   );
 }
 
-const PROCESS_TAGS = [
-  "CNC machining",
-  "Sheet metal",
-  "Fabrication",
-  "3D printing",
-  "Injection molding",
-  "Casting",
-  "Finishing",
-] as const;
-
-const MATERIAL_TAGS = [
-  "Aluminum",
-  "Stainless steel",
-  "Steel",
-  "Titanium",
-  "Copper",
-  "Brass",
-  "Plastics",
-  "Nylon",
-  "ABS",
-  "Delrin",
-] as const;
+function normalizeTagQueryParams(usp: URLSearchParams, key: "process" | "material"): Set<string> {
+  const raw = usp.getAll(key);
+  const out = new Set<string>();
+  for (const value of raw) {
+    const trimmed = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (trimmed) out.add(trimmed);
+  }
+  return out;
+}
 
 function buildEditStubValues(provider: ProviderContactRow, emailColumn: ProviderEmailColumn | null): {
   emailValue: string | null;
