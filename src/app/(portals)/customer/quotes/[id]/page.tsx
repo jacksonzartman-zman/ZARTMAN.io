@@ -15,8 +15,6 @@ import { formatSlaResponseTime } from "@/lib/ops/sla";
 import { toTimestamp } from "@/lib/relativeTime";
 import {
   countContactedSuppliers,
-  isDestinationReceived,
-  sortDestinationsBySlaUrgency,
 } from "@/lib/search/pendingProviders";
 import { buildSearchStateSummary, searchStateLabelTone } from "@/lib/search/searchState";
 import { buildSearchProgress } from "@/lib/search/searchProgress";
@@ -46,12 +44,10 @@ import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { DisclosureSection } from "@/components/DisclosureSection";
 import {
   getQuoteStatusLabel,
-  getQuoteStatusHelper,
   normalizeQuoteStatus,
 } from "@/server/quotes/status";
 import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
-import { CustomerQuoteRefreshResultsButton } from "./CustomerQuoteRefreshResultsButton";
 import { FocusScroll } from "./FocusScroll";
 import { FocusTabScroll } from "@/app/(portals)/shared/FocusTabScroll";
 import {
@@ -75,7 +71,6 @@ import {
 import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
-import { CoverageDisclosure } from "@/components/CoverageDisclosure";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
@@ -122,7 +117,6 @@ import {
   SearchActivityFeed,
   buildSearchActivityFeedEvents,
 } from "@/components/search/SearchActivityFeed";
-import { PendingProvidersTable } from "@/components/search/PendingProvidersTable";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { deriveSearchAlertPreferenceFromOpsEvents } from "@/server/ops/searchAlerts";
 import { getCustomerSearchAlertPreference } from "@/server/customer/savedSearches";
@@ -824,7 +818,8 @@ export default async function CustomerQuoteDetailPage({
           updated_at: quote.updated_at ?? null,
         },
         quoteHref: `/customer/quotes/${quote.id}`,
-        destinations: rfqDestinations ?? [],
+        // Customer view: keep this high-level and avoid supplier-by-supplier outreach mechanics.
+        destinations: [],
         offers: rfqOffers ?? [],
         opsEvents: opsEvents ?? [],
         inviteSupplierHref: "/customer/invite-supplier",
@@ -1246,8 +1241,7 @@ export default async function CustomerQuoteDetailPage({
       </div>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-200">
         <li>
-          We&apos;re routing this search request to vetted suppliers who match your process and
-          volumes.
+          We&apos;re contacting vetted suppliers who match your process and volumes.
         </li>
         <li>You&apos;ll start seeing offers here as suppliers respond.</li>
         <li>Once we review offers, we&apos;ll prepare pricing and move the status to Offers ready.</li>
@@ -1541,32 +1535,10 @@ export default async function CustomerQuoteDetailPage({
     searchProgress.lastUpdatedLabel ??
     (updatedAtText ? `Last updated ${updatedAtText}` : null);
 
-  const searchStatusMiniCard = (
-    <section
-      className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3"
-      aria-label="Search status"
-    >
-      <div className="flex flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Search status
-          </span>
-          <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
-            {searchStatusLabel}
-          </TagPill>
-          <span className="text-sm text-slate-200">{suppliersContactedLabel}</span>
-        </div>
-        {searchStatusTimestamp ? (
-          <p className="text-xs text-slate-400">{searchStatusTimestamp}</p>
-        ) : null}
-      </div>
-    </section>
-  );
-
-  const searchStatusOpsCard = (
+  const whatsHappeningSummaryCard = (
     <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               Status
@@ -1575,54 +1547,53 @@ export default async function CustomerQuoteDetailPage({
               {searchStatusLabel}
             </TagPill>
           </div>
-          {searchStatusMeta ? <p className="text-xs text-slate-400">{searchStatusMeta}</p> : null}
+          {searchStatusMeta ? (
+            <p className="text-xs text-slate-400">{searchStatusMeta}</p>
+          ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={searchResultsHref}
-            className="inline-flex items-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
-          >
-            View results
-          </Link>
-          <CustomerQuoteRefreshResultsButton quoteId={quoteId} />
-        </div>
+        <dl className="grid gap-2 text-right text-xs text-slate-300 sm:grid-cols-3">
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Suppliers contacted
+            </dt>
+            <dd className="text-sm font-semibold text-slate-100">{contactedSuppliersCount}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Offers received
+            </dt>
+            <dd className="text-sm font-semibold text-slate-100">{rfqOffers.length}</dd>
+          </div>
+          <div>
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Awaiting replies
+            </dt>
+            <dd className="text-sm font-semibold text-slate-100">
+              {Math.max(searchStateCounts.destinations_pending, 0)}
+            </dd>
+          </div>
+        </dl>
       </div>
+      {searchStatusTimestamp ? (
+        <p className="mt-2 text-xs text-slate-400">{searchStatusTimestamp}</p>
+      ) : null}
     </section>
   );
-
-  const pendingDestinations = loadWhatsHappeningData
-    ? (rfqDestinations ?? [])
-        .filter((destination) => !isDestinationReceived(destination.status))
-        .sort(sortDestinationsBySlaUrgency)
-    : [];
-  const visiblePendingDestinations = loadWhatsHappeningData
-    ? pendingDestinations.slice(0, 6)
-    : [];
-  const remainingPendingDestinationCount = loadWhatsHappeningData
-    ? Math.max(pendingDestinations.length - visiblePendingDestinations.length, 0)
-    : 0;
 
   const searchLoopSection = (
     <CollapsibleCard
       title="What’s happening with my request?"
-      description="Pending suppliers, activity, and coverage details."
+      description="High-level progress and recent updates."
       defaultOpen={loadWhatsHappeningData}
       urlParamKey="happening"
       contentClassName="space-y-4"
     >
       {loadWhatsHappeningData ? (
         <>
-          {searchStatusOpsCard}
-          {pendingDestinations.length > 0 ? (
-            <PendingProvidersTable
-              destinations={visiblePendingDestinations}
-              remainingCount={remainingPendingDestinationCount}
-              matchContext={{ matchedOnProcess: Boolean(intakeProcess), locationFilter: null }}
-            />
-          ) : null}
+          {whatsHappeningSummaryCard}
           <SearchActivityFeed
             events={searchActivityEvents}
-            description="Latest updates from the search dispatch."
+            description="Recent updates as offers arrive."
             maxVisible={3}
           />
           {showSlaNudge ? (
@@ -1643,11 +1614,10 @@ export default async function CustomerQuoteDetailPage({
             disabled={readOnly}
             disabledReason={readOnly ? "Search alerts are read-only in this view." : undefined}
           />
-          <CoverageDisclosure destinations={rfqDestinations} showSummary={false} />
         </>
       ) : (
         <div className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-400">
-          Open this section to load supplier outreach, recent activity, and coverage details.
+          Open this section to load recent updates and progress.
         </div>
       )}
     </CollapsibleCard>
@@ -1697,7 +1667,7 @@ export default async function CustomerQuoteDetailPage({
       id="compare-offers"
       className="scroll-mt-24"
       title="Compare Offers"
-      description="Review provider offers and select a best-fit option."
+      description="Review supplier offers and pick a best-fit option."
       defaultOpen={rfqOffers.length > 0}
       summary={
         <TagPill
@@ -1735,7 +1705,7 @@ export default async function CustomerQuoteDetailPage({
         id="selection-confirmed"
         className="scroll-mt-24"
         title="Selection confirmed"
-        description="Confirm provider details and draft the award pack."
+        description="Confirm supplier details and draft the award pack."
         defaultOpen
         summary={
           <TagPill size="md" tone={selectionConfirmedAt ? "emerald" : "slate"}>
@@ -1845,12 +1815,11 @@ export default async function CustomerQuoteDetailPage({
       <div className="space-y-6">
         {decisionCtaRow}
         {compareOffersSection}
-        {searchStatusMiniCard}
         {searchLoopSection}
         {selectionConfirmedSection}
         {estimateBandCard}
         {orderWorkspaceSection}
-        {decisionSection}
+        {rfqOffers.length === 0 ? decisionSection : null}
         {kickoffSection}
         {messagesUnavailable ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">

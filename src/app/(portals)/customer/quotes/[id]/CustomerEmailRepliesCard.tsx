@@ -23,10 +23,10 @@ export function CustomerEmailRepliesCard(props: {
 
   const status: Status = useMemo(() => {
     if (!props.bridgeEnabled) {
-      return { kind: "disabled", reason: "Email replies are not enabled on this environment." };
+      return { kind: "disabled", reason: "Email replies aren’t available right now." };
     }
     if (!props.replyToAddress) {
-      return { kind: "not_configured", reason: "Email reply routing is not configured yet." };
+      return { kind: "not_configured", reason: "Email replies aren’t available yet." };
     }
     return optedIn ? { kind: "enabled" } : { kind: "disabled_opted_out" };
   }, [optedIn, props.bridgeEnabled, props.replyToAddress]);

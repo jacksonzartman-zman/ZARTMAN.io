@@ -152,7 +152,7 @@ export function RequestIntroductionModal({
               Request introduction
             </p>
             <h3 className="mt-1 text-lg font-semibold text-white">
-              {mode === "success" ? "We’ll connect you shortly" : "We’ll connect you to the provider"}
+              {mode === "success" ? "We’ll connect you shortly" : "We’ll connect you to the supplier"}
             </h3>
             {mode === "success" ? (
               <p className="mt-1 text-sm text-slate-300">
@@ -181,7 +181,7 @@ export function RequestIntroductionModal({
           <div className="mt-5 space-y-4">
             <label className="flex flex-col gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Provider offer
+                Supplier offer
               </span>
               <select
                 value={selectedOfferId}
