@@ -17,7 +17,6 @@ type QuotingModeKey = "manual" | "email" | "api";
 type CoverageCounts = {
   byType: Record<ProviderTypeKey, number>;
   byQuotingMode: Record<QuotingModeKey, number>;
-  contacted: number;
   replied: number;
   pending: number;
   total: number;
@@ -123,12 +122,12 @@ export function CoverageDisclosure({
         </div>
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-            Outreach status
+            Response status
           </p>
           <dl className="mt-2 grid gap-2 sm:grid-cols-3">
-            <CoverageStat label="Contacted" value={counts.contacted} />
             <CoverageStat label="Replied" value={counts.replied} />
-            <CoverageStat label="Pending" value={counts.pending} />
+            <CoverageStat label="Awaiting reply" value={counts.pending} />
+            <CoverageStat label="Matched" value={counts.total} />
           </dl>
         </div>
         <p className="text-xs text-slate-400">We don&apos;t play favorites.</p>
@@ -160,7 +159,6 @@ function buildCoverageCounts(destinations: RfqDestination[]): CoverageCounts {
     email: 0,
     api: 0,
   };
-  let contacted = 0;
   let replied = 0;
   let pending = 0;
 
@@ -173,9 +171,6 @@ function buildCoverageCounts(destinations: RfqDestination[]): CoverageCounts {
     if (quotingModeKey) {
       byQuotingMode[quotingModeKey] += 1;
     }
-    if (CONTACTED_STATUSES.has(destination.status)) {
-      contacted += 1;
-    }
     if (REPLIED_STATUSES.has(destination.status)) {
       replied += 1;
     }
@@ -184,7 +179,7 @@ function buildCoverageCounts(destinations: RfqDestination[]): CoverageCounts {
     }
   }
 
-  return { byType, byQuotingMode, contacted, replied, pending, total: destinations.length };
+  return { byType, byQuotingMode, replied, pending, total: destinations.length };
 }
 
 function normalizeProviderType(value: string | null | undefined): ProviderTypeKey | null {
