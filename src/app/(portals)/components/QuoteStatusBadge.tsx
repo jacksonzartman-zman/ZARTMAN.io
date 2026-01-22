@@ -29,8 +29,8 @@ export function QuoteStatusBadge({
   className,
 }: QuoteStatusBadgeProps) {
   const normalized = normalizeQuoteStatus(status ?? undefined);
-  const label = getQuoteStatusLabel(normalized);
-  const helper = getQuoteStatusHelper(normalized);
+  const label = getQuoteStatusLabel(normalized, { copyVariant: "search" });
+  const helper = getQuoteStatusHelper(normalized, { copyVariant: "search" });
   const variant = BADGE_VARIANTS[normalized] ?? "pill-muted";
 
   return (

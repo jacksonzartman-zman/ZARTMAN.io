@@ -172,11 +172,11 @@ export function CustomerQuoteAwardPanel({
         <SectionHeader
           variant="card"
           kicker="Supplier decisions"
-          title="Review bids and select a supplier"
+          title="Review offers and select a supplier"
           subtitle={
             <>
               <p className="text-sm text-slate-300">
-                Compare bids, select the supplier that fits best, and we’ll record your selection.
+                Compare offers, select the supplier that fits best, and we’ll record your selection.
               </p>
               <p className="mt-1 text-xs text-slate-500">
                 Select supplier only when price, lead time, and fit align. Your selection will show in Timeline and unlock kickoff steps.
@@ -235,8 +235,8 @@ export function CustomerQuoteAwardPanel({
           </p>
           <p className="text-xs text-slate-400">
             {selectionLocked
-              ? "Selection confirmed. Other bids are shown for reference."
-              : "Review the bids below, then select a supplier to confirm."}
+              ? "Selection confirmed. Other offers are shown for reference."
+              : "Review the offers below, then select a supplier to confirm."}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -248,7 +248,7 @@ export function CustomerQuoteAwardPanel({
           </TagPill>
           <div
             role="tablist"
-            aria-label="Bid view mode"
+            aria-label="Offer view mode"
             className="inline-flex items-center rounded-full border border-slate-800/80 bg-slate-950/30 p-0.5"
           >
             <button
@@ -543,7 +543,7 @@ export function CustomerQuoteAwardPanel({
             </div>
           </div>
           <p className="text-xs text-slate-500">
-            Compare mode shows the same bids in a compact grid for faster scanning.
+            Compare mode shows the same offers in a compact grid for faster scanning.
           </p>
         </div>
       )}

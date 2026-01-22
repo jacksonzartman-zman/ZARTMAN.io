@@ -75,7 +75,7 @@ function deriveProjectName(
 
   const id = normalizeId(row.id);
   const shortId = id ? id.slice(0, 6) : "—";
-  return `RFQ ${shortId}`;
+  return `Search request ${shortId}`;
 }
 
 function deriveCustomerName(

@@ -1,6 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { formatCurrency } from "@/lib/formatCurrency";
-import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
+import { formatQuoteId, normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
@@ -19,12 +19,23 @@ const CUSTOMER_BID_SELECT = [
   "supplier:suppliers(id,company_name)",
 ].join(",");
 
-const CUSTOMER_BID_ERROR =
-  "We couldn’t load supplier bids for this RFQ. Please refresh or contact support.";
-const CUSTOMER_BID_ACCESS_ERROR =
-  "We couldn’t verify your access to this RFQ. Try refreshing, or contact the team if this seems wrong.";
-const CUSTOMER_BID_MISSING_QUOTE_ERROR =
-  "We couldn’t find this RFQ. Double-check the link or contact support.";
+function formatQuoteReference(quoteId: string): string {
+  const trimmed = typeof quoteId === "string" ? quoteId.trim() : "";
+  if (!trimmed) return "";
+  return ` (Quote ID ${formatQuoteId(trimmed)})`;
+}
+
+function customerBidError(quoteId: string): string {
+  return `We couldn’t load offers for this search request${formatQuoteReference(quoteId)}. Refresh to try again, or contact support.`;
+}
+
+function customerBidAccessError(quoteId: string): string {
+  return `We couldn’t verify access to this search request${formatQuoteReference(quoteId)}. Confirm you’re signed into the right account, then refresh. If this keeps happening, contact support.`;
+}
+
+function customerBidMissingQuoteError(quoteId: string): string {
+  return `We couldn’t find that search request${formatQuoteReference(quoteId)}. Double-check the link, or return to your Quotes list.`;
+}
 
 export type CustomerQuoteBidSummary = {
   id: string;
@@ -102,7 +113,7 @@ export async function loadCustomerQuoteBidSummaries(
     return {
       ok: false,
       bids: [],
-      error: CUSTOMER_BID_MISSING_QUOTE_ERROR,
+      error: "Missing search request reference.",
       reason: "missing-quote",
     };
   }
@@ -126,7 +137,7 @@ export async function loadCustomerQuoteBidSummaries(
       return {
         ok: false,
         bids: [],
-        error: CUSTOMER_BID_MISSING_QUOTE_ERROR,
+        error: customerBidMissingQuoteError(quoteId),
         reason: "quote-not-found",
       };
     }
@@ -136,7 +147,7 @@ export async function loadCustomerQuoteBidSummaries(
       return {
         ok: false,
         bids: [],
-        error: CUSTOMER_BID_MISSING_QUOTE_ERROR,
+        error: customerBidMissingQuoteError(quoteId),
         reason: "quote-not-found",
       };
     }
@@ -162,7 +173,7 @@ export async function loadCustomerQuoteBidSummaries(
       return {
         ok: false,
         bids: [],
-        error: CUSTOMER_BID_ACCESS_ERROR,
+        error: customerBidAccessError(quoteId),
         reason: "access-denied",
       };
     }
@@ -180,7 +191,7 @@ export async function loadCustomerQuoteBidSummaries(
         return {
           ok: false,
           bids: [],
-          error: CUSTOMER_BID_ERROR,
+          error: customerBidError(quoteId),
           reason: "schema-missing",
         };
       }
@@ -189,7 +200,7 @@ export async function loadCustomerQuoteBidSummaries(
       return {
         ok: false,
         bids: [],
-        error: CUSTOMER_BID_ERROR,
+        error: customerBidError(quoteId),
         reason: "unexpected",
       };
     }
@@ -213,7 +224,7 @@ export async function loadCustomerQuoteBidSummaries(
     return {
       ok: false,
       bids: [],
-      error: CUSTOMER_BID_ERROR,
+      error: customerBidError(quoteId),
       reason: "unexpected",
     };
   }

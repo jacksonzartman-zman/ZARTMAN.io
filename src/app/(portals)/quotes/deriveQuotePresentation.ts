@@ -1,6 +1,6 @@
 import {
   DEFAULT_QUOTE_STATUS,
-  QUOTE_STATUS_LABELS,
+  getQuoteStatusLabel,
   normalizeQuoteStatus,
   type QuoteStatus,
 } from "@/server/quotes/status";
@@ -24,7 +24,7 @@ export function deriveQuotePresentation(
   uploadMeta: UploadMeta | null,
 ): QuotePresentation {
   const status = normalizeQuoteStatus(quote.status ?? DEFAULT_QUOTE_STATUS);
-  const statusLabel = QUOTE_STATUS_LABELS[status] ?? "Unknown";
+  const statusLabel = getQuoteStatusLabel(status, { copyVariant: "search" }) ?? "Unknown";
   const customerName =
     [uploadMeta?.first_name, uploadMeta?.last_name]
       .filter((value) => typeof value === "string" && value.trim().length > 0)

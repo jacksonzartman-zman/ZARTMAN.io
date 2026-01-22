@@ -44,7 +44,7 @@ export async function listBidsForRfq(rfqId: string): Promise<ListBidsResult> {
 
     if (error) {
       console.error("marketplace: listBidsForRfq query failed", { rfqId, error });
-      return { bids: [], error: "Unable to load bids" };
+      return { bids: [], error: "Unable to load offers" };
     }
 
     const rows = (Array.isArray(data) ? data : []) as unknown as RawBidRow[];
@@ -53,7 +53,7 @@ export async function listBidsForRfq(rfqId: string): Promise<ListBidsResult> {
     return { bids, error: null };
   } catch (error) {
     console.error("marketplace: listBidsForRfq unexpected error", { rfqId, error });
-    return { bids: [], error: "Unexpected error while loading bids" };
+    return { bids: [], error: "Unexpected error while loading offers" };
   }
 }
 
@@ -65,18 +65,18 @@ export async function submitRfqBid(input: SubmitRfqBidInput): Promise<BidMutatio
 
   const rfq = await loadRfqById(rfqId);
   if (!rfq) {
-    return { bid: null, error: "RFQ not found" };
+    return { bid: null, error: "Search request not found" };
   }
 
   if (!isOpenRfq(rfq)) {
-    return { bid: null, error: "RFQ is not open for new bids" };
+    return { bid: null, error: "Search request is not open for new offers" };
   }
 
   const eligibility = await ensureSupplierEligibleForRfq(rfq, supplierId);
   if (!eligibility.eligible) {
     return {
       bid: null,
-      error: "Supplier is not eligible to bid on this RFQ",
+      error: "Supplier is not eligible to make an offer on this search request",
     };
   }
 
@@ -212,13 +212,13 @@ export async function acceptRfqBid(
 
   const rfq = await loadRfqById(rfqId);
   if (!rfq) {
-    return { bid: null, error: "RFQ not found" };
+    return { bid: null, error: "Search request not found" };
   }
 
   try {
     const targetBid = await loadBidById(bidId);
     if (!targetBid || targetBid.rfq_id !== rfqId) {
-      return { bid: null, error: "Bid does not belong to this RFQ" };
+      return { bid: null, error: "Offer does not belong to this search request" };
     }
 
     const now = new Date().toISOString();

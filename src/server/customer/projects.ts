@@ -63,12 +63,12 @@ function deriveProjectName(
     "";
 
   if (fileLabel) {
-    return `RFQ: ${fileLabel}`;
+    return `Search request: ${fileLabel}`;
   }
 
   const id = normalizeId(row.id);
   const shortId = id ? id.slice(0, 6) : "—";
-  return `RFQ ${shortId}`;
+  return `Search request ${shortId}`;
 }
 
 function emptyKickoffSummary(): CustomerProjectKickoffSummary {

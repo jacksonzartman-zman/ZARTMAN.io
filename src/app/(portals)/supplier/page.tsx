@@ -103,7 +103,7 @@ async function SupplierDashboardPage({
       <PortalShell
         workspace="supplier"
         title="Dashboard"
-        subtitle="Search requests, bids, and compliance docs stay aligned here."
+        subtitle="Search requests, offers, and compliance docs stay aligned here."
         headerContent={
           <WorkspaceWelcomeBanner
             role="supplier"

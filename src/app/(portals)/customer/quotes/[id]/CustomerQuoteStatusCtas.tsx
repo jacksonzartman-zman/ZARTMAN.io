@@ -58,7 +58,7 @@ export function CustomerQuoteStatusCtas({
           action={reopenFormAction}
           onSubmit={(event) => {
             const confirmed = window.confirm(
-              "Reopen this search request?\n\nThis makes the search request active again so invited suppliers can bid. You can archive it later.",
+              "Reopen this search request?\n\nThis makes the search request active again so invited suppliers can send offers. You can archive it later.",
             );
             if (!confirmed) {
               event.preventDefault();

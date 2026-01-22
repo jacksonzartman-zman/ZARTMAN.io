@@ -11,7 +11,7 @@ function buildRfqDetailsSummary(args: BuildOutboundArgs): string {
   const details: string[] = [];
   const quoteTitle = normalizeString(args.quote.title) || args.quote.id;
   if (quoteTitle) {
-    details.push(`RFQ: ${quoteTitle}`);
+    details.push(`Search request: ${quoteTitle}`);
   }
   const process = normalizeString(args.quote.process);
   if (process) details.push(`Process: ${process}`);
@@ -37,7 +37,7 @@ function buildRfqDetailsSummary(args: BuildOutboundArgs): string {
 function buildFileUploadSummary(args: BuildOutboundArgs): string {
   const files = Array.isArray(args.files) ? args.files : [];
   if (files.length === 0) {
-    return "Upload the CAD files from the RFQ package.";
+    return "Upload the CAD files from the search request package.";
   }
   const fileList = files.map((file, index) => {
     const label = normalizeString(file.label) || `File ${index + 1}`;
@@ -60,12 +60,12 @@ function buildRequesterSummary(args: BuildOutboundArgs): string | null {
 function buildWebFormInstructions(args: BuildOutboundArgs, webFormUrl: string | null): string {
   const lines: string[] = [];
   if (webFormUrl) {
-    lines.push(`- Open the RFQ form: ${webFormUrl}`);
+    lines.push(`- Open the search request form: ${webFormUrl}`);
   } else {
-    lines.push("- Open the provider RFQ form (website/portal).");
+    lines.push("- Open the provider form (website/portal).");
   }
   lines.push(`- ${buildFileUploadSummary(args)}`);
-  lines.push(`- Paste RFQ details: ${buildRfqDetailsSummary(args)}`);
+  lines.push(`- Paste search request details: ${buildRfqDetailsSummary(args)}`);
 
   const requesterSummary = buildRequesterSummary(args);
   if (requesterSummary) {
@@ -76,7 +76,7 @@ function buildWebFormInstructions(args: BuildOutboundArgs, webFormUrl: string | 
 
   const offerLink = normalizeString(args.destination?.offerLink);
   if (offerLink) {
-    lines.push(`- Provide our quote submission link: ${offerLink}`);
+    lines.push(`- Provide our offer submission link: ${offerLink}`);
   }
 
   lines.push("- Ask for: price (total and unit), lead time, assumptions/exclusions, DFM concerns.");

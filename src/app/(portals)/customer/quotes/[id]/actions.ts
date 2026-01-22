@@ -88,7 +88,7 @@ const CUSTOMER_STATUS_TRANSITION_ERROR =
   "We couldn’t update this search request right now. Please try again.";
 
 const CUSTOMER_AWARD_BID_ERROR =
-  "We couldn’t verify that bid. Refresh and try again.";
+  "We couldn’t verify that offer. Refresh and try again.";
 const CUSTOMER_AWARD_ACCESS_ERROR =
   "We couldn’t confirm your access to this quote.";
 const CUSTOMER_AWARD_ALREADY_WON_ERROR =
@@ -1200,7 +1200,7 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
   const rawQuoteId = formData.get("quote_id");
 
   if (typeof rawBidId !== "string" || rawBidId.trim().length === 0) {
-    return { success: false, error: "Missing bid reference." };
+    return { success: false, error: "Missing offer reference." };
   }
 
   if (typeof rawQuoteId !== "string" || rawQuoteId.trim().length === 0) {
@@ -1216,7 +1216,7 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
     if (!customer) {
       return {
         success: false,
-        error: "Complete your profile before managing bids.",
+        error: "Complete your profile before managing offers.",
       };
     }
 
@@ -1259,7 +1259,7 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
       });
       return {
         success: false,
-        error: "You do not have permission to update this bid.",
+        error: "You do not have permission to update this offer.",
       };
     }
 
@@ -1268,7 +1268,7 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
       if (!accepted) {
         return {
           success: false,
-          error: "Unable to accept this bid right now.",
+          error: "Unable to accept this offer right now.",
         };
       }
     } else {
@@ -1276,7 +1276,7 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
       if (!declined) {
         return {
           success: false,
-          error: "Unable to decline this bid right now.",
+          error: "Unable to decline this offer right now.",
         };
       }
     }
@@ -1296,7 +1296,7 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
     });
     return {
       success: false,
-      error: "Unable to update the bid. Please try again.",
+      error: "Unable to update the offer. Please try again.",
     };
   }
 }

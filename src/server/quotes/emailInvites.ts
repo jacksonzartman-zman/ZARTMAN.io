@@ -44,12 +44,12 @@ function looksLikeUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-const INVITE_SUBJECT = "Reply to this RFQ by email";
+const INVITE_SUBJECT = "Reply to this search request by email";
 const INVITE_BODY = [
-  "Reply to this email to respond to this RFQ.",
+  "Reply to this email to respond to this search request.",
   "Attach files directly—your message and attachments will appear in the portal thread.",
   "",
-  "Tip: keep the “To” address unchanged so your reply stays attached to this RFQ.",
+  "Tip: keep the “To” address unchanged so your reply stays attached to this thread.",
 ].join("\n");
 
 async function resolveCustomerIdByEmail(email: string): Promise<string | null> {

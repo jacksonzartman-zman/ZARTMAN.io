@@ -343,7 +343,7 @@ function buildQuoteSubmittedEvent(quote: CustomerQuoteRow): QuoteActivityEvent {
     title: `${getQuoteTitle(quote)} submitted`,
     description: quote.company
       ? `Uploaded by ${quote.company}`
-      : "New RFQ synced to your workspace.",
+      : "New search request synced to your workspace.",
     timestamp: safeTimestamp(quote.created_at ?? quote.updated_at),
     href: `/customer/quotes/${quote.id}`,
   };
@@ -356,13 +356,13 @@ function buildStatusEvent(
     return null;
   }
   const status = normalizeQuoteStatus(quote.status ?? undefined);
-  const label = getQuoteStatusLabel(status);
+  const label = getQuoteStatusLabel(status, { copyVariant: "search" });
   return {
     id: `quote:${quote.id}:status:${quote.updated_at}`,
     quoteId: quote.id,
     type: "status_changed",
     title: `${getQuoteTitle(quote)} marked ${label}`,
-    description: "We updated this RFQ status so your team stays aligned.",
+    description: "We updated this search request status so your team stays aligned.",
     timestamp: safeTimestamp(quote.updated_at),
     href: `/customer/quotes/${quote.id}`,
   };
@@ -405,7 +405,7 @@ function buildBidEvent(
     id: `bid:${bid.id}`,
     quoteId: quote.id,
     type: "bid_received",
-    title: `Supplier bid updated on ${getQuoteTitle(quote)}`,
+    title: `Supplier offer updated on ${getQuoteTitle(quote)}`,
     description: formatBidSummary(bid),
     timestamp: safeTimestamp(bid.updated_at ?? bid.created_at),
     href: `/customer/quotes/${quote.id}`,
@@ -435,7 +435,7 @@ function buildWinnerEvent(
     quoteId: quote.id,
     type: "winner_selected",
     title: `Winning supplier selected for ${getQuoteTitle(quote)}`,
-    description: `${priceLabel} • Quote marked as won`,
+    description: `${priceLabel} • Selection confirmed`,
     timestamp: safeTimestamp(quote.updated_at ?? new Date().toISOString()),
     href: `/customer/quotes/${quote.id}`,
   };

@@ -28,8 +28,8 @@ export const emailAdapter: ProviderAdapter = {
       (value) => value.length > 0,
     );
     const subject = subjectParts.length
-      ? `RFQ: ${quoteTitle} — ${subjectParts.join(" / ")}`
-      : `RFQ: ${quoteTitle}`;
+      ? `Search request: ${quoteTitle} — ${subjectParts.join(" / ")}`
+      : `Search request: ${quoteTitle}`;
 
     const lines: string[] = [];
     const providerName = normalizeString(args.provider.name) || "team";
@@ -40,9 +40,9 @@ export const emailAdapter: ProviderAdapter = {
     const contactEmail = normalizeString(args.customer?.email);
     const contactPhone = normalizeString(args.customer?.phone);
     if (requester) {
-      lines.push(`Requesting a quote for ${requester}.`);
+      lines.push(`Requesting an offer for ${requester}.`);
     } else {
-      lines.push("Requesting a quote for a new RFQ.");
+      lines.push("Requesting an offer for a new search request.");
     }
     if (contactEmail || contactPhone) {
       const contactLine = [contactEmail, contactPhone].filter(Boolean).join(" | ");
@@ -81,8 +81,8 @@ export const emailAdapter: ProviderAdapter = {
 
     const offerLink = normalizeString(args.destination?.offerLink);
     if (offerLink) {
-      lines.push("Quote submission link:");
-      lines.push(`- Submit your quote here (no login required): ${offerLink}`);
+      lines.push("Offer submission link:");
+      lines.push(`- Submit your offer here (no login required): ${offerLink}`);
       lines.push("");
     }
 
@@ -92,7 +92,7 @@ export const emailAdapter: ProviderAdapter = {
     lines.push("- Assumptions or exclusions");
     lines.push("- Any DFM or manufacturability concerns");
     lines.push("");
-    lines.push("Reply to this email with your quote; include any notes/assumptions.");
+    lines.push("Reply to this email with your offer; include any notes/assumptions.");
 
     return { mode: "email", subject, body: lines.join("\n") };
   },

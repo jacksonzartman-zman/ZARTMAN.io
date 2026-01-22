@@ -382,7 +382,7 @@ export async function persistQuoteIntakeDirectUpload(params: {
     });
     return {
       ok: false,
-      error: "Unexpected server error while submitting your RFQ.",
+      error: "Unexpected server error while submitting your search request.",
       reason: "unexpected-error",
     };
   }
@@ -809,7 +809,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     });
     return {
       ok: false,
-      error: "Unexpected server error while submitting your RFQ.",
+      error: "Unexpected server error while submitting your search request.",
       reason: "unexpected-error",
     };
   }
@@ -828,7 +828,7 @@ export function validateQuoteIntakeFields(
   if (!payload.files || payload.files.length === 0) {
     errors.file = "Attach at least one CAD file before submitting.";
   } else if (payload.files.length > MAX_FILES_PER_RFQ) {
-    errors.file = `Attach up to ${MAX_FILES_PER_RFQ} CAD files per RFQ.`;
+    errors.file = `Attach up to ${MAX_FILES_PER_RFQ} CAD files per search request.`;
   } else {
     for (const file of payload.files) {
       if (!file) continue;
@@ -908,9 +908,9 @@ export async function persistQuoteIntake(
   if (files.length > MAX_FILES_PER_RFQ) {
     return {
       ok: false,
-      error: `You can upload up to ${MAX_FILES_PER_RFQ} CAD files per RFQ.`,
+      error: `You can upload up to ${MAX_FILES_PER_RFQ} CAD files per search request.`,
       fieldErrors: {
-        file: `Attach up to ${MAX_FILES_PER_RFQ} CAD files per RFQ.`,
+        file: `Attach up to ${MAX_FILES_PER_RFQ} CAD files per search request.`,
       },
       reason: "file-limit",
     };
@@ -1172,7 +1172,7 @@ export async function persistQuoteIntake(
     });
     return {
       ok: false,
-      error: "Unexpected server error while submitting your RFQ.",
+      error: "Unexpected server error while submitting your search request.",
       reason: "unexpected-error",
     };
   }
