@@ -13,8 +13,16 @@ type InviteTeammateModalProps = {
 };
 
 type ApiResponse =
-  | { ok: true; sent: number; provider: string; shareUrl?: string }
-  | { ok: false; error: string; shareUrl?: string };
+  | {
+      ok: true;
+      invited?: number;
+      emailed?: number;
+      provider?: string;
+      sent?: number;
+      shareUrl?: string;
+      inviteLinks?: string[];
+    }
+  | { ok: false; error: string; shareUrl?: string; inviteLinks?: string[] };
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -147,12 +155,36 @@ export function InviteTeammateModal({
 
       if (result?.ok) {
         setMode("success");
-        setSuccessLine(`Invite sent to ${Math.max(1, result.sent)} teammate${result.sent === 1 ? "" : "s"}.`);
+        const invitedCount =
+          typeof result.invited === "number"
+            ? result.invited
+            : typeof result.sent === "number"
+              ? result.sent
+              : 0;
+        const emailedCount = typeof result.emailed === "number" ? result.emailed : invitedCount;
+
+        if (invitedCount > 0) {
+          if (emailedCount > 0) {
+            setSuccessLine(`Invited ${invitedCount} teammate${invitedCount === 1 ? "" : "s"}.`);
+            return;
+          }
+          const links = Array.isArray(result.inviteLinks) ? result.inviteLinks.filter(Boolean) : [];
+          if (links.length > 0) {
+            const copied = await copyToClipboard(links.join("\n"));
+            setSuccessLine(copied ? "Invited—links copied to clipboard." : "Invited—copy links from the team page.");
+            return;
+          }
+          setSuccessLine(`Invited ${invitedCount} teammate${invitedCount === 1 ? "" : "s"}.`);
+          return;
+        }
+        setSuccessLine("Invited.");
         return;
       }
 
       // Fail-soft path: copy link so user can send manually.
-      const copied = await copyToClipboard(linkToCopy);
+      const inviteLinks = result && "inviteLinks" in result ? result.inviteLinks : undefined;
+      const candidate = Array.isArray(inviteLinks) && inviteLinks.length > 0 ? inviteLinks.join("\n") : linkToCopy;
+      const copied = await copyToClipboard(candidate);
       setMode("success");
       setSuccessLine(copied ? "Copied link—send manually." : "Copy link failed—send manually.");
     });
