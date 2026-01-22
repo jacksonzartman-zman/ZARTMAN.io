@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import clsx from "clsx";
+import type { ReactNode } from "react";
 
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
@@ -46,6 +47,7 @@ import { type RfqOffer } from "@/server/rfqs/offers";
 import { PROVIDER_TYPES } from "@/server/providers";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { CoverageDisclosure } from "@/components/CoverageDisclosure";
+import { CoverageConfidenceBadge } from "@/components/CoverageConfidenceBadge";
 import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
 import { EstimateBandCard } from "@/components/EstimateBandCard";
 import {
@@ -61,6 +63,7 @@ import {
 } from "@/lib/pricing/estimate";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { SearchAlertOptInCard } from "@/app/(portals)/customer/components/SearchAlertOptInCard";
+import { computeCustomerCoverageConfidence } from "@/server/customer/coverageConfidence";
 
 type CustomerSearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -276,6 +279,10 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
 
   const activeQuoteSummary = buildQuoteSummary(workspaceData);
   const matchedOnProcess = activeQuoteSummary.process !== "Pending" && activeQuoteSummary.process !== "—";
+  const coverageConfidence =
+    activeQuote && workspaceData?.uploadMeta
+      ? await computeCustomerCoverageConfidence({ uploadMeta: workspaceData.uploadMeta })
+      : null;
   const estimateInput =
     activeQuote && workspaceData
       ? buildEstimateInput({ quote: workspaceData.quote, uploadMeta: workspaceData.uploadMeta })
@@ -413,11 +420,24 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             ) : null}
           </div>
         </div>
-        <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-2 lg:grid-cols-5">
           <SummaryTile label="Process" value={activeQuoteSummary.process} />
           <SummaryTile label="Quantity" value={activeQuoteSummary.quantity} />
           <SummaryTile label="Need-by" value={activeQuoteSummary.needBy} />
           <SummaryTile label="Files" value={activeQuoteSummary.files} />
+          {coverageConfidence ? (
+            <SummaryTile
+              label="Coverage"
+              value={
+                <span className="inline-flex flex-col items-start gap-1">
+                  <CoverageConfidenceBadge summary={coverageConfidence} size="md" />
+                  <span className="text-xs font-normal text-slate-400 normal-case tracking-normal">
+                    {coverageConfidence.helper}
+                  </span>
+                </span>
+              }
+            />
+          ) : null}
         </dl>
         {activeQuote ? (
           <div className="mt-4">
@@ -826,7 +846,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   );
 }
 
-function SummaryTile({ label, value }: { label: string; value: string }) {
+function SummaryTile({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
       <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
