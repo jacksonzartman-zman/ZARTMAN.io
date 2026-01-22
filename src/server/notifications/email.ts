@@ -3,6 +3,11 @@ type SendNotificationEmailParams = {
   subject: string;
   previewText?: string;
   html: string;
+  /**
+   * Optional Reply-To address (e.g. email-bridge token address).
+   * When omitted, replies go to the From address.
+   */
+  replyTo?: string;
 };
 
 const RESEND_API_URL = "https://api.resend.com/emails";
@@ -35,6 +40,7 @@ export async function sendNotificationEmail(
     html: params.previewText
       ? `${buildPreviewSnippet(params.previewText)}${params.html}`
       : params.html,
+    ...(params.replyTo ? { reply_to: params.replyTo } : {}),
   };
 
   try {
