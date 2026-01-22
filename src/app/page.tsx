@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { primaryCtaClasses } from "@/lib/ctas";
 import { getActiveProviders } from "@/server/providers";
+import { getServerAuthUser } from "@/server/auth";
+import HomeSearchWidget, { type HomeSearchProcess } from "@/components/marketing/HomeSearchWidget";
 
 export const dynamic = "force-dynamic";
 
 const HERO_BULLETS = [
-  "Upload your CAD/ZIP once—no vendor lock-in.",
-  "Compare real offers side-by-side (price, lead time, terms).",
-  "We connect you on request—no spam blasts or broad file sharing.",
+  "Verified suppliers only.",
+  "Compare price + lead time.",
+  "Share files only when you approve.",
 ];
 
 const HOW_IT_WORKS_STEPS = [
@@ -39,35 +41,51 @@ function getProviderInitials(name: string) {
 
 export default async function HomePage() {
   const activeProviders = await getActiveProviders();
+  const { hasUser } = await getServerAuthUser({ quiet: true });
+
+  const processes: HomeSearchProcess[] = [
+    { key: "cnc", label: "CNC Machining" },
+    { key: "sheet-metal", label: "Sheet Metal" },
+    { key: "3dp", label: "3D Printing" },
+    { key: "injection", label: "Injection Molding" },
+    { key: "ai-mode", label: "AI mode", disabled: true },
+  ];
 
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
         {/* HERO */}
-        <section className="mx-auto max-w-5xl space-y-6">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
-            The Kayak / Expedia of manufacturing
-          </p>
-          <div className="space-y-4">
+        <section className="mx-auto max-w-5xl space-y-8">
+          <div className="mx-auto max-w-3xl text-center space-y-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
+              RFQs without the chaos
+            </p>
             <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
               Upload once. Compare manufacturing offers from verified suppliers.
             </h1>
           </div>
-          <ul className="space-y-2 text-sm text-ink-muted">
-            {HERO_BULLETS.map((bullet) => (
-              <li key={bullet} className="flex gap-2">
-                <span aria-hidden className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-300/90" />
-                <span className="heading-snug">{bullet}</span>
-              </li>
-            ))}
-          </ul>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <Link href="/quote" className={primaryCtaClasses}>
-              Upload CAD to compare offers
-            </Link>
-            <p className="text-xs text-ink-soft">
-              Customer-safe by default: introductions happen on request.
-            </p>
+
+          <div className="mx-auto max-w-4xl">
+            <HomeSearchWidget isAuthenticated={hasUser} processes={processes} />
+          </div>
+
+          <div className="mx-auto max-w-3xl space-y-4">
+            <ul className="grid gap-2 text-sm text-ink-muted sm:grid-cols-3">
+              {HERO_BULLETS.map((bullet) => (
+                <li key={bullet} className="flex items-start justify-center gap-2 sm:justify-start">
+                  <span aria-hidden className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-300/90" />
+                  <span className="heading-snug">{bullet}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3">
+              <Link href="/quote" className={primaryCtaClasses}>
+                Go to full quote intake
+              </Link>
+              <p className="text-xs text-ink-soft">
+                Prefer the longer form? Use the full intake on `/quote`.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -85,7 +103,7 @@ export default async function HomePage() {
             {HOW_IT_WORKS_STEPS.map((step, index) => (
               <li
                 key={step.title}
-                className="rounded-3xl border border-slate-900/60 bg-slate-950/70 p-6 shadow-[0_12px_35px_rgba(2,6,23,0.4)]"
+                className="rounded-3xl border border-slate-900/50 bg-slate-950/40 p-6 shadow-[0_10px_28px_rgba(2,6,23,0.28)]"
               >
                 <p className="text-xs font-semibold uppercase tracking-[0.3em] text-ink-soft">
                   Step {index + 1}

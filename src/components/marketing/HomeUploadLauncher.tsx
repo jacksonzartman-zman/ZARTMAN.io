@@ -65,6 +65,12 @@ type HomeUploadLauncherProps = {
   initialQuantity?: string;
   initialNeedByDate?: string;
   autoOpen?: boolean;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
+  prefillQuantity?: string;
+  prefillNeedByDate?: string;
+  hideMetaFields?: boolean;
 };
 
 const MAX_FILES_PER_RFQ = 20;
@@ -235,9 +241,16 @@ export default function HomeUploadLauncher({
   initialQuantity = "",
   initialNeedByDate = "",
   autoOpen = false,
+  isOpen,
+  onOpenChange,
+  hideTrigger = false,
+  prefillQuantity,
+  prefillNeedByDate,
+  hideMetaFields = false,
 }: HomeUploadLauncherProps) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(autoOpen);
+  const [internalOpen, setInternalOpen] = useState(autoOpen);
+  const resolvedOpen = isOpen ?? internalOpen;
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<SelectedCadFile[]>([]);
@@ -261,6 +274,28 @@ export default function HomeUploadLauncher({
   const hasFiles = selectedFiles.length > 0;
   const isRedirecting = Boolean(redirectingQuoteId);
   const canSubmit = isAuthenticated && hasFiles && !isSubmitting && !isRedirecting;
+
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (isOpen === undefined) {
+        setInternalOpen(next);
+      }
+      onOpenChange?.(next);
+    },
+    [isOpen, onOpenChange],
+  );
+
+  useEffect(() => {
+    if (typeof prefillQuantity === "string") {
+      setQuantity(prefillQuantity);
+    }
+  }, [prefillQuantity]);
+
+  useEffect(() => {
+    if (typeof prefillNeedByDate === "string") {
+      setNeedByDate(prefillNeedByDate);
+    }
+  }, [prefillNeedByDate]);
 
   const clearRedirectTimer = useCallback(() => {
     if (redirectTimerRef.current !== null) {
@@ -296,9 +331,9 @@ export default function HomeUploadLauncher({
   }, [clearRedirectTimer]);
 
   const handleClose = useCallback(() => {
-    setIsOpen(false);
+    setOpen(false);
     resetState();
-  }, [resetState]);
+  }, [resetState, setOpen]);
 
   const ensureSessionId = useCallback((): string => {
     const existing = sessionIdRef.current;
@@ -734,15 +769,17 @@ export default function HomeUploadLauncher({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900/70 bg-slate-900/50 px-4 py-3 text-sm font-semibold text-ink transition hover:border-slate-700/80 hover:bg-slate-900/80"
-      >
-        Upload CAD/ZIP
-      </button>
+      {!hideTrigger ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-900/70 bg-slate-900/50 px-4 py-3 text-sm font-semibold text-ink transition hover:border-slate-700/80 hover:bg-slate-900/80"
+        >
+          Upload CAD/ZIP
+        </button>
+      ) : null}
 
-      {isOpen ? (
+      {resolvedOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
           role="dialog"
@@ -923,32 +960,34 @@ export default function HomeUploadLauncher({
                 )}
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-ink">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-                    Qty
-                  </span>
-                  <input
-                    type="number"
-                    min={1}
-                    value={quantity}
-                    onChange={(event) => setQuantity(event.target.value)}
-                    placeholder="50"
-                    className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-ink">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
-                    Need-by date
-                  </span>
-                  <input
-                    type="date"
-                    value={needByDate}
-                    onChange={(event) => setNeedByDate(event.target.value)}
-                    className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
-                  />
-                </label>
-              </div>
+              {!hideMetaFields ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-ink">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                      Qty
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={quantity}
+                      onChange={(event) => setQuantity(event.target.value)}
+                      placeholder="50"
+                      className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-sm text-ink">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-soft">
+                      Need-by date
+                    </span>
+                    <input
+                      type="date"
+                      value={needByDate}
+                      onChange={(event) => setNeedByDate(event.target.value)}
+                      className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
+                    />
+                  </label>
+                </div>
+              ) : null}
 
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-900/70 bg-slate-950/70 px-4 py-3 text-xs text-ink-soft">
                 <span>
