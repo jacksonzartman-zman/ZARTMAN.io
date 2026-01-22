@@ -16,6 +16,7 @@ export type OpsEventType =
   | "customer_saved_search_interest"
   | "customer_intro_requested"
   | "customer_intro_handled"
+  | "message_nudge_requested"
   | "search_alert_enabled"
   | "search_alert_disabled"
   | "search_alert_notified"
