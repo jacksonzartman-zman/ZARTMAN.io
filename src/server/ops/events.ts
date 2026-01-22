@@ -12,6 +12,7 @@ export type OpsEventType =
   | "destination_status_updated"
   | "destination_submitted"
   | "destination_dispatch_started"
+  | "kickoff_update_requested"
   | "kickoff_task_status_changed"
   | "customer_saved_search_interest"
   | "customer_intro_requested"

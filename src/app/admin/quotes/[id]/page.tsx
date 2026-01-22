@@ -63,6 +63,7 @@ import { AdminQuoteProjectCard } from "./AdminQuoteProjectCard";
 import {
   ensureDefaultKickoffTasksForQuote,
   getKickoffTasksForQuote,
+  buildKickoffCompletionSummary,
   type QuoteKickoffTask,
 } from "@/server/quotes/kickoffTasks";
 import { AdminKickoffReviewCard } from "./AdminKickoffReviewCard";
@@ -856,14 +857,18 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       }
     }
 
-    const kickoffTotalCount = quoteKickoffTasks.length;
-    const kickoffCompletedCount = quoteKickoffTasks.filter((t) => t.status === "complete").length;
+    const kickoffCompletionSummary = buildKickoffCompletionSummary(quoteKickoffTasks);
+    const kickoffTotalCount = kickoffCompletionSummary.total;
+    const kickoffCompletedCount = kickoffCompletionSummary.completedCount;
+    const kickoffBlockedCount = kickoffCompletionSummary.blockedCount;
     const kickoffStatus =
-      kickoffTotalCount === 0 || kickoffCompletedCount === 0
+      kickoffTotalCount === 0
         ? "not-started"
         : kickoffCompletedCount >= kickoffTotalCount
           ? "complete"
-          : "in-progress";
+          : kickoffCompletedCount === 0 && kickoffBlockedCount === 0
+            ? "not-started"
+            : "in-progress";
     const kickoffLastUpdatedAt = (() => {
       let bestTs: number | null = null;
       let bestIso: string | null = null;
@@ -894,7 +899,9 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             : kickoffStatus === "complete"
               ? "Kickoff complete"
               : kickoffStatus === "in-progress"
-                ? `In progress (${kickoffCompletedCount} of ${kickoffTotalCount} tasks complete)`
+                ? `Kickoff: ${kickoffCompletedCount}/${kickoffTotalCount} complete${
+                    kickoffBlockedCount > 0 ? ` • ${kickoffBlockedCount} blocked` : ""
+                  }`
                 : "Kickoff not started"
       : "Waiting for winner";
     const kickoffSummaryTone =
@@ -922,6 +929,28 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       totalCount: kickoffTotalCount > 0 ? kickoffTotalCount : null,
     });
     const kickoffProgressRatio = formatKickoffTasksRatio(kickoffProgressBasis);
+
+    const kickoffStalled = (() => {
+      if (!hasWinningBid) return false;
+      if (kickoffTasksUnavailable) return false;
+      if (kickoffProgressBasis.isComplete) return false;
+      if (kickoffTotalCount <= 0) return false;
+
+      const awardedAtIso = typeof quote.awarded_at === "string" ? quote.awarded_at.trim() : "";
+      const awardedAtMs = awardedAtIso ? Date.parse(awardedAtIso) : Number.NaN;
+      if (!Number.isFinite(awardedAtMs)) return false;
+
+      const now = Date.now();
+      const awardedAgeMs = now - awardedAtMs;
+      const kickoffUpdateMs = kickoffLastUpdatedAt ? Date.parse(kickoffLastUpdatedAt) : Number.NaN;
+      const kickoffUpdateAgeMs = Number.isFinite(kickoffUpdateMs) ? now - kickoffUpdateMs : Number.POSITIVE_INFINITY;
+
+      return (
+        kickoffCompletionSummary.percentComplete < 40 &&
+        awardedAgeMs > 72 * 60 * 60 * 1000 &&
+        kickoffUpdateAgeMs > 48 * 60 * 60 * 1000
+      );
+    })();
 
     const winningSupplierIdForNudge =
       typeof winningBidRow?.supplier_id === "string" && winningBidRow.supplier_id.trim().length > 0
@@ -1340,9 +1369,13 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             View kickoff
           </HashScrollLink>
         </div>
-        <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-3">
+        <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-4">
           <SnapshotField label="Status" value={kickoffStatusValue} />
           <SnapshotField label="Completed" value={kickoffCompletedValue} />
+          <SnapshotField
+            label="Blocked"
+            value={kickoffTotalCount > 0 ? `${kickoffBlockedCount}` : "—"}
+          />
           <SnapshotField label="Last updated" value={kickoffLastUpdatedValue} />
         </dl>
       </section>
@@ -2705,6 +2738,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                     blockedReason: task.blockedReason,
                     updatedAt: task.updatedAt,
                   }))}
+                  summary={kickoffCompletionSummary}
+                  kickoffStalled={kickoffStalled}
                   unavailable={hasWinningBid && kickoffTasksUnavailable}
                 />
               </div>

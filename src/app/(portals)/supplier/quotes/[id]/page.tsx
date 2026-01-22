@@ -71,6 +71,7 @@ import {
   ensureDefaultKickoffTasksForQuote,
   getKickoffTasksForQuote,
   isKickoffReadyForSupplier,
+  buildKickoffCompletionSummary,
   type QuoteKickoffTask,
 } from "@/server/quotes/kickoffTasks";
 import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
@@ -514,8 +515,11 @@ function SupplierQuoteWorkspace({
         : `${fileCount} files attached`;
 
   const kickoffTasksAvailable = !kickoffTasksUnavailable;
-  const kickoffCompletedCount = kickoffTasks.filter((t) => t.status === "complete").length;
-  const kickoffTotalCount = kickoffTasks.length;
+  const kickoffCompletionSummary = kickoffTasksAvailable
+    ? buildKickoffCompletionSummary(kickoffTasks)
+    : null;
+  const kickoffCompletedCount = kickoffCompletionSummary?.completedCount ?? 0;
+  const kickoffTotalCount = kickoffCompletionSummary?.total ?? 0;
   const kickoffProgressBasisForRail = resolveKickoffProgressBasis({
     kickoffCompletedAt:
       (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? null,
@@ -976,6 +980,7 @@ function SupplierQuoteWorkspace({
                 quoteId={quote.id}
                 tasks={kickoffTasksAvailable ? kickoffTasks.map(mapQuoteKickoffTaskToRow) : []}
                 readOnly={false}
+                summary={kickoffCompletionSummary}
               />
             </>
           ) : null}
