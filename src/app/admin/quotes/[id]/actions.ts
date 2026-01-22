@@ -81,6 +81,17 @@ const ADMIN_AWARD_BID_ERROR =
   "We couldn't verify that bid. Please retry.";
 const ADMIN_AWARD_ALREADY_WON_ERROR =
   "A winning supplier has already been selected for this quote.";
+const ADMIN_AWARD_PROVIDER_GENERIC_ERROR =
+  "We couldn't record the awarded provider. Please try again.";
+const ADMIN_AWARD_PROVIDER_ALREADY_SET_ERROR =
+  "This quote was already awarded. Refresh to see the latest state.";
+const ADMIN_AWARD_PROVIDER_ID_ERROR = "Select a provider.";
+const ADMIN_AWARD_PROVIDER_OFFER_MISMATCH_ERROR =
+  "Selected offer does not belong to this provider.";
+const ADMIN_AWARD_PROVIDER_OFFER_NOT_FOUND_ERROR =
+  "We couldn't verify that offer. Please retry.";
+const ADMIN_AWARD_PROVIDER_NOTES_LENGTH_ERROR =
+  "Notes must be 2000 characters or fewer.";
 
 export type AdminQuoteUpdateState =
   | { ok: true; message: string }
@@ -101,6 +112,15 @@ export type AwardFeedbackFormState =
   | { status: "idle" }
   | { status: "success"; message: string }
   | { status: "error"; error: string; fieldErrors?: { reason?: string; notes?: string } };
+
+export type AwardProviderFormState =
+  | { status: "idle" }
+  | { status: "success"; message: string }
+  | {
+      status: "error";
+      error: string;
+      fieldErrors?: { providerId?: string; offerId?: string; awardNotes?: string };
+    };
 
 const ADMIN_AWARD_FEEDBACK_GENERIC_ERROR =
   "We couldn't save award feedback. Please try again.";
@@ -506,6 +526,224 @@ export async function awardBidFormAction(
     status: "success",
     message: "Winner recorded.",
   };
+}
+
+export async function awardProviderForQuoteAction(
+  quoteId: string,
+  _prevState: AwardProviderFormState,
+  formData: FormData,
+): Promise<AwardProviderFormState> {
+  const normalizedQuoteId = typeof quoteId === "string" ? quoteId.trim() : "";
+  const providerIdRaw = getFormString(formData, "providerId");
+  const offerIdRaw = getFormString(formData, "offerId");
+  const notesRaw = getFormString(formData, "awardNotes");
+
+  const providerId = typeof providerIdRaw === "string" ? providerIdRaw.trim() : "";
+  const offerId =
+    typeof offerIdRaw === "string" && offerIdRaw.trim().length > 0
+      ? offerIdRaw.trim()
+      : null;
+  const awardNotes =
+    typeof notesRaw === "string" && notesRaw.trim().length > 0 ? notesRaw.trim() : null;
+
+  if (!normalizedQuoteId) {
+    return { status: "error", error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+  if (!providerId) {
+    return {
+      status: "error",
+      error: ADMIN_AWARD_PROVIDER_ID_ERROR,
+      fieldErrors: { providerId: ADMIN_AWARD_PROVIDER_ID_ERROR },
+    };
+  }
+  if (awardNotes && awardNotes.length > 2000) {
+    return {
+      status: "error",
+      error: ADMIN_AWARD_PROVIDER_NOTES_LENGTH_ERROR,
+      fieldErrors: { awardNotes: ADMIN_AWARD_PROVIDER_NOTES_LENGTH_ERROR },
+    };
+  }
+
+  try {
+    const adminUser = await requireAdminUser();
+
+    const schemaReady = await schemaGate({
+      enabled: true,
+      relation: "quotes",
+      requiredColumns: [
+        "id",
+        "awarded_at",
+        "awarded_by_user_id",
+        "awarded_by_role",
+        "awarded_provider_id",
+        "awarded_offer_id",
+        "award_notes",
+      ],
+      warnPrefix: "[admin award provider]",
+      warnKey: "admin_award_provider:quotes_missing_schema",
+    });
+    if (!schemaReady) {
+      return { status: "error", error: ADMIN_AWARD_PROVIDER_GENERIC_ERROR };
+    }
+
+    const { data: existing, error: existingError } = await supabaseServer
+      .from("quotes")
+      .select(
+        "id,awarded_bid_id,awarded_supplier_id,awarded_at,awarded_provider_id,awarded_offer_id",
+      )
+      .eq("id", normalizedQuoteId)
+      .maybeSingle<{
+        id: string;
+        awarded_bid_id: string | null;
+        awarded_supplier_id: string | null;
+        awarded_at: string | null;
+        awarded_provider_id: string | null;
+        awarded_offer_id: string | null;
+      }>();
+
+    if (existingError) {
+      if (!isMissingTableOrColumnError(existingError)) {
+        console.error("[admin award provider] quote lookup failed", {
+          quoteId: normalizedQuoteId,
+          error: serializeSupabaseError(existingError),
+        });
+      }
+      return { status: "error", error: ADMIN_AWARD_PROVIDER_GENERIC_ERROR };
+    }
+    if (!existing?.id) {
+      return { status: "error", error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+    }
+
+    const alreadyAwardedToBid =
+      Boolean((existing.awarded_bid_id ?? "").trim()) ||
+      Boolean((existing.awarded_supplier_id ?? "").trim());
+    if (alreadyAwardedToBid) {
+      return { status: "error", error: ADMIN_AWARD_PROVIDER_ALREADY_SET_ERROR };
+    }
+
+    const existingProviderId =
+      typeof existing.awarded_provider_id === "string" ? existing.awarded_provider_id.trim() : "";
+    const existingOfferId =
+      typeof existing.awarded_offer_id === "string" ? existing.awarded_offer_id.trim() : "";
+
+    // Idempotency: if already awarded to the same provider/offer, treat as success.
+    if (
+      existingProviderId &&
+      existingProviderId === providerId &&
+      (offerId ? existingOfferId === offerId : !existingOfferId)
+    ) {
+      return { status: "success", message: "Award already recorded." };
+    }
+
+    if (offerId) {
+      const offerSchemaReady = await schemaGate({
+        enabled: true,
+        relation: "rfq_offers",
+        requiredColumns: ["id", "rfq_id", "provider_id"],
+        warnPrefix: "[admin award provider]",
+        warnKey: "admin_award_provider:offers_missing_schema",
+      });
+      if (!offerSchemaReady) {
+        return { status: "error", error: ADMIN_AWARD_PROVIDER_OFFER_NOT_FOUND_ERROR };
+      }
+
+      const { data: offer, error: offerError } = await supabaseServer
+        .from("rfq_offers")
+        .select("id,rfq_id,provider_id")
+        .eq("id", offerId)
+        .maybeSingle<{ id: string; rfq_id: string | null; provider_id: string | null }>();
+
+      if (offerError) {
+        if (!isMissingTableOrColumnError(offerError)) {
+          console.error("[admin award provider] offer lookup failed", {
+            quoteId: normalizedQuoteId,
+            offerId,
+            error: serializeSupabaseError(offerError),
+          });
+        }
+        return { status: "error", error: ADMIN_AWARD_PROVIDER_OFFER_NOT_FOUND_ERROR };
+      }
+
+      if (!offer?.id || offer.rfq_id !== normalizedQuoteId) {
+        return { status: "error", error: ADMIN_AWARD_PROVIDER_OFFER_NOT_FOUND_ERROR };
+      }
+      const offerProviderId = typeof offer.provider_id === "string" ? offer.provider_id.trim() : "";
+      if (!offerProviderId) {
+        return { status: "error", error: ADMIN_AWARD_PROVIDER_OFFER_NOT_FOUND_ERROR };
+      }
+      if (offerProviderId !== providerId) {
+        return {
+          status: "error",
+          error: ADMIN_AWARD_PROVIDER_OFFER_MISMATCH_ERROR,
+          fieldErrors: { offerId: ADMIN_AWARD_PROVIDER_OFFER_MISMATCH_ERROR },
+        };
+      }
+    }
+
+    const now = new Date().toISOString();
+    const awardedAt =
+      typeof existing.awarded_at === "string" && existing.awarded_at.trim().length > 0
+        ? existing.awarded_at
+        : now;
+
+    const { error: updateError } = await supabaseServer
+      .from("quotes")
+      .update({
+        status: "won",
+        awarded_at: awardedAt,
+        awarded_by_user_id: adminUser.id,
+        awarded_by_role: "admin",
+        awarded_provider_id: providerId,
+        awarded_offer_id: offerId,
+        award_notes: awardNotes,
+        updated_at: now,
+      })
+      .eq("id", normalizedQuoteId);
+
+    if (updateError) {
+      if (!isMissingTableOrColumnError(updateError)) {
+        console.error("[admin award provider] update failed", {
+          quoteId: normalizedQuoteId,
+          providerId,
+          offerId,
+          error: serializeSupabaseError(updateError),
+        });
+      }
+      return { status: "error", error: ADMIN_AWARD_PROVIDER_GENERIC_ERROR };
+    }
+
+    // Best-effort timeline event; do not block award.
+    void emitQuoteEvent({
+      quoteId: normalizedQuoteId,
+      eventType: "quote_awarded",
+      actorRole: "admin",
+      actorUserId: adminUser.id,
+      metadata: {
+        provider_id: providerId,
+        offer_id: offerId ?? null,
+        award_notes: awardNotes ?? null,
+        awarded_by_role: "admin",
+      },
+      createdAt: awardedAt,
+    });
+
+    revalidatePath("/admin/quotes");
+    revalidatePath(`/admin/quotes/${normalizedQuoteId}`);
+    revalidatePath("/customer/quotes");
+    revalidatePath(`/customer/quotes/${normalizedQuoteId}`);
+    revalidatePath("/supplier/quotes");
+    revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
+
+    return { status: "success", message: "Award recorded." };
+  } catch (error) {
+    console.error("[admin award provider] action crashed", {
+      quoteId: normalizedQuoteId,
+      providerId,
+      offerId,
+      error: serializeActionError(error),
+    });
+    return { status: "error", error: ADMIN_AWARD_PROVIDER_GENERIC_ERROR };
+  }
 }
 
 export async function submitAdminQuoteUpdateAction(

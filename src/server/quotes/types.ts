@@ -35,6 +35,10 @@ export type QuoteWithUploadsRow = QuoteFileSource & {
   awarded_at?: string | null;
   awarded_by_user_id?: string | null;
   awarded_by_role?: string | null;
+  // 18.1.1 provider/offer award fields (admin-only award flow)
+  awarded_provider_id?: string | null;
+  awarded_offer_id?: string | null;
+  award_notes?: string | null;
   selected_provider_id?: string | null;
   selected_offer_id?: string | null;
   selected_at?: string | null;

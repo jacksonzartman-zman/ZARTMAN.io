@@ -104,6 +104,7 @@ import { AwardOutcomeCard } from "./AwardOutcomeCard";
 import { loadLatestAwardFeedbackForQuote } from "@/server/quotes/awardFeedback";
 import { formatAwardFeedbackReasonLabel } from "@/lib/awardFeedback";
 import { AwardEmailGenerator } from "./AwardEmailGenerator";
+import { AwardProviderModal } from "./AwardProviderModal";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { loadQuoteUploadGroups } from "@/server/quotes/uploadFiles";
@@ -142,6 +143,12 @@ import { AdminRfqDestinationsCard } from "./AdminRfqDestinationsCard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+type QuoteProviderAwardRow = {
+  awarded_provider_id: string | null;
+  awarded_offer_id: string | null;
+  award_notes: string | null;
+};
 
 type QuoteDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -457,13 +464,30 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     })();
     const { perPart, summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
     const rfqQualitySummary = await computeRfqQualitySummary(quote.id);
-    const [providersResult, rfqDestinations, rfqOffers, opsEventsResult] = await Promise.all([
-      listProvidersWithContact(),
-      getRfqDestinations(quote.id),
-      getRfqOffers(quote.id),
-      listOpsEventsForQuote(quote.id, { limit: 20 }),
-    ]);
+    const [providersResult, rfqDestinations, rfqOffers, opsEventsResult, providerAwardRow] =
+      await Promise.all([
+        listProvidersWithContact(),
+        getRfqDestinations(quote.id),
+        getRfqOffers(quote.id),
+        listOpsEventsForQuote(quote.id, { limit: 20 }),
+        (async () => {
+          try {
+            const { data, error } = await supabaseServer
+              .from("quotes")
+              .select("awarded_provider_id,awarded_offer_id,award_notes")
+              .eq("id", quote.id)
+              .maybeSingle<QuoteProviderAwardRow>();
+            if (error) return null;
+            return data ?? null;
+          } catch {
+            return null;
+          }
+        })(),
+      ]);
     const providers = providersResult.providers;
+    const awardedProviderId = providerAwardRow?.awarded_provider_id ?? null;
+    const awardedOfferId = providerAwardRow?.awarded_offer_id ?? null;
+    const awardNotes = providerAwardRow?.award_notes ?? null;
     const shipToPostalCode =
       quote.ship_to_postal_code ?? uploadMeta?.shipping_postal_code ?? null;
     const providerEligibilityCriteria = buildProviderEligibilityCriteria({
@@ -783,6 +807,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       Boolean(canonicalAwardedBidId) ||
       Boolean(quote.awarded_supplier_id) ||
       Boolean(quote.awarded_at) ||
+      Boolean((awardedProviderId ?? "").trim()) ||
       bids.some((bid) => isWinningBidStatus(bid?.status));
     const winningBidRow =
       (canonicalAwardedBidId
@@ -975,10 +1000,15 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const selectionRecordedExists = Boolean(
       (typeof quote.awarded_supplier_id === "string" && quote.awarded_supplier_id.trim()) ||
         (typeof quote.awarded_bid_id === "string" && quote.awarded_bid_id.trim()) ||
+        (typeof awardedProviderId === "string" && awardedProviderId.trim()) ||
         quote.awarded_at,
     );
+    const awardedProviderLabel =
+      typeof awardedProviderId === "string" && awardedProviderId.trim().length > 0
+        ? providerLabelById.get(awardedProviderId) ?? awardedProviderId
+        : null;
     const selectionSupplierDisplay = selectionRecordedExists
-      ? (winningSupplierName ?? awardedSupplierId ?? "Supplier selected")
+      ? (winningSupplierName ?? awardedSupplierId ?? awardedProviderLabel ?? "Supplier selected")
       : "—";
     const lastUpdatedSummary =
       quote.updated_at
@@ -996,12 +1026,19 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       ...(lastUpdatedSummary ? [{ label: "Last updated", value: lastUpdatedSummary }] : []),
     ].slice(0, 3);
     const selectionRecordedItems = selectionRecordedExists
-      ? [
-          { label: "Supplier", value: selectionSupplierDisplay },
-          { label: "Awarded price", value: winningBidAmountLabel },
-          { label: "Lead time", value: winningLeadTimeLabel },
-          ...(awardedAtLabel ? [{ label: "Recorded", value: awardedAtLabel }] : []),
-        ].slice(0, 4)
+      ? winningBidExists
+        ? [
+            { label: "Supplier", value: selectionSupplierDisplay },
+            { label: "Awarded price", value: winningBidAmountLabel },
+            { label: "Lead time", value: winningLeadTimeLabel },
+            ...(awardedAtLabel ? [{ label: "Recorded", value: awardedAtLabel }] : []),
+          ].slice(0, 4)
+        : [
+            { label: "Provider", value: awardedProviderLabel ?? "Provider selected" },
+            { label: "Offer", value: awardedOfferId ? formatShortId(awardedOfferId) : "—" },
+            { label: "Recorded", value: awardedAtLabel ?? "—" },
+            { label: "Notes", value: awardNotes ? "Recorded" : "—" },
+          ].slice(0, 4)
       : null;
     const awardFeedback = awardedSupplierId
       ? await loadLatestAwardFeedbackForQuote({
@@ -2384,7 +2421,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             summary={
               hasWinningBid ? (
                 <span className="pill pill-success px-3 py-0.5 text-[11px] font-semibold">
-                  Winner
+                  Awarded
                 </span>
               ) : (
                 <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
@@ -2483,6 +2520,31 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               }
             >
               <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-900 bg-slate-950/40 px-5 py-4 text-sm text-slate-200">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Award supplier (admin)
+                    </p>
+                    <p className="mt-1 text-sm text-slate-300">
+                      Select the winning provider (optionally tie to a specific offer).
+                    </p>
+                    {awardedProviderLabel ? (
+                      <p className="mt-2 text-xs text-emerald-200">
+                        Awarded: {awardedProviderLabel}
+                        {awardedOfferId ? ` · offer ${formatShortId(awardedOfferId)}` : ""}
+                        {awardNotes ? " · notes recorded" : ""}
+                      </p>
+                    ) : null}
+                  </div>
+                  <AwardProviderModal
+                    quoteId={quote.id}
+                    providers={providers}
+                    offers={rfqOffers}
+                    disabled={Boolean((quote.awarded_at ?? "").trim())}
+                    initialProviderId={awardedProviderId}
+                    initialOfferId={awardedOfferId}
+                  />
+                </div>
                 <AwardEmailGenerator
                   quoteId={quote.id}
                   selectedOfferId={selectedOfferId}
@@ -2670,7 +2732,7 @@ function buildAdminQuoteSections(args: {
   opsEventCount: number;
 }): QuoteSectionRailSection[] {
   const decisionBadge = args.hasWinner
-    ? "Winner"
+    ? "Awarded"
     : args.bidCount > 0
       ? `${args.bidCount}`
       : undefined;
