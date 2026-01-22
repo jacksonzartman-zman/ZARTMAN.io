@@ -49,6 +49,7 @@ type NextActionKey =
   | "needs_research"
   | "needs_contact"
   | "awaiting_response"
+  | "needs_profile"
   | "ready_to_verify"
   | "ready_to_activate"
   | "up_to_date";
@@ -68,6 +69,10 @@ const NEXT_ACTION_META: Record<NextActionKey, { label: string; className: string
   awaiting_response: {
     label: "Awaiting response",
     className: "border-blue-500/40 bg-blue-500/10 text-blue-100",
+  },
+  needs_profile: {
+    label: "Needs profile",
+    className: "border-amber-500/40 bg-amber-500/10 text-amber-100",
   },
   ready_to_verify: {
     label: "Ready to verify",
@@ -233,7 +238,7 @@ export default function ProviderPipelineTableBody({
   return (
     <>
       <tr className="bg-slate-950/60">
-        <td colSpan={8} className="px-5 py-4">
+        <td colSpan={9} className="px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -398,6 +403,9 @@ function ProviderPipelineRowDisplay({
   const missingEmail = !emailValue;
   const missingWebsite = !websiteValue && !rfqUrlValue;
   const hasResponseNotes = hasResponseNotesFlag(provider.notes);
+  const profileCompleteness = row.profileCompleteness;
+  const profileMissing = profileCompleteness.missing.filter((value) => value.length > 0);
+  const profileReadyToVerify = profileCompleteness.readyToVerify;
   const showInDirectory = supportsDirectoryVisibility
     ? Boolean(provider.show_in_directory)
     : provider.verification_status === "verified";
@@ -407,12 +415,14 @@ function ProviderPipelineRowDisplay({
     isVerified,
     isActive,
     hasResponseNotes,
+    profileReadyToVerify,
   });
   const nextActionMeta = NEXT_ACTION_META[nextActionKey];
   const nextActionDetail = buildNextActionDetail(nextActionKey, {
     missingEmail,
     missingWebsite,
     hasResponseNotes,
+    profileMissing,
   });
 
   return (
@@ -581,6 +591,18 @@ function ProviderPipelineRowDisplay({
           )}
         </td>
         <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+          <span
+            className={pillClass(
+              profileReadyToVerify
+                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+            )}
+            title={profileMissing.length > 0 ? profileMissing.join(" · ") : undefined}
+          >
+            <span className="font-mono">{profileCompleteness.score}</span>
+          </span>
+        </td>
+        <td className={clsx(adminTableCellClass, "px-5 py-4")}>
           <div className="space-y-2">
             <span className={pillClass(nextActionMeta.className)}>{nextActionMeta.label}</span>
             {nextActionDetail ? (
@@ -653,11 +675,17 @@ function ProviderPipelineRowDisplay({
                 <input type="hidden" name="providerId" value={provider.id} />
                 <button
                   type="submit"
-                  disabled={!hasResponseNotes}
-                  title={!hasResponseNotes ? "Mark responded (with notes) first." : undefined}
+                  disabled={!hasResponseNotes || !profileReadyToVerify}
+                  title={
+                    !hasResponseNotes
+                      ? "Mark responded (with notes) first."
+                      : !profileReadyToVerify
+                        ? `Complete profile first: ${profileMissing.join(" · ")}`
+                        : undefined
+                  }
                   className={clsx(
                     "rounded-full border px-3 py-1 font-semibold transition",
-                    hasResponseNotes
+                    hasResponseNotes && profileReadyToVerify
                       ? "border-emerald-500/40 text-emerald-100 hover:border-emerald-400 hover:text-white"
                       : "cursor-not-allowed border-slate-800 text-slate-500 opacity-70",
                   )}
@@ -726,7 +754,7 @@ function ProviderPipelineRowDisplay({
         </td>
       </tr>
       <tr className="bg-slate-950/30">
-        <td colSpan={8} className="px-5 pb-5">
+        <td colSpan={9} className="px-5 pb-5">
           <details className="rounded-xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
             <summary className="cursor-pointer font-semibold text-slate-200">
               Ops timeline ({opsEvents.length})
@@ -806,12 +834,16 @@ function resolveNextActionKey(args: {
   isVerified: boolean;
   isActive: boolean;
   hasResponseNotes: boolean;
+  profileReadyToVerify: boolean;
 }): NextActionKey {
   if (args.needsResearch) {
     return "needs_research";
   }
   if (!args.contacted) {
     return "needs_contact";
+  }
+  if (!args.isVerified && args.hasResponseNotes && !args.profileReadyToVerify) {
+    return "needs_profile";
   }
   if (!args.isVerified && args.hasResponseNotes) {
     return "ready_to_verify";
@@ -827,7 +859,12 @@ function resolveNextActionKey(args: {
 
 function buildNextActionDetail(
   key: NextActionKey,
-  args: { missingEmail: boolean; missingWebsite: boolean; hasResponseNotes: boolean },
+  args: {
+    missingEmail: boolean;
+    missingWebsite: boolean;
+    hasResponseNotes: boolean;
+    profileMissing: string[];
+  },
 ): string | null {
   switch (key) {
     case "needs_research": {
@@ -839,6 +876,11 @@ function buildNextActionDetail(
     }
     case "ready_to_verify":
       return args.hasResponseNotes ? "Response notes flagged" : null;
+    case "needs_profile": {
+      if (args.profileMissing.length === 0) return "Missing profile details";
+      const detail = args.profileMissing.slice(0, 3).join(" · ");
+      return args.profileMissing.length > 3 ? `${detail} · …` : detail;
+    }
     case "awaiting_response":
       return "Awaiting reply";
     case "ready_to_activate":

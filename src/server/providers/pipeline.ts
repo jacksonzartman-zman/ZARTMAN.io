@@ -6,6 +6,7 @@ import {
 } from "@/server/providers";
 import { assessProviderCapabilityMatch } from "@/lib/provider/capabilityMatch";
 import { assessDiscoveryCompleteness } from "@/lib/provider/discoveryCompleteness";
+import { scoreProviderProfileCompleteness } from "@/lib/provider/providerProfileCompleteness";
 
 export type ProviderPipelineView =
   | "queue"
@@ -22,6 +23,7 @@ export type ProviderPipelineRow = {
   websiteValue: string | null;
   rfqUrlValue: string | null;
   discoveryComplete: boolean;
+  profileCompleteness: ReturnType<typeof scoreProviderProfileCompleteness>;
   contacted: boolean;
   needsResearch: boolean;
   isVerified: boolean;
@@ -35,6 +37,9 @@ export async function listProviderPipelineRows(args: {
   match?: "all" | "mismatch" | "partial" | null;
   source?: ProviderSource | null;
   discovery?: "all" | "incomplete" | null;
+  profile?: "all" | "incomplete" | "ready_to_verify" | null;
+  sort?: "name" | "profile" | null;
+  dir?: "asc" | "desc" | null;
 }): Promise<{ rows: ProviderPipelineRow[]; emailColumn: ProviderEmailColumn | null }> {
   const { providers, emailColumn } = await listProvidersWithContact();
   const view = normalizeView(args.view);
@@ -42,6 +47,9 @@ export async function listProviderPipelineRows(args: {
   const matchFilter = normalizeMatchFilter(args.match);
   const source = normalizeSource(args.source);
   const discoveryFilter = normalizeDiscoveryFilter(args.discovery);
+  const profileFilter = normalizeProfileFilter(args.profile);
+  const sortKey = normalizeSortKey(args.sort);
+  const sortDir = normalizeSortDir(args.dir);
 
   const rows = providers.map((provider) => {
     const rawEmailValue = readEmailValue(provider, emailColumn);
@@ -64,6 +72,16 @@ export async function listProviderPipelineRows(args: {
     const hasWebsite = Boolean(websiteValue || rfqUrlValue);
     const needsResearch =
       provider.source === "discovered" ? !discoveryComplete : !emailValue || !hasWebsite;
+    const profileCompleteness = scoreProviderProfileCompleteness({
+      companyName: provider.name,
+      email: emailValue,
+      website: websiteValue || rfqUrlValue,
+      processes: provider.processes,
+      country: provider.country ?? null,
+      states: provider.states,
+      materials: provider.materials,
+      certifications: null,
+    });
     const capabilityMatch = assessProviderCapabilityMatch({
       processes: provider.processes,
       materials: provider.materials,
@@ -77,6 +95,7 @@ export async function listProviderPipelineRows(args: {
       websiteValue,
       rfqUrlValue,
       discoveryComplete,
+      profileCompleteness,
       contacted,
       needsResearch,
       isVerified,
@@ -91,10 +110,12 @@ export async function listProviderPipelineRows(args: {
     if (!matchesMatchFilter(row, matchFilter)) return false;
     if (!matchesSource(row, source)) return false;
     if (!matchesDiscoveryFilter(row, discoveryFilter)) return false;
+    if (!matchesProfileFilter(row, profileFilter)) return false;
     return true;
   });
 
-  return { rows: filtered, emailColumn };
+  const sorted = sortRows(filtered, { sortKey, sortDir });
+  return { rows: sorted, emailColumn };
 }
 
 function normalizeView(view: ProviderPipelineView | null | undefined): ProviderPipelineView {
@@ -188,6 +209,75 @@ function matchesDiscoveryFilter(
   if (filter !== "incomplete") return true;
   if (row.provider.source !== "discovered") return false;
   return !row.discoveryComplete;
+}
+
+function normalizeProfileFilter(
+  value: "all" | "incomplete" | "ready_to_verify" | null | undefined,
+): "all" | "incomplete" | "ready_to_verify" {
+  if (value === "incomplete" || value === "ready_to_verify") return value;
+  return "all";
+}
+
+function matchesProfileFilter(
+  row: ProviderPipelineRow,
+  filter: ReturnType<typeof normalizeProfileFilter>,
+): boolean {
+  if (filter === "all") return true;
+  if (filter === "incomplete") {
+    return !row.profileCompleteness.readyToVerify;
+  }
+  // ready_to_verify
+  const hasResponseNotes = hasResponseNotesFlag(row.provider.notes);
+  return (
+    row.provider.verification_status !== "verified" &&
+    hasResponseNotes &&
+    row.profileCompleteness.readyToVerify
+  );
+}
+
+function hasResponseNotesFlag(notes: string | null): boolean {
+  if (!notes) return false;
+  const lines = notes.split("\n");
+  return lines.some((line) => {
+    const trimmed = line.trim().toLowerCase();
+    if (!trimmed) return false;
+    if (trimmed.startsWith("response notes:")) return true;
+    if (trimmed.startsWith("response:")) return true;
+    if (trimmed.startsWith("[response]")) return true;
+    if (trimmed.startsWith("#response")) return true;
+    return false;
+  });
+}
+
+function normalizeSortKey(value: "name" | "profile" | null | undefined): "name" | "profile" {
+  if (value === "profile") return "profile";
+  return "name";
+}
+
+function normalizeSortDir(value: "asc" | "desc" | null | undefined): "asc" | "desc" {
+  if (value === "asc" || value === "desc") return value;
+  return "desc";
+}
+
+function sortRows(
+  rows: ProviderPipelineRow[],
+  args: { sortKey: ReturnType<typeof normalizeSortKey>; sortDir: ReturnType<typeof normalizeSortDir> },
+): ProviderPipelineRow[] {
+  const sorted = [...rows];
+  sorted.sort((a, b) => {
+    if (args.sortKey === "profile") {
+      const sa = a.profileCompleteness.score;
+      const sb = b.profileCompleteness.score;
+      if (sa !== sb) {
+        return args.sortDir === "asc" ? sa - sb : sb - sa;
+      }
+    }
+    // fallback: stable-ish name ordering
+    const nameDiff = (a.provider.name ?? "").localeCompare(b.provider.name ?? "");
+    if (nameDiff !== 0) return nameDiff;
+    return a.provider.id.localeCompare(b.provider.id);
+  });
+  return sorted;
 }
 
 function readEmailValue(provider: ProviderContactRow, column: ProviderEmailColumn | null): string | null {
