@@ -20,7 +20,11 @@ export async function POST(req: Request) {
     if (body.storage_path) insertPayload.storage_path = body.storage_path
     if (body.bucket_id) insertPayload.bucket_id = body.bucket_id
 
-    const { data, error } = await admin.from('files').insert(insertPayload).select('*').single()
+    const { data, error } = await admin
+      .from('files')
+      .insert(insertPayload)
+      .select('id,quote_id,filename,size_bytes,mime,storage_path,bucket_id,owner_user_id,created_at')
+      .single()
     if (error) throw error
     return NextResponse.json({ file: data })
   } catch (e: any) {

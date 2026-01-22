@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     const sb = supabasePublic()
     const { data, error } = await sb
       .from('messages')
-      .select('*')
+      .select('id,thread_id,sender_user_id,body,is_read,created_at')
       .eq('thread_id', (await getThreadId(sb, quote)))
       .order('created_at', { ascending: true })
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const { data, error } = await admin
       .from('messages')
       .insert({ thread_id: threadId, sender_user_id, body, is_read: false })
-      .select('*')
+      .select('id,thread_id,sender_user_id,body,is_read,created_at')
       .single()
 
     if (error) throw error

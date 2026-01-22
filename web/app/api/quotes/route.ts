@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     const sb = supabasePublic()
     const { data, error } = await sb
       .from('quotes')
-      .select('*')
+      .select('id,title,company_id,owner_user_id,status,created_at')
       .eq('owner_user_id', owner)
       .order('created_at', { ascending: false })
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
         owner_user_id: body.owner_user_id,
         status: 'draft',
       })
-      .select('*')
+      .select('id,title,company_id,owner_user_id,status,created_at')
       .single()
     if (error) throw error
     return NextResponse.json({ quote: data })
