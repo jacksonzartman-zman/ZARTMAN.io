@@ -7,6 +7,7 @@ import { requireAdminUser } from "@/server/auth";
 import { serializeSupabaseError } from "@/server/admin/logging";
 import {
   logProviderContactedOpsEvent,
+  logProviderRespondedOpsEvent,
   logProviderDirectoryVisibilityEvent,
   logProviderStatusOpsEvent,
 } from "@/server/ops/events";
@@ -17,10 +18,74 @@ const PROVIDER_ACTION_ERROR = "We couldn't update this provider right now.";
 const BULK_PROVIDERS_INPUT_ERROR = "Select at least one provider.";
 const BULK_PROVIDERS_GENERIC_ERROR = "We couldn't update these providers right now.";
 const BULK_DIRECTORY_VISIBILITY_ERROR = "Directory visibility isn't available yet.";
+const BULK_NOTES_ERROR = "Response notes are required.";
 
 export type BulkProviderActionResult =
   | { ok: true; message: string; updatedCount: number; skippedCount: number }
   | { ok: false; error: string };
+
+export async function markProviderRespondedAction(formData: FormData): Promise<void> {
+  const providerId = normalizeId(getFormString(formData, "providerId"));
+  const responseNotes = normalizeText(getFormString(formData, "responseNotes"));
+  if (!providerId) return;
+  if (!responseNotes) return;
+
+  try {
+    await requireAdminUser();
+
+    const supportsNotes = await hasColumns("providers", ["notes"]);
+    if (supportsNotes) {
+      const supported = await schemaGate({
+        enabled: true,
+        relation: "providers",
+        requiredColumns: ["id", "notes"],
+        warnPrefix: "[admin providers]",
+        warnKey: "admin_providers_mark_responded",
+      });
+      if (supported) {
+        let existingNotes: string | null = null;
+        try {
+          const { data, error } = await supabaseServer
+            .from("providers")
+            .select("id,notes")
+            .eq("id", providerId)
+            .maybeSingle<{ id: string | null; notes: string | null }>();
+          if (!error && data) {
+            existingNotes = normalizeOptionalText(data.notes);
+          }
+        } catch (error) {
+          console.warn("[admin providers] responded notes lookup failed", {
+            providerId,
+            error: serializeActionError(error),
+          });
+        }
+
+        const merged = mergeNotesWithResponse(existingNotes, responseNotes);
+        const { error } = await supabaseServer
+          .from("providers")
+          .update({ notes: merged })
+          .eq("id", providerId);
+
+        if (error) {
+          console.error("[admin providers] mark responded failed", {
+            providerId,
+            error: serializeSupabaseError(error),
+          });
+        }
+      }
+    }
+
+    await logProviderRespondedOpsEvent({ providerId, responseNotes });
+
+    revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
+  } catch (error) {
+    console.error("[admin providers] mark responded crashed", {
+      providerId,
+      error: serializeActionError(error),
+    });
+  }
+}
 
 export async function verifyProviderAction(formData: FormData): Promise<void> {
   const providerId = normalizeId(getFormString(formData, "providerId"));
@@ -568,12 +633,306 @@ export async function bulkHideProvidersInDirectoryAction(args: {
   }
 }
 
+export async function bulkShowProvidersInDirectoryAction(args: {
+  providerIds: string[];
+}): Promise<BulkProviderActionResult> {
+  const providerIds = normalizeProviderIds(args.providerIds);
+  if (providerIds.length === 0) {
+    return { ok: false, error: BULK_PROVIDERS_INPUT_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+
+    const supported = await schemaGate({
+      enabled: true,
+      relation: "providers",
+      requiredColumns: ["id", "show_in_directory"],
+      warnPrefix: "[admin providers]",
+      warnKey: "admin_providers_bulk_show_directory",
+    });
+    if (!supported) {
+      return { ok: false, error: BULK_DIRECTORY_VISIBILITY_ERROR };
+    }
+
+    const { data, error } = await supabaseServer
+      .from("providers")
+      .select("id,show_in_directory")
+      .in("id", providerIds)
+      .returns<Array<{ id: string | null; show_in_directory: boolean | null }>>();
+
+    if (error) {
+      console.error("[admin providers] bulk show directory lookup failed", {
+        providerIds,
+        error: serializeSupabaseError(error),
+      });
+      return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+    }
+
+    const updateIds = (data ?? [])
+      .map((row) => ({
+        id: normalizeText(row.id),
+        show: row?.show_in_directory,
+      }))
+      .filter((row) => row.id && row.show !== true)
+      .map((row) => row.id);
+
+    if (updateIds.length > 0) {
+      const { error: updateError } = await supabaseServer
+        .from("providers")
+        .update({ show_in_directory: true })
+        .in("id", updateIds);
+
+      if (updateError) {
+        console.error("[admin providers] bulk show directory update failed", {
+          providerIds,
+          error: serializeSupabaseError(updateError),
+        });
+        return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+      }
+    }
+
+    await Promise.all(
+      updateIds.map((providerId) =>
+        logProviderDirectoryVisibilityEvent({
+          providerId,
+          showInDirectory: true,
+          reason: "bulk_show",
+        }),
+      ),
+    );
+
+    revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
+
+    const updatedCount = updateIds.length;
+    const skippedCount = providerIds.length - updatedCount;
+    const message =
+      updatedCount === 0
+        ? "All selected providers are already visible in the directory."
+        : skippedCount > 0
+          ? `Shown ${updatedCount} provider${updatedCount === 1 ? "" : "s"}; ${skippedCount} skipped.`
+          : `Shown ${updatedCount} provider${updatedCount === 1 ? "" : "s"} in the directory.`;
+
+    return { ok: true, message, updatedCount, skippedCount };
+  } catch (error) {
+    console.error("[admin providers] bulk show directory crashed", {
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+  }
+}
+
+export async function bulkActivateProvidersAction(args: {
+  providerIds: string[];
+}): Promise<BulkProviderActionResult> {
+  const providerIds = normalizeProviderIds(args.providerIds);
+  if (providerIds.length === 0) {
+    return { ok: false, error: BULK_PROVIDERS_INPUT_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+
+    const supported = await schemaGate({
+      enabled: true,
+      relation: "providers",
+      requiredColumns: ["id", "is_active"],
+      warnPrefix: "[admin providers]",
+      warnKey: "admin_providers_bulk_activate",
+    });
+    if (!supported) {
+      return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+    }
+
+    const { data, error } = await supabaseServer
+      .from("providers")
+      .select("id,is_active")
+      .in("id", providerIds)
+      .returns<Array<{ id: string | null; is_active: boolean | null }>>();
+
+    if (error) {
+      console.error("[admin providers] bulk activate lookup failed", {
+        providerIds,
+        error: serializeSupabaseError(error),
+      });
+      return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+    }
+
+    const updateIds = (data ?? [])
+      .map((row) => ({
+        id: normalizeText(row.id),
+        active: row?.is_active,
+      }))
+      .filter((row) => row.id && row.active !== true)
+      .map((row) => row.id);
+
+    if (updateIds.length > 0) {
+      const { error: updateError } = await supabaseServer
+        .from("providers")
+        .update({ is_active: true })
+        .in("id", updateIds);
+
+      if (updateError) {
+        console.error("[admin providers] bulk activate update failed", {
+          providerIds,
+          error: serializeSupabaseError(updateError),
+        });
+        return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+      }
+    }
+
+    await Promise.all(
+      updateIds.map((providerId) =>
+        logProviderStatusOpsEvent({
+          providerId,
+          eventType: "provider_activated",
+          snapshot: { is_active: true },
+        }),
+      ),
+    );
+
+    revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
+
+    const updatedCount = updateIds.length;
+    const skippedCount = providerIds.length - updatedCount;
+    const message =
+      updatedCount === 0
+        ? "All selected providers are already active."
+        : skippedCount > 0
+          ? `Activated ${updatedCount} provider${updatedCount === 1 ? "" : "s"}; ${skippedCount} skipped.`
+          : `Activated ${updatedCount} provider${updatedCount === 1 ? "" : "s"}.`;
+
+    return { ok: true, message, updatedCount, skippedCount };
+  } catch (error) {
+    console.error("[admin providers] bulk activate crashed", {
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+  }
+}
+
+export async function bulkMarkProvidersRespondedAction(args: {
+  providerIds: string[];
+  responseNotes: string;
+}): Promise<BulkProviderActionResult> {
+  const providerIds = normalizeProviderIds(args.providerIds);
+  const responseNotes = normalizeText(args.responseNotes);
+  if (providerIds.length === 0) {
+    return { ok: false, error: BULK_PROVIDERS_INPUT_ERROR };
+  }
+  if (!responseNotes) {
+    return { ok: false, error: BULK_NOTES_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+
+    const supportsNotes = await hasColumns("providers", ["notes"]);
+    const selectColumns = ["id", ...(supportsNotes ? ["notes"] : [])].join(",");
+    const { data, error } = await supabaseServer
+      .from("providers")
+      .select(selectColumns)
+      .in("id", providerIds)
+      .returns<Array<Record<string, string | null>>>();
+
+    if (error) {
+      console.error("[admin providers] bulk responded lookup failed", {
+        providerIds,
+        error: serializeSupabaseError(error),
+      });
+      return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    const updateIds: string[] = [];
+
+    if (supportsNotes) {
+      const supported = await schemaGate({
+        enabled: true,
+        relation: "providers",
+        requiredColumns: ["id", "notes"],
+        warnPrefix: "[admin providers]",
+        warnKey: "admin_providers_bulk_responded",
+      });
+      if (supported) {
+        await Promise.all(
+          rows.map(async (row) => {
+            const id = normalizeText(row?.id);
+            if (!id) return;
+            const existingNotes = normalizeOptionalText(row?.notes);
+            const merged = mergeNotesWithResponse(existingNotes, responseNotes);
+            const { error: updateError } = await supabaseServer
+              .from("providers")
+              .update({ notes: merged })
+              .eq("id", id);
+            if (!updateError) {
+              updateIds.push(id);
+              return;
+            }
+            console.error("[admin providers] bulk responded update failed", {
+              providerId: id,
+              error: serializeSupabaseError(updateError),
+            });
+          }),
+        );
+      }
+    } else {
+      // No notes column; count as updated for ops-event purposes.
+      for (const row of rows) {
+        const id = normalizeText(row?.id);
+        if (id) updateIds.push(id);
+      }
+    }
+
+    await Promise.all(updateIds.map((providerId) => logProviderRespondedOpsEvent({ providerId, responseNotes })));
+
+    revalidatePath("/admin/providers");
+    revalidatePath("/admin/providers/pipeline");
+
+    const updatedCount = updateIds.length;
+    const skippedCount = providerIds.length - updatedCount;
+    const message =
+      updatedCount === 0
+        ? "No selected providers were updated."
+        : skippedCount > 0
+          ? `Marked ${updatedCount} provider${updatedCount === 1 ? "" : "s"} responded; ${skippedCount} skipped.`
+          : `Marked ${updatedCount} provider${updatedCount === 1 ? "" : "s"} responded.`;
+
+    return { ok: true, message, updatedCount, skippedCount };
+  } catch (error) {
+    console.error("[admin providers] bulk responded crashed", {
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+  }
+}
+
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  const normalized = normalizeText(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function mergeNotesWithResponse(existingNotes: string | null, responseNotes: string): string {
+  const existing = normalizeOptionalText(existingNotes);
+  const note = normalizeText(responseNotes);
+  const line = `Response notes: ${note}`;
+  if (!existing) {
+    return line;
+  }
+  if (existing.includes(line)) {
+    return existing;
+  }
+  return `${existing}\n${line}`;
 }
 
 function normalizeProviderIds(value: unknown): string[] {

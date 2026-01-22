@@ -7,8 +7,13 @@ import clsx from "clsx";
 import { CopyOutreachEmailButton } from "@/app/admin/providers/CopyOutreachEmailButton";
 import {
   bulkHideProvidersInDirectoryAction,
+  bulkMarkProvidersRespondedAction,
+  bulkShowProvidersInDirectoryAction,
+  bulkActivateProvidersAction,
   bulkMarkProvidersContactedAction,
   markProviderContactedAction,
+  markProviderRespondedAction,
+  toggleProviderDirectoryVisibilityAction,
   toggleProviderActiveAction,
   unverifyProviderAction,
   verifyProviderAction,
@@ -33,7 +38,12 @@ type FeedbackState = {
   message: string;
 };
 
-type BulkActionType = "markContacted" | "hideDirectory";
+type BulkActionType =
+  | "markContacted"
+  | "markResponded"
+  | "activate"
+  | "showDirectory"
+  | "hideDirectory";
 
 type NextActionKey =
   | "needs_research"
@@ -83,6 +93,7 @@ export default function ProviderPipelineTableBody({
   const [selectedProviderIds, setSelectedProviderIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [bulkActionType, setBulkActionType] = useState<BulkActionType | null>(null);
+  const [bulkResponseNotes, setBulkResponseNotes] = useState("");
   const [pending, startTransition] = useTransition();
 
   const selectedCount = selectedProviderIds.size;
@@ -91,6 +102,9 @@ export default function ProviderPipelineTableBody({
   const allSelected = selectedCount > 0 && selectedCount === rows.length;
   const bulkBusy = pending || bulkActionType !== null;
   const isBulkMarking = bulkActionType === "markContacted";
+  const isBulkResponding = bulkActionType === "markResponded";
+  const isBulkActivating = bulkActionType === "activate";
+  const isBulkShowing = bulkActionType === "showDirectory";
   const isBulkHiding = bulkActionType === "hideDirectory";
 
   const selectedRows = useMemo(() => {
@@ -156,6 +170,66 @@ export default function ProviderPipelineTableBody({
     });
   };
 
+  const handleBulkMarkResponded = () => {
+    if (bulkBusy || selectedRows.length === 0) return;
+    const notes = bulkResponseNotes.trim();
+    if (!notes) {
+      setFeedback({ tone: "error", message: "Response notes are required." });
+      return;
+    }
+    setFeedback(null);
+    setBulkActionType("markResponded");
+    const providerIds = selectedRows.map((row) => row.provider.id);
+    startTransition(async () => {
+      const result = await bulkMarkProvidersRespondedAction({ providerIds, responseNotes: notes });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: result.message });
+        setSelectedProviderIds(new Set());
+        setBulkResponseNotes("");
+        router.refresh();
+      } else {
+        setFeedback({ tone: "error", message: result.error });
+      }
+      setBulkActionType(null);
+    });
+  };
+
+  const handleBulkActivate = () => {
+    if (bulkBusy || selectedRows.length === 0) return;
+    setFeedback(null);
+    setBulkActionType("activate");
+    const providerIds = selectedRows.map((row) => row.provider.id);
+    startTransition(async () => {
+      const result = await bulkActivateProvidersAction({ providerIds });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: result.message });
+        setSelectedProviderIds(new Set());
+        router.refresh();
+      } else {
+        setFeedback({ tone: "error", message: result.error });
+      }
+      setBulkActionType(null);
+    });
+  };
+
+  const handleBulkShowDirectory = () => {
+    if (bulkBusy || selectedRows.length === 0 || !supportsDirectoryVisibility) return;
+    setFeedback(null);
+    setBulkActionType("showDirectory");
+    const providerIds = selectedRows.map((row) => row.provider.id);
+    startTransition(async () => {
+      const result = await bulkShowProvidersInDirectoryAction({ providerIds });
+      if (result.ok) {
+        setFeedback({ tone: "success", message: result.message });
+        setSelectedProviderIds(new Set());
+        router.refresh();
+      } else {
+        setFeedback({ tone: "error", message: result.error });
+      }
+      setBulkActionType(null);
+    });
+  };
+
   return (
     <>
       <tr className="bg-slate-950/60">
@@ -191,20 +265,70 @@ export default function ProviderPipelineTableBody({
               >
                 {isBulkMarking ? "Marking..." : "Mark contacted"}
               </button>
-              {supportsDirectoryVisibility ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={bulkResponseNotes}
+                  onChange={(event) => setBulkResponseNotes(event.target.value)}
+                  placeholder="Response notes (required for Mark responded)"
+                  disabled={bulkBusy}
+                  className="min-w-[260px] rounded-full border border-slate-800 bg-slate-950 px-3 py-1 text-[11px] text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+                />
                 <button
                   type="button"
-                  onClick={handleBulkHideDirectory}
+                  onClick={handleBulkMarkResponded}
                   disabled={bulkBusy || selectedRows.length === 0}
                   className={clsx(
-                    "rounded-full border border-amber-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-100 transition",
+                    "rounded-full border border-blue-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-100 transition",
                     bulkBusy || selectedRows.length === 0
                       ? "cursor-not-allowed opacity-60"
-                      : "hover:border-amber-400 hover:text-white",
+                      : "hover:border-blue-400 hover:text-white",
                   )}
                 >
-                  {isBulkHiding ? "Hiding..." : "Hide in directory"}
+                  {isBulkResponding ? "Marking..." : "Mark responded"}
                 </button>
+              </div>
+              <button
+                type="button"
+                onClick={handleBulkActivate}
+                disabled={bulkBusy || selectedRows.length === 0}
+                className={clsx(
+                  "rounded-full border border-blue-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-100 transition",
+                  bulkBusy || selectedRows.length === 0
+                    ? "cursor-not-allowed opacity-60"
+                    : "hover:border-blue-400 hover:text-white",
+                )}
+              >
+                {isBulkActivating ? "Activating..." : "Activate"}
+              </button>
+              {supportsDirectoryVisibility ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleBulkShowDirectory}
+                    disabled={bulkBusy || selectedRows.length === 0}
+                    className={clsx(
+                      "rounded-full border border-emerald-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-100 transition",
+                      bulkBusy || selectedRows.length === 0
+                        ? "cursor-not-allowed opacity-60"
+                        : "hover:border-emerald-400 hover:text-white",
+                    )}
+                  >
+                    {isBulkShowing ? "Showing..." : "Show in directory"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBulkHideDirectory}
+                    disabled={bulkBusy || selectedRows.length === 0}
+                    className={clsx(
+                      "rounded-full border border-amber-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-100 transition",
+                      bulkBusy || selectedRows.length === 0
+                        ? "cursor-not-allowed opacity-60"
+                        : "hover:border-amber-400 hover:text-white",
+                    )}
+                  >
+                    {isBulkHiding ? "Hiding..." : "Hide in directory"}
+                  </button>
+                </>
               ) : null}
             </div>
           </div>
@@ -231,6 +355,7 @@ export default function ProviderPipelineTableBody({
           opsEvents={opsEventsByProviderId[row.provider.id] ?? []}
           selected={selectedProviderIds.has(row.provider.id)}
           disabled={bulkBusy}
+          supportsDirectoryVisibility={supportsDirectoryVisibility}
           onToggleSelect={toggleProviderSelected}
         />
       ))}
@@ -244,6 +369,7 @@ function ProviderPipelineRowDisplay({
   opsEvents,
   selected,
   disabled,
+  supportsDirectoryVisibility,
   onToggleSelect,
 }: {
   row: ProviderPipelineRow;
@@ -251,6 +377,7 @@ function ProviderPipelineRowDisplay({
   opsEvents: OpsEventRecord[];
   selected: boolean;
   disabled: boolean;
+  supportsDirectoryVisibility: boolean;
   onToggleSelect: (providerId: string) => void;
 }) {
   const { provider, emailValue, websiteValue, rfqUrlValue, contacted, needsResearch, isVerified, isActive } =
@@ -271,6 +398,9 @@ function ProviderPipelineRowDisplay({
   const missingEmail = !emailValue;
   const missingWebsite = !websiteValue && !rfqUrlValue;
   const hasResponseNotes = hasResponseNotesFlag(provider.notes);
+  const showInDirectory = supportsDirectoryVisibility
+    ? Boolean(provider.show_in_directory)
+    : provider.verification_status === "verified";
   const nextActionKey = resolveNextActionKey({
     needsResearch,
     contacted,
@@ -414,10 +544,17 @@ function ProviderPipelineRowDisplay({
           </details>
         </td>
         <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={pillClass(contactMeta.className)}>{contactMeta.label}</span>
-            <span className={pillClass(verificationMeta.className)}>{verificationMeta.label}</span>
-            <span className={pillClass(activeMeta.className)}>{activeMeta.label}</span>
+          <div className="space-y-2">
+            <LifecycleLadder
+              steps={[
+                { key: "discovered", label: "Discovered", complete: true },
+                { key: "contacted", label: "Contacted", complete: contacted },
+                { key: "responded", label: "Responded", complete: hasResponseNotes },
+                { key: "verified", label: "Verified", complete: isVerified },
+                { key: "active", label: "Active", complete: isActive },
+                { key: "directory", label: "Directory-visible", complete: showInDirectory },
+              ]}
+            />
             {needsResearch ? (
               <span className={pillClass("border-amber-500/40 bg-amber-500/10 text-amber-100")}>
                 Needs research
@@ -487,14 +624,45 @@ function ProviderPipelineRowDisplay({
                 </button>
               </form>
             )}
+            {!hasResponseNotes && contacted && !isVerified ? (
+              <details className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                <summary className="cursor-pointer font-semibold text-slate-200">
+                  Mark responded (requires notes)
+                </summary>
+                <form action={markProviderRespondedAction} className="mt-2 space-y-2">
+                  <input type="hidden" name="providerId" value={provider.id} />
+                  <textarea
+                    name="responseNotes"
+                    required
+                    rows={3}
+                    placeholder="Paste supplier response + context..."
+                    className="w-full resize-y rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="w-full rounded-lg bg-blue-500 px-2 py-1 text-xs font-semibold text-blue-950 hover:bg-blue-400"
+                  >
+                    Mark responded
+                  </button>
+                </form>
+              </details>
+            ) : null}
+
             {provider.verification_status !== "verified" ? (
               <form action={verifyProviderAction}>
                 <input type="hidden" name="providerId" value={provider.id} />
                 <button
                   type="submit"
-                  className="rounded-full border border-emerald-500/40 px-3 py-1 font-semibold text-emerald-100 transition hover:border-emerald-400 hover:text-white"
+                  disabled={!hasResponseNotes}
+                  title={!hasResponseNotes ? "Mark responded (with notes) first." : undefined}
+                  className={clsx(
+                    "rounded-full border px-3 py-1 font-semibold transition",
+                    hasResponseNotes
+                      ? "border-emerald-500/40 text-emerald-100 hover:border-emerald-400 hover:text-white"
+                      : "cursor-not-allowed border-slate-800 text-slate-500 opacity-70",
+                  )}
                 >
-                  Verify
+                  Ready to verify
                 </button>
               </form>
             ) : (
@@ -508,21 +676,52 @@ function ProviderPipelineRowDisplay({
                 </button>
               </form>
             )}
-            <form action={toggleProviderActiveAction}>
-              <input type="hidden" name="providerId" value={provider.id} />
-              <input type="hidden" name="nextActive" value={provider.is_active ? "false" : "true"} />
-              <button
-                type="submit"
-                className={clsx(
-                  "rounded-full border px-3 py-1 font-semibold transition",
-                  provider.is_active
-                    ? "border-amber-500/40 text-amber-100 hover:border-amber-400 hover:text-white"
-                    : "border-blue-500/40 text-blue-100 hover:border-blue-400 hover:text-white",
-                )}
-              >
-                {provider.is_active ? "Deactivate" : "Activate"}
-              </button>
-            </form>
+
+            {!provider.is_active ? (
+              <form action={toggleProviderActiveAction}>
+                <input type="hidden" name="providerId" value={provider.id} />
+                <input type="hidden" name="nextActive" value="true" />
+                <button
+                  type="submit"
+                  className="rounded-full border border-blue-500/40 px-3 py-1 font-semibold text-blue-100 transition hover:border-blue-400 hover:text-white"
+                >
+                  Activate
+                </button>
+              </form>
+            ) : (
+              <form action={toggleProviderActiveAction}>
+                <input type="hidden" name="providerId" value={provider.id} />
+                <input type="hidden" name="nextActive" value="false" />
+                <button
+                  type="submit"
+                  className="rounded-full border border-amber-500/40 px-3 py-1 font-semibold text-amber-100 transition hover:border-amber-400 hover:text-white"
+                >
+                  Deactivate
+                </button>
+              </form>
+            )}
+
+            {supportsDirectoryVisibility ? (
+              <form action={toggleProviderDirectoryVisibilityAction}>
+                <input type="hidden" name="providerId" value={provider.id} />
+                <input
+                  type="hidden"
+                  name="nextShowInDirectory"
+                  value={showInDirectory ? "false" : "true"}
+                />
+                <button
+                  type="submit"
+                  className={clsx(
+                    "rounded-full border px-3 py-1 font-semibold transition",
+                    showInDirectory
+                      ? "border-amber-500/40 text-amber-100 hover:border-amber-400 hover:text-white"
+                      : "border-emerald-500/40 text-emerald-100 hover:border-emerald-400 hover:text-white",
+                  )}
+                >
+                  {showInDirectory ? "Hide from directory" : "Show in directory"}
+                </button>
+              </form>
+            ) : null}
           </div>
         </td>
       </tr>
@@ -564,6 +763,40 @@ function ProviderPipelineRowDisplay({
         </td>
       </tr>
     </Fragment>
+  );
+}
+
+function LifecycleLadder({
+  steps,
+}: {
+  steps: Array<{ key: string; label: string; complete: boolean }>;
+}) {
+  const firstIncompleteIndex = steps.findIndex((step) => !step.complete);
+  const currentIndex = firstIncompleteIndex === -1 ? steps.length - 1 : firstIncompleteIndex;
+
+  return (
+    <ol className="flex flex-wrap items-center gap-1">
+      {steps.map((step, index) => {
+        const complete = step.complete;
+        const current = index === currentIndex && !complete;
+        return (
+          <li key={step.key} className="flex items-center gap-1">
+            <span
+              className={pillClass(
+                complete
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                  : current
+                    ? "border-blue-500/40 bg-blue-500/10 text-blue-100"
+                    : "border-slate-800 bg-slate-950/60 text-slate-400",
+              )}
+            >
+              {step.label}
+            </span>
+            {index < steps.length - 1 ? <span className="text-[11px] text-slate-600">→</span> : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -649,6 +882,10 @@ function renderProviderOpsEventSummary(event: OpsEventRecord): string {
     case "provider_contacted": {
       const email = resolvePayloadString(payload, "provider_email");
       return email ? `Outreach logged (${email})` : "Outreach logged";
+    }
+    case "provider_responded": {
+      const note = resolvePayloadString(payload, "response_notes");
+      return note ? `Response logged (${note.slice(0, 80)}${note.length > 80 ? "…" : ""})` : "Response logged";
     }
     case "provider_verified":
       return "Verification marked verified";
