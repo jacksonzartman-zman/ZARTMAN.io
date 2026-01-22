@@ -14,7 +14,6 @@ import { formatAwardedByLabel } from "@/lib/awards";
 import { formatSlaResponseTime } from "@/lib/ops/sla";
 import { toTimestamp } from "@/lib/relativeTime";
 import {
-  buildPendingProvidersNextStepsCopy,
   countContactedSuppliers,
   isDestinationReceived,
   sortDestinationsBySlaUrgency,
@@ -74,7 +73,6 @@ import {
   resolveKickoffProgressBasis,
 } from "@/lib/quote/kickoffChecklist";
 import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
-import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { CoverageDisclosure } from "@/components/CoverageDisclosure";
@@ -778,34 +776,22 @@ export default async function CustomerQuoteDetailPage({
   ]
     .filter(Boolean)
     .join(" · ");
-  const destinationsLabel = `${searchStateCounts.destinations_total} supplier${
-    searchStateCounts.destinations_total === 1 ? "" : "s"
-  } contacted`;
-  const offersLabel = `${searchStateCounts.offers_total} offer${
-    searchStateCounts.offers_total === 1 ? "" : "s"
-  }`;
   const searchResultsHref = `/customer/search?quote=${quote.id}`;
   const hasSearchOffers = searchStateCounts.offers_total > 0;
   const contactedSuppliersCount = countContactedSuppliers(rfqDestinations ?? []);
-  let pendingNextStepsCopy: string | null = null;
-  let pendingOffersDescription = "No offers yet. We will notify you when quotes arrive.";
+  let pendingOffersDescription = "No offers yet. We’ll notify you when quotes arrive.";
   let showSlaNudge = false;
+  let slaElapsedLabel: string | null = null;
+  let slaResponseTimeLabel: string | null = null;
   if (rfqOffers.length === 0) {
     const slaSettings = await getOpsSlaSettings();
-    const responseTimeLabel = slaSettings.usingFallback
+    slaResponseTimeLabel = slaSettings.usingFallback
       ? null
       : formatSlaResponseTime(slaSettings.config.sentNoReplyMaxHours);
-    pendingNextStepsCopy = buildPendingProvidersNextStepsCopy({
-      contactedCount: contactedSuppliersCount,
-      responseTimeLabel,
-    });
-    pendingOffersDescription = `${pendingNextStepsCopy} We will notify you as soon as suppliers respond.`;
     const lastOutreachTimestamp = toTimestamp(
       searchStateSummary.timestamps.last_destination_activity_at,
     );
-    const elapsedSinceOutreachLabel = normalizeElapsedLabel(
-      searchProgress.lastUpdatedLabel,
-    );
+    slaElapsedLabel = normalizeElapsedLabel(searchProgress.lastUpdatedLabel);
     const thresholdHours = slaSettings.config.sentNoReplyMaxHours;
     const thresholdMs = Number.isFinite(thresholdHours)
       ? thresholdHours * 60 * 60 * 1000
@@ -824,7 +810,7 @@ export default async function CustomerQuoteDetailPage({
       searchStateCounts.destinations_total > 0 &&
       contactedSuppliersCount > 0 &&
       exceedsSla &&
-      Boolean(elapsedSinceOutreachLabel);
+      Boolean(slaElapsedLabel);
   }
   const searchActivityEvents = loadWhatsHappeningData
     ? buildSearchActivityFeedEvents({
@@ -1544,34 +1530,53 @@ export default async function CustomerQuoteDetailPage({
     </DisclosureSection>
   );
 
-  const searchStatusCard = (
+  const suppliersContactedLabel = `${contactedSuppliersCount} supplier${
+    contactedSuppliersCount === 1 ? "" : "s"
+  } contacted`;
+  const searchStatusTimestamp =
+    searchProgress.lastUpdatedLabel ??
+    (updatedAtText ? `Last updated ${updatedAtText}` : null);
+
+  const searchStatusMiniCard = (
     <section
       className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3"
       aria-label="Search status"
     >
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Search status
+          </span>
+          <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
+            {searchStatusLabel}
+          </TagPill>
+          <span className="text-sm text-slate-200">{suppliersContactedLabel}</span>
+        </div>
+        {searchStatusTimestamp ? (
+          <p className="text-xs text-slate-400">{searchStatusTimestamp}</p>
+        ) : null}
+      </div>
+    </section>
+  );
+
+  const searchStatusOpsCard = (
+    <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Status
-              </span>
-              <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
-                {searchStatusLabel}
-              </TagPill>
-            </div>
-            <p className="text-sm text-slate-200">
-              {destinationsLabel} | {offersLabel}
-            </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Status
+            </span>
+            <TagPill size="sm" tone={searchStateTone} className="normal-case tracking-normal">
+              {searchStatusLabel}
+            </TagPill>
           </div>
-          {searchStatusMeta ? (
-            <p className="text-xs text-slate-400">{searchStatusMeta}</p>
-          ) : null}
+          {searchStatusMeta ? <p className="text-xs text-slate-400">{searchStatusMeta}</p> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={searchResultsHref}
-            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-black transition hover:bg-emerald-400"
+            className="inline-flex items-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
           >
             View results
           </Link>
@@ -1596,14 +1601,14 @@ export default async function CustomerQuoteDetailPage({
   const searchLoopSection = (
     <CollapsibleCard
       title="What’s happening with my request?"
-      description="Search status, pending providers, and coverage details."
+      description="Pending suppliers, activity, and coverage details."
       defaultOpen={loadWhatsHappeningData}
       urlParamKey="happening"
       contentClassName="space-y-4"
     >
       {loadWhatsHappeningData ? (
         <>
-          {searchStatusCard}
+          {searchStatusOpsCard}
           {pendingDestinations.length > 0 ? (
             <PendingProvidersTable
               destinations={visiblePendingDestinations}
@@ -1616,11 +1621,29 @@ export default async function CustomerQuoteDetailPage({
             description="Latest updates from the search dispatch."
             maxVisible={3}
           />
+          {showSlaNudge ? (
+            <section className="rounded-2xl border border-amber-500/25 bg-amber-500/5 px-4 py-3 text-sm text-amber-100">
+              <p className="font-semibold text-white">No supplier replies yet.</p>
+              <p className="mt-1 text-xs text-amber-100/80">
+                {slaElapsedLabel ? `It’s been ${slaElapsedLabel} since outreach. ` : ""}
+                {slaResponseTimeLabel
+                  ? `We typically follow up if we don’t hear back in ~${slaResponseTimeLabel}.`
+                  : "We’ll keep following up and notify you as soon as offers arrive."}
+              </p>
+            </section>
+          ) : null}
+          <SearchAlertOptInCard
+            quoteId={quote.id}
+            initialEnabled={searchAlertEnabled}
+            quoteLabel={primaryFileName}
+            disabled={readOnly}
+            disabledReason={readOnly ? "Search alerts are read-only in this view." : undefined}
+          />
           <CoverageDisclosure destinations={rfqDestinations} showSummary={false} />
         </>
       ) : (
         <div className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-400">
-          Open this section to load recent activity, coverage breakdowns, and pending provider details.
+          Open this section to load supplier outreach, recent activity, and coverage details.
         </div>
       )}
     </CollapsibleCard>
@@ -1815,239 +1838,79 @@ export default async function CustomerQuoteDetailPage({
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
       {showDemoModeBanner ? <DemoModeBanner /> : null}
-      <div className="space-y-8 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-8 lg:space-y-0">
-        <div className="space-y-6">
-          <div className="space-y-4">
-            <CustomerQuoteJourneyHeaderAuto
-              partName={primaryFileName}
-              status={workspaceStatus}
-              nextStepText={nextStepText}
-              fileCount={fileCount}
-              hasWinner={quoteHasWinner}
-            />
-            <QuoteSectionRail
-              className="lg:hidden"
-              sections={sectionRailSections}
-            />
-            <QuoteSummaryCard
-              className="lg:hidden"
-              partName={primaryFileName}
-              priceLabel={quoteSummaryPriceLabel}
-              leadTimeLabel={quoteSummaryLeadTimeLabel}
-              updatedAtText={updatedAtText}
-            />
-            {receiptBanner}
-          </div>
-
-          {decisionCtaRow}
-          {compareOffersSection}
-          {selectionConfirmedSection}
-          {searchLoopSection}
-          <SearchAlertOptInCard
+      <div className="space-y-6">
+        {decisionCtaRow}
+        {compareOffersSection}
+        {searchStatusMiniCard}
+        {searchLoopSection}
+        {selectionConfirmedSection}
+        {estimateBandCard}
+        {orderWorkspaceSection}
+        {decisionSection}
+        {kickoffSection}
+        {messagesUnavailable ? (
+          <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
+            Messages are temporarily unavailable right now. Your search request is still
+            saved—refresh to try again.
+          </p>
+        ) : null}
+        <DisclosureSection
+          id="messages"
+          className="scroll-mt-24"
+          title="Messages"
+          description="Shared thread with your supplier and the Zartman team."
+          defaultOpen={tabParam === "messages"}
+          summary={
+            quoteMessages.length > 0 ? (
+              <TagPill size="md" tone="slate" className="normal-case tracking-normal">
+                {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
+              </TagPill>
+            ) : (
+              <TagPill size="md" tone="slate" className="normal-case tracking-normal">
+                No messages
+              </TagPill>
+            )
+          }
+        >
+          <CustomerQuoteMessagesReadMarker
             quoteId={quote.id}
-            initialEnabled={searchAlertEnabled}
-            quoteLabel={primaryFileName}
-            disabled={readOnly}
-            disabledReason={
-              readOnly ? "Search alerts are read-only in this view." : undefined
-            }
+            enabled={tabParam === "messages"}
+            currentUserId={user.id}
           />
-          {estimateBandCard}
-          {orderWorkspaceSection}
-          {decisionSection}
-          {kickoffSection}
-          {messagesUnavailable ? (
-            <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
-              Messages are temporarily unavailable right now. Your search request is still
-              saved—refresh to try again.
-            </p>
-          ) : null}
-          <DisclosureSection
-            id="messages"
-            className="scroll-mt-24"
-            title="Messages"
-            description="Shared thread with your supplier and the Zartman team."
-            defaultOpen={tabParam === "messages"}
-            summary={
-              quoteMessages.length > 0 ? (
-                <TagPill size="md" tone="slate" className="normal-case tracking-normal">
-                  {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
-                </TagPill>
-              ) : (
-                <TagPill size="md" tone="slate" className="normal-case tracking-normal">
-                  No messages
-                </TagPill>
-              )
-            }
-          >
-            <CustomerQuoteMessagesReadMarker
+          <div id="email-replies">
+            <CustomerEmailRepliesCard
               quoteId={quote.id}
-              enabled={tabParam === "messages"}
-              currentUserId={user.id}
+              initialOptedIn={customerEmailOptedIn}
+              bridgeEnabled={customerEmailBridgeEnabled}
+              replyToAddress={customerReplyToAddress}
             />
-            <div id="email-replies">
-              <CustomerEmailRepliesCard
-                quoteId={quote.id}
-                initialOptedIn={customerEmailOptedIn}
-                bridgeEnabled={customerEmailBridgeEnabled}
-                replyToAddress={customerReplyToAddress}
-              />
+          </div>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
+            <div className="max-w-[46rem]">
+              <p className="text-sm font-semibold text-white">Need to request a change?</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Submit a change request and we’ll coordinate next steps here in Messages.
+              </p>
             </div>
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
-              <div className="max-w-[46rem]">
-                <p className="text-sm font-semibold text-white">Need to request a change?</p>
-                <p className="mt-1 text-xs text-slate-400">
-                  Submit a change request and we’ll coordinate next steps here in Messages.
-                </p>
-              </div>
-              <RequestChangeScaffold
-                quoteId={quote.id}
-                messagesHref={messagesHref}
-                disabled={readOnly}
-              />
-            </div>
-            <CustomerQuoteMessagesSection
+            <RequestChangeScaffold
               quoteId={quote.id}
-              messages={quoteMessages}
-              currentUserId={user.id}
-              canPost={!readOnly}
-              postAction={postMessageAction}
+              messagesHref={messagesHref}
+              disabled={readOnly}
             />
-          </DisclosureSection>
-
-          {filesSection}
-          {quoteDetailsSection}
-          {timelineSection}
-        </div>
-
-        <div className="space-y-8">
-          <QuoteSummaryCard
-            className="hidden lg:block"
-            partName={primaryFileName}
-            priceLabel={quoteSummaryPriceLabel}
-            leadTimeLabel={quoteSummaryLeadTimeLabel}
-            updatedAtText={updatedAtText}
+          </div>
+          <CustomerQuoteMessagesSection
+            quoteId={quote.id}
+            messages={quoteMessages}
+            currentUserId={user.id}
+            canPost={!readOnly}
+            postAction={postMessageAction}
           />
-          <PortalCard
-            title="Sections"
-            description="Jump to a section."
-            className="hidden px-5 py-4 lg:block"
-          >
-            <QuoteSectionRail sections={sectionRailSections} />
-          </PortalCard>
-          <PortalCard
-            title="Key details"
-            description="Compact intake details for reference."
-            className="hidden px-5 py-4 lg:block"
-          >
-            <dl className="space-y-3">
-              <CompactDlRow
-                label="Primary file"
-                value={primaryFileName}
-                title={primaryFileName}
-                truncate
-              />
-              <CompactDlRow label="Process" value={intakeProcess ?? "—"} />
-              <CompactDlRow label="Quantity" value={intakeQuantity ?? "—"} />
-              <CompactDlRow
-                label="Target ship date"
-                value={intakeTargetShipDateLabel ?? "—"}
-              />
-              <CompactDlRow
-                label="Material / finish"
-                value={intakeMaterialFinishLabel ?? "—"}
-              />
-            </dl>
-          </PortalCard>
-          <PortalCard
-            title="Uploads"
-            description="Files for suppliers to quote."
-            className="hidden px-5 py-4 lg:block"
-            action={
-              <Link
-                href="#uploads"
-                className="inline-flex items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-              >
-                Manage uploads
-              </Link>
-            }
-          >
-            <p className="text-sm text-slate-100">
-              <span className="font-semibold text-white">
-                {fileCount === 0
-                  ? "No files uploaded yet"
-                  : fileCount === 1
-                    ? "1 file uploaded"
-                    : `${fileCount} files uploaded`}
-              </span>
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              Add CAD, drawings, and specs here. Link them to parts in the Uploads section.
-            </p>
-          </PortalCard>
-          {quoteIsWon ? (
-            <PortalCard
-              title="Project status"
-              description="This job is now in progress with your supplier."
-            >
-              <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                    Supplier
-                  </dt>
-                  <dd className="break-anywhere text-slate-100">
-                    {winningSupplierId ? (winningSupplierName ?? winningSupplierId) : "Supplier assignment pending."}
-                  </dd>
-                </div>
-                <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                    Awarded on
-                  </dt>
-                  <dd className="text-slate-100">
-                    {quote.awarded_at ? formatDateTime(quote.awarded_at) : "—"}
-                  </dd>
-                </div>
-                <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2 sm:col-span-2">
-                  <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                    Kickoff status
-                  </dt>
-                  <dd className="mt-1 space-y-1">
-                    <p className="font-medium text-slate-100">{kickoffSummaryLabel}</p>
-                    <p className="text-xs text-slate-400">{kickoffChecklistSummaryLabel}</p>
-                  </dd>
-                </div>
-                <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2 sm:col-span-2">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                        Kickoff tasks
-                      </dt>
-                      <dd className="mt-1 font-medium text-slate-100">
-                        {kickoffTasksRowValue}
-                      </dd>
-                    </div>
-                    {canNudgeSupplier && winningSupplierId ? (
-                      <KickoffNudgeButton
-                        quoteId={quote.id}
-                        supplierId={winningSupplierId}
-                        latestNudgedAt={latestKickoffNudgedAt}
-                      />
-                    ) : null}
-                  </div>
-                </div>
-              </dl>
-              <div className="mt-4">
-                <Link
-                  href="#timeline"
-                  className="inline-flex items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-                >
-                  View activity timeline
-                </Link>
-              </div>
-            </PortalCard>
-          ) : null}
-          {notesSection}
-        </div>
+        </DisclosureSection>
+
+        {filesSection}
+        {quoteDetailsSection}
+        {timelineSection}
+        {notesSection}
       </div>
     </PortalShell>
   );
