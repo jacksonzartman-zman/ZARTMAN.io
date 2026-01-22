@@ -954,7 +954,7 @@ export default function HomeUploadLauncher({
                 <span>
                   Process: <span className="font-semibold text-ink">{processLabel || manufacturingProcess}</span>
                 </span>
-                <span>We’ll route your files to vetted suppliers.</span>
+                <span>We’ll match you with vetted suppliers.</span>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
