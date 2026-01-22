@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { RfqOffer } from "@/server/rfqs/offers";
 import { CustomerQuoteDecisionCtaRow } from "./CustomerQuoteDecisionCtaRow";
 import { RequestIntroductionModal } from "./RequestIntroductionModal";
+import { saveIntroRequestedState } from "./introRequestClientState";
 
 type DecisionCta = {
   label: string;
@@ -59,6 +60,9 @@ export function CustomerQuoteIntroRequestCtaRow({
         shortlistOnlyMode={shortlistOnlyMode}
         defaultEmail={defaultEmail}
         defaultCompany={defaultCompany}
+        onSubmitted={(payload) => {
+          saveIntroRequestedState(payload);
+        }}
       />
     </>
   );
