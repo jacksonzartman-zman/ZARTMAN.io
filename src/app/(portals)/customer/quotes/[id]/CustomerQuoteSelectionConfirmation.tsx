@@ -87,8 +87,8 @@ export function CustomerQuoteSelectionConfirmation({
         <SectionHeader
           variant="card"
           kicker="Selection confirmed"
-          title="Confirm provider details"
-          subtitle="Review the chosen provider, assumptions, and files. Add fulfillment notes if you want them included in the award pack."
+          title="Confirm supplier details"
+          subtitle="Review the chosen supplier, assumptions, and files. Add fulfillment notes if you want them included in the award pack."
         />
         <TagPill size="md" tone={showConfirmStatus ? "emerald" : "slate"}>
           {showConfirmStatus ? "Confirmed" : "Pending confirmation"}
@@ -163,7 +163,7 @@ export function CustomerQuoteSelectionConfirmation({
             id="selection-inspection"
             name="inspectionRequirements"
             label="Inspection requirements"
-            placeholder="Any inspection or quality requirements for the provider"
+              placeholder="Any inspection or quality requirements for the supplier"
             defaultValue={inspectionRequirements ?? ""}
             rows={3}
             maxLength={2000}
@@ -217,11 +217,11 @@ function AwardPackPreview({
       <SectionHeader
         variant="label"
         title="Award pack preview"
-        subtitle="What we will share with your provider after confirmation."
+        subtitle="What we will share with your supplier after confirmation."
       />
 
       <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
-        <SummaryItem label="Provider" value={providerName} />
+        <SummaryItem label="Supplier" value={providerName} />
         <SummaryItem label="Price" value={priceLabel} />
         <SummaryItem label="Lead time" value={leadTimeLabel} />
       </dl>
@@ -380,9 +380,9 @@ function FieldTextarea({
 }
 
 function resolveProviderName(offer: RfqOffer | null): string {
-  if (!offer) return "Provider details unavailable";
+  if (!offer) return "Supplier details unavailable";
   const name = typeof offer.provider?.name === "string" ? offer.provider.name.trim() : "";
-  return name || offer.provider_id || "Provider";
+  return name || offer.provider_id || "Supplier";
 }
 
 function formatOfferPrice(offer: RfqOffer | null): string {
