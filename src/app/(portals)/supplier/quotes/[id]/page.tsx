@@ -1,7 +1,6 @@
 import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 /**
  * Phase 1 Polish checklist
@@ -67,16 +66,15 @@ import {
 import { getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import {
-  loadQuoteKickoffTasksForSupplier,
-  type SupplierKickoffTasksResult,
-  ensureKickoffTasksForQuote,
+  ensureDefaultKickoffTasksForQuote,
+  getKickoffTasksForQuote,
   isKickoffReadyForSupplier,
+  type QuoteKickoffTask,
 } from "@/server/quotes/kickoffTasks";
 import { SupplierKickoffChecklistCard } from "./SupplierKickoffChecklistCard";
 import {
   resolveKickoffProgressBasis,
   formatKickoffTasksRatio,
-  summarizeKickoffTasks,
 } from "@/lib/quote/kickoffChecklist";
 import { postQuoteMessage as postSupplierQuoteMessage } from "./actions";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
@@ -97,6 +95,7 @@ import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
 import { canSupplierEmailCustomer, isCustomerEmailBridgeEnabled } from "@/server/quotes/customerEmailPrefs";
 import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 import { isPortalEmailSendEnabledFlag } from "@/server/quotes/emailOpsFlags";
+import type { KickoffTaskRow } from "@/components/KickoffTasksChecklist";
 
 export const dynamic = "force-dynamic";
 
@@ -269,53 +268,16 @@ export default async function SupplierQuoteDetailPage({
     profile.supplier.id,
   );
 
-  let kickoffTasksResult: SupplierKickoffTasksResult | null = null;
+  let kickoffTasks: QuoteKickoffTask[] = [];
+  let kickoffTasksUnavailable = false;
   if (awardedToSupplier) {
-    const initialKickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
-      quoteId,
-      profile.supplier.id,
-      { seedIfEmpty: false },
-    );
-
-    // Gap 6: best-effort server-side seeding for awarded supplier, only when the
-    // first tasks query returns 0 rows. Never throw if seeding fails.
-    if (
-      awardedToSupplier &&
-      initialKickoffTasksResult.ok &&
-      initialKickoffTasksResult.tasks.length === 0
-    ) {
-      try {
-        const ensureResult = await ensureKickoffTasksForQuote(quoteId, {
-          actorRole: "supplier",
-          actorUserId: user.id,
-        });
-
-        if (!ensureResult.ok) {
-          console.warn("[supplier kickoff] ensure failed", {
-            quoteId,
-            supplierId: profile.supplier.id,
-            reason: ensureResult.reason,
-            pgCode: null,
-            message: ensureResult.error,
-          });
-        }
-      } catch (error) {
-        console.warn("[supplier kickoff] ensure failed", {
-          quoteId,
-          supplierId: profile.supplier.id,
-          reason: "seed-error",
-          pgCode: (error as { code?: string | null })?.code ?? null,
-          message: (error as { message?: string | null })?.message ?? null,
-        });
-      }
-
-      kickoffTasksResult = await loadQuoteKickoffTasksForSupplier(
-        quoteId,
-        profile.supplier.id,
-        { seedIfEmpty: false },
-      );
-    } else {
-      kickoffTasksResult = initialKickoffTasksResult;
+    const ensured = await ensureDefaultKickoffTasksForQuote(quoteId);
+    if (!ensured.ok && ensured.error === "schema-missing") {
+      kickoffTasksUnavailable = true;
+    }
+    kickoffTasks = await getKickoffTasksForQuote(quoteId);
+    if (kickoffTasks.length === 0 && !ensured.ok) {
+      kickoffTasksUnavailable = true;
     }
   }
 
@@ -391,7 +353,8 @@ export default async function SupplierQuoteDetailPage({
       currentUserId={user.id}
       project={project}
       projectUnavailable={projectUnavailable}
-      kickoffTasksResult={kickoffTasksResult}
+      kickoffTasks={kickoffTasks}
+      kickoffTasksUnavailable={kickoffTasksUnavailable}
       kickoffVisibility={kickoffVisibility}
       awardedSupplierId={workspaceData.quote.awarded_supplier_id ?? null}
       awardedToSupplier={awardedToSupplier}
@@ -429,7 +392,8 @@ function SupplierQuoteWorkspace({
   currentUserId,
   project,
   projectUnavailable,
-  kickoffTasksResult,
+  kickoffTasks,
+  kickoffTasksUnavailable,
   kickoffVisibility,
   awardedSupplierId,
   awardedToSupplier,
@@ -466,7 +430,8 @@ function SupplierQuoteWorkspace({
   currentUserId: string;
   project: QuoteProjectRecord | null;
   projectUnavailable: boolean;
-  kickoffTasksResult: SupplierKickoffTasksResult | null;
+  kickoffTasks: QuoteKickoffTask[];
+  kickoffTasksUnavailable: boolean;
   kickoffVisibility: SupplierKickoffVisibility;
   awardedSupplierId: string | null;
   awardedToSupplier: boolean;
@@ -539,14 +504,14 @@ function SupplierQuoteWorkspace({
         ? "1 file attached"
         : `${fileCount} files attached`;
 
-  const kickoffTasksAvailable = Boolean(kickoffTasksResult?.ok);
-  const kickoffTasks = kickoffTasksResult?.ok ? kickoffTasksResult.tasks : [];
-  const kickoffSummaryForRail = kickoffTasksAvailable ? summarizeKickoffTasks(kickoffTasks) : null;
+  const kickoffTasksAvailable = !kickoffTasksUnavailable;
+  const kickoffCompletedCount = kickoffTasks.filter((t) => t.status === "complete").length;
+  const kickoffTotalCount = kickoffTasks.length;
   const kickoffProgressBasisForRail = resolveKickoffProgressBasis({
     kickoffCompletedAt:
       (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? null,
-    completedCount: kickoffSummaryForRail?.completedCount ?? null,
-    totalCount: kickoffSummaryForRail?.totalCount ?? null,
+    completedCount: kickoffTasksAvailable ? kickoffCompletedCount : null,
+    totalCount: kickoffTasksAvailable ? kickoffTotalCount : null,
   });
   const kickoffProgressRatioForRail = formatKickoffTasksRatio(kickoffProgressBasisForRail);
   const assignmentNames = assignments
@@ -631,7 +596,7 @@ function SupplierQuoteWorkspace({
       label: "Award",
       value: awardPillValue,
       tone: awardedToSupplier ? "success" : quoteHasWinner ? "neutral" : "info",
-      href: "#kickoff",
+      href: awardedToSupplier ? "#kickoff" : undefined,
     },
     {
       key: "supplier",
@@ -903,8 +868,8 @@ function SupplierQuoteWorkspace({
     const kickoffProgressBasis = resolveKickoffProgressBasis({
       kickoffCompletedAt:
         (quote as { kickoff_completed_at?: string | null })?.kickoff_completed_at ?? null,
-      completedCount: kickoffSummaryForRail?.completedCount ?? null,
-      totalCount: kickoffSummaryForRail?.totalCount ?? null,
+      completedCount: kickoffTasksAvailable ? kickoffCompletedCount : null,
+      totalCount: kickoffTasksAvailable ? kickoffTotalCount : null,
     });
     const kickoffProgressRatio = formatKickoffTasksRatio(kickoffProgressBasis);
     const kickoffSecondaryText = kickoffProgressBasis.isComplete
@@ -1000,13 +965,11 @@ function SupplierQuoteWorkspace({
               </section>
               <SupplierKickoffChecklistCard
                 quoteId={quote.id}
-                tasks={kickoffTasksAvailable ? kickoffTasks : []}
+                tasks={kickoffTasksAvailable ? kickoffTasks.map(mapQuoteKickoffTaskToRow) : []}
                 readOnly={false}
               />
             </>
-          ) : (
-            <SupplierKickoffLockedCard hasWinner={quoteHasWinner} />
-          )}
+          ) : null}
         </div>
       </DisclosureSection>
     );
@@ -1255,13 +1218,17 @@ function buildSupplierQuoteSections(args: {
       badge: bidBadge,
       tone: args.canSubmitBid ? "info" : "neutral",
     },
-    {
-      key: "kickoff",
-      label: "Kickoff",
-      href: "#kickoff",
-      badge: kickoffBadge,
-      tone: args.awardedToSupplier ? "info" : "neutral",
-    },
+    ...(args.awardedToSupplier
+      ? ([
+          {
+            key: "kickoff",
+            label: "Kickoff",
+            href: "#kickoff",
+            badge: kickoffBadge,
+            tone: "info",
+          },
+        ] as const)
+      : []),
     {
       key: "messages",
       label: "Messages",
@@ -1319,11 +1286,25 @@ function deriveSupplierKickoffVisibility(
     Boolean(normalizedAwardedSupplierId) &&
     Boolean(normalizedAwardedAt) &&
     Boolean(normalizedAwardedBidId);
-  const showKickoffChecklist = true;
+  const showKickoffChecklist =
+    quoteReadyForKickoff && Boolean(normalizedSupplierId) && normalizedAwardedSupplierId === normalizedSupplierId;
 
   return {
     quoteReadyForKickoff,
     showKickoffChecklist,
+  };
+}
+
+function mapQuoteKickoffTaskToRow(task: QuoteKickoffTask): KickoffTaskRow {
+  return {
+    taskKey: task.taskKey,
+    title: task.title,
+    description: task.description ?? null,
+    sortOrder: task.sortOrder,
+    status: task.status,
+    completedAt: task.completedAt ?? null,
+    blockedReason: task.blockedReason ?? null,
+    updatedAt: task.updatedAt,
   };
 }
 
@@ -1360,22 +1341,6 @@ function PortalNoticeCard({
     <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
       <h1 className="text-xl font-semibold text-white">{title}</h1>
       <p className="mt-2 text-sm text-slate-400">{description}</p>
-    </section>
-  );
-}
-
-function SupplierKickoffLockedCard({ hasWinner }: { hasWinner: boolean }) {
-  return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
-      <EmptyStateCard
-        title={hasWinner ? "Not awarded" : "Kickoff locked"}
-        description={
-          hasWinner
-            ? "This search request was awarded to another supplier. Kickoff tasks remain locked."
-            : "Kickoff unlocks after you’re selected as the winning supplier."
-        }
-        secondaryAction={{ label: "Go to bid", href: "#bid" }}
-      />
     </section>
   );
 }

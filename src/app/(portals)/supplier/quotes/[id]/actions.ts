@@ -9,6 +9,10 @@ import {
   type SupplierKickoffFormState,
   type ToggleSupplierKickoffTaskInput,
 } from "@/server/quotes/supplierQuoteServer";
+import {
+  updateKickoffTaskStatusAction,
+  type QuoteKickoffTaskStatus,
+} from "@/server/quotes/kickoffTasks";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import { createAuthClient, getServerAuthUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
@@ -92,6 +96,40 @@ export async function completeKickoffTask(
   input: ToggleSupplierKickoffTaskInput,
 ): Promise<SupplierKickoffFormState> {
   return completeKickoffTaskImpl(input);
+}
+
+export async function updateSupplierKickoffTaskStatusAction(args: {
+  quoteId: string;
+  taskKey: string;
+  status: QuoteKickoffTaskStatus;
+  blockedReason?: string | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const quoteId = typeof args?.quoteId === "string" ? args.quoteId.trim() : "";
+  const taskKey = typeof args?.taskKey === "string" ? args.taskKey.trim() : "";
+  const status = args?.status;
+  const blockedReason =
+    args?.blockedReason === null
+      ? null
+      : typeof args?.blockedReason === "string"
+        ? args.blockedReason
+        : undefined;
+
+  const result = await updateKickoffTaskStatusAction({
+    quoteId,
+    taskKey,
+    status,
+    blockedReason,
+  });
+
+  if (!result.ok) {
+    return result;
+  }
+
+  revalidatePath(`/supplier/quotes/${quoteId}`);
+  revalidatePath("/supplier");
+  revalidatePath(`/admin/quotes/${quoteId}`);
+
+  return { ok: true };
 }
 
 export type SupplierDeclineFeedbackFormState =

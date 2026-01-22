@@ -1,25 +1,23 @@
 "use client";
 
 /**
- * Phase 1 Polish checklist
- * - Done: Inline confirmations on task toggle + refresh pills/progress
- * - Done: Error surface includes retry guidance
+ * Supplier kickoff checklist UX (Phase 18.2.2).
  */
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 import {
-  mergeKickoffTasksWithDefaults,
-  summarizeKickoffTasks,
-  type SupplierKickoffTask,
-} from "@/lib/quote/kickoffChecklist";
-import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
-import type { SupplierKickoffFormState } from "@/server/quotes/supplierQuoteServer";
+  KickoffTasksChecklist,
+  type KickoffTaskRow,
+  type KickoffTasksChecklistUpdate,
+  type KickoffTasksChecklistUpdateResult,
+} from "@/components/KickoffTasksChecklist";
+import { updateSupplierKickoffTaskStatusAction } from "./actions";
 
 type SupplierKickoffChecklistCardProps = {
   quoteId: string;
-  tasks: SupplierKickoffTask[];
+  tasks: KickoffTaskRow[];
   readOnly?: boolean;
 };
 
@@ -30,104 +28,12 @@ export function SupplierKickoffChecklistCard({
 }: SupplierKickoffChecklistCardProps) {
   const router = useRouter();
   const hasTasks = Array.isArray(tasks) && tasks.length > 0;
-  const mergedTasks = useMemo(() => {
-    if (!hasTasks) {
-      return [];
-    }
-    return mergeKickoffTasksWithDefaults(tasks);
-  }, [hasTasks, tasks]);
-  const [localTasks, setLocalTasks] = useState(mergedTasks);
-  const [pendingTaskKey, setPendingTaskKey] = useState<string | null>(null);
-  const [result, setResult] = useState<SupplierKickoffFormState | null>(null);
-  const [isPending, startTransition] = useTransition();
 
-  useEffect(() => {
-    setLocalTasks(mergedTasks);
-  }, [mergedTasks]);
-
-  const summary = useMemo(() => {
-    if (!hasTasks) {
-      return null;
-    }
-    return summarizeKickoffTasks(localTasks);
-  }, [hasTasks, localTasks]);
-  const lastUpdatedLabel = useMemo(() => {
-    if (!summary?.lastUpdatedAt) {
-      return "—";
-    }
-    return formatRelativeTimeFromTimestamp(toTimestamp(summary.lastUpdatedAt)) ?? "—";
-  }, [summary?.lastUpdatedAt]);
-
-  const handleToggle = (task: SupplierKickoffTask, nextCompleted: boolean) => {
-    if (readOnly) {
-      return;
-    }
-    if (nextCompleted !== true) {
-      // MVP: completion-only UI (no "mark incomplete" action).
-      return;
-    }
-    setResult(null);
-    setPendingTaskKey(task.taskKey);
-    setLocalTasks((current) =>
-      current.map((entry) =>
-        entry.taskKey === task.taskKey
-          ? { ...entry, completed: nextCompleted }
-          : entry,
-      ),
-    );
-
-    startTransition(() => {
-      fetch(`/api/supplier/quotes/${quoteId}/kickoff-tasks/${task.taskKey}/complete`, {
-        method: "POST",
-      })
-        .then(async (res) => {
-          const payload = (await res.json().catch(() => null)) as
-            | { ok?: boolean; error?: string }
-            | null;
-          const ok = Boolean(payload?.ok);
-          if (!ok) {
-            setResult({
-              ok: false,
-              error: "We couldn’t update that task. Try again or refresh the page.",
-            });
-            setLocalTasks((current) =>
-              current.map((entry) =>
-                entry.taskKey === task.taskKey
-                  ? { ...entry, completed: false }
-                  : entry,
-              ),
-            );
-            return;
-          }
-
-          setResult({ ok: true, message: "Marked task complete." });
-          // Keep the rail + at-a-glance pills in sync.
-          router.refresh();
-        })
-        .catch((error) => {
-          console.error("[supplier kickoff tasks] complete crashed", {
-            quoteId,
-            taskKey: task.taskKey,
-            error,
-          });
-          setResult({
-            ok: false,
-            error: "We couldn’t update that task. Try again or refresh the page.",
-          });
-          setLocalTasks((current) =>
-            current.map((entry) =>
-              entry.taskKey === task.taskKey
-                ? { ...entry, completed: false }
-                : entry,
-            ),
-          );
-        })
-        .finally(() => setPendingTaskKey(null));
-    });
-  };
-
-  const successMessage = result && result.ok ? result.message : null;
-  const errorMessage = result && !result.ok ? result.error : null;
+  const completedCount = useMemo(
+    () => (Array.isArray(tasks) ? tasks.filter((t) => t.status === "complete").length : 0),
+    [tasks],
+  );
+  const totalCount = Array.isArray(tasks) ? tasks.length : 0;
 
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
@@ -138,43 +44,18 @@ export function SupplierKickoffChecklistCard({
               Kickoff tasks
             </p>
             <h2 className="text-lg font-semibold text-white">
-              Confirm the five go-live checks
+              Work starts now
             </h2>
           </div>
-          {summary ? (
-            <span
-              className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200"
-            >
-              Updated {summary.lastUpdatedAt ? lastUpdatedLabel : "—"}
-            </span>
-          ) : null}
+          <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+            {totalCount > 0 ? `${completedCount}/${totalCount} complete` : "—"}
+          </span>
         </div>
-        {summary ? (
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
-            <span>
-              Completed{" "}
-              <span className="font-semibold text-slate-200">
-                {summary.completedCount}/{summary.totalCount}
-              </span>
-            </span>
-          </div>
-        ) : null}
         <p className="text-sm text-slate-300">
-          We&apos;ll share this progress with the customer and Zartman admin
-          team so everyone stays in sync.
+          Confirm timing, materials, and handoff details so the project can move forward.
         </p>
       </header>
 
-      {successMessage ? (
-        <p className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100">
-          {successMessage}
-        </p>
-      ) : null}
-      {errorMessage ? (
-        <p className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-100">
-          {errorMessage}
-        </p>
-      ) : null}
       {readOnly ? (
         <p className="mt-3 rounded-xl border border-slate-800 bg-black/30 px-4 py-2 text-xs text-slate-400">
           Read-only: only the awarded supplier can update kickoff progress.
@@ -186,44 +67,27 @@ export function SupplierKickoffChecklistCard({
           Kickoff not ready yet. Refresh in a moment.
         </p>
       ) : (
-        <ul className="mt-4 space-y-3">
-          {localTasks.map((task) => {
-            const disabled =
-              readOnly ||
-              isPending ||
-              pendingTaskKey === task.taskKey ||
-              !task.taskKey;
-            return (
-              <li
-                key={task.taskKey}
-                className="flex items-start gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-3"
-              >
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="text-sm font-semibold text-white">{task.title}</p>
-                  {task.description ? (
-                    <p className="text-sm text-slate-300">{task.description}</p>
-                  ) : null}
-                </div>
-                <div className="shrink-0">
-                  {task.completed ? (
-                    <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-100">
-                      Complete
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => handleToggle(task, true)}
-                      className="rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Mark complete
-                    </button>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="mt-4">
+          <KickoffTasksChecklist
+            tasks={tasks}
+            role={readOnly ? "customer" : "supplier"}
+            onUpdate={async (
+              update: KickoffTasksChecklistUpdate,
+            ): Promise<KickoffTasksChecklistUpdateResult> => {
+              const result = await updateSupplierKickoffTaskStatusAction({
+                quoteId,
+                taskKey: update.taskKey,
+                status: update.status,
+                blockedReason: update.blockedReason ?? null,
+              });
+              if (!result.ok) {
+                return { ok: false, error: result.error };
+              }
+              router.refresh();
+              return { ok: true };
+            }}
+          />
+        </div>
       )}
     </section>
   );
