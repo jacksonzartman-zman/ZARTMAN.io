@@ -33,6 +33,49 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "invalid_notes" }, { status: 400 });
     }
 
+    const introRequestsSupported = await schemaGate({
+      enabled: true,
+      relation: "intro_requests",
+      requiredColumns: ["quote_id", "provider_id", "status", "handled_at", "handled_by_user_id"],
+      warnPrefix: "[admin intro requests]",
+      warnKey: "admin_intro_requests:intro_requests",
+    });
+
+    if (introRequestsSupported) {
+      try {
+        // Mark all open requests for this quote+provider as handled (multiple offers possible).
+        const { error } = await supabaseServer
+          .from("intro_requests")
+          .update({
+            status: "handled",
+            handled_at: new Date().toISOString(),
+            handled_by_user_id: admin.id,
+            admin_notes: notesRaw || null,
+          })
+          .eq("quote_id", quoteId)
+          .eq("provider_id", providerId)
+          .eq("status", "open");
+
+        if (error && !isMissingTableOrColumnError(error)) {
+          console.error("[admin intro requests] intro_requests update failed", {
+            quoteId,
+            providerId,
+            adminUserId: admin.id,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      } catch (error) {
+        if (!isMissingTableOrColumnError(error)) {
+          console.error("[admin intro requests] intro_requests update crashed", {
+            quoteId,
+            providerId,
+            adminUserId: admin.id,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      }
+    }
+
     const supported = await schemaGate({
       enabled: true,
       relation: "ops_events",

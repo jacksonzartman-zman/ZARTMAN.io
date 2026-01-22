@@ -990,6 +990,93 @@ async function loadIntroRequestsByQuoteId(
   const map = new Map<string, { count: number; latestAt: string | null; providerIds: string[] }>();
   if (quoteIds.length === 0) return map;
 
+  const introRequestsSupported = await schemaGate({
+    enabled: true,
+    relation: "intro_requests",
+    requiredColumns: ["quote_id", "provider_id", "status", "requested_at"],
+    warnPrefix: "[admin ops inbox]",
+    warnKey: "admin_ops_inbox:intro_requests",
+  });
+
+  if (introRequestsSupported) {
+    type IntroRequestRow = {
+      quote_id: string | null;
+      provider_id: string | null;
+      status: string | null;
+      requested_at: string | null;
+    };
+
+    try {
+      const { data, error } = await supabaseServer
+        .from("intro_requests")
+        .select("quote_id,provider_id,status,requested_at")
+        .in("quote_id", quoteIds)
+        .eq("status", "open")
+        .order("requested_at", { ascending: false })
+        .returns<IntroRequestRow[]>();
+
+      if (error) {
+        if (
+          handleMissingSupabaseSchema({
+            relation: "intro_requests",
+            error,
+            warnPrefix: "[admin ops inbox]",
+            warnKey: "admin_ops_inbox:intro_requests_missing_schema",
+          })
+        ) {
+          return await loadIntroRequestsFromOpsEventsByQuoteId(quoteIds);
+        }
+        console.warn("[admin ops inbox] intro_requests query failed; falling back to ops_events", {
+          error: serializeSupabaseError(error),
+        });
+        return await loadIntroRequestsFromOpsEventsByQuoteId(quoteIds);
+      }
+
+      for (const row of Array.isArray(data) ? data : []) {
+        const quoteId = normalizeId(row?.quote_id);
+        const providerId = normalizeId(row?.provider_id);
+        const requestedAt = normalizeOptionalString(row?.requested_at);
+        if (!quoteId || !providerId) continue;
+
+        const existing = map.get(quoteId) ?? { count: 0, latestAt: null, providerIds: [] };
+        if (!existing.providerIds.includes(providerId)) {
+          existing.providerIds.push(providerId);
+          existing.count = existing.providerIds.length;
+        }
+        if (requestedAt && (!existing.latestAt || requestedAt > existing.latestAt)) {
+          existing.latestAt = requestedAt;
+        }
+        map.set(quoteId, existing);
+      }
+
+      return map;
+    } catch (error) {
+      if (
+        handleMissingSupabaseSchema({
+          relation: "intro_requests",
+          error,
+          warnPrefix: "[admin ops inbox]",
+          warnKey: "admin_ops_inbox:intro_requests_missing_schema_crash",
+        })
+      ) {
+        return await loadIntroRequestsFromOpsEventsByQuoteId(quoteIds);
+      }
+      console.warn("[admin ops inbox] intro_requests query crashed; falling back to ops_events", {
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return await loadIntroRequestsFromOpsEventsByQuoteId(quoteIds);
+    }
+  }
+
+  return await loadIntroRequestsFromOpsEventsByQuoteId(quoteIds);
+}
+
+async function loadIntroRequestsFromOpsEventsByQuoteId(
+  quoteIds: string[],
+): Promise<Map<string, { count: number; latestAt: string | null; providerIds: string[] }>> {
+  const map = new Map<string, { count: number; latestAt: string | null; providerIds: string[] }>();
+  if (quoteIds.length === 0) return map;
+
   const supported = await schemaGate({
     enabled: true,
     relation: "ops_events",

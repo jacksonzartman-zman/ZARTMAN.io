@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { UnauthorizedError, requireUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
+import { schemaGate } from "@/server/db/schemaContract";
 import { logOpsEvent } from "@/server/ops/events";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 
@@ -86,6 +87,52 @@ export async function POST(req: Request) {
     const emailMatches = Boolean(quoteEmail && customerEmail && quoteEmail === customerEmail);
     if (!customerIdMatches && !emailMatches) {
       return NextResponse.json({ ok: false, error: "access_denied" }, { status: 403 });
+    }
+
+    // Schema-gated: intro requests table is the source-of-truth for ops queue state.
+    // Fail-soft: never block customer UX if the table isn't available yet.
+    const introRequestsSupported = await schemaGate({
+      enabled: true,
+      relation: "intro_requests",
+      requiredColumns: [
+        "quote_id",
+        "provider_id",
+        "offer_id",
+        "status",
+        "requested_at",
+        "handled_at",
+        "handled_by_user_id",
+        "customer_email",
+        "company_name",
+        "notes",
+      ],
+      warnPrefix: WARN_PREFIX,
+      warnKey: "portal_customer_request_introduction:intro_requests",
+    });
+
+    if (introRequestsSupported && isUuidLike(providerId) && isUuidLike(offerId)) {
+      try {
+        await supabaseServer
+          .from("intro_requests")
+          .upsert(
+            {
+              quote_id: quoteId,
+              provider_id: providerId,
+              offer_id: offerId,
+              customer_email: email,
+              company_name: company || null,
+              notes: notes || null,
+              status: "open",
+              requested_at: new Date().toISOString(),
+              handled_at: null,
+              handled_by_user_id: null,
+            },
+            { onConflict: "quote_id,provider_id,offer_id" },
+          );
+      } catch (error) {
+        // Fail-soft; ops inbox can still fall back to ops_events.
+        console.warn(`${WARN_PREFIX} intro_requests upsert failed`, { quoteId, providerId, error });
+      }
     }
 
     // Fail-soft: `logOpsEvent` already swallows missing schema/constraint issues.
