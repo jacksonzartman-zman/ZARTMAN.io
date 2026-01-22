@@ -18,7 +18,7 @@ const PROVIDER_ACTION_ERROR = "We couldn't update this provider right now.";
 const BULK_PROVIDERS_INPUT_ERROR = "Select at least one provider.";
 const BULK_PROVIDERS_GENERIC_ERROR = "We couldn't update these providers right now.";
 const BULK_DIRECTORY_VISIBILITY_ERROR = "Directory visibility isn't available yet.";
-const BULK_NOTES_ERROR = "Response notes are required.";
+const BULK_NOTES_ERROR = "Response summary is required.";
 
 export type BulkProviderActionResult =
   | { ok: true; message: string; updatedCount: number; skippedCount: number }
@@ -26,56 +26,106 @@ export type BulkProviderActionResult =
 
 export async function markProviderRespondedAction(formData: FormData): Promise<void> {
   const providerId = normalizeId(getFormString(formData, "providerId"));
-  const responseNotes = normalizeText(getFormString(formData, "responseNotes"));
+  const channel = normalizeChannel(getFormString(formData, "channel"));
+  const summary = normalizeText(getFormString(formData, "summary"));
+  const rawNotes = normalizeOptionalText(getFormString(formData, "rawNotes"));
+  const appendToNotes = normalizeBool(getFormString(formData, "appendToNotes"), true);
   if (!providerId) return;
-  if (!responseNotes) return;
+  if (!channel) return;
+  if (!summary) return;
 
   try {
-    await requireAdminUser();
+    const adminUser = await requireAdminUser();
+    const responderUserId = normalizeId((adminUser as any)?.id);
+    const responseAt = new Date().toISOString();
 
-    const supportsNotes = await hasColumns("providers", ["notes"]);
-    if (supportsNotes) {
-      const supported = await schemaGate({
-        enabled: true,
-        relation: "providers",
-        requiredColumns: ["id", "notes"],
-        warnPrefix: "[admin providers]",
-        warnKey: "admin_providers_mark_responded",
-      });
-      if (supported) {
-        let existingNotes: string | null = null;
-        try {
-          const { data, error } = await supabaseServer
-            .from("providers")
-            .select("id,notes")
-            .eq("id", providerId)
-            .maybeSingle<{ id: string | null; notes: string | null }>();
-          if (!error && data) {
-            existingNotes = normalizeOptionalText(data.notes);
-          }
-        } catch (error) {
-          console.warn("[admin providers] responded notes lookup failed", {
-            providerId,
-            error: serializeActionError(error),
-          });
-        }
+    const supportsProviderResponses = await schemaGate({
+      enabled: true,
+      relation: "provider_responses",
+      requiredColumns: [
+        "provider_id",
+        "response_at",
+        "channel",
+        "summary",
+        "raw_notes",
+        "responder_user_id",
+      ],
+      warnPrefix: "[admin providers]",
+      warnKey: "admin_providers_provider_responses_insert",
+    });
 
-        const merged = mergeNotesWithResponse(existingNotes, responseNotes);
-        const { error } = await supabaseServer
-          .from("providers")
-          .update({ notes: merged })
-          .eq("id", providerId);
-
+    if (supportsProviderResponses) {
+      try {
+        const { error } = await supabaseServer.from("provider_responses").insert({
+          provider_id: providerId,
+          response_at: responseAt,
+          channel,
+          summary,
+          raw_notes: rawNotes,
+          responder_user_id: responderUserId || null,
+        });
         if (error) {
-          console.error("[admin providers] mark responded failed", {
+          console.error("[admin providers] provider response insert failed", {
             providerId,
             error: serializeSupabaseError(error),
           });
         }
+      } catch (error) {
+        console.error("[admin providers] provider response insert crashed", {
+          providerId,
+          error: serializeActionError(error),
+        });
       }
     }
 
-    await logProviderRespondedOpsEvent({ providerId, responseNotes });
+    if (appendToNotes) {
+      const supportsNotes = await hasColumns("providers", ["notes"]);
+      if (supportsNotes) {
+        const supported = await schemaGate({
+          enabled: true,
+          relation: "providers",
+          requiredColumns: ["id", "notes"],
+          warnPrefix: "[admin providers]",
+          warnKey: "admin_providers_mark_responded_notes",
+        });
+        if (supported) {
+          let existingNotes: string | null = null;
+          try {
+            const { data, error } = await supabaseServer
+              .from("providers")
+              .select("id,notes")
+              .eq("id", providerId)
+              .maybeSingle<{ id: string | null; notes: string | null }>();
+            if (!error && data) {
+              existingNotes = normalizeOptionalText(data.notes);
+            }
+          } catch (error) {
+            console.warn("[admin providers] responded notes lookup failed", {
+              providerId,
+              error: serializeActionError(error),
+            });
+          }
+
+          const merged = mergeNotesWithResponse(existingNotes, buildProviderResponseNotesLine({ channel, summary }));
+          const { error } = await supabaseServer
+            .from("providers")
+            .update({ notes: merged })
+            .eq("id", providerId);
+
+          if (error) {
+            console.error("[admin providers] mark responded notes append failed", {
+              providerId,
+              error: serializeSupabaseError(error),
+            });
+          }
+        }
+      }
+    }
+
+    await logProviderRespondedOpsEvent({
+      providerId,
+      responseNotes: buildProviderResponseNotesLine({ channel, summary }),
+    });
 
     revalidatePath("/admin/providers");
     revalidatePath("/admin/providers/pipeline");
@@ -815,19 +865,71 @@ export async function bulkActivateProvidersAction(args: {
 
 export async function bulkMarkProvidersRespondedAction(args: {
   providerIds: string[];
-  responseNotes: string;
+  channel: string;
+  summary: string;
+  rawNotes?: string | null;
+  appendToNotes?: boolean;
 }): Promise<BulkProviderActionResult> {
   const providerIds = normalizeProviderIds(args.providerIds);
-  const responseNotes = normalizeText(args.responseNotes);
+  const channel = normalizeChannel(args.channel);
+  const summary = normalizeText(args.summary);
+  const rawNotes = normalizeOptionalText(args.rawNotes);
+  const appendToNotes = typeof args.appendToNotes === "boolean" ? args.appendToNotes : true;
   if (providerIds.length === 0) {
     return { ok: false, error: BULK_PROVIDERS_INPUT_ERROR };
   }
-  if (!responseNotes) {
+  if (!channel) {
+    return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
+  }
+  if (!summary) {
     return { ok: false, error: BULK_NOTES_ERROR };
   }
 
   try {
-    await requireAdminUser();
+    const adminUser = await requireAdminUser();
+    const responderUserId = normalizeId((adminUser as any)?.id);
+    const responseAt = new Date().toISOString();
+    const notesLine = buildProviderResponseNotesLine({ channel, summary });
+
+    const supportsProviderResponses = await schemaGate({
+      enabled: true,
+      relation: "provider_responses",
+      requiredColumns: [
+        "provider_id",
+        "response_at",
+        "channel",
+        "summary",
+        "raw_notes",
+        "responder_user_id",
+      ],
+      warnPrefix: "[admin providers]",
+      warnKey: "admin_providers_provider_responses_bulk_insert",
+    });
+
+    if (supportsProviderResponses) {
+      try {
+        const { error: insertError } = await supabaseServer.from("provider_responses").insert(
+          providerIds.map((providerId) => ({
+            provider_id: providerId,
+            response_at: responseAt,
+            channel,
+            summary,
+            raw_notes: rawNotes,
+            responder_user_id: responderUserId || null,
+          })),
+        );
+        if (insertError) {
+          console.error("[admin providers] bulk provider response insert failed", {
+            providerIds,
+            error: serializeSupabaseError(insertError),
+          });
+        }
+      } catch (error) {
+        console.error("[admin providers] bulk provider response insert crashed", {
+          error: serializeActionError(error),
+        });
+      }
+    }
 
     const supportsNotes = await hasColumns("providers", ["notes"]);
     const selectColumns = ["id", ...(supportsNotes ? ["notes"] : [])].join(",");
@@ -848,7 +950,7 @@ export async function bulkMarkProvidersRespondedAction(args: {
     const rows = Array.isArray(data) ? data : [];
     const updateIds: string[] = [];
 
-    if (supportsNotes) {
+    if (supportsNotes && appendToNotes) {
       const supported = await schemaGate({
         enabled: true,
         relation: "providers",
@@ -862,7 +964,7 @@ export async function bulkMarkProvidersRespondedAction(args: {
             const id = normalizeText(row?.id);
             if (!id) return;
             const existingNotes = normalizeOptionalText(row?.notes);
-            const merged = mergeNotesWithResponse(existingNotes, responseNotes);
+            const merged = mergeNotesWithResponse(existingNotes, notesLine);
             const { error: updateError } = await supabaseServer
               .from("providers")
               .update({ notes: merged })
@@ -886,7 +988,14 @@ export async function bulkMarkProvidersRespondedAction(args: {
       }
     }
 
-    await Promise.all(updateIds.map((providerId) => logProviderRespondedOpsEvent({ providerId, responseNotes })));
+    await Promise.all(
+      updateIds.map((providerId) =>
+        logProviderRespondedOpsEvent({
+          providerId,
+          responseNotes: notesLine,
+        }),
+      ),
+    );
 
     revalidatePath("/admin/providers");
     revalidatePath("/admin/providers/pipeline");
@@ -922,10 +1031,10 @@ function normalizeOptionalText(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function mergeNotesWithResponse(existingNotes: string | null, responseNotes: string): string {
+function mergeNotesWithResponse(existingNotes: string | null, responseLine: string): string {
   const existing = normalizeOptionalText(existingNotes);
-  const note = normalizeText(responseNotes);
-  const line = `Response notes: ${note}`;
+  const line = normalizeText(responseLine);
+  if (!line) return existing ?? "";
   if (!existing) {
     return line;
   }
@@ -933,6 +1042,32 @@ function mergeNotesWithResponse(existingNotes: string | null, responseNotes: str
     return existing;
   }
   return `${existing}\n${line}`;
+}
+
+function normalizeChannel(value: unknown): "email" | "call" | "form" | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "email" || normalized === "call" || normalized === "form") return normalized;
+  return null;
+}
+
+function normalizeBool(value: unknown, fallback: boolean): boolean {
+  if (typeof value !== "string") return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true" || normalized === "on" || normalized === "1" || normalized === "yes") return true;
+  if (normalized === "false" || normalized === "off" || normalized === "0" || normalized === "no") return false;
+  return fallback;
+}
+
+function buildProviderResponseNotesLine(args: {
+  channel: "email" | "call" | "form";
+  summary: string;
+}): string {
+  const summary = normalizeText(args.summary);
+  const label = args.channel === "form" ? "web form" : args.channel;
+  const truncated = summary.length > 200 ? `${summary.slice(0, 200)}…` : summary;
+  // Prefix kept consistent so legacy "notes tag" fallback continues to work.
+  return `Response: (${label}) ${truncated}`.trim();
 }
 
 function normalizeProviderIds(value: unknown): string[] {

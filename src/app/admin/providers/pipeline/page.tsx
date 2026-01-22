@@ -234,7 +234,8 @@ export default async function AdminProviderPipelinePage({
             <th className="px-5 py-4">Contact</th>
             <th className="px-5 py-4">Match health</th>
             <th className="px-5 py-4">Status</th>
-              <th className="px-5 py-4">Discovery complete</th>
+            <th className="px-5 py-4">Last response</th>
+            <th className="px-5 py-4">Discovery complete</th>
             <th className="px-5 py-4">
               <Link href={profileSortHref} className="inline-flex items-center gap-2 hover:text-white">
                 Profile complete
@@ -252,7 +253,7 @@ export default async function AdminProviderPipelinePage({
         body={
           isEmpty ? (
             <tr>
-                <td colSpan={9} className="px-6 py-12 text-center text-base text-slate-300">
+              <td colSpan={10} className="px-6 py-12 text-center text-base text-slate-300">
                 <p className="font-medium text-slate-100">No providers found</p>
                 <p className="mt-2 text-sm text-slate-400">
                   Adjust the filters to see more providers in the pipeline.

@@ -4,9 +4,11 @@ import {
   type ProviderContactRow,
   type ProviderEmailColumn,
 } from "@/server/providers";
+import { supabaseServer } from "@/lib/supabaseServer";
 import { assessProviderCapabilityMatch } from "@/lib/provider/capabilityMatch";
 import { assessDiscoveryCompleteness } from "@/lib/provider/discoveryCompleteness";
 import { scoreProviderProfileCompleteness } from "@/lib/provider/providerProfileCompleteness";
+import { hasColumns } from "@/server/db/schemaContract";
 
 export type ProviderPipelineView =
   | "queue"
@@ -25,6 +27,8 @@ export type ProviderPipelineRow = {
   discoveryComplete: boolean;
   profileCompleteness: ReturnType<typeof scoreProviderProfileCompleteness>;
   contacted: boolean;
+  responded: boolean;
+  lastResponseAt: string | null;
   needsResearch: boolean;
   isVerified: boolean;
   isActive: boolean;
@@ -51,6 +55,10 @@ export async function listProviderPipelineRows(args: {
   const sortKey = normalizeSortKey(args.sort);
   const sortDir = normalizeSortDir(args.dir);
 
+  const providerIds = providers.map((provider) => provider.id);
+  const { supportsProviderResponses, responseStateByProviderId } =
+    await loadProviderResponseState(providerIds);
+
   const rows = providers.map((provider) => {
     const rawEmailValue = readEmailValue(provider, emailColumn);
     const rawWebsiteValue = provider.website?.trim() || null;
@@ -60,6 +68,11 @@ export async function listProviderPipelineRows(args: {
       rawWebsiteValue ?? extractInviteDetail(notesValue, "Invited website:");
     const rfqUrlValue = normalizeOptionalText(provider.rfq_url);
     const contacted = Boolean(provider.contacted_at);
+    const responseSnapshot = responseStateByProviderId.get(provider.id) ?? null;
+    const lastResponseAt = supportsProviderResponses ? responseSnapshot?.lastResponseAt ?? null : null;
+    const responded = supportsProviderResponses
+      ? Boolean(responseSnapshot?.responded)
+      : hasResponseNotesFlag(provider.notes);
     const isVerified = provider.verification_status === "verified";
     const isActive = provider.is_active;
     const discovery = assessDiscoveryCompleteness({
@@ -97,6 +110,8 @@ export async function listProviderPipelineRows(args: {
       discoveryComplete,
       profileCompleteness,
       contacted,
+      responded,
+      lastResponseAt,
       needsResearch,
       isVerified,
       isActive,
@@ -227,10 +242,9 @@ function matchesProfileFilter(
     return !row.profileCompleteness.readyToVerify;
   }
   // ready_to_verify
-  const hasResponseNotes = hasResponseNotesFlag(row.provider.notes);
   return (
     row.provider.verification_status !== "verified" &&
-    hasResponseNotes &&
+    row.responded &&
     row.profileCompleteness.readyToVerify
   );
 }
@@ -306,4 +320,58 @@ function normalizeOptionalText(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+type ProviderResponseState = {
+  responded: boolean;
+  lastResponseAt: string | null;
+};
+
+async function loadProviderResponseState(
+  providerIds: string[],
+): Promise<{
+  supportsProviderResponses: boolean;
+  responseStateByProviderId: Map<string, ProviderResponseState>;
+}> {
+  const map = new Map<string, ProviderResponseState>();
+  const ids = Array.from(new Set(providerIds.filter((id) => typeof id === "string" && id.trim().length > 0)));
+  if (ids.length === 0) {
+    return { supportsProviderResponses: false, responseStateByProviderId: map };
+  }
+
+  const supportsProviderResponses = await hasColumns("provider_responses", [
+    "provider_id",
+    "response_at",
+  ]);
+  if (!supportsProviderResponses) {
+    return { supportsProviderResponses: false, responseStateByProviderId: map };
+  }
+
+  try {
+    type ProviderResponseRow = { provider_id: string | null; response_at: string | null };
+    const { data, error } = await supabaseServer
+      .from("provider_responses")
+      .select("provider_id,response_at")
+      .in("provider_id", ids)
+      .order("response_at", { ascending: false })
+      .returns<ProviderResponseRow[]>();
+
+    if (error) {
+      // If the query fails for any reason (schema drift, RLS, etc), keep the map empty
+      // so callers can fall back to notes tags.
+      return { supportsProviderResponses: false, responseStateByProviderId: map };
+    }
+
+    for (const row of data ?? []) {
+      const providerId = normalizeOptionalText(row?.provider_id);
+      const responseAt = normalizeOptionalText(row?.response_at);
+      if (!providerId || !responseAt) continue;
+      if (map.has(providerId)) continue; // first row wins (ordered desc)
+      map.set(providerId, { responded: true, lastResponseAt: responseAt });
+    }
+
+    return { supportsProviderResponses: true, responseStateByProviderId: map };
+  } catch {
+    return { supportsProviderResponses: false, responseStateByProviderId: map };
+  }
 }
