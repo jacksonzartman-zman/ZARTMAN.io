@@ -34,6 +34,7 @@ export type OpsEventType =
   | "supplier_discovered"
   | "supplier_discovery_updated"
   | "provider_contacted"
+  | "provider_responded"
   | "provider_verified"
   | "provider_unverified"
   | "provider_activated"
@@ -426,6 +427,39 @@ export async function logProviderContactedOpsEvent(
     context: {
       providerId,
       source: "logProviderContactedOpsEvent",
+    },
+  });
+}
+
+export type ProviderRespondedOpsEventInput = {
+  providerId: string;
+  responseNotes: string;
+};
+
+export async function logProviderRespondedOpsEvent(
+  input: ProviderRespondedOpsEventInput,
+): Promise<void> {
+  const providerId = normalizeOptionalId(input.providerId);
+  const eventType = normalizeEventType("provider_responded");
+  const responseNotes = normalizeOptionalText(input.responseNotes);
+  if (!providerId || !eventType || !responseNotes) {
+    return;
+  }
+
+  const payload = sanitizePayload({
+    provider_id: providerId,
+    response_notes: responseNotes,
+  });
+
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "provider responded insert failed",
+    context: {
+      providerId,
+      source: "logProviderRespondedOpsEvent",
     },
   });
 }

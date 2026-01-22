@@ -7,6 +7,10 @@ import {
   type OpsMetricsSnapshot,
   type OpsMetricsWindow,
 } from "@/server/admin/opsMetrics";
+import {
+  loadAdminSupplierActivationFunnel,
+  type SupplierActivationSnapshot,
+} from "@/server/admin/supplierActivationFunnel";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,8 +24,12 @@ const WINDOW_LABELS: Record<OpsMetricsWindow, string> = {
 export default async function AdminOpsMetricsPage() {
   await requireAdminUser({ redirectTo: "/login" });
 
-  const metricsResult = await loadAdminOpsMetrics();
+  const [metricsResult, supplierResult] = await Promise.all([
+    loadAdminOpsMetrics(),
+    loadAdminSupplierActivationFunnel(),
+  ]);
   const windows = WINDOW_ORDER.map((key) => metricsResult.data.windows[key]);
+  const supplierWindows = WINDOW_ORDER.map((key) => supplierResult.data.windows[key]);
 
   return (
     <AdminDashboardShell
@@ -31,6 +39,11 @@ export default async function AdminOpsMetricsPage() {
       {!metricsResult.ok ? (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-950/30 px-6 py-4 text-sm text-amber-100">
           Ops metrics are unavailable in this environment. Check schema access and try again.
+        </div>
+      ) : null}
+      {!supplierResult.ok ? (
+        <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-950/30 px-6 py-4 text-sm text-amber-100">
+          Supplier activation metrics are unavailable in this environment. Check schema access and try again.
         </div>
       ) : null}
 
@@ -47,6 +60,32 @@ export default async function AdminOpsMetricsPage() {
             >
               <div className="mt-4 grid gap-3">
                 {buildFunnelRows(snapshot).map((row) => (
+                  <FunnelCard
+                    key={row.key}
+                    label={row.label}
+                    value={row.value}
+                    conversion={row.conversion}
+                  />
+                ))}
+              </div>
+            </WindowCard>
+          ))}
+        </div>
+      </Section>
+
+      <Section
+        title="Supplier activation funnel"
+        subtitle="Cohort is discovered suppliers created in each window."
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
+          {supplierWindows.map((snapshot) => (
+            <WindowCard
+              key={snapshot.window}
+              title={WINDOW_LABELS[snapshot.window]}
+              range={formatRangeSupplier(snapshot)}
+            >
+              <div className="mt-4 grid gap-3">
+                {buildSupplierFunnelRows(snapshot).map((row) => (
                   <FunnelCard
                     key={row.key}
                     label={row.label}
@@ -154,6 +193,28 @@ function buildTimeRows(snapshot: OpsMetricsSnapshot): TimeRow[] {
   ];
 }
 
+function buildSupplierFunnelRows(snapshot: SupplierActivationSnapshot): FunnelRow[] {
+  const steps = [
+    {
+      key: "discovered_created",
+      label: "Discovered created",
+      value: snapshot.funnel.discovered_created,
+    },
+    { key: "contacted", label: "Contacted", value: snapshot.funnel.contacted },
+    { key: "verified", label: "Verified", value: snapshot.funnel.verified },
+    { key: "active", label: "Active", value: snapshot.funnel.active },
+    { key: "directory_visible", label: "Directory visible", value: snapshot.funnel.directory_visible },
+  ];
+
+  let previous: number | null = null;
+  return steps.map((step) => {
+    const conversion =
+      typeof previous === "number" && previous > 0 ? (step.value / previous) * 100 : null;
+    previous = step.value;
+    return { ...step, conversion };
+  });
+}
+
 function Section({
   title,
   subtitle,
@@ -245,6 +306,12 @@ function TimeCard({ label, value }: { label: string; value: number | null }) {
 }
 
 function formatRange(snapshot: OpsMetricsSnapshot): string {
+  const from = formatDate(snapshot.funnel.from);
+  const to = formatDate(snapshot.funnel.to);
+  return `${from} → ${to}`;
+}
+
+function formatRangeSupplier(snapshot: SupplierActivationSnapshot): string {
   const from = formatDate(snapshot.funnel.from);
   const to = formatDate(snapshot.funnel.to);
   return `${from} → ${to}`;
