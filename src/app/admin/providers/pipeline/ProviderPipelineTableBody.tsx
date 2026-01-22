@@ -159,7 +159,7 @@ export default function ProviderPipelineTableBody({
   return (
     <>
       <tr className="bg-slate-950/60">
-        <td colSpan={7} className="px-5 py-4">
+        <td colSpan={8} className="px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -429,6 +429,21 @@ function ProviderPipelineRowDisplay({
           ) : null}
         </td>
         <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+          {provider.source === "discovered" ? (
+            <span
+              className={pillClass(
+                row.discoveryComplete
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                  : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+              )}
+            >
+              {row.discoveryComplete ? "Yes" : "No"}
+            </span>
+          ) : (
+            <span className="text-slate-500">—</span>
+          )}
+        </td>
+        <td className={clsx(adminTableCellClass, "px-5 py-4")}>
           <div className="space-y-2">
             <span className={pillClass(nextActionMeta.className)}>{nextActionMeta.label}</span>
             {nextActionDetail ? (
@@ -438,6 +453,14 @@ function ProviderPipelineRowDisplay({
         </td>
         <td className={clsx(adminTableCellClass, "px-5 py-4")}>
           <div className="flex flex-col gap-2 text-xs">
+            {provider.source === "discovered" ? (
+              <Link
+                href={`/admin/suppliers/discover?editProviderId=${encodeURIComponent(provider.id)}`}
+                className="rounded-full border border-slate-700 px-3 py-1 font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+              >
+                Edit stub
+              </Link>
+            ) : null}
             {openWebsiteHref ? (
               <a
                 href={openWebsiteHref}
@@ -504,7 +527,7 @@ function ProviderPipelineRowDisplay({
         </td>
       </tr>
       <tr className="bg-slate-950/30">
-        <td colSpan={7} className="px-5 pb-5">
+        <td colSpan={8} className="px-5 pb-5">
           <details className="rounded-xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
             <summary className="cursor-pointer font-semibold text-slate-200">
               Ops timeline ({opsEvents.length})
@@ -653,6 +676,14 @@ function renderProviderOpsEventSummary(event: OpsEventRecord): string {
       if (supplierName) return `Supplier discovered (${supplierName})`;
       if (website) return `Supplier discovered (${website})`;
       return "Supplier discovered";
+    }
+    case "supplier_discovery_updated": {
+      const supplierName = resolvePayloadString(payload, "supplier_name");
+      const website = resolvePayloadString(payload, "supplier_website");
+      if (supplierName && website) return `Supplier discovery updated (${supplierName} · ${website})`;
+      if (supplierName) return `Supplier discovery updated (${supplierName})`;
+      if (website) return `Supplier discovery updated (${website})`;
+      return "Supplier discovery updated";
     }
     default:
       return "Ops event recorded";

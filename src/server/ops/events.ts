@@ -31,6 +31,7 @@ export type OpsEventType =
   | "supplier_join_requested"
   | "supplier_invited"
   | "supplier_discovered"
+  | "supplier_discovery_updated"
   | "provider_contacted"
   | "provider_verified"
   | "provider_unverified"
@@ -328,6 +329,68 @@ export async function logSupplierDiscoveredOpsEvent(
     context: {
       providerId,
       source: "logSupplierDiscoveredOpsEvent",
+    },
+  });
+}
+
+export type SupplierDiscoveryUpdatedOpsEventInput = {
+  supplierName: string;
+  website?: string | null;
+  email?: string | null;
+  providerId?: string | null;
+  processes?: string[] | null;
+  materials?: string[] | null;
+  note?: string | null;
+  country?: string | null;
+  states?: string[] | null;
+};
+
+export async function logSupplierDiscoveryUpdatedOpsEvent(
+  input: SupplierDiscoveryUpdatedOpsEventInput,
+): Promise<void> {
+  const email = normalizeEmail(input.email);
+  const website = normalizeWebsite(input.website);
+  const supplierName = normalizeText(input.supplierName);
+  const providerId = normalizeOptionalId(input.providerId);
+  const eventType = normalizeEventType("supplier_discovery_updated");
+  if (!eventType) {
+    return;
+  }
+
+  const updatedFields = [
+    supplierName ? "supplier_name" : null,
+    email ? "supplier_email" : null,
+    website ? "supplier_website" : null,
+    providerId ? "provider_id" : null,
+    Array.isArray(input.processes) ? "processes" : null,
+    Array.isArray(input.materials) ? "materials" : null,
+    normalizeOptionalText(input.note) ? "note" : null,
+    normalizeOptionalText(input.country) ? "country" : null,
+    Array.isArray(input.states) && input.states.length > 0 ? "states" : null,
+  ].filter((value): value is string => Boolean(value));
+
+  const payload = sanitizePayload({
+    supplier_name: supplierName || undefined,
+    supplier_email: email ?? undefined,
+    supplier_website: website ?? undefined,
+    provider_id: providerId ?? undefined,
+    processes: Array.isArray(input.processes) ? input.processes : undefined,
+    materials: Array.isArray(input.materials) ? input.materials : undefined,
+    note: normalizeOptionalText(input.note) ?? undefined,
+    country: normalizeOptionalText(input.country) ?? undefined,
+    states: Array.isArray(input.states) ? input.states : undefined,
+    updated_fields: updatedFields.length > 0 ? updatedFields : undefined,
+  });
+
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "supplier discovery updated insert failed",
+    context: {
+      providerId,
+      source: "logSupplierDiscoveryUpdatedOpsEvent",
     },
   });
 }
