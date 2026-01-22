@@ -580,6 +580,10 @@ export default async function CustomerQuoteDetailPage({
     totalCount: customerKickoffSummary.totalTasks ?? null,
   });
   const kickoffTasksRatio = formatKickoffTasksRatio(kickoffProgressBasis);
+  const kickoffCompletionLabel =
+    customerKickoffSummary?.totalTasks > 0
+      ? `${customerKickoffSummary.completedTasks ?? 0}/${customerKickoffSummary.totalTasks} complete`
+      : "—";
   const kickoffStarted =
     customerKickoffSummary.totalTasks > 0 &&
     customerKickoffSummary.completedTasks + customerKickoffSummary.blockedTasks > 0;
