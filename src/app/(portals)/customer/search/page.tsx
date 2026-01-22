@@ -64,6 +64,7 @@ import {
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { SearchAlertOptInCard } from "@/app/(portals)/customer/components/SearchAlertOptInCard";
 import { computeCustomerCoverageConfidence } from "@/server/customer/coverageConfidence";
+import { buildCustomerCompareOffers } from "@/server/customer/compareOffers";
 
 type CustomerSearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -191,6 +192,10 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
 
   const rfqOffers = workspaceData?.rfqOffers ?? [];
   const rfqDestinations = workspaceData?.rfqDestinations ?? [];
+  const customerCompareOffersPromise =
+    activeQuote && rfqOffers.length > 0
+      ? buildCustomerCompareOffers(rfqOffers)
+      : Promise.resolve([]);
   const filterContext = buildFilterContext({
     offers: rfqOffers,
     destinations: rfqDestinations,
@@ -236,7 +241,6 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     0,
   );
 
-  const offerCount = filteredOffers.length;
   const totalOfferCount = searchStateCounts.offers_total;
   const contactedSuppliersCount = countContactedSuppliers(rfqDestinations);
   let pendingNextStepsCopy: string | null = null;
@@ -363,6 +367,26 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
       })
     : null;
   const shortlistedOfferIds = offerShortlist?.offerIds ?? [];
+
+  const customerCompareOffers = await customerCompareOffersPromise;
+  const filteredOfferIdSet = new Set(filteredOffers.map((offer) => offer.id));
+  let filteredCustomerCompareOffers = customerCompareOffers.filter((offer) =>
+    filteredOfferIdSet.has(offer.id),
+  );
+  const shortlistOnlyMode = parseToggle(normalizeText(rawParams.shortlisted));
+  if (shortlistOnlyMode) {
+    const shortlistIdSet = new Set(shortlistedOfferIds);
+    filteredCustomerCompareOffers = filteredCustomerCompareOffers.filter((offer) =>
+      shortlistIdSet.has(offer.id),
+    );
+  }
+  const offerCount = filteredCustomerCompareOffers.length;
+  const showAllOffersHref = (() => {
+    const params = new URLSearchParams(usp.toString());
+    params.delete("shortlisted");
+    const qs = params.toString();
+    return qs ? `/customer/search?${qs}` : "/customer/search";
+  })();
 
   return (
     <PortalShell
@@ -735,7 +759,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                 {offerCount > 0 ? (
                   <CustomerQuoteCompareOffers
                     quoteId={activeQuote.id}
-                    offers={filteredOffers}
+                    offers={filteredCustomerCompareOffers}
                     selectedOfferId={workspaceData.quote.selected_offer_id ?? null}
                     shortlistedOfferIds={shortlistedOfferIds}
                     matchContext={{
@@ -758,6 +782,16 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                         locationFilter: filterContext.filters.location ?? null,
                       }}
                     />
+                  </div>
+                ) : shortlistOnlyMode ? (
+                  <div className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-6 text-sm text-slate-300">
+                    No offers shortlisted yet.{" "}
+                    <Link
+                      href={showAllOffersHref}
+                      className="text-xs font-semibold text-slate-100 underline-offset-4 hover:underline"
+                    >
+                      Show all offers
+                    </Link>
                   </div>
                 ) : (
                   <EmptyStateCard
@@ -926,6 +960,12 @@ function normalizeSortParam(value: string | null | undefined): SortParamValue | 
   return SORT_PARAM_VALUES.includes(trimmed as SortParamValue)
     ? (trimmed as SortParamValue)
     : null;
+}
+
+function parseToggle(value: string | null): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
 function parseNumberFilter(value: string | null, integer: boolean): number | null {
