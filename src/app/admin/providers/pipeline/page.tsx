@@ -18,6 +18,9 @@ export const dynamic = "force-dynamic";
 type MatchFilter = "all" | "mismatch" | "partial";
 type SourceFilter = "all" | "discovered";
 type DiscoveryFilter = "all" | "incomplete";
+type ProfileFilter = "all" | "incomplete" | "ready_to_verify";
+type SortKey = "name" | "profile";
+type SortDir = "asc" | "desc";
 
 const PIPELINE_FILTERS: Array<{ value: ProviderPipelineView; label: string }> = [
   { value: "queue", label: "Queue" },
@@ -41,6 +44,9 @@ export default async function AdminProviderPipelinePage({
   const matchFilter = parseMatchFilter(usp.get("match"));
   const sourceFilter = parseSourceFilter(usp.get("source"));
   const discoveryFilter = parseDiscoveryFilter(usp.get("discovery"));
+  const profileFilter = parseProfileFilter(usp.get("profile"));
+  const sortKey = parseSortKey(usp.get("sort"));
+  const sortDir = parseSortDir(usp.get("dir"));
 
   const { rows, emailColumn } = await listProviderPipelineRows({
     view,
@@ -48,6 +54,9 @@ export default async function AdminProviderPipelinePage({
     match: matchFilter,
     source: sourceFilter === "all" ? null : ("discovered" satisfies ProviderSource),
     discovery: discoveryFilter === "all" ? null : "incomplete",
+    profile: profileFilter === "all" ? null : profileFilter,
+    sort: sortKey,
+    dir: sortDir,
   });
 
   const supportsDirectoryVisibility = await hasColumns("providers", ["show_in_directory"]);
@@ -65,12 +74,16 @@ export default async function AdminProviderPipelinePage({
     search: searchInput,
     match: "mismatch",
     source: sourceFilter,
+    sort: sortKey,
+    dir: sortDir,
   });
   const partialOnlyHref = buildPipelineFilterHref({
     view,
     search: searchInput,
     match: "partial",
     source: sourceFilter,
+    sort: sortKey,
+    dir: sortDir,
   });
   const discoveredHref = buildPipelineFilterHref({
     view,
@@ -78,6 +91,8 @@ export default async function AdminProviderPipelinePage({
     match: matchFilter,
     source: sourceFilter === "discovered" ? "all" : "discovered",
     discovery: discoveryFilter,
+    sort: sortKey,
+    dir: sortDir,
   });
   const incompleteDiscoveryHref = buildPipelineFilterHref({
     view,
@@ -85,6 +100,38 @@ export default async function AdminProviderPipelinePage({
     match: matchFilter,
     source: sourceFilter,
     discovery: discoveryFilter === "incomplete" ? "all" : "incomplete",
+    sort: sortKey,
+    dir: sortDir,
+  });
+  const incompleteProfileHref = buildPipelineFilterHref({
+    view,
+    search: searchInput,
+    match: matchFilter,
+    source: sourceFilter,
+    discovery: discoveryFilter,
+    profile: profileFilter === "incomplete" ? "all" : "incomplete",
+    sort: sortKey,
+    dir: sortDir,
+  });
+  const readyToVerifyHref = buildPipelineFilterHref({
+    view,
+    search: searchInput,
+    match: matchFilter,
+    source: sourceFilter,
+    discovery: discoveryFilter,
+    profile: profileFilter === "ready_to_verify" ? "all" : "ready_to_verify",
+    sort: sortKey,
+    dir: sortDir,
+  });
+  const profileSortHref = buildPipelineFilterHref({
+    view,
+    search: searchInput,
+    match: matchFilter,
+    source: sourceFilter,
+    discovery: discoveryFilter,
+    profile: profileFilter,
+    sort: "profile",
+    dir: sortKey === "profile" && sortDir === "desc" ? "asc" : "desc",
   });
 
   return (
@@ -127,6 +174,8 @@ export default async function AdminProviderPipelinePage({
             href={incompleteDiscoveryHref}
             active={discoveryFilter === "incomplete"}
           />
+          <FilterChip label="Incomplete profile" href={incompleteProfileHref} active={profileFilter === "incomplete"} />
+          <FilterChip label="Ready to verify" href={readyToVerifyHref} active={profileFilter === "ready_to_verify"} />
           <FilterChip
             label="Mismatch only"
             href={mismatchOnlyHref}
@@ -147,6 +196,9 @@ export default async function AdminProviderPipelinePage({
           ) : null}
           {sourceFilter !== "all" ? <input type="hidden" name="source" value={sourceFilter} /> : null}
           {discoveryFilter !== "all" ? <input type="hidden" name="discovery" value={discoveryFilter} /> : null}
+          {profileFilter !== "all" ? <input type="hidden" name="profile" value={profileFilter} /> : null}
+          {sortKey !== "name" ? <input type="hidden" name="sort" value={sortKey} /> : null}
+          {sortKey !== "name" ? <input type="hidden" name="dir" value={sortDir} /> : null}
           <label className="flex w-full min-w-[220px] flex-1 flex-col gap-2 sm:w-auto">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               Search
@@ -183,6 +235,16 @@ export default async function AdminProviderPipelinePage({
             <th className="px-5 py-4">Match health</th>
             <th className="px-5 py-4">Status</th>
               <th className="px-5 py-4">Discovery complete</th>
+            <th className="px-5 py-4">
+              <Link href={profileSortHref} className="inline-flex items-center gap-2 hover:text-white">
+                Profile complete
+                {sortKey === "profile" ? (
+                  <span className="text-[10px] font-mono text-slate-500">
+                    {sortDir === "desc" ? "↓" : "↑"}
+                  </span>
+                ) : null}
+              </Link>
+            </th>
             <th className="px-5 py-4">Next action</th>
             <th className="px-5 py-4">Actions</th>
           </tr>
@@ -190,7 +252,7 @@ export default async function AdminProviderPipelinePage({
         body={
           isEmpty ? (
             <tr>
-                <td colSpan={8} className="px-6 py-12 text-center text-base text-slate-300">
+                <td colSpan={9} className="px-6 py-12 text-center text-base text-slate-300">
                 <p className="font-medium text-slate-100">No providers found</p>
                 <p className="mt-2 text-sm text-slate-400">
                   Adjust the filters to see more providers in the pipeline.
@@ -281,6 +343,9 @@ function buildPipelineFilterHref(args: {
   match?: MatchFilter;
   source?: SourceFilter;
   discovery?: DiscoveryFilter;
+  profile?: ProfileFilter;
+  sort?: SortKey;
+  dir?: SortDir;
 }): string {
   const params = new URLSearchParams();
   if (args.view && args.view !== "queue") {
@@ -297,6 +362,13 @@ function buildPipelineFilterHref(args: {
   }
   if (args.discovery && args.discovery !== "all") {
     params.set("discovery", args.discovery);
+  }
+  if (args.profile && args.profile !== "all") {
+    params.set("profile", args.profile);
+  }
+  if (args.sort && args.sort !== "name") {
+    params.set("sort", args.sort);
+    params.set("dir", args.dir === "asc" ? "asc" : "desc");
   }
   const qs = params.toString();
   return qs ? `/admin/providers/pipeline?${qs}` : "/admin/providers/pipeline";
@@ -325,4 +397,24 @@ function parseDiscoveryFilter(value: unknown): DiscoveryFilter {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (normalized === "incomplete") return "incomplete";
   return "all";
+}
+
+function parseProfileFilter(value: unknown): ProfileFilter {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "incomplete") return "incomplete";
+  if (normalized === "ready_to_verify") return "ready_to_verify";
+  if (normalized === "ready-to-verify") return "ready_to_verify";
+  return "all";
+}
+
+function parseSortKey(value: unknown): SortKey {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "profile") return "profile";
+  return "name";
+}
+
+function parseSortDir(value: unknown): SortDir {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "asc") return "asc";
+  return "desc";
 }

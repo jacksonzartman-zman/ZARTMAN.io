@@ -7,6 +7,8 @@ import { loadSupplierMismatchSummary, type SupplierMismatchSummary } from "./sup
 export type AdminSupplierDetail = {
   supplierId: string;
   supplierName: string;
+  companyName: string | null;
+  website: string | null;
   location: string | null;
   primaryEmail: string | null;
   createdAt: string | null;
@@ -31,6 +33,7 @@ type SupplierRowLite = {
   id: string;
   company_name: string | null;
   primary_email: string | null;
+  website: string | null;
   country: string | null;
   created_at: string | null;
 };
@@ -97,6 +100,8 @@ export async function loadAdminSupplierDetail(args: {
       normalizeText(supplier.company_name) ??
       normalizeText(supplier.primary_email) ??
       supplierId,
+    companyName: normalizeText(supplier.company_name),
+    website: normalizeText(supplier.website),
     location: normalizeText(supplier.country),
     primaryEmail: normalizeText(supplier.primary_email),
     createdAt: normalizeText(supplier.created_at),
@@ -110,7 +115,7 @@ async function loadSupplierLite(supplierId: string): Promise<SupplierRowLite | n
   try {
     const { data, error } = await supabaseServer
       .from("suppliers")
-      .select("id,company_name,primary_email,country,created_at")
+      .select("id,company_name,primary_email,website,country,created_at")
       .eq("id", supplierId)
       .maybeSingle<SupplierRowLite>();
     if (error) {

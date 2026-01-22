@@ -5,6 +5,7 @@ import { loadAdminSupplierDetail } from "@/server/admin/supplierDetail";
 import { loadBenchHealthForSupplier, type SupplierBenchHealth } from "@/server/admin/benchHealth";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import SupplierTakeAction from "@/app/admin/suppliers/[id]/SupplierTakeAction";
+import { scoreProviderProfileCompleteness } from "@/lib/provider/providerProfileCompleteness";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,18 @@ export default async function AdminSupplierDetailPage({
   const supplierStatus = benchHealth?.supplierStatus ?? "unknown";
   const statusSupported = Boolean(benchHealth?.statusSupported);
   const supportsQuoteMessages = Boolean(benchHealth?.supportsQuoteMessages);
+
+  const verificationReadiness = scoreProviderProfileCompleteness({
+    companyName: detail.companyName,
+    email: detail.primaryEmail,
+    website: detail.website,
+    processes: detail.capabilities?.processes ?? [],
+    country: detail.location,
+    states: [],
+    materials: detail.capabilities?.materials ?? [],
+    certifications: detail.capabilities?.certifications ?? [],
+  });
+  const verificationMissing = verificationReadiness.missing.filter(Boolean);
 
   return (
     <AdminDashboardShell
@@ -199,6 +212,32 @@ export default async function AdminSupplierDetailPage({
         </div>
 
         <aside className="space-y-5">
+          <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 p-6">
+            <h2 className="text-base font-semibold text-white">Verification readiness</h2>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <span
+                className={[
+                  "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                  verificationReadiness.readyToVerify
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
+                    : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+                ].join(" ")}
+              >
+                {verificationReadiness.readyToVerify ? "Complete" : "Missing"}
+              </span>
+              <span className="text-xs text-slate-300 tabular-nums">
+                {verificationReadiness.score}/100
+              </span>
+            </div>
+            {verificationMissing.length > 0 ? (
+              <p className="mt-3 text-sm text-slate-400">
+                Missing: {verificationMissing.join(" · ")}
+              </p>
+            ) : (
+              <p className="mt-3 text-sm text-slate-400">All required fields present.</p>
+            )}
+          </div>
+
           <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 p-6">
             <h2 className="text-base font-semibold text-white">Bench health</h2>
 
