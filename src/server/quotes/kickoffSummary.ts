@@ -3,6 +3,7 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type CustomerKickoffSummary = {
   totalTasks: number;
@@ -10,7 +11,8 @@ export type CustomerKickoffSummary = {
   isComplete: boolean;
 };
 
-const KICKOFF_TASKS_TABLE = "quote_kickoff_tasks";
+const QUOTE_KICKOFF_TASKS_TABLE = "quote_kickoff_tasks";
+const SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED = "quote_supplier_kickoff_tasks";
 
 /**
  * Customer-safe kickoff summary for a quote.
@@ -62,12 +64,27 @@ export async function getCustomerKickoffSummary(
       };
     }
 
-    const { data: tasks, error: tasksError } = await supabaseServer
-      .from(KICKOFF_TASKS_TABLE)
-      .select("completed")
-      .eq("quote_id", normalizedQuoteId)
-      .eq("supplier_id", supplierId)
-      .returns<{ completed: boolean | null }[]>();
+    // Prefer legacy supplier-scoped kickoff checklist rows when present (including after rename),
+    // since that's what customer kickoff summary historically reflects.
+    const supplierChecklistReady = await schemaGate({
+      enabled: true,
+      relation: SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED,
+      requiredColumns: ["quote_id", "supplier_id", "completed"],
+      warnPrefix: "[customer kickoff summary]",
+      warnKey: "customer_kickoff_summary:supplier_table_schema",
+    });
+
+    const table = supplierChecklistReady ? SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED : QUOTE_KICKOFF_TASKS_TABLE;
+    const select = supplierChecklistReady ? "completed" : "status";
+
+    const query = supabaseServer
+      .from(table)
+      .select(select)
+      .eq("quote_id", normalizedQuoteId);
+
+    const { data: tasks, error: tasksError } = supplierChecklistReady
+      ? await query.eq("supplier_id", supplierId).returns<{ completed: boolean | null }[]>()
+      : await query.returns<{ status: string | null }[]>();
 
     if (tasksError) {
       if (isMissingTableOrColumnError(tasksError)) {
@@ -91,7 +108,15 @@ export async function getCustomerKickoffSummary(
 
     const totalTasks = Array.isArray(tasks) ? tasks.length : 0;
     const completedTasks = Array.isArray(tasks)
-      ? tasks.reduce((count, task) => count + (task?.completed ? 1 : 0), 0)
+      ? supplierChecklistReady
+        ? (tasks as Array<{ completed: boolean | null }>).reduce(
+            (count, task) => count + (task?.completed ? 1 : 0),
+            0,
+          )
+        : (tasks as Array<{ status: string | null }>).reduce(
+            (count, task) => count + (normalizeStatus(task?.status) === "complete" ? 1 : 0),
+            0,
+          )
       : 0;
     const isComplete =
       Boolean(kickoffCompletedAt) || (totalTasks > 0 && completedTasks >= totalTasks);
@@ -111,4 +136,12 @@ export async function getCustomerKickoffSummary(
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeStatus(value: unknown): "pending" | "complete" | "blocked" | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "pending" || normalized === "complete" || normalized === "blocked") {
+    return normalized;
+  }
+  return null;
 }

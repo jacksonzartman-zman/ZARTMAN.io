@@ -4,6 +4,15 @@ import {
   isMissingTableOrColumnError,
   isRowLevelSecurityDeniedError,
 } from "@/server/admin/logging";
+import { schemaGate } from "@/server/db/schemaContract";
+import { logOpsEvent } from "@/server/ops/events";
+import {
+  requireAdminUser,
+  requireUser,
+  UnauthorizedError,
+} from "@/server/auth";
+import { loadSupplierProfileByUserId } from "@/server/suppliers";
+import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import type { QuoteEventActorRole } from "@/server/quotes/events";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -16,7 +25,38 @@ import {
   formatKickoffSummaryLabel as formatKickoffSummaryLabelFromLib,
 } from "@/lib/quote/kickoffChecklist";
 
-const TABLE_NAME = "quote_kickoff_tasks";
+// NOTE:
+// This repo historically used `quote_kickoff_tasks` for a supplier-scoped checklist.
+// Phase 18.2.1 introduces a quote-level kickoff task system using the same relation name.
+// The migration renames the legacy table to `quote_supplier_kickoff_tasks`.
+const QUOTE_KICKOFF_TASKS_TABLE = "quote_kickoff_tasks";
+const SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY = "quote_kickoff_tasks";
+const SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED = "quote_supplier_kickoff_tasks";
+
+async function resolveSupplierKickoffTasksTableName(): Promise<string> {
+  const requiredColumns = ["quote_id", "supplier_id", "task_key", "title", "completed"];
+  const legacyOk = await schemaGate({
+    enabled: true,
+    relation: SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY,
+    requiredColumns,
+    warnPrefix: "[kickoff supplier tasks]",
+    warnKey: "kickoff_supplier_tasks:legacy_schema",
+  });
+  if (legacyOk) return SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY;
+
+  const renamedOk = await schemaGate({
+    enabled: true,
+    relation: SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED,
+    requiredColumns,
+    warnPrefix: "[kickoff supplier tasks]",
+    warnKey: "kickoff_supplier_tasks:renamed_schema",
+  });
+  if (renamedOk) return SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED;
+
+  // Fallback: let call-sites handle missing schema errors.
+  return SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY;
+}
+
 const SELECT_COLUMNS_V1 =
   "id,quote_id,supplier_id,task_key,title,description,completed,sort_order,updated_at";
 const SELECT_COLUMNS_V2 =
@@ -206,6 +246,7 @@ export async function toggleSupplierKickoffTask(
 
   const now = new Date().toISOString();
   const supabase = options?.supabase ?? supabaseServer;
+  const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
 
   try {
     const baseUpdatePayload: Record<string, unknown> = {
@@ -239,7 +280,7 @@ export async function toggleSupplierKickoffTask(
     // Prefer UPDATE to avoid INSERT RLS checks for existing rows.
     const updateAttempt = async (updatePayload: Record<string, unknown>) =>
       supabase
-        .from(TABLE_NAME)
+        .from(supplierTasksTable)
         .update(updatePayload)
         .eq("quote_id", quoteId)
         .eq("supplier_id", supplierId)
@@ -303,7 +344,7 @@ export async function toggleSupplierKickoffTask(
     };
 
     const insertAttempt = async (insertPayload: Record<string, unknown>) =>
-      supabase.from(TABLE_NAME).insert(insertPayload);
+      supabase.from(supplierTasksTable).insert(insertPayload);
 
     const attemptInsertV2 = await insertAttempt(insertPayloadWithCompletion);
     let insertError = attemptInsertV2.error;
@@ -444,10 +485,11 @@ async function fetchKickoffTaskRows(
   quoteId: string,
   supplierId: string,
 ): Promise<KickoffTaskRowsResult> {
+  const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
   try {
     const selectAttempt = async (columns: string) =>
       supabaseServer
-        .from(TABLE_NAME)
+        .from(supplierTasksTable)
         .select(columns)
         .eq("quote_id", quoteId)
         .eq("supplier_id", supplierId)
@@ -531,6 +573,7 @@ async function seedKickoffTasks(
   quoteId: string,
   supplierId: string,
 ): Promise<KickoffTaskRowsResult> {
+  const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
   const seedRows = DEFAULT_SUPPLIER_KICKOFF_TASKS.map((definition) => ({
     quote_id: quoteId,
     supplier_id: supplierId,
@@ -551,7 +594,7 @@ async function seedKickoffTasks(
 
   try {
     const { error } = await supabaseServer
-      .from(TABLE_NAME)
+      .from(supplierTasksTable)
       .upsert(seedRows, {
         onConflict: "quote_id,supplier_id,task_key",
         // Critical: do not overwrite any existing task completion state.
@@ -656,6 +699,7 @@ export async function ensureKickoffTasksForQuote(
     };
   }
 
+  const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
   const seedRows = DEFAULT_SUPPLIER_KICKOFF_TASKS.map((definition) => ({
     quote_id: normalizedQuoteId,
     supplier_id: supplierId,
@@ -681,7 +725,7 @@ export async function ensureKickoffTasksForQuote(
   let hadExistingTasks: boolean | null = null;
   try {
     const { data: existingRows, error } = await supabaseServer
-      .from(TABLE_NAME)
+      .from(supplierTasksTable)
       .select("id")
       .eq("quote_id", normalizedQuoteId)
       .eq("supplier_id", supplierId)
@@ -695,7 +739,7 @@ export async function ensureKickoffTasksForQuote(
 
   try {
     const { data: insertedRows, error } = await supabaseServer
-      .from(TABLE_NAME)
+      .from(supplierTasksTable)
       .upsert(seedRows, {
         onConflict: "quote_id,supplier_id,task_key",
         // Critical: don't overwrite existing task state.
@@ -970,3 +1014,429 @@ export {
   formatKickoffSummaryLabelFromLib as formatKickoffSummaryLabel,
 };
 export type { SupplierKickoffTask, KickoffTasksSummary };
+
+export type QuoteKickoffTaskStatus = "pending" | "complete" | "blocked";
+
+export type QuoteKickoffTask = {
+  id: string;
+  quoteId: string;
+  taskKey: string;
+  title: string;
+  description: string | null;
+  sortOrder: number;
+  status: QuoteKickoffTaskStatus;
+  completedAt: string | null;
+  completedByUserId: string | null;
+  blockedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const DEFAULT_QUOTE_KICKOFF_TASKS: Array<{
+  taskKey: string;
+  title: string;
+  description: string | null;
+  sortOrder: number;
+}> = [
+  {
+    taskKey: "review-requirements",
+    title: "Review requirements & drawings",
+    description: null,
+    sortOrder: 1,
+  },
+  {
+    taskKey: "confirm-material",
+    title: "Confirm material + finishing",
+    description: null,
+    sortOrder: 2,
+  },
+  {
+    taskKey: "confirm-leadtime",
+    title: "Confirm lead time",
+    description: null,
+    sortOrder: 3,
+  },
+  {
+    taskKey: "confirm-shipping",
+    title: "Confirm shipping / ship-to",
+    description: null,
+    sortOrder: 4,
+  },
+  {
+    taskKey: "ask-questions",
+    title: "Ask questions / clarifications",
+    description: null,
+    sortOrder: 5,
+  },
+];
+
+function normalizeQuoteKickoffTaskStatus(value: unknown): QuoteKickoffTaskStatus | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "pending" || normalized === "complete" || normalized === "blocked") {
+    return normalized;
+  }
+  return null;
+}
+
+function normalizeOptionalText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export async function ensureDefaultKickoffTasksForQuote(
+  quoteId: string,
+): Promise<{ ok: true; createdCount: number } | { ok: false; error: string }> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return { ok: false, error: "missing-identifiers" };
+  }
+
+  const schemaReady = await schemaGate({
+    enabled: true,
+    relation: QUOTE_KICKOFF_TASKS_TABLE,
+    requiredColumns: [
+      "quote_id",
+      "task_key",
+      "title",
+      "description",
+      "sort_order",
+      "status",
+      "created_at",
+      "updated_at",
+    ],
+    warnPrefix: "[kickoff quote tasks]",
+    warnKey: "kickoff_quote_tasks:missing_schema",
+  });
+  if (!schemaReady) {
+    return { ok: false, error: "schema-missing" };
+  }
+
+  const seedRows = DEFAULT_QUOTE_KICKOFF_TASKS.map((task) => ({
+    quote_id: normalizedQuoteId,
+    task_key: task.taskKey,
+    title: task.title,
+    description: task.description,
+    sort_order: task.sortOrder,
+    status: "pending",
+  }));
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(QUOTE_KICKOFF_TASKS_TABLE)
+      .upsert(seedRows, {
+        onConflict: "quote_id,task_key",
+        ignoreDuplicates: true,
+      })
+      .select("id")
+      .returns<Array<{ id: string }>>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return { ok: false, error: "schema-missing" };
+      }
+      console.error("[kickoff quote tasks] seed failed", {
+        quoteId: normalizedQuoteId,
+        error: serializeSupabaseError(error),
+      });
+      return { ok: false, error: "seed-error" };
+    }
+
+    const createdCount = Array.isArray(data) ? data.length : 0;
+    return { ok: true, createdCount };
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      return { ok: false, error: "schema-missing" };
+    }
+    console.error("[kickoff quote tasks] seed crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return { ok: false, error: "seed-error" };
+  }
+}
+
+export async function getKickoffTasksForQuote(
+  quoteId: string,
+): Promise<QuoteKickoffTask[]> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) return [];
+
+  const schemaReady = await schemaGate({
+    enabled: true,
+    relation: QUOTE_KICKOFF_TASKS_TABLE,
+    requiredColumns: [
+      "id",
+      "quote_id",
+      "task_key",
+      "title",
+      "description",
+      "sort_order",
+      "status",
+      "completed_at",
+      "completed_by_user_id",
+      "blocked_reason",
+      "created_at",
+      "updated_at",
+    ],
+    warnPrefix: "[kickoff quote tasks]",
+    warnKey: "kickoff_quote_tasks:get_missing_schema",
+  });
+  if (!schemaReady) return [];
+
+  try {
+    type Row = {
+      id: string | null;
+      quote_id: string | null;
+      task_key: string | null;
+      title: string | null;
+      description: string | null;
+      sort_order: number | null;
+      status: string | null;
+      completed_at: string | null;
+      completed_by_user_id: string | null;
+      blocked_reason: string | null;
+      created_at: string | null;
+      updated_at: string | null;
+    };
+
+    const { data, error } = await supabaseServer
+      .from(QUOTE_KICKOFF_TASKS_TABLE)
+      .select(
+        "id,quote_id,task_key,title,description,sort_order,status,completed_at,completed_by_user_id,blocked_reason,created_at,updated_at",
+      )
+      .eq("quote_id", normalizedQuoteId)
+      .order("sort_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true, nullsFirst: true })
+      .returns<Row[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return [];
+      console.error("[kickoff quote tasks] load failed", {
+        quoteId: normalizedQuoteId,
+        error: serializeSupabaseError(error),
+      });
+      return [];
+    }
+
+    return (Array.isArray(data) ? data : [])
+      .map((row): QuoteKickoffTask | null => {
+        const id = normalizeId(row?.id);
+        const taskKey = normalizeId(row?.task_key);
+        const quoteId = normalizeId(row?.quote_id);
+        if (!id || !taskKey || !quoteId) return null;
+
+        const sortOrder = typeof row?.sort_order === "number" && Number.isFinite(row.sort_order)
+          ? row.sort_order
+          : 1;
+        const status = normalizeQuoteKickoffTaskStatus(row?.status) ?? "pending";
+
+        return {
+          id,
+          quoteId,
+          taskKey,
+          title: normalizeOptionalText(row?.title) ?? taskKey,
+          description: normalizeOptionalText(row?.description),
+          sortOrder,
+          status,
+          completedAt: normalizeOptionalText(row?.completed_at),
+          completedByUserId: normalizeOptionalText(row?.completed_by_user_id),
+          blockedReason: normalizeOptionalText(row?.blocked_reason),
+          createdAt: normalizeOptionalText(row?.created_at) ?? new Date().toISOString(),
+          updatedAt: normalizeOptionalText(row?.updated_at) ?? new Date().toISOString(),
+        };
+      })
+      .filter((task): task is QuoteKickoffTask => Boolean(task));
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return [];
+    console.error("[kickoff quote tasks] load crashed", {
+      quoteId: normalizedQuoteId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return [];
+  }
+}
+
+export type UpdateKickoffTaskStatusActionResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function updateKickoffTaskStatusAction(args: {
+  quoteId: string;
+  taskKey: string;
+  status: QuoteKickoffTaskStatus;
+  blockedReason?: string | null;
+}): Promise<UpdateKickoffTaskStatusActionResult> {
+  "use server";
+
+  const quoteId = normalizeId(args.quoteId);
+  const taskKey = normalizeId(args.taskKey);
+  const nextStatus = normalizeQuoteKickoffTaskStatus(args.status);
+  const blockedReason = normalizeOptionalText(args.blockedReason);
+  if (!quoteId || !taskKey || !nextStatus) {
+    return { ok: false, error: "invalid_input" };
+  }
+
+  const schemaReady = await schemaGate({
+    enabled: true,
+    relation: QUOTE_KICKOFF_TASKS_TABLE,
+    requiredColumns: [
+      "quote_id",
+      "task_key",
+      "status",
+      "completed_at",
+      "completed_by_user_id",
+      "blocked_reason",
+      "updated_at",
+    ],
+    warnPrefix: "[kickoff quote tasks]",
+    warnKey: "kickoff_quote_tasks:update_missing_schema",
+  });
+  if (!schemaReady) {
+    return { ok: false, error: "schema-missing" };
+  }
+
+  let actorRole: "admin" | "supplier" = "supplier";
+  let actorUserId: string | null = null;
+  let isAdmin = false;
+  let supplierId: string | null = null;
+
+  try {
+    const adminUser = await requireAdminUser();
+    isAdmin = true;
+    actorRole = "admin";
+    actorUserId = normalizeId(adminUser.id) || null;
+  } catch (error) {
+    if (!(error instanceof UnauthorizedError)) {
+      throw error;
+    }
+    const user = await requireUser();
+    actorUserId = normalizeId(user.id) || null;
+    actorRole = "supplier";
+
+    const profile = await loadSupplierProfileByUserId(user.id);
+    supplierId = normalizeId(profile?.supplier?.id ?? null) || null;
+    if (!supplierId) {
+      return { ok: false, error: "missing_supplier_profile" };
+    }
+
+    const access = await assertSupplierQuoteAccess({
+      quoteId,
+      supplierId,
+      supplierUserEmail: user.email ?? null,
+    });
+    if (!access.ok) {
+      return { ok: false, error: "forbidden" };
+    }
+
+    // Restrict edits to the awarded supplier (defense-in-depth).
+    const { data: quoteRow } = await supabaseServer
+      .from("quotes")
+      .select("awarded_supplier_id")
+      .eq("id", quoteId)
+      .maybeSingle<{ awarded_supplier_id: string | null }>();
+    const awardedSupplierId = normalizeId(quoteRow?.awarded_supplier_id ?? null) || null;
+    if (!awardedSupplierId || awardedSupplierId !== supplierId) {
+      return { ok: false, error: "not_awarded_supplier" };
+    }
+  }
+
+  // Ensure default tasks exist (idempotent) so updates don't race award.
+  await ensureDefaultKickoffTasksForQuote(quoteId);
+
+  type StatusRow = { status: string | null };
+  const { data: currentRow, error: loadError } = await supabaseServer
+    .from(QUOTE_KICKOFF_TASKS_TABLE)
+    .select("status")
+    .eq("quote_id", quoteId)
+    .eq("task_key", taskKey)
+    .maybeSingle<StatusRow>();
+
+  if (loadError) {
+    if (isMissingTableOrColumnError(loadError)) {
+      return { ok: false, error: "schema-missing" };
+    }
+    console.error("[kickoff quote tasks] load status failed", {
+      quoteId,
+      taskKey,
+      error: serializeSupabaseError(loadError),
+    });
+    return { ok: false, error: "load-error" };
+  }
+
+  const currentStatus = normalizeQuoteKickoffTaskStatus(currentRow?.status) ?? "pending";
+  const now = new Date().toISOString();
+
+  const isAllowed = (() => {
+    if (currentStatus === nextStatus) return true;
+    if (currentStatus === "pending" && (nextStatus === "complete" || nextStatus === "blocked")) {
+      return true;
+    }
+    if (currentStatus === "blocked" && nextStatus === "pending") {
+      return true;
+    }
+    if (currentStatus === "complete" && nextStatus === "pending") {
+      return isAdmin;
+    }
+    return false;
+  })();
+
+  if (!isAllowed) {
+    return { ok: false, error: "invalid_transition" };
+  }
+
+  if (nextStatus === "blocked" && !blockedReason) {
+    return { ok: false, error: "blocked_reason_required" };
+  }
+
+  const updatePayload: Record<string, unknown> = {
+    status: nextStatus,
+    updated_at: now,
+  };
+
+  if (nextStatus === "complete") {
+    updatePayload.completed_at = now;
+    updatePayload.completed_by_user_id = actorUserId;
+    updatePayload.blocked_reason = null;
+  } else if (nextStatus === "blocked") {
+    updatePayload.blocked_reason = blockedReason;
+    updatePayload.completed_at = null;
+    updatePayload.completed_by_user_id = null;
+  } else {
+    // pending
+    updatePayload.blocked_reason = null;
+    updatePayload.completed_at = null;
+    updatePayload.completed_by_user_id = null;
+  }
+
+  const { error: updateError } = await supabaseServer
+    .from(QUOTE_KICKOFF_TASKS_TABLE)
+    .update(updatePayload)
+    .eq("quote_id", quoteId)
+    .eq("task_key", taskKey);
+
+  if (updateError) {
+    if (isMissingTableOrColumnError(updateError)) {
+      return { ok: false, error: "schema-missing" };
+    }
+    console.error("[kickoff quote tasks] update failed", {
+      quoteId,
+      taskKey,
+      nextStatus,
+      error: serializeSupabaseError(updateError),
+    });
+    return { ok: false, error: "update-error" };
+  }
+
+  await logOpsEvent({
+    quoteId,
+    eventType: "kickoff_task_status_changed",
+    payload: {
+      quote_id: quoteId,
+      task_key: taskKey,
+      new_status: nextStatus,
+    },
+  });
+
+  return { ok: true };
+}
