@@ -1,5 +1,6 @@
 import {
   listProvidersWithContact,
+  type ProviderSource,
   type ProviderContactRow,
   type ProviderEmailColumn,
 } from "@/server/providers";
@@ -30,11 +31,13 @@ export async function listProviderPipelineRows(args: {
   view?: ProviderPipelineView | null;
   search?: string | null;
   match?: "all" | "mismatch" | "partial" | null;
+  source?: ProviderSource | null;
 }): Promise<{ rows: ProviderPipelineRow[]; emailColumn: ProviderEmailColumn | null }> {
   const { providers, emailColumn } = await listProvidersWithContact();
   const view = normalizeView(args.view);
   const search = normalizeSearchTerm(args.search);
   const matchFilter = normalizeMatchFilter(args.match);
+  const source = normalizeSource(args.source);
 
   const rows = providers.map((provider) => {
     const rawEmailValue = readEmailValue(provider, emailColumn);
@@ -73,6 +76,7 @@ export async function listProviderPipelineRows(args: {
     if (!matchesView(row, view)) return false;
     if (!matchesSearch(row, search)) return false;
     if (!matchesMatchFilter(row, matchFilter)) return false;
+    if (!matchesSource(row, source)) return false;
     return true;
   });
 
@@ -144,6 +148,16 @@ function matchesMatchFilter(
   if (filter === "mismatch") return row.capabilityMatch.health === "mismatch";
   if (filter === "partial") return row.capabilityMatch.health === "partial";
   return true;
+}
+
+function normalizeSource(value: ProviderSource | null | undefined): ProviderSource | null {
+  if (!value) return null;
+  return value;
+}
+
+function matchesSource(row: ProviderPipelineRow, source: ProviderSource | null): boolean {
+  if (!source) return true;
+  return row.provider.source === source;
 }
 
 function readEmailValue(provider: ProviderContactRow, column: ProviderEmailColumn | null): string | null {

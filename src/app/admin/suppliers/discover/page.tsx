@@ -7,6 +7,8 @@ import {
   loadAdminSupplierDiscovery,
   type AdminSupplierDiscoveryRow,
 } from "@/server/admin/supplierDiscovery";
+import { discoverSupplierAction } from "@/app/admin/suppliers/discover/actions";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +78,9 @@ export default async function AdminSupplierDiscoveryPage({
 
   const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
   const reputationFilter = parseReputationFilter(usp.get("reputation"));
+  const created = usp.get("created") === "1";
+  const providerId = typeof usp.get("providerId") === "string" ? usp.get("providerId") : null;
+  const hasError = usp.get("error") === "1" || usp.get("error") === "missing";
 
   const allRows = await loadAdminSupplierDiscovery();
   const filtered = allRows.filter((row) => {
@@ -96,9 +101,133 @@ export default async function AdminSupplierDiscoveryPage({
 
   return (
     <AdminDashboardShell
-      title="Supplier discovery"
-      description="Browse suppliers and compare fit, utilization, and reputation."
+      title="Discover suppliers"
+      description="Capture a new supplier lead and keep the provider pipeline moving."
     >
+      <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-5">
+        <h2 className="text-base font-semibold text-white">New supplier lead</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Creates an inactive, unverified provider stub with source set to discovered and hidden from the directory.
+        </p>
+
+        {created ? (
+          <div
+            className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100"
+            role="status"
+          >
+            <p className="font-semibold">Supplier discovered.</p>
+            <div className="mt-2 flex flex-wrap gap-3 text-xs">
+              <Link
+                href="/admin/providers/pipeline?source=discovered"
+                className="font-semibold text-emerald-100 underline hover:text-white"
+              >
+                View discovered providers in pipeline →
+              </Link>
+              {providerId ? (
+                <span className="font-mono text-emerald-200/80">providerId: {providerId}</span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {hasError ? (
+          <div
+            className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+            role="alert"
+          >
+            We couldn't create this supplier right now. Please confirm required fields and try again.
+          </div>
+        ) : null}
+
+        <form action={discoverSupplierAction} className="mt-5 grid gap-4 lg:grid-cols-2">
+          <label className="flex flex-col gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Company name
+            </span>
+            <input
+              name="company_name"
+              required
+              placeholder="Lambda Precision"
+              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Website
+            </span>
+            <input
+              name="website"
+              required
+              placeholder="https://lambda-precision.com"
+              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+            />
+          </label>
+
+          <label className="flex flex-col gap-2 lg:col-span-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Email (optional)
+            </span>
+            <input
+              name="email"
+              type="email"
+              placeholder="ops@lambda-precision.com"
+              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+            />
+          </label>
+
+          <div className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-5 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Process tags
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-200">
+              {PROCESS_TAGS.map((tag) => (
+                <label key={tag} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="processes"
+                    value={tag}
+                    className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+                  />
+                  <span>{tag}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-5 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Material tags
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-200">
+              {MATERIAL_TAGS.map((tag) => (
+                <label key={tag} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="materials"
+                    value={tag}
+                    className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+                  />
+                  <span>{tag}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              Tip: tags are saved as lowercase to match capability scoring.
+            </p>
+            <button
+              type="submit"
+              className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 hover:bg-emerald-400"
+            >
+              Create discovered provider
+            </button>
+          </div>
+        </form>
+      </section>
+
       <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-5">
         <form
           method="GET"
@@ -107,7 +236,7 @@ export default async function AdminSupplierDiscoveryPage({
         >
           <label className="flex flex-col gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Reputation
+              Reputation (discovery dashboard)
             </span>
             <select
               name="reputation"
@@ -201,4 +330,27 @@ export default async function AdminSupplierDiscoveryPage({
     </AdminDashboardShell>
   );
 }
+
+const PROCESS_TAGS = [
+  "CNC machining",
+  "Sheet metal",
+  "Fabrication",
+  "3D printing",
+  "Injection molding",
+  "Casting",
+  "Finishing",
+] as const;
+
+const MATERIAL_TAGS = [
+  "Aluminum",
+  "Stainless steel",
+  "Steel",
+  "Titanium",
+  "Copper",
+  "Brass",
+  "Plastics",
+  "Nylon",
+  "ABS",
+  "Delrin",
+] as const;
 

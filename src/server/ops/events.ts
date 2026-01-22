@@ -30,6 +30,7 @@ export type OpsEventType =
   | "message_posted"
   | "supplier_join_requested"
   | "supplier_invited"
+  | "supplier_discovered"
   | "provider_contacted"
   | "provider_verified"
   | "provider_unverified"
@@ -282,6 +283,51 @@ export async function logSupplierInvitedOpsEvent(
     context: {
       email,
       source: "logSupplierInvitedOpsEvent",
+    },
+  });
+}
+
+export type SupplierDiscoveredOpsEventInput = {
+  supplierName: string;
+  website?: string | null;
+  email?: string | null;
+  providerId?: string | null;
+  processes?: string[] | null;
+  materials?: string[] | null;
+  note?: string | null;
+};
+
+export async function logSupplierDiscoveredOpsEvent(
+  input: SupplierDiscoveredOpsEventInput,
+): Promise<void> {
+  const email = normalizeEmail(input.email);
+  const website = normalizeWebsite(input.website);
+  const supplierName = normalizeText(input.supplierName);
+  const providerId = normalizeOptionalId(input.providerId);
+  const eventType = normalizeEventType("supplier_discovered");
+  if (!eventType) {
+    return;
+  }
+
+  const payload = sanitizePayload({
+    supplier_name: supplierName || undefined,
+    supplier_email: email ?? undefined,
+    supplier_website: website ?? undefined,
+    provider_id: providerId ?? undefined,
+    processes: Array.isArray(input.processes) ? input.processes : undefined,
+    materials: Array.isArray(input.materials) ? input.materials : undefined,
+    note: normalizeOptionalText(input.note) ?? undefined,
+  });
+
+  queueOpsEventInsert({
+    quoteId: null,
+    destinationId: null,
+    eventType,
+    payload,
+    logLabel: "supplier discovered insert failed",
+    context: {
+      providerId,
+      source: "logSupplierDiscoveredOpsEvent",
     },
   });
 }

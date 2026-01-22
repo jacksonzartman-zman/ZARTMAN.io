@@ -11,10 +11,12 @@ import {
   listProviderPipelineRows,
   type ProviderPipelineView,
 } from "@/server/providers/pipeline";
+import type { ProviderSource } from "@/server/providers";
 
 export const dynamic = "force-dynamic";
 
 type MatchFilter = "all" | "mismatch" | "partial";
+type SourceFilter = "all" | "discovered";
 
 const PIPELINE_FILTERS: Array<{ value: ProviderPipelineView; label: string }> = [
   { value: "queue", label: "Queue" },
@@ -36,11 +38,13 @@ export default async function AdminProviderPipelinePage({
   const view = parsePipelineView(usp.get("view"));
   const searchInput = normalizeSearchInput(usp.get("search"));
   const matchFilter = parseMatchFilter(usp.get("match"));
+  const sourceFilter = parseSourceFilter(usp.get("source"));
 
   const { rows, emailColumn } = await listProviderPipelineRows({
     view,
     search: searchInput,
     match: matchFilter,
+    source: sourceFilter === "all" ? null : ("discovered" satisfies ProviderSource),
   });
 
   const supportsDirectoryVisibility = await hasColumns("providers", ["show_in_directory"]);
@@ -57,11 +61,19 @@ export default async function AdminProviderPipelinePage({
     view,
     search: searchInput,
     match: "mismatch",
+    source: sourceFilter,
   });
   const partialOnlyHref = buildPipelineFilterHref({
     view,
     search: searchInput,
     match: "partial",
+    source: sourceFilter,
+  });
+  const discoveredHref = buildPipelineFilterHref({
+    view,
+    search: searchInput,
+    match: matchFilter,
+    source: sourceFilter === "discovered" ? "all" : "discovered",
   });
 
   return (
@@ -92,11 +104,13 @@ export default async function AdminProviderPipelinePage({
               view: filter.value,
               search: searchInput,
               match: matchFilter,
+              source: sourceFilter,
             });
             return (
               <FilterChip key={filter.value} label={filter.label} href={href} active={view === filter.value} />
             );
           })}
+          <FilterChip label="Discovered" href={discoveredHref} active={sourceFilter === "discovered"} />
           <FilterChip
             label="Mismatch only"
             href={mismatchOnlyHref}
@@ -115,6 +129,7 @@ export default async function AdminProviderPipelinePage({
           {matchFilter !== "all" ? (
             <input type="hidden" name="match" value={matchFilter} />
           ) : null}
+          {sourceFilter !== "all" ? <input type="hidden" name="source" value={sourceFilter} /> : null}
           <label className="flex w-full min-w-[220px] flex-1 flex-col gap-2 sm:w-auto">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               Search
@@ -246,6 +261,7 @@ function buildPipelineFilterHref(args: {
   view: ProviderPipelineView;
   search?: string | null;
   match?: MatchFilter;
+  source?: SourceFilter;
 }): string {
   const params = new URLSearchParams();
   if (args.view && args.view !== "queue") {
@@ -256,6 +272,9 @@ function buildPipelineFilterHref(args: {
   }
   if (args.match && args.match !== "all") {
     params.set("match", args.match);
+  }
+  if (args.source && args.source !== "all") {
+    params.set("source", args.source);
   }
   const qs = params.toString();
   return qs ? `/admin/providers/pipeline?${qs}` : "/admin/providers/pipeline";
@@ -271,5 +290,11 @@ function parseMatchFilter(value: unknown): MatchFilter {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (normalized === "mismatch") return "mismatch";
   if (normalized === "partial") return "partial";
+  return "all";
+}
+
+function parseSourceFilter(value: unknown): SourceFilter {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "discovered") return "discovered";
   return "all";
 }
