@@ -677,6 +677,14 @@ function renderProviderOpsEventSummary(event: OpsEventRecord): string {
       if (website) return `Supplier discovered (${website})`;
       return "Supplier discovered";
     }
+    case "supplier_discovery_updated": {
+      const supplierName = resolvePayloadString(payload, "supplier_name");
+      const website = resolvePayloadString(payload, "supplier_website");
+      if (supplierName && website) return `Supplier discovery updated (${supplierName} · ${website})`;
+      if (supplierName) return `Supplier discovery updated (${supplierName})`;
+      if (website) return `Supplier discovery updated (${website})`;
+      return "Supplier discovery updated";
+    }
     default:
       return "Ops event recorded";
   }

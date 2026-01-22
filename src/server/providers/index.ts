@@ -256,6 +256,59 @@ export async function listProvidersWithContact(
   }
 }
 
+export async function getProviderWithContactById(
+  providerId: string,
+): Promise<{ provider: ProviderContactRow | null; emailColumn: ProviderEmailColumn | null }> {
+  const normalizedProviderId = normalizeText(providerId);
+  if (!normalizedProviderId) {
+    return { provider: null, emailColumn: null };
+  }
+
+  const [emailColumn, supportsContactedAt, baseColumns] = await Promise.all([
+    resolveProviderEmailColumn(),
+    hasColumns(PROVIDERS_TABLE, ["contacted_at"]),
+    resolveProviderSelectColumns(),
+  ]);
+
+  const selectColumns = [
+    ...baseColumns,
+    ...(emailColumn ? [emailColumn] : []),
+    ...(supportsContactedAt ? ["contacted_at"] : []),
+  ];
+
+  const supported = await schemaGate({
+    enabled: true,
+    relation: PROVIDERS_TABLE,
+    requiredColumns: selectColumns,
+    warnPrefix: "[providers]",
+    warnKey: "providers:get_with_contact_by_id",
+  });
+  if (!supported) {
+    return { provider: null, emailColumn };
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from(PROVIDERS_TABLE)
+      .select(selectColumns.join(","))
+      .eq("id", normalizedProviderId)
+      .maybeSingle<ProviderContactRow>();
+
+    if (error) {
+      console.warn("[providers] getProviderWithContactById failed", {
+        providerId: normalizedProviderId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return { provider: null, emailColumn };
+    }
+
+    return { provider: data ?? null, emailColumn };
+  } catch (error) {
+    console.warn("[providers] getProviderWithContactById crashed", { providerId: normalizedProviderId, error });
+    return { provider: null, emailColumn };
+  }
+}
+
 export async function getProviderStatusByIds(
   providerIds: string[],
 ): Promise<Map<string, ProviderStatusSnapshot>> {
@@ -332,6 +385,22 @@ export type CreateProviderStubInput = {
   notes?: string | null;
 };
 
+export type UpdateDiscoveredProviderStubInput = {
+  providerId: string;
+  name: string;
+  email?: string | null;
+  website?: string | null;
+  processes?: string[] | null;
+  materials?: string[] | null;
+  notes?: string | null;
+  country?: string | null;
+  states?: string[] | null;
+};
+
+export type UpdateDiscoveredProviderStubResult =
+  | { ok: true; providerId: string }
+  | { ok: false; providerId: string; error: string };
+
 export async function createDiscoveredProviderStub(
   input: CreateProviderStubInput,
 ): Promise<{ providerId: string | null }> {
@@ -340,6 +409,191 @@ export async function createDiscoveredProviderStub(
     source: "discovered",
     warnKey: "providers:create_discovered_stub",
   });
+}
+
+export async function updateDiscoveredProviderStub(
+  input: UpdateDiscoveredProviderStubInput,
+): Promise<UpdateDiscoveredProviderStubResult> {
+  const providerId = normalizeText(input.providerId);
+  if (!providerId) {
+    return { ok: false, providerId: "", error: "providerId is required" };
+  }
+
+  const name = normalizeText(input.name);
+  if (!name) {
+    return { ok: false, providerId, error: "name is required" };
+  }
+
+  const supported = await schemaGate({
+    enabled: true,
+    relation: PROVIDERS_TABLE,
+    requiredColumns: ["id", "name", "source"],
+    warnPrefix: "[providers]",
+    warnKey: "providers:update_discovered_stub",
+  });
+  if (!supported) {
+    return { ok: false, providerId, error: "Schema unavailable" };
+  }
+
+  let source: ProviderSource | null = null;
+  try {
+    const { data, error } = await supabaseServer
+      .from(PROVIDERS_TABLE)
+      .select("id,source")
+      .eq("id", providerId)
+      .maybeSingle<{ id: string | null; source: ProviderSource | null }>();
+    if (!error && data) {
+      source = data.source ?? null;
+    }
+  } catch (error) {
+    console.warn("[providers] updateDiscoveredProviderStub lookup crashed", { providerId, error });
+  }
+
+  if (source !== "discovered") {
+    return { ok: false, providerId, error: "Provider is not a discovered stub." };
+  }
+
+  const [
+    emailColumn,
+    supportsWebsite,
+    supportsProcesses,
+    supportsMaterials,
+    supportsNotes,
+    supportsCountry,
+    supportsStates,
+  ] = await Promise.all([
+    resolveProviderEmailColumn(),
+    hasColumns(PROVIDERS_TABLE, ["website"]),
+    hasColumns(PROVIDERS_TABLE, ["processes"]),
+    hasColumns(PROVIDERS_TABLE, ["materials"]),
+    hasColumns(PROVIDERS_TABLE, ["notes"]),
+    hasColumns(PROVIDERS_TABLE, ["country"]),
+    hasColumns(PROVIDERS_TABLE, ["states"]),
+  ]);
+
+  const normalizedEmail = normalizeEmail(input.email);
+  const normalizedWebsite = normalizeWebsite(input.website);
+  const normalizedProcesses = normalizeTagList(input.processes);
+  const normalizedMaterials = normalizeTagList(input.materials);
+  const normalizedNotes = normalizeOptionalText(input.notes);
+  const normalizedCountry = normalizeOptionalText(input.country);
+  const normalizedStates = normalizeStringList(input.states).map((value) => value.toUpperCase());
+
+  let existingNotes: string | null = null;
+  if (supportsNotes) {
+    try {
+      const { data, error } = await supabaseServer
+        .from(PROVIDERS_TABLE)
+        .select("id,notes")
+        .eq("id", providerId)
+        .maybeSingle<{ id: string | null; notes: string | null }>();
+      if (!error && data) {
+        existingNotes = normalizeOptionalText(data.notes);
+      }
+    } catch (error) {
+      console.warn("[providers] updateDiscoveredProviderStub notes lookup crashed", { providerId, error });
+    }
+  }
+
+  const includeWebsiteLine = Boolean(normalizedWebsite && !supportsWebsite);
+  const includeEmailLine = Boolean(normalizedEmail && !emailColumn);
+  const extraLines: string[] = [];
+  if (includeWebsiteLine && normalizedWebsite) {
+    extraLines.push(`Invited website: ${normalizedWebsite}`);
+  }
+  if (includeEmailLine && normalizedEmail) {
+    extraLines.push(`Invited email: ${normalizedEmail}`);
+  }
+
+  const finalNotes = supportsNotes
+    ? mergeProviderNotes({ preferredNotes: normalizedNotes, existingNotes, extraLines })
+    : null;
+
+  const updates: Record<string, unknown> = {
+    name,
+  };
+  if (supportsWebsite) {
+    updates.website = normalizedWebsite;
+  }
+  if (emailColumn) {
+    updates[emailColumn] = normalizedEmail;
+  }
+  if (supportsProcesses) {
+    updates.processes = normalizedProcesses.length > 0 ? normalizedProcesses : [];
+  }
+  if (supportsMaterials) {
+    updates.materials = normalizedMaterials.length > 0 ? normalizedMaterials : [];
+  }
+  if (supportsNotes) {
+    updates.notes = finalNotes;
+  }
+  if (supportsCountry) {
+    updates.country = normalizedCountry;
+  }
+  if (supportsStates) {
+    updates.states = normalizedStates.length > 0 ? normalizedStates : [];
+  }
+
+  const requiredColumns = [
+    "id",
+    "name",
+    ...(supportsWebsite ? ["website"] : []),
+    ...(emailColumn ? [emailColumn] : []),
+    ...(supportsProcesses ? ["processes"] : []),
+    ...(supportsMaterials ? ["materials"] : []),
+    ...(supportsNotes ? ["notes"] : []),
+    ...(supportsCountry ? ["country"] : []),
+    ...(supportsStates ? ["states"] : []),
+  ];
+
+  const updateSupported = await schemaGate({
+    enabled: true,
+    relation: PROVIDERS_TABLE,
+    requiredColumns,
+    warnPrefix: "[providers]",
+    warnKey: "providers:update_discovered_stub_fields",
+  });
+  if (!updateSupported) {
+    return { ok: false, providerId, error: "Schema unavailable" };
+  }
+
+  try {
+    const { error } = await supabaseServer.from(PROVIDERS_TABLE).update(updates).eq("id", providerId);
+    if (error) {
+      console.warn("[providers] updateDiscoveredProviderStub failed", {
+        providerId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return { ok: false, providerId, error: "Unable to update provider." };
+    }
+    return { ok: true, providerId };
+  } catch (error) {
+    console.warn("[providers] updateDiscoveredProviderStub crashed", {
+      providerId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return { ok: false, providerId, error: "Unable to update provider." };
+  }
+}
+
+function mergeProviderNotes(args: {
+  preferredNotes: string | null;
+  existingNotes: string | null;
+  extraLines: string[];
+}): string | null {
+  let notes = normalizeOptionalText(args.preferredNotes) ?? normalizeOptionalText(args.existingNotes);
+  for (const line of args.extraLines) {
+    const normalizedLine = normalizeOptionalText(line);
+    if (!normalizedLine) continue;
+    if (!notes) {
+      notes = normalizedLine;
+      continue;
+    }
+    if (!notes.includes(normalizedLine)) {
+      notes = `${notes}\n${normalizedLine}`;
+    }
+  }
+  return notes;
 }
 
 export async function createCustomerInviteProviderStub(
@@ -551,6 +805,14 @@ function normalizeTagList(values: unknown): string[] {
     .map((value) => (typeof value === "string" ? value.trim() : ""))
     .filter((value) => value.length > 0)
     .map((value) => value.toLowerCase());
+  return Array.from(new Set(normalized));
+}
+
+function normalizeStringList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const normalized = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0);
   return Array.from(new Set(normalized));
 }
 
