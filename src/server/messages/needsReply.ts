@@ -109,11 +109,11 @@ export function computeNeedsReplySummary(
   }
 
   const supplierOwesReply =
-    Boolean(lastCustomerMessageAt) &&
-    (!lastSupplierMessageAt || (lastCustomerMessageAt && lastSupplierMessageAt < lastCustomerMessageAt));
+    lastCustomerMessageAt !== null &&
+    (lastSupplierMessageAt === null || lastSupplierMessageAt < lastCustomerMessageAt);
   const customerOwesReply =
-    Boolean(lastSupplierMessageAt) &&
-    (!lastCustomerMessageAt || (lastSupplierMessageAt && lastCustomerMessageAt < lastSupplierMessageAt));
+    lastSupplierMessageAt !== null &&
+    (lastCustomerMessageAt === null || lastCustomerMessageAt < lastSupplierMessageAt);
 
   const lastThreadMessageAt =
     lastCustomerMessageAt && lastSupplierMessageAt
