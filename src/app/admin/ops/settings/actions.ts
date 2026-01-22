@@ -11,6 +11,7 @@ export type OpsSlaSettingsFormState = {
   fieldErrors?: {
     queuedMaxHours?: string;
     sentNoReplyMaxHours?: string;
+    messageReplyMaxHours?: string;
   };
 };
 
@@ -22,6 +23,7 @@ export async function saveOpsSlaSettingsAction(
 
   const queuedResult = parseHoursInput(formData.get("queuedMaxHours"));
   const sentResult = parseHoursInput(formData.get("sentNoReplyMaxHours"));
+  const messageReplyResult = parseHoursInput(formData.get("messageReplyMaxHours"));
   const fieldErrors: OpsSlaSettingsFormState["fieldErrors"] = {};
 
   if (queuedResult.error) {
@@ -29,6 +31,9 @@ export async function saveOpsSlaSettingsAction(
   }
   if (sentResult.error) {
     fieldErrors.sentNoReplyMaxHours = sentResult.error;
+  }
+  if (messageReplyResult.error) {
+    fieldErrors.messageReplyMaxHours = messageReplyResult.error;
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -43,6 +48,7 @@ export async function saveOpsSlaSettingsAction(
   const result = await upsertOpsSlaSettings({
     queuedMaxHours: queuedResult.value ?? 0,
     sentNoReplyMaxHours: sentResult.value ?? 0,
+    messageReplyMaxHours: messageReplyResult.value ?? undefined,
   });
 
   if (!result.ok) {

@@ -12,8 +12,10 @@ import {
 
 type OpsSlaSettingsFormProps = {
   initialConfig: SlaConfig;
+  messageReplyMaxHours: number;
   updatedAt: string | null;
   usingFallback: boolean;
+  messageReplyUsingFallback: boolean;
 };
 
 const INITIAL_STATE: OpsSlaSettingsFormState = {
@@ -23,8 +25,10 @@ const INITIAL_STATE: OpsSlaSettingsFormState = {
 
 export function OpsSlaSettingsForm({
   initialConfig,
+  messageReplyMaxHours,
   updatedAt,
   usingFallback,
+  messageReplyUsingFallback,
 }: OpsSlaSettingsFormProps) {
   const [state, formAction] = useFormState<
     OpsSlaSettingsFormState,
@@ -37,6 +41,11 @@ export function OpsSlaSettingsForm({
       {usingFallback ? (
         <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
           Defaults are in use because the ops settings table is missing.
+        </p>
+      ) : null}
+      {!usingFallback && messageReplyUsingFallback ? (
+        <p className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-100">
+          Message reply SLA is using defaults because `ops_settings.message_reply_max_hours` is missing.
         </p>
       ) : null}
       <div className="grid gap-4 md:grid-cols-2">
@@ -55,6 +64,14 @@ export function OpsSlaSettingsForm({
           description="How long after sending before a destination needs a reply."
           defaultValue={initialConfig.sentNoReplyMaxHours}
           error={state.fieldErrors?.sentNoReplyMaxHours}
+        />
+        <NumberField
+          id="messageReplyMaxHours"
+          name="messageReplyMaxHours"
+          label="Message reply max hours"
+          description="How long an unanswered customer↔supplier message can sit before it’s overdue (internal)."
+          defaultValue={messageReplyMaxHours}
+          error={state.fieldErrors?.messageReplyMaxHours}
         />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
