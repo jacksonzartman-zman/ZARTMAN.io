@@ -1562,6 +1562,7 @@ export default async function CustomerQuoteDetailPage({
       : null;
   const decisionCtaRow = quoteHasWinner ? (
     <CustomerQuoteDecisionCtaRow
+      quoteId={quote.id}
       statusLabel="Awarded"
       helperCopy={`Awarded to ${winningSupplierName}. Contact your awarded supplier to confirm details.`}
       primary={{ label: "Contact awarded supplier", href: messagesHref }}
@@ -1583,6 +1584,7 @@ export default async function CustomerQuoteDetailPage({
     />
   ) : (
     <CustomerQuoteDecisionCtaRow
+      quoteId={quote.id}
       statusLabel={searchProgress.statusTag}
       helperCopy={decisionHelperCopy}
       primary={decisionPrimaryCta}
