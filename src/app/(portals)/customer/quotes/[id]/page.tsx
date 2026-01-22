@@ -108,13 +108,7 @@ import { isCustomerEmailBridgeEnabled, isCustomerEmailOptedIn } from "@/server/q
 import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
 import { CustomerQuoteMessagesSection } from "./CustomerQuoteMessagesSection";
 import { CustomerQuoteMessagesReadMarker } from "./CustomerQuoteMessagesReadMarker";
-import { EstimateBandCard } from "@/components/EstimateBandCard";
-import {
-  buildPricingEstimate,
-  buildPricingEstimateTelemetry,
-  parseQuantity,
-  type PricingEstimateInput,
-} from "@/lib/pricing/estimate";
+import { CustomerEstimatedPriceTile } from "@/components/CustomerEstimatedPriceTile";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { loadCustomerOfferShortlist } from "@/server/customer/offerShortlist";
 import { CustomerQuoteIntroRequestCtaRow } from "./CustomerQuoteIntroRequestCtaRow";
@@ -124,6 +118,7 @@ import { computeCustomerCoverageConfidence } from "@/server/customer/coverageCon
 import { buildCustomerCompareOffers } from "@/server/customer/compareOffers";
 import { userHasTeamAccessToQuote } from "@/server/customerTeams";
 import { canCustomerViewQuote } from "@/server/customerTeams/access";
+import { getCustomerPricingEstimate, partsBucketFromCount } from "@/server/customer/pricingEstimate";
 
 export const dynamic = "force-dynamic";
 
@@ -721,20 +716,35 @@ export default async function CustomerQuoteDetailPage({
     typeof uploadMeta?.quantity === "string" && uploadMeta.quantity.trim().length > 0
       ? uploadMeta.quantity.trim()
       : null;
-  const estimateInput = buildEstimateInput({ quote, uploadMeta, fileCount });
-  const pricingEstimate = buildPricingEstimate(estimateInput);
+  const estimateTechnology = normalizeUploadMetaString(uploadMeta, ["manufacturing_process"]);
+  const estimateMaterialCanon = normalizeUploadMetaString(uploadMeta, ["material_canon", "materialCanon"]);
+  const estimateMaterialForTooltip = normalizeUploadMetaString(uploadMeta, [
+    "material_canon",
+    "materialCanon",
+    "material",
+    "material_type",
+    "material_name",
+    "materialName",
+  ]);
+  const estimatePartsCount = Array.isArray(parts) && parts.length > 0 ? parts.length : null;
+  const customerPricingEstimate = await getCustomerPricingEstimate({
+    technology: estimateTechnology,
+    materialCanon: estimateMaterialCanon,
+    partsCount: estimatePartsCount,
+  });
 
-  if (pricingEstimate) {
-    const telemetry = buildPricingEstimateTelemetry(estimateInput, pricingEstimate);
+  if (customerPricingEstimate) {
+    const partsBucket = partsBucketFromCount(estimatePartsCount);
     void logOpsEvent({
       quoteId: quote.id,
       eventType: "estimate_shown",
       dedupeKey: opsEventSessionKey,
       payload: {
-        process: telemetry.process,
-        quantity_bucket: telemetry.quantityBucket,
-        urgency_bucket: telemetry.urgencyBucket,
-        confidence: telemetry.confidence,
+        process: estimateTechnology,
+        material_canon: estimateMaterialCanon,
+        parts_bucket: partsBucket,
+        confidence: customerPricingEstimate.confidence,
+        source: customerPricingEstimate.source,
       },
     });
   }
@@ -1061,9 +1071,6 @@ export default async function CustomerQuoteDetailPage({
         <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           Target date: {targetDateChipText}
         </TagPill>
-        <TagPill size="md" tone="slate" className="normal-case tracking-normal">
-          Estimate: {priceChipText}
-        </TagPill>
         {coverageConfidence ? (
           <CoverageConfidenceBadge summary={coverageConfidence} size="md" className="normal-case tracking-normal" />
         ) : null}
@@ -1080,6 +1087,12 @@ export default async function CustomerQuoteDetailPage({
           </dt>
           <dd className="text-slate-100">{fileCountText}</dd>
         </div>
+        <CustomerEstimatedPriceTile
+          estimate={customerPricingEstimate}
+          technology={estimateTechnology}
+          material={estimateMaterialForTooltip}
+          partsCount={estimatePartsCount}
+        />
         <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
           <dt className="text-[11px] uppercase tracking-wide text-slate-500">
             Submitted
@@ -1099,12 +1112,6 @@ export default async function CustomerQuoteDetailPage({
             Last updated
           </dt>
           <dd className="text-slate-100">{updatedAtText ?? "—"}</dd>
-        </div>
-        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
-          <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-            Estimate
-          </dt>
-          <dd className="text-slate-100">{priceChipText}</dd>
         </div>
       </dl>
       <div className="grid gap-4 lg:grid-cols-2">
@@ -1523,10 +1530,6 @@ export default async function CustomerQuoteDetailPage({
     inProduction,
   });
 
-  const estimateBandCard = (
-    <EstimateBandCard estimate={pricingEstimate} className="rounded-2xl px-5 py-4" />
-  );
-
   const awardedSupplierCard = quoteHasWinner ? (
     <PortalCard
       title="Awarded supplier"
@@ -1779,7 +1782,6 @@ export default async function CustomerQuoteDetailPage({
         {decisionCtaRow}
         {compareOffersSection}
         {selectionConfirmedSection}
-        {estimateBandCard}
         {orderWorkspaceSection}
         {rfqOffers.length === 0 ? decisionSection : null}
         {kickoffSection}
@@ -2099,19 +2101,20 @@ function readOptionalUploadMetaString(
   return null;
 }
 
-function buildEstimateInput(args: {
-  quote: QuoteWorkspaceData["quote"];
-  uploadMeta: QuoteWorkspaceData["uploadMeta"];
-  fileCount: number;
-}): PricingEstimateInput {
-  const quantity = parseQuantity(args.uploadMeta?.quantity ?? null);
-  return {
-    manufacturing_process: args.uploadMeta?.manufacturing_process ?? null,
-    quantity,
-    need_by_date: args.quote.target_date ?? null,
-    shipping_postal_code: args.uploadMeta?.shipping_postal_code ?? null,
-    num_files: args.fileCount,
-  };
+function normalizeUploadMetaString(
+  uploadMeta: QuoteWorkspaceData["uploadMeta"],
+  keys: string[],
+): string | null {
+  if (!uploadMeta) return null;
+  const record = uploadMeta as unknown as Record<string, unknown>;
+  for (const key of keys) {
+    const raw = record[key];
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return null;
 }
 
 function buildCustomerQuoteSections(args: {

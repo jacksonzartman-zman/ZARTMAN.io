@@ -49,23 +49,18 @@ import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { CoverageDisclosure } from "@/components/CoverageDisclosure";
 import { CoverageConfidenceBadge } from "@/components/CoverageConfidenceBadge";
 import { TagPill, type TagPillTone } from "@/components/shared/primitives/TagPill";
-import { EstimateBandCard } from "@/components/EstimateBandCard";
+import { CustomerEstimatedPriceTile } from "@/components/CustomerEstimatedPriceTile";
 import {
   SearchActivityFeed,
   buildSearchActivityFeedEvents,
 } from "@/components/search/SearchActivityFeed";
 import { PendingProvidersTable } from "@/components/search/PendingProvidersTable";
-import {
-  buildPricingEstimate,
-  buildPricingEstimateTelemetry,
-  parseQuantity,
-  type PricingEstimateInput,
-} from "@/lib/pricing/estimate";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { SearchAlertOptInCard } from "@/app/(portals)/customer/components/SearchAlertOptInCard";
 import { computeCustomerCoverageConfidence } from "@/server/customer/coverageConfidence";
 import { buildCustomerCompareOffers } from "@/server/customer/compareOffers";
 import { userHasTeamAccessToQuote } from "@/server/customerTeams";
+import { getCustomerPricingEstimate, partsBucketFromCount } from "@/server/customer/pricingEstimate";
 
 type CustomerSearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -336,23 +331,50 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     activeQuote && workspaceData?.uploadMeta
       ? await computeCustomerCoverageConfidence({ uploadMeta: workspaceData.uploadMeta })
       : null;
-  const estimateInput =
+  const estimateTechnology =
     activeQuote && workspaceData
-      ? buildEstimateInput({ quote: workspaceData.quote, uploadMeta: workspaceData.uploadMeta })
+      ? normalizeUploadMetaString(workspaceData.uploadMeta, ["manufacturing_process"])
       : null;
-  const pricingEstimate = estimateInput ? buildPricingEstimate(estimateInput) : null;
+  const estimateMaterialCanon =
+    activeQuote && workspaceData
+      ? normalizeUploadMetaString(workspaceData.uploadMeta, ["material_canon", "materialCanon"])
+      : null;
+  const estimateMaterialForTooltip =
+    activeQuote && workspaceData
+      ? normalizeUploadMetaString(workspaceData.uploadMeta, [
+          "material_canon",
+          "materialCanon",
+          "material",
+          "material_type",
+          "material_name",
+          "materialName",
+        ])
+      : null;
+  const estimatePartsCount =
+    activeQuote && workspaceData && Array.isArray(workspaceData.parts) && workspaceData.parts.length > 0
+      ? workspaceData.parts.length
+      : null;
+  const customerPricingEstimate =
+    activeQuote && workspaceData
+      ? await getCustomerPricingEstimate({
+          technology: estimateTechnology,
+          materialCanon: estimateMaterialCanon,
+          partsCount: estimatePartsCount,
+        })
+      : null;
 
-  if (activeQuote && pricingEstimate && estimateInput) {
-    const telemetry = buildPricingEstimateTelemetry(estimateInput, pricingEstimate);
+  if (activeQuote && customerPricingEstimate) {
+    const partsBucket = partsBucketFromCount(estimatePartsCount);
     void logOpsEvent({
       quoteId: activeQuote.id,
       eventType: "estimate_shown",
       dedupeKey: opsEventSessionKey,
       payload: {
-        process: telemetry.process,
-        quantity_bucket: telemetry.quantityBucket,
-        urgency_bucket: telemetry.urgencyBucket,
-        confidence: telemetry.confidence,
+        process: estimateTechnology,
+        material_canon: estimateMaterialCanon,
+        parts_bucket: partsBucket,
+        confidence: customerPricingEstimate.confidence,
+        source: customerPricingEstimate.source,
       },
     });
   }
@@ -493,11 +515,17 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             ) : null}
           </div>
         </div>
-        <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-2 lg:grid-cols-5">
+        <dl className="mt-4 grid gap-3 text-sm text-slate-200 sm:grid-cols-2 lg:grid-cols-6">
           <SummaryTile label="Process" value={activeQuoteSummary.process} />
           <SummaryTile label="Quantity" value={activeQuoteSummary.quantity} />
           <SummaryTile label="Need-by" value={activeQuoteSummary.needBy} />
           <SummaryTile label="Files" value={activeQuoteSummary.files} />
+          <CustomerEstimatedPriceTile
+            estimate={customerPricingEstimate}
+            technology={estimateTechnology}
+            material={estimateMaterialForTooltip}
+            partsCount={estimatePartsCount}
+          />
           {coverageConfidence ? (
             <SummaryTile
               label="Coverage"
@@ -512,11 +540,6 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             />
           ) : null}
         </dl>
-        {activeQuote ? (
-          <div className="mt-4">
-            <EstimateBandCard estimate={pricingEstimate} />
-          </div>
-        ) : null}
       </section>
 
       {showActivityFeed ? (
@@ -1357,20 +1380,6 @@ function buildQuoteSummary(workspaceData: Awaited<ReturnType<typeof loadQuoteWor
   };
 }
 
-function buildEstimateInput(args: {
-  quote: QuoteWorkspaceData["quote"];
-  uploadMeta: QuoteWorkspaceData["uploadMeta"];
-}): PricingEstimateInput {
-  const quantity = parseQuantity(args.uploadMeta?.quantity ?? null);
-  return {
-    manufacturing_process: args.uploadMeta?.manufacturing_process ?? null,
-    quantity,
-    need_by_date: args.quote.target_date ?? null,
-    shipping_postal_code: args.uploadMeta?.shipping_postal_code ?? null,
-    num_files: args.quote.fileCount ?? null,
-  };
-}
-
 function formatEnumLabel(value?: string | null): string {
   if (!value) return "";
   const collapsed = value.replace(/[_-]+/g, " ").trim();
@@ -1379,6 +1388,22 @@ function formatEnumLabel(value?: string | null): string {
     .split(" ")
     .map((segment) => (segment ? segment[0].toUpperCase() + segment.slice(1) : ""))
     .join(" ");
+}
+
+function normalizeUploadMetaString(
+  uploadMeta: QuoteWorkspaceData["uploadMeta"],
+  keys: string[],
+): string | null {
+  if (!uploadMeta) return null;
+  const record = uploadMeta as unknown as Record<string, unknown>;
+  for (const key of keys) {
+    const raw = record[key];
+    if (typeof raw === "string") {
+      const trimmed = raw.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return null;
 }
 
 function deriveSearchStatusTone(statusLabel: string): TagPillTone {
