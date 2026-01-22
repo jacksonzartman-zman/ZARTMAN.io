@@ -27,7 +27,7 @@ export default async function QuotePage() {
             </h1>
             <p className="text-sm sm:text-base text-ink-muted">
               Drag in 5–20 CAD files (STEP, IGES, STL, SolidWorks, or zipped assemblies). We keep
-              every part on the same search request so suppliers see the full project context.
+              every part together so suppliers see the full project context.
             </p>
           </div>
           <div className="rounded-2xl border border-line-subtle bg-surface/50 p-4 text-sm text-ink-soft">
@@ -40,7 +40,7 @@ export default async function QuotePage() {
         <section className="max-w-3xl">
           <div className="rounded-2xl border border-line-subtle bg-surface/50 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
-              Your first search request in 3 steps
+              Your quote request in 3 steps
             </div>
             <ol className="mt-3 grid gap-3 sm:grid-cols-3">
               <li className="surface-card p-4">
@@ -59,7 +59,7 @@ export default async function QuotePage() {
                 <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
                   Step 3
                 </div>
-                <p className="text-sm text-ink-soft">Review &amp; submit search request</p>
+                <p className="text-sm text-ink-soft">Review &amp; submit</p>
               </li>
             </ol>
           </div>
@@ -101,20 +101,18 @@ export default async function QuotePage() {
             </div>
             <div className="surface-card p-4">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                2. Review
+                2. Compare offers
               </div>
               <p className="text-sm text-ink-soft">
-                We process it in Supabase, inspect geometry, and capture DFM
-                questions in your quote workspace.
+                Compare quotes side-by-side (price, lead time, and assumptions).
               </p>
             </div>
             <div className="surface-card p-4">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                3. Decide
+                3. We connect you
               </div>
               <p className="text-sm text-ink-soft">
-                Pricing, lead-time ranges, and status updates show up in the admin
-                view so your team can move.
+                Request an introduction to the suppliers you want to work with.
               </p>
             </div>
           </div>
