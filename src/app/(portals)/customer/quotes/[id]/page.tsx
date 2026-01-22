@@ -102,6 +102,7 @@ import { StatusPill } from "@/components/shared/primitives/StatusPill";
 import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
 import { RequestChangeScaffold } from "./RequestChangeScaffold";
 import { DemoModeBanner } from "./DemoModeBanner";
+import { CoverageConfidenceBadge } from "@/components/CoverageConfidenceBadge";
 import { CustomerEmailRepliesCard } from "./CustomerEmailRepliesCard";
 import { isCustomerEmailBridgeEnabled, isCustomerEmailOptedIn } from "@/server/quotes/customerEmailPrefs";
 import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
@@ -119,6 +120,7 @@ import { loadCustomerOfferShortlist } from "@/server/customer/offerShortlist";
 import { CustomerQuoteIntroRequestCtaRow } from "./CustomerQuoteIntroRequestCtaRow";
 import { CustomerProjectTimelineStrip } from "./CustomerProjectTimelineStrip";
 import { hasCustomerIntroRequested } from "@/server/customer/introRequests";
+import { computeCustomerCoverageConfidence } from "@/server/customer/coverageConfidence";
 
 export const dynamic = "force-dynamic";
 
@@ -693,6 +695,9 @@ export default async function CustomerQuoteDetailPage({
     uploadMeta.manufacturing_process.trim().length > 0
       ? uploadMeta.manufacturing_process.trim()
       : null;
+  const coverageConfidence = uploadMeta
+    ? await computeCustomerCoverageConfidence({ uploadMeta })
+    : null;
   const intakeQuantity =
     typeof uploadMeta?.quantity === "string" && uploadMeta.quantity.trim().length > 0
       ? uploadMeta.quantity.trim()
@@ -1040,6 +1045,9 @@ export default async function CustomerQuoteDetailPage({
         <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           Estimate: {priceChipText}
         </TagPill>
+        {coverageConfidence ? (
+          <CoverageConfidenceBadge summary={coverageConfidence} size="md" className="normal-case tracking-normal" />
+        ) : null}
       </div>
       <WorkflowStatusCallout
         currentLabel={quoteStatusLabel}
