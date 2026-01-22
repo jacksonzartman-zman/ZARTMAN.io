@@ -10,44 +10,49 @@ type CustomerSearchActionsProps = {
   quoteLabel?: string | null;
 };
 
-type ShareStatus = "idle" | "copied" | "error";
 type SaveStatus = "idle" | "saving" | "success" | "error";
 
 const ACTION_BUTTON_CLASSES =
   "inline-flex items-center rounded-full border border-slate-700/70 bg-slate-950/40 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white";
 const ACTION_BUTTON_DISABLED_CLASSES =
   "cursor-not-allowed border-slate-800/80 bg-slate-950/40 text-slate-500";
-const SHARE_RESET_MS = 2200;
 const MAX_LABEL_LENGTH = 120;
+const TOAST_RESET_MS = 2400;
 
 export function CustomerSearchActions({
   quoteId,
   sharePath,
   quoteLabel,
 }: CustomerSearchActionsProps) {
-  const [shareStatus, setShareStatus] = useState<ShareStatus>("idle");
   const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (shareStatus === "idle") return;
-    const timeout = window.setTimeout(() => setShareStatus("idle"), SHARE_RESET_MS);
+    if (!toastMessage) return;
+    const timeout = window.setTimeout(() => setToastMessage(null), TOAST_RESET_MS);
     return () => window.clearTimeout(timeout);
-  }, [shareStatus]);
-
-  const shareLabel = useMemo(() => {
-    if (shareStatus === "copied") return "Copied";
-    if (shareStatus === "error") return "Copy failed";
-    return "Share";
-  }, [shareStatus]);
+  }, [toastMessage]);
 
   const handleShare = useCallback(async () => {
     if (!sharePath) {
-      setShareStatus("error");
+      setToastMessage("Unable to build share link.");
       return;
     }
-    const shareUrl = buildShareUrl(sharePath);
-    const copied = await copyToClipboard(shareUrl);
-    setShareStatus(copied ? "copied" : "error");
+    const nextUrl = buildShareUrl(sharePath);
+    setShareUrl(nextUrl);
+
+    const copied = await copyToClipboardPrimary(nextUrl);
+    if (copied) {
+      setToastMessage("Link copied.");
+      setShareModalOpen(false);
+      return;
+    }
+
+    // Safari/iOS can reject programmatic clipboard writes. Fall back to an input
+    // modal where the URL is pre-selected for manual copy.
+    setShareModalOpen(true);
   }, [sharePath]);
 
   return (
@@ -62,7 +67,7 @@ export function CustomerSearchActions({
             Save this search
           </button>
           <button type="button" onClick={handleShare} className={ACTION_BUTTON_CLASSES}>
-            {shareLabel}
+            Share
           </button>
         </div>
         <p className="text-[11px] text-slate-500">
@@ -75,7 +80,178 @@ export function CustomerSearchActions({
         quoteId={quoteId}
         defaultLabel={quoteLabel}
       />
+
+      <ShareLinkModal
+        open={shareModalOpen}
+        url={shareUrl}
+        onClose={() => setShareModalOpen(false)}
+        onCopied={() => {
+          setToastMessage("Link copied.");
+          setShareModalOpen(false);
+        }}
+      />
+
+      <Toast message={toastMessage} />
     </>
+  );
+}
+
+function Toast({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <div
+      className="fixed bottom-4 left-1/2 z-[60] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/95 px-4 py-3 text-sm font-semibold text-slate-100 shadow-[0_18px_45px_rgba(2,6,23,0.7)]">
+        {message}
+      </div>
+    </div>
+  );
+}
+
+function ShareLinkModal({
+  open,
+  url,
+  onClose,
+  onCopied,
+}: {
+  open: boolean;
+  url: string;
+  onClose: () => void;
+  onCopied: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const [copyError, setCopyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocusedRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const raf = window.requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.select();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      const prev = previouslyFocusedRef.current;
+      if (prev && document.contains(prev)) prev.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setCopyError(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Copy share link"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-800 bg-slate-950"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-900 px-6 py-4">
+          <div className="min-w-0 space-y-1">
+            <p className="truncate text-sm font-semibold text-white">Share link</p>
+            <p className="text-xs text-slate-400">
+              If your browser blocks clipboard access, select the link below and copy it.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close share link dialog"
+            className="rounded-full border border-slate-700 bg-slate-900/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="space-y-4 p-6">
+          <label className="flex flex-col gap-2 text-xs font-semibold text-slate-300">
+            Link
+            <input
+              ref={inputRef}
+              type="text"
+              value={url}
+              readOnly
+              onFocus={(e) => e.currentTarget.select()}
+              className="w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-400"
+            />
+          </label>
+
+          {copyError ? (
+            <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              {copyError}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-slate-700 bg-slate-900/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                setCopyError(null);
+                const input = inputRef.current;
+                if (input) {
+                  input.focus();
+                  input.select();
+                }
+                const copied = await copyToClipboardPrimary(url);
+                if (copied) {
+                  onCopied();
+                } else {
+                  setCopyError("Select the link and copy it from the selection menu.");
+                }
+              }}
+              disabled={!url.trim()}
+              className={clsx(
+                ACTION_BUTTON_CLASSES,
+                (!url.trim() || false) && ACTION_BUTTON_DISABLED_CLASSES,
+              )}
+            >
+              Copy link
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -292,30 +468,16 @@ function buildShareUrl(path: string): string {
   }
 }
 
-async function copyToClipboard(text: string): Promise<boolean> {
+async function copyToClipboardPrimary(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
       return true;
     }
   } catch {
-    // Fall through to legacy copy method.
+    // Clipboard API can fail (Safari/iOS, permission, insecure context).
   }
-
-  try {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "absolute";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const success = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return success;
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 function normalizeLabel(value: string | null | undefined): string {

@@ -298,7 +298,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   }
 
   const clearFiltersHref = buildClearFiltersHref(rawParams.quoteId, rawParams.sort);
-  const shareSearchHref = activeQuote ? buildSearchHref(usp, activeQuote.id) : "";
+  const shareSearchHref = activeQuote ? buildSearchShareHref(usp, activeQuote.id) : "";
   const activityQuote = workspaceData?.quote
     ? {
         id: workspaceData.quote.id,
@@ -1079,6 +1079,48 @@ function buildSearchHref(usp: URLSearchParams, quoteId: string): string {
     }
   }
   params.set("quote", quoteId);
+  const qs = params.toString();
+  return qs ? `/customer/search?${qs}` : "/customer/search";
+}
+
+function buildSearchShareHref(usp: URLSearchParams, quoteId: string): string {
+  const params = new URLSearchParams();
+  const normalizedQuoteId = normalizeText(quoteId);
+  if (normalizedQuoteId) {
+    params.set("quote", normalizedQuoteId);
+  }
+
+  const shortlistedValue = normalizeText(usp.get("shortlisted"));
+  const shortlistedOnly =
+    shortlistedValue === "1" ||
+    shortlistedValue.toLowerCase() === "true" ||
+    shortlistedValue.toLowerCase() === "yes" ||
+    shortlistedValue.toLowerCase() === "on";
+
+  // Keep share URLs clean by default. If the user is explicitly in "shortlisted only"
+  // mode, preserve relevant filters since this view is intentional.
+  if (shortlistedOnly) {
+    params.set("shortlisted", "1");
+
+    for (const [key, value] of usp.entries()) {
+      if (key === "quote") continue;
+      if (key === "shortlisted") continue;
+      if (!FILTER_PARAM_KEYS.includes(key as (typeof FILTER_PARAM_KEYS)[number])) continue;
+
+      const cleaned = normalizeText(value);
+      if (!cleaned) continue;
+
+      if (key === "sort") {
+        const normalizedSort = normalizeSortParam(cleaned) ?? DEFAULT_SORT_PARAM;
+        if (normalizedSort === DEFAULT_SORT_PARAM) continue;
+        params.set("sort", normalizedSort);
+        continue;
+      }
+
+      params.set(key, cleaned);
+    }
+  }
+
   const qs = params.toString();
   return qs ? `/customer/search?${qs}` : "/customer/search";
 }
