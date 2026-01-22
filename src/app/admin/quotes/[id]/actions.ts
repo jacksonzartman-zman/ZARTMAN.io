@@ -72,6 +72,7 @@ import { buildAwardEmail } from "@/server/quotes/awardEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { schemaGate } from "@/server/db/schemaContract";
+import { ensureDefaultKickoffTasksForQuote } from "@/server/quotes/kickoffTasks";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -710,6 +711,17 @@ export async function awardProviderForQuoteAction(
         });
       }
       return { status: "error", error: ADMIN_AWARD_PROVIDER_GENERIC_ERROR };
+    }
+
+    // Phase 18.2.1: ensure quote-level kickoff tasks exist immediately after award.
+    // Best-effort: do not block award if schema isn't migrated yet.
+    try {
+      await ensureDefaultKickoffTasksForQuote(normalizedQuoteId);
+    } catch (error) {
+      console.warn("[admin award provider] kickoff task seed skipped (best-effort)", {
+        quoteId: normalizedQuoteId,
+        error: serializeActionError(error),
+      });
     }
 
     // Best-effort timeline event; do not block award.

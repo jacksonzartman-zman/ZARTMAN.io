@@ -11,8 +11,34 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { schemaGate } from "@/server/db/schemaContract";
 
 const LOG_PREFIX = "[supplier kickoff tasks api]";
+const SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY = "quote_kickoff_tasks";
+const SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED = "quote_supplier_kickoff_tasks";
+
+async function resolveSupplierKickoffTasksTableName(): Promise<string> {
+  const requiredColumns = ["quote_id", "supplier_id", "task_key", "completed"];
+  const legacyOk = await schemaGate({
+    enabled: true,
+    relation: SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY,
+    requiredColumns,
+    warnPrefix: LOG_PREFIX,
+    warnKey: "supplier_kickoff_api:legacy_schema",
+  });
+  if (legacyOk) return SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY;
+
+  const renamedOk = await schemaGate({
+    enabled: true,
+    relation: SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED,
+    requiredColumns,
+    warnPrefix: LOG_PREFIX,
+    warnKey: "supplier_kickoff_api:renamed_schema",
+  });
+  if (renamedOk) return SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED;
+
+  return SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY;
+}
 
 export async function POST(
   _req: Request,
@@ -84,10 +110,11 @@ export async function POST(
       DEFAULT_SUPPLIER_KICKOFF_TASKS.find((t) => t.taskKey === taskKey) ?? null;
 
     const now = new Date().toISOString();
+    const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
 
     const updateV2 = async () =>
       supabaseServer
-        .from("quote_kickoff_tasks")
+        .from(supplierTasksTable)
         .update({
           completed: true,
           completed_at: now,
@@ -102,7 +129,7 @@ export async function POST(
 
     const updateV1 = async () =>
       supabaseServer
-        .from("quote_kickoff_tasks")
+        .from(supplierTasksTable)
         .update({ completed: true })
         .eq("quote_id", quoteId)
         .eq("supplier_id", supplierId)
@@ -157,7 +184,7 @@ export async function POST(
       };
 
       const insertV2 = async () =>
-        supabaseServer.from("quote_kickoff_tasks").insert({
+        supabaseServer.from(supplierTasksTable).insert({
           ...insertBase,
           completed_at: now,
           completed_by_user_id: user.id,
@@ -165,7 +192,7 @@ export async function POST(
         });
 
       const insertV1 = async () =>
-        supabaseServer.from("quote_kickoff_tasks").insert(insertBase);
+        supabaseServer.from(supplierTasksTable).insert(insertBase);
 
       const insertAttempt = await insertV2();
       let insertError = insertAttempt.error;

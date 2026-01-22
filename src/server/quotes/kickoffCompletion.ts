@@ -4,6 +4,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { emitQuoteEvent, type QuoteEventActorRole } from "@/server/quotes/events";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type FinalizeKickoffCompletionInput = {
   quoteId: string;
@@ -13,6 +14,31 @@ export type FinalizeKickoffCompletionInput = {
 };
 
 let warnedMissingSchema = false;
+const SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY = "quote_kickoff_tasks";
+const SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED = "quote_supplier_kickoff_tasks";
+
+async function resolveSupplierKickoffTasksTableName(): Promise<string> {
+  const requiredColumns = ["quote_id", "supplier_id", "task_key", "completed"];
+  const legacyOk = await schemaGate({
+    enabled: true,
+    relation: SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY,
+    requiredColumns,
+    warnPrefix: "[kickoff completion]",
+    warnKey: "kickoff_completion:supplier_tasks_legacy_schema",
+  });
+  if (legacyOk) return SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY;
+
+  const renamedOk = await schemaGate({
+    enabled: true,
+    relation: SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED,
+    requiredColumns,
+    warnPrefix: "[kickoff completion]",
+    warnKey: "kickoff_completion:supplier_tasks_renamed_schema",
+  });
+  if (renamedOk) return SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED;
+
+  return SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY;
+}
 
 /**
  * Idempotently stamps quote-level kickoff completion + emits a timeline event.
@@ -66,8 +92,9 @@ export async function finalizeKickoffCompletionIfComplete(
       return;
     }
 
+    const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
     const { data: taskRows, error: tasksError } = await supabaseServer
-      .from("quote_kickoff_tasks")
+      .from(supplierTasksTable)
       .select("completed")
       .eq("quote_id", quoteId)
       .eq("supplier_id", supplierId)
