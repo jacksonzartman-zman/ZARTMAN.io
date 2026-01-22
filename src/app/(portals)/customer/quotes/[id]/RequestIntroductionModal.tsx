@@ -16,6 +16,13 @@ type RequestIntroductionModalProps = {
   shortlistOnlyMode?: boolean;
   defaultEmail?: string | null;
   defaultCompany?: string | null;
+  onSubmitted?: (payload: {
+    quoteId: string;
+    providerId: string;
+    offerId: string;
+    supplierName: string;
+    requestedAt: string;
+  }) => void;
 };
 
 function normalizeId(value: unknown): string {
@@ -52,6 +59,7 @@ export function RequestIntroductionModal({
   shortlistOnlyMode,
   defaultEmail,
   defaultCompany,
+  onSubmitted,
 }: RequestIntroductionModalProps) {
   const [mode, setMode] = useState<ModalMode>("form");
   const [pending, startTransition] = useTransition();
@@ -107,6 +115,7 @@ export function RequestIntroductionModal({
 
   const submit = () => {
     if (!canSubmit || !selected) return;
+    const requestedAt = new Date().toISOString();
     startTransition(async () => {
       try {
         const res = await fetch("/api/portal/customer/request-introduction", {
@@ -129,6 +138,13 @@ export function RequestIntroductionModal({
       } finally {
         // Fail-soft UX: customer sees success even if ops_events constraint is stale.
         setMode("success");
+        onSubmitted?.({
+          quoteId,
+          providerId: selected.providerId,
+          offerId: selected.offerId,
+          supplierName: selected.label,
+          requestedAt,
+        });
       }
     });
   };

@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } fr
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
 import { TagPill } from "@/components/shared/primitives/TagPill";
+import { RequestIntroductionModal } from "./RequestIntroductionModal";
 import {
   decorateOffersForCompare,
   type DecoratedRfqOffer,
@@ -15,6 +16,12 @@ import {
   toggleOfferShortlistAction,
   type SelectOfferActionState,
 } from "./actions";
+import {
+  INTRO_REQUESTED_EVENT,
+  loadIntroRequestedState,
+  saveIntroRequestedState,
+  type IntroRequestedState,
+} from "./introRequestClientState";
 
 type SortKey = "bestValue" | "fastest" | "lowestPrice";
 type SortDirection = "asc" | "desc";
@@ -24,6 +31,10 @@ type CustomerQuoteCompareOffersProps = {
   offers: RfqOffer[];
   selectedOfferId?: string | null;
   shortlistedOfferIds?: string[];
+  introDefaultEmail?: string | null;
+  introDefaultCompany?: string | null;
+  introShortlistOnlyMode?: boolean;
+  initialIntroRequested?: IntroRequestedState | null;
   matchContext?: {
     matchedOnProcess?: boolean;
     locationFilter?: string | null;
@@ -74,6 +85,10 @@ export function CustomerQuoteCompareOffers({
   offers,
   selectedOfferId,
   shortlistedOfferIds: shortlistedOfferIdsProp,
+  introDefaultEmail,
+  introDefaultCompany,
+  introShortlistOnlyMode,
+  initialIntroRequested,
   matchContext,
 }: CustomerQuoteCompareOffersProps) {
   const router = useRouter();
@@ -97,6 +112,10 @@ export function CustomerQuoteCompareOffers({
   const [shortlistedOfferIds, setShortlistedOfferIds] = useState<Set<string>>(
     () => new Set(normalizeOfferIds(shortlistedOfferIdsProp)),
   );
+  const [introRequested, setIntroRequested] = useState<IntroRequestedState | null>(
+    () => initialIntroRequested ?? null,
+  );
+  const [introModalOpen, setIntroModalOpen] = useState(false);
 
   const decoratedOffers = useMemo(
     () => decorateOffersForCompare(offers),
@@ -154,6 +173,27 @@ export function CustomerQuoteCompareOffers({
   useEffect(() => {
     setShortlistedOfferIds(new Set(normalizeOfferIds(shortlistedOfferIdsProp)));
   }, [shortlistedOfferIdsProp]);
+
+  useEffect(() => {
+    const stored = loadIntroRequestedState(quoteId);
+    if (stored) {
+      setIntroRequested(stored);
+    } else if (initialIntroRequested) {
+      // Seed the session for smoother back/forward navigation.
+      saveIntroRequestedState(initialIntroRequested);
+    }
+  }, [quoteId, initialIntroRequested]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<IntroRequestedState>;
+      if (!custom?.detail) return;
+      if (custom.detail.quoteId !== quoteId) return;
+      setIntroRequested(custom.detail);
+    };
+    window.addEventListener(INTRO_REQUESTED_EVENT, handler);
+    return () => window.removeEventListener(INTRO_REQUESTED_EVENT, handler);
+  }, [quoteId]);
 
   const handleShortlistToggle = useCallback(
     (offerId: string) => {
@@ -225,6 +265,22 @@ export function CustomerQuoteCompareOffers({
 
   return (
     <div className="space-y-4">
+      {introRequested ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100 sm:flex-row sm:items-center sm:justify-between">
+          <p className="min-w-0">
+            Introduction requested to{" "}
+            <span className="font-semibold text-white">{introRequested.supplierName}</span>. We’ll
+            connect you shortly.
+          </p>
+          <button
+            type="button"
+            onClick={() => setIntroModalOpen(true)}
+            className="inline-flex items-center justify-center rounded-full border border-slate-800 bg-slate-950/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600 hover:text-white"
+          >
+            Request another introduction
+          </button>
+        </div>
+      ) : null}
       {state.ok && state.message ? (
         <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
           {state.message}
@@ -458,6 +514,21 @@ export function CustomerQuoteCompareOffers({
           </table>
         </div>
       </div>
+
+      <RequestIntroductionModal
+        open={introModalOpen}
+        onClose={() => setIntroModalOpen(false)}
+        quoteId={quoteId}
+        offers={offers}
+        shortlistedOfferIds={shortlistedOfferIdsProp ?? null}
+        shortlistOnlyMode={introShortlistOnlyMode}
+        defaultEmail={introDefaultEmail}
+        defaultCompany={introDefaultCompany}
+        onSubmitted={(payload) => {
+          saveIntroRequestedState(payload);
+          setIntroRequested(payload);
+        }}
+      />
     </div>
   );
 }
