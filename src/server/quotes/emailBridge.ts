@@ -557,40 +557,28 @@ async function isLikelyDuplicateInboundMessage(args: {
   subject: string | null;
   inboundDate: string | null;
   providerMessageId: string | null;
-}): Promise<{ deduped: boolean; fingerprint: string | null }> {
+}): Promise<{ deduped: boolean; fingerprint: string | null; dedupeKey: string | null }> {
   const quoteId = normalizeString(args.quoteId);
   const senderRole = args.senderRole;
   const senderId = normalizeString(args.senderId);
   const body = normalizeString(args.body);
-  const subject = normalizeString(args.subject) || null;
+  // Subject intentionally excluded from the deterministic dedupe key.
   const inboundDate = normalizeString(args.inboundDate) || null;
   const providerMessageId = normalizeString(args.providerMessageId) || null;
-  if (!quoteId || !senderId || !body) return { deduped: false, fingerprint: null };
+  if (!quoteId || !senderId || !body) return { deduped: false, fingerprint: null, dedupeKey: null };
 
   // Best-effort only. Avoid heavy queries and tolerate drift.
   try {
     const MAX_SCAN = 25;
 
-    const computeHourBucket = (dateStr: string | null): string => {
+    const computeMinuteBucketIso = (dateStr: string | null): string => {
       const d = dateStr ? new Date(dateStr) : new Date();
-      const yyyy = String(d.getUTCFullYear());
-      const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-      const dd = String(d.getUTCDate()).padStart(2, "0");
-      const hh = String(d.getUTCHours()).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}-${hh}`;
-    };
-
-    const normalizeSubjectForFingerprint = (value: string | null): string => {
-      const raw = normalizeString(value).toLowerCase();
-      if (!raw) return "";
-      // Strip repeated reply/forward prefixes.
-      let s = raw;
-      for (let i = 0; i < 5; i++) {
-        const next = s.replace(/^(re|fw|fwd)\s*:\s*/i, "");
-        if (next === s) break;
-        s = next;
-      }
-      return s.replace(/\s+/g, " ").trim();
+      const ms = d.getTime();
+      const safe = Number.isFinite(ms) ? new Date(ms) : new Date();
+      // Round down to the minute in UTC.
+      safe.setUTCSeconds(0, 0);
+      // Compact stable form: YYYY-MM-DDTHH:MMZ
+      return `${safe.toISOString().slice(0, 16)}Z`;
     };
 
     const normalizeBodyForFingerprint = (value: string): string => {
@@ -603,14 +591,17 @@ async function isLikelyDuplicateInboundMessage(args: {
     };
 
     const computeFingerprint = (): string => {
-      const bucket = computeHourBucket(inboundDate);
-      const normalizedSubject = normalizeSubjectForFingerprint(subject);
+      // Spec: hash(sender + body + sent_at rounded to minute + quote_id).
+      // We include senderRole in the "sender" component to avoid cross-role collisions.
+      const bucket = computeMinuteBucketIso(inboundDate);
       const normalizedBody = normalizeBodyForFingerprint(body);
-      const payload = `${senderRole}|${quoteId}|${senderId}|${normalizedSubject}|${normalizedBody}|${bucket}`;
+      const sender = `${senderRole}:${senderId}`;
+      const payload = `${sender}|${normalizedBody}|${bucket}|${quoteId}`;
       return crypto.createHash("sha256").update(payload, "utf8").digest("hex");
     };
 
     const fingerprint = computeFingerprint();
+    const dedupeKey = providerMessageId || fingerprint;
 
     const readMetaString = (meta: unknown, key: string): string | null => {
       if (!meta || typeof meta !== "object") return null;
@@ -625,6 +616,8 @@ async function isLikelyDuplicateInboundMessage(args: {
     };
 
     const readMetaFingerprint = (meta: unknown): string | null => readMetaString(meta, "fingerprint");
+    const readMetaDedupeKey = (meta: unknown): string | null =>
+      readMetaString(meta, "dedupeKey") ?? readMetaString(meta, "dedupe_key");
 
     const metadataSupported = await schemaGate({
       enabled: true,
@@ -670,18 +663,13 @@ async function isLikelyDuplicateInboundMessage(args: {
     for (const row of rows) {
       const rowMeta = row?.metadata && typeof row.metadata === "object" ? (row.metadata as any) : null;
 
-      // Priority A: provider message id match (deterministic).
-      if (providerMessageId) {
-        const prevId = readMetaProviderMessageId(rowMeta);
-        if (prevId && normalizeString(prevId) === providerMessageId) {
-          return { deduped: true, fingerprint };
-        }
-      }
-
-      // Priority B: fingerprint match (deterministic fallback).
-      const prevFingerprint = readMetaFingerprint(rowMeta);
-      if (prevFingerprint && prevFingerprint === fingerprint) {
-        return { deduped: true, fingerprint };
+      // Priority A: stable dedupe key match (provider message id OR computed fingerprint).
+      const prevKey =
+        readMetaDedupeKey(rowMeta) ??
+        readMetaProviderMessageId(rowMeta) ??
+        readMetaFingerprint(rowMeta);
+      if (prevKey && normalizeString(prevKey) === dedupeKey) {
+        return { deduped: true, fingerprint, dedupeKey };
       }
 
       // Fail-soft fallback: body match within the short window.
@@ -696,17 +684,17 @@ async function isLikelyDuplicateInboundMessage(args: {
         }
       }
 
-      return { deduped: true, fingerprint };
+      return { deduped: true, fingerprint, dedupeKey };
     }
 
-    return { deduped: false, fingerprint };
+    return { deduped: false, fingerprint, dedupeKey };
   } catch (error) {
     if (!isMissingTableOrColumnError(error)) {
       warnOnce("email_bridge:dedupe_check_crashed", `${WARN_PREFIX} dedupe check crashed; skipping`, {
         code: serializeSupabaseError(error).code ?? null,
       });
     }
-    return { deduped: false, fingerprint: null };
+    return { deduped: false, fingerprint: null, dedupeKey: null };
   }
 }
 
@@ -847,6 +835,10 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
       providerMessageId,
       inReplyTo: normalizeString(inbound.inReplyTo) || null,
       referencesCount: Array.isArray(inbound.references) ? inbound.references.length : 0,
+      // Stable dedupe key:
+      // - providerMessageId when present
+      // - else sha256(sender + body + sent_at minute bucket + quote_id)
+      dedupeKey: dedupeResult.dedupeKey,
       fingerprint: dedupeResult.fingerprint,
       attachments:
         storedAttachments.length > 0
@@ -1013,6 +1005,7 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
       providerMessageId,
       inReplyTo: normalizeString(inbound.inReplyTo) || null,
       referencesCount: Array.isArray(inbound.references) ? inbound.references.length : 0,
+      dedupeKey: dedupeResult.dedupeKey,
       fingerprint: dedupeResult.fingerprint,
       attachments:
         storedAttachments.length > 0

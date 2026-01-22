@@ -4,7 +4,6 @@ import {
   isMissingTableOrColumnError,
   isRowLevelSecurityDeniedError,
   isSupabaseRelationMarkedMissing,
-  isSupabaseSelectIncompatibleError,
   serializeSupabaseError,
   warnOnce,
 } from "@/server/admin/logging";
@@ -13,6 +12,7 @@ import { emitQuoteEvent } from "@/server/quotes/events";
 import { signPreviewToken } from "@/server/cadPreviewToken";
 import { hasColumns } from "@/server/db/schemaContract";
 import { debugOnce } from "@/server/db/schemaErrors";
+import { getQuoteMessages } from "@/server/messages/quoteMessages";
 
 export type QuoteMessageSenderRole =
   | "admin"
@@ -199,12 +199,6 @@ function decorateMessagesForViewer(
 
 const QUOTE_MESSAGES_RELATION = "quote_messages";
 
-// Process-level escape hatch:
-// - If this deployment rejects our "minimal safe select" (PostgREST schema cache drift,
-//   select parser issues, relationship embedding issues), we stop retrying it and go
-//   straight to `select("*")` on subsequent calls to avoid repeated 400 spam.
-let forceFallbackSelectAll = false;
-
 const QUOTE_MESSAGES_COLUMN_CACHE = new Map<string, boolean>();
 
 async function hasQuoteMessagesColumn(column: string): Promise<boolean> {
@@ -311,99 +305,29 @@ export async function loadQuoteMessages(
   }
 
   try {
-    const run = async (columns: string) => {
-      const { data, error } = await supabaseServer
-        .from(QUOTE_MESSAGES_RELATION)
-        .select(columns as any)
-        .eq("quote_id", normalizedQuoteId)
-        .order("created_at", { ascending: true })
-        .limit(limit);
-      return {
-        data: (Array.isArray(data) ? data : []) as unknown as Array<Record<string, unknown>>,
-        error,
-      };
-    };
-
-    // Strategy:
-    // - Attempt 1: minimal safe select (built dynamically via hasColumns)
-    // - Attempt 2: select("*") when schema variant rejects attempt 1
-    let rows: Array<Record<string, unknown>> = [];
-    let shouldFallback = forceFallbackSelectAll;
-
-    if (!shouldFallback) {
-      const select = await buildQuoteMessagesMinimalSelect();
-      const attempt1 = await run(select);
-      if (!attempt1.error) {
-        rows = Array.isArray(attempt1.data)
-          ? (attempt1.data as Array<Record<string, unknown>>)
-          : [];
-      } else if (isSupabaseSelectIncompatibleError(attempt1.error)) {
-        const serialized = serializeSupabaseError(attempt1.error);
-        const logOnce = isMissingTableOrColumnError(attempt1.error) ? debugOnce : warnOnce;
-        logOnce(
-          "quote_messages:select_incompatible",
-          "[quote_messages] select incompatible; falling back",
-          { code: serialized.code, message: serialized.message },
-        );
-        forceFallbackSelectAll = true;
-        shouldFallback = true;
-      } else if (
-        handleMissingSupabaseSchema({
-          relation: QUOTE_MESSAGES_RELATION,
-          error: attempt1.error,
-          warnPrefix: "[quote_messages]",
-          warnKey: "quote_messages:missing_schema",
-        })
-      ) {
-        return { ok: true, messages: [] };
-      } else {
-        const serialized = serializeSupabaseError(attempt1.error);
-        warnOnce("quote_messages:load_failed", "[quote_messages] load failed", {
-          code: serialized.code,
-          message: serialized.message,
-        });
-        return { ok: false, messages: [], reason: "unknown", error: serialized ?? attempt1.error };
-      }
-    }
-
-    if (shouldFallback) {
-      const attempt2 = await run("*" as any);
-      if (attempt2.error) {
-        if (
-          handleMissingSupabaseSchema({
-            relation: QUOTE_MESSAGES_RELATION,
-            error: attempt2.error,
-            warnPrefix: "[quote_messages]",
-            warnKey: "quote_messages:missing_schema",
-          })
-        ) {
-          return { ok: true, messages: [] };
-        }
-        const serialized = serializeSupabaseError(attempt2.error);
-        warnOnce("quote_messages:load_failed_fallback", "[quote_messages] fallback load failed", {
-          code: serialized.code,
-          message: serialized.message,
-        });
-        return { ok: false, messages: [], reason: "unknown", error: serialized ?? attempt2.error };
-      }
-
-      rows = Array.isArray(attempt2.data)
-        ? (attempt2.data as Array<Record<string, unknown>>)
-        : [];
-    }
-
-    const normalized = rows
-      .map((row) => (row && typeof row === "object" ? normalizeQuoteMessageRow(row) : null))
-      .filter((row): row is QuoteMessageRecord => Boolean(row));
-
-    const decorated = decorateMessagesForViewer(normalized, {
-      viewerRole: typeof viewerRole === "string" ? viewerRole : null,
+    // Delegate to the hardened loader that avoids `select("*")` and supports
+    // schema variants (legacy `body/sender_*` and newer `message/author_*`).
+    const result = await getQuoteMessages({
+      quoteId: normalizedQuoteId,
+      limit,
+      viewerRole: typeof viewerRole === "string" ? (viewerRole as any) : null,
       viewerUserId: typeof viewerUserId === "string" ? viewerUserId : null,
     });
 
+    if (result.ok) {
+      return { ok: true, messages: result.messages };
+    }
+
+    // Missing schema should fail-soft: return an empty thread without warn spam.
+    if (result.missing) {
+      return { ok: true, messages: [] };
+    }
+
     return {
-      ok: true,
-      messages: decorated,
+      ok: false,
+      messages: [],
+      reason: "unknown",
+      error: result.error ?? "message_load_failed",
     };
   } catch (error) {
     if (
