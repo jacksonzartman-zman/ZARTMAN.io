@@ -102,7 +102,7 @@ export function IntroRequestsHandleButton({
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-white">Mark handled</h3>
                 <p className="mt-1 text-sm text-slate-300">
-                  This records an ops event so the queue clears.
+                  This marks the request handled and records an ops event for audit.
                 </p>
               </div>
               <button
