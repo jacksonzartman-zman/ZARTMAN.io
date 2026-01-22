@@ -28,6 +28,7 @@ import {
   verifyProviderAction,
 } from "./actions";
 import { CopyOutreachEmailButton } from "./CopyOutreachEmailButton";
+import { assessProviderCapabilityMatch } from "@/lib/provider/capabilityMatch";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ type TypeFilter = "all" | ProviderType;
 type QuotingFilter = "all" | ProviderQuotingMode;
 type SourceFilter = "all" | ProviderSource;
 type ViewFilter = "all" | "needs_research";
+type MatchFilter = "all" | "mismatch" | "partial";
 
 const ACTIVE_FILTERS: Array<{ value: ActiveFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -80,6 +82,7 @@ export default async function AdminProvidersPage({
   const quotingFilter = parseQuotingFilter(usp.get("quoting"));
   const sourceFilter = parseSourceFilter(usp.get("source"));
   const viewFilter = parseViewFilter(usp.get("view"));
+  const matchFilter = parseMatchFilter(usp.get("match"));
   const needsResearchFilterActive = viewFilter === "needs_research";
   const inviteFilterActive =
     viewFilter === "all" &&
@@ -91,12 +94,31 @@ export default async function AdminProvidersPage({
     verificationFilter === "all" &&
     typeFilter === "all" &&
     quotingFilter === "all" &&
-    sourceFilter === "all";
+    sourceFilter === "all" &&
+    matchFilter === "all";
   const inviteFilterHref = buildProvidersFilterHref({
     verification: "unverified",
     source: "customer_invite",
   });
   const needsResearchFilterHref = buildProvidersFilterHref({ view: "needs_research" });
+  const mismatchOnlyHref = buildProvidersFilterHref({
+    active: activeFilter,
+    verification: verificationFilter,
+    type: typeFilter,
+    quoting: quotingFilter,
+    source: sourceFilter,
+    view: viewFilter,
+    match: "mismatch",
+  });
+  const partialOnlyHref = buildProvidersFilterHref({
+    active: activeFilter,
+    verification: verificationFilter,
+    type: typeFilter,
+    quoting: quotingFilter,
+    source: sourceFilter,
+    view: viewFilter,
+    match: "partial",
+  });
 
   const { providers, emailColumn } = await listProvidersWithContact({
     isActive:
@@ -121,6 +143,12 @@ export default async function AdminProvidersPage({
     const needsResearch =
       (provider.source === "customer_invite" && missingContactDetails) ||
       (provider.verification_status !== "verified" && !contacted);
+    const capabilityMatch = assessProviderCapabilityMatch({
+      processes: provider.processes,
+      materials: provider.materials,
+      country: provider.country ?? null,
+      states: provider.states,
+    });
 
     return {
       provider,
@@ -130,12 +158,16 @@ export default async function AdminProvidersPage({
       notesValue,
       contacted,
       needsResearch,
+      capabilityMatch,
     };
   });
 
-  const visibleProviders = needsResearchFilterActive
-    ? providerRows.filter((row) => row.needsResearch)
-    : providerRows;
+  const visibleProviders = providerRows.filter((row) => {
+    if (needsResearchFilterActive && !row.needsResearch) return false;
+    if (matchFilter === "mismatch") return row.capabilityMatch.health === "mismatch";
+    if (matchFilter === "partial") return row.capabilityMatch.health === "partial";
+    return true;
+  });
 
   const emptyState = visibleProviders.length === 0;
   const emailLabel = formatEmailLabel(emailColumn);
@@ -164,6 +196,16 @@ export default async function AdminProvidersPage({
             href={needsResearchFilterHref}
             active={needsResearchFilterActive}
           />
+          <FilterChip
+            label="Mismatch only"
+            href={mismatchOnlyHref}
+            active={matchFilter === "mismatch"}
+          />
+          <FilterChip
+            label="Partial only"
+            href={partialOnlyHref}
+            active={matchFilter === "partial"}
+          />
         </div>
         <form method="GET" action="/admin/providers" className="flex flex-wrap items-end gap-3">
           {viewFilter !== "all" ? (
@@ -172,6 +214,9 @@ export default async function AdminProvidersPage({
               name="view"
               value={viewFilter === "needs_research" ? "needs-research" : viewFilter}
             />
+          ) : null}
+          {matchFilter !== "all" ? (
+            <input type="hidden" name="match" value={matchFilter} />
           ) : null}
           <FilterSelect
             name="active"
@@ -224,6 +269,7 @@ export default async function AdminProvidersPage({
             <th className="px-5 py-4">Provider</th>
             <th className="px-5 py-4">Type</th>
             <th className="px-5 py-4">Mode</th>
+            <th className="px-5 py-4">Match health</th>
             <th className="px-5 py-4">Active</th>
             <th className="px-5 py-4">Verification</th>
             <th className="px-5 py-4">Source</th>
@@ -235,7 +281,7 @@ export default async function AdminProvidersPage({
         body={
           emptyState ? (
             <tr>
-              <td colSpan={9} className="px-6 py-12 text-center text-base text-slate-300">
+              <td colSpan={10} className="px-6 py-12 text-center text-base text-slate-300">
                 <p className="font-medium text-slate-100">No providers found</p>
                 <p className="mt-2 text-sm text-slate-400">
                   Adjust the filters to see the full provider list.
@@ -252,6 +298,7 @@ export default async function AdminProvidersPage({
                 notesValue,
                 contacted,
                 needsResearch,
+                capabilityMatch,
               } = row;
               const activeMeta = activePill(provider.is_active);
               const verificationMeta = verificationPill(provider.verification_status);
@@ -264,6 +311,8 @@ export default async function AdminProvidersPage({
               const directoryButtonLabel = showInDirectory
                 ? "Hide from directory"
                 : "Show in directory";
+              const matchPill = capabilityMatchPill(capabilityMatch.health);
+              const matchTitle = buildCapabilityMatchTitle(capabilityMatch);
               return (
                 <Fragment key={provider.id}>
                   <tr className="bg-slate-950/40 transition hover:bg-slate-900/40">
@@ -278,6 +327,83 @@ export default async function AdminProvidersPage({
                     </td>
                     <td className={clsx(adminTableCellClass, "px-5 py-4")}>
                       {formatEnumLabel(provider.quoting_mode)}
+                    </td>
+                    <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                      <details className="group min-w-[140px]">
+                        <summary
+                          className={clsx(
+                            "inline-flex cursor-pointer list-none items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+                            matchPill.className,
+                          )}
+                          title={matchTitle}
+                        >
+                          {matchPill.label}
+                          {typeof capabilityMatch.score === "number" ? (
+                            <span className="font-mono text-[10px] opacity-80">
+                              {capabilityMatch.score}
+                            </span>
+                          ) : null}
+                        </summary>
+                        {capabilityMatch.health !== "unknown" ? (
+                          <div className="mt-2 space-y-2 rounded-xl border border-slate-900/60 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">
+                            {capabilityMatch.mismatchReasons.length > 0 ? (
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Mismatch reasons
+                                </p>
+                                <ul className="mt-1 list-disc pl-4">
+                                  {capabilityMatch.mismatchReasons.map((reason) => (
+                                    <li key={reason}>{reason}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {capabilityMatch.partialMatches.length > 0 ? (
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Partial matches
+                                </p>
+                                <ul className="mt-1 list-disc pl-4">
+                                  {capabilityMatch.partialMatches.map((reason) => (
+                                    <li key={reason}>{reason}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {capabilityMatch.matches.length > 0 ? (
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Matches
+                                </p>
+                                <ul className="mt-1 list-disc pl-4">
+                                  {capabilityMatch.matches.map((reason) => (
+                                    <li key={reason}>{reason}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                            {typeof capabilityMatch.score === "number" ? (
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Score breakdown
+                                </p>
+                                <ul className="mt-1 space-y-1">
+                                  {capabilityMatch.breakdown
+                                    .filter((item) => item.available)
+                                    .map((item) => (
+                                      <li key={item.key} className="flex justify-between gap-3">
+                                        <span className="text-slate-300">{item.label}</span>
+                                        <span className="font-mono text-slate-400">
+                                          {item.earned}/{item.weight}
+                                        </span>
+                                      </li>
+                                    ))}
+                                </ul>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </details>
                     </td>
                     <td className={clsx(adminTableCellClass, "px-5 py-4")}>
                       <span className={pillClass(activeMeta.className)}>{activeMeta.label}</span>
@@ -434,7 +560,7 @@ export default async function AdminProvidersPage({
                   </tr>
                   {showInviteSummary ? (
                     <tr className="bg-slate-950/30">
-                      <td colSpan={9} className="px-5 pb-5">
+                      <td colSpan={10} className="px-5 pb-5">
                         <div className="rounded-xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -555,6 +681,7 @@ function buildProvidersFilterHref(filters: {
   quoting?: QuotingFilter;
   source?: SourceFilter;
   view?: ViewFilter;
+  match?: MatchFilter;
 }): string {
   const params = new URLSearchParams();
   if (filters.active && filters.active !== "all") params.set("active", filters.active);
@@ -566,6 +693,9 @@ function buildProvidersFilterHref(filters: {
   if (filters.source && filters.source !== "all") params.set("source", filters.source);
   if (filters.view && filters.view !== "all") {
     params.set("view", filters.view === "needs_research" ? "needs-research" : filters.view);
+  }
+  if (filters.match && filters.match !== "all") {
+    params.set("match", filters.match);
   }
   const qs = params.toString();
   return qs ? `/admin/providers?${qs}` : "/admin/providers";
@@ -616,6 +746,13 @@ function parseViewFilter(value: unknown): ViewFilter {
   if (normalized === "needs_research" || normalized === "needs-research") {
     return "needs_research";
   }
+  return "all";
+}
+
+function parseMatchFilter(value: unknown): MatchFilter {
+  const normalized = normalizeFilterValue(value);
+  if (normalized === "mismatch") return "mismatch";
+  if (normalized === "partial") return "partial";
   return "all";
 }
 
@@ -752,4 +889,38 @@ function resolveDirectoryVisibility(provider: ProviderContactRow): boolean {
     return provider.show_in_directory;
   }
   return provider.verification_status === "verified";
+}
+
+function capabilityMatchPill(
+  health: ReturnType<typeof assessProviderCapabilityMatch>["health"],
+): { label: string; className: string } {
+  switch (health) {
+    case "match":
+      return { label: "Match", className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100" };
+    case "partial":
+      return { label: "Partial", className: "border-amber-500/40 bg-amber-500/10 text-amber-100" };
+    case "mismatch":
+      return { label: "Mismatch", className: "border-red-500/40 bg-red-500/10 text-red-100" };
+    default:
+      return { label: "—", className: "border-slate-800 bg-slate-950/60 text-slate-200" };
+  }
+}
+
+function buildCapabilityMatchTitle(
+  assessment: ReturnType<typeof assessProviderCapabilityMatch>,
+): string {
+  const parts: string[] = [];
+  if (assessment.mismatchReasons.length > 0) {
+    parts.push(`Mismatch: ${assessment.mismatchReasons.join(" ")}`);
+  }
+  if (assessment.partialMatches.length > 0) {
+    parts.push(`Partial: ${assessment.partialMatches.join(" ")}`);
+  }
+  if (assessment.matches.length > 0) {
+    parts.push(`Matches: ${assessment.matches.join(" ")}`);
+  }
+  if (typeof assessment.score === "number") {
+    parts.push(`Score: ${assessment.score}`);
+  }
+  return parts.join(" · ") || "Match health unavailable";
 }

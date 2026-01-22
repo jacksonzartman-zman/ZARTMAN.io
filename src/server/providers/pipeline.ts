@@ -3,6 +3,7 @@ import {
   type ProviderContactRow,
   type ProviderEmailColumn,
 } from "@/server/providers";
+import { assessProviderCapabilityMatch } from "@/lib/provider/capabilityMatch";
 
 export type ProviderPipelineView =
   | "queue"
@@ -22,15 +23,18 @@ export type ProviderPipelineRow = {
   needsResearch: boolean;
   isVerified: boolean;
   isActive: boolean;
+  capabilityMatch: ReturnType<typeof assessProviderCapabilityMatch>;
 };
 
 export async function listProviderPipelineRows(args: {
   view?: ProviderPipelineView | null;
   search?: string | null;
+  match?: "all" | "mismatch" | "partial" | null;
 }): Promise<{ rows: ProviderPipelineRow[]; emailColumn: ProviderEmailColumn | null }> {
   const { providers, emailColumn } = await listProvidersWithContact();
   const view = normalizeView(args.view);
   const search = normalizeSearchTerm(args.search);
+  const matchFilter = normalizeMatchFilter(args.match);
 
   const rows = providers.map((provider) => {
     const rawEmailValue = readEmailValue(provider, emailColumn);
@@ -45,6 +49,12 @@ export async function listProviderPipelineRows(args: {
     const isActive = provider.is_active;
     const hasWebsite = Boolean(websiteValue || rfqUrlValue);
     const needsResearch = !emailValue || !hasWebsite;
+    const capabilityMatch = assessProviderCapabilityMatch({
+      processes: provider.processes,
+      materials: provider.materials,
+      country: provider.country ?? null,
+      states: provider.states,
+    });
 
     return {
       provider,
@@ -55,12 +65,14 @@ export async function listProviderPipelineRows(args: {
       needsResearch,
       isVerified,
       isActive,
+      capabilityMatch,
     };
   });
 
   const filtered = rows.filter((row) => {
     if (!matchesView(row, view)) return false;
     if (!matchesSearch(row, search)) return false;
+    if (!matchesMatchFilter(row, matchFilter)) return false;
     return true;
   });
 
@@ -116,6 +128,22 @@ function normalizeSearchTerm(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeMatchFilter(
+  value: "all" | "mismatch" | "partial" | null | undefined,
+): "all" | "mismatch" | "partial" {
+  if (value === "mismatch" || value === "partial") return value;
+  return "all";
+}
+
+function matchesMatchFilter(
+  row: ProviderPipelineRow,
+  filter: ReturnType<typeof normalizeMatchFilter>,
+): boolean {
+  if (filter === "mismatch") return row.capabilityMatch.health === "mismatch";
+  if (filter === "partial") return row.capabilityMatch.health === "partial";
+  return true;
 }
 
 function readEmailValue(provider: ProviderContactRow, column: ProviderEmailColumn | null): string | null {

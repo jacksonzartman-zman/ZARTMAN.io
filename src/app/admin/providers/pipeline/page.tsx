@@ -14,6 +14,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+type MatchFilter = "all" | "mismatch" | "partial";
+
 const PIPELINE_FILTERS: Array<{ value: ProviderPipelineView; label: string }> = [
   { value: "queue", label: "Queue" },
   { value: "needs_research", label: "Needs research" },
@@ -33,10 +35,12 @@ export default async function AdminProviderPipelinePage({
   const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
   const view = parsePipelineView(usp.get("view"));
   const searchInput = normalizeSearchInput(usp.get("search"));
+  const matchFilter = parseMatchFilter(usp.get("match"));
 
   const { rows, emailColumn } = await listProviderPipelineRows({
     view,
     search: searchInput,
+    match: matchFilter,
   });
 
   const supportsDirectoryVisibility = await hasColumns("providers", ["show_in_directory"]);
@@ -49,6 +53,16 @@ export default async function AdminProviderPipelinePage({
   );
 
   const isEmpty = rows.length === 0;
+  const mismatchOnlyHref = buildPipelineFilterHref({
+    view,
+    search: searchInput,
+    match: "mismatch",
+  });
+  const partialOnlyHref = buildPipelineFilterHref({
+    view,
+    search: searchInput,
+    match: "partial",
+  });
 
   return (
     <AdminDashboardShell
@@ -74,15 +88,32 @@ export default async function AdminProviderPipelinePage({
       <section className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-5">
         <div className="flex flex-wrap items-center gap-2 pb-4 text-xs text-slate-400">
           {PIPELINE_FILTERS.map((filter) => {
-            const href = buildPipelineFilterHref({ view: filter.value, search: searchInput });
+            const href = buildPipelineFilterHref({
+              view: filter.value,
+              search: searchInput,
+              match: matchFilter,
+            });
             return (
               <FilterChip key={filter.value} label={filter.label} href={href} active={view === filter.value} />
             );
           })}
+          <FilterChip
+            label="Mismatch only"
+            href={mismatchOnlyHref}
+            active={matchFilter === "mismatch"}
+          />
+          <FilterChip
+            label="Partial only"
+            href={partialOnlyHref}
+            active={matchFilter === "partial"}
+          />
         </div>
         <form method="GET" action="/admin/providers/pipeline" className="flex flex-wrap items-end gap-3">
           {view !== "queue" ? (
             <input type="hidden" name="view" value={serializePipelineView(view)} />
+          ) : null}
+          {matchFilter !== "all" ? (
+            <input type="hidden" name="match" value={matchFilter} />
           ) : null}
           <label className="flex w-full min-w-[220px] flex-1 flex-col gap-2 sm:w-auto">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -117,6 +148,7 @@ export default async function AdminProviderPipelinePage({
             <th className="px-5 py-4">Select</th>
             <th className="px-5 py-4">Provider</th>
             <th className="px-5 py-4">Contact</th>
+            <th className="px-5 py-4">Match health</th>
             <th className="px-5 py-4">Status</th>
             <th className="px-5 py-4">Next action</th>
             <th className="px-5 py-4">Actions</th>
@@ -125,7 +157,7 @@ export default async function AdminProviderPipelinePage({
         body={
           isEmpty ? (
             <tr>
-              <td colSpan={6} className="px-6 py-12 text-center text-base text-slate-300">
+              <td colSpan={7} className="px-6 py-12 text-center text-base text-slate-300">
                 <p className="font-medium text-slate-100">No providers found</p>
                 <p className="mt-2 text-sm text-slate-400">
                   Adjust the filters to see more providers in the pipeline.
@@ -213,6 +245,7 @@ function serializePipelineView(view: ProviderPipelineView): string {
 function buildPipelineFilterHref(args: {
   view: ProviderPipelineView;
   search?: string | null;
+  match?: MatchFilter;
 }): string {
   const params = new URLSearchParams();
   if (args.view && args.view !== "queue") {
@@ -220,6 +253,9 @@ function buildPipelineFilterHref(args: {
   }
   if (args.search) {
     params.set("search", args.search);
+  }
+  if (args.match && args.match !== "all") {
+    params.set("match", args.match);
   }
   const qs = params.toString();
   return qs ? `/admin/providers/pipeline?${qs}` : "/admin/providers/pipeline";
@@ -229,4 +265,11 @@ function normalizeSearchInput(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseMatchFilter(value: unknown): MatchFilter {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (normalized === "mismatch") return "mismatch";
+  if (normalized === "partial") return "partial";
+  return "all";
 }
