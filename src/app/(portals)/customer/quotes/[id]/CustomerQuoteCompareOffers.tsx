@@ -31,6 +31,8 @@ type CustomerQuoteCompareOffersProps = {
   offers: RfqOffer[];
   selectedOfferId?: string | null;
   shortlistedOfferIds?: string[];
+  awardLocked?: boolean;
+  awardLockedCopy?: string | null;
   introDefaultEmail?: string | null;
   introDefaultCompany?: string | null;
   introShortlistOnlyMode?: boolean;
@@ -85,6 +87,8 @@ export function CustomerQuoteCompareOffers({
   offers,
   selectedOfferId,
   shortlistedOfferIds: shortlistedOfferIdsProp,
+  awardLocked: awardLockedProp,
+  awardLockedCopy,
   introDefaultEmail,
   introDefaultCompany,
   introShortlistOnlyMode,
@@ -123,7 +127,8 @@ export function CustomerQuoteCompareOffers({
   );
 
   const resolvedSelectedOfferId = state.selectedOfferId ?? selectedOfferId ?? null;
-  const selectionLocked = Boolean(resolvedSelectedOfferId);
+  const awardLocked = Boolean(awardLockedProp);
+  const selectionLocked = Boolean(resolvedSelectedOfferId) || awardLocked;
   const hasQuickFilters = showBadgeWinnersOnly || showShortlistedOnly;
 
   const shortlistedCount = useMemo(() => {
@@ -197,6 +202,7 @@ export function CustomerQuoteCompareOffers({
 
   const handleShortlistToggle = useCallback(
     (offerId: string) => {
+      if (awardLocked) return;
       if (pendingShortlistOfferId) return;
       const wasShortlisted = shortlistedOfferIds.has(offerId);
       const nextShortlisted = !wasShortlisted;
@@ -239,7 +245,7 @@ export function CustomerQuoteCompareOffers({
         }
       });
     },
-    [pendingShortlistOfferId, quoteId, shortlistedOfferIds, startTransition],
+    [awardLocked, pendingShortlistOfferId, quoteId, shortlistedOfferIds, startTransition],
   );
 
   const filteredOffers = useMemo(() => {
@@ -265,6 +271,15 @@ export function CustomerQuoteCompareOffers({
 
   return (
     <div className="space-y-4">
+      {awardLocked ? (
+        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          <p className="font-semibold text-white">Awarded supplier selected.</p>
+          <p className="mt-1 text-xs text-emerald-100/80">
+            {awardLockedCopy ??
+              "Offers are shown for reference. To make changes, contact your awarded supplier in Messages."}
+          </p>
+        </div>
+      ) : null}
       {introRequested ? (
         <div className="flex flex-col gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100 sm:flex-row sm:items-center sm:justify-between">
           <p className="min-w-0">
@@ -419,7 +434,8 @@ export function CustomerQuoteCompareOffers({
               ) : (
                 sortedOffers.map((offer, index) => {
                   const isSelected = resolvedSelectedOfferId === offer.id;
-                  const dimNonWinner = selectionLocked && !isSelected;
+                  const dimNonWinner =
+                    selectionLocked && Boolean(resolvedSelectedOfferId) && !isSelected;
                   const isShortlisted = shortlistedOfferIds.has(offer.id);
                   const isShortlistPending =
                     pendingShortlist && pendingShortlistOfferId === offer.id;
@@ -478,7 +494,7 @@ export function CustomerQuoteCompareOffers({
                             <ShortlistToggleButton
                               shortlisted={isShortlisted}
                               pending={isShortlistPending}
-                              disabled={pendingShortlist}
+                              disabled={pendingShortlist || awardLocked}
                               onClick={() => handleShortlistToggle(offer.id)}
                             />
                             <form action={formAction}>
