@@ -19,6 +19,7 @@ import {
   verifyProviderAction,
 } from "@/app/admin/providers/actions";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { formatShortId } from "@/lib/awards";
 import type { OpsEventRecord } from "@/server/ops/events";
 import type { ProviderPipelineRow } from "@/server/providers/pipeline";
@@ -44,6 +45,8 @@ type BulkActionType =
   | "activate"
   | "showDirectory"
   | "hideDirectory";
+
+type ProviderResponseChannel = "email" | "call" | "form";
 
 type NextActionKey =
   | "needs_research"
@@ -98,7 +101,11 @@ export default function ProviderPipelineTableBody({
   const [selectedProviderIds, setSelectedProviderIds] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [bulkActionType, setBulkActionType] = useState<BulkActionType | null>(null);
-  const [bulkResponseNotes, setBulkResponseNotes] = useState("");
+  const [bulkRespondedModalOpen, setBulkRespondedModalOpen] = useState(false);
+  const [bulkResponseChannel, setBulkResponseChannel] = useState<ProviderResponseChannel>("email");
+  const [bulkResponseSummary, setBulkResponseSummary] = useState("");
+  const [bulkResponseRawNotes, setBulkResponseRawNotes] = useState("");
+  const [bulkAppendToNotes, setBulkAppendToNotes] = useState(true);
   const [pending, startTransition] = useTransition();
 
   const selectedCount = selectedProviderIds.size;
@@ -177,20 +184,36 @@ export default function ProviderPipelineTableBody({
 
   const handleBulkMarkResponded = () => {
     if (bulkBusy || selectedRows.length === 0) return;
-    const notes = bulkResponseNotes.trim();
-    if (!notes) {
-      setFeedback({ tone: "error", message: "Response notes are required." });
+    setFeedback(null);
+    setBulkRespondedModalOpen(true);
+  };
+
+  const handleBulkRespondedSubmit = () => {
+    if (bulkBusy || selectedRows.length === 0) return;
+    const summary = bulkResponseSummary.trim();
+    if (!summary) {
+      setFeedback({ tone: "error", message: "Response summary is required." });
       return;
     }
     setFeedback(null);
     setBulkActionType("markResponded");
     const providerIds = selectedRows.map((row) => row.provider.id);
     startTransition(async () => {
-      const result = await bulkMarkProvidersRespondedAction({ providerIds, responseNotes: notes });
+      const result = await bulkMarkProvidersRespondedAction({
+        providerIds,
+        channel: bulkResponseChannel,
+        summary,
+        rawNotes: bulkResponseRawNotes.trim() || null,
+        appendToNotes: bulkAppendToNotes,
+      });
       if (result.ok) {
         setFeedback({ tone: "success", message: result.message });
         setSelectedProviderIds(new Set());
-        setBulkResponseNotes("");
+        setBulkRespondedModalOpen(false);
+        setBulkResponseSummary("");
+        setBulkResponseRawNotes("");
+        setBulkResponseChannel("email");
+        setBulkAppendToNotes(true);
         router.refresh();
       } else {
         setFeedback({ tone: "error", message: result.error });
@@ -237,8 +260,26 @@ export default function ProviderPipelineTableBody({
 
   return (
     <>
+      <BulkProviderRespondedModal
+        isOpen={bulkRespondedModalOpen}
+        selectedCount={selectedRows.length}
+        channel={bulkResponseChannel}
+        summary={bulkResponseSummary}
+        rawNotes={bulkResponseRawNotes}
+        appendToNotes={bulkAppendToNotes}
+        pending={isBulkResponding}
+        onClose={() => {
+          if (bulkBusy) return;
+          setBulkRespondedModalOpen(false);
+        }}
+        onChangeChannel={setBulkResponseChannel}
+        onChangeSummary={setBulkResponseSummary}
+        onChangeRawNotes={setBulkResponseRawNotes}
+        onChangeAppendToNotes={setBulkAppendToNotes}
+        onSubmit={handleBulkRespondedSubmit}
+      />
       <tr className="bg-slate-950/60">
-        <td colSpan={9} className="px-5 py-4">
+        <td colSpan={10} className="px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -270,28 +311,19 @@ export default function ProviderPipelineTableBody({
               >
                 {isBulkMarking ? "Marking..." : "Mark contacted"}
               </button>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  value={bulkResponseNotes}
-                  onChange={(event) => setBulkResponseNotes(event.target.value)}
-                  placeholder="Response notes (required for Mark responded)"
-                  disabled={bulkBusy}
-                  className="min-w-[260px] rounded-full border border-slate-800 bg-slate-950 px-3 py-1 text-[11px] text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleBulkMarkResponded}
-                  disabled={bulkBusy || selectedRows.length === 0}
-                  className={clsx(
-                    "rounded-full border border-blue-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-100 transition",
-                    bulkBusy || selectedRows.length === 0
-                      ? "cursor-not-allowed opacity-60"
-                      : "hover:border-blue-400 hover:text-white",
-                  )}
-                >
-                  {isBulkResponding ? "Marking..." : "Mark responded"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleBulkMarkResponded}
+                disabled={bulkBusy || selectedRows.length === 0}
+                className={clsx(
+                  "rounded-full border border-blue-500/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-100 transition",
+                  bulkBusy || selectedRows.length === 0
+                    ? "cursor-not-allowed opacity-60"
+                    : "hover:border-blue-400 hover:text-white",
+                )}
+              >
+                {isBulkResponding ? "Marking..." : "Mark responded"}
+              </button>
               <button
                 type="button"
                 onClick={handleBulkActivate}
@@ -385,8 +417,18 @@ function ProviderPipelineRowDisplay({
   supportsDirectoryVisibility: boolean;
   onToggleSelect: (providerId: string) => void;
 }) {
-  const { provider, emailValue, websiteValue, rfqUrlValue, contacted, needsResearch, isVerified, isActive } =
-    row;
+  const {
+    provider,
+    emailValue,
+    websiteValue,
+    rfqUrlValue,
+    contacted,
+    responded,
+    lastResponseAt,
+    needsResearch,
+    isVerified,
+    isActive,
+  } = row;
   const matchPill = capabilityMatchPill(row.capabilityMatch.health);
   const matchTitle = buildCapabilityMatchTitle(row.capabilityMatch);
   const websiteHref = normalizeWebsiteHref(websiteValue);
@@ -402,7 +444,7 @@ function ProviderPipelineRowDisplay({
   const outreachBody = buildOutreachEmailBody(provider.name);
   const missingEmail = !emailValue;
   const missingWebsite = !websiteValue && !rfqUrlValue;
-  const hasResponseNotes = hasResponseNotesFlag(provider.notes);
+  const lastResponseLabel = formatRelativeTimeFromTimestamp(toTimestamp(lastResponseAt));
   const profileCompleteness = row.profileCompleteness;
   const profileMissing = profileCompleteness.missing.filter((value) => value.length > 0);
   const profileReadyToVerify = profileCompleteness.readyToVerify;
@@ -414,14 +456,14 @@ function ProviderPipelineRowDisplay({
     contacted,
     isVerified,
     isActive,
-    hasResponseNotes,
+    responded,
     profileReadyToVerify,
   });
   const nextActionMeta = NEXT_ACTION_META[nextActionKey];
   const nextActionDetail = buildNextActionDetail(nextActionKey, {
     missingEmail,
     missingWebsite,
-    hasResponseNotes,
+    responded,
     profileMissing,
   });
 
@@ -559,7 +601,7 @@ function ProviderPipelineRowDisplay({
               steps={[
                 { key: "discovered", label: "Discovered", complete: true },
                 { key: "contacted", label: "Contacted", complete: contacted },
-                { key: "responded", label: "Responded", complete: hasResponseNotes },
+                { key: "responded", label: "Responded", complete: responded },
                 { key: "verified", label: "Verified", complete: isVerified },
                 { key: "active", label: "Active", complete: isActive },
                 { key: "directory", label: "Directory-visible", complete: showInDirectory },
@@ -574,6 +616,13 @@ function ProviderPipelineRowDisplay({
           {contactedAtLabel ? (
             <p className="mt-2 text-[11px] text-slate-500">Contacted {contactedAtLabel}</p>
           ) : null}
+        </td>
+        <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+          {lastResponseLabel ? (
+            <span className="text-xs text-slate-200">{lastResponseLabel}</span>
+          ) : (
+            <span className="text-slate-500">—</span>
+          )}
         </td>
         <td className={clsx(adminTableCellClass, "px-5 py-4")}>
           {provider.source === "discovered" ? (
@@ -646,28 +695,8 @@ function ProviderPipelineRowDisplay({
                 </button>
               </form>
             )}
-            {!hasResponseNotes && contacted && !isVerified ? (
-              <details className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
-                <summary className="cursor-pointer font-semibold text-slate-200">
-                  Mark responded (requires notes)
-                </summary>
-                <form action={markProviderRespondedAction} className="mt-2 space-y-2">
-                  <input type="hidden" name="providerId" value={provider.id} />
-                  <textarea
-                    name="responseNotes"
-                    required
-                    rows={3}
-                    placeholder="Paste supplier response + context..."
-                    className="w-full resize-y rounded-lg border border-slate-800 bg-slate-950 px-2 py-1 text-xs text-slate-100 focus:border-emerald-400 focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    className="w-full rounded-lg bg-blue-500 px-2 py-1 text-xs font-semibold text-blue-950 hover:bg-blue-400"
-                  >
-                    Mark responded
-                  </button>
-                </form>
-              </details>
+            {!responded && contacted && !isVerified ? (
+              <MarkProviderRespondedButton providerId={provider.id} providerName={provider.name} />
             ) : null}
 
             {provider.verification_status !== "verified" ? (
@@ -675,17 +704,17 @@ function ProviderPipelineRowDisplay({
                 <input type="hidden" name="providerId" value={provider.id} />
                 <button
                   type="submit"
-                  disabled={!hasResponseNotes || !profileReadyToVerify}
+                  disabled={!responded || !profileReadyToVerify}
                   title={
-                    !hasResponseNotes
-                      ? "Mark responded (with notes) first."
+                    !responded
+                      ? "Mark responded first."
                       : !profileReadyToVerify
                         ? `Complete profile first: ${profileMissing.join(" · ")}`
                         : undefined
                   }
                   className={clsx(
                     "rounded-full border px-3 py-1 font-semibold transition",
-                    hasResponseNotes && profileReadyToVerify
+                    responded && profileReadyToVerify
                       ? "border-emerald-500/40 text-emerald-100 hover:border-emerald-400 hover:text-white"
                       : "cursor-not-allowed border-slate-800 text-slate-500 opacity-70",
                   )}
@@ -754,7 +783,7 @@ function ProviderPipelineRowDisplay({
         </td>
       </tr>
       <tr className="bg-slate-950/30">
-        <td colSpan={9} className="px-5 pb-5">
+        <td colSpan={10} className="px-5 pb-5">
           <details className="rounded-xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
             <summary className="cursor-pointer font-semibold text-slate-200">
               Ops timeline ({opsEvents.length})
@@ -791,6 +820,296 @@ function ProviderPipelineRowDisplay({
         </td>
       </tr>
     </Fragment>
+  );
+}
+
+function MarkProviderRespondedButton({
+  providerId,
+  providerName,
+}: {
+  providerId: string;
+  providerName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [channel, setChannel] = useState<ProviderResponseChannel>("email");
+  const [summary, setSummary] = useState("");
+  const [rawNotes, setRawNotes] = useState("");
+  const [appendToNotes, setAppendToNotes] = useState(true);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-full border border-blue-500/40 px-3 py-1 font-semibold text-blue-100 transition hover:border-blue-400 hover:text-white"
+      >
+        Mark responded
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Mark supplier responded"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setOpen(false);
+      }}
+    >
+      <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Mark responded</h3>
+            <p className="mt-1 text-sm text-slate-300">
+              Capture a structured response for{" "}
+              <span className="font-semibold text-slate-100">{providerName}</span>.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white"
+          >
+            Close
+          </button>
+        </div>
+
+        <form
+          action={markProviderRespondedAction}
+          className="mt-4 space-y-3"
+          onSubmit={() => setOpen(false)}
+        >
+          <input type="hidden" name="providerId" value={providerId} />
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Channel
+            </label>
+            <select
+              name="channel"
+              value={channel}
+              onChange={(event) => setChannel(event.target.value as ProviderResponseChannel)}
+              className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none"
+            >
+              <option value="email">Email</option>
+              <option value="call">Call</option>
+              <option value="form">Web form</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Summary
+            </label>
+            <textarea
+              name="summary"
+              required
+              rows={3}
+              value={summary}
+              onChange={(event) => setSummary(event.target.value)}
+              placeholder="e.g. Can quote, needs 2D drawing; 3–5 day lead time estimate…"
+              className="w-full resize-y rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+              maxLength={1000}
+            />
+            <p className="text-xs text-slate-500">Keep this short and reportable.</p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Notes (optional)
+            </label>
+            <textarea
+              name="rawNotes"
+              rows={5}
+              value={rawNotes}
+              onChange={(event) => setRawNotes(event.target.value)}
+              placeholder="Paste the raw reply, context, or call notes (optional)…"
+              className="w-full resize-y rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+              maxLength={5000}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              name="appendToNotes"
+              value="true"
+              checked={appendToNotes}
+              onChange={(event) => setAppendToNotes(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+            />
+            Append a brief line to provider notes (for humans)
+          </label>
+
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="rounded-full bg-blue-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-950 hover:bg-blue-400"
+            >
+              Save response
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function BulkProviderRespondedModal({
+  isOpen,
+  selectedCount,
+  channel,
+  summary,
+  rawNotes,
+  appendToNotes,
+  pending,
+  onClose,
+  onChangeChannel,
+  onChangeSummary,
+  onChangeRawNotes,
+  onChangeAppendToNotes,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  selectedCount: number;
+  channel: ProviderResponseChannel;
+  summary: string;
+  rawNotes: string;
+  appendToNotes: boolean;
+  pending: boolean;
+  onClose: () => void;
+  onChangeChannel: (value: ProviderResponseChannel) => void;
+  onChangeSummary: (value: string) => void;
+  onChangeRawNotes: (value: string) => void;
+  onChangeAppendToNotes: (value: boolean) => void;
+  onSubmit: () => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Bulk mark responded"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950/95 p-5 text-slate-100 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-white">Bulk mark responded</h3>
+            <p className="mt-1 text-sm text-slate-300">
+              Apply one response record to{" "}
+              <span className="font-semibold text-slate-100">
+                {selectedCount} provider{selectedCount === 1 ? "" : "s"}
+              </span>
+              .
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+            className={clsx(
+              "rounded-full border border-slate-800 bg-slate-950/60 px-3 py-1 text-xs font-semibold text-slate-200 hover:border-slate-600 hover:text-white",
+              pending ? "cursor-not-allowed opacity-60" : null,
+            )}
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Channel
+            </label>
+            <select
+              value={channel}
+              onChange={(event) => onChangeChannel(event.target.value as ProviderResponseChannel)}
+              className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none"
+            >
+              <option value="email">Email</option>
+              <option value="call">Call</option>
+              <option value="form">Web form</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Summary
+            </label>
+            <textarea
+              value={summary}
+              onChange={(event) => onChangeSummary(event.target.value)}
+              rows={3}
+              placeholder="Short, reportable summary…"
+              className="w-full resize-y rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+              maxLength={1000}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Notes (optional)
+            </label>
+            <textarea
+              value={rawNotes}
+              onChange={(event) => onChangeRawNotes(event.target.value)}
+              rows={5}
+              placeholder="Optional raw notes…"
+              className="w-full resize-y rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:border-emerald-400 focus:outline-none"
+              maxLength={5000}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-slate-300">
+            <input
+              type="checkbox"
+              checked={appendToNotes}
+              onChange={(event) => onChangeAppendToNotes(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
+            />
+            Append a brief line to provider notes (for humans)
+          </label>
+
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={pending}
+              className={clsx(
+                "rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:border-slate-600 hover:text-white",
+                pending ? "cursor-not-allowed opacity-60" : null,
+              )}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={pending}
+              className={clsx(
+                "rounded-full bg-blue-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-950 hover:bg-blue-400",
+                pending ? "cursor-not-allowed opacity-60" : null,
+              )}
+            >
+              {pending ? "Saving..." : "Save responses"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -833,7 +1152,7 @@ function resolveNextActionKey(args: {
   contacted: boolean;
   isVerified: boolean;
   isActive: boolean;
-  hasResponseNotes: boolean;
+  responded: boolean;
   profileReadyToVerify: boolean;
 }): NextActionKey {
   if (args.needsResearch) {
@@ -842,10 +1161,10 @@ function resolveNextActionKey(args: {
   if (!args.contacted) {
     return "needs_contact";
   }
-  if (!args.isVerified && args.hasResponseNotes && !args.profileReadyToVerify) {
+  if (!args.isVerified && args.responded && !args.profileReadyToVerify) {
     return "needs_profile";
   }
-  if (!args.isVerified && args.hasResponseNotes) {
+  if (!args.isVerified && args.responded) {
     return "ready_to_verify";
   }
   if (!args.isVerified) {
@@ -862,7 +1181,7 @@ function buildNextActionDetail(
   args: {
     missingEmail: boolean;
     missingWebsite: boolean;
-    hasResponseNotes: boolean;
+    responded: boolean;
     profileMissing: string[];
   },
 ): string | null {
@@ -875,7 +1194,7 @@ function buildNextActionDetail(
       return missing.length > 0 ? `Missing ${missing.join(" · ")}` : null;
     }
     case "ready_to_verify":
-      return args.hasResponseNotes ? "Response notes flagged" : null;
+      return args.responded ? "Response logged" : null;
     case "needs_profile": {
       if (args.profileMissing.length === 0) return "Missing profile details";
       const detail = args.profileMissing.slice(0, 3).join(" · ");
@@ -1054,20 +1373,6 @@ function verificationPill(status: string): { label: string; className: string } 
     return { label: "Verified", className: "border-blue-500/40 bg-blue-500/10 text-blue-100" };
   }
   return { label: "Unverified", className: "border-amber-500/40 bg-amber-500/10 text-amber-100" };
-}
-
-function hasResponseNotesFlag(notes: string | null): boolean {
-  if (!notes) return false;
-  const lines = notes.split("\n");
-  return lines.some((line) => {
-    const trimmed = line.trim().toLowerCase();
-    if (!trimmed) return false;
-    if (trimmed.startsWith("response notes:")) return true;
-    if (trimmed.startsWith("response:")) return true;
-    if (trimmed.startsWith("[response]")) return true;
-    if (trimmed.startsWith("#response")) return true;
-    return false;
-  });
 }
 
 function capabilityMatchPill(
