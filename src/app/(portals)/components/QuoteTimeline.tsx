@@ -24,7 +24,7 @@ export async function QuoteTimeline({
   actorRole,
   actorUserId,
   className,
-  emptyState = "Updates will appear here as files, bids, and selections progress.",
+  emptyState = "Updates will appear here as files, offers, and introductions progress.",
 }: QuoteTimelineProps) {
   const result = await getQuoteEventsForTimeline({
     quoteId,
@@ -33,7 +33,7 @@ export async function QuoteTimeline({
   });
 
   const events = result.ok ? result.events : [];
-  const rfqPhaseLabel = actorRole === "admin" ? undefined : "Search";
+  const rfqPhaseLabel = actorRole === "admin" ? undefined : "Search request";
 
   return (
     <QuoteTimelineClient

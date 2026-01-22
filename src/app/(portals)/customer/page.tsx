@@ -144,7 +144,7 @@ async function CustomerDashboardPage({
       <PortalShell
         workspace="customer"
         title="Dashboard"
-        subtitle="Submit search requests, track bids, and keep supplier moves organized."
+        subtitle="Submit search requests, track offers, and keep supplier moves organized."
         headerContent={heroContent}
         actions={
           SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
@@ -187,7 +187,7 @@ async function CustomerDashboardPage({
       <PortalShell
         workspace="customer"
         title="Dashboard"
-        subtitle="Submit search requests, track bids, and keep supplier moves organized."
+        subtitle="Submit search requests, track offers, and keep supplier moves organized."
         headerContent={
           <WorkspaceWelcomeBanner
             role="customer"
@@ -319,7 +319,7 @@ async function CustomerDashboardPage({
     <PortalShell
       workspace="customer"
       title="Dashboard"
-      subtitle="Submit search requests, track bids, and keep supplier moves organized."
+      subtitle="Submit search requests, track offers, and keep supplier moves organized."
       headerContent={headerContent}
       actions={headerActions}
     >
@@ -404,7 +404,7 @@ async function CustomerDashboardPage({
 
       <PortalCard
         title="Recent activity"
-        description="Latest search request, bid, and status updates routed through this workspace."
+        description="Latest search request, offer, and status updates routed through this workspace."
       >
         {recentActivity.length > 0 ? (
           <ul className="space-y-3">
@@ -449,7 +449,7 @@ async function CustomerDashboardPage({
 
       <PortalCard
         title="Decisions needed"
-        description="Quick calls that keep bids and builds moving."
+        description="Quick calls that keep offers and builds moving."
       >
         {hasDecisions ? (
           <ul className="space-y-3">
@@ -838,7 +838,7 @@ function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {
     rfq_submitted: "Search request",
     status_changed: "Status",
     message_posted: "Message",
-    bid_received: "Bid",
+    bid_received: "Offer",
     winner_selected: "Winner",
   };
   const colorMap: Record<QuoteActivityEvent["type"], string> = {

@@ -43,7 +43,7 @@ export function deriveQuotePrimaryLabel(
     return `Quote ${row.id.slice(0, 6)}`;
   }
 
-  return "Untitled RFQ";
+  return "Untitled search request";
 }
 
 export function resolveQuoteFileCount(

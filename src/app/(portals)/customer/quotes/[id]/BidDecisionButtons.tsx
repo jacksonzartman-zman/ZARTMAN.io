@@ -43,7 +43,7 @@ export function BidDecisionButtons({
         action={acceptAction}
         bidId={bidId}
         quoteId={quoteId}
-        label="Accept bid"
+        label="Accept offer"
         intent="primary"
         disabled={acceptDisabled}
         error={acceptState.error}

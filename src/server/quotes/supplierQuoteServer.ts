@@ -67,10 +67,10 @@ export const SUPPLIER_MESSAGE_PROFILE_ERROR =
 export const SUPPLIER_MESSAGE_GENERIC_ERROR =
   "We couldn’t send your message. Please try again.";
 export const SUPPLIER_MESSAGE_DENIED_ERROR =
-  "You don’t have access to this RFQ.";
+  "You don’t have access to this search request.";
 export const SUPPLIER_EMAIL_DISABLED_ERROR = "Email not configured.";
 export const SUPPLIER_EMAIL_NOT_AWARDED_ERROR =
-  "Email is available after this RFQ is awarded to you.";
+  "Email is available after this search request is awarded to you.";
 export const SUPPLIER_EMAIL_MISSING_RECIPIENT_ERROR =
   "Customer email is missing for this quote.";
 export const SUPPLIER_EMAIL_SEND_FAILED_ERROR =
@@ -571,7 +571,7 @@ export async function submitSupplierBidImpl(
       });
       return {
         ok: false,
-        error: "You do not have access to this RFQ.",
+        error: "You do not have access to this search request.",
       };
     }
 
@@ -893,7 +893,7 @@ export async function completeKickoffTaskImpl(
       });
       return {
         ok: false,
-        error: "You can’t update the kickoff checklist for this RFQ.",
+        error: "You can’t update the kickoff checklist for this search request.",
         reason: "not_awarded_supplier",
       };
     }
@@ -913,7 +913,7 @@ export async function completeKickoffTaskImpl(
       });
       return {
         ok: false,
-        error: "You don’t have access to this RFQ.",
+        error: "You don’t have access to this search request.",
         reason: "access_denied",
       };
     }
@@ -953,7 +953,7 @@ export async function completeKickoffTaskImpl(
         });
         return {
           ok: false,
-          error: "You can’t update the kickoff checklist for this RFQ.",
+          error: "You can’t update the kickoff checklist for this search request.",
           reason: "rls_denied",
         };
       }

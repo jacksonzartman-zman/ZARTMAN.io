@@ -73,7 +73,7 @@ export function QuoteFilesUploadsSection({
         {files.length === 0 ? (
           <EmptyStateCard
             title="Add files to start this search request"
-            description="Next, once you upload files, we’ll process them and start collecting supplier bids."
+            description="Next, once you upload files, we’ll process them and start collecting supplier offers."
             action={{ label: "Add files", href: "#uploads" }}
           />
         ) : null}

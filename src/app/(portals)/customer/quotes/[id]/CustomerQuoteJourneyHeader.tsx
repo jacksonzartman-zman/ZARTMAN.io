@@ -151,7 +151,7 @@ export function CustomerQuoteJourneyHeaderAuto({
         }
       : nextStepTarget === "decision"
         ? {
-            label: "Review bids",
+            label: "Review offers",
             onClick: () => {
               // Reuse existing bid review navigation (Decision section anchor).
               scrollToIdWithHash("decision");

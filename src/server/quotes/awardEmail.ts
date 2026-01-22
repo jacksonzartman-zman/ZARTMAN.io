@@ -349,7 +349,7 @@ async function loadQuoteFileName(quoteId: string): Promise<string | null> {
 export async function buildAwardEmail(args: { quoteId: string }): Promise<AwardEmailResult> {
   const quoteId = normalizeId(args.quoteId);
   if (!quoteId) {
-    return { ok: false, error: "Missing RFQ identifier." };
+    return { ok: false, error: "Missing search request identifier." };
   }
 
   try {
@@ -374,12 +374,12 @@ export async function buildAwardEmail(args: { quoteId: string }): Promise<AwardE
     }
 
     if (!quote) {
-      return { ok: false, error: "RFQ not found." };
+      return { ok: false, error: "Search request not found." };
     }
 
     const selectedOfferId = normalizeId(quote?.selected_offer_id);
     if (!selectedOfferId) {
-      return { ok: false, error: "No selected offer is recorded for this RFQ yet." };
+      return { ok: false, error: "No selected offer is recorded for this search request yet." };
     }
 
     const selectedProviderId = normalizeId(quote?.selected_provider_id);
@@ -440,7 +440,7 @@ export async function buildAwardEmail(args: { quoteId: string }): Promise<AwardE
     const lines = [
       `Hi ${greetingName},`,
       "",
-      `You're the selected provider for RFQ ${subjectBase}. Below is the confirmed award pack.`,
+      `You're the selected provider for search request ${subjectBase}. Below is the confirmed award pack.`,
       "",
       "Selected offer summary",
       `- Provider: ${providerLabel}`,

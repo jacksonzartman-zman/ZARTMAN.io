@@ -25,9 +25,9 @@ const PHASE_ORDER: QuotePhase[] = [
 ];
 
 const PHASE_LABELS: Record<QuotePhase, string> = {
-  rfq: "RFQ",
-  bidding: "Bidding",
-  award: "Award",
+  rfq: "Search request",
+  bidding: "Offers",
+  award: "Introduction",
   kickoff: "Kickoff",
   execution: "Execution",
 };
@@ -35,7 +35,7 @@ const PHASE_LABELS: Record<QuotePhase, string> = {
 export function QuoteTimelineClient({
   rawEvents,
   className,
-  emptyState = "Updates will appear here as files, bids, and selections progress.",
+  emptyState = "Updates will appear here as files, offers, and introductions progress.",
   rfqPhaseLabel,
 }: {
   rawEvents: QuoteEventRecord[];

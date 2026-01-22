@@ -217,7 +217,9 @@ export default async function CustomerQuoteDetailPage({
     return (
       <PortalNoticeCard
         title="Quote not found"
-        description="We couldn’t find a quote for that link. Double-check the URL, or return to your Quotes list."
+        description={`We couldn’t find a search request for that link (Quote ID ${formatQuoteId(
+          quoteId,
+        )}). Double-check the URL, or return to your Quotes list.`}
         action={
           <Link
             href="/customer/quotes"
@@ -318,7 +320,9 @@ export default async function CustomerQuoteDetailPage({
     ? await isCustomerEmailOptedIn({ quoteId: quote.id, customerId: customer.id })
     : false;
   const normalizedQuoteStatus = normalizeQuoteStatus(quote.status ?? undefined);
-  const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined);
+  const quoteStatusLabel = getQuoteStatusLabel(quote.status ?? undefined, {
+    copyVariant: "search",
+  });
   const nextWorkflowState = getNextWorkflowState(normalizedQuoteStatus);
   const bidsUnavailable = !bidsResult.ok;
   const bids = bidsResult.ok && Array.isArray(bidsResult.data)
@@ -378,9 +382,9 @@ export default async function CustomerQuoteDetailPage({
   });
   const nextStepText =
     workspaceStatus === "draft"
-      ? "Upload files and request bids to move forward."
+      ? "Upload files and request offers to move forward."
       : workspaceStatus === "in_review"
-        ? "Bids are in—review options and select a supplier."
+        ? "Offers are in—review options and select a supplier."
         : "Selection confirmed—confirm details and proceed to order.";
   const latestKickoffNudgedAt =
     quoteHasWinner && winningSupplierId
@@ -908,14 +912,14 @@ export default async function CustomerQuoteDetailPage({
     ]) ?? null;
 
   const bidSummaryBadgeLabel = bidsUnavailable
-    ? "Bids unavailable"
+    ? "Offers unavailable"
     : bidCount === 0
-      ? "No bids yet"
-      : `${bidCount} bid${bidCount === 1 ? "" : "s"}`;
+      ? "No offers yet"
+      : `${bidCount} offer${bidCount === 1 ? "" : "s"}`;
   const bidSummaryHelper = bidsUnavailable
-    ? "Bids aren’t available in this workspace right now."
+    ? "Offers aren’t available in this workspace right now."
     : bidCount === 0
-      ? "Waiting on suppliers to quote."
+      ? "Waiting on suppliers to send offers."
       : quoteHasWinner
         ? "Selection confirmed—kickoff tasks are unlocked."
         : "Review pricing and select a supplier to move forward.";
@@ -1035,7 +1039,7 @@ export default async function CustomerQuoteDetailPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-            Bid summary
+            Offer summary
           </p>
           <p className="text-sm text-slate-300">{bidSummaryHelper}</p>
         </div>
@@ -1046,7 +1050,7 @@ export default async function CustomerQuoteDetailPage({
       <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-3">
         <div>
           <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Bids received
+            Offers received
           </dt>
           <dd className="text-slate-100">{bidSummaryBadgeLabel}</dd>
         </div>
@@ -1147,26 +1151,26 @@ export default async function CustomerQuoteDetailPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Supplier bids
+              Offers
             </p>
             <p className="text-sm text-slate-300">
-              We collect bids from vetted suppliers, then review options before finalizing your quote.
+              We collect offers from vetted suppliers, then review options before finalizing your quote.
             </p>
           </div>
           {bidCount > 0 ? (
             <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
-              {bidCount} bid{bidCount === 1 ? "" : "s"} received
+              {bidCount} offer{bidCount === 1 ? "" : "s"} received
             </TagPill>
           ) : null}
         </div>
         {bidsUnavailable ? (
           <p className="text-xs text-slate-400">
-            Bids aren’t available here right now, but your search request is still saved and in
+            Offers aren’t available here right now, but your search request is still saved and in
             review. Check Messages for updates.
           </p>
         ) : bidCount === 0 ? (
           <EmptyStateCard
-            title="No bids yet"
+            title="No offers yet"
             description="Next, suppliers will review your files and we’ll message you here if anything needs clarification."
             action={{ label: "Open messages", href: messagesHref }}
           />
@@ -1193,10 +1197,10 @@ export default async function CustomerQuoteDetailPage({
               </div>
               <div>
                 <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Total bids
+                  Total offers
                 </dt>
                 <dd className="mt-1">
-                  {bidCount} bid{bidCount === 1 ? "" : "s"}
+                  {bidCount} offer{bidCount === 1 ? "" : "s"}
                 </dd>
               </div>
             </dl>
@@ -1222,7 +1226,7 @@ export default async function CustomerQuoteDetailPage({
               ) : (
                 <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-xs text-yellow-100">
                   {customerBidSummariesError ??
-                    "We couldn’t load supplier bid details. Refresh to try again."}
+                    "We couldn’t load offer details. Refresh to try again."}
                 </p>
               )
             ) : null}
@@ -1245,8 +1249,8 @@ export default async function CustomerQuoteDetailPage({
           We&apos;re routing this search request to vetted suppliers who match your process and
           volumes.
         </li>
-        <li>You&apos;ll start seeing bids here as suppliers respond.</li>
-        <li>Once we review bids, we&apos;ll prepare pricing and move the status to Quote prepared.</li>
+        <li>You&apos;ll start seeing offers here as suppliers respond.</li>
+        <li>Once we review offers, we&apos;ll prepare pricing and move the status to Offers ready.</li>
       </ul>
       <p className="mt-3 text-xs text-slate-400">
         You&apos;re never obligated to award—move forward only when price, lead time, and supplier fit feel right.
@@ -1450,7 +1454,7 @@ export default async function CustomerQuoteDetailPage({
       hashAliases={["award"]}
       className="scroll-mt-24"
       title="Decision"
-      description="Once bids arrive, compare options and select a supplier."
+      description="Once offers arrive, compare options and select a supplier."
       defaultOpen={bidCount > 0 && !quoteHasWinner}
       summary={
         quoteHasWinner ? (
@@ -1459,11 +1463,11 @@ export default async function CustomerQuoteDetailPage({
           </TagPill>
         ) : bidCount > 0 ? (
           <TagPill size="md" tone="slate" className="normal-case tracking-normal">
-            {bidCount} bid{bidCount === 1 ? "" : "s"}
+            {bidCount} offer{bidCount === 1 ? "" : "s"}
           </TagPill>
         ) : (
           <TagPill size="md" tone="slate" className="normal-case tracking-normal">
-            No bids
+            No offers
           </TagPill>
         )
       }
@@ -1491,7 +1495,7 @@ export default async function CustomerQuoteDetailPage({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-amber-100">
-                  Your search request may get fewer bids.
+                  Your search request may get fewer offers.
                 </p>
                 <p className="mt-1 text-xs text-amber-100/80">
                   Improving completeness can increase supplier response rate.
@@ -1811,7 +1815,7 @@ export default async function CustomerQuoteDetailPage({
         quoteId={quote.id}
         actorRole="customer"
         actorUserId={user.id}
-        emptyState="Updates will appear here as files, bids, and selections progress."
+        emptyState="Updates will appear here as files, offers, and introductions progress."
       />
     </DisclosureSection>
   );
@@ -2334,7 +2338,7 @@ function CustomerProjectSnapshotCard({
       <dl className="mt-4 grid gap-3 text-slate-100 sm:grid-cols-2 lg:grid-cols-4">
         <SnapshotItem label="Created" value={createdAtLabel} />
         <SnapshotItem label="Winning supplier" value={supplierLabel} />
-        <SnapshotItem label="Winning bid" value={winningBidAmountLabel} />
+        <SnapshotItem label="Selected offer" value={winningBidAmountLabel} />
         <SnapshotItem label="Lead time" value={winningBidLeadTimeLabel} />
       </dl>
       <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">

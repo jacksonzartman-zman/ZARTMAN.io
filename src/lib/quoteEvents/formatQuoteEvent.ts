@@ -41,8 +41,11 @@ export function formatQuoteEvent(
   const metadata = resolveEventMetadata(event);
   const actorLabel = formatActorLabel(event.actor_role, metadata);
   const copyVariant = options.copyVariant ?? "rfq";
-  const rfqGroupLabel = copyVariant === "search" ? "Search" : "RFQ";
-  const rfqLabel = copyVariant === "search" ? "Search request" : "RFQ";
+  // Customer- and supplier-facing copy should never surface "RFQ".
+  // We keep `copyVariant` for backwards compatibility, but both variants use
+  // the same public terminology.
+  const rfqGroupLabel = "Search";
+  const rfqLabel = "Search request";
 
   if (type === "change_request_created") {
     const changeType =
@@ -181,8 +184,8 @@ export function formatQuoteEvent(
       readBoolean(metadata, "isUpdate") ?? readBoolean(metadata, "is_update");
     return {
       groupKey: "bids",
-      groupLabel: "Bids",
-      title: isUpdate ? "Bid updated" : "Bid received",
+      groupLabel: "Offers",
+      title: isUpdate ? "Offer updated" : "Offer received",
       subtitle: supplierName ? `From ${supplierName}.` : undefined,
       actorLabel,
     };
@@ -191,8 +194,8 @@ export function formatQuoteEvent(
   if (type === "quote_awarded" || type === "awarded") {
     return {
       groupKey: "award",
-      groupLabel: "Award",
-      title: "Supplier awarded",
+      groupLabel: "Introduction",
+      title: "Introduction requested",
       subtitle: "Kickoff can begin.",
       actorLabel,
     };
@@ -201,8 +204,8 @@ export function formatQuoteEvent(
   if (type === "bid_won") {
     return {
       groupKey: "award",
-      groupLabel: "Award",
-      title: "Bid won",
+      groupLabel: "Introduction",
+      title: "Offer selected",
       subtitle: formatSupplierIdentifier(metadata) ?? undefined,
       actorLabel,
     };
@@ -211,8 +214,8 @@ export function formatQuoteEvent(
   if (type === "quote_won") {
     return {
       groupKey: "award",
-      groupLabel: "Award",
-      title: "Quote won",
+      groupLabel: "Introduction",
+      title: "Offer selected",
       subtitle: formatSupplierIdentifier(metadata) ?? undefined,
       actorLabel,
     };
@@ -396,11 +399,11 @@ function formatGroupLabel(
 ): string {
   switch (group) {
     case "rfq":
-      return copyVariant === "search" ? "Search" : "RFQ";
+      return "Search";
     case "bids":
-      return "Bids";
+      return "Offers";
     case "award":
-      return "Award";
+      return "Introduction";
     case "kickoff":
       return "Kickoff";
     case "messages":

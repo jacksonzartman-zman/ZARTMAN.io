@@ -379,7 +379,7 @@ function buildBidNeededDecision(quote: QuoteSummaryRow): SupplierDecision {
     relatedQuoteId: quote.id,
     urgencyLevel: deriveUrgencyLevel(quote.target_date, quote.created_at),
     href: `/supplier/quotes/${quote.id}`,
-    ctaLabel: "Open RFQ",
+    ctaLabel: "Open search request",
   });
 }
 
@@ -400,12 +400,12 @@ function buildBidFollowUpDecision(
   return {
     id: `bid_follow_up:${bid.id}`,
     type: "bid_follow_up",
-    title: `Refresh your bid on ${quoteLabel}`,
+    title: `Refresh your offer on ${quoteLabel}`,
     description: `${buildCustomerLabel(quote)} is still reviewing. ${ageDescription}`.trim(),
     relatedQuoteId: quote.id,
     urgencyLevel: deriveUrgencyLevel(quote.target_date, quote.created_at, true),
     href: `/supplier/quotes/${quote.id}`,
-    ctaLabel: "Update bid",
+    ctaLabel: "Update offer",
     metadata,
   };
 }
@@ -417,8 +417,8 @@ function buildWinningBidDecision(
   const quoteLabel = getQuoteLabel(quote);
   const targetDate = formatTargetDate(quote.target_date);
   const description = targetDate
-    ? `${buildCustomerLabel(quote)} awarded this RFQ to you. Target ship ${targetDate}.`
-    : `${buildCustomerLabel(quote)} awarded this RFQ to you.`;
+    ? `${buildCustomerLabel(quote)} awarded this search request to you. Target ship ${targetDate}.`
+    : `${buildCustomerLabel(quote)} awarded this search request to you.`;
   const metadata = normalizeSupplierDecisionMetadata({
     bidStatus: normalizeBidStatus(bid.status),
   });
@@ -426,7 +426,7 @@ function buildWinningBidDecision(
   return {
     id: `bid_win:${bid.id}`,
     type: "win",
-    title: `You won ${quoteLabel}`,
+    title: `Selected for ${quoteLabel}`,
     description,
     relatedQuoteId: quote.id,
     urgencyLevel: "medium",

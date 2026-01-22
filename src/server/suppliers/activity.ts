@@ -204,13 +204,13 @@ function buildStatusEvent(
     return null;
   }
   const status = normalizeQuoteStatus(quote.status ?? undefined);
-  const label = getQuoteStatusLabel(status);
+  const label = getQuoteStatusLabel(status, { copyVariant: "search" });
   return {
     id: `supplier-status:${quote.id}:${quote.updated_at}`,
     quoteId: quote.id,
     type: "status_changed",
     title: `${getQuoteTitle(quote)} marked ${label}`,
-    description: "Keep an eye on this RFQ so you can respond quickly.",
+    description: "Keep an eye on this search request so you can respond quickly.",
     timestamp: safeTimestamp(quote.updated_at),
     href: `/supplier/quotes/${quote.id}`,
   };
@@ -227,7 +227,7 @@ function buildWinnerEvent(
     id: `supplier-winner:${bid.id}`,
     quoteId: quote.id,
     type: "winner_selected",
-    title: `Your bid won ${getQuoteTitle(quote)}`,
+    title: `Your offer was selected for ${getQuoteTitle(quote)}`,
     description: formatBidSummary(bid),
     timestamp: safeTimestamp(bid.updated_at ?? bid.created_at),
     href: `/supplier/quotes/${quote.id}`,

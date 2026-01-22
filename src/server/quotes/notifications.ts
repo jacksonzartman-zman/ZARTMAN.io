@@ -342,7 +342,7 @@ export async function notifyOnNewQuoteMessage(
           recipientType: recipient.type,
           messageId: message.id,
         },
-        subject: `New message on RFQ ${getQuoteTitle(quote)}`,
+        subject: `New message on ${getQuoteTitle(quote)}`,
         previewText: `${recipient.label} received a new message on ${getQuoteTitle(quote)}`,
         html: buildMessageHtml(message, quote, recipient),
       });
@@ -392,10 +392,10 @@ export async function notifyOnWinningBidSelected(
           actorRole: params.actor.role,
           actorUserId: params.actor.userId,
         },
-        subject: `Your bid won – RFQ ${quoteTitle}`,
-        previewText: `We selected your proposal for ${quoteTitle}.`,
+        subject: `Your offer was selected – ${quoteTitle}`,
+        previewText: `We selected your offer for ${quoteTitle}.`,
         html: `
-          <p>Congrats! Your bid for <strong>${quoteTitle}</strong> was selected as the winner.</p>
+          <p>Good news — your offer for <strong>${quoteTitle}</strong> was selected.</p>
           <p><strong>Price:</strong> ${formattedPrice}<br/>
           <strong>Lead time:</strong> ${leadTimeLabel}</p>
           <p><a href="${supplierLink}">Open the supplier workspace</a> to review next steps.</p>
@@ -430,12 +430,12 @@ export async function notifyOnWinningBidSelected(
           actorRole: params.actor.role,
           actorUserId: params.actor.userId,
         },
-        subject: `Winning supplier selected for your RFQ`,
-        previewText: `We marked a winning supplier for ${quoteTitle}.`,
+        subject: "Supplier selected for your search request",
+        previewText: `You selected a supplier for ${quoteTitle}.`,
         html: `
           <p>You selected <strong>${params.supplier.company_name ?? "a supplier"}</strong> for <strong>${quoteTitle}</strong>.</p>
-          <p><strong>Winning bid:</strong> ${formattedPrice} (${leadTimeLabel})</p>
-          <p><a href="${customerLink}">View the quote workspace</a> to keep the project moving.</p>
+          <p><strong>Selected offer:</strong> ${formattedPrice} (${leadTimeLabel})</p>
+          <p><a href="${customerLink}">Open your workspace</a> to keep the project moving.</p>
         `,
       }).then((sent) => {
         customerNotified = sent;
@@ -565,7 +565,7 @@ async function notifyLosingSuppliers(
             bidId: bid.id,
             supplierId: bid.supplier_id,
           },
-          subject: `RFQ ${quoteTitle} closed`,
+          subject: `Search request ${quoteTitle} closed`,
           previewText: `We selected another supplier for ${quoteTitle}.`,
           html: buildLosingBidHtml({
             quoteTitle,
@@ -728,8 +728,8 @@ function buildLosingBidHtml(args: {
     <p>Thanks for submitting a proposal for <strong>${args.quoteTitle}</strong>.</p>
     <p>We selected ${
       args.winningSupplierName ?? "another supplier"
-    } for this project. We'll keep you posted when future RFQs are a fit.</p>
-    <p><a href="${supplierHref}">Open the supplier workspace</a> to review the RFQ details.</p>
+    } for this project. We'll keep you posted when future search requests are a fit.</p>
+    <p><a href="${supplierHref}">Open the supplier workspace</a> to review the search request details.</p>
   `;
 }
 
@@ -851,19 +851,19 @@ const STATUS_NOTIFICATION_CONFIG: Partial<
   approved: {
     eventType: "quote_approved",
     subject: (title) => `${title} approved for kickoff`,
-    previewText: "We signed off on your RFQ.",
+    previewText: "We signed off on your search request.",
     body: ({ quoteTitle, quoteId, statusLabel }) => {
       const link = buildPortalLink(`/customer/quotes/${quoteId}`);
       return `
         <p>${quoteTitle} is now <strong>${statusLabel}</strong>. We're lining up the next steps.</p>
-        <p><a href="${link}">View the RFQ</a> to share kickoff details.</p>
+        <p><a href="${link}">View the search request</a> to share kickoff details.</p>
       `;
     },
   },
   won: {
     eventType: "quote_won",
     subject: (title) => `${title} marked as won`,
-    previewText: "We selected a supplier for this RFQ.",
+    previewText: "We selected a supplier for this search request.",
     body: ({ quoteTitle, quoteId, statusLabel }) => {
       const link = buildPortalLink(`/customer/quotes/${quoteId}`);
       return `
@@ -895,7 +895,7 @@ export async function notifyCustomerOnQuoteStatusChange(
   }
 
   const quoteTitle = getQuoteTitle(context.quote);
-  const statusLabel = getQuoteStatusLabel(args.status);
+  const statusLabel = getQuoteStatusLabel(args.status, { copyVariant: "search" });
 
   await dispatchEmailNotification({
     eventType: config.eventType,

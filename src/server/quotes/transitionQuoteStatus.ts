@@ -1,6 +1,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import { normalizeQuoteStatus, type QuoteStatus } from "@/server/quotes/status";
+import { formatQuoteId } from "@/app/(portals)/quotes/pageUtils";
 import {
   canTransitionQuoteStatus,
   normalizeTargetStatus,
@@ -37,6 +38,9 @@ export async function transitionQuoteStatus(
   const quoteId = normalizeId(input.quoteId);
   const actorUserId = normalizeId(input.actorUserId);
   const actorRole = (input.actorRole ?? "").toString().trim().toLowerCase();
+  const isCustomer = actorRole === "customer";
+  const entityLabel = isCustomer ? "search request" : "RFQ";
+  const quoteRef = isCustomer && quoteId ? ` (Quote ID ${formatQuoteId(quoteId)})` : "";
 
   if (!quoteId || !actorUserId || (actorRole !== "admin" && actorRole !== "customer")) {
     return {
@@ -71,7 +75,9 @@ export async function transitionQuoteStatus(
       return {
         ok: false,
         reason: "write_failed",
-        error: "Unable to update this RFQ right now.",
+        error: isCustomer
+          ? `Unable to update this ${entityLabel} right now${quoteRef}. Refresh to try again.`
+          : `Unable to update this ${entityLabel} right now.`,
       };
     }
 
@@ -79,7 +85,9 @@ export async function transitionQuoteStatus(
       return {
         ok: false,
         reason: "not_found",
-        error: "RFQ not found.",
+        error: isCustomer
+          ? `We couldn’t find that ${entityLabel}${quoteRef}. Double-check the link and try again.`
+          : `${entityLabel} not found.`,
       };
     }
 
@@ -110,7 +118,7 @@ export async function transitionQuoteStatus(
         return {
           ok: false,
           reason: "access_denied",
-          error: "You do not have access to update this RFQ.",
+          error: `You do not have access to update this ${entityLabel}${quoteRef}.`,
         };
       }
     }
@@ -126,7 +134,7 @@ export async function transitionQuoteStatus(
       return {
         ok: false,
         reason: "transition_denied",
-        error: "That action isn't available for this RFQ.",
+        error: `That action isn't available for this ${entityLabel}${quoteRef}.`,
       };
     }
 
@@ -152,7 +160,7 @@ export async function transitionQuoteStatus(
           ok: false,
           reason: "transition_denied",
           error:
-            "This RFQ can’t be marked won until a winning supplier is awarded. Use the award action instead.",
+            `This ${entityLabel} can’t be marked won until a winning supplier is awarded. Use the award action instead.`,
         };
       }
     }
@@ -177,7 +185,9 @@ export async function transitionQuoteStatus(
       return {
         ok: false,
         reason: "write_failed",
-        error: "Unable to update this RFQ right now.",
+        error: isCustomer
+          ? `Unable to update this ${entityLabel} right now${quoteRef}. Refresh to try again.`
+          : `Unable to update this ${entityLabel} right now.`,
       };
     }
 
@@ -206,7 +216,9 @@ export async function transitionQuoteStatus(
     return {
       ok: false,
       reason: "write_failed",
-      error: "Unable to update this RFQ right now.",
+      error: isCustomer
+        ? `Unable to update this ${entityLabel} right now${quoteRef}. Refresh to try again.`
+        : `Unable to update this ${entityLabel} right now.`,
     };
   }
 }

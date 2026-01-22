@@ -66,13 +66,13 @@ type ActivityQueryContext = SupplierActivityIdentity & {
 };
 const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
 const QUOTE_ACTIVITY_TITLES: Record<QuoteStatus, string> = {
-  submitted: "RFQ submitted",
-  in_review: "RFQ under review",
-  quoted: "Quote prepared",
-  approved: "Quote approved",
-  won: "Quote won",
-  lost: "Quote closed as lost",
-  cancelled: "RFQ cancelled",
+  submitted: "Search request submitted",
+  in_review: "Suppliers contacted",
+  quoted: "Offers ready",
+  approved: "Ready for introduction",
+  won: "Introduction requested",
+  lost: "Closed",
+  cancelled: "Cancelled",
 };
 
 export async function loadCustomerActivityFeed(args: {
@@ -683,7 +683,7 @@ function buildQuoteActivityItem(
   const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
   const statusLabel =
     QUOTE_ACTIVITY_TITLES[normalizedStatus] ??
-    getQuoteStatusLabel(quote.status ?? undefined);
+    getQuoteStatusLabel(quote.status ?? undefined, { copyVariant: "search" });
   const hrefBase =
     context === "customer" ? "/customer/quotes" : "/supplier/quotes";
 
@@ -708,7 +708,7 @@ function buildStatusActivityItem(
   const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
   const statusLabel =
     QUOTE_ACTIVITY_TITLES[normalizedStatus] ??
-    getQuoteStatusLabel(quote.status ?? undefined);
+    getQuoteStatusLabel(quote.status ?? undefined, { copyVariant: "search" });
   const hrefBase =
     context === "customer" ? "/customer/quotes" : "/supplier/quotes";
 
@@ -718,8 +718,8 @@ function buildStatusActivityItem(
     title: `${getQuoteTitle(quote)}: ${statusLabel}`,
     description:
       context === "customer"
-        ? "We updated this RFQ status in your workspace."
-        : "Keep an eye on this RFQ so you can respond quickly.",
+        ? "We updated this search request status in your workspace."
+        : "Keep an eye on this search request so you can respond quickly.",
     timestamp: safeTimestamp(quote.updated_at),
     href: `${hrefBase}/${quote.id}`,
   };
@@ -746,7 +746,7 @@ function buildBidActivityItem(
     return {
       id: `customer:bid:${bid.id}`,
       type: "bid",
-      title: `${supplierName} submitted a bid`,
+      title: `${supplierName} submitted an offer`,
       description: `${statusLabel} • ${priceLabel} • ${leadTimeLabel}`,
       timestamp: safeTimestamp(bid.updated_at ?? bid.created_at),
       href: `${hrefBase}/${bid.quote_id}`,
@@ -756,7 +756,7 @@ function buildBidActivityItem(
   return {
     id: `supplier:bid:${bid.id}`,
     type: "bid",
-    title: `Bid ${statusLabel}`,
+    title: `Offer ${statusLabel}`,
     description: `${priceLabel} • ${leadTimeLabel}`,
     timestamp: safeTimestamp(bid.updated_at ?? bid.created_at),
     href: `${hrefBase}/${bid.quote_id}`,
@@ -805,7 +805,7 @@ function buildQuoteDescription(
   if (context === "customer") {
     return `Uploaded by ${contact}`;
   }
-  return `RFQ from ${contact}`;
+  return `Search request from ${contact}`;
 }
 
 function normalizeEmail(value?: string | null): string | null {

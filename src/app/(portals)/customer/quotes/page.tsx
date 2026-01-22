@@ -45,7 +45,7 @@ function deriveInboxStatus(args: {
       key: "in_review",
       label: "In review",
       tone: "blue",
-      actionLabel: "Review bids",
+      actionLabel: "Review offers",
       actionHrefSuffix: "#decision",
     };
   }
@@ -91,7 +91,7 @@ export default async function CustomerQuotesPage({
             <span className="break-anywhere font-medium text-slate-100">
               {user.email}
             </span>
-            . Complete your customer profile to start tracking search requests, supplier bids, and
+            . Complete your customer profile to start tracking search requests, supplier offers, and
             messages in one place.
           </p>
           <Link
@@ -218,7 +218,7 @@ export default async function CustomerQuotesPage({
                 <p className="text-sm font-semibold text-slate-100">No search requests yet</p>
                 <p className="mt-2 text-sm text-slate-400">
                   When you submit a search request, we’ll route it to matching suppliers and you’ll
-                  see bids and updates here as they come in.
+                  see offers and updates here as they come in.
                 </p>
                 <div className="mt-4">
                   {SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (

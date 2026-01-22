@@ -1109,8 +1109,8 @@ async function computeCustomerBidAndAwardNotifications(args: {
             type: "new_bid_on_rfq",
             entityType: "quote",
             entityId: quote.id,
-            title: "New bid on your RFQ",
-            body: `${quoteTitleLite(quote)} received ${bidAgg.count} bid${bidAgg.count === 1 ? "" : "s"}.`,
+            title: "New offer on your search request",
+            body: `${quoteTitleLite(quote)} received ${bidAgg.count} offer${bidAgg.count === 1 ? "" : "s"}.`,
             href: `/customer/quotes/${quote.id}#decision`,
             createdAt: bidAgg.latestAt,
           });
@@ -1128,8 +1128,8 @@ async function computeCustomerBidAndAwardNotifications(args: {
           type: "rfq_ready_to_award",
           entityType: "quote",
           entityId: quote.id,
-          title: "RFQ ready to award",
-          body: `${quoteTitleLite(quote)} has multiple bids and is ready for a decision.`,
+          title: "Ready to request introduction",
+          body: `${quoteTitleLite(quote)} has multiple offers and is ready for a decision.`,
           href: `/customer/quotes/${quote.id}#decision`,
           createdAt: bidAgg.latestAt ?? createdAt,
         });
@@ -1196,7 +1196,7 @@ async function computeCustomerLowQualityNotifications(args: {
         type: "rfq_low_quality",
         entityType: "quote",
         entityId: quote.id,
-        title: "Improve your RFQ",
+        title: "Improve your search request",
         body:
           issues.length > 0
             ? `${quoteTitleLite(quote)}: ${issues.join(", ")} (score ${summary.score}/100).`
@@ -1332,7 +1332,7 @@ async function computeSupplierCapacityStaleNotifications(args: {
         title: "Update your capacity",
         body: latestAt
           ? `Your last capacity update was over ${STALE_DAYS} days ago.`
-          : "Add your capacity so we can route RFQs accurately.",
+          : "Add your capacity so we can route search requests accurately.",
         href: "/supplier/settings/capacity",
         createdAt: latestAt ?? nowIso(),
       },
