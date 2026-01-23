@@ -131,7 +131,7 @@ async function syncUploadQuoteLink(
   quoteId: string,
   status: UploadStatus,
 ) {
-  const { error } = await supabaseServer
+  const { error } = await supabaseServer()
     .from("uploads")
     .update({
       quote_id: quoteId,
@@ -165,7 +165,7 @@ export async function createQuoteFromUploadAction(
   const uploadId = rawUploadId.trim();
 
   try {
-    const { data: upload, error: uploadError } = await supabaseServer
+    const { data: upload, error: uploadError } = await supabaseServer()
       .from("uploads")
       .select(
         "id, quote_id, customer_id, status, name, first_name, last_name, email, company, file_name",
@@ -194,7 +194,7 @@ export async function createQuoteFromUploadAction(
     );
 
     const { data: existingQuote, error: existingQuoteError } =
-      await supabaseServer
+      await supabaseServer()
         .from("quotes")
         .select("id,status")
         .eq("upload_id", uploadId)
@@ -266,7 +266,7 @@ export async function createQuoteFromUploadAction(
       internal_notes: `Created from upload ${uploadId}`,
     };
 
-    const { data: newQuote, error: insertError } = await supabaseServer
+    const { data: newQuote, error: insertError } = await supabaseServer()
       .from("quotes")
       .insert(quoteInsertPayload)
       .select("id")
