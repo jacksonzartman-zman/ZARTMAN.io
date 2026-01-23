@@ -6,13 +6,14 @@ import { getServerAuthUser } from "@/server/auth";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 
 type QuotePageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 export default async function QuotePage({ searchParams }: QuotePageProps) {
+  const sp = (await searchParams) ?? {};
   const { user } = await getServerAuthUser();
   const prefillContact = buildQuotePrefillContact(user);
-  const processParam = searchParams?.process;
+  const processParam = sp.process;
   const prefillManufacturingProcess =
     typeof processParam === "string"
       ? processParam.trim()
