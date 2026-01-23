@@ -52,38 +52,5 @@ export function supabaseAdmin(): SupabaseClient<Database> {
   return _adminSingleton;
 }
 
-// Back-compat export name:
-// - preferred: `supabaseServer().from(...)`
-// - legacy: `supabaseServer.from(...)` (supported to reduce churn)
-type SupabaseServerCompat = (() => SupabaseClient<Database>) &
-  Pick<SupabaseClient<Database>, "from" | "rpc"> & {
-    auth: SupabaseClient<Database>["auth"];
-    storage: SupabaseClient<Database>["storage"];
-    functions: SupabaseClient<Database>["functions"];
-  };
-
-export const supabaseServer: SupabaseServerCompat = Object.assign(
-  (() => supabaseAdmin()) as unknown as SupabaseServerCompat,
-  {
-    from: ((...args: any[]) => (supabaseAdmin() as any).from(...args)) as SupabaseClient<Database>["from"],
-    rpc: ((...args: any[]) => (supabaseAdmin() as any).rpc(...args)) as SupabaseClient<Database>["rpc"],
-  },
-);
-
-Object.defineProperties(supabaseServer, {
-  auth: {
-    get() {
-      return supabaseAdmin().auth;
-    },
-  },
-  storage: {
-    get() {
-      return supabaseAdmin().storage;
-    },
-  },
-  functions: {
-    get() {
-      return supabaseAdmin().functions;
-    },
-  },
-});
+// Back-compat export name (callable): `supabaseServer().from(...)`
+export const supabaseServer = supabaseAdmin;

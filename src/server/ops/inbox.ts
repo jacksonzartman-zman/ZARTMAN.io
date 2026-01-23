@@ -1169,7 +1169,7 @@ async function loadIntroRequestsFromOpsEventsByQuoteId(
   };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("ops_events")
       .select("quote_id,event_type,created_at,provider_id:payload->>provider_id")
       .in("event_type", ["customer_intro_requested", "customer_intro_handled"])
