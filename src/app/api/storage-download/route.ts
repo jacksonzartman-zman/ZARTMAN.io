@@ -1,3 +1,5 @@
+import "server-only";
+
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
