@@ -25,6 +25,30 @@ const PROCESS_LABEL_OVERRIDES: Record<string, string> = {
   "ai-mode": "Not sure yet",
 };
 
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function getTodayLocalISODate(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function isValidIsoDate(isoDate: string): boolean {
+  if (!ISO_DATE_REGEX.test(isoDate)) return false;
+  const [y, m, d] = isoDate.split("-").map((v) => Number(v));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (!Number.isFinite(dt.getTime())) return false;
+  return dt.toISOString().slice(0, 10) === isoDate;
+}
+
+function isIsoDateInPast(isoDate: string): boolean {
+  if (!isValidIsoDate(isoDate)) return false;
+  return isoDate < getTodayLocalISODate();
+}
+
 export default function HomeSearchWidget({
   processes,
   initialProcessKey,
@@ -48,6 +72,12 @@ export default function HomeSearchWidget({
     [activeKey, processes],
   );
 
+  const [quantity, setQuantity] = useState<number | undefined>(undefined);
+  const [quantityText, setQuantityText] = useState<string>("");
+  const [targetDate, setTargetDate] = useState<string | undefined>(undefined);
+  const [qtyTouched, setQtyTouched] = useState(false);
+  const [targetDateTouched, setTargetDateTouched] = useState(false);
+
   const manufacturingProcess = useMemo(() => {
     const raw = activeProcess?.key ? PROCESS_LABEL_OVERRIDES[activeProcess.key] : "";
     return raw ?? activeProcess?.label ?? "";
@@ -61,6 +91,27 @@ export default function HomeSearchWidget({
     params.set("source", "home");
     return `/quote?${params.toString()}`;
   }, [manufacturingProcess]);
+
+  const todayMin = useMemo(() => getTodayLocalISODate(), []);
+
+  const qtyIsValid = useMemo(() => {
+    if (!quantityText.trim()) return true;
+    return typeof quantity === "number" && Number.isFinite(quantity) && quantity >= 1;
+  }, [quantity, quantityText]);
+
+  const targetDateIsValid = useMemo(() => {
+    if (!targetDate) return true;
+    return isValidIsoDate(targetDate) && !isIsoDateInPast(targetDate);
+  }, [targetDate]);
+
+  const shouldBlockNav = !qtyIsValid || !targetDateIsValid;
+
+  const handleLinkClick = (event: React.MouseEvent) => {
+    if (!shouldBlockNav) return;
+    event.preventDefault();
+    setQtyTouched(true);
+    setTargetDateTouched(true);
+  };
 
   return (
     <div className="w-full">
@@ -101,13 +152,14 @@ export default function HomeSearchWidget({
           </div>
 
           <div className="px-5 pb-6 sm:px-6 sm:pb-7">
-            <div className="grid gap-4 lg:grid-cols-[1.4fr_auto] lg:items-end">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1.4fr_120px_190px_auto] lg:items-end">
               <div className="space-y-1">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                   CAD / ZIP
                 </div>
                 <Link
                   href={quoteHref}
+                  onClick={handleLinkClick}
                   className={clsx(
                     "flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left text-sm text-slate-900 shadow-sm transition hover:border-slate-300",
                   )}
@@ -119,10 +171,72 @@ export default function HomeSearchWidget({
 
               <div className="space-y-1">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Qty
+                </div>
+                <div
+                  className={clsx(
+                    "h-12 w-full rounded-xl border bg-white px-3 shadow-sm transition focus-within:border-slate-400",
+                    qtyTouched && !qtyIsValid ? "border-rose-300 ring-1 ring-rose-100" : "border-slate-200",
+                  )}
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    value={quantityText}
+                    onChange={(event) => {
+                      const raw = event.target.value;
+                      setQuantityText(raw);
+                      if (!raw.trim()) {
+                        setQuantity(undefined);
+                        return;
+                      }
+                      const parsed = Number(raw);
+                      setQuantity(Number.isFinite(parsed) ? parsed : undefined);
+                    }}
+                    onBlur={() => setQtyTouched(true)}
+                    placeholder="Qty"
+                    aria-label="Quantity"
+                    className="h-full w-full bg-transparent text-center text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Need-by
+                </div>
+                <div
+                  className={clsx(
+                    "h-12 w-full rounded-xl border bg-white px-3 shadow-sm transition focus-within:border-slate-400",
+                    targetDateTouched && !targetDateIsValid
+                      ? "border-rose-300 ring-1 ring-rose-100"
+                      : "border-slate-200",
+                  )}
+                >
+                  <input
+                    type="date"
+                    min={todayMin}
+                    value={targetDate ?? ""}
+                    onChange={(event) => {
+                      const raw = event.target.value;
+                      setTargetDate(raw ? raw : undefined);
+                    }}
+                    onBlur={() => setTargetDateTouched(true)}
+                    aria-label="Need-by date"
+                    className="h-full w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                   &nbsp;
                 </div>
                 <Link
                   href={quoteHref}
+                  onClick={handleLinkClick}
                   className={clsx(primaryCtaClasses, "h-12 w-full rounded-xl px-7 text-base")}
                 >
                   Upload CAD to compare offers
