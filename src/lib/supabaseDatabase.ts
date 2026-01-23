@@ -1,6 +1,6 @@
 // Minimal Supabase Database typing.
 //
-// This intentionally allows any table/view/function name so we still get the
+// This intentionally allows any table/function name so we still get the
 // typed SupabaseClient overloads (avoiding `.update()` becoming `never`) without
 // requiring a full generated schema type to exist in-repo.
 
@@ -19,10 +19,6 @@ type GenericTable = {
   Relationships: any[];
 };
 
-type GenericView = {
-  Row: Record<string, any>;
-};
-
 type GenericFunction = {
   Args: Record<string, any>;
   Returns: any;
@@ -31,7 +27,9 @@ type GenericFunction = {
 export type Database = {
   public: {
     Tables: Record<string, GenericTable>;
-    Views: Record<string, GenericView>;
+    // Important: keep Views keyless so table names don't accidentally resolve as views
+    // (views are not updatable, which can cause `.update()` to become `never`).
+    Views: Record<never, never>;
     Functions: Record<string, GenericFunction>;
     Enums: Record<string, string>;
     CompositeTypes: Record<string, any>;
