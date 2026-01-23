@@ -68,6 +68,16 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 const FILE_SIZE_LIMIT_LABEL = `${bytesToMegabytes(MAX_UPLOAD_SIZE_BYTES)} MB`;
 const MAX_FILES_PER_RFQ = 20;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidIsoDate(isoDate: string): boolean {
+  if (!ISO_DATE_REGEX.test(isoDate)) return false;
+  const [y, m, d] = isoDate.split("-").map((v) => Number(v));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (!Number.isFinite(dt.getTime())) return false;
+  return dt.toISOString().slice(0, 10) === isoDate;
+}
 
 export type QuoteIntakeFieldKey =
   | "file"
@@ -76,6 +86,7 @@ export type QuoteIntakeFieldKey =
   | "email"
   | "manufacturingProcess"
   | "quantity"
+  | "targetDate"
   | "shippingPostalCode"
   | "exportRestriction"
   | "itarAcknowledged"
@@ -823,6 +834,7 @@ export function validateQuoteIntakeFields(
   const trimmedLast = payload.lastName.trim();
   const trimmedEmail = payload.email.trim();
   const trimmedQuantity = payload.quantity.trim();
+  const trimmedTargetDate = payload.targetDate.trim();
   const postal = payload.shippingPostalCode;
 
   if (!payload.files || payload.files.length === 0) {
@@ -856,6 +868,14 @@ export function validateQuoteIntakeFields(
   }
   if (!trimmedQuantity) {
     errors.quantity = "Share the quantity or volumes you need.";
+  }
+  if (trimmedTargetDate) {
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    if (!isValidIsoDate(trimmedTargetDate)) {
+      errors.targetDate = "Enter a valid need-by date.";
+    } else if (trimmedTargetDate < todayUtc) {
+      errors.targetDate = "Need-by date can’t be in the past.";
+    }
   }
   if (postal && !postal.trim()) {
     errors.shippingPostalCode = "Enter a postal code or leave this blank.";

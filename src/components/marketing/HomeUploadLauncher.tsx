@@ -77,6 +77,7 @@ const MAX_FILES_PER_RFQ = 20;
 const EXPORT_RESTRICTION_DEFAULT = "Not applicable / None";
 const MAX_UPLOAD_SIZE_LABEL = formatMaxUploadSize();
 const SESSION_STORAGE_KEY = "home_upload_session_id";
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 const FILE_TYPE_ERROR_MESSAGE = `Unsupported file type. Please upload ${CAD_FILE_TYPE_DESCRIPTION}.`;
 
@@ -156,6 +157,28 @@ const buildFileKey = (file: File): string => {
       : 0;
   return `${file.name}:${file.size}:${modified}`;
 };
+
+function getTodayLocalISODate(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function isValidIsoDate(isoDate: string): boolean {
+  if (!ISO_DATE_REGEX.test(isoDate)) return false;
+  const [y, m, d] = isoDate.split("-").map((v) => Number(v));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (!Number.isFinite(dt.getTime())) return false;
+  return dt.toISOString().slice(0, 10) === isoDate;
+}
+
+function isIsoDateInPast(isoDate: string): boolean {
+  if (!isValidIsoDate(isoDate)) return false;
+  return isoDate < getTodayLocalISODate();
+}
 
 const createSelectedCadFile = (file: File): SelectedCadFile => ({
   id:
@@ -606,6 +629,15 @@ export default function HomeUploadLauncher({
         setSubmitError(buildSubmitError("Share the quantity or volumes you need.", false));
         return;
       }
+      const trimmedNeedBy = needByDate.trim();
+      if (trimmedNeedBy && !isValidIsoDate(trimmedNeedBy)) {
+        setSubmitError(buildSubmitError("Enter a valid need-by date.", false));
+        return;
+      }
+      if (trimmedNeedBy && isIsoDateInPast(trimmedNeedBy)) {
+        setSubmitError(buildSubmitError("Need-by date can’t be in the past.", false));
+        return;
+      }
       if (!manufacturingProcess) {
         setSubmitError(buildSubmitError("Select a manufacturing process before submitting.", false));
         return;
@@ -981,6 +1013,7 @@ export default function HomeUploadLauncher({
                     </span>
                     <input
                       type="date"
+                    min={getTodayLocalISODate()}
                       value={needByDate}
                       onChange={(event) => setNeedByDate(event.target.value)}
                       className="bg-transparent text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none"
