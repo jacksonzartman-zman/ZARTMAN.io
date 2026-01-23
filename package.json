@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "bash -lc 'set -euo pipefail; for f in tests/*.test.ts; do echo \"[test] $f\"; tsx \"$f\"; done'"
+    "test": "bash -lc 'set -euo pipefail; export NODE_OPTIONS=\"--require ./tests/register-server-only.cjs\"; for f in tests/*.test.ts; do echo \"[test] $f\"; tsx \"$f\"; done'"
   },
   "dependencies": {
     "@react-three/drei": "^9.103.0",
