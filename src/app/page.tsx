@@ -45,20 +45,29 @@ export default async function HomePage() {
 
   return (
     <main className="main-shell">
-      <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-20 sm:py-24 space-y-20">
+      <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-14 sm:py-16 space-y-14 sm:space-y-16">
         {/* HERO */}
-        <section className="mx-auto max-w-5xl space-y-10 sm:space-y-12">
-          <div className="mx-auto max-w-3xl text-center space-y-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
-              RFQs without the chaos
-            </p>
-            <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
-              Upload once. Compare manufacturing offers from verified suppliers.
-            </h1>
-          </div>
+        <section className="relative mx-auto max-w-5xl space-y-8 sm:space-y-10">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 -top-10 -bottom-12 rounded-[52px] bg-[radial-gradient(80%_60%_at_50%_0%,rgba(16,185,129,0.12),transparent_60%),linear-gradient(to_bottom,rgba(2,6,23,0.55),rgba(2,6,23,0.08),transparent)] ring-1 ring-slate-900/40"
+          />
+          <div className="relative">
+            <div className="mx-auto max-w-3xl text-center space-y-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
+                RFQs without the chaos
+              </p>
+              <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
+                Upload once. Compare manufacturing offers from verified suppliers.
+              </h1>
+              <p className="mx-auto max-w-2xl text-base sm:text-lg text-ink-muted heading-snug">
+                Get price and lead-time ranges fast, then request introductions only when you&apos;re ready.
+              </p>
+            </div>
 
-          <div className="mx-auto max-w-4xl">
-            <HomeSearchWidget isAuthenticated={hasUser} processes={processes} />
+            <div className="mx-auto mt-8 max-w-4xl sm:mt-10">
+              <HomeSearchWidget isAuthenticated={hasUser} processes={processes} />
+            </div>
           </div>
         </section>
 
