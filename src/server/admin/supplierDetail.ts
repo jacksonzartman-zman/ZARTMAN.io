@@ -113,7 +113,7 @@ export async function loadAdminSupplierDetail(args: {
 
 async function loadSupplierLite(supplierId: string): Promise<SupplierRowLite | null> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select("id,company_name,primary_email,website,country,created_at")
       .eq("id", supplierId)
@@ -156,7 +156,7 @@ async function loadCapabilitiesSnapshot(
   if (!enabled) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_capabilities")
       .select("process,materials,certifications")
       .eq("supplier_id", supplierId)
@@ -211,7 +211,7 @@ async function loadRecentSupplierBidActivity(
   if (!enabled) return [];
 
   try {
-    const { data: bids, error } = await supabaseServer
+    const { data: bids, error } = await supabaseServer()
       .from("supplier_bids")
       .select("id,quote_id,status,created_at,updated_at")
       .eq("supplier_id", supplierId)
@@ -259,7 +259,7 @@ async function loadQuotesLiteByIds(quoteIds: string[]): Promise<Map<string, Quot
   if (!enabled) return map;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("id,file_name,company")
       .in("id", ids)

@@ -407,7 +407,7 @@ export async function updateQuotePartFilesAction(
       }
     }
 
-    const { data: existingRows, error: existingError } = await supabaseServer
+    const { data: existingRows, error: existingError } = await supabaseServer()
       .from("quote_part_files")
       .select("quote_upload_file_id")
       .eq("quote_part_id", normalizedPartId)
@@ -658,7 +658,7 @@ export async function awardProviderForQuoteAction(
       return { status: "error", error: ADMIN_AWARD_PROVIDER_GENERIC_ERROR };
     }
 
-    const { data: existing, error: existingError } = await supabaseServer
+    const { data: existing, error: existingError } = await supabaseServer()
       .from("quotes")
       .select(
         "id,awarded_bid_id,awarded_supplier_id,awarded_at,awarded_provider_id,awarded_offer_id",
@@ -719,7 +719,7 @@ export async function awardProviderForQuoteAction(
         return { status: "error", error: ADMIN_AWARD_PROVIDER_OFFER_NOT_FOUND_ERROR };
       }
 
-      const { data: offer, error: offerError } = await supabaseServer
+      const { data: offer, error: offerError } = await supabaseServer()
         .from("rfq_offers")
         .select("id,rfq_id,provider_id")
         .eq("id", offerId)
@@ -758,7 +758,7 @@ export async function awardProviderForQuoteAction(
         ? existing.awarded_at
         : now;
 
-    const { error: updateError } = await supabaseServer
+    const { error: updateError } = await supabaseServer()
       .from("quotes")
       .update({
         status: "won",
@@ -1025,7 +1025,7 @@ export async function upsertRfqOffer(
     assignIfDefined(payload, "confidence_score", confidenceScore);
     assignIfDefined(payload, "received_at", receivedAt);
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_offers")
       .upsert(payload, { onConflict: "rfq_id,provider_id" })
       .select("id")
@@ -1049,7 +1049,7 @@ export async function upsertRfqOffer(
 
     if (destinationId) {
       const now = new Date().toISOString();
-      const { error: destinationError } = await supabaseServer
+      const { error: destinationError } = await supabaseServer()
         .from("rfq_destinations")
         .update({
           status: "quoted",
@@ -1252,7 +1252,7 @@ export async function addDestinationsAction(args: {
       ]
         .filter(Boolean)
         .join(",");
-      const { data } = await supabaseServer
+      const { data } = await supabaseServer()
         .from("providers")
         .select(selectColumns)
         .in("id", uniqueProviders)
@@ -1287,7 +1287,7 @@ export async function addDestinationsAction(args: {
       return { ok: false, error: ADMIN_DESTINATIONS_MISMATCH_OVERRIDE_ERROR };
     }
 
-    const { data: existingRows, error: existingError } = await supabaseServer
+    const { data: existingRows, error: existingError } = await supabaseServer()
       .from("rfq_destinations")
       .select("provider_id")
       .eq("rfq_id", normalizedQuoteId)
@@ -1329,7 +1329,7 @@ export async function addDestinationsAction(args: {
       });
 
     if (newRows.length > 0) {
-      const { error: insertError } = await supabaseServer
+      const { error: insertError } = await supabaseServer()
         .from("rfq_destinations")
         .upsert(newRows, {
           onConflict: "rfq_id,provider_id",
@@ -1445,7 +1445,7 @@ export async function updateDestinationStatusAction(args: {
   try {
     await requireAdminUser();
 
-    const { data: destination, error: destinationError } = await supabaseServer
+    const { data: destination, error: destinationError } = await supabaseServer()
       .from("rfq_destinations")
       .select("id,rfq_id,sent_at,status,provider_id")
       .eq("id", destinationId)
@@ -1490,7 +1490,7 @@ export async function updateDestinationStatusAction(args: {
       payload.error_message = null;
     }
 
-    const { error: updateError } = await supabaseServer
+    const { error: updateError } = await supabaseServer()
       .from("rfq_destinations")
       .update(payload)
       .eq("id", destinationId);
@@ -1579,7 +1579,7 @@ export async function markDestinationSubmittedAction(args: {
       return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_SCHEMA_ERROR };
     }
 
-    const { data: destination, error: destinationError } = await supabaseServer
+    const { data: destination, error: destinationError } = await supabaseServer()
       .from("rfq_destinations")
       .select("id,rfq_id,provider_id,status")
       .eq("id", destinationId)
@@ -1617,7 +1617,7 @@ export async function markDestinationSubmittedAction(args: {
       error_message: null,
     };
 
-    const { error: updateError } = await supabaseServer
+    const { error: updateError } = await supabaseServer()
       .from("rfq_destinations")
       .update(payload)
       .eq("id", destinationId);
@@ -2057,7 +2057,7 @@ export async function inviteSupplierToQuoteAction(
   try {
     const adminUser = await requireAdminUser();
 
-    const { data: supplier, error: supplierError } = await supabaseServer
+    const { data: supplier, error: supplierError } = await supabaseServer()
       .from("suppliers")
       .select("id,company_name,primary_email")
       .eq("primary_email", supplierEmail)
@@ -2075,7 +2075,7 @@ export async function inviteSupplierToQuoteAction(
       };
     }
 
-    const { data: existingInvite } = await supabaseServer
+    const { data: existingInvite } = await supabaseServer()
       .from("quote_invites")
       .select("id")
       .eq("quote_id", normalizedQuoteId)
@@ -2083,7 +2083,7 @@ export async function inviteSupplierToQuoteAction(
       .maybeSingle<{ id: string }>();
     const isNewInvite = !existingInvite;
 
-    const { error: inviteError } = await supabaseServer
+    const { error: inviteError } = await supabaseServer()
       .from("quote_invites")
       .upsert(
         { quote_id: normalizedQuoteId, supplier_id: supplier.id },
@@ -2100,7 +2100,7 @@ export async function inviteSupplierToQuoteAction(
     }
 
     // Back-compat: populate assigned supplier fields so legacy views/notifications still work.
-    const { error: quoteUpdateError } = await supabaseServer
+    const { error: quoteUpdateError } = await supabaseServer()
       .from("quotes")
       .update({
         assigned_supplier_email: supplier.primary_email ?? supplierEmail,
@@ -2268,7 +2268,7 @@ async function loadSupplierCapacityLastUpdatedAtForWeek(args: {
   if (!supplierId || !weekStartDate) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_capacity_snapshots")
       .select("created_at")
       .eq("supplier_id", supplierId)

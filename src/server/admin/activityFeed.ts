@@ -123,7 +123,7 @@ async function fetchRecentQuoteEvents(args: {
     "id,quote_id,event_type,actor_role,actor_supplier_id,created_at";
 
   const runSelect = (columns: string) => {
-    let query = supabaseServer.from("quote_events").select(columns);
+    let query = supabaseServer().from("quote_events").select(columns);
     if (args.since) {
       query = query.gte("created_at", args.since);
     }
@@ -181,7 +181,7 @@ async function fetchQuoteContextByIds(
   if (quoteIds.length === 0) return byId;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(
         "id,customer_name,customer_email,company,file_name,awarded_supplier_id,awarded_at",
@@ -216,7 +216,7 @@ async function fetchLastBidSupplierByQuoteId(
 
   try {
     const limit = Math.min(1500, Math.max(200, quoteIds.length * 3));
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("quote_id,supplier_id,updated_at")
       .in("quote_id", quoteIds)
@@ -255,7 +255,7 @@ async function fetchSuppliersByIds(
   if (supplierIds.length === 0) return byId;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select("id,company_name,primary_email")
       .in("id", supplierIds)

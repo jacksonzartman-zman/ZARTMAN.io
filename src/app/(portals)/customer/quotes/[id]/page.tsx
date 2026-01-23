@@ -444,7 +444,7 @@ export default async function CustomerQuoteDetailPage({
       if (!hasSchema) {
         // Feature not enabled; keep empty counts.
       } else {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quote_rfq_feedback")
         .select("categories,created_at")
         .eq("quote_id", quote.id)
@@ -501,7 +501,7 @@ export default async function CustomerQuoteDetailPage({
 
   let changeRequestsChecklistSummary: ChangeRequestsChecklistSummary | null = null;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_change_requests")
       .select("id,status,created_at,resolved_at")
       .eq("quote_id", quote.id)

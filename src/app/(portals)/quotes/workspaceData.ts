@@ -159,7 +159,7 @@ export async function loadQuoteWorkspaceData(
     let quote: QuoteWithUploadsRow | null = null;
 
     if (safeOnly) {
-      const { data: safeQuote, error } = await supabaseServer
+      const { data: safeQuote, error } = await supabaseServer()
         .from("quotes_with_uploads")
         .select(SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(","))
         .eq("id", quoteId)
@@ -177,7 +177,7 @@ export async function loadQuoteWorkspaceData(
         };
       }
 
-      const { data: extras, error: extrasError } = await supabaseServer
+      const { data: extras, error: extrasError } = await supabaseServer()
         .from("quotes")
         .select(
           "customer_id,dfm_notes,internal_notes,selected_provider_id,selected_offer_id,selected_at,po_number,ship_to,inspection_requirements,selection_confirmed_at",
@@ -206,7 +206,7 @@ export async function loadQuoteWorkspaceData(
         selection_confirmed_at: extras?.selection_confirmed_at ?? null,
       };
     } else {
-      const { data: fullQuote, error } = await supabaseServer
+      const { data: fullQuote, error } = await supabaseServer()
         .from("quotes_with_uploads")
         .select("*")
         .eq("id", quoteId)
@@ -239,7 +239,7 @@ export async function loadQuoteWorkspaceData(
     if (quote.upload_id) {
       // IMPORTANT: Do not reference non-existent columns in select lists.
       // Use `*` and normalize in-code across schema variants.
-      const first = await supabaseServer
+      const first = await supabaseServer()
         .from("uploads")
         .select("*")
         .eq("id", quote.upload_id)
@@ -480,7 +480,7 @@ async function loadQuotePartsWithFiles(quoteId: string): Promise<QuotePartWithFi
 
   let partRows: QuotePartRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_parts")
       .select("id,quote_id,part_label,part_number,notes,sort_order,created_at")
       .eq("quote_id", quoteId)
@@ -528,7 +528,7 @@ async function loadQuotePartsWithFiles(quoteId: string): Promise<QuotePartWithFi
 
   let partFileRows: QuotePartFileRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_part_files")
       .select("id,quote_part_id,quote_upload_file_id,role,created_at")
       .in("quote_part_id", partIds)
@@ -576,7 +576,7 @@ async function loadQuotePartsWithFiles(quoteId: string): Promise<QuotePartWithFi
   const uploadFilesById = new Map<string, QuoteUploadFileRow>();
   if (quoteUploadFileIds.length > 0) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quote_upload_files")
         .select("id,path,filename,extension,size_bytes,is_from_archive")
         .in("id", quoteUploadFileIds)

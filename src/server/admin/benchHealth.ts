@@ -243,7 +243,7 @@ export async function loadBenchHealthForSupplier(
     const selectBase = "id,company_name,primary_email";
     const attempt = async (withStatus: boolean) => {
       const select = withStatus ? `${selectBase},status` : selectBase;
-      return await supabaseServer
+      return await supabaseServer()
         .from("suppliers")
         .select(select as any)
         .eq("id", supplierId)
@@ -502,7 +502,7 @@ async function loadLastActivityForSupplierId(supplierId: string): Promise<string
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("supplier_id,updated_at,created_at")
       .eq("supplier_id", id)
@@ -536,7 +536,7 @@ async function loadQuoteAssociationsBySupplierIds(
 
   if (canUseAwardedSupplierId && !isSupabaseRelationMarkedMissing("quotes")) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quotes")
         .select("id,status,awarded_supplier_id")
         .in("awarded_supplier_id", ids)
@@ -604,7 +604,7 @@ async function loadQuoteAssociationsBySupplierIds(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("supplier_id,quote_id,created_at")
       .in("supplier_id", ids)
@@ -655,7 +655,7 @@ async function loadBenchRollups(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(ROLLUP_RELATION)
       .select("quote_id,last_customer_at,last_supplier_at,last_admin_at,last_system_at,last_message_at")
       .in("quote_id", ids)
@@ -742,7 +742,7 @@ async function applyMismatchSignals(
   const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(MISMATCH_RELATION)
       .select("supplier_id,created_at")
       .in("supplier_id", ids)

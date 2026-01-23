@@ -31,7 +31,7 @@ export async function hasCustomerIntroRequested(quoteId: string): Promise<boolea
 
   if (introRequestsSupported) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("intro_requests")
         .select("quote_id,requested_at")
         .eq("quote_id", normalizedQuoteId)
@@ -85,7 +85,7 @@ export async function hasCustomerIntroRequested(quoteId: string): Promise<boolea
   if (!opsEventsSupported) return false;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("ops_events")
       .select("quote_id,event_type,created_at")
       .eq("quote_id", normalizedQuoteId)

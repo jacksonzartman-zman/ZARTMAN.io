@@ -291,7 +291,7 @@ async function loadHistoricalWinBands(processes: string[]): Promise<HistoricalWi
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_bids")
       .select("rfq_id,price_total")
       .eq("status", "accepted")
@@ -450,7 +450,7 @@ async function loadBidsForRfq(rfqId: string): Promise<RfqBidRecord[]> {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_bids")
       .select(
         "id,rfq_id,supplier_id,price_total,currency,lead_time_days,notes,status,created_at,updated_at",

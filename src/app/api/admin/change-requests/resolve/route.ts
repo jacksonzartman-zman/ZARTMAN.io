@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: updated, error: updateError } = await supabaseServer
+    const { data: updated, error: updateError } = await supabaseServer()
       .from("quote_change_requests")
       .update({
         status: "resolved",
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     }
 
     try {
-      const { error: notificationError, count } = await supabaseServer
+      const { error: notificationError, count } = await supabaseServer()
         .from("user_notifications")
         .update(
           { is_read: true, updated_at: new Date().toISOString() },

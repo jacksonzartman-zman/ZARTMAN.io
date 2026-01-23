@@ -198,7 +198,7 @@ async function collectRelevantQuoteIds(
 
   // New invite table: quote_invites (supplier_id-based).
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_invites")
       .select("quote_id")
       .eq("supplier_id", supplierId)
@@ -218,7 +218,7 @@ async function collectRelevantQuoteIds(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_suppliers")
       .select("quote_id")
       .eq("supplier_id", supplierId)
@@ -239,7 +239,7 @@ async function collectRelevantQuoteIds(
 
   if (ids.size < limit && supplierEmail) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quote_suppliers")
         .select("quote_id")
         .ilike("supplier_email", supplierEmail)
@@ -261,7 +261,7 @@ async function collectRelevantQuoteIds(
 
   if (ids.size < limit && supplierEmail) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quotes_with_uploads")
         .select("id")
         .ilike("assigned_supplier_email", supplierEmail)
@@ -296,7 +296,7 @@ async function fetchQuotesByIds(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(QUOTE_FIELDS)
       .in("id", quoteIds);
@@ -328,7 +328,7 @@ async function fetchRecentBids(supplierId: string): Promise<SupplierBidRow[]> {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select(BID_FIELDS)
       .eq("supplier_id", supplierId)

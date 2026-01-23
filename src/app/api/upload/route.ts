@@ -244,7 +244,7 @@ export async function POST(req: NextRequest) {
     const storageKey = buildStorageKey(safeFileName);
     // Object key inside the bucket. Canonical rows must store this exact key.
     const storagePath = storageKey;
-    const supabase = supabaseServer;
+    const supabase = supabaseServer();
     logContext.bucket = CAD_BUCKET;
     logContext.storageKey = storageKey;
     logContext.storagePath = `${CAD_BUCKET}/${storagePath}`;

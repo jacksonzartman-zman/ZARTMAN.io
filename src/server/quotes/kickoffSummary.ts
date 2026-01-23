@@ -71,7 +71,7 @@ export async function getCustomerKickoffSummary(
         task_key: string | null;
       };
 
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from(QUOTE_KICKOFF_TASKS_TABLE)
         .select("status,title,sort_order,task_key")
         .eq("quote_id", normalizedQuoteId)
@@ -171,7 +171,7 @@ export async function getCustomerKickoffSummary(
       const select = hasKickoffCompletedAt
         ? "awarded_supplier_id,kickoff_completed_at"
         : "awarded_supplier_id";
-      const { data: quoteRow, error: quoteError } = await supabaseServer
+      const { data: quoteRow, error: quoteError } = await supabaseServer()
         .from("quotes")
         .select(select)
         .eq("id", normalizedQuoteId)
@@ -219,7 +219,7 @@ export async function getCustomerKickoffSummary(
       task_key: string | null;
       sort_order: number | null;
     };
-    const { data: supplierTasks, error: tasksError } = await supabaseServer
+    const { data: supplierTasks, error: tasksError } = await supabaseServer()
       .from(supplierTable)
       .select("completed,title,task_key,sort_order")
       .eq("quote_id", normalizedQuoteId)

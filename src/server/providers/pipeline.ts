@@ -349,7 +349,7 @@ async function loadProviderResponseState(
 
   try {
     type ProviderResponseRow = { provider_id: string | null; response_at: string | null };
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("provider_responses")
       .select("provider_id,response_at")
       .in("provider_id", ids)

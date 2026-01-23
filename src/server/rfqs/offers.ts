@@ -112,7 +112,7 @@ export async function getRfqOffers(quoteId: string): Promise<RfqOffer[]> {
 
   try {
     const offerSelect = await buildOfferSelect();
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_offers")
       .select(offerSelect)
       .eq("rfq_id", normalizedQuoteId)

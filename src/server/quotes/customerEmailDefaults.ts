@@ -51,7 +51,7 @@ export async function getCustomerEmailDefaultOptIn(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(CUSTOMER_PREFS_RELATION)
       .select("email_replies_default")
       .eq("customer_id", id)
@@ -129,7 +129,7 @@ export async function setCustomerEmailDefaultOptIn(
   }
 
   try {
-    const { error } = await supabaseServer.from(CUSTOMER_PREFS_RELATION).upsert(
+    const { error } = await supabaseServer().from(CUSTOMER_PREFS_RELATION).upsert(
       {
         customer_id: id,
         email_replies_default: Boolean(optedIn),
@@ -220,7 +220,7 @@ export async function applyCustomerEmailDefaultToNewQuote(args: {
   }
 
   try {
-    const { error } = await supabaseServer.from(QUOTE_PREFS_RELATION).upsert(
+    const { error } = await supabaseServer().from(QUOTE_PREFS_RELATION).upsert(
       {
         quote_id: quoteId,
         customer_id: customerId,

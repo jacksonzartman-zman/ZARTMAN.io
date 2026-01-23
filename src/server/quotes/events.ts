@@ -104,7 +104,7 @@ export async function getQuoteEventsForTimeline(
     };
 
     const selectAttempt = (columns: string) =>
-      supabaseServer
+      supabaseServer()
         .from(QUOTE_EVENTS_TABLE)
         .select(columns)
         .eq("quote_id", quoteId)
@@ -231,7 +231,7 @@ export async function listQuoteEventsForQuote(
     const baseColumns =
       "id,quote_id,event_type,actor_role,actor_user_id,actor_supplier_id,created_at";
     const runSelect = (columns: string) =>
-      supabaseServer
+      supabaseServer()
         .from("quote_events")
         .select(columns)
         .eq("quote_id", normalizedQuoteId)
@@ -349,7 +349,7 @@ export async function emitQuoteEvent(
   };
 
   try {
-    const { error } = await supabaseServer.from("quote_events").insert(row);
+    const { error } = await supabaseServer().from("quote_events").insert(row);
     if (error) {
       if (!isMissingTableOrColumnError(error)) {
         console.error("[quote events] insert failed", {
@@ -425,7 +425,7 @@ async function loadSupplierContextForUser(
   const normalizedUserId = normalizeId(userId);
   if (!normalizedUserId) return null;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select("id,primary_email")
       .eq("user_id", normalizedUserId)

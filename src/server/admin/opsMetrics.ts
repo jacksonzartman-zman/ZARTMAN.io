@@ -133,7 +133,7 @@ export async function loadAdminOpsMetrics(): Promise<AdminLoaderResult<OpsMetric
 
   let quotes: QuoteRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select(quoteSelect.join(","))
       .gte("created_at", window30.from)
@@ -302,7 +302,7 @@ async function loadDestinationsByQuoteId(
     .join(",");
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_destinations")
       .select(destinationSelect)
       .in("rfq_id", quoteIds)
@@ -371,7 +371,7 @@ async function loadOffersByQuoteId(quoteIds: string[]): Promise<Map<string, Offe
     .join(",");
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_offers")
       .select(offerSelect)
       .in("rfq_id", quoteIds)
@@ -438,7 +438,7 @@ async function loadOpsEventSummaries(
   if (!supported) return map;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("ops_events")
       .select("quote_id,event_type,created_at")
       .in("quote_id", quoteIds)

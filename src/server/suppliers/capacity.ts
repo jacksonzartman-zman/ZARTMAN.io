@@ -65,7 +65,7 @@ export async function loadSupplierCapacitySnapshotsForWeek(args: {
   }
 
   try {
-    const result = await supabaseServer
+    const result = await supabaseServer()
       .from(SNAPSHOTS_TABLE)
       .select("capability, capacity_level, notes, created_at")
       .eq("supplier_id", supplierId)
@@ -146,7 +146,7 @@ export async function loadLatestCapacityUpdateRequestForSupplierWeek(args: {
   type RequestRow = { created_at: string };
 
   const selectLatest = async (supplierKey: "supplierId" | "supplier_id") => {
-    return await supabaseServer
+    return await supabaseServer()
       .from("quote_events")
       .select("created_at")
       .eq("event_type", "capacity_update_requested")
@@ -257,7 +257,7 @@ export async function upsertSupplierCapacitySnapshot(
   }
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from(SNAPSHOTS_TABLE)
       .upsert(
         {
@@ -352,7 +352,7 @@ async function emitCapacityUpdatedEventsForSupplierQuotes(args: CapacityEventArg
       },
     }));
 
-    const { error } = await supabaseServer.from("quote_events").insert(rows);
+    const { error } = await supabaseServer().from("quote_events").insert(rows);
     if (error && !isMissingTableOrColumnError(error)) {
       console.error("[supplier capacity] timeline event insert failed", {
         supplierId: args.supplierId,
@@ -383,19 +383,19 @@ async function listQuoteIdsForSupplier(supplierId: string): Promise<string[]> {
 
   try {
     const [invites, bids, awards] = await Promise.all([
-      supabaseServer
+      supabaseServer()
         .from("quote_suppliers")
         .select("quote_id")
         .eq("supplier_id", normalizedSupplierId)
         .limit(250)
         .returns<{ quote_id: string }[]>(),
-      supabaseServer
+      supabaseServer()
         .from("supplier_bids")
         .select("quote_id")
         .eq("supplier_id", normalizedSupplierId)
         .limit(250)
         .returns<{ quote_id: string }[]>(),
-      supabaseServer
+      supabaseServer()
         .from("quotes")
         .select("id")
         .eq("awarded_supplier_id", normalizedSupplierId)

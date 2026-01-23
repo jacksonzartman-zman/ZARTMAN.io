@@ -120,7 +120,9 @@ const ADMIN_APPEND_ALLOWED_EXTENSIONS = new Set([
   "zip",
 ]);
 
-type SupabaseWriteClient = ReturnType<typeof createAuthClient> | typeof supabaseServer;
+// Keep this simple: a union of different SupabaseClient generic instantiations can
+// make `.from(...)` non-callable due to incompatible overload sets.
+type SupabaseWriteClient = SupabaseClient;
 
 type StoredCadFile = {
   originalName: string;
@@ -405,10 +407,10 @@ export async function appendFilesToQuoteUpload(args: {
     throw new Error("missing_files");
   }
 
-  const quote = await loadQuoteForUpload(supabaseServer, quoteId);
+  const quote = await loadQuoteForUpload(supabaseServer(), quoteId);
 
   return appendFilesToQuoteUploadWithClient({
-    supabase: supabaseServer,
+    supabase: supabaseServer(),
     quoteId,
     quote,
     files,
@@ -469,7 +471,7 @@ export async function registerUploadedObjectsForQuote(params: {
     throw new Error("missing_targets");
   }
 
-  const quote = await loadQuoteForUpload(supabaseServer, quoteId);
+  const quote = await loadQuoteForUpload(supabaseServer(), quoteId);
 
   const uploadStatus =
     typeof quote.status === "string" && quote.status.trim().length > 0
@@ -489,7 +491,7 @@ export async function registerUploadedObjectsForQuote(params: {
       : null;
 
   const primary = targets[0];
-  const { data: uploadRow, error: uploadError } = await supabaseServer
+  const { data: uploadRow, error: uploadError } = await supabaseServer()
     .from("uploads")
     .insert({
       quote_id: quoteId,
@@ -512,7 +514,7 @@ export async function registerUploadedObjectsForQuote(params: {
     quoteId,
     uploadId: uploadRow.id,
     targets,
-    supabase: supabaseServer,
+    supabase: supabaseServer(),
   });
 
   if (!registerResult.ok) {
@@ -531,7 +533,7 @@ export async function registerUploadedObjectsForExistingUpload(params: {
   const quoteId = typeof params.quoteId === "string" ? params.quoteId.trim() : "";
   const uploadId = typeof params.uploadId === "string" ? params.uploadId.trim() : "";
   const targets = Array.isArray(params.targets) ? params.targets.filter(Boolean) : [];
-  const supabase = params.supabase ?? supabaseServer;
+  const supabase = params.supabase ?? supabaseServer();
 
   if (!quoteId || !uploadId) {
     return { ok: false, recorded: false, mode: "none" };
@@ -868,7 +870,7 @@ export async function recordQuoteUploadFiles(args: {
   supabase?: SupabaseClient;
 }): Promise<{ ok: boolean; recorded: boolean }> {
   const { quoteId, uploadId, storedFiles } = args;
-  const supabase = args.supabase ?? supabaseServer;
+  const supabase = args.supabase ?? supabaseServer();
 
   if (!quoteId || !uploadId) {
     return { ok: false, recorded: false };
@@ -948,7 +950,7 @@ async function buildStoredFilesForEnumerationFromTargets(
     let buffer: Buffer | undefined;
     if (isZip) {
       try {
-        const { data, error } = await supabaseServer.storage
+        const { data, error } = await supabaseServer().storage
           .from(target.bucketId)
           .download(target.storagePath);
         if (!error && data) {
@@ -1015,7 +1017,7 @@ export async function loadQuoteUploadGroups(
   let shouldFallback = !attempt1Schema.ok;
   try {
     if (attempt1Schema.ok) {
-      const attempt1 = await supabaseServer
+      const attempt1 = await supabaseServer()
         .from("quote_upload_files")
         .select("id,upload_id,filename,extension,size_bytes,is_from_archive,created_at")
         .eq("quote_id", normalizedQuoteId)
@@ -1065,7 +1067,7 @@ export async function loadQuoteUploadGroups(
     }
 
     if (shouldFallback) {
-      const attempt2 = await supabaseServer
+      const attempt2 = await supabaseServer()
         .from("quote_upload_files")
         .select("*")
         .eq("quote_id", normalizedQuoteId);
@@ -1193,7 +1195,7 @@ export async function loadQuoteUploadGroups(
   const uploadsById = new Map<string, UploadRow>();
   if (uploadIds.length > 0) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("uploads")
         .select("id,file_name,mime_type,created_at")
         .in("id", uploadIds)

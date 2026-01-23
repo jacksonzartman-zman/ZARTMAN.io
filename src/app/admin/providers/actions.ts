@@ -56,7 +56,7 @@ export async function markProviderRespondedAction(formData: FormData): Promise<v
 
     if (supportsProviderResponses) {
       try {
-        const { error } = await supabaseServer.from("provider_responses").insert({
+        const { error } = await supabaseServer().from("provider_responses").insert({
           provider_id: providerId,
           response_at: responseAt,
           channel,
@@ -91,7 +91,7 @@ export async function markProviderRespondedAction(formData: FormData): Promise<v
         if (supported) {
           let existingNotes: string | null = null;
           try {
-            const { data, error } = await supabaseServer
+            const { data, error } = await supabaseServer()
               .from("providers")
               .select("id,notes")
               .eq("id", providerId)
@@ -107,7 +107,7 @@ export async function markProviderRespondedAction(formData: FormData): Promise<v
           }
 
           const merged = mergeNotesWithResponse(existingNotes, buildProviderResponseNotesLine({ channel, summary }));
-          const { error } = await supabaseServer
+          const { error } = await supabaseServer()
             .from("providers")
             .update({ notes: merged })
             .eq("id", providerId);
@@ -156,7 +156,7 @@ export async function verifyProviderAction(formData: FormData): Promise<void> {
     }
 
     const verifiedAt = new Date().toISOString();
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("providers")
       .update({
         verification_status: "verified",
@@ -209,7 +209,7 @@ export async function unverifyProviderAction(formData: FormData): Promise<void> 
       return;
     }
 
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("providers")
       .update({
         verification_status: "unverified",
@@ -265,7 +265,7 @@ export async function toggleProviderActiveAction(formData: FormData): Promise<vo
       return;
     }
 
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("providers")
       .update({ is_active: nextActive })
       .eq("id", providerId);
@@ -317,7 +317,7 @@ export async function toggleProviderDirectoryVisibilityAction(formData: FormData
       return;
     }
 
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("providers")
       .update({ show_in_directory: nextShow })
       .eq("id", providerId);
@@ -380,7 +380,7 @@ export async function updateProviderContactAction(formData: FormData): Promise<v
       return;
     }
 
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("providers")
       .update(updates)
       .eq("id", providerId);
@@ -420,7 +420,7 @@ export async function markProviderContactedAction(formData: FormData): Promise<v
 
     try {
       const selectColumns = ["id", "name", ...(emailColumn ? [emailColumn] : [])].join(",");
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("providers")
         .select(selectColumns)
         .eq("id", providerId)
@@ -448,7 +448,7 @@ export async function markProviderContactedAction(formData: FormData): Promise<v
         warnKey: "admin_providers_mark_contacted",
       });
       if (supported) {
-        const { error } = await supabaseServer
+        const { error } = await supabaseServer()
           .from("providers")
           .update({ contacted_at: new Date().toISOString() })
           .eq("id", providerId);
@@ -500,7 +500,7 @@ export async function bulkMarkProvidersContactedAction(args: {
       ...(emailColumn ? [emailColumn] : []),
       ...(supportsContactedAt ? ["contacted_at"] : []),
     ].join(",");
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("providers")
       .select(selectColumns)
       .in("id", providerIds)
@@ -541,7 +541,7 @@ export async function bulkMarkProvidersContactedAction(args: {
         warnKey: "admin_providers_bulk_contacted",
       });
       if (supported) {
-        const { error: updateError } = await supabaseServer
+        const { error: updateError } = await supabaseServer()
           .from("providers")
           .update({ contacted_at: new Date().toISOString() })
           .in("id", updateIds);
@@ -615,7 +615,7 @@ export async function bulkHideProvidersInDirectoryAction(args: {
       return { ok: false, error: BULK_DIRECTORY_VISIBILITY_ERROR };
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("providers")
       .select("id,show_in_directory")
       .in("id", providerIds)
@@ -638,7 +638,7 @@ export async function bulkHideProvidersInDirectoryAction(args: {
       .map((row) => row.id);
 
     if (updateIds.length > 0) {
-      const { error: updateError } = await supabaseServer
+      const { error: updateError } = await supabaseServer()
         .from("providers")
         .update({ show_in_directory: false })
         .in("id", updateIds);
@@ -705,7 +705,7 @@ export async function bulkShowProvidersInDirectoryAction(args: {
       return { ok: false, error: BULK_DIRECTORY_VISIBILITY_ERROR };
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("providers")
       .select("id,show_in_directory")
       .in("id", providerIds)
@@ -728,7 +728,7 @@ export async function bulkShowProvidersInDirectoryAction(args: {
       .map((row) => row.id);
 
     if (updateIds.length > 0) {
-      const { error: updateError } = await supabaseServer
+      const { error: updateError } = await supabaseServer()
         .from("providers")
         .update({ show_in_directory: true })
         .in("id", updateIds);
@@ -795,7 +795,7 @@ export async function bulkActivateProvidersAction(args: {
       return { ok: false, error: BULK_PROVIDERS_GENERIC_ERROR };
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("providers")
       .select("id,is_active")
       .in("id", providerIds)
@@ -818,7 +818,7 @@ export async function bulkActivateProvidersAction(args: {
       .map((row) => row.id);
 
     if (updateIds.length > 0) {
-      const { error: updateError } = await supabaseServer
+      const { error: updateError } = await supabaseServer()
         .from("providers")
         .update({ is_active: true })
         .in("id", updateIds);
@@ -908,7 +908,7 @@ export async function bulkMarkProvidersRespondedAction(args: {
 
     if (supportsProviderResponses) {
       try {
-        const { error: insertError } = await supabaseServer.from("provider_responses").insert(
+        const { error: insertError } = await supabaseServer().from("provider_responses").insert(
           providerIds.map((providerId) => ({
             provider_id: providerId,
             response_at: responseAt,
@@ -933,7 +933,7 @@ export async function bulkMarkProvidersRespondedAction(args: {
 
     const supportsNotes = await hasColumns("providers", ["notes"]);
     const selectColumns = ["id", ...(supportsNotes ? ["notes"] : [])].join(",");
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("providers")
       .select(selectColumns)
       .in("id", providerIds)
@@ -965,7 +965,7 @@ export async function bulkMarkProvidersRespondedAction(args: {
             if (!id) return;
             const existingNotes = normalizeOptionalText(row?.notes);
             const merged = mergeNotesWithResponse(existingNotes, notesLine);
-            const { error: updateError } = await supabaseServer
+            const { error: updateError } = await supabaseServer()
               .from("providers")
               .update({ notes: merged })
               .eq("id", id);

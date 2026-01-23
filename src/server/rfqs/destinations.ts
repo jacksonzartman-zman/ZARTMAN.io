@@ -225,7 +225,7 @@ export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[
     .join(",");
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_destinations")
       .select(destinationSelect)
       .eq("rfq_id", normalizedId)
@@ -294,7 +294,7 @@ export async function getRfqDestinationsLite(rfqId: string): Promise<RfqDestinat
   const destinationSelect = DESTINATION_COLUMNS.join(",");
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_destinations")
       .select(destinationSelect)
       .eq("rfq_id", normalizedId)
@@ -408,7 +408,7 @@ export async function getDestinationByOfferToken(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_destinations")
       .select(OFFER_TOKEN_SELECT)
       .eq("offer_token", normalizedToken)

@@ -36,7 +36,7 @@ export async function POST(
       );
     }
 
-    const { data: quote, error: quoteError } = await supabaseServer
+    const { data: quote, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,awarded_bid_id")
       .eq("id", quoteId)
@@ -62,7 +62,7 @@ export async function POST(
       );
     }
 
-    const { data: bid, error: bidError } = await supabaseServer
+    const { data: bid, error: bidError } = await supabaseServer()
       .from("supplier_bids")
       .select("id,quote_id,supplier_id")
       .eq("id", bidId)

@@ -319,7 +319,7 @@ async function fetchBidsForRfq(rfqId: string): Promise<RfqBidRecord[]> {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_bids")
       .select(
         "id,rfq_id,supplier_id,price_total,currency,lead_time_days,notes,status,created_at,updated_at",
@@ -360,7 +360,7 @@ async function estimateProcessSupply(processes: string[]) {
   await Promise.all(
     normalized.map(async (process) => {
       try {
-        const { data, error } = await supabaseServer
+        const { data, error } = await supabaseServer()
           .from("supplier_capabilities")
           .select("supplier_id,process")
           .ilike("process", `%${process}%`);
@@ -426,7 +426,7 @@ async function fetchProcessDemand(processes: string[]) {
 
 async function countSuppliers(): Promise<number> {
   try {
-    const { count, error } = await supabaseServer
+    const { count, error } = await supabaseServer()
       .from("suppliers")
       .select("id", { count: "exact", head: true });
 
@@ -455,7 +455,7 @@ async function loadSupplierLeverageSignals(supplierId: string): Promise<Supplier
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_bids")
       .select("status,updated_at,created_at")
       .eq("supplier_id", supplierId)
@@ -528,7 +528,7 @@ async function loadCustomerHistory(customerId: string | null): Promise<CustomerH
 
     let totalSpend = 0;
     if (rfqIds.length > 0) {
-      const { data: awardedBids, error: spendError } = await supabaseServer
+      const { data: awardedBids, error: spendError } = await supabaseServer()
         .from("rfq_bids")
         .select("price_total,rfq_id")
         .in("rfq_id", rfqIds)

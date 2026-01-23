@@ -76,7 +76,7 @@ export async function loadQuoteMessageRollups(
   };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .select(
         "quote_id,last_customer_at,last_supplier_at,last_admin_at,last_system_at,last_message_at",

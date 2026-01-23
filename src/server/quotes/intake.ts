@@ -243,7 +243,7 @@ export async function persistQuoteIntakeDirectUpload(params: {
     );
     const pendingStoragePath = buildStorageKey(safePrimaryName);
 
-    const { data: uploadRow, error: uploadError } = await supabaseServer
+    const { data: uploadRow, error: uploadError } = await supabaseServer()
       .from("uploads")
       .insert({
         file_name: primary.fileName,
@@ -283,7 +283,7 @@ export async function persistQuoteIntakeDirectUpload(params: {
 
     const uploadId = uploadRow.id;
 
-    const quoteInsert = await supabaseServer
+    const quoteInsert = await supabaseServer()
       .from("quotes")
       .insert({
         upload_id: uploadId,
@@ -346,7 +346,7 @@ export async function persistQuoteIntakeDirectUpload(params: {
       };
     }
 
-    const { error: uploadUpdateError } = await supabaseServer
+    const { error: uploadUpdateError } = await supabaseServer()
       .from("uploads")
       .update({
         quote_id: quoteId,
@@ -522,7 +522,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     } | null> => {
       if (!idempotencyKey) return null;
       try {
-        const { data, error } = await supabaseServer
+        const { data, error } = await supabaseServer()
           .from("uploads")
           .select("id,quote_id")
           .eq("intake_idempotency_key", idempotencyKey)
@@ -556,7 +556,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
       const normalizedUploadId = normalizeReferenceId(existingUploadId);
       if (!normalizedUploadId) return null;
       try {
-        const { data, error } = await supabaseServer
+        const { data, error } = await supabaseServer()
           .from("quotes")
           .select("id")
           .eq("upload_id", normalizedUploadId)
@@ -585,7 +585,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
         quoteId: existingQuoteId,
         uploadId: existingUploadId,
         targets,
-        supabase: supabaseServer,
+        supabase: supabaseServer(),
       });
       if (!registerResult.ok) {
         return {
@@ -606,7 +606,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
       if (uploadId && !quoteId) {
         quoteId = await loadQuoteIdForUpload(uploadId);
         if (quoteId) {
-          const { error: updateError } = await supabaseServer
+          const { error: updateError } = await supabaseServer()
             .from("uploads")
             .update({ quote_id: quoteId })
             .eq("id", uploadId);
@@ -656,7 +656,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
 
     if (!uploadId) {
       let uploadPayload = buildUploadPayload();
-      let uploadResult = await supabaseServer
+      let uploadResult = await supabaseServer()
         .from("uploads")
         .insert(uploadPayload)
         .select("id")
@@ -665,7 +665,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
       if (uploadResult.error && idempotencyKey && isMissingTableOrColumnError(uploadResult.error)) {
         idempotencyKey = null;
         uploadPayload = buildUploadPayload();
-        uploadResult = await supabaseServer
+        uploadResult = await supabaseServer()
           .from("uploads")
           .insert(uploadPayload)
           .select("id")
@@ -712,7 +712,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
 
     const ensuredUploadId = uploadId;
 
-    const quoteInsert = await supabaseServer
+    const quoteInsert = await supabaseServer()
       .from("quotes")
       .insert({
         upload_id: ensuredUploadId,
@@ -761,7 +761,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
     // Phase 19.3.14: best-effort customer invite email on quote creation.
     void autoSendCustomerInviteAfterQuoteCreate({ quoteId, customerId });
 
-    const { error: uploadUpdateError } = await supabaseServer
+    const { error: uploadUpdateError } = await supabaseServer()
       .from("uploads")
       .update({ quote_id: quoteId, status: DEFAULT_QUOTE_STATUS })
       .eq("id", ensuredUploadId);
@@ -778,7 +778,7 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
       quoteId,
       uploadId: ensuredUploadId,
       targets,
-      supabase: supabaseServer,
+      supabase: supabaseServer(),
     });
     if (!registerResult.ok) {
       return {
@@ -986,7 +986,7 @@ export async function persistQuoteIntake(
         extension === "zip" ||
         (typeof mimeType === "string" && mimeType.toLowerCase().includes("zip"));
 
-      const { error: storageError } = await supabaseServer.storage
+      const { error: storageError } = await supabaseServer().storage
         .from(CAD_BUCKET)
         .upload(storageKey, buffer, {
           cacheControl: "3600",
@@ -1037,7 +1037,7 @@ export async function persistQuoteIntake(
       sessionEmail,
     });
 
-    const uploadResult = await supabaseServer
+    const uploadResult = await supabaseServer()
       .from("uploads")
       .insert({
         file_name: primaryStoredFile.originalName,
@@ -1077,7 +1077,7 @@ export async function persistQuoteIntake(
 
     const uploadId = uploadResult.data.id;
 
-    const quoteInsert = await supabaseServer
+    const quoteInsert = await supabaseServer()
       .from("quotes")
       .insert({
         upload_id: uploadId,
@@ -1144,7 +1144,7 @@ export async function persistQuoteIntake(
       fileName: primaryStoredFile.originalName,
     });
 
-    const { error: uploadLinkError } = await supabaseServer
+    const { error: uploadLinkError } = await supabaseServer()
       .from("uploads")
       .update({
         quote_id: quoteId,
@@ -1174,7 +1174,7 @@ export async function persistQuoteIntake(
       quoteId,
       uploadId,
       targets,
-      supabase: supabaseServer,
+      supabase: supabaseServer(),
     });
 
     const metadataRecorded = registerResult.ok;
@@ -1271,7 +1271,7 @@ async function upsertCustomerRecord(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customers")
       .upsert(payload, { onConflict: "email" })
       .select("id")

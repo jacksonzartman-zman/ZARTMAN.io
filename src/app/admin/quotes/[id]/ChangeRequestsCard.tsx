@@ -53,7 +53,7 @@ export default async function ChangeRequestsCard({
   let loadError: string | null = null;
 
   try {
-    const result = await supabaseServer
+    const result = await supabaseServer()
       .from("quote_change_requests")
       .select(
         "id,quote_id,change_type,notes,created_at,created_by_user_id,created_by_role,status,resolved_at",

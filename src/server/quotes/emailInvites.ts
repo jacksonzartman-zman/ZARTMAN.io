@@ -63,7 +63,7 @@ async function resolveCustomerIdByEmail(email: string): Promise<string | null> {
   if (!supported) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(CUSTOMERS_RELATION)
       .select("id")
       .eq("email", email)
@@ -99,7 +99,7 @@ async function resolveCustomerRecipient(args: {
   type QuoteRow = { customer_id: string | null; customer_email: string | null };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(QUOTES_RELATION)
       .select("customer_id,customer_email")
       .eq("id", quoteId)
@@ -169,7 +169,7 @@ async function resolveAwardedSupplierId(args: { quoteId: string }): Promise<stri
   if (!supported) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(QUOTES_RELATION)
       .select("awarded_supplier_id")
       .eq("id", quoteId)
@@ -213,7 +213,7 @@ async function resolveSupplierEmail(args: { supplierId: string }): Promise<strin
 
   try {
     const select = emailSupported ? "email" : "primary_email";
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SUPPLIERS_RELATION)
       .select(select)
       .eq("id", supplierId)

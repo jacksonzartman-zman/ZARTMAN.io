@@ -59,7 +59,7 @@ export async function loadAdminChangeRequests(args?: {
   const status = normalizeStatusFilter(args?.status);
   const limit = normalizeLimit(args?.limit);
 
-  let query = supabaseServer
+  let query = supabaseServer()
     .from("quote_change_requests")
     .select(
       "id,quote_id,change_type,notes,status,created_at,created_by_user_id,created_by_role,resolved_at",
@@ -123,7 +123,7 @@ async function loadQuotesById(quoteIds: string[]): Promise<Map<string, QuoteWith
   if (ids.length === 0) return map;
 
   // Best-effort: quote label + customer info via the stable view.
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("quotes_with_uploads")
     .select(
       "id,file_name,company,customer_name,customer_email,upload_id,upload_name,file_names,upload_file_names,file_count,upload_file_count",

@@ -405,7 +405,7 @@ async function loadCanonicalFilesForQuote(
       // (a) try order by created_at
       // (b) if created_at is missing or ordering fails, retry ordering by id
       const run = async (orderByCreatedAt: boolean) => {
-        let query = supabaseServer
+        let query = supabaseServer()
           .from(table)
           .select("*")
           .eq("quote_id", normalizedQuoteId);

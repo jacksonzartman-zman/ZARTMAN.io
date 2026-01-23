@@ -89,7 +89,7 @@ const QUOTE_ACCESS_SELECT = SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(",");
 type QuoteAccessRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
 
 export async function loadQuoteAccessRow(quoteId: string) {
-  return supabaseServer
+  return supabaseServer()
     .from("quotes_with_uploads")
     .select(QUOTE_ACCESS_SELECT)
     .eq("id", quoteId)
@@ -335,7 +335,7 @@ export async function postSupplierMessageImpl(
     if (sendViaEmail) {
       // Supplier portal outbound email is restricted to the awarded supplier.
       try {
-        const { data: quoteRow, error: quoteError } = await supabaseServer
+        const { data: quoteRow, error: quoteError } = await supabaseServer()
           .from("quotes")
           .select("id,awarded_supplier_id")
           .eq("id", trimmedQuoteId)
@@ -679,7 +679,7 @@ export async function submitSupplierBidImpl(
     const normalizedAmount = amount as number;
 
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("supplier_bids")
         .upsert(
           [
@@ -863,7 +863,7 @@ export async function completeKickoffTaskImpl(
       };
     }
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,awarded_supplier_id")
       .eq("id", quoteId)

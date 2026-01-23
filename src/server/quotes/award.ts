@@ -364,7 +364,7 @@ export async function performAwardFlow(
     };
   }
 
-  const rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
+  const rpcResult = await supabaseServer().rpc("award_bid_for_quote", {
     p_quote_id: quoteId,
     p_bid_id: bidId,
     p_actor_user_id: actorUserId,
@@ -621,7 +621,7 @@ async function loadQuoteForAward(
   quoteId: string,
 ): Promise<{ quote: QuoteAwardRow | null; error: unknown | null }> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select(
         "id,status,customer_email,assigned_supplier_email,customer_id,awarded_bid_id,awarded_supplier_id,awarded_at,awarded_by_user_id,awarded_by_role",
@@ -651,7 +651,7 @@ async function loadQuoteForAward(
 
 async function loadBidForAward(bidId: string): Promise<SupplierBidAwardRow | null> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("id,quote_id,supplier_id,status")
       .eq("id", bidId)
@@ -677,7 +677,7 @@ async function loadBidForAward(bidId: string): Promise<SupplierBidAwardRow | nul
 
 async function hasExistingWinner(quoteId: string, bidId: string) {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("id")
       .eq("quote_id", quoteId)
@@ -798,7 +798,7 @@ function isCustomerAwardStatusAllowed(status?: string | null): boolean {
 
 async function loadQuoteAwardSnapshot(quoteId: string) {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("awarded_bid_id,awarded_supplier_id,awarded_at")
       .eq("id", quoteId)
@@ -830,7 +830,7 @@ async function loadQuoteAwardStateSnapshot(
   quoteId: string,
 ): Promise<QuoteAwardStateSnapshot | null> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("status,awarded_bid_id,awarded_supplier_id,awarded_at")
       .eq("id", quoteId)
@@ -925,7 +925,7 @@ async function ensureQuoteWonAndAwarded({
 
   const normalizedStatus = normalizeQuoteStatus(after?.status ?? undefined);
   if (normalizedStatus !== "won") {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("quotes")
       .update({
         status: "won",
@@ -1070,7 +1070,7 @@ async function backfillAwardFieldsFromBid({
     return null;
   }
 
-  const { data: quoteSnapshot, error: snapshotError } = await supabaseServer
+  const { data: quoteSnapshot, error: snapshotError } = await supabaseServer()
     .from("quotes")
     .select("awarded_bid_id,awarded_supplier_id,awarded_at")
     .eq("id", quoteId)
@@ -1117,7 +1117,7 @@ async function backfillAwardFieldsFromBid({
 
   // Keep award integrity trigger compatible: write all awarded_* together, even
   // when only one field is missing.
-  const { data: updated, error: updateError } = await supabaseServer
+  const { data: updated, error: updateError } = await supabaseServer()
     .from("quotes")
     .update({
       awarded_bid_id: targetBidId,
@@ -1150,7 +1150,7 @@ async function ensureAwardAuditFields({
   actorUserId: string;
   actorRole: AwardActorRole;
 }): Promise<void> {
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("quotes")
     .select("awarded_by_user_id,awarded_by_role")
     .eq("id", quoteId)
@@ -1173,7 +1173,7 @@ async function ensureAwardAuditFields({
     return;
   }
 
-  const updateResult = await supabaseServer
+  const updateResult = await supabaseServer()
     .from("quotes")
     .update(update)
     .eq("id", quoteId);

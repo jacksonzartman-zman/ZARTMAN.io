@@ -85,7 +85,7 @@ export async function getAwardFeedbackSummaryForSupplier(args: {
       `${jsonColumn}->>supplier_id.eq.${safeSupplierId}`,
     ].join(",");
 
-    return await supabaseServer
+    return await supabaseServer()
       .from("quote_events")
       .select("created_at,metadata,payload")
       .eq("event_type", EVENT_TYPE)

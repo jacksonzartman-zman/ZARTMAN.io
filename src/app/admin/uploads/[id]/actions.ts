@@ -15,7 +15,7 @@ export async function updateUpload(formData: FormData) {
     return;
   }
 
-  const supabase = supabaseServer;
+  const supabase = supabaseServer();
   const normalizedStatus =
     typeof status === "string" && status.length > 0
       ? (parseUploadStatusInput(status) ?? DEFAULT_UPLOAD_STATUS)

@@ -145,7 +145,7 @@ async function loadFileRowsFromRelation(
   quoteId: string,
 ): Promise<FileLoadResult> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(relation)
       .select("*")
       .eq("quote_id", quoteId)
@@ -230,7 +230,7 @@ async function loadOutboundFileLinks(quoteId: string): Promise<
 
 async function loadQuoteTitle(quoteId: string): Promise<string | null> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("title")
       .eq("id", quoteId)
@@ -285,7 +285,7 @@ async function loadDestinationOutboundContext(args: {
   }
 
   const destinationQuery = (select: string) => {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from("rfq_destinations")
       .select(select)
       .eq("id", destinationId);
@@ -345,7 +345,7 @@ async function loadDestinationOutboundContext(args: {
     .filter(Boolean)
     .join(",");
 
-  const { data: provider, error: providerError } = await supabaseServer
+  const { data: provider, error: providerError } = await supabaseServer()
     .from("providers")
     .select(providerSelect)
     .eq("id", destination.provider_id)
@@ -371,7 +371,7 @@ async function loadDestinationOutboundContext(args: {
     return { ok: false, error: "Provider record not found." };
   }
 
-  const { data: quote, error: quoteError } = await supabaseServer
+  const { data: quote, error: quoteError } = await supabaseServer()
     .from("quotes_with_uploads")
     .select(
       "id,upload_id,customer_name,customer_email,company,target_date,file_name,file_names,upload_file_names,upload_name",

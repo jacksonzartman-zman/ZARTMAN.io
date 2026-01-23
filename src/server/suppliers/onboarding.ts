@@ -58,21 +58,21 @@ export async function loadSupplierOnboardingState(
 
   const [hasAnyBids, hasAnyAwards, hasRecentCapacitySnapshot] = await Promise.all([
     safeHasRow("supplier_bids", async () =>
-      await supabaseServer
+      await supabaseServer()
         .from("supplier_bids")
         .select("id")
         .eq("supplier_id", supplierId)
         .limit(1),
     ),
     safeHasRow("quotes_awards", async () =>
-      await supabaseServer
+      await supabaseServer()
         .from("quotes")
         .select("id")
         .eq("awarded_supplier_id", supplierId)
         .limit(1),
     ),
     safeHasRow("supplier_capacity_snapshots_recent", async () =>
-      await supabaseServer
+      await supabaseServer()
         .from("supplier_capacity_snapshots")
         .select("created_at")
         .eq("supplier_id", supplierId)

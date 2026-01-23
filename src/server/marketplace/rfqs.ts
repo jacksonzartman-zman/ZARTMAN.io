@@ -134,7 +134,7 @@ export async function updateRfqStatus(
   const quoteStatus = mapMarketplaceStatusToQuoteStatus(status);
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .update({
         status: quoteStatus,
@@ -309,7 +309,7 @@ async function listMarketplaceRfqs(
   const normalizedStatuses = normalizeStatusList(options.statusIn);
 
   try {
-    let query = supabaseServer.from("quotes").select(QUOTE_SELECT_FIELDS);
+    let query = supabaseServer().from("quotes").select(QUOTE_SELECT_FIELDS);
 
     if (normalizedIds.length > 0) {
       query = query.in("id", normalizedIds);
@@ -367,7 +367,7 @@ async function loadUploadsByIds(uploadIds: string[]): Promise<Map<string, Upload
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("uploads")
       .select(UPLOAD_SELECT_FIELDS)
       .in("id", normalizedIds)

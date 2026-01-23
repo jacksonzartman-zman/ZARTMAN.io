@@ -102,7 +102,7 @@ async function loadSupplierCapacityLastUpdatedAtForWeek(args: {
   if (!supplierId || !weekStartDate) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_capacity_snapshots")
       .select("created_at")
       .eq("supplier_id", supplierId)
@@ -193,7 +193,7 @@ export async function loadRecentCapacityUpdateRequest(args: {
   type Row = { created_at: string };
 
   const selectLatest = async (supplierKey: "supplierId" | "supplier_id") => {
-    return await supabaseServer
+    return await supabaseServer()
       .from("quote_events")
       .select("created_at")
       .eq("event_type", "capacity_update_requested")
@@ -404,7 +404,7 @@ export async function requestSupplierCapacityUpdate(args: {
       },
     };
 
-    const insert = await supabaseServer
+    const insert = await supabaseServer()
       .from("quote_events")
       .insert(row)
       .select("id,created_at")
@@ -441,7 +441,7 @@ export async function requestSupplierCapacityUpdate(args: {
     }
 
     // Resolve supplier contact for email dispatch.
-    const { data: supplier, error: supplierError } = await supabaseServer
+    const { data: supplier, error: supplierError } = await supabaseServer()
       .from("suppliers")
       .select("id,company_name,primary_email,user_id")
       .eq("id", supplierId)

@@ -65,7 +65,7 @@ export async function finalizeKickoffCompletionIfComplete(
 
   try {
     // Idempotency guard: if already completed, return early.
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,kickoff_completed_at")
       .eq("id", quoteId)
@@ -93,7 +93,7 @@ export async function finalizeKickoffCompletionIfComplete(
     }
 
     const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
-    const { data: taskRows, error: tasksError } = await supabaseServer
+    const { data: taskRows, error: tasksError } = await supabaseServer()
       .from(supplierTasksTable)
       .select("completed")
       .eq("quote_id", quoteId)
@@ -129,7 +129,7 @@ export async function finalizeKickoffCompletionIfComplete(
     const now = new Date().toISOString();
 
     // Stamp quote only if kickoff_completed_at is still null (race-safe).
-    const { data: updatedRows, error: updateError } = await supabaseServer
+    const { data: updatedRows, error: updateError } = await supabaseServer()
       .from("quotes")
       .update({
         kickoff_completed_at: now,

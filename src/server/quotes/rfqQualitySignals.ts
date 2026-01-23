@@ -116,7 +116,7 @@ function summarizeMatchHealth(value: unknown): "good" | "caution" | "poor" | "un
 
 async function safeLoadQuoteInvites(quoteId: string): Promise<QuoteInviteRow[]> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_invites")
       .select("supplier_id,created_at")
       .eq("quote_id", quoteId)
@@ -144,7 +144,7 @@ async function safeLoadQuoteInvites(quoteId: string): Promise<QuoteInviteRow[]> 
 
 async function safeLoadSupplierBids(quoteId: string): Promise<SupplierBidRowLite[]> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("supplier_id,unit_price,currency,created_at")
       .eq("quote_id", quoteId)
@@ -177,7 +177,7 @@ async function safeLoadMatchHealthBySupplierIds(
   if (ids.length === 0) return {};
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_match_health_summary")
       .select("supplier_id,match_health")
       .in("supplier_id", ids)
@@ -226,7 +226,7 @@ async function safeLoadQuoteRfqFeedback(quoteId: string): Promise<QuoteRfqFeedba
   if (!hasSchema) return [];
   if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_rfq_feedback")
       .select("supplier_id,categories,note,created_at")
       .eq("quote_id", quoteId)

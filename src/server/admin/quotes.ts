@@ -112,7 +112,7 @@ export async function loadAdminQuotesList(
   filter: AdminQuotesListFilter,
 ): Promise<AdminLoaderResult<AdminQuoteListRow[]>> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(ADMIN_QUOTE_LIST_FIELDS.join(","))
       .order("created_at", { ascending: false })
@@ -182,7 +182,7 @@ export async function loadAdminQuoteDetail(
     const result = await withRetry<
       PostgrestSingleResponse<AdminQuoteListRow | null>
     >(async () => {
-      return await supabaseServer
+      return await supabaseServer()
         .from("quotes_with_uploads")
         .select(ADMIN_QUOTE_DETAIL_FIELDS.join(","))
         .eq("id", quoteId)
@@ -255,7 +255,7 @@ async function loadQuoteNotes(quoteId: string): Promise<QuoteNotesRow> {
   };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("dfm_notes,internal_notes,kickoff_completed_at")
       .eq("id", quoteId)
@@ -313,7 +313,7 @@ async function loadQuoteShipToConfirmation(
   const fallback = buildShipToFallback();
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("*")
       .eq("id", quoteId)
@@ -432,7 +432,7 @@ export async function loadAdminQuoteMeta(
   let projectQueryFailed = false;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("quote_id,status")
       .in("quote_id", quoteIds)
@@ -450,7 +450,7 @@ export async function loadAdminQuoteMeta(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_projects")
       .select("quote_id")
       .in("quote_id", quoteIds)
@@ -592,7 +592,7 @@ export async function updateAdminQuote(
     // Defense-in-depth: do not allow marking quotes as "won" via generic admin
     // status update. Awarding must populate awarded_* fields.
     if (hasStatusUpdate && normalized.updates.status === "won") {
-      const { data: award, error: awardError } = await supabaseServer
+      const { data: award, error: awardError } = await supabaseServer()
         .from("quotes")
         .select("awarded_bid_id,awarded_supplier_id,awarded_at")
         .eq("id", normalized.quoteId)
@@ -630,7 +630,7 @@ export async function updateAdminQuote(
       }
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .update(updatePayload)
       .eq("id", normalized.quoteId)
@@ -715,7 +715,7 @@ async function syncUploadStatus({
   }
 
   try {
-    const { error: uploadError } = await supabaseServer
+    const { error: uploadError } = await supabaseServer()
       .from("uploads")
       .update({ status })
       .eq("id", uploadId);

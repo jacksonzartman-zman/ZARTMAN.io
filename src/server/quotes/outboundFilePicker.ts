@@ -58,7 +58,7 @@ async function tryLoadFromRelation(args: {
   const select = selectParts.join(",");
 
   const run = async (orderBy: "created_at" | "id") => {
-    let q = supabaseServer.from(args.relation).select(select).eq("quote_id", args.quoteId) as any;
+    let q = supabaseServer().from(args.relation).select(select).eq("quote_id", args.quoteId) as any;
     q = q.order(orderBy, { ascending: false }).limit(args.limit);
     return (await q) as { data?: unknown; error?: unknown };
   };

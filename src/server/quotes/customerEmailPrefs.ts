@@ -70,7 +70,7 @@ export async function getCustomerEmailOptInStatus(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .select("customer_email_enabled")
       .eq("quote_id", quoteId)
@@ -141,7 +141,7 @@ export async function isCustomerEmailOptedIn(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .select("customer_email_enabled")
       .eq("quote_id", quoteId)
@@ -216,7 +216,7 @@ export async function setCustomerEmailOptIn(args: {
   }
 
   try {
-    const { error } = await supabaseServer.from(RELATION).upsert(
+    const { error } = await supabaseServer().from(RELATION).upsert(
       {
         quote_id: quoteId,
         customer_id: customerId,

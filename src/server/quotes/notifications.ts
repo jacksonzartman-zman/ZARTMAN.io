@@ -498,7 +498,7 @@ async function notifyLosingSuppliers(
   args: LosingSupplierNotifyArgs,
 ): Promise<void> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select(
         "id,supplier_id,status,unit_price,currency,lead_time_days,updated_at",
@@ -534,7 +534,7 @@ async function notifyLosingSuppliers(
       return;
     }
 
-    const { data: supplierRows, error: supplierError } = await supabaseServer
+    const { data: supplierRows, error: supplierError } = await supabaseServer()
       .from("suppliers")
       .select("id,company_name,primary_email,user_id")
       .in("id", supplierIds);
@@ -654,7 +654,7 @@ async function resolveSupplierRecipientForQuote(
   if (!normalizedQuoteId) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("awarded_supplier_id,assigned_supplier_email")
       .eq("id", normalizedQuoteId)
@@ -1286,7 +1286,7 @@ async function loadProjectQuoteContext(
     return null;
   }
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(
         "id,file_name,company,customer_name,customer_email,assigned_supplier_email,assigned_supplier_name",

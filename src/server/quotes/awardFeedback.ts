@@ -90,7 +90,7 @@ export async function recordAwardFeedback(
 
   try {
     // Prefer canonical schema (metadata jsonb).
-    const insertAttempt = await supabaseServer.from("quote_events").insert({
+    const insertAttempt = await supabaseServer().from("quote_events").insert({
       quote_id: quoteId,
       event_type: EVENT_TYPE,
       actor_role: actorRole,
@@ -105,7 +105,7 @@ export async function recordAwardFeedback(
 
     // Back-compat: some environments historically used `payload` instead of `metadata`.
     if (isMissingTableOrColumnError(insertAttempt.error)) {
-      const fallback = await supabaseServer.from("quote_events").insert({
+      const fallback = await supabaseServer().from("quote_events").insert({
         quote_id: quoteId,
         event_type: EVENT_TYPE,
         actor_role: actorRole,
@@ -160,7 +160,7 @@ export async function loadLatestAwardFeedbackForQuote(args: {
     };
 
     const runSelect = (columns: string) =>
-      supabaseServer
+      supabaseServer()
         .from("quote_events")
         .select(columns)
         .eq("quote_id", quoteId)
@@ -258,7 +258,7 @@ async function findRecentDuplicate(args: {
     type Row = { created_at: string; metadata?: unknown; payload?: unknown };
 
     const runSelect = (columns: string) =>
-      supabaseServer
+      supabaseServer()
         .from("quote_events")
         .select(columns)
         .eq("quote_id", args.quoteId)

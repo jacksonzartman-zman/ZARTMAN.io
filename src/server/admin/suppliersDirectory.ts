@@ -139,7 +139,7 @@ export async function loadAdminSuppliersDirectory(args?: {
   let supplierIdsByCapability: string[] | null = null;
   if (cap && canUseCapabilities) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("supplier_capabilities")
         .select("supplier_id,process")
         .ilike("process", `%${cap}%`)
@@ -163,7 +163,7 @@ export async function loadAdminSuppliersDirectory(args?: {
 
       // Note: `select()` typing expects a string literal; use `as any` for dynamic selects.
       // Also avoid `.returns<T>()` here so we can use `.or(...)` with current supabase-js typings.
-      let query = supabaseServer.from("suppliers").select(select as any);
+      let query = supabaseServer().from("suppliers").select(select as any);
 
       if (q) {
         // Keep it simple and schema-stable: name/email search only.
@@ -274,7 +274,7 @@ async function loadCapabilitySummariesBySupplierIds(
   if (!enabled) return map;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_capabilities")
       .select("supplier_id,process,materials")
       .in("supplier_id", ids)
@@ -338,7 +338,7 @@ async function loadLastActivityBySupplierIds(
   if (!enabled) return map;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("supplier_id,updated_at,created_at")
       .in("supplier_id", ids)

@@ -699,7 +699,7 @@ async function selectQuotesByCustomerId(
 }
 
 function selectQuotesByPattern(pattern: string) {
-  return supabaseServer
+  return supabaseServer()
     .from("quotes_with_uploads")
     .select(QUOTE_FIELDS.join(","))
     .ilike("customer_email", pattern)

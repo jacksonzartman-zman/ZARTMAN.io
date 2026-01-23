@@ -194,7 +194,7 @@ export async function loadSystemHealth(options?: {
       const label = "DB connection";
 
       const probe = await safeProbe("quotes", async () =>
-        supabaseServer.from("quotes").select("id").limit(1),
+        supabaseServer().from("quotes").select("id").limit(1),
       );
 
       if (probe.ok) {
@@ -232,11 +232,11 @@ export async function loadSystemHealth(options?: {
       const required = [
         {
           name: "quotes_with_uploads",
-          run: () => supabaseServer.from("quotes_with_uploads").select("id").limit(1),
+          run: () => supabaseServer().from("quotes_with_uploads").select("id").limit(1),
         },
         {
           name: "admin_quotes_inbox",
-          run: () => supabaseServer.from("admin_quotes_inbox").select("id").limit(1),
+          run: () => supabaseServer().from("admin_quotes_inbox").select("id").limit(1),
         },
       ] as const;
 
@@ -288,7 +288,7 @@ export async function loadSystemHealth(options?: {
       const label = "Message SLA RPC";
 
       try {
-        const { error } = await supabaseServer
+        const { error } = await supabaseServer()
           .rpc("admin_message_sla_for_quotes", { p_quote_ids: [] })
           .returns<unknown[]>();
 
@@ -358,7 +358,7 @@ export async function loadSystemHealth(options?: {
 
       const results = await Promise.all(
         views.map((name) =>
-          safeProbe(name, async () => supabaseServer.from(name).select("supplier_id").limit(1)),
+          safeProbe(name, async () => supabaseServer().from(name).select("supplier_id").limit(1)),
         ),
       );
 
@@ -408,7 +408,7 @@ export async function loadSystemHealth(options?: {
       const label = "Storage uploads bucket";
 
       try {
-        const { error } = await supabaseServer.storage.from(UPLOADS_BUCKET).list("", {
+        const { error } = await supabaseServer().storage.from(UPLOADS_BUCKET).list("", {
           limit: 1,
           offset: 0,
           sortBy: { column: "name", order: "asc" },
@@ -449,7 +449,7 @@ export async function loadSystemHealth(options?: {
       const label = "Events stream";
 
       const probe = await safeProbe("quote_events", async () =>
-        supabaseServer.from("quote_events").select("id").limit(1),
+        supabaseServer().from("quote_events").select("id").limit(1),
       );
 
       if (probe.ok) {

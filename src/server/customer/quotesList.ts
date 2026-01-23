@@ -128,7 +128,7 @@ export async function loadCustomerQuotesList(
 
   let quoteRows: QuoteRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(QUOTES_WITH_UPLOADS_COLUMNS)
       .ilike("customer_email", customerEmail)
@@ -283,7 +283,7 @@ async function loadLastCustomerVisibleEventAtByQuoteId(
   if (ids.length === 0) return map;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_events")
       .select("quote_id,event_type,created_at")
       .in("quote_id", ids)
@@ -336,7 +336,7 @@ async function loadKickoffCompletedAtByQuoteId(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("id,kickoff_completed_at")
       .in("id", ids)
@@ -400,7 +400,7 @@ async function loadKickoffTotalsByWinnerSupplier(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_kickoff_tasks")
       .select("quote_id,supplier_id,completed")
       .in("quote_id", quoteIds)

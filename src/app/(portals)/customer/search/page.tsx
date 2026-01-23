@@ -172,7 +172,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     try {
       const teamAccess = await userHasTeamAccessToQuote({ quoteId: quoteIdParam, userId: user.id });
       if (teamAccess) {
-        const { data } = await supabaseServer
+        const { data } = await supabaseServer()
           .from("quotes_with_uploads")
           .select("id,customer_email,created_at,updated_at,file_name,status")
           .eq("id", quoteIdParam)
@@ -1377,7 +1377,7 @@ async function loadCountMap(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(relation)
       .select(column)
       .in(column, ids)

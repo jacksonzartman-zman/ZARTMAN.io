@@ -128,7 +128,7 @@ export async function loadNotificationPreferencesMap(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("notification_preferences")
       .select("event_type,enabled")
       .eq("user_id", args.userId)
@@ -177,7 +177,7 @@ export async function upsertNotificationPreference(args: {
   }
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("notification_preferences")
       .upsert(
         {
@@ -233,7 +233,7 @@ async function loadPreferenceRecord(args: {
   channel: NotificationPreferenceChannel;
 }): Promise<NotificationPreferenceRow | null> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("notification_preferences")
       .select("id,user_id,role,event_type,channel,enabled")
       .eq("user_id", args.userId)
@@ -280,7 +280,7 @@ async function loadQuoteComplianceMode(quoteId: string): Promise<ComplianceMode 
 
 async function fetchQuoteComplianceMode(quoteId: string): Promise<ComplianceMode | null> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("compliance_mode")
       .eq("id", quoteId)

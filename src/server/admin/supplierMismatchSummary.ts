@@ -69,7 +69,7 @@ export async function loadSupplierMismatchSummary(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .select("supplier_id,created_at")
       .in("supplier_id", ids)

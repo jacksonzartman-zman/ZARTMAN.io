@@ -145,7 +145,7 @@ async function loadMatchHealthBySupplierId(
   if (ids.length === 0) return out;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(MATCH_HEALTH_VIEW)
       .select("supplier_id,match_health")
       .in("supplier_id", ids)

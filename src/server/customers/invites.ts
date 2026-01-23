@@ -107,7 +107,7 @@ export async function listCustomerPendingInvites(args: {
   const customerId = normalizeText(args?.customerId);
   if (!customerId) return [];
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("customer_invites")
     .select("id,email,token,status,created_at")
     .eq("customer_id", customerId)
@@ -156,7 +156,7 @@ export async function createCustomerInvite(args: {
       invited_by_user_id: invitedByUserId,
     };
 
-    const insert = await supabaseServer
+    const insert = await supabaseServer()
       .from("customer_invites")
       .insert(insertPayload)
       .select("id,email,token,status,created_at")
@@ -169,7 +169,7 @@ export async function createCustomerInvite(args: {
 
       // If a pending invite already exists for (customer_id, email), reuse it.
       if (pgCode === "23505") {
-        const existing = await supabaseServer
+        const existing = await supabaseServer()
           .from("customer_invites")
           .select("id,email,token,status,created_at")
           .eq("customer_id", customerId)
@@ -238,7 +238,7 @@ export async function resendCustomerInvite(args: {
     return { ok: false, error: "Missing invite." };
   }
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("customer_invites")
     .select("id,email,token,status,created_at")
     .eq("customer_id", customerId)
@@ -279,7 +279,7 @@ export async function loadCustomerInviteByToken(args: {
   if (!isValidToken(token)) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customer_invites")
       .select("id,customer_id,email,token,status,created_at,accepted_at,invited_by_user_id")
       .eq("token", token)
@@ -340,7 +340,7 @@ export async function acceptCustomerInvite(args: {
   try {
     const customerId = invite.customer_id;
 
-    const membership = await supabaseServer
+    const membership = await supabaseServer()
       .from("customer_users")
       .upsert({ customer_id: customerId, user_id: userId }, { onConflict: "customer_id,user_id", ignoreDuplicates: true });
 
@@ -354,7 +354,7 @@ export async function acceptCustomerInvite(args: {
       return { ok: false, error: "We couldn’t accept that invite. Please try again.", reason: "write_failed" };
     }
 
-    const updated = await supabaseServer
+    const updated = await supabaseServer()
       .from("customer_invites")
       .update({ status: "accepted", accepted_at: new Date().toISOString() })
       .eq("id", invite.id)
@@ -375,7 +375,7 @@ export async function acceptCustomerInvite(args: {
     // Best-effort: also add to customer team membership when teams schema exists.
     try {
       if (await isCustomerTeamsSchemaReady()) {
-        const { data: customerRow } = await supabaseServer
+        const { data: customerRow } = await supabaseServer()
           .from("customers")
           .select("id,company_name,user_id")
           .eq("id", customerId)
@@ -393,7 +393,7 @@ export async function acceptCustomerInvite(args: {
         });
 
         if (ensured.ok) {
-          await supabaseServer
+          await supabaseServer()
             .from("customer_team_members")
             .upsert(
               { team_id: ensured.teamId, user_id: userId, role: "member" },
@@ -445,7 +445,7 @@ export async function listCustomerTeamMembers(args: {
     const userIds = new Set<string>();
     if (ownerUserId) userIds.add(ownerUserId);
 
-    const { data } = await supabaseServer
+    const { data } = await supabaseServer()
       .from("customer_users")
       .select("user_id,created_at")
       .eq("customer_id", customerId)
@@ -464,7 +464,7 @@ export async function listCustomerTeamMembers(args: {
 
   for (const [userId, roleLabel] of userRoles.entries()) {
     try {
-      const { data, error } = await supabaseServer.auth.admin.getUserById(userId);
+      const { data, error } = await supabaseServer().auth.admin.getUserById(userId);
       if (error) {
         resolved.push({ userId, email: null, statusLabel: "Active", roleLabel });
         continue;

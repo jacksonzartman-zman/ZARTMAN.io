@@ -277,7 +277,7 @@ export async function getAdminOpsInboxRows(
   if (supportsCustomerEmail) quoteSelect.push("customer_email");
   if (supportsCompany) quoteSelect.push("company");
 
-  let quoteQuery = supabaseServer
+  let quoteQuery = supabaseServer()
     .from("quotes")
     .select(quoteSelect.join(","))
     .order("created_at", { ascending: false })
@@ -545,7 +545,7 @@ async function hydrateCustomerInfo(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("id,customer_name,customer_email,company")
       .in("id", args.quoteIds)
@@ -687,7 +687,7 @@ async function loadDestinationsByQuoteId(
 
   const loadRows = async (select: string): Promise<DestinationRow[] | null> => {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("rfq_destinations")
         .select(select)
         .in("rfq_id", quoteIds)
@@ -796,7 +796,7 @@ async function loadOffersByQuoteId(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_offers")
       .select(OFFER_SELECT)
       .in("rfq_id", quoteIds)
@@ -1082,7 +1082,7 @@ async function loadIntroRequestsByQuoteId(
     };
 
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("intro_requests")
         .select("quote_id,provider_id,status,requested_at")
         .in("quote_id", quoteIds)
@@ -1169,9 +1169,13 @@ async function loadIntroRequestsFromOpsEventsByQuoteId(
   };
 
   try {
-    const { data, error } = await supabaseServer
+    // Keep this as a non-literal string to avoid TypeScript instantiation blow-ups
+    // inside supabase-js' `select()` type-level parser (the `->>` JSON operator is heavy).
+    const selectColumns: string =
+      "quote_id,event_type,created_at,provider_id:payload->>provider_id";
+    const { data, error } = await supabaseServer()
       .from("ops_events")
-      .select("quote_id,event_type,created_at,provider_id:payload->>provider_id")
+      .select(selectColumns)
       .in("event_type", ["customer_intro_requested", "customer_intro_handled"])
       .in("quote_id", quoteIds)
       .order("created_at", { ascending: false })

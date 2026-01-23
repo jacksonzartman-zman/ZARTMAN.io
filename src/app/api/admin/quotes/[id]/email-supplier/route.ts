@@ -190,7 +190,7 @@ async function resolveSupplierId(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(QUOTES_RELATION)
       .select("awarded_supplier_id")
       .eq("id", args.quoteId)
@@ -243,7 +243,7 @@ async function resolveSupplierEmail(args: {
 
   try {
     const select = emailSupported ? "email" : "primary_email";
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SUPPLIERS_RELATION)
       .select(select)
       .eq("id", args.supplierId)
@@ -280,7 +280,7 @@ async function loadRecentThreadMessages(args: { quoteId: string }) {
   if (!supported) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(QUOTE_MESSAGES_RELATION)
       .select("sender_role,body,created_at")
       .eq("quote_id", args.quoteId)
@@ -339,7 +339,7 @@ async function tryStoreAdminThreadMessage(args: {
   };
 
   try {
-    const { error: extendedError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(extendedPayload);
+    const { error: extendedError } = await supabaseServer().from(QUOTE_MESSAGES_RELATION).insert(extendedPayload);
     if (!extendedError) return true;
 
     if (isMissingTableOrColumnError(extendedError)) {
@@ -352,7 +352,7 @@ async function tryStoreAdminThreadMessage(args: {
       );
     }
 
-    const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(basePayload);
+    const { error: baseError } = await supabaseServer().from(QUOTE_MESSAGES_RELATION).insert(basePayload);
     if (baseError) {
       if (isMissingTableOrColumnError(baseError)) {
         debugOnce("email_outbound:quote_messages_insert_missing_schema", `${WARN_PREFIX} message insert skipped`, {
@@ -430,7 +430,7 @@ async function loadLatestInboundThreadingHeaders(args: {
   };
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from(QUOTE_MESSAGES_RELATION)
       .select("id,metadata,created_at")
       .eq("quote_id", args.quoteId)
@@ -440,7 +440,7 @@ async function loadLatestInboundThreadingHeaders(args: {
 
     let result = (await query) as { data?: any[]; error?: unknown };
     if (result.error && isMissingTableOrColumnError(result.error)) {
-      const fallbackQuery = supabaseServer
+      const fallbackQuery = supabaseServer()
         .from(QUOTE_MESSAGES_RELATION)
         .select("id,metadata")
         .eq("quote_id", args.quoteId)

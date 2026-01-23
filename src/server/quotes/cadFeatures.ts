@@ -226,7 +226,7 @@ export async function loadCadFeaturesForQuote(
   // - Attempt 2: select("*") if schema variant rejects attempt 1
   try {
     if (uploadFilesSchema.ok) {
-      const attempt1 = await supabaseServer
+      const attempt1 = await supabaseServer()
         .from("quote_upload_files")
         .select("id,quote_id,filename,extension,size_bytes,created_at")
         .eq("quote_id", normalizedQuoteId)
@@ -266,7 +266,7 @@ export async function loadCadFeaturesForQuote(
     }
 
     if (shouldFallback) {
-      const attempt2 = await supabaseServer
+      const attempt2 = await supabaseServer()
         .from("quote_upload_files")
         .select("*")
         .eq("quote_id", normalizedQuoteId);
@@ -340,7 +340,7 @@ export async function loadCadFeaturesForQuote(
 
   let featureRows: CadFeaturesRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_cad_features")
       .select(
         "quote_upload_file_id,file_size_bytes,cad_kind,triangle_count,bbox_min,bbox_max,approx_volume_mm3,approx_surface_area_mm2,complexity_score,dfm_flags,created_at",
@@ -456,7 +456,7 @@ export async function ensureCadFeaturesForQuote(
 
   let uploadFiles: QuoteUploadFileRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_upload_files")
       .select("id,quote_id,path,filename,extension,size_bytes,is_from_archive")
       .eq("quote_id", normalizedQuoteId)
@@ -489,7 +489,7 @@ export async function ensureCadFeaturesForQuote(
 
   if (cadFileIds.length === 0) return;
 
-  const { data: existingRows } = await supabaseServer
+  const { data: existingRows } = await supabaseServer()
     .from("quote_cad_features")
     .select("quote_upload_file_id")
     .in("quote_upload_file_id", cadFileIds)
@@ -505,7 +505,7 @@ export async function ensureCadFeaturesForQuote(
       const edge = await fetchCadMetricsEdge({ quoteUploadFileId: fileId });
 
       if (edge.ok) {
-        const { error } = await supabaseServer
+        const { error } = await supabaseServer()
           .from("quote_cad_features")
           .upsert(
             {
@@ -532,7 +532,7 @@ export async function ensureCadFeaturesForQuote(
 
       // Cacheable "expected" failure.
       if (edge.error === "step_unsupported") {
-        const { error } = await supabaseServer
+        const { error } = await supabaseServer()
           .from("quote_cad_features")
           .upsert(
             {

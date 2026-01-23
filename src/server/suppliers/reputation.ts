@@ -308,7 +308,7 @@ function computeScore(args: {
 async function safeLoadMatchHealth(ids: string[]): Promise<Map<string, MatchHealthViewRow> | null> {
   if (ids.length === 0) return new Map();
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(MATCH_VIEW)
       .select("supplier_id,rfqs_bid_90d,rfqs_won_90d,win_rate_pct_90d,match_health")
       .in("supplier_id", ids)
@@ -341,7 +341,7 @@ async function safeLoadMatchHealth(ids: string[]): Promise<Map<string, MatchHeal
 async function safeLoadBenchUtil(ids: string[]): Promise<Map<string, BenchUtilViewRow> | null> {
   if (ids.length === 0) return new Map();
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(BENCH_VIEW)
       .select("supplier_id,bench_status,awards_last_30d")
       .in("supplier_id", ids)
@@ -386,7 +386,7 @@ async function safeLoadAwardKickoffRatios(args: {
   const cutoffIso = new Date(Date.now() - args.lookbackDays * 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("id,awarded_supplier_id,awarded_at,kickoff_completed_at")
       .in("awarded_supplier_id", ids)
@@ -481,7 +481,7 @@ async function safeLoadResponsivenessBySupplierIds(args: {
   for (const id of ids) quoteIdsBySupplier.set(id, new Set<string>());
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("supplier_id,quote_id,created_at")
       .in("supplier_id", ids)
@@ -535,7 +535,7 @@ async function safeLoadResponsivenessBySupplierIds(args: {
   try {
     // Fetch a bounded message set and compute per-quote rollups in memory.
     const limit = Math.min(15000, Math.max(300, quoteIds.length * 10));
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_messages")
       .select("id,quote_id,created_at,sender_role")
       .in("quote_id", quoteIds)
@@ -639,7 +639,7 @@ async function safeLoadFeedbackBySupplierIds(args: {
   const cutoffIso = new Date(Date.now() - args.lookbackDays * 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_rfq_feedback")
       .select("supplier_id,categories,created_at")
       .in("supplier_id", ids)

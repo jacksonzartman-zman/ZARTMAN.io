@@ -76,7 +76,7 @@ export async function loadBidRowById(
     return null;
   }
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("*")
       .eq("id", bidId)
@@ -136,7 +136,7 @@ async function selectQuoteRow(
     return null;
   }
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(QUOTE_NOTIFICATION_COLUMNS)
       .eq("id", quoteId)

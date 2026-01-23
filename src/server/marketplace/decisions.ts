@@ -142,7 +142,7 @@ async function fetchBidsForRfqs(rfqIds: string[]): Promise<BidWithSupplier[]> {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_bids")
       .select(BID_SELECT_FIELDS)
       .in("rfq_id", rfqIds)

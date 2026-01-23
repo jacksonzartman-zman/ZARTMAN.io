@@ -60,7 +60,7 @@ export async function markQuoteMessagesRead(input: {
     return { ok: true };
   }
 
-  const client = input.supabase ?? supabaseServer;
+  const client = input.supabase ?? supabaseServer();
 
   try {
     const { error } = await client
@@ -172,7 +172,7 @@ export async function loadUnreadMessageSummary(input: {
   }
   try {
     if (readsAvailable) {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quote_message_reads")
         .select("quote_id,user_id,last_read_at")
         .eq("user_id", userId)
@@ -261,7 +261,7 @@ export async function loadUnreadMessageSummary(input: {
   // Query 1: last message per quote (best-effort).
   try {
     const limit = Math.max(50, Math.min(1000, quoteIds.length * 8));
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_messages")
       .select("quote_id,sender_id,sender_role,body,created_at")
       .in("quote_id", quoteIds)
@@ -307,7 +307,7 @@ export async function loadUnreadMessageSummary(input: {
       return result;
     }
 
-    let query = supabaseServer
+    let query = supabaseServer()
       .from("quote_messages")
       .select("quote_id,sender_id,sender_role,body,created_at")
       .in("quote_id", quoteIds)

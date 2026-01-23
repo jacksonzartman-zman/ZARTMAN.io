@@ -111,7 +111,7 @@ export async function listCustomerSavedSearches(customerId: string): Promise<Sav
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SAVED_SEARCHES_RELATION)
       .select("quote_id,label,created_at,last_viewed_at")
       .eq("customer_id", id)
@@ -194,7 +194,7 @@ export async function saveCustomerSearch(input: {
   }
 
   try {
-    const { error } = await supabaseServer.from(SAVED_SEARCHES_RELATION).upsert(
+    const { error } = await supabaseServer().from(SAVED_SEARCHES_RELATION).upsert(
       {
         customer_id: customerId,
         quote_id: quoteId,
@@ -263,7 +263,7 @@ export async function renameCustomerSavedSearch(input: {
   }
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from(SAVED_SEARCHES_RELATION)
       .update({ label })
       .eq("customer_id", customerId)
@@ -326,7 +326,7 @@ export async function deleteCustomerSavedSearch(input: {
   }
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from(SAVED_SEARCHES_RELATION)
       .delete()
       .eq("customer_id", customerId)
@@ -388,7 +388,7 @@ export async function touchCustomerSavedSearch(input: {
   }
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from(SAVED_SEARCHES_RELATION)
       .update({ last_viewed_at: new Date().toISOString() })
       .eq("customer_id", customerId)
@@ -428,7 +428,7 @@ export async function getCustomerSearchAlertPreference(input: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SAVED_SEARCHES_RELATION)
       .select("search_alerts_enabled")
       .eq("customer_id", customerId)
@@ -501,7 +501,7 @@ export async function setCustomerSearchAlertPreference(input: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SAVED_SEARCHES_RELATION)
       .update({ search_alerts_enabled: Boolean(input.enabled) })
       .eq("customer_id", customerId)
@@ -538,7 +538,7 @@ export async function setCustomerSearchAlertPreference(input: {
       normalizeLabel(fallbackLabel) ||
       `Search ${quoteId.slice(0, 6).toUpperCase()}`;
 
-    const { error: insertError } = await supabaseServer.from(SAVED_SEARCHES_RELATION).insert({
+    const { error: insertError } = await supabaseServer().from(SAVED_SEARCHES_RELATION).insert({
       customer_id: customerId,
       quote_id: quoteId,
       label,
@@ -594,7 +594,7 @@ async function loadQuoteLastActivityById(quoteIds: string[]): Promise<Map<string
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("id,updated_at,created_at")
       .in("id", ids)
@@ -677,7 +677,7 @@ async function loadSavedSearchQuoteSummaries(
 
   let rows: QuoteSummaryRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("id,upload_id,target_date")
       .in("id", ids)
@@ -761,7 +761,7 @@ async function loadSavedSearchUploadMeta(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("uploads")
       .select("id,manufacturing_process,quantity")
       .in("id", ids)
@@ -849,7 +849,7 @@ async function loadSavedSearchLocations(
 
   let destinationRows: DestinationSummaryRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_destinations")
       .select("rfq_id,provider_id")
       .in("rfq_id", ids)
@@ -902,7 +902,7 @@ async function loadSavedSearchLocations(
 
   const providerCountryById = new Map<string, string>();
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("providers")
       .select("id,country")
       .in("id", providerIds)

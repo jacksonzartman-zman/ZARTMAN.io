@@ -115,7 +115,7 @@ export async function getCapacitySnapshots(args: {
   }
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from(SNAPSHOTS_TABLE)
       .select(CAPACITY_SNAPSHOT_SELECT)
       .gte("week_start_date", startDate)
@@ -205,7 +205,7 @@ export async function getCapacitySnapshotsForSupplierWeek(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SNAPSHOTS_TABLE)
       .select(CAPACITY_SNAPSHOT_SELECT)
       .eq("supplier_id", supplierId)
@@ -294,7 +294,7 @@ export async function getCapacitySnapshotsForSuppliersWeek(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SNAPSHOTS_TABLE)
       .select(CAPACITY_SNAPSHOT_BATCH_SELECT)
       .in("supplier_id", supplierIds)
@@ -374,7 +374,7 @@ export async function listCapacitySuppliers(): Promise<
   await requireAdminUser();
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SUPPLIERS_TABLE)
       .select("id,company_name")
       .order("company_name", { ascending: true })

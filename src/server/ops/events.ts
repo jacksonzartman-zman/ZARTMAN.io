@@ -96,7 +96,7 @@ function queueOpsEventInsert(args: OpsEventInsertArgs) {
   try {
     void (async () => {
       try {
-        const { error } = await supabaseServer.from(OPS_EVENTS_TABLE).insert({
+        const { error } = await supabaseServer().from(OPS_EVENTS_TABLE).insert({
           quote_id: args.quoteId,
           destination_id: args.destinationId,
           event_type: args.eventType,
@@ -622,7 +622,7 @@ export async function listOpsEventsForQuote(
       created_at: string | null;
     };
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(OPS_EVENTS_TABLE)
       .select(OPS_EVENTS_SELECT)
       .eq("quote_id", normalizedQuoteId)
@@ -689,7 +689,7 @@ export async function listOpsEventsForProvider(
       created_at: string | null;
     };
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(OPS_EVENTS_TABLE)
       .select(OPS_EVENTS_SELECT)
       .filter("payload->>provider_id", "eq", normalizedProviderId)

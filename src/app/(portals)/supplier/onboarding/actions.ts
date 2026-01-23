@@ -329,7 +329,7 @@ async function uploadDocumentAndPersist(
   const sanitizedName = sanitizeFileName(file.name || "document.pdf");
   const storagePath = `${supplierId}/${Date.now()}-${sanitizedName}`;
 
-  const { error: uploadError } = await supabaseServer.storage
+  const { error: uploadError } = await supabaseServer().storage
     .from(SUPPLIER_DOCS_BUCKET)
     .upload(storagePath, fileBuffer, {
       upsert: false,
@@ -345,7 +345,7 @@ async function uploadDocumentAndPersist(
     throw new Error("Document upload failed");
   }
 
-  const { data: publicUrlData } = supabaseServer.storage
+  const { data: publicUrlData } = supabaseServer().storage
     .from(SUPPLIER_DOCS_BUCKET)
     .getPublicUrl(storagePath);
 

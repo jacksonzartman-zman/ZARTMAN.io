@@ -110,7 +110,7 @@ export async function getSupplierAwardedQuotesForProjects({
   const quoteSelect =
     "id,status,awarded_at,awarded_supplier_id,customer_id,upload_id,kickoff_completed_at,created_at";
 
-  const { data: rows, error } = await supabaseServer
+  const { data: rows, error } = await supabaseServer()
     .from(quoteTable)
     .select(quoteSelect)
     .eq("awarded_supplier_id", normalizedSupplierId)
@@ -186,7 +186,7 @@ async function loadUploadMap(uploadIds: string[]): Promise<Map<string, UploadRow
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("uploads")
       .select("id,file_name,original_filename,created_at")
       .in("id", uploadIds)
@@ -229,7 +229,7 @@ async function loadCustomerMap(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customers")
       .select("id,company_name,email")
       .in("id", customerIds)
@@ -276,7 +276,7 @@ async function loadKickoffSummaryMap({
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_kickoff_tasks")
       .select("quote_id,completed")
       .eq("supplier_id", supplierId)

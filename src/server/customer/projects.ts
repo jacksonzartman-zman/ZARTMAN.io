@@ -89,7 +89,7 @@ export async function getCustomerAwardedQuotesForProjects({
   const quoteSelect =
     "id,status,awarded_at,awarded_supplier_id,kickoff_completed_at,upload_id,created_at";
 
-  const { data: rows, error } = await supabaseServer
+  const { data: rows, error } = await supabaseServer()
     .from(quoteTable)
     .select(quoteSelect)
     .eq("customer_id", normalizedCustomerId)
@@ -190,7 +190,7 @@ async function loadSupplierNameMap(
     return map;
   }
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("suppliers")
     .select("id,company_name,primary_email")
     .in("id", supplierIds)
@@ -234,7 +234,7 @@ async function loadKickoffSummaryMap({
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_kickoff_tasks")
       .select("quote_id,supplier_id,completed")
       .in("quote_id", quoteIds)
@@ -305,7 +305,7 @@ async function loadUploadMap(uploadIds: string[]): Promise<Map<string, UploadRow
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("uploads")
       .select("id,file_name,original_filename,created_at")
       .in("id", uploadIds)
@@ -348,7 +348,7 @@ async function loadLastCustomerVisibleEventAtByQuoteId(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_events")
       .select("quote_id,event_type,created_at")
       .in("quote_id", quoteIds)

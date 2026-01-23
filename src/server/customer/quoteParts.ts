@@ -71,7 +71,7 @@ async function assertCustomerCanAccessQuote(args: {
     throw new Error("access_denied");
   }
 
-  const { data: quoteRow, error: quoteError } = await supabaseServer
+  const { data: quoteRow, error: quoteError } = await supabaseServer()
     .from("quotes")
     .select("id,customer_id,customer_email")
     .eq("id", quoteId)

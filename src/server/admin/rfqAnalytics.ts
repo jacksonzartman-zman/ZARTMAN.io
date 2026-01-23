@@ -201,7 +201,7 @@ export async function loadRfqAnalytics(
   let baseQuotes: QuoteRowLite[] = [];
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from("quotes_with_uploads")
       .select(
         "id,upload_id,customer_id,customer_email,status,created_at,awarded_supplier_id,awarded_bid_id",
@@ -259,7 +259,7 @@ export async function loadRfqAnalytics(
   const uploadMetaById = new Map<string, UploadMetaLite>();
   if (uploadIds.length > 0) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("uploads")
         .select("id,manufacturing_process,shipping_postal_code,export_restriction,rfq_reason,notes")
         .in("id", uploadIds)
@@ -349,7 +349,7 @@ export async function loadRfqAnalytics(
   // Funnel: bids (batched)
   if (quoteIds.length > 0) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("supplier_bids")
         .select("quote_id,supplier_id")
         .in("quote_id", quoteIds)
