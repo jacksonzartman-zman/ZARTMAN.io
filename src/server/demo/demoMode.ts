@@ -1,17 +1,40 @@
+import "server-only";
+
+import { debugOnce } from "@/server/db/schemaErrors";
+
 export function isDemoModeEnabled(): boolean {
   const raw = typeof process.env.DEMO_MODE === "string" ? process.env.DEMO_MODE.trim() : "";
-  const enabled =
+  const demoFlag =
     raw === "1" ||
     raw.toLowerCase() === "true" ||
     raw.toLowerCase() === "yes" ||
     raw.toLowerCase() === "on";
 
-  if (!enabled) return false;
+  const nodeEnvRaw = process.env.NODE_ENV ?? "";
+  const vercelEnvRaw = process.env.VERCEL_ENV ?? "";
 
-  const nodeEnv = (process.env.NODE_ENV ?? "").trim().toLowerCase();
-  const vercelEnv = (process.env.VERCEL_ENV ?? "").trim().toLowerCase();
-  const isProd = nodeEnv === "production" || vercelEnv === "production";
-  return !isProd;
+  const nodeEnv = nodeEnvRaw.trim().toLowerCase();
+  const vercelEnv = vercelEnvRaw.trim().toLowerCase();
+
+  /**
+   * Production safety:
+   * - On Vercel, `NODE_ENV` is "production" even for Preview deployments, so we
+   *   must primarily rely on `VERCEL_ENV` when present.
+   * - Off-Vercel, fall back to `NODE_ENV`.
+   */
+  const isProd = vercelEnv ? vercelEnv === "production" : nodeEnv === "production";
+  const enabled = demoFlag && !isProd;
+
+  debugOnce("demo-mode-env", "[demo] demo mode gating", {
+    enabled,
+    demoFlag,
+    isProd,
+    DEMO_MODE: raw || null,
+    VERCEL_ENV: vercelEnvRaw || null,
+    NODE_ENV: nodeEnvRaw || null,
+  });
+
+  return enabled;
 }
 
 export function assertDemoModeEnabled(): void {
