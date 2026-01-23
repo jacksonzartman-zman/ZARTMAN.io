@@ -1169,9 +1169,13 @@ async function loadIntroRequestsFromOpsEventsByQuoteId(
   };
 
   try {
+    // Keep this as a non-literal string to avoid TypeScript instantiation blow-ups
+    // inside supabase-js' `select()` type-level parser (the `->>` JSON operator is heavy).
+    const selectColumns: string =
+      "quote_id,event_type,created_at,provider_id:payload->>provider_id";
     const { data, error } = await supabaseServer()
       .from("ops_events")
-      .select("quote_id,event_type,created_at,provider_id:payload->>provider_id")
+      .select(selectColumns)
       .in("event_type", ["customer_intro_requested", "customer_intro_handled"])
       .in("quote_id", quoteIds)
       .order("created_at", { ascending: false })
