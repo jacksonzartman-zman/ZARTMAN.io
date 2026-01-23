@@ -203,6 +203,7 @@ type UploadState = {
   phone: string;
   manufacturingProcess: string;
   quantity: string;
+  targetDate: string;
   shippingPostalCode: string;
   exportRestriction: string;
   rfqReason: string;
@@ -231,6 +232,7 @@ const FIELD_ERROR_KEYS = [
   "email",
   "manufacturingProcess",
   "quantity",
+  "targetDate",
   "shippingPostalCode",
   "exportRestriction",
   "itarAcknowledged",
@@ -251,6 +253,7 @@ const EMPTY_UPLOAD_STATE: UploadState = {
   phone: "",
   manufacturingProcess: "",
   quantity: "",
+  targetDate: "",
   shippingPostalCode: "",
   exportRestriction: "",
   rfqReason: "",
@@ -289,6 +292,31 @@ function buildInitialUploadState(input: {
 
 const FILE_TYPE_ERROR_MESSAGE = `Unsupported file type. Please upload ${CAD_FILE_TYPE_DESCRIPTION}.`;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function getTodayLocalISODate(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function isValidIsoDate(isoDate: string): boolean {
+  if (!ISO_DATE_REGEX.test(isoDate)) return false;
+  const [y, m, d] = isoDate.split("-").map((v) => Number(v));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (!Number.isFinite(dt.getTime())) return false;
+  const roundTrip = dt.toISOString().slice(0, 10);
+  return roundTrip === isoDate;
+}
+
+function isIsoDateInPast(isoDate: string): boolean {
+  if (!isValidIsoDate(isoDate)) return false;
+  // ISO YYYY-MM-DD is safe for lexicographic comparisons.
+  return isoDate < getTodayLocalISODate();
+}
 
 const formatReadableBytes = (bytes: number): string => {
   if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -315,6 +343,7 @@ const validateFormFields = (state: UploadState): FieldErrors => {
   const trimmedLastName = state.lastName.trim();
   const trimmedEmail = state.email.trim();
   const trimmedQuantity = state.quantity.trim();
+  const trimmedTargetDate = state.targetDate.trim();
   const postal = state.shippingPostalCode;
 
   if (!state.files || state.files.length === 0) {
@@ -336,6 +365,13 @@ const validateFormFields = (state: UploadState): FieldErrors => {
   }
   if (!trimmedQuantity) {
     errors.quantity = "Share the quantity or volumes you need.";
+  }
+  if (trimmedTargetDate) {
+    if (!isValidIsoDate(trimmedTargetDate)) {
+      errors.targetDate = "Enter a valid need-by date.";
+    } else if (isIsoDateInPast(trimmedTargetDate)) {
+      errors.targetDate = "Need-by date can’t be in the past.";
+    }
   }
   if (postal && !postal.trim()) {
     errors.shippingPostalCode = "Enter a postal code or leave this blank.";
@@ -1087,6 +1123,7 @@ export default function UploadBox({
     | "phone"
     | "manufacturingProcess"
     | "quantity"
+    | "targetDate"
     | "shippingPostalCode"
     | "exportRestriction"
     | "rfqReason"
@@ -2547,26 +2584,54 @@ export default function UploadBox({
 
           <div className="space-y-1">
             <label
-              htmlFor="rfqReason"
+              htmlFor="targetDate"
               className="text-xs font-medium text-muted tracking-wide"
             >
-              I&apos;m submitting this search request because…
+              Need-by date (optional)
             </label>
-            <select
-              id="rfqReason"
-              name="rfqReason"
-              value={state.rfqReason}
-              onChange={handleInputChange("rfqReason")}
-              className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
-            >
-              <option value="">Select a reason (optional)</option>
-              {RFQ_REASON_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+            <input
+              id="targetDate"
+              name="targetDate"
+              type="date"
+              min={getTodayLocalISODate()}
+              value={state.targetDate}
+              onChange={handleInputChange("targetDate")}
+              className={clsx(
+                "w-full rounded-md border bg-transparent px-3 py-2 text-sm text-foreground outline-none transition",
+                fieldErrors.targetDate ? "border-red-500" : "border-border",
+              )}
+              aria-invalid={Boolean(fieldErrors.targetDate)}
+              aria-describedby={fieldErrors.targetDate ? "targetDate-error" : undefined}
+            />
+            {fieldErrors.targetDate && (
+              <p id="targetDate-error" className="text-xs text-red-400">
+                {fieldErrors.targetDate}
+              </p>
+            )}
           </div>
+        </div>
+
+        <div className="space-y-1">
+          <label
+            htmlFor="rfqReason"
+            className="text-xs font-medium text-muted tracking-wide"
+          >
+            I&apos;m submitting this search request because…
+          </label>
+          <select
+            id="rfqReason"
+            name="rfqReason"
+            value={state.rfqReason}
+            onChange={handleInputChange("rfqReason")}
+            className="w-full rounded-md border border-border bg-black/20 px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
+          >
+            <option value="">Select a reason (optional)</option>
+            {RFQ_REASON_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="space-y-1">
