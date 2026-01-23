@@ -1579,7 +1579,7 @@ export async function markDestinationSubmittedAction(args: {
       return { ok: false, error: ADMIN_DESTINATION_SUBMITTED_SCHEMA_ERROR };
     }
 
-    const { data: destination, error: destinationError } = await supabaseServer
+    const { data: destination, error: destinationError } = await supabaseServer()
       .from("rfq_destinations")
       .select("id,rfq_id,provider_id,status")
       .eq("id", destinationId)
@@ -1617,7 +1617,7 @@ export async function markDestinationSubmittedAction(args: {
       error_message: null,
     };
 
-    const { error: updateError } = await supabaseServer
+    const { error: updateError } = await supabaseServer()
       .from("rfq_destinations")
       .update(payload)
       .eq("id", destinationId);
