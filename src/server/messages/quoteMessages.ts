@@ -579,13 +579,13 @@ export async function postQuoteMessage(
   }
 
   let actorUserId = "";
-  let supabase = supabaseServer;
+  let supabase = supabaseServer();
 
   try {
     if (authorRole === "admin" || authorRole === "provider") {
       const admin = await requireAdminUser();
       actorUserId = admin.id;
-      supabase = supabaseServer;
+      supabase = supabaseServer();
     } else {
       const user = await requireUser();
       actorUserId = user.id;
