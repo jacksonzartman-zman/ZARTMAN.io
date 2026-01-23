@@ -51,6 +51,14 @@ type NormalizedPrior = {
 const GLOBAL_TECHNOLOGY_SENTINEL = "__global__";
 const SHRINKAGE_K = 50;
  
+// Temporary server-side debug logging (deduped).
+const pricingEstimateDebugOnceSeen = new Set<string>();
+function pricingEstimateDebugOnce(key: string, payload: Record<string, unknown>) {
+  if (pricingEstimateDebugOnceSeen.has(key)) return;
+  pricingEstimateDebugOnceSeen.add(key);
+  console.log("[pricing estimate debugOnce]", payload);
+}
+
 function normalizeText(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const s = value.trim();
@@ -329,6 +337,9 @@ export async function getCustomerPricingEstimate(args: {
   partsCount: number | null;
 }): Promise<CustomerPricingEstimate | null> {
   const supported = await hasPricingPriorsSchema();
+  pricingEstimateDebugOnce(`schema_supported=${supported}`, {
+    schema_supported: supported,
+  });
   if (!supported) return null;
  
   const technology = normalizeText(args.technology);
@@ -353,6 +364,31 @@ export async function getCustomerPricingEstimate(args: {
  
   if (!chosen) return null;
  
+  pricingEstimateDebugOnce(
+    `chosen:${chosen.source}:${chosen.key.technology}|${chosen.key.material_canon ?? ""}|${chosen.key.parts_bucket ?? ""}`,
+    {
+      // Confirm call inputs (process/material/parts count) + computed bucket.
+      inputs: {
+        technology_raw: args.technology,
+        material_canon_raw: args.materialCanon,
+        parts_count_raw: args.partsCount,
+        technology,
+        material_canon: materialCanon,
+        parts_bucket: bucket,
+      },
+      // Confirm chosen ladder step + exact group key + n.
+      chosen: {
+        source: chosen.source,
+        group_key: {
+          technology: chosen.key.technology,
+          material_canon: chosen.key.material_canon,
+          parts_bucket: chosen.key.parts_bucket,
+        },
+        n: chosen.prior.n,
+      },
+    },
+  );
+
   // Fetch nearest available parent for shrinkage (walk up the chain).
   let parent: NormalizedPrior | null = null;
   let currentSource: CustomerPricingEstimateSource | null = chosen.source;
