@@ -26,7 +26,7 @@ function safeRevalidate(targetPath: string) {
 }
 
 export async function updateQuote(formData: FormData) {
-  const supabase = supabaseServer;
+  const supabase = supabaseServer();
 
   const id = formData.get("id") as string;
 
