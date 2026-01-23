@@ -1377,7 +1377,7 @@ async function loadCountMap(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(relation)
       .select(column)
       .in(column, ids)
