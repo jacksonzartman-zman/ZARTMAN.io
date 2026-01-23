@@ -11,7 +11,7 @@ export async function loadSupplierAssignments(
   quoteId: string,
 ): Promise<SupplierAssignment[]> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_suppliers")
       .select("supplier_email,supplier_name")
       .eq("quote_id", quoteId);
