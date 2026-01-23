@@ -38,7 +38,7 @@ export async function nudgeSupplierKickoffAction(args: {
       return { ok: false, reason: "access_denied" };
     }
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,customer_id,awarded_supplier_id")
       .eq("id", quoteId)
