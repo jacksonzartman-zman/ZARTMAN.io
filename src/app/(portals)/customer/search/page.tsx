@@ -108,7 +108,12 @@ type SortParamValue = (typeof SORT_PARAM_VALUES)[number];
 const DEFAULT_SORT_PARAM: SortParamValue = "bestValue";
 
 export default async function CustomerSearchPage({ searchParams }: CustomerSearchPageProps) {
-  const user = await requireCustomerSessionOrRedirect("/customer/search");
+  const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
+  const nextPath = (() => {
+    const qs = usp.toString();
+    return qs ? `/customer/search?${qs}` : "/customer/search";
+  })();
+  const user = await requireCustomerSessionOrRedirect(nextPath);
   const opsEventSessionKey = buildOpsEventSessionKey({
     userId: user.id,
     lastSignInAt: user.last_sign_in_at ?? null,
@@ -138,13 +143,14 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     );
   }
 
-  const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
   const normalizedSort = normalizeSortParam(usp.get("sort")) ?? DEFAULT_SORT_PARAM;
   if (usp.get("sort") !== normalizedSort) {
     usp.set("sort", normalizedSort);
   }
   const rawParams = snapshotSearchParams(usp);
   const filters = parseSearchFilters(usp);
+  const arrivalSource = normalizeFilterValue(usp.get("source"));
+  const showHomeBanner = arrivalSource === "home" && Boolean(rawParams.quoteId);
 
   const quoteIdParam = normalizeText(rawParams.quoteId);
   const quotes = await loadCustomerQuotesList(
@@ -158,6 +164,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   let activeQuote = selectedQuote;
   let workspaceData = null;
   let workspaceError: string | null = null;
+  let quoteResolutionError: string | null = null;
 
   // If the user is following a shared link (quote=...) but it isn't in their
   // email-derived list, fall back to team-based access (Phase 20.1.3).
@@ -207,8 +214,9 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
     }
   }
 
-  if (activeQuote) {
-    const workspaceResult = await loadQuoteWorkspaceData(activeQuote.id, {
+  const resolvedQuoteId = activeQuote?.id ?? quoteIdParam ?? null;
+  if (resolvedQuoteId) {
+    const workspaceResult = await loadQuoteWorkspaceData(resolvedQuoteId, {
       safeOnly: true,
       viewerUserId: user.id,
       viewerRole: "customer",
@@ -216,15 +224,65 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
       includeOpsEvents: true,
     });
     if (!workspaceResult.ok || !workspaceResult.data) {
-      workspaceError = workspaceResult.error ?? "Unable to load this search.";
+      const errorMessage = workspaceResult.error ?? "Unable to load this search.";
+      if (quoteIdParam) {
+        // When deep-linking to a specific quote, treat missing/unauthorized as a calm landing.
+        quoteResolutionError = errorMessage;
+      } else {
+        workspaceError = errorMessage;
+      }
       activeQuote = null;
       workspaceData = null;
     } else {
       workspaceData = workspaceResult.data;
+      if (!activeQuote) {
+        const createdAt = workspaceData.quote.created_at ?? new Date().toISOString();
+        const updatedAt = workspaceData.quote.updated_at ?? null;
+        const fileName =
+          typeof workspaceData.quote.file_name === "string" && workspaceData.quote.file_name.trim()
+            ? workspaceData.quote.file_name.trim()
+            : null;
+        activeQuote = {
+          id: workspaceData.quote.id,
+          createdAt,
+          updatedAt,
+          rfqLabel: "Search request",
+          status: (workspaceData.quote.status ?? "Submitted").trim() || "Submitted",
+          hasWinner: false,
+          kickoffStatus: "n/a",
+          bidsCount: 0,
+          primaryFileName: fileName,
+          bestPriceAmount: null,
+          bestPriceCurrency: null,
+          bestLeadTimeDays: null,
+          selectedPriceAmount: null,
+          selectedPriceCurrency: null,
+          selectedLeadTimeDays: null,
+          unreadMessagesCount: 0,
+          lastActivityAt: updatedAt ?? createdAt ?? null,
+        } satisfies CustomerQuoteListRow;
+      }
     }
   }
 
-  if (activeQuote) {
+  if (quoteIdParam && !activeQuote && quoteResolutionError) {
+    return (
+      <PortalShell
+        workspace="customer"
+        title="Search results"
+        subtitle="Track provider responses, compare offers, and refine your search."
+      >
+        <EmptyStateCard
+          title="We couldn’t open that search"
+          description="This link may be expired, or you may not have access to this search."
+          action={{ label: "Start a new search", href: "/" }}
+          secondaryAction={{ label: "View dashboard", href: "/customer" }}
+        />
+      </PortalShell>
+    );
+  }
+
+  if (activeQuote && workspaceData) {
     await touchCustomerSavedSearch({ customerId: customer.id, quoteId: activeQuote.id });
   }
 
@@ -465,6 +523,13 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
       title="Search results"
       subtitle="Track provider responses, compare offers, and refine your search."
     >
+      {showHomeBanner ? (
+        <section className="mb-6 rounded-2xl border border-emerald-500/25 bg-emerald-500/5 px-5 py-4">
+          <p className="text-sm font-semibold text-emerald-100">
+            Search created — we’ll show offers here as suppliers respond.
+          </p>
+        </section>
+      ) : null}
       <section
         className={clsx(
           "rounded-2xl border border-slate-900/70 bg-slate-950/70 px-6 py-5 shadow-[0_10px_30px_rgba(2,6,23,0.45)]",
@@ -685,7 +750,11 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             <EmptyStateCard
               title="Search unavailable"
               description={workspaceError}
-              action={{ label: "View searches", href: "/customer/search" }}
+              action={
+                quoteIdParam
+                  ? { label: "Start a new search", href: "/" }
+                  : { label: "View searches", href: "/customer/search" }
+              }
             />
           ) : null}
 
