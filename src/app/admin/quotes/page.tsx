@@ -69,6 +69,7 @@ export default async function AdminQuotesPage({
 }) {
   const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
   const demoSeedStatus = (usp.get("demoSeed") ?? "").trim().toLowerCase();
+  const demoEnabled = isDemoModeEnabled();
   const listState = parseListState(usp, ADMIN_QUOTES_LIST_STATE_CONFIG);
   const currentView = normalizeAdminQuotesView(usp.get("view") ?? null);
   const partsCoverageFilter = normalizePartsCoverageFilter(usp.get("partsCoverage"));
@@ -307,7 +308,7 @@ export default async function AdminQuotesPage({
       title="Quotes"
       description="Recent quotes created from uploads."
       actions={
-        isDemoModeEnabled() ? (
+        demoEnabled ? (
           <form action={createDemoSearchRequestAction}>
             <button
               type="submit"
