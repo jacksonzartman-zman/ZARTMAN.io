@@ -388,7 +388,7 @@ export async function createQuoteMessage(
   }
 
   try {
-    const supabase = params.supabase ?? supabaseServer;
+    const supabase = params.supabase ?? supabaseServer();
     const payload: Record<string, unknown> = {
       quote_id: normalizedQuoteId,
       sender_id: normalizedSenderId,

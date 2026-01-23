@@ -245,7 +245,7 @@ export async function toggleSupplierKickoffTask(
   }
 
   const now = new Date().toISOString();
-  const supabase = options?.supabase ?? supabaseServer;
+  const supabase = options?.supabase ?? supabaseServer();
   const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
 
   try {

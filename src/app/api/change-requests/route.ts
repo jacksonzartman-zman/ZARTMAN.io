@@ -81,7 +81,7 @@ export async function POST(req: Request) {
       email: user.email ?? null,
     });
 
-    const { data: changeRequest, error: changeRequestError } = await supabaseServer
+    const { data: changeRequest, error: changeRequestError } = await supabaseServer()
       .from("quote_change_requests")
       .insert({
         quote_id: quoteId,
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
       senderName,
       senderEmail,
       body: messageBody,
-      supabase: supabaseServer,
+      supabase: supabaseServer(),
     });
 
     if (!messageResult.ok) {
@@ -321,7 +321,7 @@ async function hasChangeRequestNotificationDedupeMarker(args: {
   const changeRequestId = normalizeId(args.changeRequestId);
   if (!quoteId || !changeRequestId) return false;
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("quote_events")
     .select("id,metadata,payload,created_at")
     .eq("quote_id", quoteId)
@@ -395,7 +395,7 @@ async function assertCustomerCanAccessQuote(args: {
     throw new Error("access_denied");
   }
 
-  const { data: quoteRow, error: quoteError } = await supabaseServer
+  const { data: quoteRow, error: quoteError } = await supabaseServer()
     .from("quotes")
     .select("id,customer_id,customer_email")
     .eq("id", quoteId)
