@@ -251,7 +251,10 @@ export default function HomeSearchWidget({
             </div>
 
             <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-600">
-              <Link href={quoteHref} className="font-semibold underline-offset-4 hover:underline">
+              <Link
+                href={quoteHref}
+                className="text-slate-500 transition hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-600"
+              >
                 Advanced options
               </Link>
             </div>
