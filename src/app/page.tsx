@@ -31,9 +31,32 @@ function getProviderInitials(name: string) {
     .join("");
 }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const activeProviders = await getActiveProviders();
   const { hasUser } = await getServerAuthUser({ quiet: true });
+
+  const openUploadRaw = searchParams?.openUpload;
+  const openUpload = (Array.isArray(openUploadRaw) ? openUploadRaw[0] : openUploadRaw) === "1";
+
+  const processRaw = searchParams?.process;
+  const initialProcessKey =
+    typeof processRaw === "string" ? processRaw : Array.isArray(processRaw) ? processRaw[0] : null;
+
+  const qtyRaw = searchParams?.qty;
+  const initialQuantity =
+    typeof qtyRaw === "string" ? qtyRaw : Array.isArray(qtyRaw) ? qtyRaw[0] : undefined;
+
+  const targetDateRaw = searchParams?.targetDate;
+  const initialTargetDate =
+    typeof targetDateRaw === "string"
+      ? targetDateRaw
+      : Array.isArray(targetDateRaw)
+        ? targetDateRaw[0]
+        : undefined;
 
   const processes: HomeSearchProcess[] = [
     { key: "cnc", label: "CNC Machining" },
@@ -66,7 +89,14 @@ export default async function HomePage() {
             </div>
 
             <div className="mx-auto mt-8 max-w-4xl sm:mt-10">
-              <HomeSearchWidget isAuthenticated={hasUser} processes={processes} />
+              <HomeSearchWidget
+                isAuthenticated={hasUser}
+                processes={processes}
+                initialProcessKey={initialProcessKey}
+                initialQuantity={initialQuantity}
+                initialTargetDate={initialTargetDate}
+                autoOpenUpload={openUpload && hasUser}
+              />
             </div>
           </div>
         </section>

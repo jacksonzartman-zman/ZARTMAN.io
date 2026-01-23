@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import clsx from "clsx";
 import { primaryCtaClasses } from "@/lib/ctas";
 import HomeUploadLauncher from "@/components/marketing/HomeUploadLauncher";
@@ -16,6 +17,9 @@ type HomeSearchWidgetProps = {
   isAuthenticated: boolean;
   processes: HomeSearchProcess[];
   initialProcessKey?: string | null;
+  initialQuantity?: string;
+  initialTargetDate?: string;
+  autoOpenUpload?: boolean;
 };
 
 const PROCESS_LABEL_OVERRIDES: Record<string, string> = {
@@ -54,7 +58,14 @@ export default function HomeSearchWidget({
   isAuthenticated,
   processes,
   initialProcessKey,
+  initialQuantity,
+  initialTargetDate,
+  autoOpenUpload = false,
 }: HomeSearchWidgetProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const firstEnabledKey = useMemo(() => {
     const firstEnabled = processes.find((process) => !process.disabled)?.key;
     return firstEnabled ?? processes[0]?.key ?? "";
@@ -74,9 +85,31 @@ export default function HomeSearchWidget({
     [activeKey, processes],
   );
 
-  const [quantity, setQuantity] = useState<number | undefined>(undefined);
-  const [quantityText, setQuantityText] = useState<string>("");
-  const [targetDate, setTargetDate] = useState<string | undefined>(undefined);
+  const initialQuantityText = useMemo(() => {
+    if (typeof initialQuantity !== "string") return "";
+    const trimmed = initialQuantity.trim();
+    return trimmed;
+  }, [initialQuantity]);
+
+  const initialParsedQuantity = useMemo(() => {
+    if (!initialQuantityText) return undefined;
+    const parsed = Number(initialQuantityText);
+    if (!Number.isFinite(parsed) || parsed < 1) return undefined;
+    return parsed;
+  }, [initialQuantityText]);
+
+  const initialResolvedTargetDate = useMemo(() => {
+    if (typeof initialTargetDate !== "string") return undefined;
+    const trimmed = initialTargetDate.trim();
+    if (!trimmed) return undefined;
+    if (!isValidIsoDate(trimmed)) return undefined;
+    if (isIsoDateInPast(trimmed)) return undefined;
+    return trimmed;
+  }, [initialTargetDate]);
+
+  const [quantity, setQuantity] = useState<number | undefined>(initialParsedQuantity);
+  const [quantityText, setQuantityText] = useState<string>(initialQuantityText);
+  const [targetDate, setTargetDate] = useState<string | undefined>(initialResolvedTargetDate);
   const [qtyTouched, setQtyTouched] = useState(false);
   const [targetDateTouched, setTargetDateTouched] = useState(false);
 
@@ -108,10 +141,43 @@ export default function HomeSearchWidget({
 
   const shouldBlockNav = !qtyIsValid || !targetDateIsValid;
 
-  const [uploadOpen, setUploadOpen] = useState(false);
+  const queryWantsUploadOpen = Boolean(autoOpenUpload && isAuthenticated);
+  const [uploadOpen, setUploadOpen] = useState(queryWantsUploadOpen);
+
+  useEffect(() => {
+    if (!queryWantsUploadOpen) return;
+    if (!uploadOpen) return;
+    if (!searchParams?.get("openUpload")) return;
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("openUpload");
+    const nextQuery = nextParams.toString();
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+    router.replace(nextUrl);
+  }, [pathname, queryWantsUploadOpen, router, searchParams, uploadOpen]);
 
   const handleOpenUpload = () => {
     if (!shouldBlockNav) {
+      if (!isAuthenticated) {
+        const nextParams = new URLSearchParams();
+        nextParams.set("openUpload", "1");
+        if (activeProcess?.key) {
+          nextParams.set("process", activeProcess.key);
+        }
+        if (quantityText.trim()) {
+          nextParams.set("qty", quantityText.trim());
+        }
+        if (targetDate) {
+          nextParams.set("targetDate", targetDate);
+        }
+        nextParams.set("source", "home");
+        const nextPath = `/?${nextParams.toString()}`;
+        const loginParams = new URLSearchParams();
+        loginParams.set("next", nextPath);
+        router.push(`/login?${loginParams.toString()}`);
+        return;
+      }
+
       setUploadOpen(true);
       return;
     }
