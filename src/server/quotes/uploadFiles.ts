@@ -120,7 +120,9 @@ const ADMIN_APPEND_ALLOWED_EXTENSIONS = new Set([
   "zip",
 ]);
 
-type SupabaseWriteClient = ReturnType<typeof createAuthClient> | ReturnType<typeof supabaseServer>;
+// Keep this simple: a union of different SupabaseClient generic instantiations can
+// make `.from(...)` non-callable due to incompatible overload sets.
+type SupabaseWriteClient = SupabaseClient;
 
 type StoredCadFile = {
   originalName: string;
