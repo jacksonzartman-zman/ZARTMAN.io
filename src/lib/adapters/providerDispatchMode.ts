@@ -1,5 +1,6 @@
-import { PROVIDER_DISPATCH_MODES } from "@/server/providers";
-import type { ProviderDispatchMode, ProviderRow } from "@/server/providers";
+export const PROVIDER_DISPATCH_MODES = ["email", "web_form", "api"] as const;
+
+export type ProviderDispatchMode = (typeof PROVIDER_DISPATCH_MODES)[number];
 
 const DISPATCH_MODE_SET = new Set<ProviderDispatchMode>(PROVIDER_DISPATCH_MODES);
 
@@ -19,6 +20,9 @@ export function resolveDispatchModeValue(
   return normalizeDispatchMode(dispatchMode) ?? normalizeDispatchMode(quotingMode);
 }
 
-export function resolveProviderDispatchMode(provider: ProviderRow): ProviderDispatchMode | null {
+export function resolveProviderDispatchMode(provider: {
+  dispatch_mode?: unknown;
+  quoting_mode?: unknown;
+}): ProviderDispatchMode | null {
   return resolveDispatchModeValue(provider.dispatch_mode, provider.quoting_mode);
 }
