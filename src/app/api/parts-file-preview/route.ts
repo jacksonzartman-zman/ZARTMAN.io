@@ -1,3 +1,5 @@
+import "server-only";
+
 import { NextResponse, type NextRequest } from "next/server";
 import { getServerAuthUser, requireAdminUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";

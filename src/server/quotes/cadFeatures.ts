@@ -1,3 +1,5 @@
+import "server-only";
+
 import { supabaseServer } from "@/lib/supabaseServer";
 import { classifyCadFileType } from "@/lib/cadRendering";
 import { requireSchema, schemaGate } from "@/server/db/schemaContract";

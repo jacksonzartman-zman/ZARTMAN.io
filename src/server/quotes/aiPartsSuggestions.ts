@@ -1,3 +1,5 @@
+import "server-only";
+
 import OpenAI from "openai";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { schemaGate } from "@/server/db/schemaContract";

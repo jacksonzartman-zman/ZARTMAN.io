@@ -13,7 +13,7 @@ import clsx from "clsx";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { formatDateTime } from "@/lib/formatDate";
-import { sbBrowser } from "@/lib/supabase";
+import { supabaseBrowser } from "@/lib/supabase.client";
 import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMessagesThread.types";
 import type { OutboundFileOption } from "@/server/quotes/outboundFilePicker";
@@ -894,7 +894,11 @@ let cachedClient: SupabaseClient | null = null;
 
 function getRealtimeClient(): SupabaseClient | null {
   if (!cachedClient) {
-    cachedClient = sbBrowser();
+    try {
+      cachedClient = supabaseBrowser();
+    } catch {
+      cachedClient = null;
+    }
   }
   return cachedClient;
 }
