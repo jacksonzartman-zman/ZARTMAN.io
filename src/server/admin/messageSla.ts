@@ -115,7 +115,7 @@ export async function loadAdminThreadSlaForQuotes(input: {
     }
     try {
       type ReadRow = { quote_id: string; last_read_at: string | null };
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quote_message_reads")
         .select("quote_id,last_read_at")
         .eq("user_id", adminUserId)
@@ -277,7 +277,7 @@ async function applyAdminThreadSlaFromRpc(args: {
   };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .rpc("admin_message_sla_for_quotes", {
         p_quote_ids: args.quoteIds,
       })
@@ -384,7 +384,7 @@ async function applyAdminThreadSlaFromLatestMessagesFallback(args: {
       sender_role: string | null;
     };
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_messages")
       .select("id,quote_id,created_at,sender_role")
       .in("quote_id", args.quoteIds)

@@ -438,7 +438,7 @@ async function loadQuoteAwardFieldsForKickoff(
   quoteId: string,
 ): Promise<QuoteAwardInfoLookupResult> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("id,awarded_bid_id,awarded_supplier_id,awarded_at")
       .eq("id", quoteId)
@@ -488,7 +488,7 @@ async function fetchKickoffTaskRows(
   const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
   try {
     const selectAttempt = async (columns: string) =>
-      supabaseServer
+      supabaseServer()
         .from(supplierTasksTable)
         .select(columns)
         .eq("quote_id", quoteId)
@@ -593,7 +593,7 @@ async function seedKickoffTasks(
   }
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from(supplierTasksTable)
       .upsert(seedRows, {
         onConflict: "quote_id,supplier_id,task_key",
@@ -724,7 +724,7 @@ export async function ensureKickoffTasksForQuote(
   // kickoff_started event when we are confident this is the first creation.
   let hadExistingTasks: boolean | null = null;
   try {
-    const { data: existingRows, error } = await supabaseServer
+    const { data: existingRows, error } = await supabaseServer()
       .from(supplierTasksTable)
       .select("id")
       .eq("quote_id", normalizedQuoteId)
@@ -738,7 +738,7 @@ export async function ensureKickoffTasksForQuote(
   }
 
   try {
-    const { data: insertedRows, error } = await supabaseServer
+    const { data: insertedRows, error } = await supabaseServer()
       .from(supplierTasksTable)
       .upsert(seedRows, {
         onConflict: "quote_id,supplier_id,task_key",
@@ -789,7 +789,7 @@ export async function ensureKickoffTasksForQuote(
       let kickoffEventAlreadyExists = false;
       try {
         const { data: existingEventRows, error: existingEventError } =
-          await supabaseServer
+          await supabaseServer()
             .from("quote_events")
             .select("id")
             .eq("quote_id", normalizedQuoteId)
@@ -1164,7 +1164,7 @@ export async function ensureDefaultKickoffTasksForQuote(
   }));
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(QUOTE_KICKOFF_TASKS_TABLE)
       .upsert(seedRows, {
         onConflict: "quote_id,task_key",
@@ -1242,7 +1242,7 @@ export async function getKickoffTasksForQuote(
       updated_at: string | null;
     };
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(QUOTE_KICKOFF_TASKS_TABLE)
       .select(
         "id,quote_id,task_key,title,description,sort_order,status,completed_at,completed_by_user_id,blocked_reason,created_at,updated_at",
@@ -1406,7 +1406,7 @@ export async function updateKickoffTaskStatusAction(args: {
     }
 
     // Restrict edits to the awarded supplier (defense-in-depth).
-    const { data: quoteRow } = await supabaseServer
+    const { data: quoteRow } = await supabaseServer()
       .from("quotes")
       .select("awarded_supplier_id")
       .eq("id", quoteId)
@@ -1421,7 +1421,7 @@ export async function updateKickoffTaskStatusAction(args: {
   await ensureDefaultKickoffTasksForQuote(quoteId);
 
   type StatusRow = { status: string | null };
-  const { data: currentRow, error: loadError } = await supabaseServer
+  const { data: currentRow, error: loadError } = await supabaseServer()
     .from(QUOTE_KICKOFF_TASKS_TABLE)
     .select("status")
     .eq("quote_id", quoteId)
@@ -1492,7 +1492,7 @@ export async function updateKickoffTaskStatusAction(args: {
     updatePayload.description = nextDescription;
   }
 
-  const { error: updateError } = await supabaseServer
+  const { error: updateError } = await supabaseServer()
     .from(QUOTE_KICKOFF_TASKS_TABLE)
     .update(updatePayload)
     .eq("quote_id", quoteId)

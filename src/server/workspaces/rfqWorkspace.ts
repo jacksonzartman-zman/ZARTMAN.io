@@ -131,7 +131,7 @@ async function loadCollaborationThreads(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_collaboration_messages")
       .select(COLLABORATION_MESSAGE_COLUMNS)
       .eq("rfq_id", rfqId)

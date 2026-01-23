@@ -111,7 +111,7 @@ export async function getBenchGapTask(args: {
   if (!dimension || !key || !window) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .select("id,dimension,gap_key,window,status,owner,notes,created_at,updated_at")
       .eq("dimension", dimension)
@@ -169,7 +169,7 @@ export async function listBenchGapTasks(args?: {
   const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from(RELATION)
       .select("id,dimension,gap_key,window,status,owner,notes,created_at,updated_at")
       .order("updated_at", { ascending: false })
@@ -229,7 +229,7 @@ export async function listBenchGapTasksByKeys(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .select("id,dimension,gap_key,window,status,owner,notes,created_at,updated_at")
       .eq("dimension", dimension)
@@ -303,7 +303,7 @@ export async function createBenchGapTask(args: {
   const notes = normalizeText(args.notes);
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .upsert(
         {
@@ -368,7 +368,7 @@ export async function updateBenchGapTaskStatus(args: {
   if (!id || !status) return { ok: false, error: "invalid input" };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .update({ status })
       .eq("id", id)

@@ -179,7 +179,7 @@ export async function loadCachedAiPartSuggestions(
   const normalizedQuoteId = normalizeId(quoteId);
   if (!normalizedQuoteId) return null;
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("quote_parts_ai_suggestions")
     .select("suggestions,model_version,created_at")
     .eq("quote_id", normalizedQuoteId)
@@ -266,7 +266,7 @@ export async function generateAiPartSuggestionsForQuote(
       return { suggestions: [], modelVersion };
     }
 
-    const { data: uploadFiles, error: uploadFilesError } = await supabaseServer
+    const { data: uploadFiles, error: uploadFilesError } = await supabaseServer()
       .from("quote_upload_files")
       .select("id,upload_id,path,filename,extension,is_from_archive,size_bytes")
       .eq("quote_id", normalizedQuoteId)
@@ -372,7 +372,7 @@ export async function generateAiPartSuggestionsForQuote(
       .sort((a: AiPartSuggestion, b: AiPartSuggestion) => (b.confidence ?? 0) - (a.confidence ?? 0));
 
     // Persist the parsed suggestions as the cache/record for this quote.
-    const { error: insertError } = await supabaseServer
+    const { error: insertError } = await supabaseServer()
       .from("quote_parts_ai_suggestions")
       .insert({
         quote_id: normalizedQuoteId,

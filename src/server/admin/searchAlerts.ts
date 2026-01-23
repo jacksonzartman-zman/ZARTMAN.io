@@ -99,7 +99,7 @@ export async function loadAdminSearchAlertsQueue(args: {
   }
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from(SAVED_SEARCHES_RELATION)
       .select("quote_id,label,created_at,last_viewed_at")
       .eq("search_alerts_enabled", true)
@@ -243,7 +243,7 @@ async function loadAdminQuotesInboxRows(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(ADMIN_QUOTES_INBOX_RELATION)
       .select(
         "id,status,customer_name,customer_email,company,file_name,upload_name,bid_count",
@@ -316,7 +316,7 @@ async function loadSearchAlertNotifiedEvents(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(OPS_EVENTS_RELATION)
       .select("quote_id,created_at")
       .eq("event_type", "search_alert_notified")

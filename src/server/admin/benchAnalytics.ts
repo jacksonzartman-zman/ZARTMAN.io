@@ -110,7 +110,7 @@ async function resolveSupplierIdsForRegion(region: string): Promise<Set<string> 
   if (!needle) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select("id")
       .ilike("country", `%${needle}%`)
@@ -150,7 +150,7 @@ async function loadMatchHealthWindow(days: number): Promise<SupplierMatchHealthR
   // Attempt range-specific columns first, then fall back to 90d (the most commonly deployed).
   const preferredSelect = `supplier_id,rfqs_considered_${days}d,win_rate_pct_${days}d`;
   try {
-    const preferred = await supabaseServer
+    const preferred = await supabaseServer()
       .from("supplier_match_health_summary")
       .select(preferredSelect)
       .returns<
@@ -189,7 +189,7 @@ async function loadMatchHealthWindow(days: number): Promise<SupplierMatchHealthR
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_match_health_summary")
       .select("supplier_id,rfqs_considered_90d,win_rate_pct_90d")
       .returns<
@@ -228,7 +228,7 @@ async function loadMatchHealthWindow(days: number): Promise<SupplierMatchHealthR
 
 async function loadBenchUtilization(): Promise<SupplierBenchUtilRowLite[] | null> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bench_utilization_summary")
       .select("supplier_id,bench_status")
       .returns<SupplierBenchUtilRowLite[]>();

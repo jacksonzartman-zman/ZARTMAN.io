@@ -225,7 +225,7 @@ export async function loadBenchDemandSummary(): Promise<BenchDemandSummary> {
 
   let quotes30: QuoteRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select(quoteSelect)
       .gte("created_at", since30)
@@ -290,7 +290,7 @@ export async function loadBenchDemandSummary(): Promise<BenchDemandSummary> {
   const uploadById = new Map<string, UploadRow>();
   if (uploadIds.length > 0) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("uploads")
         .select("id,manufacturing_process,shipping_postal_code,rfq_reason,notes")
         .in("id", uploadIds)
@@ -324,7 +324,7 @@ export async function loadBenchDemandSummary(): Promise<BenchDemandSummary> {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_destinations")
       .select(destinationSelect)
       .in("rfq_id", quoteIds30)
@@ -346,7 +346,7 @@ export async function loadBenchDemandSummary(): Promise<BenchDemandSummary> {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_offers")
       .select("rfq_id")
       .in("rfq_id", quoteIds30)

@@ -48,7 +48,7 @@ export async function loadQuoteBidAggregates(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SUPPLIER_BIDS_TABLE)
       .select(
         "quote_id,unit_price,currency,lead_time_days,status,created_at,updated_at",

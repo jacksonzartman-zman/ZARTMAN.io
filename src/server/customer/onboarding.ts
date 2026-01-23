@@ -32,7 +32,7 @@ export async function loadCustomerOnboardingState(userIdOrEmail: {
   let hasAnyProjects = false;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("id")
       .ilike("customer_email", customerEmail)
@@ -60,7 +60,7 @@ export async function loadCustomerOnboardingState(userIdOrEmail: {
   if (customerId) {
     try {
       // Mirror the customer projects loader award rules.
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quotes")
         .select("id")
         .eq("customer_id", customerId)

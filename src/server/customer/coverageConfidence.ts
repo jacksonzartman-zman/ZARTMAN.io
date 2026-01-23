@@ -115,7 +115,7 @@ export async function computeCustomerCoverageConfidence(args: {
 
   let rows: ProviderCoverageRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("providers")
       .select(selectColumns)
       .eq("is_active", true)

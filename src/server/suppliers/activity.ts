@@ -98,7 +98,7 @@ export async function loadRecentSupplierActivity(
 async function fetchSupplierBids(
   supplierId: string,
 ): Promise<SupplierBidRow[]> {
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("supplier_bids")
     .select(
       "id,quote_id,unit_price,currency,lead_time_days,status,created_at,updated_at",
@@ -122,7 +122,7 @@ async function fetchQuotesByIds(
   if (quoteIds.length === 0) {
     return [];
   }
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("quotes_with_uploads")
     .select(QUOTE_FIELDS)
     .in("id", quoteIds);
@@ -139,7 +139,7 @@ async function fetchExternalMessages(
   if (quoteIds.length === 0) {
     return [];
   }
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("quote_messages")
     .select("id,quote_id,sender_role,sender_name,body,created_at")
     .in("quote_id", quoteIds)

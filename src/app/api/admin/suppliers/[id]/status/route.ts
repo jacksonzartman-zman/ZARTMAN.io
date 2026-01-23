@@ -37,7 +37,7 @@ export async function POST(
       return NextResponse.json({ ok: false, error: "unsupported" }, { status: 200 });
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .update({ status })
       .eq("id", supplierId)

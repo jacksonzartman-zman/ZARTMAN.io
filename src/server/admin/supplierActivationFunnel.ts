@@ -96,7 +96,7 @@ export async function loadAdminSupplierActivationFunnel(): Promise<
 
   let providers: ProviderRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("providers")
       .select(selectColumns)
       .eq("source", "discovered")
@@ -235,7 +235,7 @@ async function loadContactedProviderIdsFromOpsEvents(fromIso: string): Promise<S
   if (!supported) return out;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("ops_events")
       .select("event_type,created_at,payload")
       .eq("event_type", "provider_contacted")

@@ -259,7 +259,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
   let inviteCount = 0;
   try {
-    const { count, error } = await supabaseServer
+    const { count, error } = await supabaseServer()
       .from("quote_invites")
       .select("id", { count: "exact", head: true })
       .eq("quote_id", quote.id);
@@ -275,7 +275,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
 
   let openChangeRequestCount: number | null = null;
   try {
-    const { count, error } = await supabaseServer
+    const { count, error } = await supabaseServer()
       .from("quote_change_requests")
       .select("id", { count: "exact", head: true })
       .eq("quote_id", quote.id)
@@ -293,7 +293,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
   let assignedSupplierEmail: string | null = null;
   let assignedSupplierName: string | null = null;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("assigned_supplier_email,assigned_supplier_name")
       .eq("id", quote.id)
@@ -474,7 +474,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         listOpsEventsForQuote(quote.id, { limit: 20 }),
         (async () => {
           try {
-            const { data, error } = await supabaseServer
+            const { data, error } = await supabaseServer()
               .from("quotes")
               .select("awarded_provider_id,awarded_offer_id,award_notes")
               .eq("id", quote.id)
@@ -541,7 +541,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         if (!hasSchema) {
           rfqFeedbackSchemaMissing = true;
         } else {
-        const { data, error } = await supabaseServer
+        const { data, error } = await supabaseServer()
           .from("quote_rfq_feedback")
           .select("supplier_id,categories,note,created_at")
           .eq("quote_id", quote.id)
@@ -599,7 +599,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     );
     if (supplierIdsForFeedback.length > 0) {
       try {
-        const { data, error } = await supabaseServer
+        const { data, error } = await supabaseServer()
           .from("suppliers")
           .select("id,company_name,primary_email")
           .in("id", supplierIdsForFeedback)

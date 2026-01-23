@@ -125,7 +125,7 @@ export async function loadAdminPricingMonitoring(): Promise<AdminLoaderResult<Pr
   // ---------------------------------------------------------------------------
   let priorRows: PricingPriorLite[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("pricing_priors")
       .select("technology,material_canon,parts_bucket")
       .returns<PricingPriorLite[]>();
@@ -194,7 +194,7 @@ export async function loadAdminPricingMonitoring(): Promise<AdminLoaderResult<Pr
 
   let freshnessUpdatedAt: string | null = null;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("pricing_priors")
       .select("updated_at")
       .order("updated_at", { ascending: false })
@@ -273,7 +273,7 @@ export async function loadAdminPricingMonitoring(): Promise<AdminLoaderResult<Pr
   const loadMissingForWindow = async (window: PricingMonitoringWindow, days: number) => {
     const fromIso = isoDaysAgo(days);
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("ops_events")
         .select("payload,created_at")
         .eq("event_type", "estimate_shown" as any)

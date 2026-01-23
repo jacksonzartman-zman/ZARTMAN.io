@@ -41,7 +41,7 @@ export async function loadAdminDashboardMetrics(): Promise<
   AdminLoaderResult<AdminDashboardMetrics>
 > {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(SAFE_FIELDS.join(","))
       .returns<AdminQuoteListRow[]>();

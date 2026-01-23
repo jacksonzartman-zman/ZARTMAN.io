@@ -51,7 +51,7 @@ export async function loadSupplierBidDraft(input: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .select("draft")
       .eq("quote_id", quoteId)
@@ -149,7 +149,7 @@ export async function saveSupplierBidDraft(input: {
   };
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from(RELATION)
       .upsert(payload, { onConflict: "quote_id,supplier_id" });
 

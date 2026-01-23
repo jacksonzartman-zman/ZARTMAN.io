@@ -307,7 +307,7 @@ async function fetchPriorRow(args: {
   // Lazy import: keeps this module safe to import in unit tests.
   const { supabaseServer } = await import("@/lib/supabaseServer");
  
-  let q = supabaseServer
+  let q = supabaseServer()
     .from("pricing_priors")
     .select("technology,material_canon,parts_bucket,n,p10,p50,p90")
     .eq("technology", args.technology)

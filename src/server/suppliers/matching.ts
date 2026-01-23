@@ -366,7 +366,7 @@ async function safeLoadQuoteRfqFeedbackSummaryByQuoteId(
   if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) return map;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_rfq_feedback")
       .select("quote_id,categories")
       .in("quote_id", ids)
@@ -596,7 +596,7 @@ async function selectOpenQuotes(limit = DEFAULT_OPEN_QUOTE_FETCH_LIMIT): Promise
       ? Math.max(1, Math.floor(limit))
       : DEFAULT_OPEN_QUOTE_FETCH_LIMIT;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(","))
       .in("status", Array.from(QUOTE_OPEN_STATUSES))
@@ -627,7 +627,7 @@ async function selectUploadMeta(quotes: SupplierQuoteRow[]) {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("uploads")
       .select(
         "id,manufacturing_process,quantity,rfq_reason,notes",
@@ -656,7 +656,7 @@ export async function selectQuoteAssignmentsByEmail(email: string) {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_suppliers")
       .select("quote_id")
       .eq("supplier_email", email);
@@ -677,7 +677,7 @@ export async function selectBidQuoteRefs(supplierId: string) {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("quote_id,status,updated_at")
       .eq("supplier_id", supplierId);
@@ -698,7 +698,7 @@ export async function selectQuoteInvitesBySupplierId(supplierId: string) {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_invites")
       .select("quote_id")
       .eq("supplier_id", supplierId);

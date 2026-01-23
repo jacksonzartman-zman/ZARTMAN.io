@@ -46,7 +46,7 @@ export async function loadSupplierInboxBidAggregates(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("quote_id,status,created_at,updated_at")
       .eq("supplier_id", normalizedSupplierId)

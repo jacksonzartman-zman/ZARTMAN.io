@@ -36,7 +36,7 @@ export async function listBidsForRfq(rfqId: string): Promise<ListBidsResult> {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_bids")
       .select(RFQ_BID_SELECT)
       .eq("rfq_id", rfqId)
@@ -87,7 +87,7 @@ export async function submitRfqBid(input: SubmitRfqBidInput): Promise<BidMutatio
     const isUpdate = Boolean(existing);
 
     const mutation = isUpdate
-      ? supabaseServer
+      ? supabaseServer()
           .from("rfq_bids")
           .update({
             ...payload,
@@ -96,7 +96,7 @@ export async function submitRfqBid(input: SubmitRfqBidInput): Promise<BidMutatio
           .eq("id", existing!.id)
           .select(RFQ_BID_SELECT)
           .maybeSingle<RawBidRow>()
-      : supabaseServer
+      : supabaseServer()
           .from("rfq_bids")
           .insert({
             ...payload,
@@ -155,7 +155,7 @@ export async function withdrawRfqBid(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_bids")
       .update({
         status: "withdrawn",
@@ -222,7 +222,7 @@ export async function acceptRfqBid(
     }
 
     const now = new Date().toISOString();
-    const { data: accepted, error: acceptError } = await supabaseServer
+    const { data: accepted, error: acceptError } = await supabaseServer()
       .from("rfq_bids")
       .update({
         status: "accepted",
@@ -244,7 +244,7 @@ export async function acceptRfqBid(
     const acceptedBid = normalizeBidRow(accepted);
 
     await Promise.all([
-      supabaseServer
+      supabaseServer()
         .from("rfq_bids")
         .update({
           status: "rejected",
@@ -315,7 +315,7 @@ function buildBidPayload(input: SubmitRfqBidInput) {
 }
 
 async function loadExistingBid(rfqId: string, supplierId: string) {
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("rfq_bids")
     .select("id")
     .eq("rfq_id", rfqId)
@@ -335,7 +335,7 @@ async function loadExistingBid(rfqId: string, supplierId: string) {
 }
 
 async function loadBidById(bidId: string): Promise<RfqBidRecord | null> {
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("rfq_bids")
     .select(
       "id,rfq_id,supplier_id,price_total,currency,lead_time_days,notes,status,created_at,updated_at",

@@ -147,7 +147,7 @@ export async function fetchQuotesByEmail(
   }
 
   const limit = context?.limit ?? EVENT_LIMIT * 3;
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("quotes_with_uploads")
     .select(QUOTE_COLUMNS)
     .order("updated_at", { ascending: false })
@@ -253,7 +253,7 @@ export async function loadCustomerQuotesTablePage(
   const offset = (page - 1) * pageSize;
   const endInclusive = offset + pageSize; // fetch 1 extra row to detect hasMore
 
-  let query = supabaseServer
+  let query = supabaseServer()
     .from("quotes_with_uploads")
     .select(QUOTE_COLUMNS, { count: "exact" })
     .ilike("customer_email", emailToUse);
@@ -303,7 +303,7 @@ async function fetchQuoteMessages(
   if (quoteIds.length === 0) {
     return [];
   }
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("quote_messages")
     .select("id,quote_id,sender_role,sender_name,body,created_at")
     .in("quote_id", quoteIds)
@@ -320,7 +320,7 @@ async function fetchQuoteBids(quoteIds: string[]): Promise<SupplierBidRow[]> {
   if (quoteIds.length === 0) {
     return [];
   }
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("supplier_bids")
     .select(
       "id,quote_id,unit_price,currency,lead_time_days,status,created_at,updated_at",

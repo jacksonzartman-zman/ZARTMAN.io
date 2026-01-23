@@ -258,7 +258,7 @@ function getLookbackWindowStartIso(days: number): string {
 
 async function selectOpenQuotesSince(sinceIso: string): Promise<SupplierQuoteRow[]> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(SAFE_QUOTE_WITH_UPLOADS_FIELDS.join(","))
       .in("status", Array.from(QUOTE_OPEN_STATUSES))
@@ -292,7 +292,7 @@ async function selectUploadProcessHints(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("uploads")
       .select("id,manufacturing_process")
       .in("id", uploadIds)

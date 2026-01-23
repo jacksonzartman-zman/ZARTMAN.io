@@ -184,7 +184,7 @@ export async function loadEmailOpsRecentActivity(): Promise<EmailOpsActivityResu
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .select("quote_id,sender_role,created_at,metadata")
       .order("created_at", { ascending: false })
@@ -268,7 +268,7 @@ export async function loadEmailOpsCounters(): Promise<EmailOpsCounters> {
   const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(RELATION)
       .select("created_at,metadata")
       .gte("created_at", since)

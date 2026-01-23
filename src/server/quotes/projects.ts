@@ -76,7 +76,7 @@ export async function loadQuoteProjectForQuote(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(TABLE_NAME)
       .select(SELECT_COLUMNS)
       .eq("quote_id", normalizedQuoteId)
@@ -171,7 +171,7 @@ export async function ensureQuoteProjectForWinner(
   };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(TABLE_NAME)
       .insert(payload)
       .select(SELECT_COLUMNS)
@@ -292,7 +292,7 @@ export async function upsertQuoteProject(
 
   let hadExistingProject = false;
   try {
-    const { data: existingRow, error: existingError } = await supabaseServer
+    const { data: existingRow, error: existingError } = await supabaseServer()
       .from(TABLE_NAME)
       .select("id")
       .eq("quote_id", quoteId)
@@ -327,7 +327,7 @@ export async function upsertQuoteProject(
       updated_at: new Date().toISOString(),
     };
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(TABLE_NAME)
       .upsert(payload, { onConflict: "quote_id" })
       .select(SELECT_COLUMNS)

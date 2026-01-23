@@ -58,7 +58,7 @@ export async function getCustomerByUserId(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customers")
       .select(CUSTOMER_SELECT_COLUMNS)
       .eq("user_id", userId)
@@ -85,7 +85,7 @@ export async function getCustomerByUserId(
           customer_teams?: { customer_account_id?: string | null } | null;
         };
 
-        const membership = await supabaseServer
+        const membership = await supabaseServer()
           .from("customer_team_members")
           .select("team_id,customer_teams(customer_account_id)")
           .eq("user_id", userId)
@@ -99,7 +99,7 @@ export async function getCustomerByUserId(
             : "";
 
         if (!membership.error && customerId) {
-          const { data: customer, error: customerError } = await supabaseServer
+          const { data: customer, error: customerError } = await supabaseServer()
             .from("customers")
             .select(CUSTOMER_SELECT_COLUMNS)
             .eq("id", customerId)
@@ -126,7 +126,7 @@ export async function getCustomerByUserId(
 
     // Team memberships: customers can have multiple portal users via customer_users.
     // If this user isn't the primary customer owner, check for a membership row.
-    const membership = await supabaseServer
+    const membership = await supabaseServer()
       .from("customer_users")
       .select("customer_id,created_at")
       .eq("user_id", userId)
@@ -150,7 +150,7 @@ export async function getCustomerByUserId(
       return null;
     }
 
-    const { data: customer, error: customerError } = await supabaseServer
+    const { data: customer, error: customerError } = await supabaseServer()
       .from("customers")
       .select(CUSTOMER_SELECT_COLUMNS)
       .eq("id", customerId)
@@ -180,7 +180,7 @@ export async function getCustomerById(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customers")
       .select(CUSTOMER_SELECT_COLUMNS)
       .eq("id", customerId)
@@ -283,7 +283,7 @@ export async function upsertCustomerProfileForUser(
       updated_at: new Date().toISOString(),
     };
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customers")
       .insert(insertPayload)
       .select(CUSTOMER_SELECT_COLUMNS)
@@ -340,7 +340,7 @@ export async function getCustomerByEmail(email?: string | null) {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customers")
       .select(CUSTOMER_SELECT_COLUMNS)
       .ilike("email", normalized)
@@ -374,7 +374,7 @@ export async function attachQuotesToCustomer(
   }
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("quotes")
       .update({
         customer_id: customerId,
@@ -403,7 +403,7 @@ async function updateCustomer(
   customerId: string,
   changes: Partial<CustomerRow>,
 ) {
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("customers")
     .update({
       ...changes,
@@ -457,7 +457,7 @@ export async function upsertCustomerByEmail(
   };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customers")
       .upsert(payload, { onConflict: "email" })
       .select(CUSTOMER_SELECT_COLUMNS)

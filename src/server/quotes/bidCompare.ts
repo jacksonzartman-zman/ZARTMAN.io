@@ -184,7 +184,7 @@ export async function loadBidComparisonSummary(
   try {
     const suppliersHasUserId = await hasColumns("suppliers", ["user_id"]);
     const supplierSelect = `supplier:suppliers(id,company_name,primary_email${suppliersHasUserId ? ",user_id" : ""})`;
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select(
         `id,quote_id,supplier_id,unit_price,currency,lead_time_days,status,created_at,updated_at,${supplierSelect}`,
@@ -338,7 +338,7 @@ export async function loadBidComparisonSummary(
     } else if (isSupabaseRelationMarkedMissing("quote_rfq_feedback")) {
       // Feature not enabled; keep defaults.
     } else {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quote_rfq_feedback")
         .select("supplier_id,categories,created_at")
         .eq("quote_id", normalizedQuoteId)

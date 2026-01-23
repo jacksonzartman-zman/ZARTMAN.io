@@ -182,7 +182,7 @@ async function loadFileRowsFromRelation(
   quoteId: string,
 ): Promise<FileLoadResult> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(relation)
       .select("*")
       .eq("quote_id", quoteId)
@@ -271,7 +271,7 @@ async function loadLatestFileLinks(quoteId: string): Promise<
 async function loadProviderName(providerId: string): Promise<string | null> {
   if (!providerId) return null;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("providers")
       .select("name")
       .eq("id", providerId)
@@ -304,7 +304,7 @@ async function loadProviderName(providerId: string): Promise<string | null> {
 
 async function loadQuoteFileName(quoteId: string): Promise<string | null> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("file_name,file_names,upload_file_names")
       .eq("id", quoteId)
@@ -353,7 +353,7 @@ export async function buildAwardEmail(args: { quoteId: string }): Promise<AwardE
   }
 
   try {
-    const { data: quote, error: quoteError } = await supabaseServer
+    const { data: quote, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("*")
       .eq("id", quoteId)

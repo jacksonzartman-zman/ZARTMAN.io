@@ -261,7 +261,7 @@ export async function loadUnreadMessageSummary(input: {
   // Query 1: last message per quote (best-effort).
   try {
     const limit = Math.max(50, Math.min(1000, quoteIds.length * 8));
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_messages")
       .select("quote_id,sender_id,sender_role,body,created_at")
       .in("quote_id", quoteIds)

@@ -196,7 +196,7 @@ async function fetchSupplierPerformanceStats(
   supplierId: string,
 ): Promise<SupplierPerformanceStats> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_bids")
       .select("status,updated_at,created_at")
       .eq("supplier_id", supplierId)

@@ -110,30 +110,30 @@ export async function loadSupplierQuotesList(
 
   try {
     const [awarded, bids, invites, assignedLegacy, assignedQuoteSuppliers] = await Promise.all([
-      supabaseServer
+      supabaseServer()
         .from("quotes")
         .select("id")
         .eq("awarded_supplier_id", supplierId)
         .returns<{ id: string }[]>(),
-      supabaseServer
+      supabaseServer()
         .from("supplier_bids")
         .select("quote_id")
         .eq("supplier_id", supplierId)
         .returns<{ quote_id: string }[]>(),
-      supabaseServer
+      supabaseServer()
         .from("quote_invites")
         .select("quote_id")
         .eq("supplier_id", supplierId)
         .returns<{ quote_id: string }[]>(),
       supplierEmail
-        ? supabaseServer
+        ? supabaseServer()
             .from("quotes")
             .select("id")
             .eq("assigned_supplier_email", supplierEmail)
             .returns<{ id: string }[]>()
         : Promise.resolve({ data: [], error: null } as any),
       supplierEmail
-        ? supabaseServer
+        ? supabaseServer()
             .from("quote_suppliers")
             .select("quote_id")
             .eq("supplier_email", supplierEmail)
@@ -206,7 +206,7 @@ export async function loadSupplierQuotesList(
 
   let quotes: QuoteRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(QUOTES_WITH_UPLOADS_COLUMNS)
       .in("id", ids)
@@ -340,7 +340,7 @@ async function loadKickoffCompletedAtByQuoteId(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("id,kickoff_completed_at")
       .in("id", ids)
@@ -385,7 +385,7 @@ async function loadKickoffTotalsForSupplier(args: {
   if (quoteIds.length === 0 || !supplierId) return map;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_kickoff_tasks")
       .select("quote_id,supplier_id,completed")
       .in("quote_id", quoteIds)

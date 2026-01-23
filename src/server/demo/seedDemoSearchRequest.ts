@@ -106,7 +106,7 @@ async function ensureDemoCustomer(ctx: DemoSeedContext): Promise<{ ok: true; cus
   }
 
   try {
-    const { data: existing, error: existingError } = await supabaseServer
+    const { data: existing, error: existingError } = await supabaseServer()
       .from("customers")
       .select("id,email,user_id")
       .ilike("email", email)
@@ -129,7 +129,7 @@ async function ensureDemoCustomer(ctx: DemoSeedContext): Promise<{ ok: true; cus
         (!existingUserId || existingUserId === adminUserId);
 
       if (shouldAttachUser && existingUserId !== adminUserId) {
-        const { error: updateError } = await supabaseServer
+        const { error: updateError } = await supabaseServer()
           .from("customers")
           .update({ user_id: adminUserId, updated_at: new Date().toISOString() })
           .eq("id", existing.id);
@@ -156,7 +156,7 @@ async function ensureDemoCustomer(ctx: DemoSeedContext): Promise<{ ok: true; cus
       payload.user_id = ctx.adminUserId;
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customers")
       .insert(payload)
       .select("id,email")
@@ -214,7 +214,7 @@ async function ensureDemoProviders(): Promise<{ ok: true; providers: ProviderRow
 
   try {
     const names = demoProviders.map((p) => p.name);
-    const { data: existing, error: existingError } = await supabaseServer
+    const { data: existing, error: existingError } = await supabaseServer()
       .from("providers")
       .select("id,name")
       .in("name", names)
@@ -238,7 +238,7 @@ async function ensureDemoProviders(): Promise<{ ok: true; providers: ProviderRow
 
     const missing = demoProviders.filter((p) => !existingByName.has(p.name));
     if (missing.length > 0) {
-      const { data: inserted, error: insertError } = await supabaseServer
+      const { data: inserted, error: insertError } = await supabaseServer()
         .from("providers")
         .insert(
           missing.map((p) => ({
@@ -313,7 +313,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       updated_at: nowIso,
     };
 
-    const { data: quote, error: quoteError } = await supabaseServer
+    const { data: quote, error: quoteError } = await supabaseServer()
       .from("quotes")
       .insert(quotePayload)
       .select("id")
@@ -356,7 +356,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
           created_at: nowIso,
         }));
 
-        const { data: insertedDestinations, error: destinationsError } = await supabaseServer
+        const { data: insertedDestinations, error: destinationsError } = await supabaseServer()
           .from("rfq_destinations")
           .insert(destinationPayload)
           .select("id,provider_id")
@@ -433,7 +433,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       created_at: nowIso,
     }));
 
-    const { error: offersError } = await supabaseServer
+    const { error: offersError } = await supabaseServer()
       .from("rfq_offers")
       .insert(offerPayload);
 
@@ -443,7 +443,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
         error: serializeSupabaseError(offersError) ?? offersError,
       });
       try {
-        const { error: cleanupError } = await supabaseServer
+        const { error: cleanupError } = await supabaseServer()
           .from("quotes")
           .delete()
           .eq("id", quote.id);

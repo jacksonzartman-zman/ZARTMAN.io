@@ -49,13 +49,13 @@ export async function assertSupplierQuoteAccess(args: {
 
   try {
     const [bidResult, quoteResult, inviteResult] = await Promise.all([
-      supabaseServer
+      supabaseServer()
         .from("supplier_bids")
         .select("id")
         .eq("quote_id", quoteId)
         .eq("supplier_id", supplierId)
         .limit(1),
-      supabaseServer
+      supabaseServer()
         .from("quotes")
         .select("awarded_supplier_id,assigned_supplier_email")
         .eq("id", quoteId)
@@ -63,7 +63,7 @@ export async function assertSupplierQuoteAccess(args: {
           awarded_supplier_id: string | null;
           assigned_supplier_email: string | null;
         }>(),
-      supabaseServer
+      supabaseServer()
         .from("quote_invites")
         .select("id")
         .eq("quote_id", quoteId)

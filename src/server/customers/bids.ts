@@ -123,7 +123,7 @@ export async function loadCustomerQuoteBidSummaries(
   const normalizedOverrideEmail = normalizeEmailInput(params.overrideEmail ?? null);
 
   try {
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("id,customer_email")
       .eq("id", quoteId)
@@ -178,7 +178,7 @@ export async function loadCustomerQuoteBidSummaries(
       };
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select(CUSTOMER_BID_SELECT)
       .eq("quote_id", quoteId)

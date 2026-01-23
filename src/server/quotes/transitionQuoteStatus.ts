@@ -54,7 +54,7 @@ export async function transitionQuoteStatus(
   const targetStatus = normalizeTargetStatus(action);
 
   try {
-    const { data: quote, error: quoteError } = await supabaseServer
+    const { data: quote, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select(
         "id,status,customer_id,customer_email,assigned_supplier_email,awarded_bid_id,awarded_supplier_id,awarded_at",
@@ -165,7 +165,7 @@ export async function transitionQuoteStatus(
       }
     }
 
-    const { error: updateError } = await supabaseServer
+    const { error: updateError } = await supabaseServer()
       .from("quotes")
       .update({
         status: targetStatus,

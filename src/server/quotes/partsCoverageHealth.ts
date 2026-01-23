@@ -81,7 +81,7 @@ export async function loadPartsCoverageSignalsForQuotes(
 
   let partRows: QuotePartRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_parts")
       .select("id,quote_id,part_label,part_number,notes,sort_order,created_at")
       .in("quote_id", normalizedQuoteIds)
@@ -114,7 +114,7 @@ export async function loadPartsCoverageSignalsForQuotes(
 
   let partFileRows: QuotePartFileRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_part_files")
       .select("id,quote_part_id,quote_upload_file_id,role,created_at")
       .in("quote_part_id", partIds)
@@ -162,7 +162,7 @@ export async function loadPartsCoverageSignalsForQuotes(
     });
     if (hasUploadsSchema) {
       try {
-        const { data, error } = await supabaseServer
+        const { data, error } = await supabaseServer()
           .from("quote_upload_files")
           .select("id,quote_id,path,filename,extension,size_bytes,is_from_archive")
           .in("id", uploadFileIds)

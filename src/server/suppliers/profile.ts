@@ -75,7 +75,7 @@ export async function getOrCreateSupplierByEmail(
   }
 
   try {
-    const { data: existing, error: lookupError } = await supabaseServer
+    const { data: existing, error: lookupError } = await supabaseServer()
       .from("suppliers")
       .select(SUPPLIER_SELECT_COLUMNS)
       .eq("primary_email", email)
@@ -90,7 +90,7 @@ export async function getOrCreateSupplierByEmail(
 
       if (existing) {
         if (!existing.user_id && userId) {
-          const { error: linkError } = await supabaseServer
+          const { error: linkError } = await supabaseServer()
             .from("suppliers")
             .update({ user_id: userId })
             .eq("id", existing.id);
@@ -121,7 +121,7 @@ export async function getOrCreateSupplierByEmail(
         user_id: userId ?? null,
     };
 
-    const { data: created, error: insertError } = await supabaseServer
+    const { data: created, error: insertError } = await supabaseServer()
       .from("suppliers")
       .insert(payload)
       .select(SUPPLIER_SELECT_COLUMNS)
@@ -155,7 +155,7 @@ export async function loadSupplierProfile(
   }
 
   try {
-    const { data: supplier, error } = await supabaseServer
+    const { data: supplier, error } = await supabaseServer()
       .from("suppliers")
       .select(SUPPLIER_SELECT_COLUMNS)
       .eq("primary_email", email)
@@ -201,7 +201,7 @@ export async function loadSupplierByPrimaryEmail(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select(SUPPLIER_SELECT_COLUMNS)
       .eq("primary_email", email)
@@ -233,7 +233,7 @@ export async function loadSupplierById(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select(SUPPLIER_SELECT_COLUMNS)
       .eq("id", supplierId)
@@ -271,7 +271,7 @@ export async function loadSupplierNameMapByIds(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select("id,company_name,primary_email")
       .in("id", normalizedIds)
@@ -336,7 +336,7 @@ export async function loadSupplierByUserId(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select(SUPPLIER_SELECT_COLUMNS)
       .eq("user_id", userId)
@@ -356,7 +356,7 @@ export async function loadSupplierByUserId(
 
     // Team memberships: suppliers can have multiple portal users via supplier_users.
     // If this user isn't the primary supplier owner, check for a membership row.
-    const membership = await supabaseServer
+    const membership = await supabaseServer()
       .from("supplier_users")
       .select("supplier_id,created_at")
       .eq("user_id", userId)
@@ -380,7 +380,7 @@ export async function loadSupplierByUserId(
       return null;
     }
 
-    const { data: supplier, error: supplierError } = await supabaseServer
+    const { data: supplier, error: supplierError } = await supabaseServer()
       .from("suppliers")
       .select(SUPPLIER_SELECT_COLUMNS)
       .eq("id", supplierId)
@@ -439,7 +439,7 @@ export async function upsertSupplierProfile(
   };
 
   try {
-    const { data: updatedSupplier, error: updateError } = await supabaseServer
+    const { data: updatedSupplier, error: updateError } = await supabaseServer()
       .from("suppliers")
       .update(updatePayload)
       .eq("id", supplier.id)
@@ -504,7 +504,7 @@ export async function addSupplierDocument(
   };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_documents")
       .insert(payload)
       .select("*")
@@ -536,7 +536,7 @@ export async function listSupplierCapabilities(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_capabilities")
       .select("*")
       .eq("supplier_id", supplierId)
@@ -568,7 +568,7 @@ export async function listSupplierDocuments(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_documents")
       .select("*")
       .eq("supplier_id", supplierId)
@@ -597,7 +597,7 @@ export async function upsertSupplierCapabilities(
   capabilities: SupplierCapabilityInput[],
 ) {
   try {
-    const { error: deleteError } = await supabaseServer
+    const { error: deleteError } = await supabaseServer()
       .from("supplier_capabilities")
       .delete()
       .eq("supplier_id", supplierId);
@@ -629,7 +629,7 @@ export async function upsertSupplierCapabilities(
       return;
     }
 
-    const { error: insertError } = await supabaseServer
+    const { error: insertError } = await supabaseServer()
       .from("supplier_capabilities")
       .insert(payload);
 

@@ -81,7 +81,7 @@ export async function getOpsSlaSettings(): Promise<OpsSlaSettings> {
     : OPS_SETTINGS_SELECT_BASE;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(OPS_SETTINGS_TABLE)
       .select(opsSettingsSelect)
       .order("updated_at", { ascending: false })
@@ -215,7 +215,7 @@ export async function upsertOpsSlaSettings(input: {
   };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(OPS_SETTINGS_TABLE)
       .select("id,updated_at")
       .order("updated_at", { ascending: false })
@@ -241,7 +241,7 @@ export async function upsertOpsSlaSettings(input: {
 
     const existingId = normalizeId(Array.isArray(data) ? data[0]?.id : null);
     if (existingId) {
-      const { error: updateError } = await supabaseServer
+      const { error: updateError } = await supabaseServer()
         .from(OPS_SETTINGS_TABLE)
         .update(payload)
         .eq("id", existingId);
@@ -262,7 +262,7 @@ export async function upsertOpsSlaSettings(input: {
         return { ok: false, error: "Unable to update ops settings." };
       }
     } else {
-      const { error: insertError } = await supabaseServer
+      const { error: insertError } = await supabaseServer()
         .from(OPS_SETTINGS_TABLE)
         .insert(payload);
       if (insertError) {

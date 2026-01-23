@@ -67,7 +67,7 @@ export async function POST(req: Request, context: { params: Promise<{ id?: strin
       return NextResponse.json({ ok: false, error: "unsupported" }, { status: 200 });
     }
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,awarded_supplier_id")
       .eq("id", quoteId)

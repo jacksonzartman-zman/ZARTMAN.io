@@ -345,7 +345,7 @@ async function selectQuotesByFilter(
 ): Promise<QuoteSummaryRow[]> {
   const shouldThrow = context?.label === SUPPLIER_ACTIVITY_LABEL;
   try {
-    const baseQuery = supabaseServer
+    const baseQuery = supabaseServer()
       .from("quotes_with_uploads")
       .select(QUOTE_FIELDS.join(","))
       .order("created_at", { ascending: false });
@@ -524,7 +524,7 @@ async function fetchBids(
   }
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from("supplier_bids")
       .select(
         "id,quote_id,supplier_id,unit_price,currency,status,lead_time_days,created_at,updated_at",
@@ -583,7 +583,7 @@ async function fetchSuppliersByIds(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select("id,company_name,primary_email")
       .in("id", supplierIds);
@@ -609,7 +609,7 @@ async function selectSupplierQuoteIds(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_suppliers")
       .select("quote_id")
       .ilike("supplier_email", supplierEmail);
@@ -647,7 +647,7 @@ async function selectSupplierInviteQuoteIds(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_invites")
       .select("quote_id")
       .eq("supplier_id", supplierId);
@@ -886,7 +886,7 @@ async function selectQuotesByCustomerId(
   });
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(QUOTE_FIELDS.join(","))
       .ilike("customer_email", normalizedEmail)

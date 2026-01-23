@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     }
 
     const now = new Date().toISOString();
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_destinations")
       .update({ dispatch_started_at: now })
       .eq("id", destinationId)

@@ -129,7 +129,7 @@ export async function loadUserNotifications(
   const limit = Math.max(1, Math.min(200, Math.floor(options?.limit ?? 100)));
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from(NOTIFICATIONS_TABLE)
       .select(
         "id,user_id,type,entity_type,entity_id,title,body,href,is_read,created_at,updated_at",
@@ -179,7 +179,7 @@ export async function markNotificationsRead(
   if (!normalizedUserId || ids.length === 0) return;
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from(NOTIFICATIONS_TABLE)
       .update({ is_read: true })
       .eq("user_id", normalizedUserId)
@@ -320,7 +320,7 @@ async function upsertNotificationsForUser(args: {
 
   let existingUnread: NotificationRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(NOTIFICATIONS_TABLE)
       .select(
         "id,user_id,type,entity_type,entity_id,title,body,href,is_read,created_at,updated_at",
@@ -440,7 +440,7 @@ async function upsertNotificationsForUser(args: {
           return;
         }
 
-        let query = supabaseServer
+        let query = supabaseServer()
           .from(NOTIFICATIONS_TABLE)
           .select("entity_id,type,entity_type")
           .eq("user_id", userId)
@@ -492,7 +492,7 @@ async function upsertNotificationsForUser(args: {
     });
 
     if (filteredInserts.length > 0) {
-      const { error, count } = await supabaseServer
+      const { error, count } = await supabaseServer()
         .from(NOTIFICATIONS_TABLE)
         .insert(filteredInserts, { count: "exact" });
 
@@ -522,7 +522,7 @@ async function upsertNotificationsForUser(args: {
     }
 
     for (const update of updates) {
-      const { error } = await supabaseServer
+      const { error } = await supabaseServer()
         .from(NOTIFICATIONS_TABLE)
         .update(update.patch)
         .eq("id", update.id)
@@ -538,7 +538,7 @@ async function upsertNotificationsForUser(args: {
     }
 
     if (obsoleteIds.length > 0) {
-      const { error } = await supabaseServer
+      const { error } = await supabaseServer()
         .from(NOTIFICATIONS_TABLE)
         .update({ is_read: true })
         .eq("user_id", userId)
@@ -740,7 +740,7 @@ async function computeMessageNeedsReplyNotifications(args: {
 
     let candidates: QuoteCandidateRow[] = [];
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quotes")
         .select("id,file_name,company,created_at")
         .gte("created_at", daysAgoIso(LOOKBACK_DAYS))
@@ -879,7 +879,7 @@ async function computeAdminChangeRequestSubmittedNotifications(args: {
   const LIMIT = 25;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_change_requests")
       .select("id,quote_id,change_type,notes,status,created_at")
       .gte("created_at", daysAgoIso(LOOKBACK_DAYS))
@@ -907,13 +907,13 @@ async function computeAdminChangeRequestSubmittedNotifications(args: {
 
     const [{ data: quoteRows, error: quoteError }, { data: seenRows, error: seenError }] =
       await Promise.all([
-        supabaseServer
+        supabaseServer()
           .from("quotes")
           .select("id,file_name,company")
           .in("id", quoteIds)
           .limit(500)
           .returns<QuoteLabelRow[]>(),
-        supabaseServer
+        supabaseServer()
           .from(NOTIFICATIONS_TABLE)
           .select("entity_id")
           .eq("user_id", args.userId)
@@ -1008,7 +1008,7 @@ async function computeCustomerBidAndAwardNotifications(args: {
   if (!customerEmail) return [];
 
   try {
-    const { data: quotes, error: quoteError } = await supabaseServer
+    const { data: quotes, error: quoteError } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("id,status,file_name,company,created_at,awarded_at,awarded_supplier_id,awarded_bid_id")
       .ilike("customer_email", customerEmail)
@@ -1030,7 +1030,7 @@ async function computeCustomerBidAndAwardNotifications(args: {
     const openQuoteIds = openQuotes.map((q) => q.id);
     if (openQuoteIds.length === 0) return [];
 
-    const { data: bids, error: bidError } = await supabaseServer
+    const { data: bids, error: bidError } = await supabaseServer()
       .from("supplier_bids")
       .select("quote_id,updated_at,created_at")
       .in("quote_id", openQuoteIds)
@@ -1062,7 +1062,7 @@ async function computeCustomerBidAndAwardNotifications(args: {
     }
 
     // Determine last "seen" timestamp for new_bid_on_rfq per quote.
-    const { data: seenRows, error: seenError } = await supabaseServer
+    const { data: seenRows, error: seenError } = await supabaseServer()
       .from(NOTIFICATIONS_TABLE)
       .select("type,entity_type,entity_id,created_at,updated_at,is_read")
       .eq("user_id", args.userId)
@@ -1157,7 +1157,7 @@ async function computeCustomerLowQualityNotifications(args: {
   const QUALITY_LIMIT = 8;
 
   try {
-    const { data: quotes, error } = await supabaseServer
+    const { data: quotes, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("id,status,file_name,company,created_at,awarded_at,awarded_supplier_id,awarded_bid_id")
       .ilike("customer_email", customerEmail)
@@ -1235,7 +1235,7 @@ async function computeKickoffOverdueNotifications(args: {
   const OVERDUE_DAYS = 7;
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from("quotes")
       .select(
         "id,status,file_name,company,awarded_at,awarded_supplier_id,kickoff_completed_at",
@@ -1301,7 +1301,7 @@ async function computeSupplierCapacityStaleNotifications(args: {
   const cutoff = daysAgoIso(STALE_DAYS);
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_capacity_snapshots")
       .select("created_at")
       .eq("supplier_id", supplierId)
@@ -1402,7 +1402,7 @@ async function computeAdminNewBidNotifications(args: {
 
     if (quoteIds.length === 0) return [];
 
-    const { data: seenRows, error: seenError } = await supabaseServer
+    const { data: seenRows, error: seenError } = await supabaseServer()
       .from(NOTIFICATIONS_TABLE)
       .select("type,entity_type,entity_id,created_at,updated_at,is_read")
       .eq("user_id", args.userId)

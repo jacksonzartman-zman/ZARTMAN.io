@@ -52,7 +52,7 @@ export async function getLatestKickoffNudgedAt(args: {
 
   try {
     const runSelect = (columns: string) =>
-      supabaseServer
+      supabaseServer()
         .from("quote_events")
         .select(columns)
         .eq("quote_id", quoteId)

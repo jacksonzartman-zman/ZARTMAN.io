@@ -468,7 +468,7 @@ async function summarizeCustomerBids(rfqIds: string[]) {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_bids")
       .select("rfq_id,price_total,lead_time_days,status")
       .in("rfq_id", rfqIds);

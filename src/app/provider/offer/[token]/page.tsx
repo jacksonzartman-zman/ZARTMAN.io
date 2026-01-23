@@ -227,7 +227,7 @@ async function loadQuoteRow(quoteId: string): Promise<QuoteRow | null> {
   if (!normalizedId) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(
         "id,upload_id,file_name,file_names,upload_file_names,upload_name,company,customer_name",
@@ -264,7 +264,7 @@ async function loadQuoteTitle(quoteId: string): Promise<string | null> {
   if (!normalizedId) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("title")
       .eq("id", normalizedId)
@@ -301,7 +301,7 @@ async function loadUploadSummary(
   if (!normalizedId) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("uploads")
       .select("manufacturing_process,quantity")
       .eq("id", normalizedId)
@@ -360,7 +360,7 @@ async function loadExistingOffer(args: {
 
   try {
     if (destinationId) {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("rfq_offers")
         .select(selectFields)
         .eq("destination_id", destinationId)
@@ -380,7 +380,7 @@ async function loadExistingOffer(args: {
       }
     }
 
-    let compositeQuery = supabaseServer
+    let compositeQuery = supabaseServer()
       .from("rfq_offers")
       .select(selectFields)
       .eq("rfq_id", rfqId)
@@ -395,7 +395,7 @@ async function loadExistingOffer(args: {
     if (error) {
       if (isMissingTableOrColumnError(error)) {
         if (destinationId) {
-          const { data: fallbackData } = await supabaseServer
+          const { data: fallbackData } = await supabaseServer()
             .from("rfq_offers")
             .select(selectFields)
             .eq("rfq_id", rfqId)
@@ -415,7 +415,7 @@ async function loadExistingOffer(args: {
     }
 
     if (!data?.id && destinationId) {
-      const { data: fallbackData } = await supabaseServer
+      const { data: fallbackData } = await supabaseServer()
         .from("rfq_offers")
         .select(selectFields)
         .eq("rfq_id", rfqId)

@@ -113,7 +113,7 @@ async function loadQuoteAuditEvents(quoteId: string): Promise<AuditEvent[]> {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(
         "id,customer_email,status,assigned_supplier_email,created_at,updated_at",
@@ -197,7 +197,7 @@ async function loadSupplierAuditEvents(
   }
 
   try {
-    const { data: supplier, error: supplierError } = await supabaseServer
+    const { data: supplier, error: supplierError } = await supabaseServer()
       .from("suppliers")
       .select("id,primary_email,company_name,created_at")
       .eq("id", supplierId)
@@ -252,7 +252,7 @@ async function loadUserAuditEvents(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select("id,created_at")
       .ilike("customer_email", normalizedEmail)
@@ -346,7 +346,7 @@ async function selectBidsByFilter(filter: {
   }
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from("supplier_bids")
       .select("id,quote_id,supplier_id,status,created_at,updated_at")
       .order("created_at", { ascending: false })
@@ -381,7 +381,7 @@ async function selectSuppliersByIds(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select("id,primary_email,company_name,created_at")
       .in("id", supplierIds);

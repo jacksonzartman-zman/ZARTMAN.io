@@ -150,7 +150,7 @@ async function loadProviderNames(providerIds: string[]): Promise<Map<string, str
 
   try {
     type ProviderRow = { id: string | null; name: string | null };
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(PROVIDERS_RELATION)
       .select("id,name")
       .in("id", ids)
@@ -424,7 +424,7 @@ export async function getQuoteMessages({
     const includeMetadata = await hasQuoteMessagesColumn("metadata");
 
     const run = async (columns: string) => {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from(QUOTE_MESSAGES_RELATION)
         .select(columns as any)
         .eq("quote_id", normalizedQuoteId)

@@ -62,7 +62,7 @@ function isExpired(expiresAtIso: string): boolean {
 async function markExpiredIfNeeded(args: { teamId: string; email: string }) {
   try {
     const nowIso = new Date().toISOString();
-    await supabaseServer
+    await supabaseServer()
       .from("customer_team_invites")
       .update({ status: "expired" })
       .eq("team_id", args.teamId)
@@ -95,7 +95,7 @@ export async function createCustomerTeamInvite(args: {
   const token = generateInviteToken();
 
   try {
-    const insert = await supabaseServer
+    const insert = await supabaseServer()
       .from("customer_team_invites")
       .insert({
         team_id: teamId,
@@ -114,7 +114,7 @@ export async function createCustomerTeamInvite(args: {
     const pgCode = (insert.error as { code?: string | null })?.code ?? null;
     // If a pending invite already exists for (team_id, email), reuse it.
     if (pgCode === "23505") {
-      const existing = await supabaseServer
+      const existing = await supabaseServer()
         .from("customer_team_invites")
         .select("id,team_id,email,token,invited_by_user_id,status,created_at,expires_at")
         .eq("team_id", teamId)
@@ -158,7 +158,7 @@ export async function loadCustomerTeamInviteByToken(args: {
   if (!(await isCustomerTeamInvitesSchemaReady())) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customer_team_invites")
       .select("id,team_id,email,token,invited_by_user_id,status,created_at,expires_at")
       .eq("token", token)
@@ -178,7 +178,7 @@ export async function loadCustomerTeamInviteByToken(args: {
     if (invite.status === "pending" && isExpired(invite.expires_at)) {
       // Best-effort: mark expired for single-use + safe UX.
       try {
-        await supabaseServer
+        await supabaseServer()
           .from("customer_team_invites")
           .update({ status: "expired" })
           .eq("id", invite.id)
@@ -239,7 +239,7 @@ export async function acceptCustomerTeamInvite(args: {
   try {
     const teamId = invite.team_id;
 
-    const membership = await supabaseServer
+    const membership = await supabaseServer()
       .from("customer_team_members")
       .upsert({ team_id: teamId, user_id: userId, role: "member" }, { onConflict: "team_id,user_id" });
 
@@ -254,7 +254,7 @@ export async function acceptCustomerTeamInvite(args: {
     }
 
     const nowIso = new Date().toISOString();
-    const updated = await supabaseServer
+    const updated = await supabaseServer()
       .from("customer_team_invites")
       .update({ status: "accepted" })
       .eq("id", invite.id)

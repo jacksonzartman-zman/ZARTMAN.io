@@ -140,7 +140,7 @@ async function loadKickoffCompletedAtByQuoteId(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("id,kickoff_completed_at")
       .in("id", ids)
@@ -200,7 +200,7 @@ async function loadKickoffTotalsByWinnerSupplier(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_kickoff_tasks")
       .select("quote_id,supplier_id,completed")
       .in("quote_id", quoteIds)
@@ -269,7 +269,7 @@ async function loadThreadRoleTimestampsFromMessagesFallback(
   const limit = Math.max(250, Math.min(8000, ids.length * 30));
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_messages")
       .select("quote_id,created_at,sender_role")
       .in("quote_id", ids)
@@ -340,7 +340,7 @@ async function loadThreadRoleTimestampsForAdminViaRpc(
   };
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .rpc("admin_message_sla_for_quotes", { p_quote_ids: quoteIds })
       .returns<RpcRow[]>();
 
@@ -459,7 +459,7 @@ export async function loadCustomerInbox(
 
   let quoteRows: QuoteRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(QUOTES_WITH_UPLOADS_COLUMNS)
       .ilike("customer_email", customerEmail)
@@ -516,23 +516,23 @@ export async function loadSupplierInbox(supplierUserId: string): Promise<InboxRo
   const quoteIds = new Set<string>();
   try {
     const [awarded, bids, invites, assigned] = await Promise.all([
-      supabaseServer
+      supabaseServer()
         .from("quotes")
         .select("id")
         .eq("awarded_supplier_id", supplierId)
         .returns<{ id: string }[]>(),
-      supabaseServer
+      supabaseServer()
         .from("supplier_bids")
         .select("quote_id")
         .eq("supplier_id", supplierId)
         .returns<{ quote_id: string }[]>(),
-      supabaseServer
+      supabaseServer()
         .from("quote_invites")
         .select("quote_id")
         .eq("supplier_id", supplierId)
         .returns<{ quote_id: string }[]>(),
       supplier.primary_email
-        ? supabaseServer
+        ? supabaseServer()
             .from("quotes")
             .select("id")
             .eq("assigned_supplier_email", supplier.primary_email)
@@ -589,7 +589,7 @@ export async function loadSupplierInbox(supplierUserId: string): Promise<InboxRo
 
   let quoteRows: QuoteRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(QUOTES_WITH_UPLOADS_COLUMNS)
       .in("id", ids)
@@ -642,7 +642,7 @@ export async function loadAdminInbox(options?: {
 
   let quoteRows: QuoteRow[] = [];
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes_with_uploads")
       .select(QUOTES_WITH_UPLOADS_COLUMNS)
       .order("updated_at", { ascending: false })

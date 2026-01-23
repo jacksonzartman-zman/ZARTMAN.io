@@ -344,7 +344,7 @@ export async function resolveProviderEligibilityCriteriaForQuote(
 
   let quoteRow: QuoteEligibilityRow | null = null;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select(quoteSelect)
       .eq("id", normalizedId)
@@ -375,7 +375,7 @@ export async function resolveProviderEligibilityCriteriaForQuote(
   const uploadId = normalizeOptionalText(quoteRow?.upload_id ?? null);
   if (uploadId) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("uploads")
         .select("*")
         .eq("id", uploadId)

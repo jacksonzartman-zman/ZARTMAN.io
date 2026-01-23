@@ -288,7 +288,7 @@ async function loadQuoteRoutingContext(
   const normalizedQuoteId = normalizeId(quoteId);
   if (!normalizedQuoteId) return null;
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from(QUOTES_TABLE)
     .select("id,status,awarded_supplier_id")
     .eq("id", normalizedQuoteId)
@@ -304,7 +304,7 @@ async function loadQuoteRoutingContext(
 async function loadBidCount(quoteId: string): Promise<number> {
   const normalizedQuoteId = normalizeId(quoteId);
   if (!normalizedQuoteId) return 0;
-  const { count, error } = await supabaseServer
+  const { count, error } = await supabaseServer()
     .from(SUPPLIER_BIDS_TABLE)
     .select("id", { count: "exact", head: true })
     .eq("quote_id", normalizedQuoteId);
@@ -318,7 +318,7 @@ async function resolveOnlyBidderSupplierId(quoteId: string): Promise<string | nu
   const normalizedQuoteId = normalizeId(quoteId);
   if (!normalizedQuoteId) return null;
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from(SUPPLIER_BIDS_TABLE)
     .select("supplier_id,created_at")
     .eq("quote_id", normalizedQuoteId)
@@ -338,7 +338,7 @@ async function resolveOnlyBidderSupplierId(quoteId: string): Promise<string | nu
 async function loadSupplierNameById(supplierId: string): Promise<string | null> {
   const normalizedSupplierId = normalizeId(supplierId);
   if (!normalizedSupplierId) return null;
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from(SUPPLIERS_TABLE)
     .select("company_name")
     .eq("id", normalizedSupplierId)

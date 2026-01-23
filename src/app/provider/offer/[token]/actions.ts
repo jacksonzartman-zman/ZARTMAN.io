@@ -121,7 +121,7 @@ export async function submitOfferViaTokenAction(
     assignIfDefined(payload, "notes", notes);
     assignIfDefined(payload, "confidence_score", confidenceScore);
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("rfq_offers")
       .upsert(payload, { onConflict: "rfq_id,provider_id" })
       .select("id")
@@ -143,7 +143,7 @@ export async function submitOfferViaTokenAction(
       return { ok: false, error: OFFER_SUBMIT_ERROR };
     }
 
-    const { error: destinationError } = await supabaseServer
+    const { error: destinationError } = await supabaseServer()
       .from("rfq_destinations")
       .update({
         status: "quoted",
@@ -262,7 +262,7 @@ async function loadExistingOfferSnapshot(args: {
 
   try {
     if (destinationId) {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("rfq_offers")
         .select(selectFields)
         .eq("destination_id", destinationId)
@@ -282,7 +282,7 @@ async function loadExistingOfferSnapshot(args: {
       }
     }
 
-    let compositeQuery = supabaseServer
+    let compositeQuery = supabaseServer()
       .from("rfq_offers")
       .select(selectFields)
       .eq("rfq_id", rfqId)
@@ -297,7 +297,7 @@ async function loadExistingOfferSnapshot(args: {
     if (error) {
       if (isMissingTableOrColumnError(error)) {
         if (destinationId) {
-          const { data: fallbackData } = await supabaseServer
+          const { data: fallbackData } = await supabaseServer()
             .from("rfq_offers")
             .select(selectFields)
             .eq("rfq_id", rfqId)
@@ -317,7 +317,7 @@ async function loadExistingOfferSnapshot(args: {
     }
 
     if (!data?.id && destinationId) {
-      const { data: fallbackData } = await supabaseServer
+      const { data: fallbackData } = await supabaseServer()
         .from("rfq_offers")
         .select(selectFields)
         .eq("rfq_id", rfqId)

@@ -87,7 +87,7 @@ export async function loadBidsForQuote(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(BIDS_TABLE_NAME)
       .select(BID_SELECTION_COLUMNS)
       .eq("quote_id", quoteId)
@@ -167,7 +167,7 @@ export async function loadBidForSupplierAndQuote(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(BIDS_TABLE_NAME)
       .select(BID_SELECTION_COLUMNS)
       .eq("quote_id", quoteId)
@@ -256,7 +256,7 @@ export async function markWinningBidForQuote(
     const {
       data: bidRow,
       error: bidError,
-    } = await supabaseServer
+    } = await supabaseServer()
       .from(BIDS_TABLE_NAME)
       .select(BID_SELECTION_COLUMNS)
       .eq("id", bidId)
@@ -312,7 +312,7 @@ export async function markWinningBidForQuote(
 
     const now = new Date().toISOString();
 
-    const { error: winError } = await supabaseServer
+    const { error: winError } = await supabaseServer()
       .from(BIDS_TABLE_NAME)
       .update({
         status: "won",
@@ -344,7 +344,7 @@ export async function markWinningBidForQuote(
       };
     }
 
-    const { error: loseError } = await supabaseServer
+    const { error: loseError } = await supabaseServer()
       .from(BIDS_TABLE_NAME)
       .update({
         status: "lost",
@@ -443,7 +443,7 @@ export async function listSupplierBidsForQuote(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("*")
       .eq("quote_id", quoteId)
@@ -524,7 +524,7 @@ export async function listSupplierBidsForSupplier(
       }
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("*")
       .eq("supplier_id", supplierId)
@@ -577,7 +577,7 @@ export async function getSupplierBidForQuote(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("*")
       .eq("quote_id", quoteId)
@@ -617,7 +617,7 @@ export async function createOrUpdateBid(
     const payload = buildBidPayload(input);
 
     if (existing) {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("supplier_bids")
         .update({
           ...payload,
@@ -639,7 +639,7 @@ export async function createOrUpdateBid(
       return data ?? null;
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .insert({
         ...payload,
@@ -679,7 +679,7 @@ export async function updateSupplierBidStatus(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .update({
         status,
@@ -725,7 +725,7 @@ export async function acceptSupplierBidForQuote(bidId: string, quoteId: string) 
     }
 
     const now = new Date().toISOString();
-    const { data: accepted, error: acceptError } = await supabaseServer
+    const { data: accepted, error: acceptError } = await supabaseServer()
       .from("supplier_bids")
       .update({
         status: "accepted",
@@ -744,7 +744,7 @@ export async function acceptSupplierBidForQuote(bidId: string, quoteId: string) 
       return { accepted: null };
     }
 
-    const { error: declineError } = await supabaseServer
+    const { error: declineError } = await supabaseServer()
       .from("supplier_bids")
       .update({
         status: "declined",
@@ -790,7 +790,7 @@ export async function declineSupplierBid(
       return null;
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .update({
         status: "declined",
@@ -810,7 +810,7 @@ export async function declineSupplierBid(
 
     if (quoteId && bid.status === "accepted") {
       // When the accepted bid is declined, clear the assignment so another supplier can be chosen.
-      await supabaseServer
+      await supabaseServer()
         .from("quotes")
         .update({
           assigned_supplier_email: null,
@@ -867,7 +867,7 @@ async function getBidById(bidId: string): Promise<SupplierBidRow | null> {
     return null;
   }
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("supplier_bids")
     .select("*")
     .eq("id", bidId)
@@ -928,7 +928,7 @@ async function selectSuppliersByIds(
     return [];
   }
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("suppliers")
     .select("*")
     .in("id", supplierIds);
@@ -951,7 +951,7 @@ async function selectCapabilitiesBySupplierIds(
     return [];
   }
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("supplier_capabilities")
     .select("*")
     .in("supplier_id", supplierIds);
@@ -1006,7 +1006,7 @@ async function updateQuoteAssignedSupplier(
   supplier: SupplierRow,
 ) {
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("quotes")
       .update({
         assigned_supplier_email: supplier.primary_email,
@@ -1028,7 +1028,7 @@ async function updateQuoteAssignedSupplier(
     // Keep assigned_supplier_email as a back-compat fallback (legacy access + notifications).
     try {
       const { data: existingInvite, error: existingInviteError } =
-        await supabaseServer
+        await supabaseServer()
           .from("quote_invites")
           .select("id")
           .eq("quote_id", quoteId)
@@ -1043,7 +1043,7 @@ async function updateQuoteAssignedSupplier(
       }
       const shouldEmitInviteEvent = !existingInvite;
 
-      const { error: inviteError } = await supabaseServer
+      const { error: inviteError } = await supabaseServer()
         .from("quote_invites")
         .upsert(
           {

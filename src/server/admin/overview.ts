@@ -279,7 +279,7 @@ async function loadKickoffSummaryForAwardedQuotes(args: {
   try {
     // Lazily import here to avoid pulling supabaseServer for every overview call.
     const { supabaseServer } = await import("@/lib/supabaseServer");
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("id,kickoff_completed_at")
       .in("id", quoteIds)
@@ -306,7 +306,7 @@ async function loadKickoffSummaryForAwardedQuotes(args: {
   const totalsByKey = new Map<string, KickoffTotals>();
   try {
     const { supabaseServer } = await import("@/lib/supabaseServer");
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_kickoff_tasks")
       .select("quote_id,supplier_id,completed")
       .in("quote_id", quoteIds)

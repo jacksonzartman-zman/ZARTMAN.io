@@ -113,7 +113,7 @@ export async function loadAdminUploadsInbox(
 
   if (normalizedSearch) {
     try {
-      const { data: fileMatches, error: filesError } = await supabaseServer
+      const { data: fileMatches, error: filesError } = await supabaseServer()
         .from("files")
         .select("quote_id")
         .ilike("filename", `%${normalizedSearch}%`)
@@ -148,7 +148,7 @@ export async function loadAdminUploadsInbox(
   }
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from("uploads")
       .select(ADMIN_UPLOAD_INBOX_FIELDS.join(","))
       .order("created_at", { ascending: false })
@@ -237,7 +237,7 @@ export async function loadAdminUploadDetail(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("uploads")
       .select(ADMIN_UPLOAD_DETAIL_FIELDS.join(","))
       .eq("id", uploadId)
@@ -312,7 +312,7 @@ export async function loadAdminInboxBidAggregates(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_bids")
       .select("quote_id,status,created_at")
       .in("quote_id", normalizedIds)
