@@ -220,6 +220,7 @@ export type PrefillContact = {
 
 type UploadBoxProps = {
   prefillContact?: PrefillContact | null;
+  prefillManufacturingProcess?: string | null;
   showExplainer?: boolean;
 };
 
@@ -263,12 +264,26 @@ const CONTACT_FIELD_KEYS: Array<keyof Pick<
   "firstName" | "lastName" | "email"
 >> = ["firstName", "lastName", "email"];
 
-function buildInitialUploadState(prefill?: PrefillContact | null): UploadState {
+function normalizeManufacturingProcess(raw: unknown): string {
+  const value = typeof raw === "string" ? raw.trim() : "";
+  if (!value) return "";
+  const lowered = value.toLowerCase();
+  const match = MANUFACTURING_PROCESS_OPTIONS.find(
+    (option) => option.toLowerCase() === lowered,
+  );
+  return match ?? "";
+}
+
+function buildInitialUploadState(input: {
+  prefillContact?: PrefillContact | null;
+  prefillManufacturingProcess?: string | null;
+}): UploadState {
   return {
     ...EMPTY_UPLOAD_STATE,
-    firstName: prefill?.firstName ?? "",
-    lastName: prefill?.lastName ?? "",
-    email: prefill?.email ?? "",
+    firstName: input.prefillContact?.firstName ?? "",
+    lastName: input.prefillContact?.lastName ?? "",
+    email: input.prefillContact?.email ?? "",
+    manufacturingProcess: normalizeManufacturingProcess(input.prefillManufacturingProcess),
   };
 }
 
@@ -408,12 +423,17 @@ function StepHeader({
 
 export default function UploadBox({
   prefillContact,
+  prefillManufacturingProcess,
   showExplainer = false,
 }: UploadBoxProps) {
   const router = useRouter();
   const baseState = useMemo(
-    () => buildInitialUploadState(prefillContact),
-    [prefillContact],
+    () =>
+      buildInitialUploadState({
+        prefillContact,
+        prefillManufacturingProcess,
+      }),
+    [prefillContact, prefillManufacturingProcess],
   );
   const [state, setState] = useState<UploadState>(() => ({ ...baseState }));
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});

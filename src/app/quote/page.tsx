@@ -5,9 +5,20 @@ import type { User } from "@supabase/supabase-js";
 import { getServerAuthUser } from "@/server/auth";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 
-export default async function QuotePage() {
+type QuotePageProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
+export default async function QuotePage({ searchParams }: QuotePageProps) {
   const { user } = await getServerAuthUser();
   const prefillContact = buildQuotePrefillContact(user);
+  const processParam = searchParams?.process;
+  const prefillManufacturingProcess =
+    typeof processParam === "string"
+      ? processParam.trim()
+      : Array.isArray(processParam)
+        ? String(processParam[0] ?? "").trim()
+        : null;
   console.log("[quote intake] prefill contact", {
     hasUser: Boolean(user),
     prefillEmail: prefillContact?.email ?? null,
@@ -76,7 +87,11 @@ export default async function QuotePage() {
                 <li>Drawings (PDF/DWG/DXF) speed up quoting and reduce back-and-forth.</li>
               </ul>
             </div>
-            <UploadBox prefillContact={prefillContact} showExplainer />
+            <UploadBox
+              prefillContact={prefillContact}
+              prefillManufacturingProcess={prefillManufacturingProcess}
+              showExplainer
+            />
           </section>
         </ErrorBoundary>
 
