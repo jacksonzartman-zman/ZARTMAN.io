@@ -1,16 +1,8 @@
-import Link from "next/link";
-import { primaryCtaClasses } from "@/lib/ctas";
 import { getActiveProviders } from "@/server/providers";
 import { getServerAuthUser } from "@/server/auth";
 import HomeSearchWidget, { type HomeSearchProcess } from "@/components/marketing/HomeSearchWidget";
 
 export const dynamic = "force-dynamic";
-
-const HERO_BULLETS = [
-  "Verified suppliers only.",
-  "Compare price + lead time.",
-  "Share files only when you approve.",
-];
 
 const HOW_IT_WORKS_STEPS = [
   {
@@ -53,10 +45,10 @@ export default async function HomePage() {
 
   return (
     <main className="main-shell">
-      <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16 sm:py-20 space-y-16">
+      <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-20 sm:py-24 space-y-20">
         {/* HERO */}
-        <section className="mx-auto max-w-5xl space-y-8">
-          <div className="mx-auto max-w-3xl text-center space-y-4">
+        <section className="mx-auto max-w-5xl space-y-10 sm:space-y-12">
+          <div className="mx-auto max-w-3xl text-center space-y-5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
               RFQs without the chaos
             </p>
@@ -67,25 +59,6 @@ export default async function HomePage() {
 
           <div className="mx-auto max-w-4xl">
             <HomeSearchWidget isAuthenticated={hasUser} processes={processes} />
-          </div>
-
-          <div className="mx-auto max-w-3xl space-y-4">
-            <ul className="grid gap-2 text-sm text-ink-muted sm:grid-cols-3">
-              {HERO_BULLETS.map((bullet) => (
-                <li key={bullet} className="flex items-start justify-center gap-2 sm:justify-start">
-                  <span aria-hidden className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-300/90" />
-                  <span className="heading-snug">{bullet}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-3">
-              <Link href="/quote" className={primaryCtaClasses}>
-                Go to full quote intake
-              </Link>
-              <p className="text-xs text-ink-soft">
-                Prefer the longer form? Use the full intake on `/quote`.
-              </p>
-            </div>
           </div>
         </section>
 
