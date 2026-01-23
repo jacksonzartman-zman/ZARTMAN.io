@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
   });
 
   try {
-    const { data, error: edgeError } = await supabaseServer.functions.invoke(functionName, {
+    const { data, error: edgeError } = await supabaseServer().functions.invoke(functionName, {
       body: { bucket, path, fileName: fileName || undefined, requestId },
     });
 

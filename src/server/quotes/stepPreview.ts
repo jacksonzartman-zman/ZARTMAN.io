@@ -65,7 +65,7 @@ export async function ensureStepPreviewForFile(
 
   try {
     // Resolve quote_upload_files row (schema: id, upload_id, filename, extension, is_from_archive, path).
-    const { data: row, error: rowError } = await supabaseServer
+    const { data: row, error: rowError } = await supabaseServer()
       .from("quote_upload_files")
       .select("id,upload_id,filename,extension,is_from_archive,path")
       .eq("id", id)
@@ -96,7 +96,7 @@ export async function ensureStepPreviewForFile(
     }
 
     // Resolve storage object identity from uploads.file_path (this is the actual uploaded object).
-    const { data: uploadRow, error: uploadError } = await supabaseServer
+    const { data: uploadRow, error: uploadError } = await supabaseServer()
       .from("uploads")
       .select("id,file_path")
       .eq("id", row.upload_id)
@@ -132,7 +132,7 @@ export async function ensureStepPreviewForFile(
     });
 
     // Cache hit: if preview exists, we’re done.
-    const { data: cached, error: cachedError } = await supabaseServer.storage
+    const { data: cached, error: cachedError } = await supabaseServer().storage
       .from(PREVIEW_BUCKET)
       .download(previewPath);
     if (!cachedError && cached) {
@@ -140,7 +140,7 @@ export async function ensureStepPreviewForFile(
     }
 
     // Download source STEP and convert in Node (same converter as intake previews).
-    const { data: stepBlob, error: downloadError } = await supabaseServer.storage
+    const { data: stepBlob, error: downloadError } = await supabaseServer().storage
       .from(normalized.bucket)
       .download(normalized.path);
     if (downloadError || !stepBlob) {
@@ -180,7 +180,7 @@ export async function ensureStepPreviewForFile(
 
     // supabase-js upload body should be Node-safe (Uint8Array/ArrayBuffer), not a Blob/Buffer.
     const stlPayload = new Uint8Array(converted.stl.buffer, converted.stl.byteOffset, converted.stl.byteLength);
-    const { error: previewUploadError } = await supabaseServer.storage
+    const { error: previewUploadError } = await supabaseServer().storage
       .from(PREVIEW_BUCKET)
       .upload(previewPath, stlPayload, {
         contentType: "model/stl",

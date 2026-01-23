@@ -126,8 +126,8 @@ export async function loadAdminSupplierBenchHealth(ctx?: {
 
   try {
     const [matchResult, benchResult] = await Promise.all([
-      supabaseServer.from(MATCH_VIEW).select(MATCH_VIEW_SELECT).returns<MatchHealthViewRow[]>(),
-      supabaseServer.from(BENCH_VIEW).select(BENCH_VIEW_SELECT).returns<BenchUtilizationViewRow[]>(),
+      supabaseServer().from(MATCH_VIEW).select(MATCH_VIEW_SELECT).returns<MatchHealthViewRow[]>(),
+      supabaseServer().from(BENCH_VIEW).select(BENCH_VIEW_SELECT).returns<BenchUtilizationViewRow[]>(),
     ]);
 
     if (matchResult.error) {
@@ -222,12 +222,12 @@ export async function loadSupplierSelfBenchHealth(
 
   try {
     const [matchResult, benchResult] = await Promise.all([
-      supabaseServer
+      supabaseServer()
         .from(MATCH_VIEW)
         .select(MATCH_VIEW_SELECT)
         .eq("supplier_id", normalizedSupplierId)
         .maybeSingle<MatchHealthViewRow>(),
-      supabaseServer
+      supabaseServer()
         .from(BENCH_VIEW)
         .select(BENCH_VIEW_SELECT)
         .eq("supplier_id", normalizedSupplierId)
@@ -294,12 +294,12 @@ export async function loadBenchHealthBySupplierIds(
 
   try {
     const [matchResult, benchResult] = await Promise.all([
-      supabaseServer
+      supabaseServer()
         .from(MATCH_VIEW)
         .select("supplier_id,match_health")
         .in("supplier_id", ids)
         .returns<Array<Pick<MatchHealthViewRow, "supplier_id" | "match_health">>>(),
-      supabaseServer
+      supabaseServer()
         .from(BENCH_VIEW)
         .select("supplier_id,bench_status")
         .in("supplier_id", ids)

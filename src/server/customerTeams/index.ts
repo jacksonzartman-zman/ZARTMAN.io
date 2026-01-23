@@ -34,7 +34,7 @@ export async function getCustomerDefaultTeamId(args: {
   if (!(await isCustomerTeamsSchemaReady())) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customer_teams")
       .select("id,customer_account_id,name,created_at")
       .eq("customer_account_id", customerAccountId)
@@ -89,7 +89,7 @@ export async function ensureCustomerDefaultTeam(args: {
 
 async function createCustomerTeam(args: { customerAccountId: string; name: string }): Promise<string | null> {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customer_teams")
       .insert({
         customer_account_id: args.customerAccountId,
@@ -129,7 +129,7 @@ async function upsertCustomerTeamMember(args: {
   if (!teamId || !userId) return false;
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("customer_team_members")
       .upsert(
         {
@@ -181,7 +181,7 @@ export async function listCustomerTeamMembers(args: {
   if (!teamId) return [];
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customer_team_members")
       .select("team_id,user_id,role,created_at")
       .eq("team_id", teamId)
@@ -246,7 +246,7 @@ async function lookupAuthUserIdsByEmail(emails: string[]): Promise<Map<string, s
   if (list.length === 0) return out;
 
   try {
-    const { data, error } = await supabaseServer.rpc("lookup_auth_user_ids_by_email", { emails: list });
+    const { data, error } = await supabaseServer().rpc("lookup_auth_user_ids_by_email", { emails: list });
     if (error) {
       if (isMissingTableOrColumnError(error)) return out;
       console.warn("[customer_teams] lookup_auth_user_ids_by_email failed", {
@@ -279,7 +279,7 @@ export async function setQuoteTeamIdIfMissing(args: {
   if (!(await isCustomerTeamsSchemaReady())) return false;
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("quotes")
       .update({ team_id: teamId })
       .eq("id", quoteId)
@@ -317,7 +317,7 @@ export async function userHasTeamAccessToQuote(args: {
   if (!(await isCustomerTeamsSchemaReady())) return false;
 
   try {
-    const { data: quote, error: quoteError } = await supabaseServer
+    const { data: quote, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("team_id")
       .eq("id", quoteId)
@@ -335,7 +335,7 @@ export async function userHasTeamAccessToQuote(args: {
     const teamId = normalizeId(quote?.team_id);
     if (!teamId) return false;
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customer_team_members")
       .select("user_id")
       .eq("team_id", teamId)

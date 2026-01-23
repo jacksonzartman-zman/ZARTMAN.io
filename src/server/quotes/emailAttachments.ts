@@ -83,7 +83,7 @@ async function loadLatestInboundAttachmentPointers(args: {
   try {
     const run = async (orderBy: "created_at" | "id") => {
       const select = orderBy === "created_at" ? "id,created_at,metadata" : "id,metadata";
-      const q = supabaseServer
+      const q = supabaseServer()
         .from("quote_messages")
         .select(select)
         .eq("quote_id", quoteId)
@@ -163,7 +163,7 @@ async function loadCanonicalFilesForQuote(args: {
     if (!supported) return [] as CanonicalFileRow[];
 
     try {
-      let query = supabaseServer
+      let query = supabaseServer()
         .from(relation)
         .select("id,filename,mime,size_bytes,bucket_id,storage_path")
         .eq("quote_id", quoteId) as any;
@@ -245,7 +245,7 @@ async function loadLegacyUploads(args: {
 
   try {
     const ids = requested.slice(0, 25);
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_upload_files")
       .select("id,upload_id,filename,extension,is_from_archive")
       .eq("quote_id", quoteId)
@@ -258,7 +258,7 @@ async function loadLegacyUploads(args: {
     if (nonArchive.length === 0) return [];
 
     const uploadIds = Array.from(new Set(nonArchive.map((r) => r.upload_id))).slice(0, 50);
-    const uploadRows = await supabaseServer
+    const uploadRows = await supabaseServer()
       .from("uploads")
       .select("id,file_path")
       .in("id", uploadIds)
@@ -311,7 +311,7 @@ async function downloadAsOutboundAttachment(args: {
   const explicitType = contentTypeOrDefault(args.contentType);
 
   try {
-    const { data: blob, error } = await supabaseServer.storage.from(bucket).download(path);
+    const { data: blob, error } = await supabaseServer().storage.from(bucket).download(path);
     if (error || !blob) {
       return { ok: false, reason: "download_failed" };
     }

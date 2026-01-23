@@ -77,7 +77,7 @@ async function loadRecentThreadMessages(args: { quoteId: string }) {
   if (!supported) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quote_messages")
       .select("sender_role,body,created_at")
       .eq("quote_id", args.quoteId)
@@ -112,7 +112,7 @@ async function resolveCustomerRecipient(args: {
 
   let customerId: string | null = null;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("customer_id")
       .eq("id", quoteId)
@@ -170,7 +170,7 @@ async function resolveCustomerRecipient(args: {
 
   const select = customersEmailSupported ? "email" : "primary_email";
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("customers")
       .select(select)
       .eq("id", customerId)
@@ -210,7 +210,7 @@ async function resolveSupplierRecipient(args: {
 
   let supplierId: string | null = null;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("quotes")
       .select("awarded_supplier_id")
       .eq("id", quoteId)
@@ -268,7 +268,7 @@ async function resolveSupplierRecipient(args: {
 
   const select = suppliersEmailSupported ? "email" : "primary_email";
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("suppliers")
       .select(select)
       .eq("id", supplierId)
@@ -396,7 +396,7 @@ async function tryStorePortalOutboundThreadMessage(args: {
   };
 
   try {
-    const { error: extendedError } = await supabaseServer.from("quote_messages").insert(extendedPayload);
+    const { error: extendedError } = await supabaseServer().from("quote_messages").insert(extendedPayload);
     if (!extendedError) return true;
 
     if (isMissingTableOrColumnError(extendedError)) {
@@ -407,7 +407,7 @@ async function tryStorePortalOutboundThreadMessage(args: {
       );
     }
 
-    const { error: baseError } = await supabaseServer.from("quote_messages").insert(basePayload);
+    const { error: baseError } = await supabaseServer().from("quote_messages").insert(basePayload);
     if (baseError) {
       if (isMissingTableOrColumnError(baseError)) {
         debugOnce("email_portal_send:quote_messages_insert_missing_schema", `${WARN_PREFIX} message insert skipped`, {

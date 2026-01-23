@@ -203,7 +203,7 @@ export async function loadPublicSuppliersDirectory(): Promise<PublicSupplierDire
       ...(supportsSource ? ["source"] : []),
     ];
 
-    let query = supabaseServer.from(PROVIDERS_TABLE).select(selectColumns.join(","));
+    let query = supabaseServer().from(PROVIDERS_TABLE).select(selectColumns.join(","));
     if (supportsVerificationStatus && !SHOW_SUPPLIER_DIRECTORY_PUBLIC) {
       query = query.eq("verification_status", "verified");
     }
@@ -291,7 +291,7 @@ export async function loadPublicSupplierById(
       ...(supportsSource ? ["source"] : []),
     ];
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(PROVIDERS_TABLE)
       .select(selectColumns.join(","))
       .eq("id", normalizedId)

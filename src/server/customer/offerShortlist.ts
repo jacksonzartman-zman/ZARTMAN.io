@@ -50,7 +50,7 @@ export async function loadCustomerOfferShortlist(args: {
   const supported = await ensureSavedSearchShortlistSchema("select");
   if (supported && !isSupabaseRelationMarkedMissing(SAVED_SEARCHES_RELATION)) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from(SAVED_SEARCHES_RELATION)
         .select(SHORTLIST_COLUMN)
         .eq("customer_id", customerId)
@@ -198,7 +198,7 @@ async function upsertSavedSearchShortlist(args: {
 
   try {
     if (hasRow) {
-      const { error } = await supabaseServer
+      const { error } = await supabaseServer()
         .from(SAVED_SEARCHES_RELATION)
         .update({ [SHORTLIST_COLUMN]: nextOfferIds, last_viewed_at: payload.last_viewed_at })
         .eq("customer_id", args.customerId)
@@ -226,7 +226,7 @@ async function upsertSavedSearchShortlist(args: {
       return { ok: true, offerIds: nextOfferIds };
     }
 
-    const { error } = await supabaseServer.from(SAVED_SEARCHES_RELATION).insert(payload);
+    const { error } = await supabaseServer().from(SAVED_SEARCHES_RELATION).insert(payload);
     if (error) {
       if (
         handleMissingSupabaseSchema({
@@ -275,7 +275,7 @@ async function readSavedSearchShortlist(args: {
   | { ok: false; reason: "unsupported" | "unknown" }
 > {
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(SAVED_SEARCHES_RELATION)
       .select(`label,${SHORTLIST_COLUMN}`)
       .eq("customer_id", args.customerId)

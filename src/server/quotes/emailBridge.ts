@@ -423,7 +423,7 @@ async function uploadInboundEmailAttachments(args: {
     });
 
     try {
-      const { error: uploadError } = await supabaseServer.storage
+      const { error: uploadError } = await supabaseServer().storage
         .from(EMAIL_ATTACHMENTS_BUCKET)
         .upload(storagePath, bytes, {
           contentType: contentType ?? undefined,
@@ -484,7 +484,7 @@ async function tryInsertCanonicalFilesForAttachments(args: {
     try {
       // Most common canonical schema columns. If this fails due to drift, we silently
       // fall back to message-only metadata links.
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from(table)
         .insert(
           input.map((a) => ({
@@ -628,7 +628,7 @@ async function isLikelyDuplicateInboundMessage(args: {
     });
 
     const runQuery = async (select: string, orderBy: "created_at" | "id") => {
-      const query = supabaseServer
+      const query = supabaseServer()
         .from(QUOTE_MESSAGES_RELATION)
         .select(select)
         .eq("quote_id", quoteId)
@@ -858,7 +858,7 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
   };
 
   try {
-    const { error: extendedError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(extendedPayload);
+    const { error: extendedError } = await supabaseServer().from(QUOTE_MESSAGES_RELATION).insert(extendedPayload);
     if (!extendedError) {
       return { ok: true };
     }
@@ -870,7 +870,7 @@ export async function handleInboundSupplierEmail(inbound: InboundEmail): Promise
       message: serialized.message,
     });
 
-    const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert({
+    const { error: baseError } = await supabaseServer().from(QUOTE_MESSAGES_RELATION).insert({
       ...basePayload,
       body: `${body}${attachSuffixLine}`,
     });
@@ -1025,7 +1025,7 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
   };
 
   try {
-    const { error: extendedError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(extendedPayload);
+    const { error: extendedError } = await supabaseServer().from(QUOTE_MESSAGES_RELATION).insert(extendedPayload);
     if (!extendedError) {
       return { ok: true };
     }
@@ -1037,7 +1037,7 @@ export async function handleInboundCustomerEmail(inbound: InboundEmail): Promise
       message: serialized.message,
     });
 
-    const { error: baseError } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert({
+    const { error: baseError } = await supabaseServer().from(QUOTE_MESSAGES_RELATION).insert({
       ...basePayload,
       body: `${body}${attachSuffixLine}`,
     });

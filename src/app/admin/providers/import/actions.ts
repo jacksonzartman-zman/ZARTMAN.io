@@ -114,7 +114,7 @@ export async function importProvidersAction(
       return payload;
     });
 
-    const { error } = await supabaseServer.from("providers").insert(payloads);
+    const { error } = await supabaseServer().from("providers").insert(payloads);
     if (error) {
       console.error("[admin providers import] insert failed", {
         error: serializeSupabaseError(error),

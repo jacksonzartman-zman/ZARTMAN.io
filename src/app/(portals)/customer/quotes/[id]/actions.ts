@@ -384,7 +384,7 @@ export async function postQuoteMessage(
       };
     }
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,customer_id")
       .eq("id", normalizedQuoteId)
@@ -557,7 +557,7 @@ export async function submitCustomerQuoteProjectAction(
 
     customerId = customer.id;
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,customer_id,customer_email")
       .eq("id", normalizedQuoteId)
@@ -727,7 +727,7 @@ export async function selectOfferAction(
       return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
     }
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,customer_id,customer_email")
       .eq("id", quoteId)
@@ -764,7 +764,7 @@ export async function selectOfferAction(
       return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
     }
 
-    const { data: offerRow, error: offerError } = await supabaseServer
+    const { data: offerRow, error: offerError } = await supabaseServer()
       .from("rfq_offers")
       .select("id,rfq_id,provider_id")
       .eq("id", offerId)
@@ -788,7 +788,7 @@ export async function selectOfferAction(
       return { ok: false, error: CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR };
     }
 
-    const { error: updateError } = await supabaseServer
+    const { error: updateError } = await supabaseServer()
       .from("quotes")
       .update({
         selected_provider_id: providerId,
@@ -852,7 +852,7 @@ export async function toggleOfferShortlistAction(args: {
       return { ok: false, error: CUSTOMER_SHORTLIST_ACCESS_ERROR };
     }
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,customer_id,customer_email")
       .eq("id", quoteId)
@@ -889,7 +889,7 @@ export async function toggleOfferShortlistAction(args: {
       return { ok: false, error: CUSTOMER_SHORTLIST_ACCESS_ERROR };
     }
 
-    const { data: offerRow, error: offerError } = await supabaseServer
+    const { data: offerRow, error: offerError } = await supabaseServer()
       .from("rfq_offers")
       .select("id,rfq_id,provider_id")
       .eq("id", offerId)
@@ -967,7 +967,7 @@ export async function confirmSelectionAction(args: {
       return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_ACCESS_ERROR };
     }
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,customer_id,customer_email,selected_offer_id,selection_confirmed_at")
       .eq("id", quoteId)
@@ -1012,7 +1012,7 @@ export async function confirmSelectionAction(args: {
       return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_ALREADY_CONFIRMED_ERROR };
     }
 
-    const { error: updateError } = await supabaseServer
+    const { error: updateError } = await supabaseServer()
       .from("quotes")
       .update({
         po_number: poNumber,
@@ -1061,7 +1061,7 @@ export async function awardBidAsCustomerAction(
 
     // Strict ownership: awarding is only allowed when quotes.customer_id matches
     // the authenticated customer's profile.
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,customer_id")
       .eq("id", normalizedQuoteId)
@@ -1092,7 +1092,7 @@ export async function awardBidAsCustomerAction(
       return { ok: false, errorCode: "access_denied", message: CUSTOMER_AWARD_ACCESS_ERROR };
     }
 
-    const rpcResult = await supabaseServer.rpc("award_bid_for_quote", {
+    const rpcResult = await supabaseServer().rpc("award_bid_for_quote", {
       p_quote_id: normalizedQuoteId,
       p_bid_id: normalizedBidId,
       p_actor_user_id: user.id,
@@ -1124,7 +1124,7 @@ export async function awardBidAsCustomerAction(
 
     // Best-effort: load bid -> supplier id so we can emit timeline + kickoff
     // via the canonical server finalization path.
-    const { data: bidRow, error: bidError } = await supabaseServer
+    const { data: bidRow, error: bidError } = await supabaseServer()
       .from("supplier_bids")
       .select("id,quote_id,supplier_id")
       .eq("id", normalizedBidId)
@@ -1220,7 +1220,7 @@ async function handleBidDecision(formData: FormData, mode: "accept" | "decline")
       };
     }
 
-    const { data: quote, error } = await supabaseServer
+    const { data: quote, error } = await supabaseServer()
       .from("quotes")
       .select("id,customer_id,customer_email")
       .eq("id", quoteId)

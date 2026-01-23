@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     if (introRequestsSupported) {
       try {
         // Mark all open requests for this quote+provider as handled (multiple offers possible).
-        const { error } = await supabaseServer
+        const { error } = await supabaseServer()
           .from("intro_requests")
           .update({
             status: "handled",
@@ -96,7 +96,7 @@ export async function POST(req: Request) {
       handled_by_user_id: admin.id,
     };
 
-    const { error } = await supabaseServer.from("ops_events").insert({
+    const { error } = await supabaseServer().from("ops_events").insert({
       quote_id: quoteId,
       destination_id: null,
       event_type: "customer_intro_handled",

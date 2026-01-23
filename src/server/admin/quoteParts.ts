@@ -46,7 +46,7 @@ export async function assertPartBelongsToQuote(args: {
     throw new Error("invalid_input");
   }
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseServer()
     .from("quote_parts")
     .select("id,quote_id")
     .eq("id", quotePartId)
@@ -88,7 +88,7 @@ export async function adminCreateQuotePart(
     throw new Error("invalid_input");
   }
 
-  const { error } = await supabaseServer.from("quote_parts").insert({
+  const { error } = await supabaseServer().from("quote_parts").insert({
     quote_id: normalizedQuoteId,
     part_label: label,
     notes,
@@ -142,7 +142,7 @@ export async function adminUpdateQuotePartFiles(args: {
 
     let uploadFiles: QuoteUploadFileRow[] = [];
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from("quote_upload_files")
         .select("id,filename,extension")
         .in("id", addFileIds)
@@ -189,7 +189,7 @@ export async function adminUpdateQuotePartFiles(args: {
       role: role ?? inferredRoleByFileId.get(fileId) ?? "other",
     }));
 
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("quote_part_files")
       .upsert(rows, {
         onConflict: "quote_part_id,quote_upload_file_id",
@@ -210,7 +210,7 @@ export async function adminUpdateQuotePartFiles(args: {
   }
 
   if (removeFileIds.length > 0) {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from("quote_part_files")
       .delete()
       .eq("quote_part_id", quotePartId)

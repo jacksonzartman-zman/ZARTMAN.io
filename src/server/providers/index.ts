@@ -127,7 +127,7 @@ export async function getActiveProviders(): Promise<ProviderRow[]> {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(PROVIDERS_TABLE)
       .select(selectColumns.join(","))
       .eq("is_active", true)
@@ -161,7 +161,7 @@ export async function listProviders(filters: ProviderListFilters = {}): Promise<
   }
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from(PROVIDERS_TABLE)
       .select(selectColumns.join(","))
       .order("name", { ascending: true });
@@ -221,7 +221,7 @@ export async function listProvidersWithContact(
   }
 
   try {
-    let query = supabaseServer
+    let query = supabaseServer()
       .from(PROVIDERS_TABLE)
       .select(selectColumns.join(","))
       .order("name", { ascending: true });
@@ -288,7 +288,7 @@ export async function getProviderWithContactById(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(PROVIDERS_TABLE)
       .select(selectColumns.join(","))
       .eq("id", normalizedProviderId)
@@ -340,7 +340,7 @@ export async function getProviderStatusByIds(
     const selectColumns = supportsSource
       ? "id,is_active,verification_status,source"
       : "id,is_active,verification_status";
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(PROVIDERS_TABLE)
       .select(selectColumns)
       .in("id", normalizedIds)
@@ -437,7 +437,7 @@ export async function updateDiscoveredProviderStub(
 
   let source: ProviderSource | null = null;
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(PROVIDERS_TABLE)
       .select("id,source")
       .eq("id", providerId)
@@ -482,7 +482,7 @@ export async function updateDiscoveredProviderStub(
   let existingNotes: string | null = null;
   if (supportsNotes) {
     try {
-      const { data, error } = await supabaseServer
+      const { data, error } = await supabaseServer()
         .from(PROVIDERS_TABLE)
         .select("id,notes")
         .eq("id", providerId)
@@ -558,7 +558,7 @@ export async function updateDiscoveredProviderStub(
   }
 
   try {
-    const { error } = await supabaseServer.from(PROVIDERS_TABLE).update(updates).eq("id", providerId);
+    const { error } = await supabaseServer().from(PROVIDERS_TABLE).update(updates).eq("id", providerId);
     if (error) {
       console.warn("[providers] updateDiscoveredProviderStub failed", {
         providerId,
@@ -722,7 +722,7 @@ async function createProviderStub(
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(PROVIDERS_TABLE)
       .insert(payload)
       .select("id")

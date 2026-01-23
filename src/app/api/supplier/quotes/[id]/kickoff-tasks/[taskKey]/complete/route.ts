@@ -78,7 +78,7 @@ export async function POST(
       return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
     }
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
       .select("id,awarded_supplier_id")
       .eq("id", quoteId)
@@ -113,7 +113,7 @@ export async function POST(
     const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
 
     const updateV2 = async () =>
-      supabaseServer
+      supabaseServer()
         .from(supplierTasksTable)
         .update({
           completed: true,
@@ -128,7 +128,7 @@ export async function POST(
         .returns<{ id: string }[]>();
 
     const updateV1 = async () =>
-      supabaseServer
+      supabaseServer()
         .from(supplierTasksTable)
         .update({ completed: true })
         .eq("quote_id", quoteId)
@@ -184,7 +184,7 @@ export async function POST(
       };
 
       const insertV2 = async () =>
-        supabaseServer.from(supplierTasksTable).insert({
+        supabaseServer().from(supplierTasksTable).insert({
           ...insertBase,
           completed_at: now,
           completed_by_user_id: user.id,
@@ -192,7 +192,7 @@ export async function POST(
         });
 
       const insertV1 = async () =>
-        supabaseServer.from(supplierTasksTable).insert(insertBase);
+        supabaseServer().from(supplierTasksTable).insert(insertBase);
 
       const insertAttempt = await insertV2();
       let insertError = insertAttempt.error;

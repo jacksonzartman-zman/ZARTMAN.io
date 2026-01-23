@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Resolve quote id from file id (preferred), to support callers that only know `fileId`.
-  const { data: fileRow, error: fileRowError } = await supabaseServer
+  const { data: fileRow, error: fileRowError } = await supabaseServer()
     .from("quote_upload_files")
     .select("id,quote_id,filename,extension")
     .eq("id", fileId)
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
         customer?.email ?? customerFallback?.email ?? userEmail,
       );
 
-      const { data: quoteRow } = await supabaseServer
+      const { data: quoteRow } = await supabaseServer()
         .from("quotes")
         .select("id,customer_id,customer_email")
         .eq("id", quoteId)
@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "step_preview_unavailable" }, { status: 502 });
     }
 
-    const { data: blob, error: downloadError } = await supabaseServer.storage
+    const { data: blob, error: downloadError } = await supabaseServer().storage
       .from(preview.bucket)
       .download(preview.path);
 

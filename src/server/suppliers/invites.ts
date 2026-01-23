@@ -104,7 +104,7 @@ export async function listSupplierPendingInvites(args: {
   if (!supplierId) return [];
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_invites")
       .select("id,email,token,status,created_at")
       .eq("supplier_id", supplierId)
@@ -164,7 +164,7 @@ export async function createSupplierInvite(args: {
       invited_by_user_id: invitedByUserId,
     };
 
-    const insert = await supabaseServer
+    const insert = await supabaseServer()
       .from("supplier_invites")
       .insert(insertPayload)
       .select("id,email,token,status,created_at")
@@ -177,7 +177,7 @@ export async function createSupplierInvite(args: {
 
       // If a pending invite already exists for (supplier_id, email), reuse it.
       if (pgCode === "23505") {
-        const existing = await supabaseServer
+        const existing = await supabaseServer()
           .from("supplier_invites")
           .select("id,email,token,status,created_at")
           .eq("supplier_id", supplierId)
@@ -247,7 +247,7 @@ export async function resendSupplierInvite(args: {
   }
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_invites")
       .select("id,email,token,status,created_at")
       .eq("supplier_id", supplierId)
@@ -301,7 +301,7 @@ export async function loadSupplierInviteByToken(args: {
   if (!isValidToken(token)) return null;
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_invites")
       .select("id,supplier_id,email,token,status,created_at,accepted_at,invited_by_user_id")
       .eq("token", token)
@@ -362,7 +362,7 @@ export async function acceptSupplierInvite(args: {
   try {
     const supplierId = invite.supplier_id;
 
-    const membership = await supabaseServer
+    const membership = await supabaseServer()
       .from("supplier_users")
       .upsert(
         { supplier_id: supplierId, user_id: userId },
@@ -379,7 +379,7 @@ export async function acceptSupplierInvite(args: {
       return { ok: false, error: "We couldn’t accept that invite. Please try again.", reason: "write_failed" };
     }
 
-    const updated = await supabaseServer
+    const updated = await supabaseServer()
       .from("supplier_invites")
       .update({ status: "accepted", accepted_at: new Date().toISOString() })
       .eq("id", invite.id)
@@ -425,7 +425,7 @@ export async function listSupplierTeamMembers(args: {
   if (ownerUserId) userIds.add(ownerUserId);
 
   try {
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from("supplier_users")
       .select("user_id,created_at")
       .eq("supplier_id", supplierId)
@@ -455,7 +455,7 @@ export async function listSupplierTeamMembers(args: {
 
   for (const userId of Array.from(userIds)) {
     try {
-      const { data, error } = await supabaseServer.auth.admin.getUserById(userId);
+      const { data, error } = await supabaseServer().auth.admin.getUserById(userId);
       if (error) {
         resolved.push({
           userId,

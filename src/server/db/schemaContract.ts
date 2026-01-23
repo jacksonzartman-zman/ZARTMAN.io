@@ -92,7 +92,7 @@ async function probeRelationExists(args: {
 }): Promise<{ ok: true } | { ok: false; reason: ProbeFailReason; error?: unknown }> {
   try {
     // Column-agnostic existence probe: do not assume `id` is present.
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from(args.relation)
       .select("*" as any, { head: true, count: "exact" })
       .limit(1);
@@ -142,7 +142,7 @@ async function probeColumnsExist(args: {
     const missing: string[] = [];
     for (const col of args.requiredColumns) {
       try {
-        const { error: colError } = await supabaseServer
+        const { error: colError } = await supabaseServer()
           .from(args.relation)
           .select(col as any, { head: true, count: "exact" })
           .limit(1);
@@ -182,7 +182,7 @@ async function probeColumnsExist(args: {
   };
 
   try {
-    const { error } = await supabaseServer
+    const { error } = await supabaseServer()
       .from(args.relation)
       .select(select as any, { head: true, count: "exact" })
       .limit(1);
@@ -257,7 +257,7 @@ export async function requireSchema(opts: RequireSchemaOpts): Promise<RelationPr
     // Optional: information_schema probe is gated behind SCHEMA_CONTRACT_USE_INFO_SCHEMA=true.
     if (schemaContractUseInfoSchema()) {
       try {
-        const { data, error } = await supabaseServer
+        const { data, error } = await supabaseServer()
           .from("information_schema.columns" as any)
           .select("column_name")
           .eq("table_schema", "public")

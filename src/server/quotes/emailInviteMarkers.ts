@@ -72,7 +72,7 @@ export async function markInviteSent(args: {
       },
     };
 
-    const { error } = await supabaseServer.from(QUOTE_MESSAGES_RELATION).insert(payload as any);
+    const { error } = await supabaseServer().from(QUOTE_MESSAGES_RELATION).insert(payload as any);
     if (error) {
       if (
         handleMissingSupabaseSchema({
@@ -133,7 +133,7 @@ export async function wasInviteSent(args: {
 
   try {
     const MAX_SCAN = 50;
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabaseServer()
       .from(QUOTE_MESSAGES_RELATION)
       .select("metadata,created_at")
       .eq("quote_id", quoteId)

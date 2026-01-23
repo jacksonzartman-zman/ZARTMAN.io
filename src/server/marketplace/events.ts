@@ -14,7 +14,7 @@ export async function logMarketplaceEvent(
       payload: event.payload ?? {},
     };
 
-    const { error } = await supabaseServer.from("rfq_events").insert(payload);
+    const { error } = await supabaseServer().from("rfq_events").insert(payload);
     if (error) {
       console.error("marketplace: failed to log event", { event, error });
     }
