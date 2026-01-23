@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
 import { primaryCtaClasses } from "@/lib/ctas";
+import HomeUploadLauncher from "@/components/marketing/HomeUploadLauncher";
 
 export type HomeSearchProcess = {
   key: string;
@@ -50,6 +51,7 @@ function isIsoDateInPast(isoDate: string): boolean {
 }
 
 export default function HomeSearchWidget({
+  isAuthenticated,
   processes,
   initialProcessKey,
 }: HomeSearchWidgetProps) {
@@ -106,9 +108,13 @@ export default function HomeSearchWidget({
 
   const shouldBlockNav = !qtyIsValid || !targetDateIsValid;
 
-  const handleLinkClick = (event: React.MouseEvent) => {
-    if (!shouldBlockNav) return;
-    event.preventDefault();
+  const [uploadOpen, setUploadOpen] = useState(false);
+
+  const handleOpenUpload = () => {
+    if (!shouldBlockNav) {
+      setUploadOpen(true);
+      return;
+    }
     setQtyTouched(true);
     setTargetDateTouched(true);
   };
@@ -157,16 +163,16 @@ export default function HomeSearchWidget({
                 <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                   CAD / ZIP
                 </div>
-                <Link
-                  href={quoteHref}
-                  onClick={handleLinkClick}
+                <button
+                  type="button"
+                  onClick={handleOpenUpload}
                   className={clsx(
                     "flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left text-sm text-slate-900 shadow-sm transition hover:border-slate-300",
                   )}
                 >
                   <span className="font-medium">Upload CAD/ZIP</span>
                   <span className="text-xs text-slate-500">STEP, IGES, STL, ZIP</span>
-                </Link>
+                </button>
               </div>
 
               <div className="space-y-1">
@@ -234,14 +240,20 @@ export default function HomeSearchWidget({
                 <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                   &nbsp;
                 </div>
-                <Link
-                  href={quoteHref}
-                  onClick={handleLinkClick}
+                <button
+                  type="button"
+                  onClick={handleOpenUpload}
                   className={clsx(primaryCtaClasses, "h-12 w-full rounded-xl px-7 text-base")}
                 >
                   Upload CAD to compare offers
-                </Link>
+                </button>
               </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-slate-600">
+              <Link href={quoteHref} className="font-semibold underline-offset-4 hover:underline">
+                Advanced options
+              </Link>
             </div>
 
             <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 sm:px-5">
@@ -263,6 +275,17 @@ export default function HomeSearchWidget({
           </div>
         </div>
       </div>
+      <HomeUploadLauncher
+        isAuthenticated={isAuthenticated}
+        manufacturingProcess={manufacturingProcess}
+        processLabel={activeProcess?.label}
+        processKey={activeProcess?.key}
+        isOpen={uploadOpen}
+        onOpenChange={setUploadOpen}
+        hideTrigger
+        prefillQuantity={quantityText}
+        prefillNeedByDate={targetDate}
+      />
     </div>
   );
 }
