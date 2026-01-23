@@ -31,11 +31,14 @@ const SHOW_LOGIN_DEBUG = process.env.NEXT_PUBLIC_SHOW_LOGIN_DEBUG === "true";
 const LEGACY_QUOTE_PATH = "/quote";
 const CUSTOMER_SEARCH_PATH = "/customer/search";
 
+type SearchParams = Record<string, string | string[] | undefined>;
+
 type LoginPageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<SearchParams>;
 };
 
 async function LoginPage({ searchParams }: LoginPageProps) {
+  const sp = (await searchParams) ?? {};
   const headerList = await headers();
   const cookieHeader = headerList.get("cookie") ?? "";
   const cookieNames = cookieHeader
@@ -45,7 +48,7 @@ async function LoginPage({ searchParams }: LoginPageProps) {
   console.log("[auth] login cookies on /login:", cookieNames);
 
   const { user } = await getServerAuthUser();
-  const rawNextPath = resolveNextPath(searchParams);
+  const rawNextPath = resolveNextPath(sp);
   const nextPath = resolveLegacyQuoteNextPath(rawNextPath);
   const sessionSummary = {
     userId: user?.id ?? null,
@@ -276,7 +279,7 @@ async function signOutAction() {
   redirect("/");
 }
 
-function resolveNextPath(searchParams?: Record<string, string | string[] | undefined>): string | null {
+function resolveNextPath(searchParams?: SearchParams): string | null {
   if (!searchParams) {
     return null;
   }

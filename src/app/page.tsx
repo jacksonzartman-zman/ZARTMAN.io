@@ -4,6 +4,12 @@ import HomeSearchWidget, { type HomeSearchProcess } from "@/components/marketing
 
 export const dynamic = "force-dynamic";
 
+type SearchParams = Record<string, string | string[] | undefined>;
+
+type PageProps = {
+  searchParams?: Promise<SearchParams>;
+};
+
 const HOW_IT_WORKS_STEPS = [
   {
     title: "Upload",
@@ -31,26 +37,23 @@ function getProviderInitials(name: string) {
     .join("");
 }
 
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function HomePage({ searchParams }: PageProps) {
+  const sp = (await searchParams) ?? {};
   const activeProviders = await getActiveProviders();
   const { hasUser } = await getServerAuthUser({ quiet: true });
 
-  const openUploadRaw = searchParams?.openUpload;
+  const openUploadRaw = sp.openUpload;
   const openUpload = (Array.isArray(openUploadRaw) ? openUploadRaw[0] : openUploadRaw) === "1";
 
-  const processRaw = searchParams?.process;
+  const processRaw = sp.process;
   const initialProcessKey =
     typeof processRaw === "string" ? processRaw : Array.isArray(processRaw) ? processRaw[0] : null;
 
-  const qtyRaw = searchParams?.qty;
+  const qtyRaw = sp.qty;
   const initialQuantity =
     typeof qtyRaw === "string" ? qtyRaw : Array.isArray(qtyRaw) ? qtyRaw[0] : undefined;
 
-  const targetDateRaw = searchParams?.targetDate;
+  const targetDateRaw = sp.targetDate;
   const initialTargetDate =
     typeof targetDateRaw === "string"
       ? targetDateRaw

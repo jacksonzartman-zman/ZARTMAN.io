@@ -7,14 +7,17 @@ export const metadata: Metadata = {
   title: "Join as a supplier | Zartman",
 };
 
+type SearchParams = Record<string, string | string[] | undefined>;
+
 type Props = {
   params?: Record<string, never>;
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<SearchParams>;
 };
 
-const SupplierJoinPage = ((props: unknown) => {
+const SupplierJoinPage = (async (props: unknown) => {
   const { searchParams } = props as Props;
-  const supplierSlug = getSearchParamValue(searchParams, "supplier");
+  const sp = (await searchParams) ?? {};
+  const supplierSlug = getSearchParamValue(sp, "supplier");
 
   return (
     <main className="main-shell">
@@ -43,6 +46,6 @@ const SupplierJoinPage = ((props: unknown) => {
       </div>
     </main>
   );
-}) satisfies ((props: Props) => ReactElement);
+}) satisfies ((props: Props) => Promise<ReactElement>);
 
 export default SupplierJoinPage;
