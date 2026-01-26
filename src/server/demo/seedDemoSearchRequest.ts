@@ -16,6 +16,17 @@ type ProviderRow = {
   name: string;
 };
 
+type DemoUploadInsertPayload = {
+  file_name: string;
+  file_path: string;
+  mime_type: string;
+  name: string;
+  email: string;
+  company: string;
+  customer_id: string;
+  status: string;
+};
+
 function normalizeEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().toLowerCase();
@@ -32,6 +43,57 @@ function isUuid(value: string): boolean {
   );
 }
 
+/**
+ * Test-only helper: build the minimal uploads insert payload for demo seed.
+ * Keep in sync with the schema expectations in `ensureDemoSchema`.
+ */
+export function buildDemoUploadInsertPayload(args: {
+  customerId: string;
+  customerEmail: string;
+  nowIso: string;
+}): DemoUploadInsertPayload {
+  const customerId = normalizeId(args.customerId);
+  const customerEmail = normalizeEmail(args.customerEmail) ?? "";
+  const nowIso = typeof args.nowIso === "string" ? args.nowIso : "";
+  const suffix = nowIso ? ` (${nowIso})` : "";
+  return {
+    file_name: "demo-bracket.step",
+    file_path: "demo/demo-bracket.step",
+    mime_type: "application/step",
+    name: `Demo Customer${suffix}`,
+    email: customerEmail,
+    company: "Demo Corp",
+    customer_id: customerId,
+    status: "in_review",
+  };
+}
+
+/**
+ * Test-only helper: build the minimal quotes insert payload for demo seed.
+ * Keep in sync with the schema expectations in `ensureDemoSchema`.
+ */
+export function buildDemoQuoteInsertPayload(args: {
+  customerId: string;
+  customerEmail: string;
+  uploadId: string;
+  nowIso: string;
+}): Record<string, unknown> {
+  const nowIso = typeof args.nowIso === "string" ? args.nowIso : "";
+  return {
+    upload_id: normalizeId(args.uploadId),
+    customer_id: normalizeId(args.customerId),
+    customer_email: normalizeEmail(args.customerEmail) ?? "",
+    customer_name: "Demo Customer",
+    company: "Demo Corp",
+    status: "in_review",
+    currency: "USD",
+    file_name: "demo-bracket.step",
+    internal_notes: `DEMO_MODE seed (${nowIso})`,
+    created_at: nowIso,
+    updated_at: nowIso,
+  };
+}
+
 async function ensureDemoSchema(): Promise<{ ok: true } | { ok: false; error: string }> {
   const checks = await Promise.all([
     schemaGate({
@@ -46,6 +108,7 @@ async function ensureDemoSchema(): Promise<{ ok: true } | { ok: false; error: st
       relation: "quotes",
       requiredColumns: [
         "id",
+        "upload_id",
         "customer_id",
         "customer_email",
         "customer_name",
@@ -59,6 +122,23 @@ async function ensureDemoSchema(): Promise<{ ok: true } | { ok: false; error: st
       ],
       warnPrefix: "[demo seed]",
       warnKey: "demo_seed:quotes",
+    }),
+    schemaGate({
+      enabled: true,
+      relation: "uploads",
+      requiredColumns: [
+        "id",
+        "file_name",
+        "file_path",
+        "mime_type",
+        "name",
+        "email",
+        "company",
+        "customer_id",
+        "status",
+      ],
+      warnPrefix: "[demo seed]",
+      warnKey: "demo_seed:uploads",
     }),
     schemaGate({
       enabled: true,
@@ -300,18 +380,44 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
   const nowIso = new Date().toISOString();
 
   try {
-    const quotePayload = {
-      customer_id: customer.customerId,
-      customer_email: customer.email,
-      customer_name: "Demo Customer",
-      company: "Demo Corp",
-      status: "in_review",
-      currency: "USD",
-      file_name: "demo-bracket.step",
-      internal_notes: `DEMO_MODE seed (${nowIso})`,
-      created_at: nowIso,
-      updated_at: nowIso,
-    };
+    const uploadPayload = buildDemoUploadInsertPayload({
+      customerId: customer.customerId,
+      customerEmail: customer.email,
+      nowIso,
+    });
+
+    const uploadInsert = await supabaseServer()
+      .from("uploads")
+      .insert(uploadPayload)
+      .select("id")
+      .single<{ id: string }>();
+
+    if (uploadInsert.error || !uploadInsert.data?.id) {
+      console.error("[demo seed] upload insert failed", {
+        customerId: customer.customerId,
+        customerEmail: customer.email,
+        payloadFields: Object.keys(uploadPayload),
+        payload: uploadPayload,
+        error: serializeSupabaseError(uploadInsert.error) ?? uploadInsert.error,
+      });
+      return { ok: false, error: "Unable to create demo upload." };
+    }
+
+    const uploadId = uploadInsert.data.id;
+    if (!isUuid(uploadId)) {
+      console.error("[demo seed] upload insert returned non-uuid id", {
+        uploadId,
+        payloadFields: Object.keys(uploadPayload),
+      });
+      return { ok: false, error: "Unable to create demo upload." };
+    }
+
+    const quotePayload = buildDemoQuoteInsertPayload({
+      customerId: customer.customerId,
+      customerEmail: customer.email,
+      uploadId,
+      nowIso,
+    });
 
     const { data: quote, error: quoteError } = await supabaseServer()
       .from("quotes")
@@ -321,6 +427,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
 
     if (quoteError || !quote?.id) {
       console.error("[demo seed] quote insert failed", {
+        uploadId,
         payload: quotePayload,
         error: serializeSupabaseError(quoteError) ?? quoteError,
       });
