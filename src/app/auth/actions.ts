@@ -40,15 +40,15 @@ export async function requestMagicLinkForEmail(
   const supabase = supabasePublic();
   const headerList = await headers();
   const origin = getRequestOrigin(headerList, { clientOrigin: input.clientOrigin });
-  const { redirectTo: emailRedirectTo, next: nextPath } = buildAuthCallbackRedirectTo({
+  const { redirectTo: emailRedirectTo, next } = buildAuthCallbackRedirectTo({
     origin,
     nextPath: input.nextPath,
   });
 
   debugOnce(`auth:magiclink:send:${input.role}`, "[auth] sending magic link", {
     origin,
-    redirectTo: emailRedirectTo,
-    next: nextPath,
+    emailRedirectTo,
+    next,
     VERCEL_ENV: process.env.VERCEL_ENV ?? null,
     NODE_ENV: process.env.NODE_ENV ?? null,
   });
@@ -68,7 +68,7 @@ export async function requestMagicLinkForEmail(
     console.error("requestMagicLinkForEmail: failed to send OTP", {
       role: input.role,
       origin,
-      nextPath,
+      next,
       emailRedirectTo,
       error,
     });

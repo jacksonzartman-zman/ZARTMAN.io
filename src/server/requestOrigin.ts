@@ -12,6 +12,27 @@ type GetRequestOriginOptions = {
   clientOrigin?: string | null;
 };
 
+/**
+ * Allowlist:
+ * - https://www.zartman.io
+ * - https://zartman.io
+ * - any https://*.vercel.app
+ */
+function isAllowlistedHttpsOrigin(url: URL): boolean {
+  if (url.protocol !== "https:") {
+    return false;
+  }
+
+  const origin = trimTrailingSlash(url.origin);
+  if (origin === "https://www.zartman.io" || origin === "https://zartman.io") {
+    return true;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  // Allow any https://*.vercel.app preview.
+  return hostname.endsWith(".vercel.app") && hostname.split(".").length >= 3;
+}
+
 function readHeader(headers: HeadersLike, name: string): string | null {
   const value = headers.get(name);
   if (typeof value !== "string") return null;
@@ -50,23 +71,24 @@ export function validateClientOrigin(clientOrigin?: string | null): string | nul
     return null;
   }
 
-  // Only accept explicit https origins.
-  if (url.protocol !== "https:") {
+  if (!isAllowlistedHttpsOrigin(url)) {
     return null;
   }
 
-  const origin = trimTrailingSlash(url.origin);
-  if (origin === "https://www.zartman.io" || origin === "https://zartman.io") {
-    return origin;
-  }
+  return trimTrailingSlash(url.origin);
+}
 
-  const hostname = url.hostname.toLowerCase();
-  // Allow any https://*.vercel.app preview.
-  if (hostname.endsWith(".vercel.app") && hostname.split(".").length >= 3) {
-    return origin;
+function validateAllowlistedOriginHeader(originHeader: string | null): string | null {
+  if (!originHeader) return null;
+  try {
+    const url = new URL(originHeader);
+    if (!isAllowlistedHttpsOrigin(url)) {
+      return null;
+    }
+    return trimTrailingSlash(url.origin);
+  } catch {
+    return null;
   }
-
-  return null;
 }
 
 export function resolveSafeNextPath(nextPath?: string | null): string | null {
@@ -85,13 +107,13 @@ export function resolveSafeNextPath(nextPath?: string | null): string | null {
 }
 
 /**
- * Prefer Vercel proxy headers to determine the *true* request origin.
+ * Determine the true request origin.
  *
- * Order:
+ * Priority order:
+ * - validated clientOrigin (if provided and allowlisted)
  * - x-forwarded-proto + x-forwarded-host
- * - origin header
- * - referer origin
- * - env-derived site URL (legacy)
+ * - Origin header (if present and allowlisted)
+ * - NEXT_PUBLIC_SITE_URL / SITE_URL fallback
  * - localhost fallback
  */
 export function getRequestOrigin(headers: HeadersLike, options?: GetRequestOriginOptions): string {
@@ -107,22 +129,9 @@ export function getRequestOrigin(headers: HeadersLike, options?: GetRequestOrigi
     return trimTrailingSlash(`${proto}://${forwardedHost}`);
   }
 
-  const originHeader = readHeader(headers, "origin");
-  if (originHeader) {
-    try {
-      return trimTrailingSlash(new URL(originHeader).origin);
-    } catch {
-      // ignore malformed origin
-    }
-  }
-
-  const referer = readHeader(headers, "referer");
-  if (referer) {
-    try {
-      return trimTrailingSlash(new URL(referer).origin);
-    } catch {
-      // ignore malformed referer
-    }
+  const allowlistedOriginHeader = validateAllowlistedOriginHeader(readHeader(headers, "origin"));
+  if (allowlistedOriginHeader) {
+    return allowlistedOriginHeader;
   }
 
   const baseUrl =
