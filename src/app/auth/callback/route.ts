@@ -1,6 +1,7 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createAuthClient } from "@/server/auth";
+import { debugOnce, serializeSupabaseError } from "@/server/db/schemaErrors";
+import { getRequestOrigin } from "@/server/requestOrigin";
 
 const LOGIN_REDIRECT_PATH = "/login";
 const NEXT_QUERY_KEY = "next";
@@ -28,44 +29,60 @@ function resolveSafeNextPath(requestUrl: URL): string | null {
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
+  const tokenHash = requestUrl.searchParams.get("token_hash");
+  const type = requestUrl.searchParams.get("type") ?? "magiclink";
   const nextPath = resolveSafeNextPath(requestUrl);
-  const redirectTarget = nextPath
-    ? `${LOGIN_REDIRECT_PATH}?next=${encodeURIComponent(nextPath)}`
-    : LOGIN_REDIRECT_PATH;
+  const redirectTarget = nextPath ?? LOGIN_REDIRECT_PATH;
+  const origin = getRequestOrigin(request.headers);
 
-  console.log("[auth/callback] incoming url", request.url);
-  console.log("[auth/callback] code present", Boolean(code));
+  debugOnce("auth:callback:incoming", "[auth/callback] incoming auth redirect", {
+    origin,
+    redirectTo: requestUrl.origin ? `${requestUrl.origin}/auth/callback` : null,
+    next: nextPath,
+    VERCEL_ENV: process.env.VERCEL_ENV ?? null,
+    NODE_ENV: process.env.NODE_ENV ?? null,
+    hasCode: Boolean(code),
+    hasTokenHash: Boolean(tokenHash),
+    type,
+  });
 
-  if (!code) {
-    console.warn("[auth/callback] invoked without code");
-    return NextResponse.redirect(new URL(redirectTarget, requestUrl.origin));
-  }
-
-  const cookieStoreBefore = await cookies();
-  console.log(
-    "[auth/callback] cookies BEFORE exchange:",
-    cookieStoreBefore.getAll?.() ?? "unavailable",
-  );
-
-  const supabase = createAuthClient();
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-  console.log("[auth/callback] exchange error:", error?.message ?? null);
-
-  const cookieStoreAfter = await cookies();
-  console.log(
-    "[auth/callback] cookies AFTER exchange:",
-    cookieStoreAfter.getAll?.() ?? "unavailable",
-  );
-
-  if (error) {
-    console.error("[auth/callback] failed to exchange code", {
-      code,
-      message: error.message,
-      stack: error.stack,
+  if (!code && !tokenHash) {
+    debugOnce("auth:callback:missing_token", "[auth/callback] invoked without code/token_hash", {
+      origin,
+      next: nextPath,
     });
     return NextResponse.redirect(new URL(redirectTarget, requestUrl.origin));
   }
+
+  const supabase = createAuthClient();
+  let exchangeError: unknown | null = null;
+  let hasSession = false;
+  let hasUser = false;
+
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    exchangeError = error ?? null;
+    hasSession = Boolean(data?.session);
+    hasUser = Boolean(data?.user);
+  } else if (tokenHash) {
+    // Back-compat: older flows may redirect with token_hash + type.
+    const { data, error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: type as any,
+    });
+    exchangeError = error ?? null;
+    hasSession = Boolean((data as any)?.session);
+    hasUser = Boolean((data as any)?.user);
+  }
+
+  const serializedError = exchangeError ? serializeSupabaseError(exchangeError) : null;
+  debugOnce("auth:callback:exchange_result", "[auth/callback] exchange result", {
+    origin,
+    next: nextPath,
+    hasSession,
+    hasUser,
+    error: serializedError,
+  });
 
   return NextResponse.redirect(new URL(redirectTarget, requestUrl.origin));
 }
