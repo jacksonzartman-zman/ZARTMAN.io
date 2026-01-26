@@ -2,7 +2,10 @@
 
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { supabasePublic } from "@/lib/supabaseServer";
+import { debugOnce } from "@/server/db/schemaErrors";
+import { buildAuthCallbackRedirectTo, getRequestOrigin } from "@/server/requestOrigin";
 import type { PortalRole } from "@/types/portal";
+import { headers } from "next/headers";
 
 export type RequestMagicLinkInput = {
   role: PortalRole;
@@ -34,18 +37,20 @@ export async function requestMagicLinkForEmail(
   }
 
   const supabase = supabasePublic();
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ??
-    (process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000");
-  const nextPath =
-    typeof input.nextPath === "string" && input.nextPath.startsWith("/")
-      ? input.nextPath
-      : null;
-  const emailRedirectTo = nextPath
-    ? `${baseUrl}/auth/callback?next=${encodeURIComponent(nextPath)}`
-    : `${baseUrl}/auth/callback`;
+  const headerList = await headers();
+  const origin = getRequestOrigin(headerList);
+  const { redirectTo: emailRedirectTo, next: nextPath } = buildAuthCallbackRedirectTo({
+    origin,
+    nextPath: input.nextPath,
+  });
+
+  debugOnce(`auth:magiclink:send:${input.role}`, "[auth] sending magic link", {
+    origin,
+    redirectTo: emailRedirectTo,
+    next: nextPath,
+    VERCEL_ENV: process.env.VERCEL_ENV ?? null,
+    NODE_ENV: process.env.NODE_ENV ?? null,
+  });
 
   try {
     await supabase.auth.signInWithOtp({
@@ -61,8 +66,8 @@ export async function requestMagicLinkForEmail(
   } catch (error) {
     console.error("requestMagicLinkForEmail: failed to send OTP", {
       role: input.role,
-      email: normalizedEmail,
-      requestedNextPath: input.nextPath,
+      origin,
+      nextPath,
       emailRedirectTo,
       error,
     });
