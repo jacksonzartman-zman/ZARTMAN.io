@@ -91,6 +91,23 @@ function validateAllowlistedOriginHeader(originHeader: string | null): string | 
   }
 }
 
+function validateAllowlistedForwardedOrigin(
+  forwardedProto: string | null,
+  forwardedHost: string | null,
+): string | null {
+  if (!forwardedHost) return null;
+  const proto = forwardedProto ?? "https";
+  try {
+    const url = new URL(`${proto}://${forwardedHost}`);
+    if (!isAllowlistedHttpsOrigin(url)) {
+      return null;
+    }
+    return trimTrailingSlash(url.origin);
+  } catch {
+    return null;
+  }
+}
+
 export function resolveSafeNextPath(nextPath?: string | null): string | null {
   if (typeof nextPath !== "string") {
     return null;
@@ -124,9 +141,9 @@ export function getRequestOrigin(headers: HeadersLike, options?: GetRequestOrigi
 
   const forwardedProto = firstForwardedValue(readHeader(headers, "x-forwarded-proto"));
   const forwardedHost = firstForwardedValue(readHeader(headers, "x-forwarded-host"));
-  if (forwardedHost) {
-    const proto = forwardedProto ?? "https";
-    return trimTrailingSlash(`${proto}://${forwardedHost}`);
+  const allowlistedForwardedOrigin = validateAllowlistedForwardedOrigin(forwardedProto, forwardedHost);
+  if (allowlistedForwardedOrigin) {
+    return allowlistedForwardedOrigin;
   }
 
   const allowlistedOriginHeader = validateAllowlistedOriginHeader(readHeader(headers, "origin"));

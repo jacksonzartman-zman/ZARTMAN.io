@@ -81,10 +81,10 @@ import assert from "node:assert";
       getRequestOrigin(
         h({
           "x-forwarded-proto": "https, http",
-          "x-forwarded-host": "a.example.com, b.example.com",
+          "x-forwarded-host": "a-preview-123.vercel.app, b-preview-456.vercel.app",
         }),
       ),
-      "https://a.example.com",
+      "https://a-preview-123.vercel.app",
     );
 
     // Origin header is only accepted if allowlisted.
