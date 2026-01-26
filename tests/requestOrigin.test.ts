@@ -31,6 +31,36 @@ import assert from "node:assert";
       "https://my-preview-123.vercel.app",
     );
 
+    // An explicitly provided (and allowlisted) client origin should win.
+    {
+      const clientOrigin = "https://zartman-abc-jackson-zartmans-projects.vercel.app";
+      const origin = getRequestOrigin(
+        h({
+          "x-forwarded-proto": "https",
+          "x-forwarded-host": "some-other-host.example.com",
+        }),
+        { clientOrigin },
+      );
+      assert.strictEqual(origin, clientOrigin);
+      const { redirectTo } = buildAuthCallbackRedirectTo({
+        origin,
+        nextPath: "/",
+      });
+      assert.ok(redirectTo.startsWith(`${clientOrigin}/auth/callback?next=`));
+    }
+
+    // Invalid client origin should be ignored and fall back to headers/env (no throw).
+    assert.strictEqual(
+      getRequestOrigin(
+        h({
+          "x-forwarded-proto": "https",
+          "x-forwarded-host": "my-preview-456.vercel.app",
+        }),
+        { clientOrigin: "https://evil.com" },
+      ),
+      "https://my-preview-456.vercel.app",
+    );
+
     // Comma-delimited forwarded values: pick the first.
     assert.strictEqual(
       getRequestOrigin(
@@ -80,14 +110,14 @@ import assert from "node:assert";
       );
     }
 
-    // Redirect builder should drop unsafe next paths.
+    // Redirect builder should default unsafe next paths to "/".
     {
       const { redirectTo, next } = buildAuthCallbackRedirectTo({
         origin: "https://x.example.com",
         nextPath: "https://evil.com/phish",
       });
-      assert.strictEqual(next, null);
-      assert.strictEqual(redirectTo, "https://x.example.com/auth/callback");
+      assert.strictEqual(next, "/");
+      assert.strictEqual(redirectTo, "https://x.example.com/auth/callback?next=%2F");
     }
 
     console.log("requestOrigin tests passed");

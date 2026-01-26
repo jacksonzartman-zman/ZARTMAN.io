@@ -11,6 +11,7 @@ export type RequestMagicLinkInput = {
   role: PortalRole;
   email: string;
   nextPath?: string | null;
+  clientOrigin?: string;
 };
 
 export type RequestMagicLinkResult = {
@@ -38,7 +39,7 @@ export async function requestMagicLinkForEmail(
 
   const supabase = supabasePublic();
   const headerList = await headers();
-  const origin = getRequestOrigin(headerList);
+  const origin = getRequestOrigin(headerList, { clientOrigin: input.clientOrigin });
   const { redirectTo: emailRedirectTo, next: nextPath } = buildAuthCallbackRedirectTo({
     origin,
     nextPath: input.nextPath,

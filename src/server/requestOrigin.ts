@@ -4,6 +4,14 @@ type HeadersLike = {
   get(name: string): string | null;
 };
 
+type GetRequestOriginOptions = {
+  /**
+   * Explicit origin from the browser (eg `window.location.origin`).
+   * This is validated against an allowlist before use.
+   */
+  clientOrigin?: string | null;
+};
+
 function readHeader(headers: HeadersLike, name: string): string | null {
   const value = headers.get(name);
   if (typeof value !== "string") return null;
@@ -20,6 +28,45 @@ function firstForwardedValue(value: string | null): string | null {
 
 function trimTrailingSlash(origin: string): string {
   return origin.endsWith("/") ? origin.slice(0, -1) : origin;
+}
+
+/**
+ * Allowlisted origins we accept from the browser.
+ * This prevents arbitrary redirect origins being injected into server actions.
+ */
+export function validateClientOrigin(clientOrigin?: string | null): string | null {
+  if (typeof clientOrigin !== "string") {
+    return null;
+  }
+  const trimmed = clientOrigin.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+
+  // Only accept explicit https origins.
+  if (url.protocol !== "https:") {
+    return null;
+  }
+
+  const origin = trimTrailingSlash(url.origin);
+  if (origin === "https://www.zartman.io" || origin === "https://zartman.io") {
+    return origin;
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  // Allow any https://*.vercel.app preview.
+  if (hostname.endsWith(".vercel.app") && hostname.split(".").length >= 3) {
+    return origin;
+  }
+
+  return null;
 }
 
 export function resolveSafeNextPath(nextPath?: string | null): string | null {
@@ -47,7 +94,12 @@ export function resolveSafeNextPath(nextPath?: string | null): string | null {
  * - env-derived site URL (legacy)
  * - localhost fallback
  */
-export function getRequestOrigin(headers: HeadersLike): string {
+export function getRequestOrigin(headers: HeadersLike, options?: GetRequestOriginOptions): string {
+  const validatedClientOrigin = validateClientOrigin(options?.clientOrigin);
+  if (validatedClientOrigin) {
+    return validatedClientOrigin;
+  }
+
   const forwardedProto = firstForwardedValue(readHeader(headers, "x-forwarded-proto"));
   const forwardedHost = firstForwardedValue(readHeader(headers, "x-forwarded-host"));
   if (forwardedHost) {
@@ -75,6 +127,7 @@ export function getRequestOrigin(headers: HeadersLike): string {
 
   const baseUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.SITE_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
   if (baseUrl) {
     return trimTrailingSlash(baseUrl);
@@ -86,12 +139,10 @@ export function getRequestOrigin(headers: HeadersLike): string {
 export function buildAuthCallbackRedirectTo(args: {
   origin: string;
   nextPath?: string | null;
-}): { redirectTo: string; next: string | null } {
+}): { redirectTo: string; next: string } {
   const origin = trimTrailingSlash(args.origin);
-  const next = resolveSafeNextPath(args.nextPath);
-  const redirectTo = next
-    ? `${origin}/auth/callback?next=${encodeURIComponent(next)}`
-    : `${origin}/auth/callback`;
+  const next = resolveSafeNextPath(args.nextPath) ?? "/";
+  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
   return { redirectTo, next };
 }
 
