@@ -18,6 +18,15 @@ export type RequestMagicLinkResult = {
   success: boolean;
   normalizedEmail?: string;
   error?: string;
+  /**
+   * Non-production only: returned to the client for debugging.
+   * Never includes tokens/codes/cookies.
+   */
+  ok?: true;
+  /**
+   * Non-production only: the callback URL used for the magic link.
+   */
+  emailRedirectTo?: string;
 };
 
 const MAGIC_LINK_ERROR_MESSAGE =
@@ -45,6 +54,20 @@ export async function requestMagicLinkForEmail(
     nextPath: input.nextPath,
   });
 
+  const vercelEnv = process.env.VERCEL_ENV ?? null;
+  const nodeEnv = process.env.NODE_ENV ?? null;
+  const isProduction = vercelEnv === "production" || nodeEnv === "production";
+
+  // Server-only structured debug log. Do not include tokens/codes/cookies.
+  console.log({
+    clientOrigin: input.clientOrigin ?? null,
+    resolvedOrigin: origin,
+    emailRedirectTo,
+    next,
+    vercelEnv,
+    nodeEnv,
+  });
+
   debugOnce(`auth:magiclink:send:${input.role}`, "[auth] sending magic link", {
     origin,
     emailRedirectTo,
@@ -60,9 +83,17 @@ export async function requestMagicLinkForEmail(
         emailRedirectTo,
       },
     });
+    if (isProduction) {
+      return {
+        success: true,
+        normalizedEmail,
+      };
+    }
     return {
       success: true,
       normalizedEmail,
+      ok: true,
+      emailRedirectTo,
     };
   } catch (error) {
     console.error("requestMagicLinkForEmail: failed to send OTP", {

@@ -115,6 +115,10 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
         nextPath: redirectPath,
         clientOrigin,
       });
+      if (result.success && result.emailRedirectTo) {
+        // Temporary debug log (non-production only return value).
+        console.log("[portal-login] emailRedirectTo", result.emailRedirectTo);
+      }
       if (!result.success) {
         setStatus("error");
         setError(
