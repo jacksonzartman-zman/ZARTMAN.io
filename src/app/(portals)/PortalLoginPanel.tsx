@@ -108,10 +108,12 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
     try {
       setStatus("sending");
       setError(null);
+      const clientOrigin = window.location.origin;
       const result = await requestMagicLinkForEmail({
         role: resolvedRole,
         email: normalizedEmail,
         nextPath: redirectPath,
+        clientOrigin,
       });
       if (!result.success) {
         setStatus("error");
