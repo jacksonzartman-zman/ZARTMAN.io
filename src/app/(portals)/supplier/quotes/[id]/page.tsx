@@ -274,12 +274,12 @@ export default async function SupplierQuoteDetailPage({
     }
   }
 
-  const kickoffVisibility = deriveSupplierKickoffVisibility(
-    workspaceData.quote.awarded_supplier_id ?? null,
-    workspaceData.quote.awarded_at ?? null,
-    workspaceData.quote.awarded_bid_id ?? null,
-    profile.supplier.id,
-  );
+  // Kickoff checklist should unlock for the winning supplier, regardless of
+  // whether award came from the bid-award path (quotes.awarded_*) or offer-award path (rfq_awards).
+  const kickoffVisibility: SupplierKickoffVisibility = {
+    quoteReadyForKickoff: awardedToSupplier,
+    showKickoffChecklist: awardedToSupplier,
+  };
 
   let kickoffTasks: QuoteKickoffTask[] = [];
   let kickoffTasksUnavailable = false;
@@ -516,15 +516,7 @@ function SupplierQuoteWorkspace({
   const acceptedLock = normalizedBidStatus === "accepted";
   const closedWindowLock = bidLocked && !acceptedLock;
   const hasProject = Boolean(project);
-  const kickoffVisibilityState =
-    kickoffVisibility ??
-    deriveSupplierKickoffVisibility(
-      awardedSupplierId,
-      quote.awarded_at ?? null,
-      quote.awarded_bid_id ?? null,
-      supplierId,
-    );
-  const { showKickoffChecklist } = kickoffVisibilityState;
+  const { showKickoffChecklist } = kickoffVisibility;
   const isWinningSupplier = awardedToSupplier;
   const supplierDisplayName =
     supplierNameOverride ??
@@ -1326,35 +1318,6 @@ type SupplierKickoffVisibility = {
   quoteReadyForKickoff: boolean;
   showKickoffChecklist: boolean;
 };
-
-function deriveSupplierKickoffVisibility(
-  awardedSupplierId?: string | null,
-  awardedAt?: string | null,
-  awardedBidId?: string | null,
-  supplierId?: string,
-): SupplierKickoffVisibility {
-  const normalizedAwardedSupplierId =
-    typeof awardedSupplierId === "string"
-      ? awardedSupplierId.trim()
-      : "";
-  const normalizedAwardedAt = typeof awardedAt === "string" ? awardedAt.trim() : "";
-  const normalizedAwardedBidId =
-    typeof awardedBidId === "string" ? awardedBidId.trim() : "";
-  const normalizedSupplierId =
-    typeof supplierId === "string" ? supplierId.trim() : "";
-  const quoteHasWinner = Boolean(normalizedAwardedSupplierId);
-  const quoteReadyForKickoff =
-    Boolean(normalizedAwardedSupplierId) &&
-    Boolean(normalizedAwardedAt) &&
-    Boolean(normalizedAwardedBidId);
-  const showKickoffChecklist =
-    quoteReadyForKickoff && Boolean(normalizedSupplierId) && normalizedAwardedSupplierId === normalizedSupplierId;
-
-  return {
-    quoteReadyForKickoff,
-    showKickoffChecklist,
-  };
-}
 
 function mapQuoteKickoffTaskToRow(task: QuoteKickoffTask): KickoffTaskRow {
   return {

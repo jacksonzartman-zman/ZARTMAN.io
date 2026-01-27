@@ -19,6 +19,7 @@ import { getFormString, serializeActionError } from "@/lib/forms";
 import { upsertQuoteProject } from "@/server/quotes/projects";
 import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
 import { updateCustomerOfferShortlist } from "@/server/customer/offerShortlist";
+import { ensureKickoffTasksForOfferAward } from "@/server/quotes/kickoffTasks";
 import {
   customerCreateQuotePart,
   customerUpdateQuotePartFiles,
@@ -848,6 +849,16 @@ export async function awardOfferAction(input: {
   rfqId: string;
   offerId: string;
 }): Promise<AwardOfferActionResponse> {
+  return awardOfferActionImpl(input);
+}
+
+export async function awardOfferActionImpl(
+  input: { rfqId: string; offerId: string },
+  deps?: {
+    supabase?: ReturnType<typeof supabaseServer>;
+    ensureKickoff?: typeof ensureKickoffTasksForOfferAward;
+  },
+): Promise<AwardOfferActionResponse> {
   const rfqId = normalizeId(input?.rfqId);
   const offerId = normalizeId(input?.offerId);
   if (!isUuidLike(rfqId) || !isUuidLike(offerId)) {
@@ -855,6 +866,8 @@ export async function awardOfferAction(input: {
   }
 
   try {
+    const supabase = deps?.supabase ?? supabaseServer();
+    const ensureKickoff = deps?.ensureKickoff ?? ensureKickoffTasksForOfferAward;
     const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${rfqId}`);
     // User id may be null-ish in some flows; keep nullable in DB.
     const awardedBy = normalizeId(user?.id ?? null) || null;
@@ -864,7 +877,7 @@ export async function awardOfferAction(input: {
       return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
     }
 
-    const { data: quoteRow, error: quoteError } = await supabaseServer()
+    const { data: quoteRow, error: quoteError } = await supabase
       .from("quotes")
       .select("id,customer_id,customer_email")
       .eq("id", rfqId)
@@ -900,7 +913,7 @@ export async function awardOfferAction(input: {
       return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
     }
 
-    const { data: offerRow, error: offerError } = await supabaseServer()
+    const { data: offerRow, error: offerError } = await supabase
       .from("rfq_offers")
       .select("id,rfq_id,provider_id,destination_id,status")
       .eq("id", offerId)
@@ -929,7 +942,7 @@ export async function awardOfferAction(input: {
       return { ok: false, error: CUSTOMER_AWARD_OFFER_NOT_FOUND_ERROR };
     }
 
-    const { data: providerRow, error: providerError } = await supabaseServer()
+    const { data: providerRow, error: providerError } = await supabase
       .from("providers")
       .select("id,is_active,verification_status")
       .eq("id", providerId)
@@ -954,7 +967,7 @@ export async function awardOfferAction(input: {
 
     let destinationId = normalizeId(offerRow.destination_id ?? null) || null;
     if (!destinationId) {
-      const { data: destinationRow } = await supabaseServer()
+      const { data: destinationRow } = await supabase
         .from("rfq_destinations")
         .select("id")
         .eq("rfq_id", rfqId)
@@ -964,7 +977,7 @@ export async function awardOfferAction(input: {
     }
 
     const now = new Date().toISOString();
-    const { error: awardError } = await supabaseServer()
+    const { error: awardError } = await supabase
       .from("rfq_awards")
       .upsert(
         {
@@ -987,16 +1000,29 @@ export async function awardOfferAction(input: {
       return { ok: false, error: CUSTOMER_AWARD_OFFER_GENERIC_ERROR };
     }
 
+    // Phase 18.2-lite: kickoff tasks should exist immediately after offer award.
+    // Best-effort: never block award success.
+    try {
+      await ensureKickoff({ quoteId: rfqId, providerId });
+    } catch (error) {
+      console.warn("[customer offer award] kickoff ensure crashed (non-blocking)", {
+        rfqId,
+        offerId,
+        providerId,
+        error: serializeActionError(error),
+      });
+    }
+
     if (destinationId) {
       // Winner => quoted
-      await supabaseServer()
+      await supabase
         .from("rfq_destinations")
         .update({ status: "quoted" })
         .eq("rfq_id", rfqId)
         .eq("id", destinationId);
 
       // Others => declined
-      await supabaseServer()
+      await supabase
         .from("rfq_destinations")
         .update({ status: "declined" })
         .eq("rfq_id", rfqId)
@@ -1006,7 +1032,7 @@ export async function awardOfferAction(input: {
     }
 
     // Keep legacy selection fields in sync for downstream UI.
-    await supabaseServer()
+    await supabase
       .from("quotes")
       .update({
         selected_provider_id: providerId,
@@ -1017,6 +1043,8 @@ export async function awardOfferAction(input: {
 
     revalidatePath(`/customer/quotes/${rfqId}`);
     revalidatePath(`/customer/search`);
+    // Best-effort: supplier portal is not supplier-scoped.
+    revalidatePath(`/supplier/quotes/${rfqId}`);
 
     return { ok: true };
   } catch (error) {

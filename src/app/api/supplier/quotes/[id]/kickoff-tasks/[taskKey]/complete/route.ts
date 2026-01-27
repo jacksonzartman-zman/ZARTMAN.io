@@ -18,7 +18,9 @@ const SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY = "quote_kickoff_tasks";
 const SUPPLIER_KICKOFF_TASKS_TABLE_RENAMED = "quote_supplier_kickoff_tasks";
 
 async function resolveSupplierKickoffTasksTableName(): Promise<string> {
-  const requiredColumns = ["quote_id", "supplier_id", "task_key", "completed"];
+  // Keep permissive: some environments store completion via `completed_at` and may
+  // make `completed` generated (or omit it).
+  const requiredColumns = ["quote_id", "supplier_id", "task_key", "title"];
   const legacyOk = await schemaGate({
     enabled: true,
     relation: SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY,
@@ -61,6 +63,11 @@ export async function POST(
     const profile = await loadSupplierProfileByUserId(user.id);
     const supplierId =
       typeof profile?.supplier?.id === "string" ? profile.supplier.id.trim() : "";
+    const supplierProviderId =
+      typeof (profile?.supplier as { provider_id?: string | null } | null)?.provider_id ===
+      "string"
+        ? (profile?.supplier as any).provider_id.trim()
+        : null;
 
     if (!isUuidLike(supplierId)) {
       return NextResponse.json(
@@ -100,10 +107,41 @@ export async function POST(
         ? quoteRow.awarded_supplier_id.trim()
         : "";
     if (!awardedSupplierId || awardedSupplierId !== supplierId) {
-      return NextResponse.json(
-        { ok: false, error: "not_awarded_supplier" },
-        { status: 403 },
-      );
+      // Offer-award fallback: some environments award via `rfq_awards.provider_id` only.
+      if (supplierProviderId) {
+        const rfqAwardsReady = await schemaGate({
+          enabled: true,
+          relation: "rfq_awards",
+          requiredColumns: ["rfq_id", "provider_id"],
+          warnPrefix: LOG_PREFIX,
+          warnKey: "supplier_kickoff_api:rfq_awards_schema",
+        });
+        if (rfqAwardsReady) {
+          const { data: awardRow } = await supabaseServer()
+            .from("rfq_awards")
+            .select("provider_id")
+            .eq("rfq_id", quoteId)
+            .maybeSingle<{ provider_id: string | null }>();
+          const awardedProviderId =
+            typeof awardRow?.provider_id === "string" ? awardRow.provider_id.trim() : "";
+          if (!awardedProviderId || awardedProviderId !== supplierProviderId) {
+            return NextResponse.json(
+              { ok: false, error: "not_awarded_supplier" },
+              { status: 403 },
+            );
+          }
+        } else {
+          return NextResponse.json(
+            { ok: false, error: "not_awarded_supplier" },
+            { status: 403 },
+          );
+        }
+      } else {
+        return NextResponse.json(
+          { ok: false, error: "not_awarded_supplier" },
+          { status: 403 },
+        );
+      }
     }
 
     const definition =
@@ -112,11 +150,10 @@ export async function POST(
     const now = new Date().toISOString();
     const supplierTasksTable = await resolveSupplierKickoffTasksTableName();
 
-    const updateV2 = async () =>
+    const updateWithCompletedAtOnly = async () =>
       supabaseServer()
         .from(supplierTasksTable)
         .update({
-          completed: true,
           completed_at: now,
           completed_by_user_id: user.id,
           completed_by_role: "supplier",
@@ -127,7 +164,7 @@ export async function POST(
         .select("id")
         .returns<{ id: string }[]>();
 
-    const updateV1 = async () =>
+    const updateWithCompletedBool = async () =>
       supabaseServer()
         .from(supplierTasksTable)
         .update({ completed: true })
@@ -137,12 +174,12 @@ export async function POST(
         .select("id")
         .returns<{ id: string }[]>();
 
-    const updatedAttempt = await updateV2();
+    const updatedAttempt = await updateWithCompletedAtOnly();
     let updatedRows = updatedAttempt.data ?? [];
     let updateError = updatedAttempt.error;
 
     if (updateError && isMissingTableOrColumnError(updateError)) {
-      const fallback = await updateV1();
+      const fallback = await updateWithCompletedBool();
       updatedRows = fallback.data ?? [];
       updateError = fallback.error;
     }
@@ -180,10 +217,9 @@ export async function POST(
         title: definition?.title ?? taskKey,
         description: definition?.description ?? null,
         sort_order: definition?.sortOrder ?? null,
-        completed: true,
       };
 
-      const insertV2 = async () =>
+      const insertWithCompletedAtOnly = async () =>
         supabaseServer().from(supplierTasksTable).insert({
           ...insertBase,
           completed_at: now,
@@ -191,13 +227,13 @@ export async function POST(
           completed_by_role: "supplier",
         });
 
-      const insertV1 = async () =>
-        supabaseServer().from(supplierTasksTable).insert(insertBase);
+      const insertWithCompletedBool = async () =>
+        supabaseServer().from(supplierTasksTable).insert({ ...insertBase, completed: true });
 
-      const insertAttempt = await insertV2();
+      const insertAttempt = await insertWithCompletedAtOnly();
       let insertError = insertAttempt.error;
       if (insertError && isMissingTableOrColumnError(insertError)) {
-        const fallback = await insertV1();
+        const fallback = await insertWithCompletedBool();
         insertError = fallback.error;
       }
 

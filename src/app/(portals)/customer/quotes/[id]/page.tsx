@@ -404,7 +404,7 @@ export default async function CustomerQuoteDetailPage({
       ? `${customerKickoffSummary.completedTasks} / ${customerKickoffSummary.totalTasks} tasks completed`
       : customerKickoffSummary.isComplete
         ? "All tasks completed"
-        : "—"
+        : "Kickoff pending"
     : "—";
 
   const { summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
@@ -601,7 +601,11 @@ export default async function CustomerQuoteDetailPage({
   const kickoffCompletionLabel =
     customerKickoffSummary?.totalTasks > 0
       ? `${customerKickoffSummary.completedTasks ?? 0}/${customerKickoffSummary.totalTasks} complete`
-      : "—";
+      : quoteHasWinner
+        ? customerKickoffSummary.isComplete
+          ? "Kickoff complete"
+          : "Kickoff pending"
+        : "—";
   const kickoffStarted =
     customerKickoffSummary.totalTasks > 0 &&
     customerKickoffSummary.completedTasks + customerKickoffSummary.blockedTasks > 0;
