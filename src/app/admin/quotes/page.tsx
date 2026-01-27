@@ -39,6 +39,8 @@ import { normalizeAdminQuotesView, viewIncludesStatus } from "./viewFilters";
 import TablePaginationControls from "../components/TablePaginationControls";
 import { ADMIN_QUOTES_LIST_STATE_CONFIG } from "./listState";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import {
   CAPACITY_CAPABILITY_UNIVERSE,
   getCapacitySnapshotsForSuppliersWeek,
@@ -113,6 +115,15 @@ export default async function AdminQuotesPage({
   const quoteIdsOnPage = baseRows
     .map((row) => (typeof row?.id === "string" ? row.id.trim() : ""))
     .filter(Boolean);
+
+  const rfqAwardsByQuoteId =
+    quoteIdsOnPage.length > 0 ? await loadRfqAwardsByQuoteId(quoteIdsOnPage) : new Map();
+  const providerNameById =
+    rfqAwardsByQuoteId.size > 0
+      ? await loadProviderNameMapByIds(
+          Array.from(new Set(Array.from(rfqAwardsByQuoteId.values()).map((a) => a.provider_id))),
+        )
+      : new Map();
   const emptyThreadSlaByQuoteId: Record<string, AdminThreadSla> = {};
   const emptyPartsCoverageByQuoteId = new Map<string, QuotePartsCoverageSignal>();
   const emptyMessageRollupsByQuoteId: Record<string, QuoteMessageRollup> = {};
@@ -199,6 +210,11 @@ export default async function AdminQuotesPage({
   }
 
   const enrichedRows: QuoteRow[] = baseRows.map((row) => {
+    const rfqAward = rfqAwardsByQuoteId.get(row.id) ?? null;
+    const hasRfqAward = Boolean(rfqAward);
+    const rfqAwardWinnerName = rfqAward
+      ? providerNameById.get(rfqAward.provider_id) ?? null
+      : null;
     const threadSla = threadSlaByQuoteId[row.id] ?? null;
     const messageRollup = messageRollupsByQuoteId[row.id] ?? null;
     const sla = messageRollup ? computeAdminThreadSla(messageRollup) : null;
@@ -264,8 +280,10 @@ export default async function AdminQuotesPage({
       bidCount: aggregate?.bidCount ?? 0,
       latestBidAt: aggregate?.lastBidAt ?? null,
       hasAwardedBid: Boolean(row.has_awarded_bid),
-      awardedAt: row.awarded_at ?? null,
+      hasAward: Boolean(row.has_awarded_bid) || hasRfqAward,
+      awardedAt: row.awarded_at ?? rfqAward?.awarded_at ?? null,
       awardedSupplierName: row.awarded_supplier_name ?? null,
+      awardWinnerName: rfqAwardWinnerName,
       capacityNextWeek,
       partsCoverageHealth: partsSignal.partsCoverageHealth,
       partsCount: partsSignal.partsCount,
@@ -448,6 +466,89 @@ function compareInboxPriority(a: QuoteRow, b: QuoteRow): number {
   const aCreated = toMs(a.createdAt);
   const bCreated = toMs(b.createdAt);
   return bCreated - aCreated;
+}
+
+type RfqAwardLite = { rfq_id: string; provider_id: string; awarded_at: string };
+
+async function loadRfqAwardsByQuoteId(
+  quoteIds: string[],
+): Promise<Map<string, RfqAwardLite>> {
+  const map = new Map<string, RfqAwardLite>();
+  const ids = Array.from(new Set((quoteIds ?? []).map((id) => (typeof id === "string" ? id.trim() : "")).filter(Boolean)));
+  if (ids.length === 0) return map;
+
+  try {
+    const { data, error } = await supabaseServer()
+      .from("rfq_awards")
+      .select("rfq_id,provider_id,awarded_at")
+      .in("rfq_id", ids)
+      .returns<RfqAwardLite[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return map;
+      console.warn("[admin quotes] rfq_awards query failed", {
+        quoteIdsCount: ids.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const rfqId = typeof row?.rfq_id === "string" ? row.rfq_id.trim() : "";
+      const providerId = typeof row?.provider_id === "string" ? row.provider_id.trim() : "";
+      const awardedAt = typeof row?.awarded_at === "string" ? row.awarded_at.trim() : "";
+      if (!rfqId || !providerId || !awardedAt) continue;
+      map.set(rfqId, { rfq_id: rfqId, provider_id: providerId, awarded_at: awardedAt });
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return map;
+    console.warn("[admin quotes] rfq_awards query crashed", {
+      quoteIdsCount: ids.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
+}
+
+async function loadProviderNameMapByIds(providerIds: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const ids = Array.from(new Set((providerIds ?? []).map((id) => (typeof id === "string" ? id.trim() : "")).filter(Boolean)));
+  if (ids.length === 0) return map;
+
+  try {
+    const { data, error } = await supabaseServer()
+      .from("providers")
+      .select("id,name")
+      .in("id", ids)
+      .returns<{ id: string; name: string | null }[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return map;
+      console.warn("[admin quotes] providers query failed", {
+        providerIdsCount: ids.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const id = typeof row?.id === "string" ? row.id.trim() : "";
+      if (!id) continue;
+      const name = typeof row?.name === "string" ? row.name.trim() : "";
+      if (name) {
+        map.set(id, name);
+      }
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return map;
+    console.warn("[admin quotes] providers query crashed", {
+      providerIdsCount: ids.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
 }
 
 function buildEmptyCapacitySummary(

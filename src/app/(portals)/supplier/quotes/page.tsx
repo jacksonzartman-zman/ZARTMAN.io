@@ -467,12 +467,15 @@ export default async function SupplierQuotesPage({
               </thead>
               <tbody className="divide-y divide-slate-900/70">
                 {filteredRows.map((row) => {
-                  const open = isOpenQuoteStatus(row.status);
+                  const closedByAward = Boolean(row.hasAward);
+                  const open = isOpenQuoteStatus(row.status) && !closedByAward;
                   const coreStatus = row.isAwardedToSupplier
                     ? "Awarded to you"
-                    : open
-                      ? "Open"
-                      : "Closed";
+                    : closedByAward
+                      ? "RFQ closed"
+                      : open
+                        ? "Open"
+                        : "Closed";
                   const subtext = row.hasBid ? `${coreStatus} • Bid submitted` : coreStatus;
                   const kickoff = kickoffPill(row.kickoffStatus);
                   const unread = Math.max(0, Math.floor(row.unreadMessagesCount ?? 0));
@@ -499,6 +502,10 @@ export default async function SupplierQuotesPage({
                         {row.isAwardedToSupplier ? (
                           <p className="mt-2 text-xs font-semibold text-emerald-200">
                             Awarded to you
+                          </p>
+                        ) : closedByAward ? (
+                          <p className="mt-2 text-xs font-semibold text-slate-300">
+                            RFQ closed
                           </p>
                         ) : null}
                       </td>
@@ -529,7 +536,7 @@ export default async function SupplierQuotesPage({
                           </span>
                         ) : (
                           <span className="text-sm text-slate-400">
-                            {open ? "Waiting for decision" : "Not awarded"}
+                            {closedByAward ? "RFQ closed" : open ? "Waiting for decision" : "Not awarded"}
                           </span>
                         )}
                       </td>

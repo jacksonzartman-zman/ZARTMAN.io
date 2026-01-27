@@ -13,6 +13,7 @@ import { loadQuoteWorkspaceData, type QuoteWorkspaceData } from "@/app/(portals)
 import { formatQuoteId } from "@/app/(portals)/quotes/pageUtils";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatCurrency } from "@/lib/formatCurrency";
 import { formatSlaResponseTime } from "@/lib/ops/sla";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
@@ -194,6 +195,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             rfqLabel: "Shared search request",
             status: (data.status ?? "Submitted").trim() || "Submitted",
             hasWinner: false,
+            award: null,
             kickoffStatus: "n/a",
             bidsCount: 0,
             primaryFileName: data.file_name ?? null,
@@ -242,13 +244,32 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           typeof workspaceData.quote.file_name === "string" && workspaceData.quote.file_name.trim()
             ? workspaceData.quote.file_name.trim()
             : null;
+        const rfqAward = workspaceData.award ?? null;
+        const awardedOffer = rfqAward
+          ? (workspaceData.rfqOffers ?? []).find((offer) => offer.id === rfqAward.offer_id) ?? null
+          : null;
+        const awardProviderName =
+          (awardedOffer?.provider?.name ?? "").trim() ||
+          (typeof rfqAward?.provider_id === "string" && rfqAward.provider_id.trim()
+            ? `Provider ${rfqAward.provider_id.trim().slice(0, 6)}`
+            : "Provider");
         activeQuote = {
           id: workspaceData.quote.id,
           createdAt,
           updatedAt,
           rfqLabel: "Search request",
           status: (workspaceData.quote.status ?? "Submitted").trim() || "Submitted",
-          hasWinner: false,
+          hasWinner: Boolean(rfqAward),
+          award: rfqAward
+            ? {
+                providerName: awardProviderName,
+                totalPrice: awardedOffer?.total_price ?? null,
+                currency: awardedOffer?.currency ?? null,
+                leadTimeDaysMin: awardedOffer?.lead_time_days_min ?? null,
+                leadTimeDaysMax: awardedOffer?.lead_time_days_max ?? null,
+                awardedAt: rfqAward.awarded_at,
+              }
+            : null,
           kickoffStatus: "n/a",
           bidsCount: 0,
           primaryFileName: fileName,
@@ -972,6 +993,17 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                   const offersCount = listCounts.offerCounts.get(quote.id) ?? 0;
                   const href = buildSearchHref(usp, quote.id);
                   const statusTone = deriveSearchStatusTone(quote.status);
+                  const award = quote.award;
+                  const awardTotalPrice =
+                    typeof award?.totalPrice === "number" && Number.isFinite(award.totalPrice)
+                      ? award.totalPrice
+                      : null;
+                  const awardPriceLabel =
+                    awardTotalPrice !== null
+                      ? formatCurrency(awardTotalPrice, award?.currency ?? null)
+                      : typeof award?.totalPrice === "string" && award.totalPrice.trim()
+                        ? award.totalPrice.trim()
+                        : "—";
                   return (
                     <div
                       key={quote.id}
@@ -989,6 +1021,15 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                             <TagPill size="sm" tone={statusTone} className="normal-case">
                               {quote.status}
                             </TagPill>
+                            {award ? (
+                              <TagPill
+                                size="sm"
+                                tone="emerald"
+                                className="tracking-[0.2em]"
+                              >
+                                AWARDED
+                              </TagPill>
+                            ) : null}
                             <TagPill size="sm" tone="muted" className="normal-case tracking-normal">
                               {destinationsCount} supplier
                               {destinationsCount === 1 ? "" : "s"} contacted
@@ -997,6 +1038,15 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                               {offersCount} offer{offersCount === 1 ? "" : "s"}
                             </TagPill>
                           </div>
+                          {award ? (
+                            <p className="text-xs text-slate-400">
+                              Winner:{" "}
+                              <span className="font-semibold text-slate-200">
+                                {award.providerName}
+                              </span>{" "}
+                              • {awardPriceLabel}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="flex shrink-0 items-center">
                           <Link

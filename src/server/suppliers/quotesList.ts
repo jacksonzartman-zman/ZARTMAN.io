@@ -25,7 +25,9 @@ export type SupplierQuoteListRow = {
   rfqLabel: string;
   status: string;
   hasBid: boolean;
+  hasAward: boolean;
   isAwardedToSupplier: boolean;
+  awardedAt: string | null;
   kickoffStatus: "not_started" | "in_progress" | "complete" | "n/a";
   bidsCount: number | null;
   unreadMessagesCount: number;
@@ -102,6 +104,8 @@ export async function loadSupplierQuotesList(
   const profile = await loadSupplierProfileByUserId(userId);
   const supplier = profile?.supplier ?? null;
   const supplierId = normalizeId(supplier?.id);
+  const supplierProviderId =
+    normalizeId((supplier as { provider_id?: string | null } | null)?.provider_id) || "";
   const supplierEmail = normalizeId(supplier?.primary_email);
   if (!supplierId) return [];
 
@@ -109,12 +113,26 @@ export async function loadSupplierQuotesList(
   const quoteIds = new Set<string>();
 
   try {
-    const [awarded, bids, invites, assignedLegacy, assignedQuoteSuppliers] = await Promise.all([
+    const [
+      awarded,
+      rfqAwardsByProvider,
+      bids,
+      invites,
+      assignedLegacy,
+      assignedQuoteSuppliers,
+    ] = await Promise.all([
       supabaseServer()
         .from("quotes")
         .select("id")
         .eq("awarded_supplier_id", supplierId)
         .returns<{ id: string }[]>(),
+      supplierProviderId
+        ? supabaseServer()
+            .from("rfq_awards")
+            .select("rfq_id")
+            .eq("provider_id", supplierProviderId)
+            .returns<{ rfq_id: string }[]>()
+        : Promise.resolve({ data: [], error: null } as any),
       supabaseServer()
         .from("supplier_bids")
         .select("quote_id")
@@ -161,6 +179,10 @@ export async function loadSupplierQuotesList(
       const id = normalizeId((row as any)?.quote_id);
       if (id) quoteIds.add(id);
     }
+    for (const row of rfqAwardsByProvider.data ?? []) {
+      const id = normalizeId((row as any)?.rfq_id);
+      if (id) quoteIds.add(id);
+    }
 
     // Best-effort: ignore missing optional tables/columns.
     if (invites.error && !isMissingTableOrColumnError(invites.error)) {
@@ -191,6 +213,16 @@ export async function loadSupplierQuotesList(
       console.error("[supplier quotes list] awarded quotes query failed", {
         supplierId,
         error: serializeSupabaseError(awarded.error) ?? awarded.error,
+      });
+    }
+    if (
+      rfqAwardsByProvider.error &&
+      !isMissingTableOrColumnError(rfqAwardsByProvider.error)
+    ) {
+      console.error("[supplier quotes list] rfq_awards visibility query failed", {
+        supplierId,
+        supplierProviderId: supplierProviderId || null,
+        error: serializeSupabaseError(rfqAwardsByProvider.error) ?? rfqAwardsByProvider.error,
       });
     }
   } catch (error) {
@@ -236,6 +268,8 @@ export async function loadSupplierQuotesList(
 
   const quoteIdsList = quotes.map((q) => q.id).filter(Boolean);
 
+  const rfqAwardsByQuoteId = await loadRfqAwardsByQuoteId(quoteIdsList);
+
   const [
     bidAggregates,
     unreadSummary,
@@ -273,8 +307,12 @@ export async function loadSupplierQuotesList(
       bidAggregates[quoteId];
     const hasBid = toIntOrZero(aggregate?.bidCount) > 0;
 
+    const rfqAward = rfqAwardsByQuoteId.get(quoteId) ?? null;
+    const hasAward = Boolean(rfqAward);
     const awardedSupplierId = normalizeId(quote.awarded_supplier_id);
-    const isAwardedToSupplier = Boolean(awardedSupplierId && awardedSupplierId === supplierId);
+    const isAwardedToSupplier = supplierProviderId
+      ? Boolean(rfqAward?.provider_id && normalizeId(rfqAward.provider_id) === supplierProviderId)
+      : Boolean(awardedSupplierId && awardedSupplierId === supplierId);
 
     const unread = unreadSummary[quoteId]?.unreadCount ?? 0;
     const lastMessageAt = unreadSummary[quoteId]?.lastMessage?.created_at ?? null;
@@ -293,6 +331,7 @@ export async function loadSupplierQuotesList(
       lastBidAt,
       quote.updated_at,
       quote.awarded_at,
+      rfqAward?.awarded_at ?? null,
       quote.created_at,
     ]);
 
@@ -306,7 +345,9 @@ export async function loadSupplierQuotesList(
       rfqLabel,
       status: normalizeQuoteStatus(quote.status),
       hasBid,
+      hasAward,
       isAwardedToSupplier,
+      awardedAt: rfqAward?.awarded_at ?? quote.awarded_at ?? null,
       kickoffStatus,
       bidsCount: null,
       unreadMessagesCount: Math.max(0, Math.floor(unread)),
@@ -326,6 +367,55 @@ export async function loadSupplierQuotesList(
   });
 
   return rows;
+}
+
+type RfqAwardLite = { rfq_id: string; provider_id: string; awarded_at: string | null };
+
+async function loadRfqAwardsByQuoteId(
+  quoteIds: string[],
+): Promise<Map<string, RfqAwardLite>> {
+  const map = new Map<string, RfqAwardLite>();
+  const ids = Array.from(new Set((quoteIds ?? []).map(normalizeId).filter(Boolean)));
+  if (ids.length === 0) return map;
+
+  try {
+    const { data, error } = await supabaseServer()
+      .from("rfq_awards")
+      .select("rfq_id,provider_id,awarded_at")
+      .in("rfq_id", ids)
+      .returns<RfqAwardLite[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return map;
+      console.error("[supplier quotes list] rfq_awards load failed", {
+        quoteIdsCount: ids.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const rfqId = normalizeId(row?.rfq_id);
+      const providerId = normalizeId(row?.provider_id);
+      if (!rfqId || !providerId) continue;
+      map.set(rfqId, {
+        rfq_id: rfqId,
+        provider_id: providerId,
+        awarded_at:
+          typeof row.awarded_at === "string" && row.awarded_at.trim()
+            ? row.awarded_at
+            : null,
+      });
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return map;
+    console.error("[supplier quotes list] rfq_awards load crashed", {
+      quoteIdsCount: ids.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
 }
 
 async function loadKickoffCompletedAtByQuoteId(

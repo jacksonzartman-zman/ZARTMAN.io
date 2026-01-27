@@ -52,6 +52,12 @@ export type SupplierRow = {
   verified: boolean;
   created_at: string;
   status?: string | null;
+  /**
+   * Optional mapping to marketplace `providers.id` (schema varies by environment).
+   * When present, post-award visibility uses `rfq_awards.provider_id` to resolve
+   * whether this supplier was selected.
+   */
+  provider_id?: string | null;
 };
 
 export type SupplierCapabilityRow = {

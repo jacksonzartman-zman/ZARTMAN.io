@@ -61,8 +61,10 @@ export type QuoteRow = {
   bidCount: number;
   latestBidAt: string | null;
   hasAwardedBid: boolean;
+  hasAward: boolean;
   awardedAt: string | null;
   awardedSupplierName: string | null;
+  awardWinnerName: string | null;
   capacityNextWeek?: QuoteCapacitySummary | null;
   partsCoverageHealth: PartsCoverageHealth;
   partsCount: number | null;
@@ -239,6 +241,11 @@ export default function QuotesTable({
                     >
                       {row.statusLabel}
                     </span>
+                    {row.hasAward ? (
+                      <span className="inline-flex w-fit rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
+                        Awarded
+                      </span>
+                    ) : null}
                     <p className="text-xs text-slate-400">{row.statusHelper}</p>
                   </div>
                 </td>
@@ -295,11 +302,11 @@ export default function QuotesTable({
                   </div>
                 </td>
                 <td className={clsx(adminTableCellClass, "text-xs text-slate-200")}>
-                  {row.hasAwardedBid ? (
+                  {row.hasAward ? (
                     <div className="space-y-1">
                       <p className="font-semibold text-emerald-100">Awarded</p>
                       <p className="text-slate-300">
-                        {row.awardedSupplierName || "Winning supplier selected"}
+                        {row.awardWinnerName || row.awardedSupplierName || "Winning supplier selected"}
                       </p>
                       <p className="text-slate-400">
                         {awardedAtLabel ? `At ${awardedAtLabel}` : "At —"}
