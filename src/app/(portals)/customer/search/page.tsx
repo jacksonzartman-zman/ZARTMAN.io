@@ -195,6 +195,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             rfqLabel: "Shared search request",
             status: (data.status ?? "Submitted").trim() || "Submitted",
             hasWinner: false,
+            award: null,
             kickoffStatus: "n/a",
             bidsCount: 0,
             primaryFileName: data.file_name ?? null,
@@ -243,13 +244,32 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           typeof workspaceData.quote.file_name === "string" && workspaceData.quote.file_name.trim()
             ? workspaceData.quote.file_name.trim()
             : null;
+        const rfqAward = workspaceData.award ?? null;
+        const awardedOffer = rfqAward
+          ? (workspaceData.rfqOffers ?? []).find((offer) => offer.id === rfqAward.offer_id) ?? null
+          : null;
+        const awardProviderName =
+          (awardedOffer?.provider?.name ?? "").trim() ||
+          (typeof rfqAward?.provider_id === "string" && rfqAward.provider_id.trim()
+            ? `Provider ${rfqAward.provider_id.trim().slice(0, 6)}`
+            : "Provider");
         activeQuote = {
           id: workspaceData.quote.id,
           createdAt,
           updatedAt,
           rfqLabel: "Search request",
           status: (workspaceData.quote.status ?? "Submitted").trim() || "Submitted",
-          hasWinner: false,
+          hasWinner: Boolean(rfqAward),
+          award: rfqAward
+            ? {
+                providerName: awardProviderName,
+                totalPrice: awardedOffer?.total_price ?? null,
+                currency: awardedOffer?.currency ?? null,
+                leadTimeDaysMin: awardedOffer?.lead_time_days_min ?? null,
+                leadTimeDaysMax: awardedOffer?.lead_time_days_max ?? null,
+                awardedAt: rfqAward.awarded_at,
+              }
+            : null,
           kickoffStatus: "n/a",
           bidsCount: 0,
           primaryFileName: fileName,
