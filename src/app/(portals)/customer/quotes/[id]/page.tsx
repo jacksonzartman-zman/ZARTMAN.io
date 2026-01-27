@@ -215,6 +215,7 @@ export default async function CustomerQuoteDetailPage({
     parts,
     rfqOffers,
     rfqDestinations,
+    award,
     opsEvents,
     messages: quoteMessages,
     messagesError,
@@ -773,7 +774,7 @@ export default async function CustomerQuoteDetailPage({
     bestPriceValue != null
       ? formatCurrency(bestPriceValue, bestPriceCurrency ?? undefined)
       : "Pending";
-  const selectedOfferId = quote.selected_offer_id ?? null;
+  const selectedOfferId = award?.offer_id ?? quote.selected_offer_id ?? null;
   const selectedOffer = selectedOfferId
     ? customerCompareOffers.find((offer) => offer.id === selectedOfferId) ?? null
     : null;

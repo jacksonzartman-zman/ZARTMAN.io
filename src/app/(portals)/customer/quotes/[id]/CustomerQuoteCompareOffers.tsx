@@ -3,14 +3,13 @@
 import clsx from "clsx";
 import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useFormState, useFormStatus } from "react-dom";
 import { TagPill } from "@/components/shared/primitives/TagPill";
 import { RequestIntroductionModal } from "./RequestIntroductionModal";
 import type { CustomerCompareOffer } from "@/lib/customerTrustBadges";
 import {
-  selectOfferAction,
+  awardOfferAction,
   toggleOfferShortlistAction,
-  type SelectOfferActionState,
+  type AwardOfferActionResponse,
 } from "./actions";
 import {
   INTRO_REQUESTED_EVENT,
@@ -37,11 +36,6 @@ type CustomerQuoteCompareOffersProps = {
     matchedOnProcess?: boolean;
     locationFilter?: string | null;
   };
-};
-
-const INITIAL_SELECT_STATE: SelectOfferActionState = {
-  ok: true,
-  message: null,
 };
 
 const SORT_PARAM_KEY = "sort";
@@ -88,13 +82,13 @@ export function CustomerQuoteCompareOffers({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [state, formAction] = useFormState<SelectOfferActionState, FormData>(
-    selectOfferAction,
-    INITIAL_SELECT_STATE,
-  );
-  const [pendingShortlist, startTransition] = useTransition();
+  const [pendingShortlist, startShortlistTransition] = useTransition();
+  const [pendingAward, startAwardTransition] = useTransition();
   const [shortlistError, setShortlistError] = useState<string | null>(null);
   const [pendingShortlistOfferId, setPendingShortlistOfferId] = useState<string | null>(null);
+  const [pendingAwardOfferId, setPendingAwardOfferId] = useState<string | null>(null);
+  const [awardError, setAwardError] = useState<string | null>(null);
+  const [awardResult, setAwardResult] = useState<AwardOfferActionResponse | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>(() =>
     resolveSortKey(searchParams.get(SORT_PARAM_KEY)),
   );
@@ -106,6 +100,9 @@ export function CustomerQuoteCompareOffers({
   const [shortlistedOfferIds, setShortlistedOfferIds] = useState<Set<string>>(
     () => new Set(normalizeOfferIds(shortlistedOfferIdsProp)),
   );
+  const [selectedOfferIdState, setSelectedOfferIdState] = useState<string | null>(
+    () => (typeof selectedOfferId === "string" ? selectedOfferId : null),
+  );
   const [introRequested, setIntroRequested] = useState<IntroRequestedState | null>(
     () => initialIntroRequested ?? null,
   );
@@ -113,7 +110,12 @@ export function CustomerQuoteCompareOffers({
 
   const decoratedOffers = useMemo(() => offers, [offers]);
 
-  const resolvedSelectedOfferId = state.selectedOfferId ?? selectedOfferId ?? null;
+  useEffect(() => {
+    const next = typeof selectedOfferId === "string" ? selectedOfferId : null;
+    setSelectedOfferIdState((current) => (current === next ? current : next));
+  }, [selectedOfferId]);
+
+  const resolvedSelectedOfferId = selectedOfferIdState;
   const awardLocked = Boolean(awardLockedProp);
   const selectionLocked = Boolean(resolvedSelectedOfferId) || awardLocked;
   const hasQuickFilters = showBadgeWinnersOnly || showShortlistedOnly;
@@ -125,11 +127,6 @@ export function CustomerQuoteCompareOffers({
       0,
     );
   }, [decoratedOffers, shortlistedOfferIds]);
-
-  useEffect(() => {
-    if (!state.ok || !state.selectedOfferId) return;
-    router.refresh();
-  }, [router, state.ok, state.selectedOfferId]);
 
   useEffect(() => {
     const nextSortKey = resolveSortKey(searchParams.get(SORT_PARAM_KEY));
@@ -206,7 +203,7 @@ export function CustomerQuoteCompareOffers({
       });
 
       setPendingShortlistOfferId(offerId);
-      startTransition(async () => {
+      startShortlistTransition(async () => {
         try {
           const result = await toggleOfferShortlistAction({
             quoteId,
@@ -232,7 +229,40 @@ export function CustomerQuoteCompareOffers({
         }
       });
     },
-    [awardLocked, pendingShortlistOfferId, quoteId, shortlistedOfferIds, startTransition],
+    [
+      awardLocked,
+      pendingShortlistOfferId,
+      quoteId,
+      shortlistedOfferIds,
+      startShortlistTransition,
+    ],
+  );
+
+  const handleAwardOffer = useCallback(
+    (offerId: string) => {
+      if (awardLocked) return;
+      if (!offerId) return;
+      if (pendingAwardOfferId) return;
+
+      setAwardError(null);
+      setAwardResult(null);
+      setPendingAwardOfferId(offerId);
+      startAwardTransition(async () => {
+        try {
+          const result = await awardOfferAction({ rfqId: quoteId, offerId });
+          setAwardResult(result);
+          if (result.ok) {
+            setSelectedOfferIdState(offerId);
+            router.refresh();
+          } else {
+            setAwardError(result.error ?? "We couldn’t record that selection. Please try again.");
+          }
+        } finally {
+          setPendingAwardOfferId(null);
+        }
+      });
+    },
+    [awardLocked, pendingAwardOfferId, quoteId, router, startAwardTransition],
   );
 
   const filteredOffers = useMemo(() => {
@@ -284,14 +314,14 @@ export function CustomerQuoteCompareOffers({
           </button>
         </div>
       ) : null}
-      {state.ok && state.message ? (
+      {awardResult?.ok ? (
         <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          {state.message}
+          Offer selected.
         </p>
       ) : null}
-      {!state.ok && state.error ? (
+      {awardError ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-          {state.error}
+          {awardError}
         </p>
       ) : null}
       {shortlistError ? (
@@ -427,6 +457,7 @@ export function CustomerQuoteCompareOffers({
                   const isShortlisted = shortlistedOfferIds.has(offer.id);
                   const isShortlistPending =
                     pendingShortlist && pendingShortlistOfferId === offer.id;
+                  const isAwardPending = pendingAward && pendingAwardOfferId === offer.id;
                   const hasAssumptions = Boolean(offer.assumptions?.trim());
 
                   return (
@@ -486,14 +517,12 @@ export function CustomerQuoteCompareOffers({
                               disabled={pendingShortlist || awardLocked}
                               onClick={() => handleShortlistToggle(offer.id)}
                             />
-                            <form action={formAction}>
-                              <input type="hidden" name="quoteId" value={quoteId} />
-                              <input type="hidden" name="offerId" value={offer.id} />
-                              <SelectOfferButton
-                                disabled={selectionLocked && !isSelected}
-                                selected={isSelected}
-                              />
-                            </form>
+                            <SelectOfferButton
+                              disabled={(selectionLocked && !isSelected) || pendingAward}
+                              selected={isSelected}
+                              pending={isAwardPending}
+                              onClick={() => handleAwardOffer(offer.id)}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -541,17 +570,27 @@ export function CustomerQuoteCompareOffers({
 function SelectOfferButton({
   disabled,
   selected,
+  pending,
+  onClick,
 }: {
   disabled: boolean;
   selected: boolean;
+  pending: boolean;
+  onClick: () => void;
 }) {
-  const { pending } = useFormStatus();
   const isDisabled = disabled || pending;
-  const label = pending ? "Selecting..." : selected ? "Selected" : disabled ? "Locked" : "Select";
+  const label = pending
+    ? "SELECTING..."
+    : selected
+      ? "SELECTED"
+      : disabled
+        ? "LOCKED"
+        : "SELECT";
 
   return (
     <button
-      type="submit"
+      type="button"
+      onClick={onClick}
       disabled={isDisabled}
       className={clsx(
         "inline-flex items-center rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition",
