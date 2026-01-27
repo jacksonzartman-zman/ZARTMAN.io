@@ -28,7 +28,7 @@ let cachedSupplierSelect: Promise<string> | null = null;
 async function buildSupplierSelect(): Promise<string> {
   if (cachedSupplierSelect) return cachedSupplierSelect;
   cachedSupplierSelect = (async () => {
-    const columns = [...SUPPLIER_SELECT_COLUMNS_BASE];
+    const columns: string[] = [...SUPPLIER_SELECT_COLUMNS_BASE];
     const supportsProviderId = await hasColumns("suppliers", ["provider_id"]);
     if (supportsProviderId) {
       columns.push("provider_id");
