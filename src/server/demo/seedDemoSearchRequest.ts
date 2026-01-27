@@ -1,4 +1,4 @@
-import { supabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseServer";
 import { schemaGate } from "@/server/db/schemaContract";
 import { serializeSupabaseError } from "@/server/admin/logging";
 
@@ -41,6 +41,15 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
+}
+
+function getAdminClientOrThrow() {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "[demo seed] SUPABASE_SERVICE_ROLE_KEY missing; demo seed requires admin client",
+    );
+  }
+  return supabaseAdmin();
 }
 
 /**
@@ -178,7 +187,13 @@ async function ensureDemoSchema(): Promise<{ ok: true } | { ok: false; error: st
   };
 }
 
-async function ensureDemoCustomer(ctx: DemoSeedContext): Promise<{ ok: true; customerId: string; email: string } | { ok: false; error: string }> {
+async function ensureDemoCustomer(
+  admin: ReturnType<typeof supabaseAdmin>,
+  ctx: DemoSeedContext,
+): Promise<
+  | { ok: true; customerId: string; email: string }
+  | { ok: false; error: string }
+> {
   const email =
     normalizeEmail(process.env.DEMO_CUSTOMER_EMAIL) ?? normalizeEmail(ctx.adminEmail);
   if (!email) {
@@ -186,7 +201,7 @@ async function ensureDemoCustomer(ctx: DemoSeedContext): Promise<{ ok: true; cus
   }
 
   try {
-    const { data: existing, error: existingError } = await supabaseServer()
+    const { data: existing, error: existingError } = await admin
       .from("customers")
       .select("id,email,user_id")
       .ilike("email", email)
@@ -209,7 +224,7 @@ async function ensureDemoCustomer(ctx: DemoSeedContext): Promise<{ ok: true; cus
         (!existingUserId || existingUserId === adminUserId);
 
       if (shouldAttachUser && existingUserId !== adminUserId) {
-        const { error: updateError } = await supabaseServer()
+        const { error: updateError } = await admin
           .from("customers")
           .update({ user_id: adminUserId, updated_at: new Date().toISOString() })
           .eq("id", existing.id);
@@ -236,7 +251,7 @@ async function ensureDemoCustomer(ctx: DemoSeedContext): Promise<{ ok: true; cus
       payload.user_id = ctx.adminUserId;
     }
 
-    const { data, error } = await supabaseServer()
+    const { data, error } = await admin
       .from("customers")
       .insert(payload)
       .select("id,email")
@@ -261,7 +276,12 @@ async function ensureDemoCustomer(ctx: DemoSeedContext): Promise<{ ok: true; cus
   }
 }
 
-async function ensureDemoProviders(): Promise<{ ok: true; providers: ProviderRow[] } | { ok: false; error: string }> {
+async function ensureDemoProviders(
+  admin: ReturnType<typeof supabaseAdmin>,
+): Promise<
+  | { ok: true; providers: ProviderRow[] }
+  | { ok: false; error: string }
+> {
   const demoProviders: Array<{
     name: string;
     provider_type: "factory" | "broker" | "marketplace" | "direct_supplier";
@@ -294,7 +314,7 @@ async function ensureDemoProviders(): Promise<{ ok: true; providers: ProviderRow
 
   try {
     const names = demoProviders.map((p) => p.name);
-    const { data: existing, error: existingError } = await supabaseServer()
+    const { data: existing, error: existingError } = await admin
       .from("providers")
       .select("id,name")
       .in("name", names)
@@ -318,7 +338,7 @@ async function ensureDemoProviders(): Promise<{ ok: true; providers: ProviderRow
 
     const missing = demoProviders.filter((p) => !existingByName.has(p.name));
     if (missing.length > 0) {
-      const { data: inserted, error: insertError } = await supabaseServer()
+      const { data: inserted, error: insertError } = await admin
         .from("providers")
         .insert(
           missing.map((p) => ({
@@ -374,13 +394,27 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
     `[demo seed] handler start fn=seedDemoSearchRequest gitSha=${gitSha || "unknown"} vercelEnv=${vercelEnv || "unknown"}`,
   );
 
+  let admin: ReturnType<typeof supabaseAdmin>;
+  try {
+    admin = getAdminClientOrThrow();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Demo seed requires admin client.";
+    console.error("[demo seed] admin client unavailable", {
+      gitSha,
+      vercelEnv,
+      error: message,
+    });
+    return { ok: false, error: message };
+  }
+
   const schema = await ensureDemoSchema();
   if (!schema.ok) return schema;
 
-  const customer = await ensureDemoCustomer(ctx);
+  const customer = await ensureDemoCustomer(admin, ctx);
   if (!customer.ok) return customer;
 
-  const providersResult = await ensureDemoProviders();
+  const providersResult = await ensureDemoProviders(admin);
   if (!providersResult.ok) return providersResult;
 
   const nowIso = new Date().toISOString();
@@ -392,7 +426,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       nowIso,
     });
 
-    const uploadInsert = await supabaseServer()
+    const uploadInsert = await admin
       .from("uploads")
       .insert(uploadPayload)
       .select("id")
@@ -434,11 +468,26 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       upload_id: uploadId,
     };
 
-    // Intentionally using console.error so this always surfaces in Vercel logs.
-    // Also log the exact object passed into `.insert(...)`.
-    console.error("[demo seed] quote insert payload inspection", quoteInsertPayload);
+    const quoteInsertKeys = Object.keys(quoteInsertPayload);
+    console.error("[demo seed] quote insert preflight", {
+      gitSha,
+      vercelEnv,
+      usingAdminClient: true,
+      uploadId,
+      quoteInsertKeys,
+    });
 
-    const { data: quote, error: quoteError } = await supabaseServer()
+    const uploadIdValue = (quoteInsertPayload as Record<string, unknown>).upload_id;
+    if (typeof uploadIdValue !== "string" || !isUuid(uploadIdValue)) {
+      console.error("[demo seed] quote insert preflight failed", {
+        uploadId,
+        uploadIdValue,
+        quoteInsertKeys,
+      });
+      return { ok: false, error: "Unable to create demo quote." };
+    }
+
+    const { data: quote, error: quoteError } = await admin
       .from("quotes")
       .insert(quoteInsertPayload)
       .select("id")
@@ -447,7 +496,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
     if (quoteError || !quote?.id) {
       console.error("[demo seed] quote insert failed", {
         uploadId,
-        payload: quoteInsertPayload,
+        payloadFields: quoteInsertKeys,
         error: serializeSupabaseError(quoteError) ?? quoteError,
       });
       return { ok: false, error: "Unable to create demo quote." };
@@ -484,7 +533,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
           created_at: nowIso,
         }));
 
-        const { data: insertedDestinations, error: destinationsError } = await supabaseServer()
+        const { data: insertedDestinations, error: destinationsError } = await admin
           .from("rfq_destinations")
           .insert(destinationPayload)
           .select("id,provider_id")
@@ -561,7 +610,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       created_at: nowIso,
     }));
 
-    const { error: offersError } = await supabaseServer()
+    const { error: offersError } = await admin
       .from("rfq_offers")
       .insert(offerPayload);
 
@@ -571,7 +620,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
         error: serializeSupabaseError(offersError) ?? offersError,
       });
       try {
-        const { error: cleanupError } = await supabaseServer()
+        const { error: cleanupError } = await admin
           .from("quotes")
           .delete()
           .eq("id", quote.id);
