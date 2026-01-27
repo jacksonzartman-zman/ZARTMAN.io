@@ -415,27 +415,37 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
 
     console.log("[demo seed] upload inserted", { uploadId });
 
-    const quotePayload = {
-      ...buildDemoQuoteInsertPayload({
-        customerId: customer.customerId,
-        customerEmail: customer.email,
-        uploadId,
-        nowIso,
-      }),
+    const demoQuotePayloadBase = buildDemoQuoteInsertPayload({
+      customerId: customer.customerId,
+      customerEmail: customer.email,
+      uploadId,
+      nowIso,
+    });
+
+    const quoteInsertPayload = {
+      ...demoQuotePayloadBase,
       // Force presence for Vercel log inspection (even if builders change).
       upload_id: uploadId,
     };
 
+    console.log("[demo seed] quote insert payload inspection", {
+      uploadId,
+      insertPayloadKeys: Object.keys(quoteInsertPayload),
+      insertPayloadUploadId: (quoteInsertPayload as any).upload_id,
+      origin:
+        "quoteInsertPayload (spread from buildDemoQuoteInsertPayload(...) + explicit upload_id override; no zod parsing/sanitization in demo seed)",
+    });
+
     const { data: quote, error: quoteError } = await supabaseServer()
       .from("quotes")
-      .insert(quotePayload)
+      .insert(quoteInsertPayload)
       .select("id")
       .single<{ id: string }>();
 
     if (quoteError || !quote?.id) {
       console.error("[demo seed] quote insert failed", {
         uploadId,
-        payload: quotePayload,
+        payload: quoteInsertPayload,
         error: serializeSupabaseError(quoteError) ?? quoteError,
       });
       return { ok: false, error: "Unable to create demo quote." };
