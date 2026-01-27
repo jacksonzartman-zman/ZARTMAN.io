@@ -1,5 +1,5 @@
 import type { RfqDestination, RfqDestinationStatus } from "@/server/rfqs/destinations";
-import type { RfqOffer } from "@/server/rfqs/offers";
+import { isRfqOfferReturned, type RfqOffer } from "@/server/rfqs/offers";
 
 export type SearchStateStatusLabel =
   | "searching"
@@ -36,11 +36,12 @@ export function buildSearchStateSummary(args: {
   destinations: RfqDestination[];
   offers: RfqOffer[];
 }): SearchStateSummary {
+  const returnedOffers = (args.offers ?? []).filter((offer) => isRfqOfferReturned(offer.status));
   const counts: SearchStateSummary["counts"] = {
     destinations_total: args.destinations.length,
     destinations_pending: 0,
     destinations_error: 0,
-    offers_total: args.offers.length,
+    offers_total: returnedOffers.length,
   };
 
   for (const destination of args.destinations) {
@@ -57,7 +58,7 @@ export function buildSearchStateSummary(args: {
     destination.last_status_at,
   );
   const last_offer_received_at = getLatestTimestamp(
-    args.offers,
+    returnedOffers,
     (offer) => offer.received_at ?? offer.created_at,
   );
 

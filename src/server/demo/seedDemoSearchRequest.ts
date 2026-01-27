@@ -346,6 +346,7 @@ async function ensureDemoProviders(
             provider_type: p.provider_type,
             quoting_mode: p.quoting_mode,
             is_active: true,
+            verification_status: "verified",
             website: p.website,
             notes: p.notes,
             created_at: new Date().toISOString(),
@@ -376,6 +377,36 @@ async function ensureDemoProviders(
 
     if (providers.length < 2) {
       return { ok: false, error: "Unable to resolve demo providers." };
+    }
+
+    // Demo UX: customer portal hides unverified providers. Ensure demo providers are
+    // active + verified so seeded offers always appear.
+    const canUpdateVerification = await schemaGate({
+      enabled: true,
+      relation: "providers",
+      requiredColumns: ["id", "is_active", "verification_status"],
+      warnPrefix: "[demo seed]",
+      warnKey: "demo_seed:providers_verification",
+    });
+    if (canUpdateVerification) {
+      const providerIds = providers.map((p) => p.id).filter(Boolean);
+      if (providerIds.length > 0) {
+        try {
+          const { error: updateError } = await admin
+            .from("providers")
+            .update({ is_active: true, verification_status: "verified" })
+            .in("id", providerIds);
+          if (updateError) {
+            console.warn("[demo seed] provider verification update failed; continuing", {
+              error: serializeSupabaseError(updateError) ?? updateError,
+            });
+          }
+        } catch (error) {
+          console.warn("[demo seed] provider verification update crashed; continuing", {
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      }
     }
 
     return { ok: true, providers };
@@ -511,7 +542,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
         const destinationPayload = providersResult.providers.slice(0, 3).map((provider) => ({
           rfq_id: quote.id,
           provider_id: provider.id,
-          status: "sent",
+          status: "quoted",
           sent_at: nowIso,
           last_status_at: nowIso,
           offer_token: `demo-${quote.id}-${provider.id}`,

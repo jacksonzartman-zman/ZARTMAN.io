@@ -43,7 +43,7 @@ import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/ad
 import { getOpsSlaSettings } from "@/server/ops/settings";
 import { deriveSearchAlertPreferenceFromOpsEvents } from "@/server/ops/searchAlerts";
 import { type RfqDestination } from "@/server/rfqs/destinations";
-import { type RfqOffer } from "@/server/rfqs/offers";
+import { isRfqOfferReturned, type RfqOffer } from "@/server/rfqs/offers";
 import { PROVIDER_TYPES } from "@/server/providers";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { CoverageDisclosure } from "@/components/CoverageDisclosure";
@@ -1164,6 +1164,10 @@ function readProviderLocation(provider?: { country?: string | null } | null): st
 
 function applyOfferFilters(offers: RfqOffer[], filters: SearchFilters): RfqOffer[] {
   return offers.filter((offer) => {
+    // Customer UX: treat received/revised as "has offer"; ignore withdrawn rows.
+    if (!isRfqOfferReturned(offer.status)) {
+      return false;
+    }
     if (filters.status === "pending") {
       return false;
     }
