@@ -35,6 +35,8 @@ import {
   getCustomerKickoffSummary,
   type CustomerKickoffSummary,
 } from "@/server/quotes/kickoffSummary";
+import { debugOnce } from "@/server/db/schemaErrors";
+import { isDemoModeEnabled } from "@/server/demo/demoMode";
 
 export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
   files: QuoteFileMeta[];
@@ -291,12 +293,59 @@ export async function loadQuoteWorkspaceData(
     const rfqDestinationsRaw = includeDestinationDetails
       ? await getRfqDestinations(quote.id)
       : await getRfqDestinationsLite(quote.id);
-    let rfqOffers = rfqOffersRaw;
+    const distinctOfferStatuses = Array.from(
+      new Set(
+        (rfqOffersRaw ?? [])
+          .map((offer) => (offer?.status ?? "").trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    ).sort();
+
+    // Best-effort: match offers -> destinations by (rfq_id, provider_id) when
+    // destination_id is missing on the offer row.
+    const destinationIdByProviderId = new Map<string, string>();
+    const duplicateDestinationProviderIds = new Set<string>();
+    for (const destination of rfqDestinationsRaw ?? []) {
+      const providerId =
+        typeof destination?.provider_id === "string" ? destination.provider_id.trim() : "";
+      const destinationId = typeof destination?.id === "string" ? destination.id.trim() : "";
+      if (!providerId || !destinationId) continue;
+      if (destinationIdByProviderId.has(providerId)) {
+        duplicateDestinationProviderIds.add(providerId);
+        continue;
+      }
+      destinationIdByProviderId.set(providerId, destinationId);
+    }
+    for (const providerId of duplicateDestinationProviderIds) {
+      destinationIdByProviderId.delete(providerId);
+    }
+
+    let offersPatchedDestinationId = 0;
+    const rfqOffersWithDestinationIds = (rfqOffersRaw ?? []).map((offer) => {
+      if (!offer) return offer;
+      if (offer.destination_id) return offer;
+      const destinationId = destinationIdByProviderId.get(offer.provider_id) ?? null;
+      if (!destinationId) return offer;
+      offersPatchedDestinationId += 1;
+      return { ...offer, destination_id: destinationId };
+    });
+
+    let rfqOffers = rfqOffersWithDestinationIds;
     let rfqDestinations = rfqDestinationsRaw;
 
     if (options?.viewerRole === "customer") {
+      if (isDemoModeEnabled()) {
+        debugOnce("demo:customer_offers:load_raw", "[demo offers] customer workspace load", {
+          rfq_id: quote.id,
+          destinations_loaded: rfqDestinationsRaw.length,
+          rfq_offers_loaded: rfqOffersRaw.length,
+          offer_statuses: distinctOfferStatuses,
+          offers_patched_destination_id: offersPatchedDestinationId,
+        });
+      }
+
       const providerIds = new Set<string>();
-      for (const offer of rfqOffersRaw) {
+      for (const offer of rfqOffersWithDestinationIds) {
         if (offer.provider_id) providerIds.add(offer.provider_id);
       }
       for (const destination of rfqDestinationsRaw) {
@@ -330,15 +379,49 @@ export async function loadQuoteWorkspaceData(
         };
 
         if (providerStatuses.size === 0) {
+          if (isDemoModeEnabled()) {
+            debugOnce(
+              "demo:customer_offers:provider_statuses_empty",
+              "[demo offers] provider status lookup returned empty; clearing offers/destinations",
+              {
+                rfq_id: quote.id,
+                provider_count: providerIds.size,
+                rfq_offers_before: rfqOffersWithDestinationIds.length,
+                destinations_before: rfqDestinationsRaw.length,
+                offer_statuses: distinctOfferStatuses,
+              },
+            );
+          }
           rfqOffers = [];
           rfqDestinations = [];
         } else {
-          rfqOffers = rfqOffersRaw
+          const offersBefore = rfqOffersWithDestinationIds.length;
+          const destinationsBefore = rfqDestinationsRaw.length;
+
+          rfqOffers = rfqOffersWithDestinationIds
             .filter((offer) => isVisibleToCustomer(offer.provider_id))
             .map((offer) => attachProviderStatus(offer));
           rfqDestinations = rfqDestinationsRaw
             .filter((destination) => isVisibleToCustomer(destination.provider_id))
             .map((destination) => attachProviderStatus(destination));
+
+          if (isDemoModeEnabled()) {
+            debugOnce(
+              "demo:customer_offers:provider_filter",
+              "[demo offers] customer provider visibility filter applied",
+              {
+                rfq_id: quote.id,
+                destinations_before: destinationsBefore,
+                destinations_after: rfqDestinations.length,
+                rfq_offers_before: offersBefore,
+                rfq_offers_after: rfqOffers.length,
+                filtered_offers_removed: offersBefore - rfqOffers.length,
+                filtered_destinations_removed:
+                  destinationsBefore - rfqDestinations.length,
+                offer_statuses: distinctOfferStatuses,
+              },
+            );
+          }
         }
       }
     }

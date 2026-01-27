@@ -10,6 +10,15 @@ export const RFQ_OFFER_STATUSES = ["received", "revised", "withdrawn"] as const;
 
 export type RfqOfferStatus = (typeof RFQ_OFFER_STATUSES)[number];
 
+export function isRfqOfferWithdrawn(status: unknown): boolean {
+  return parseRfqOfferStatus(status) === "withdrawn";
+}
+
+export function isRfqOfferReturned(status: unknown): boolean {
+  const normalized = parseRfqOfferStatus(status);
+  return normalized === "received" || normalized === "revised";
+}
+
 export type RfqOfferProvider = {
   name: string | null;
   provider_type: string | null;
@@ -64,27 +73,6 @@ type RawRfqOfferRow = {
   provider: RfqOfferProvider | null;
 };
 
-const OFFER_COLUMNS = [
-  "id",
-  "rfq_id",
-  "provider_id",
-  "destination_id",
-  "currency",
-  "total_price",
-  "unit_price",
-  "tooling_price",
-  "shipping_price",
-  "lead_time_days_min",
-  "lead_time_days_max",
-  "assumptions",
-  "notes",
-  "confidence_score",
-  "quality_risk_flags",
-  "status",
-  "received_at",
-  "created_at",
-];
-
 const RFQ_OFFER_STATUS_SET = new Set<RfqOfferStatus>(RFQ_OFFER_STATUSES);
 
 async function buildOfferSelect(): Promise<string> {
@@ -93,7 +81,7 @@ async function buildOfferSelect(): Promise<string> {
   if (includeCountry) {
     providerColumns.push("country");
   }
-  return [...OFFER_COLUMNS, `provider:providers(${providerColumns.join(",")})`].join(",");
+  return `*,provider:providers(${providerColumns.join(",")})`;
 }
 
 export function parseRfqOfferStatus(value: unknown): RfqOfferStatus | null {
@@ -104,7 +92,10 @@ export function parseRfqOfferStatus(value: unknown): RfqOfferStatus | null {
   return null;
 }
 
-export async function getRfqOffers(quoteId: string): Promise<RfqOffer[]> {
+export async function getRfqOffers(
+  quoteId: string,
+  options?: { client?: ReturnType<typeof supabaseServer> },
+): Promise<RfqOffer[]> {
   const normalizedQuoteId = normalizeId(quoteId);
   if (!normalizedQuoteId) {
     return [];
@@ -112,7 +103,8 @@ export async function getRfqOffers(quoteId: string): Promise<RfqOffer[]> {
 
   try {
     const offerSelect = await buildOfferSelect();
-    const { data, error } = await supabaseServer()
+    const client = options?.client ?? supabaseServer();
+    const { data, error } = await client
       .from("rfq_offers")
       .select(offerSelect)
       .eq("rfq_id", normalizedQuoteId)

@@ -32,15 +32,23 @@ const PENDING_DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set(
   "viewed",
 ]);
 
+const RETURNED_OFFER_STATUSES: ReadonlySet<string> = new Set(["received", "revised"]);
+
+function isReturnedOfferStatus(value: unknown): boolean {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return RETURNED_OFFER_STATUSES.has(normalized);
+}
+
 export function buildSearchStateSummary(args: {
   destinations: RfqDestination[];
   offers: RfqOffer[];
 }): SearchStateSummary {
+  const returnedOffers = (args.offers ?? []).filter((offer) => isReturnedOfferStatus(offer.status));
   const counts: SearchStateSummary["counts"] = {
     destinations_total: args.destinations.length,
     destinations_pending: 0,
     destinations_error: 0,
-    offers_total: args.offers.length,
+    offers_total: returnedOffers.length,
   };
 
   for (const destination of args.destinations) {
@@ -57,7 +65,7 @@ export function buildSearchStateSummary(args: {
     destination.last_status_at,
   );
   const last_offer_received_at = getLatestTimestamp(
-    args.offers,
+    returnedOffers,
     (offer) => offer.received_at ?? offer.created_at,
   );
 
