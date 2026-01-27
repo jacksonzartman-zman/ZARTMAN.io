@@ -405,19 +405,26 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
 
     const uploadId = uploadInsert.data.id;
     if (!isUuid(uploadId)) {
-      console.error("[demo seed] upload insert returned non-uuid id", {
+      console.error("[demo seed] upload insert failed", {
+        reason: "upload insert returned non-uuid id",
         uploadId,
         payloadFields: Object.keys(uploadPayload),
       });
       return { ok: false, error: "Unable to create demo upload." };
     }
 
-    const quotePayload = buildDemoQuoteInsertPayload({
-      customerId: customer.customerId,
-      customerEmail: customer.email,
-      uploadId,
-      nowIso,
-    });
+    console.log("[demo seed] upload inserted", { uploadId });
+
+    const quotePayload = {
+      ...buildDemoQuoteInsertPayload({
+        customerId: customer.customerId,
+        customerEmail: customer.email,
+        uploadId,
+        nowIso,
+      }),
+      // Force presence for Vercel log inspection (even if builders change).
+      upload_id: uploadId,
+    };
 
     const { data: quote, error: quoteError } = await supabaseServer()
       .from("quotes")
@@ -433,6 +440,8 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       });
       return { ok: false, error: "Unable to create demo quote." };
     }
+
+    console.log("[demo seed] quote inserted", { quoteId: quote.id, uploadId });
 
     const destinationIdByProviderId = new Map<string, string>();
     const destinationsSupported = await schemaGate({
