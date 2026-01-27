@@ -65,6 +65,10 @@ export type SelectOfferActionState = {
   selectedOfferId?: string | null;
 };
 
+export type AwardOfferActionResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export type OfferShortlistActionState = {
   ok: boolean;
   error?: string | null;
@@ -103,6 +107,12 @@ const CUSTOMER_SELECT_OFFER_ACCESS_ERROR =
 const CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR =
   "That offer isn’t available for this search request.";
 const CUSTOMER_SELECT_OFFER_SUCCESS_MESSAGE = "Offer selection saved.";
+const CUSTOMER_AWARD_OFFER_GENERIC_ERROR =
+  "We couldn’t record that selection. Please try again.";
+const CUSTOMER_AWARD_OFFER_NOT_FOUND_ERROR =
+  "That offer isn’t available for this search request.";
+const CUSTOMER_AWARD_OFFER_INELIGIBLE_ERROR =
+  "That supplier isn’t eligible to be awarded.";
 const CUSTOMER_SHORTLIST_GENERIC_ERROR =
   "We couldn’t update your shortlist. Please try again.";
 const CUSTOMER_SHORTLIST_ACCESS_ERROR =
@@ -181,6 +191,8 @@ type CustomerOfferRow = {
   id: string;
   rfq_id: string | null;
   provider_id: string | null;
+  destination_id?: string | null;
+  status?: string | null;
 };
 
 type CustomerSelectionConfirmQuoteRow = {
@@ -832,6 +844,191 @@ export async function selectOfferAction(
   }
 }
 
+export async function awardOfferAction(input: {
+  rfqId: string;
+  offerId: string;
+}): Promise<AwardOfferActionResponse> {
+  const rfqId = normalizeId(input?.rfqId);
+  const offerId = normalizeId(input?.offerId);
+  if (!isUuidLike(rfqId) || !isUuidLike(offerId)) {
+    return { ok: false, error: "Invalid request." };
+  }
+
+  try {
+    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${rfqId}`);
+    // User id may be null-ish in some flows; keep nullable in DB.
+    const awardedBy = normalizeId(user?.id ?? null) || null;
+
+    const customer = await getCustomerByUserId(user.id);
+    if (!customer) {
+      return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
+    }
+
+    const { data: quoteRow, error: quoteError } = await supabaseServer()
+      .from("quotes")
+      .select("id,customer_id,customer_email")
+      .eq("id", rfqId)
+      .maybeSingle<CustomerOfferQuoteRow>();
+
+    if (quoteError) {
+      console.error("[customer offer award] quote lookup failed", {
+        rfqId,
+        error: serializeActionError(quoteError),
+      });
+      return { ok: false, error: CUSTOMER_AWARD_OFFER_GENERIC_ERROR };
+    }
+
+    if (!quoteRow) {
+      return { ok: false, error: "Quote not found." };
+    }
+
+    const quoteCustomerId = normalizeId(quoteRow.customer_id ?? null);
+    const customerIdMatches = Boolean(quoteCustomerId) && quoteCustomerId === customer.id;
+    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.customer_email ?? null);
+    const normalizedCustomerEmail = normalizeEmailInput(customer.email);
+    const customerEmailMatches =
+      Boolean(normalizedQuoteEmail) &&
+      Boolean(normalizedCustomerEmail) &&
+      normalizedQuoteEmail === normalizedCustomerEmail;
+
+    if (!customerIdMatches && !customerEmailMatches) {
+      console.warn("[customer offer award] access denied", {
+        rfqId,
+        userId: user.id,
+        customerId: customer.id,
+      });
+      return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
+    }
+
+    const { data: offerRow, error: offerError } = await supabaseServer()
+      .from("rfq_offers")
+      .select("id,rfq_id,provider_id,destination_id,status")
+      .eq("id", offerId)
+      .maybeSingle<CustomerOfferRow>();
+
+    if (offerError) {
+      console.error("[customer offer award] offer lookup failed", {
+        rfqId,
+        offerId,
+        error: serializeActionError(offerError),
+      });
+      return { ok: false, error: CUSTOMER_AWARD_OFFER_GENERIC_ERROR };
+    }
+
+    if (!offerRow || offerRow.rfq_id !== rfqId) {
+      return { ok: false, error: CUSTOMER_AWARD_OFFER_NOT_FOUND_ERROR };
+    }
+
+    const offerStatus = typeof offerRow.status === "string" ? offerRow.status.trim().toLowerCase() : "";
+    if (offerStatus === "withdrawn") {
+      return { ok: false, error: "That offer has been withdrawn." };
+    }
+
+    const providerId = normalizeId(offerRow.provider_id ?? null);
+    if (!providerId) {
+      return { ok: false, error: CUSTOMER_AWARD_OFFER_NOT_FOUND_ERROR };
+    }
+
+    const { data: providerRow, error: providerError } = await supabaseServer()
+      .from("providers")
+      .select("id,is_active,verification_status")
+      .eq("id", providerId)
+      .maybeSingle<{ id: string; is_active: boolean | null; verification_status: string | null }>();
+
+    if (providerError) {
+      console.error("[customer offer award] provider lookup failed", {
+        rfqId,
+        providerId,
+        error: serializeActionError(providerError),
+      });
+      return { ok: false, error: CUSTOMER_AWARD_OFFER_GENERIC_ERROR };
+    }
+
+    const isActive = Boolean(providerRow?.is_active);
+    const verification = typeof providerRow?.verification_status === "string"
+      ? providerRow.verification_status.trim().toLowerCase()
+      : "";
+    if (!isActive || verification !== "verified") {
+      return { ok: false, error: CUSTOMER_AWARD_OFFER_INELIGIBLE_ERROR };
+    }
+
+    let destinationId = normalizeId(offerRow.destination_id ?? null) || null;
+    if (!destinationId) {
+      const { data: destinationRow } = await supabaseServer()
+        .from("rfq_destinations")
+        .select("id")
+        .eq("rfq_id", rfqId)
+        .eq("provider_id", providerId)
+        .maybeSingle<{ id: string | null }>();
+      destinationId = normalizeId(destinationRow?.id ?? null) || null;
+    }
+
+    const now = new Date().toISOString();
+    const { error: awardError } = await supabaseServer()
+      .from("rfq_awards")
+      .upsert(
+        {
+          rfq_id: rfqId,
+          offer_id: offerId,
+          provider_id: providerId,
+          destination_id: destinationId,
+          awarded_at: now,
+          awarded_by: awardedBy,
+        },
+        { onConflict: "rfq_id" },
+      );
+
+    if (awardError) {
+      console.error("[customer offer award] rfq_awards upsert failed", {
+        rfqId,
+        offerId,
+        error: serializeActionError(awardError),
+      });
+      return { ok: false, error: CUSTOMER_AWARD_OFFER_GENERIC_ERROR };
+    }
+
+    if (destinationId) {
+      // Winner => quoted
+      await supabaseServer()
+        .from("rfq_destinations")
+        .update({ status: "quoted" })
+        .eq("rfq_id", rfqId)
+        .eq("id", destinationId);
+
+      // Others => declined
+      await supabaseServer()
+        .from("rfq_destinations")
+        .update({ status: "declined" })
+        .eq("rfq_id", rfqId)
+        .neq("id", destinationId);
+    } else {
+      // If destination_id can't be resolved, don't force-status destinations.
+    }
+
+    // Keep legacy selection fields in sync for downstream UI.
+    await supabaseServer()
+      .from("quotes")
+      .update({
+        selected_provider_id: providerId,
+        selected_offer_id: offerId,
+        selected_at: now,
+      })
+      .eq("id", rfqId);
+
+    revalidatePath(`/customer/quotes/${rfqId}`);
+    revalidatePath(`/customer/search`);
+
+    return { ok: true };
+  } catch (error) {
+    console.error("[customer offer award] crashed", {
+      rfqId,
+      offerId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_AWARD_OFFER_GENERIC_ERROR };
+  }
+}
+
 export async function toggleOfferShortlistAction(args: {
   quoteId: string;
   offerId: string;
@@ -933,6 +1130,14 @@ export async function toggleOfferShortlistAction(args: {
     });
     return { ok: false, error: CUSTOMER_SHORTLIST_GENERIC_ERROR };
   }
+}
+
+function isUuidLike(value: string): boolean {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    normalized,
+  );
 }
 
 export async function confirmSelectionAction(args: {

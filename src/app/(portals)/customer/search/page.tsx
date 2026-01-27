@@ -901,7 +901,11 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                   <CustomerQuoteCompareOffers
                     quoteId={activeQuote.id}
                     offers={filteredCustomerCompareOffers}
-                    selectedOfferId={workspaceData.quote.selected_offer_id ?? null}
+                    selectedOfferId={
+                      workspaceData.award?.offer_id ??
+                      workspaceData.quote.selected_offer_id ??
+                      null
+                    }
                     shortlistedOfferIds={shortlistedOfferIds}
                     matchContext={{
                       matchedOnProcess,

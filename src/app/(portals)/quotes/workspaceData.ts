@@ -51,6 +51,7 @@ export type QuoteWorkspaceData = {
   parts: QuotePartWithFiles[];
   rfqOffers: RfqOffer[];
   rfqDestinations: RfqDestination[];
+  award: RfqAward | null;
   /**
    * Customer-safe kickoff summary (counts + safe next pending title).
    * Only included when `includeKickoffSummary` is enabled.
@@ -67,6 +68,15 @@ export type QuoteWorkspaceData = {
    */
   filesMissingCanonical?: boolean;
   legacyFileNames?: string[];
+};
+
+export type RfqAward = {
+  rfq_id: string;
+  offer_id: string;
+  provider_id: string;
+  destination_id: string | null;
+  awarded_at: string;
+  awarded_by: string | null;
 };
 
 export type QuotePartFileRole = "cad" | "drawing" | "other";
@@ -425,6 +435,34 @@ export async function loadQuoteWorkspaceData(
         }
       }
     }
+
+    let award: RfqAward | null = null;
+    try {
+      const { data, error } = await supabaseServer()
+        .from("rfq_awards")
+        .select("rfq_id,offer_id,provider_id,destination_id,awarded_at,awarded_by")
+        .eq("rfq_id", quote.id)
+        .maybeSingle<RfqAward>();
+
+      if (error) {
+        if (!isMissingTableOrColumnError(error)) {
+          console.warn("[portal workspace] rfq_awards load failed", {
+            quoteId: quote.id,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      } else if (data) {
+        award = data;
+      }
+    } catch (error) {
+      if (!isMissingTableOrColumnError(error)) {
+        console.warn("[portal workspace] rfq_awards load crashed", {
+          quoteId: quote.id,
+          error: serializeSupabaseError(error) ?? error,
+        });
+      }
+    }
+
     const legacyDeclared = buildQuoteFilesFromRow(quote);
     const filesMissingCanonical = filePreviews.length === 0 && legacyDeclared.length > 0;
     const legacyFileNames = legacyDeclared.map((f) => f.filename);
@@ -488,6 +526,7 @@ export async function loadQuoteWorkspaceData(
         parts,
         rfqOffers,
         rfqDestinations,
+        award,
         kickoffSummary: includeKickoffSummary ? kickoffSummary : undefined,
         opsEvents: includeOpsEvents ? opsEvents : undefined,
         messages: messages ?? [],
