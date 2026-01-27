@@ -368,6 +368,12 @@ async function ensureDemoProviders(): Promise<{ ok: true; providers: ProviderRow
 }
 
 export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedResult> {
+  const gitSha = process.env.VERCEL_GIT_COMMIT_SHA || "";
+  const vercelEnv = process.env.VERCEL_ENV || "";
+  console.error(
+    `[demo seed] handler start fn=seedDemoSearchRequest gitSha=${gitSha || "unknown"} vercelEnv=${vercelEnv || "unknown"}`,
+  );
+
   const schema = await ensureDemoSchema();
   if (!schema.ok) return schema;
 
@@ -428,13 +434,9 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       upload_id: uploadId,
     };
 
-    console.log("[demo seed] quote insert payload inspection", {
-      uploadId,
-      insertPayloadKeys: Object.keys(quoteInsertPayload),
-      insertPayloadUploadId: (quoteInsertPayload as any).upload_id,
-      origin:
-        "quoteInsertPayload (spread from buildDemoQuoteInsertPayload(...) + explicit upload_id override; no zod parsing/sanitization in demo seed)",
-    });
+    // Intentionally using console.error so this always surfaces in Vercel logs.
+    // Also log the exact object passed into `.insert(...)`.
+    console.error("[demo seed] quote insert payload inspection", quoteInsertPayload);
 
     const { data: quote, error: quoteError } = await supabaseServer()
       .from("quotes")
