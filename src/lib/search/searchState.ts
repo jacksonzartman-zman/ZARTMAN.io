@@ -1,5 +1,5 @@
 import type { RfqDestination, RfqDestinationStatus } from "@/server/rfqs/destinations";
-import { isRfqOfferReturned, type RfqOffer } from "@/server/rfqs/offers";
+import type { RfqOffer } from "@/server/rfqs/offers";
 
 export type SearchStateStatusLabel =
   | "searching"
@@ -32,11 +32,18 @@ const PENDING_DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set(
   "viewed",
 ]);
 
+const RETURNED_OFFER_STATUSES: ReadonlySet<string> = new Set(["received", "revised"]);
+
+function isReturnedOfferStatus(value: unknown): boolean {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return RETURNED_OFFER_STATUSES.has(normalized);
+}
+
 export function buildSearchStateSummary(args: {
   destinations: RfqDestination[];
   offers: RfqOffer[];
 }): SearchStateSummary {
-  const returnedOffers = (args.offers ?? []).filter((offer) => isRfqOfferReturned(offer.status));
+  const returnedOffers = (args.offers ?? []).filter((offer) => isReturnedOfferStatus(offer.status));
   const counts: SearchStateSummary["counts"] = {
     destinations_total: args.destinations.length,
     destinations_pending: 0,
