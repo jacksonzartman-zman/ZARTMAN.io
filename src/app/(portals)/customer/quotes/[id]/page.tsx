@@ -366,6 +366,7 @@ export default async function CustomerQuoteDetailPage({
   const winningSupplierName =
     winningSupplierProfile?.company_name?.trim() || "Supplier";
   const quoteHasWinner =
+    Boolean(award) ||
     Boolean(quote.awarded_at) ||
     Boolean(quote.awarded_bid_id) ||
     Boolean(quote.awarded_supplier_id) ||
@@ -943,8 +944,9 @@ export default async function CustomerQuoteDetailPage({
   const quoteSummaryLeadTimeLabel = quoteHasWinner
     ? quoteSummarySelectedLeadTimeLabel ?? "—"
     : quoteSummaryBestLeadTimeLabel ?? "—";
-  const awardedAtLabel = quote.awarded_at
-    ? formatDateTime(quote.awarded_at, { includeTime: true })
+  const awardedAtIso = award?.awarded_at ?? quote.awarded_at ?? null;
+  const awardedAtLabel = awardedAtIso
+    ? formatDateTime(awardedAtIso, { includeTime: true })
     : null;
   const awardedByLabel = formatAwardedByLabel(quote.awarded_by_role, {
     perspective: "customer",
@@ -996,7 +998,59 @@ export default async function CustomerQuoteDetailPage({
     return flags.includes("very_large") || flags.includes("very_complex");
   });
 
-  const winningBidCallout = quoteHasWinner ? (
+  const awardedOffer = award
+    ? rfqOffers.find((offer) => offer.id === award.offer_id) ?? null
+    : null;
+  const awardedProviderName =
+    awardedOffer?.provider?.name?.trim() ||
+    (typeof award?.provider_id === "string" && award.provider_id.trim()
+      ? `Provider ${award.provider_id.trim().slice(0, 6)}`
+      : "Provider");
+  const awardedOfferPriceValue =
+    typeof awardedOffer?.total_price === "number" && Number.isFinite(awardedOffer.total_price)
+      ? awardedOffer.total_price
+      : null;
+  const awardedOfferPriceLabel =
+    awardedOfferPriceValue !== null
+      ? formatCurrency(awardedOfferPriceValue, awardedOffer?.currency ?? null)
+      : typeof awardedOffer?.total_price === "string" && awardedOffer.total_price.trim()
+        ? awardedOffer.total_price.trim()
+        : "—";
+  const awardedLeadMin = awardedOffer?.lead_time_days_min ?? null;
+  const awardedLeadMax = awardedOffer?.lead_time_days_max ?? null;
+  const awardedLeadTimeLabel =
+    typeof awardedLeadMin === "number" && typeof awardedLeadMax === "number" && awardedLeadMin !== awardedLeadMax
+      ? `${awardedLeadMin}–${awardedLeadMax} days`
+      : typeof awardedLeadMin === "number"
+        ? `${awardedLeadMin} day${awardedLeadMin === 1 ? "" : "s"}`
+        : typeof awardedLeadMax === "number"
+          ? `${awardedLeadMax} day${awardedLeadMax === 1 ? "" : "s"}`
+          : null;
+
+  const awardedOfferCallout = award ? (
+    <div className="rounded-xl border border-emerald-500/60 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+      <div className="flex flex-wrap items-center gap-2">
+        <TagPill size="sm" tone="emerald">
+          Awarded
+        </TagPill>
+        {awardedAtLabel ? (
+          <span className="text-xs uppercase tracking-wide text-emerald-200">
+            Awarded {awardedAtLabel}
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-2 text-base font-semibold text-white">{awardedProviderName}</p>
+      <p className="text-xs text-emerald-100">
+        {awardedOfferPriceLabel}
+        {awardedLeadTimeLabel ? ` · Lead time ${awardedLeadTimeLabel}` : ""}
+      </p>
+      <p className="mt-1 text-xs text-emerald-200">
+        Next steps: confirm scope and timing with the selected provider and proceed to kickoff.
+      </p>
+    </div>
+  ) : null;
+
+  const winningBidCallout = quoteHasWinner && !award ? (
     <div className="rounded-xl border border-emerald-500/60 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
       <div className="flex flex-wrap items-center gap-2">
         <TagPill size="sm" tone="emerald">
@@ -1053,6 +1107,7 @@ export default async function CustomerQuoteDetailPage({
           <dd className="text-slate-100">{leadTimeLabel}</dd>
         </div>
       </dl>
+      {awardedOfferCallout}
       {winningBidCallout}
     </div>
   );

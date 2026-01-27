@@ -25,6 +25,16 @@ type CustomerQuoteListRow = {
     primaryFileName: string | null;
     bidsCount: number;
     hasWinner: boolean;
+    award:
+      | {
+          providerName: string;
+          totalPrice: number | string | null;
+          currency: string | null;
+          leadTimeDaysMin: number | null;
+          leadTimeDaysMax: number | null;
+          awardedAt: string;
+        }
+      | null;
     kickoffStatus: "not_started" | "in_progress" | "complete" | "n/a";
     unreadMessagesCount: number | null;
     selectedPriceAmount: number | null;
@@ -102,6 +112,28 @@ function formatLeadTime(days: number | null): string {
   if (typeof days !== "number" || !Number.isFinite(days)) return "Pending";
   if (days <= 0) return "Pending";
   return `${days} day${days === 1 ? "" : "s"}`;
+}
+
+function formatLeadTimeRange(minDays: number | null, maxDays: number | null): string | null {
+  const minOk = typeof minDays === "number" && Number.isFinite(minDays) && minDays > 0;
+  const maxOk = typeof maxDays === "number" && Number.isFinite(maxDays) && maxDays > 0;
+  if (minOk && maxOk && minDays !== maxDays) {
+    return `${minDays}–${maxDays} days`;
+  }
+  if (minOk) return formatLeadTime(minDays);
+  if (maxOk) return formatLeadTime(maxDays);
+  return null;
+}
+
+function formatMoneyFlexible(value: number | string | null, currency: string | null): string {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return formatCurrency(value, currency ?? undefined);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : "Pending";
+  }
+  return "Pending";
 }
 
 function formatMoney(amount: number | null, currency: string | null): string {
@@ -252,13 +284,17 @@ export function CustomerQuotesListClient({
                       const unread = Math.max(0, Math.floor(quote.unreadMessagesCount ?? 0));
 
                       const fileLabel = quote.primaryFileName ?? "No files yet";
-                      const bestPriceLabel = formatMoney(
-                        quote.selectedPriceAmount ?? quote.bestPriceAmount,
-                        quote.selectedPriceCurrency ?? quote.bestPriceCurrency,
-                      );
-                      const bestLeadLabel = formatLeadTime(
-                        quote.selectedLeadTimeDays ?? quote.bestLeadTimeDays,
-                      );
+                      const award = quote.award ?? null;
+                      const bestPriceLabel = award
+                        ? formatMoneyFlexible(award.totalPrice, award.currency)
+                        : formatMoney(
+                            quote.selectedPriceAmount ?? quote.bestPriceAmount,
+                            quote.selectedPriceCurrency ?? quote.bestPriceCurrency,
+                          );
+                      const bestLeadLabel = award
+                        ? formatLeadTimeRange(award.leadTimeDaysMin, award.leadTimeDaysMax) ??
+                          "Pending"
+                        : formatLeadTime(quote.selectedLeadTimeDays ?? quote.bestLeadTimeDays);
                       const actionHref = `/customer/quotes/${quote.id}${inboxStatus.actionHrefSuffix}`;
                       const shouldShowOpenMessages =
                         quote.bidsCount === 0 && Boolean(quote.primaryFileName);
@@ -280,6 +316,11 @@ export function CustomerQuotesListClient({
                                   {quote.rfqLabel}
                                 </Link>
                                 <Pill tone={inboxStatus.tone}>{inboxStatus.label}</Pill>
+                                {award ? (
+                                  <Pill tone="emerald" className="tracking-[0.2em]">
+                                    AWARDED
+                                  </Pill>
+                                ) : null}
                                 {unread > 0 ? (
                                   <Pill tone="red">{unread > 99 ? "99+" : unread} new</Pill>
                                 ) : null}
@@ -301,7 +342,7 @@ export function CustomerQuotesListClient({
                                 <span className="hidden text-slate-600 sm:inline">•</span>
                                 <span>
                                   <span className="text-slate-500">
-                                    {quote.hasWinner ? "Awarded" : "Best"} price:
+                                    {award ? "Awarded" : quote.hasWinner ? "Awarded" : "Best"} price:
                                   </span>{" "}
                                   <span className="font-semibold text-slate-200">
                                     {bestPriceLabel}
@@ -310,10 +351,21 @@ export function CustomerQuotesListClient({
                                 <span className="hidden text-slate-600 sm:inline">•</span>
                                 <span>
                                   <span className="text-slate-500">
-                                    {quote.hasWinner ? "Awarded" : "Best"} lead time:
+                                    {award ? "Awarded" : quote.hasWinner ? "Awarded" : "Best"} lead time:
                                   </span>{" "}
                                   <span className="font-semibold text-slate-200">{bestLeadLabel}</span>
                                 </span>
+                                {award ? (
+                                  <>
+                                    <span className="hidden text-slate-600 sm:inline">•</span>
+                                    <span className="min-w-0 max-w-full truncate">
+                                      <span className="text-slate-500">Winner:</span>{" "}
+                                      <span className="font-semibold text-slate-200">
+                                        {award.providerName}
+                                      </span>
+                                    </span>
+                                  </>
+                                ) : null}
                               </div>
                             </div>
 

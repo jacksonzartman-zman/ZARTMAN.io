@@ -13,6 +13,7 @@ import { loadQuoteWorkspaceData, type QuoteWorkspaceData } from "@/app/(portals)
 import { formatQuoteId } from "@/app/(portals)/quotes/pageUtils";
 import { primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
+import { formatCurrency } from "@/lib/formatCurrency";
 import { formatSlaResponseTime } from "@/lib/ops/sla";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
@@ -972,6 +973,17 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                   const offersCount = listCounts.offerCounts.get(quote.id) ?? 0;
                   const href = buildSearchHref(usp, quote.id);
                   const statusTone = deriveSearchStatusTone(quote.status);
+                  const award = quote.award;
+                  const awardTotalPrice =
+                    typeof award?.totalPrice === "number" && Number.isFinite(award.totalPrice)
+                      ? award.totalPrice
+                      : null;
+                  const awardPriceLabel =
+                    awardTotalPrice !== null
+                      ? formatCurrency(awardTotalPrice, award?.currency ?? null)
+                      : typeof award?.totalPrice === "string" && award.totalPrice.trim()
+                        ? award.totalPrice.trim()
+                        : "—";
                   return (
                     <div
                       key={quote.id}
@@ -989,6 +1001,15 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                             <TagPill size="sm" tone={statusTone} className="normal-case">
                               {quote.status}
                             </TagPill>
+                            {award ? (
+                              <TagPill
+                                size="sm"
+                                tone="emerald"
+                                className="tracking-[0.2em]"
+                              >
+                                AWARDED
+                              </TagPill>
+                            ) : null}
                             <TagPill size="sm" tone="muted" className="normal-case tracking-normal">
                               {destinationsCount} supplier
                               {destinationsCount === 1 ? "" : "s"} contacted
@@ -997,6 +1018,15 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                               {offersCount} offer{offersCount === 1 ? "" : "s"}
                             </TagPill>
                           </div>
+                          {award ? (
+                            <p className="text-xs text-slate-400">
+                              Winner:{" "}
+                              <span className="font-semibold text-slate-200">
+                                {award.providerName}
+                              </span>{" "}
+                              • {awardPriceLabel}
+                            </p>
+                          ) : null}
                         </div>
                         <div className="flex shrink-0 items-center">
                           <Link

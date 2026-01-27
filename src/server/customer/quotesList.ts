@@ -23,6 +23,16 @@ export type CustomerQuoteListRow = {
   rfqLabel: string; // short description/title
   status: string; // reuse existing quote status helper labels
   hasWinner: boolean;
+  award:
+    | {
+        providerName: string;
+        totalPrice: number | string | null;
+        currency: string | null;
+        leadTimeDaysMin: number | null;
+        leadTimeDaysMax: number | null;
+        awardedAt: string;
+      }
+    | null;
   kickoffStatus: "not_started" | "in_progress" | "complete" | "n/a";
   bidsCount: number;
   primaryFileName: string | null;
@@ -62,6 +72,23 @@ type QuoteRow = {
 
 const QUOTES_WITH_UPLOADS_COLUMNS =
   "id,file_name,company,customer_name,customer_email,status,created_at,updated_at,file_names,upload_file_names,file_count,upload_file_count,awarded_at,awarded_supplier_id,awarded_bid_id";
+
+type RfqAwardLiteRow = {
+  rfq_id: string;
+  offer_id: string;
+  provider_id: string;
+  awarded_at: string;
+};
+
+type RfqOfferLiteRow = {
+  id: string;
+  provider_id: string;
+  currency: string | null;
+  total_price: number | string | null;
+  lead_time_days_min: number | null;
+  lead_time_days_max: number | null;
+  provider: { name: string | null } | null;
+};
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -157,6 +184,17 @@ export async function loadCustomerQuotesList(
   }
 
   const quoteIds = quoteRows.map((row) => row.id).filter(Boolean);
+
+  const rfqAwardsByQuoteId = await loadRfqAwardsByQuoteId(quoteIds);
+  const offerIds = Array.from(
+    new Set(
+      Array.from(rfqAwardsByQuoteId.values())
+        .map((row) => normalizeId(row.offer_id))
+        .filter(Boolean),
+    ),
+  );
+  const rfqOffersById = offerIds.length > 0 ? await loadRfqOffersByIds(offerIds) : new Map();
+
   const bidAggregates: Record<string, QuoteBidAggregate> =
     quoteIds.length > 0 ? await loadQuoteBidAggregates(quoteIds) : {};
 
@@ -188,7 +226,8 @@ export async function loadCustomerQuotesList(
         aggregate,
       });
       const statusMeta = getCustomerQuoteStatusMeta(listStatusKey);
-      const hasWinner = isWinnerQuote(quote);
+      const rfqAward = rfqAwardsByQuoteId.get(quote.id) ?? null;
+      const hasWinner = isWinnerQuote(quote) || Boolean(rfqAward);
       const bidsCount = aggregate?.bidCount ?? 0;
       const primaryFileName =
         typeof files[0]?.filename === "string" && files[0].filename.trim().length > 0
@@ -220,8 +259,16 @@ export async function loadCustomerQuotesList(
         lastMessageAt,
         quote.updated_at,
         quote.awarded_at,
+        rfqAward?.awarded_at ?? null,
         quote.created_at,
       ]);
+
+      const awardedOffer = rfqAward ? rfqOffersById.get(rfqAward.offer_id) ?? null : null;
+      const awardProviderName =
+        (awardedOffer?.provider?.name ?? "").trim() ||
+        (typeof rfqAward?.provider_id === "string" && rfqAward.provider_id.trim()
+          ? `Provider ${rfqAward.provider_id.trim().slice(0, 6)}`
+          : "Provider");
 
       return {
         id: quote.id,
@@ -230,6 +277,16 @@ export async function loadCustomerQuotesList(
         rfqLabel,
         status: statusMeta.label,
         hasWinner,
+        award: rfqAward
+          ? {
+              providerName: awardProviderName,
+              totalPrice: awardedOffer?.total_price ?? null,
+              currency: awardedOffer?.currency ?? null,
+              leadTimeDaysMin: awardedOffer?.lead_time_days_min ?? null,
+              leadTimeDaysMax: awardedOffer?.lead_time_days_max ?? null,
+              awardedAt: rfqAward.awarded_at,
+            }
+          : null,
         kickoffStatus,
         bidsCount,
         primaryFileName,
@@ -273,6 +330,102 @@ export async function loadCustomerQuotesList(
   });
 
   return rows;
+}
+
+async function loadRfqAwardsByQuoteId(
+  quoteIds: string[],
+): Promise<Map<string, RfqAwardLiteRow>> {
+  const map = new Map<string, RfqAwardLiteRow>();
+  const ids = (Array.isArray(quoteIds) ? quoteIds : []).map(normalizeId).filter(Boolean);
+  if (ids.length === 0) return map;
+
+  try {
+    const { data, error } = await supabaseServer()
+      .from("rfq_awards")
+      .select("rfq_id,offer_id,provider_id,awarded_at")
+      .in("rfq_id", ids)
+      .returns<RfqAwardLiteRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return map;
+      console.error("[customer quotes list] rfq_awards query failed", {
+        quoteIdsCount: ids.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const rfqId = normalizeId(row?.rfq_id);
+      const offerId = normalizeId(row?.offer_id);
+      const providerId = normalizeId(row?.provider_id);
+      const awardedAt = typeof row?.awarded_at === "string" ? row.awarded_at : "";
+      if (!rfqId || !offerId || !providerId || !awardedAt) continue;
+      map.set(rfqId, { rfq_id: rfqId, offer_id: offerId, provider_id: providerId, awarded_at: awardedAt });
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return map;
+    console.error("[customer quotes list] rfq_awards query crashed", {
+      quoteIdsCount: ids.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
+}
+
+async function loadRfqOffersByIds(
+  offerIds: string[],
+): Promise<Map<string, RfqOfferLiteRow>> {
+  const map = new Map<string, RfqOfferLiteRow>();
+  const ids = (Array.isArray(offerIds) ? offerIds : []).map(normalizeId).filter(Boolean);
+  if (ids.length === 0) return map;
+
+  try {
+    const { data, error } = await supabaseServer()
+      .from("rfq_offers")
+      .select("id,provider_id,currency,total_price,lead_time_days_min,lead_time_days_max,provider:providers(name)")
+      .in("id", ids)
+      .returns<RfqOfferLiteRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return map;
+      console.error("[customer quotes list] rfq_offers query failed", {
+        offerIdsCount: ids.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const id = normalizeId(row?.id);
+      const providerId = normalizeId(row?.provider_id);
+      if (!id || !providerId) continue;
+      map.set(id, {
+        id,
+        provider_id: providerId,
+        currency: typeof row.currency === "string" ? row.currency.trim() || null : null,
+        total_price: row.total_price ?? null,
+        lead_time_days_min:
+          typeof row.lead_time_days_min === "number" && Number.isFinite(row.lead_time_days_min)
+            ? row.lead_time_days_min
+            : null,
+        lead_time_days_max:
+          typeof row.lead_time_days_max === "number" && Number.isFinite(row.lead_time_days_max)
+            ? row.lead_time_days_max
+            : null,
+        provider: row.provider ?? null,
+      });
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return map;
+    console.error("[customer quotes list] rfq_offers query crashed", {
+      offerIdsCount: ids.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
 }
 
 async function loadLastCustomerVisibleEventAtByQuoteId(
