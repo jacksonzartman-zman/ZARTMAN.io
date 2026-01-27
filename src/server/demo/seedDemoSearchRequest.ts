@@ -388,10 +388,10 @@ async function ensureDemoProviders(
 }
 
 export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedResult> {
-  const gitSha = process.env.VERCEL_GIT_COMMIT_SHA || "";
-  const vercelEnv = process.env.VERCEL_ENV || "";
+  const gitSha = process.env.VERCEL_GIT_COMMIT_SHA || "unknown";
+  const vercelEnv = process.env.VERCEL_ENV || "unknown";
   console.error(
-    `[demo seed] handler start fn=seedDemoSearchRequest gitSha=${gitSha || "unknown"} vercelEnv=${vercelEnv || "unknown"}`,
+    `[demo seed] handler start fn=seedDemoSearchRequest gitSha=${gitSha} vercelEnv=${vercelEnv}`,
   );
 
   let admin: ReturnType<typeof supabaseAdmin>;
@@ -453,7 +453,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       return { ok: false, error: "Unable to create demo upload." };
     }
 
-    console.log("[demo seed] upload inserted", { uploadId });
+    console.error("[demo seed] UPLOAD INSERTED", { gitSha, vercelEnv, uploadId });
 
     const demoQuotePayloadBase = buildDemoQuoteInsertPayload({
       customerId: customer.customerId,
@@ -462,30 +462,14 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       nowIso,
     });
 
-    const quoteInsertPayload = {
-      ...demoQuotePayloadBase,
-      // Force presence for Vercel log inspection (even if builders change).
-      upload_id: uploadId,
-    };
-
-    const quoteInsertKeys = Object.keys(quoteInsertPayload);
-    console.error("[demo seed] quote insert preflight", {
+    const quoteInsertPayload: any = { ...demoQuotePayloadBase, upload_id: uploadId };
+    console.error("[demo seed] PRE-INSERT QUOTE", {
       gitSha,
       vercelEnv,
-      usingAdminClient: true,
       uploadId,
-      quoteInsertKeys,
+      payloadKeys: Object.keys(quoteInsertPayload),
+      payloadUploadId: (quoteInsertPayload as any).upload_id,
     });
-
-    const uploadIdValue = (quoteInsertPayload as Record<string, unknown>).upload_id;
-    if (typeof uploadIdValue !== "string" || !isUuid(uploadIdValue)) {
-      console.error("[demo seed] quote insert preflight failed", {
-        uploadId,
-        uploadIdValue,
-        quoteInsertKeys,
-      });
-      return { ok: false, error: "Unable to create demo quote." };
-    }
 
     const { data: quote, error: quoteError } = await admin
       .from("quotes")
@@ -496,7 +480,8 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
     if (quoteError || !quote?.id) {
       console.error("[demo seed] quote insert failed", {
         uploadId,
-        payloadFields: quoteInsertKeys,
+        payloadFields: Object.keys(quoteInsertPayload),
+        payload: quoteInsertPayload,
         error: serializeSupabaseError(quoteError) ?? quoteError,
       });
       return { ok: false, error: "Unable to create demo quote." };
