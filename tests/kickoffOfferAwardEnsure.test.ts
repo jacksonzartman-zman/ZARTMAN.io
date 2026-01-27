@@ -1,6 +1,10 @@
 import assert from "node:assert";
 
 (async () => {
+  // Some server modules import `@/server/auth` which requires these env vars at import time.
+  process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://localhost:54321";
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "test-anon-key";
+
   const { DEFAULT_SUPPLIER_KICKOFF_TASKS } = await import("../src/lib/quote/kickoffChecklist");
   const { ensureKickoffTasksForOfferAward } = await import("../src/server/quotes/kickoffTasks");
 

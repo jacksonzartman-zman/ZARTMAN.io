@@ -1,6 +1,9 @@
 import assert from "node:assert";
 
 (async () => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://localhost:54321";
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "test-anon-key";
+
   const { toggleSupplierKickoffTask } = await import("../src/server/quotes/kickoffTasks");
 
   let lastUpdatePayload: Record<string, unknown> | null = null;
