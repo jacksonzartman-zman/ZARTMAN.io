@@ -151,7 +151,7 @@ export default async function AdminQuotesPage({
     {};
   if (demoEnabled && demoOfferProviderIdsByQuoteId.size > 0) {
     for (const [quoteId, providerIds] of demoOfferProviderIdsByQuoteId.entries()) {
-      demoSupplierProvidersByQuoteId[quoteId] = providerIds.slice(0, 3).map((providerId) => ({
+      demoSupplierProvidersByQuoteId[quoteId] = providerIds.map((providerId) => ({
         providerId,
         label: providerNameById.get(providerId) ?? `Provider ${providerId.slice(0, 6)}`,
       }));
@@ -497,7 +497,7 @@ async function loadOfferProviderIdsByQuoteId(
 
     for (const [rfqId, providerIds] of map.entries()) {
       providerIds.sort((a, b) => a.localeCompare(b));
-      map.set(rfqId, providerIds.slice(0, 3));
+      map.set(rfqId, providerIds);
     }
   } catch (error) {
     if (isMissingTableOrColumnError(error)) return map;
