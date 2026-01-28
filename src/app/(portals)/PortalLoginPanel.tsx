@@ -66,7 +66,12 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [debug, setDebug] = useState<{ supabaseMessage: string | null; status: number | null } | null>(
+    null,
+  );
   const [lastSentTo, setLastSentTo] = useState<string | null>(null);
+  const [lastRequestId, setLastRequestId] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(false);
   const pathname = usePathname();
   const roleIsKnown = Object.prototype.hasOwnProperty.call(ROLE_COPY, role);
   if (!roleIsKnown) {
@@ -101,6 +106,8 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
           ? "Enter a business email that matches your onboarding profile."
           : "Enter a valid work email.",
       );
+      setDebug(null);
+      setLastRequestId(null);
       setStatus("error");
       return;
     }
@@ -108,6 +115,7 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
     try {
       setStatus("sending");
       setError(null);
+      setDebug(null);
       const clientOrigin = window.location.origin;
       const result = await requestMagicLinkForEmail({
         role: resolvedRole,
@@ -115,22 +123,15 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
         nextPath: redirectPath,
         clientOrigin,
       });
-      if (result.success && result.emailRedirectTo) {
-        // Temporary debug log (non-production only return value).
-        console.log("[portal-login] emailRedirectTo", result.emailRedirectTo);
-      }
-      if (!result.success) {
+      setLastRequestId(result.requestId);
+      if (!result.ok) {
         setStatus("error");
-        setError(
-          result.error ??
-            (resolvedRole === "supplier"
-              ? "We couldn’t send the link. Check your connection and try again."
-              : "We couldn’t send the link. Try again in a few seconds."),
-        );
+        setError(result.error);
+        setDebug(result.debug ?? null);
         return;
       }
       setStatus("sent");
-      setLastSentTo(result.normalizedEmail ?? normalizedEmail);
+      setLastSentTo(normalizedEmail);
     } catch (err) {
       console.error("Portal login: failed to request magic link", err);
       setError(
@@ -138,7 +139,12 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
           ? "We couldn’t send the link. Check your connection and try again."
           : "We couldn’t send the link. Try again in a few seconds.",
       );
+      setDebug(null);
+      setLastRequestId(null);
       setStatus("error");
+    } finally {
+      setCooldown(true);
+      window.setTimeout(() => setCooldown(false), 2500);
     }
   }
 
@@ -175,30 +181,42 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
         />
         <button
           type="submit"
-          disabled={status === "sending"}
+          disabled={status === "sending" || cooldown}
           className="w-full rounded-full border border-slate-800 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:opacity-60"
         >
           {status === "sending" ? "Sending..." : copy.cta}
         </button>
         {status === "sent" ? (
-            <p className="text-sm text-emerald-200">
-              {resolvedRole === "supplier" ? (
-                <>
-                  Link sent to{" "}
-                  <span className="font-mono text-white">
-                    {lastSentTo ?? email.trim().toLowerCase()}
-                  </span>{" "}
-                  – check your inbox.
-                </>
-              ) : (
-                "Check your inbox for the magic link."
-              )}
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm text-emerald-200">
+                Magic link sent. Request ID:{" "}
+                <span className="font-mono text-white">{lastRequestId ?? "unknown"}</span>
+              </p>
+              <p className="text-xs text-slate-400">
+                Sent to{" "}
+                <span className="font-mono text-slate-200">
+                  {lastSentTo ?? email.trim().toLowerCase()}
+                </span>
+                . Check your inbox (and spam).
+              </p>
+            </div>
           ) : null}
         {error ? (
-          <p className="text-sm text-red-300" role="alert">
-            {error}
-          </p>
+          <div role="alert" className="space-y-1">
+            <p className="text-sm text-red-300">{error}</p>
+            {lastRequestId ? (
+              <p className="text-xs text-slate-400">
+                Request ID: <span className="font-mono text-slate-200">{lastRequestId}</span>
+              </p>
+            ) : null}
+            {debug ? (
+              <p className="text-xs text-slate-400">
+                Debug (non-prod): status{" "}
+                <span className="font-mono text-slate-200">{String(debug.status)}</span>, message{" "}
+                <span className="font-mono text-slate-200">{debug.supabaseMessage ?? "null"}</span>
+              </p>
+            ) : null}
+          </div>
         ) : null}
         <p className="text-xs text-slate-500">
           You’ll land back on <span className="font-mono text-slate-300">{redirectPath}</span> after
