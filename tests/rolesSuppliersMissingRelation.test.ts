@@ -5,10 +5,16 @@ import assert from "node:assert";
 
   let supplierLookupCalled = false;
   const infoLines: unknown[][] = [];
+  const logLines: unknown[][] = [];
   const originalInfo = console.info;
+  const originalLog = console.log;
   console.info = (...args: unknown[]) => {
     infoLines.push(args);
     return originalInfo(...args);
+  };
+  console.log = (...args: unknown[]) => {
+    logLines.push(args);
+    return originalLog(...args);
   };
 
   try {
@@ -51,6 +57,19 @@ import assert from "node:assert";
     assert.strictEqual(resultWithPreloadedSupplier.isCustomer, true);
     assert.strictEqual(resultWithPreloadedSupplier.primaryRole, "customer");
 
+    // Ensure we log post-gate values (no contradictions).
+    const resolvedRoleLogs = logLines.filter((args) => args[0] === "[roles] resolved roles");
+    assert.ok(resolvedRoleLogs.length >= 1, "Expected at least one resolved roles log line");
+    for (const entry of resolvedRoleLogs) {
+      const payload = entry[1] as any;
+      assert.strictEqual(payload?.isSupplier, false, "Expected logged isSupplier to be post-gate false");
+      assert.strictEqual(
+        payload?.suppliersRelationMissing,
+        true,
+        "Expected logged suppliersRelationMissing to be true",
+      );
+    }
+
     // Single info line (once per process) for this skip path.
     const matching = infoLines.filter((args) => args[0] === "[roles] supplier role skipped due to missing suppliers relation");
     assert.strictEqual(matching.length, 1, "Expected exactly one info log line for supplier skip");
@@ -58,6 +77,7 @@ import assert from "node:assert";
     console.log("rolesSuppliersMissingRelation tests passed");
   } finally {
     console.info = originalInfo;
+    console.log = originalLog;
   }
 })().catch((err) => {
   console.error(err);
