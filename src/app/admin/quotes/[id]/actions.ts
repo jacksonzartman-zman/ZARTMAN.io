@@ -72,6 +72,7 @@ import { buildAwardEmail } from "@/server/quotes/awardEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
+import { notifyQuoteSubscribersFirstOfferArrived } from "@/server/rfqs/offerArrivalNotifications";
 import {
   ensureDefaultKickoffTasksForQuote,
   updateKickoffTaskStatusAction,
@@ -194,6 +195,249 @@ const ADMIN_DESTINATION_WEB_FORM_ERROR =
   "We couldn't generate the RFQ instructions right now. Please try again.";
 const ADMIN_AWARD_EMAIL_ERROR =
   "We couldn't generate the award email right now. Please try again.";
+
+export type CreateExternalOfferResult =
+  | { ok: true; offerId: string; providerId: string; destinationId: string }
+  | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+const EXTERNAL_OFFER_GENERIC_ERROR =
+  "We couldn’t add this external offer right now. Please try again.";
+const EXTERNAL_OFFER_VALIDATION_ERROR = "Please review the highlighted fields.";
+const EXTERNAL_OFFER_PRICE_ERROR = "Enter a valid price greater than 0.";
+const EXTERNAL_OFFER_LEAD_TIME_ERROR = "Enter a lead time in days greater than 0.";
+const EXTERNAL_OFFER_SOURCE_TYPE_ERROR = "Select a valid source type.";
+
+const EXTERNAL_OFFER_PROCESS_OPTIONS = new Set([
+  "CNC",
+  "3DP",
+  "Sheet Metal",
+  "Injection Molding",
+]);
+
+const EXTERNAL_OFFER_SOURCE_TYPES = new Set(["manual", "marketplace", "network"]);
+
+export async function createExternalOfferAction(args: {
+  quoteId: string;
+  price: number;
+  leadTimeDays: number;
+  process?: string | null;
+  notes?: string | null;
+  sourceType?: string | null;
+  sourceName?: string | null;
+}): Promise<CreateExternalOfferResult> {
+  const quoteId = normalizeIdInput(args.quoteId);
+  if (!quoteId) {
+    return { ok: false, error: ADMIN_QUOTE_UPDATE_ID_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { ok: false, error: ADMIN_RFQ_OFFER_AUTH_ERROR };
+    }
+    throw error;
+  }
+
+  const price =
+    typeof args.price === "number" && Number.isFinite(args.price) ? args.price : NaN;
+  const leadTimeDaysRaw =
+    typeof args.leadTimeDays === "number" && Number.isFinite(args.leadTimeDays)
+      ? args.leadTimeDays
+      : NaN;
+  const leadTimeDays = Number.isInteger(leadTimeDaysRaw) ? leadTimeDaysRaw : NaN;
+  const processRaw = typeof args.process === "string" ? args.process.trim() : "";
+  const notesRaw = typeof args.notes === "string" ? args.notes.trim() : "";
+  const sourceTypeRaw = typeof args.sourceType === "string" ? args.sourceType.trim() : "";
+  const sourceNameRaw = typeof args.sourceName === "string" ? args.sourceName.trim() : "";
+
+  const fieldErrors: Record<string, string> = {};
+  if (!Number.isFinite(price) || price <= 0) {
+    fieldErrors.price = EXTERNAL_OFFER_PRICE_ERROR;
+  }
+  if (!Number.isFinite(leadTimeDays) || leadTimeDays <= 0) {
+    fieldErrors.leadTimeDays = EXTERNAL_OFFER_LEAD_TIME_ERROR;
+  }
+  if (sourceTypeRaw && !EXTERNAL_OFFER_SOURCE_TYPES.has(sourceTypeRaw)) {
+    fieldErrors.sourceType = EXTERNAL_OFFER_SOURCE_TYPE_ERROR;
+  }
+  if (processRaw && !EXTERNAL_OFFER_PROCESS_OPTIONS.has(processRaw)) {
+    fieldErrors.process = "Select a valid process.";
+  }
+  if (notesRaw.length > 2000) {
+    fieldErrors.notes = "Notes must be 2000 characters or fewer.";
+  }
+  if (sourceNameRaw.length > 200) {
+    fieldErrors.sourceName = "Source name must be 200 characters or fewer.";
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return { ok: false, error: EXTERNAL_OFFER_VALIDATION_ERROR, fieldErrors };
+  }
+
+  try {
+    // Determine whether this is the first offer (used for offer-arrival notifications).
+    let existingOfferCount = 0;
+    try {
+      const { data } = await supabaseServer()
+        .from("rfq_offers")
+        .select("id,status")
+        .eq("rfq_id", quoteId)
+        .returns<Array<{ id: string | null; status: string | null }>>();
+      const rows = Array.isArray(data) ? data : [];
+      existingOfferCount = rows.filter(
+        (row) => (row.status ?? "").trim().toLowerCase() !== "withdrawn",
+      ).length;
+    } catch (error) {
+      console.warn("[admin external offer] offer count lookup skipped", {
+        quoteId,
+        error: serializeActionError(error),
+      });
+    }
+
+    const now = new Date().toISOString();
+
+    // Create a dedicated provider row per external offer so we can store multiple offers per RFQ.
+    const providerPayload: Record<string, unknown> = {
+      name: "External offer",
+      provider_type: "direct_supplier",
+      quoting_mode: "manual",
+      is_active: true,
+    };
+    try {
+      const supportsVerification = await hasColumns("providers", [
+        "verification_status",
+        "verified_at",
+        "source",
+      ]);
+      if (supportsVerification) {
+        providerPayload.verification_status = "verified";
+        providerPayload.verified_at = now;
+        providerPayload.source = "manual";
+      }
+    } catch {
+      // Fail-soft: keep base provider payload.
+    }
+
+    const { data: providerRow, error: providerError } = await supabaseServer()
+      .from("providers")
+      .insert(providerPayload)
+      .select("id")
+      .single<{ id: string }>();
+
+    if (providerError || !providerRow?.id) {
+      console.error("[admin external offer] provider insert failed", {
+        quoteId,
+        error: serializeSupabaseError(providerError),
+      });
+      return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
+    }
+
+    const providerId = providerRow.id;
+
+    // Create a destination row so the offer shows up in the admin destinations/dispatch UI.
+    const { data: destinationRow, error: destinationError } = await supabaseServer()
+      .from("rfq_destinations")
+      .insert({
+        rfq_id: quoteId,
+        provider_id: providerId,
+        status: "quoted",
+        last_status_at: now,
+      })
+      .select("id")
+      .single<{ id: string }>();
+
+    if (destinationError || !destinationRow?.id) {
+      console.error("[admin external offer] destination insert failed", {
+        quoteId,
+        providerId,
+        error: serializeSupabaseError(destinationError),
+      });
+      return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
+    }
+
+    const destinationId = destinationRow.id;
+
+    const offerPayload: Record<string, unknown> = {
+      rfq_id: quoteId,
+      provider_id: providerId,
+      destination_id: destinationId,
+      currency: "USD",
+      total_price: price,
+      lead_time_days_min: leadTimeDays,
+      lead_time_days_max: leadTimeDays,
+      status: "received",
+      received_at: now,
+      ...(notesRaw ? { notes: notesRaw } : {}),
+    };
+
+    // Optional admin-only metadata (schema-gated).
+    try {
+      const supportsExternalMeta = await hasColumns("rfq_offers", [
+        "admin_source_type",
+        "admin_source_name",
+        "process",
+      ]);
+      if (supportsExternalMeta) {
+        if (sourceTypeRaw) offerPayload.admin_source_type = sourceTypeRaw;
+        if (sourceNameRaw) offerPayload.admin_source_name = sourceNameRaw;
+        if (processRaw) offerPayload.process = processRaw;
+      }
+    } catch {
+      // ignore
+    }
+
+    const { data: offerRow, error: offerError } = await supabaseServer()
+      .from("rfq_offers")
+      .insert(offerPayload)
+      .select("id")
+      .single<{ id: string }>();
+
+    if (offerError || !offerRow?.id) {
+      console.error("[admin external offer] offer insert failed", {
+        quoteId,
+        providerId,
+        destinationId,
+        error: serializeSupabaseError(offerError),
+      });
+      return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
+    }
+
+    const offerId = offerRow.id;
+
+    await logOpsEvent({
+      quoteId,
+      destinationId,
+      eventType: "offer_upserted",
+      payload: {
+        provider_id: providerId,
+        status: "received",
+        offer_id: offerId,
+        source: "admin_external_offer",
+      },
+    });
+
+    // First offer arrival notification for the public RFQ page opt-in.
+    if (existingOfferCount === 0) {
+      void notifyQuoteSubscribersFirstOfferArrived({ quoteId, offerId });
+    }
+
+    revalidatePath("/admin/quotes");
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    revalidatePath("/admin/ops/inbox");
+    revalidatePath("/rfq");
+    revalidatePath(`/customer/quotes/${quoteId}`);
+    revalidatePath("/customer/quotes");
+
+    return { ok: true, offerId, providerId, destinationId };
+  } catch (error) {
+    console.error("[admin external offer] action crashed", {
+      quoteId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
+  }
+}
 
 export async function updateAdminKickoffTaskAction(args: {
   quoteId: string;

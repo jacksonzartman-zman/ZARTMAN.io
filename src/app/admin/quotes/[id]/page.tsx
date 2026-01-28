@@ -56,6 +56,7 @@ import { loadBidsForQuote } from "@/server/bids";
 import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import { listSupplierBidsForQuote } from "@/server/suppliers/bids";
 import { SupplierBidsCard, type AdminSupplierBidRow } from "./SupplierBidsCard";
+import { AddExternalOfferButton } from "./AddExternalOfferButton";
 import ChangeRequestsCard from "./ChangeRequestsCard";
 import {
   loadQuoteProjectForQuote,
@@ -2619,6 +2620,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 recommendedSupplierIds={recommendedSupplierIds}
                 bidsLoaded={bidsResult.ok}
                 errorMessage={bidsResult.error ?? null}
+                headerActions={<AddExternalOfferButton quoteId={quote.id} buttonSize="xs" />}
               />
             </div>
           </DisclosureSection>

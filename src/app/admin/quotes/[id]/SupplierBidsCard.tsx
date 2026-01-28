@@ -7,6 +7,7 @@ import type { SupplierRow } from "@/server/suppliers/types";
 import type { SupplierReputationLabel } from "@/server/suppliers/reputation";
 import clsx from "clsx";
 import { AwardBidButton } from "./AwardBidButton";
+import type { ReactNode } from "react";
 
 /**
  * Phase 1 Polish checklist
@@ -40,6 +41,7 @@ type SupplierBidsCardProps = {
   bidsLoaded: boolean;
   errorMessage?: string | null;
   id?: string;
+  headerActions?: ReactNode;
 };
 
 const TERMINAL_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
@@ -56,6 +58,7 @@ export function SupplierBidsCard({
   bidsLoaded,
   errorMessage,
   id,
+  headerActions,
 }: SupplierBidsCardProps) {
   const quoteIsInTerminalStatus = TERMINAL_STATUSES.includes(quoteStatus);
   const bidsAvailable = bidsLoaded && bids.length > 0;
@@ -73,11 +76,14 @@ export function SupplierBidsCard({
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-100">Offers</h2>
-        {!bidsLoaded ? (
-          <span className="text-xs text-slate-400">
-            Offers are temporarily unavailable.
-          </span>
-        ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {headerActions}
+          {!bidsLoaded ? (
+            <span className="text-xs text-slate-400">
+              Offers are temporarily unavailable.
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {!bidsLoaded ? (
