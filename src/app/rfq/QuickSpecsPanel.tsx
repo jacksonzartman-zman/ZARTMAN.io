@@ -126,8 +126,8 @@ export function QuickSpecsPanel({ quoteId, intakeKey, initial }: QuickSpecsPanel
     const normalizedDate = normalizeIsoDate(targetDate);
     const date = normalizedDate ? normalizedDate : null;
     return {
-      manufacturingProcesses: processes,
-      targetDate: date,
+      processes,
+      needByDate: date,
       quantity,
     };
   }, [processes, quantityInput, targetDate]);
@@ -155,11 +155,7 @@ export function QuickSpecsPanel({ quoteId, intakeKey, initial }: QuickSpecsPanel
     );
   }, [initial.manufacturingProcesses, initial.quantity, initial.targetDate, processes, quantityInput, targetDate]);
 
-  async function saveNow(payload: {
-    manufacturingProcesses: ProcessKey[];
-    targetDate: string | null;
-    quantity: number | null;
-  }) {
+  async function saveNow(payload: { processes: ProcessKey[]; needByDate: string | null; quantity: number | null }) {
     if (abortRef.current) {
       abortRef.current.abort();
     }
@@ -169,8 +165,8 @@ export function QuickSpecsPanel({ quoteId, intakeKey, initial }: QuickSpecsPanel
     setSaveState("saving");
     setSaveMessage("");
 
-    const resolvedTargetDate =
-      payload.targetDate && isValidIsoDate(payload.targetDate) ? payload.targetDate : null;
+    const resolvedNeedByDate =
+      payload.needByDate && isValidIsoDate(payload.needByDate) ? payload.needByDate : null;
 
     try {
       const res = await fetch("/api/rfq/quick-specs", {
@@ -179,8 +175,8 @@ export function QuickSpecsPanel({ quoteId, intakeKey, initial }: QuickSpecsPanel
         body: JSON.stringify({
           quoteId,
           intakeKey,
-          manufacturingProcesses: payload.manufacturingProcesses,
-          targetDate: resolvedTargetDate,
+          processes: payload.processes,
+          needByDate: resolvedNeedByDate,
           quantity: payload.quantity,
         }),
         signal: controller.signal,

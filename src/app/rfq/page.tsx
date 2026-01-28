@@ -35,6 +35,34 @@ type ClaimState =
   | "already_saved_to_you"
   | "already_saved_elsewhere";
 
+type ProcessKey = "cnc" | "3dp" | "sheet" | "injection";
+
+function parseManufacturingProcessKeys(input: string | null): ProcessKey[] {
+  if (!input) return [];
+  const raw = input.trim();
+  if (!raw) return [];
+
+  // Preferred (new) format: comma-separated process keys, e.g. "cnc,3dp"
+  const csvKeys = raw
+    .split(",")
+    .map((v) => v.trim().toLowerCase())
+    .filter((v): v is ProcessKey => v === "cnc" || v === "3dp" || v === "sheet" || v === "injection");
+  if (csvKeys.length > 0) {
+    return Array.from(new Set(csvKeys));
+  }
+
+  // Backfill (legacy) format: human labels stored in the same column.
+  const legacy = raw.toLowerCase();
+  const keys: ProcessKey[] = [];
+  if (legacy.includes("cnc")) keys.push("cnc");
+  if (legacy.includes("3d") || legacy.includes("3dp") || legacy.includes("printing") || legacy.includes("additive")) {
+    keys.push("3dp");
+  }
+  if (legacy.includes("sheet")) keys.push("sheet");
+  if (legacy.includes("injection") || legacy.includes("mold")) keys.push("injection");
+  return Array.from(new Set(keys));
+}
+
 export default async function RfqStatusPage({ searchParams }: PageProps) {
   const sp = (await searchParams) ?? {};
   const quoteId = normalizeParam(sp.quote);
@@ -159,17 +187,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
     receivedAt: offer.received_at ?? offer.created_at ?? null,
   }));
 
-  const initialProcesses = (() => {
-    const raw = (uploadManufacturingProcess ?? "").toLowerCase();
-    const keys: Array<"cnc" | "3dp" | "sheet" | "injection"> = [];
-    if (raw.includes("cnc")) keys.push("cnc");
-    if (raw.includes("3d") || raw.includes("3dp") || raw.includes("printing") || raw.includes("additive")) {
-      keys.push("3dp");
-    }
-    if (raw.includes("sheet")) keys.push("sheet");
-    if (raw.includes("injection") || raw.includes("mold")) keys.push("injection");
-    return Array.from(new Set(keys));
-  })();
+  const initialProcesses = parseManufacturingProcessKeys(uploadManufacturingProcess);
 
   const initialQuantity = (() => {
     if (!uploadQuantity) return null;

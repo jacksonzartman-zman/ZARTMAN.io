@@ -5,13 +5,6 @@ export const runtime = "nodejs";
 
 type ProcessKey = "cnc" | "3dp" | "sheet" | "injection";
 
-const PROCESS_LABEL_BY_KEY: Record<ProcessKey, string> = {
-  cnc: "CNC machining",
-  "3dp": "3D printing",
-  sheet: "Sheet metal",
-  injection: "Injection molding",
-};
-
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -32,6 +25,35 @@ function isValidIsoDate(value: string): boolean {
   return Number.isFinite(dt.getTime()) && dt.toISOString().slice(0, 10) === value;
 }
 
+function normalizeProcessKeys(input: unknown): ProcessKey[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const keys = input
+    .map((v) => normalizeKey(v))
+    .filter((v): v is ProcessKey => v === "cnc" || v === "3dp" || v === "sheet" || v === "injection");
+  // Preserve input order while deduping.
+  return Array.from(new Set(keys));
+}
+
+function normalizeQuantityToNumericString(input: unknown): string | null | undefined {
+  // undefined => no update, null => explicit clear, string => persist
+  if (input === undefined) return undefined;
+  if (input === null) return null;
+
+  const raw =
+    typeof input === "number" && Number.isFinite(input)
+      ? String(Math.floor(input))
+      : typeof input === "string"
+        ? input.trim()
+        : "";
+
+  if (!raw) return null;
+
+  if (!/^\d+$/.test(raw)) return null;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return String(parsed);
+}
+
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
@@ -42,6 +64,10 @@ export async function POST(req: NextRequest) {
       | {
           quoteId?: unknown;
           intakeKey?: unknown;
+          // new names
+          processes?: unknown;
+          needByDate?: unknown;
+          // legacy names (keep temporarily for compatibility)
           manufacturingProcesses?: unknown;
           targetDate?: unknown;
           quantity?: unknown;
@@ -81,42 +107,32 @@ export async function POST(req: NextRequest) {
       return jsonError("Unauthorized.", 401);
     }
 
-    const processKeysRaw = Array.isArray(body?.manufacturingProcesses)
-      ? (body?.manufacturingProcesses as unknown[])
-      : undefined;
-    const processKeys = processKeysRaw
-      ? processKeysRaw
-          .map((v) => normalizeKey(v))
-          .filter((v): v is ProcessKey => v === "cnc" || v === "3dp" || v === "sheet" || v === "injection")
-      : undefined;
+    const processKeys =
+      normalizeProcessKeys(body?.processes) ?? normalizeProcessKeys(body?.manufacturingProcesses);
 
-    const targetDateRaw = body?.targetDate === null ? null : normalizeText(body?.targetDate);
-    const targetDate =
-      targetDateRaw === null || targetDateRaw.length === 0
+    const needByDateInput = body?.needByDate !== undefined ? body?.needByDate : body?.targetDate;
+    const needByDateRaw = needByDateInput === null ? null : normalizeText(needByDateInput);
+    const needByDate =
+      needByDateRaw === null || needByDateRaw.length === 0
         ? null
-        : isValidIsoDate(targetDateRaw)
-          ? targetDateRaw
+        : isValidIsoDate(needByDateRaw)
+          ? needByDateRaw
           : null;
 
-    const quantity =
-      typeof body?.quantity === "number" && Number.isFinite(body.quantity)
-        ? Math.max(1, Math.floor(body.quantity))
-        : body?.quantity === null
-          ? null
-          : null;
+    const quantity = normalizeQuantityToNumericString(body?.quantity);
 
     const uploadUpdates: Record<string, unknown> = {};
     if (processKeys !== undefined) {
-      const labels = processKeys.map((k) => PROCESS_LABEL_BY_KEY[k]).filter(Boolean);
-      uploadUpdates.manufacturing_process = labels.length > 0 ? labels.join(", ") : null;
+      // Store as comma-separated lowercase process keys: "cnc,3dp"
+      uploadUpdates.manufacturing_process = processKeys.length > 0 ? processKeys.join(",") : null;
     }
-    if (body?.quantity !== undefined) {
-      uploadUpdates.quantity = quantity === null ? null : String(quantity);
+    if (quantity !== undefined) {
+      uploadUpdates.quantity = quantity;
     }
 
     const quoteUpdates: Record<string, unknown> = {};
-    if (body?.targetDate !== undefined) {
-      quoteUpdates.target_date = targetDate;
+    if (needByDateInput !== undefined) {
+      quoteUpdates.target_date = needByDate;
     }
 
     if (Object.keys(uploadUpdates).length > 0) {
@@ -145,10 +161,10 @@ export async function POST(req: NextRequest) {
         saved: {
           manufacturing_process:
             processKeys !== undefined
-              ? processKeys.map((k) => PROCESS_LABEL_BY_KEY[k]).join(", ") || null
+              ? processKeys.join(",") || null
               : undefined,
-          quantity: body?.quantity !== undefined ? (quantity === null ? null : quantity) : undefined,
-          target_date: body?.targetDate !== undefined ? targetDate : undefined,
+          quantity: quantity !== undefined ? quantity : undefined,
+          target_date: needByDateInput !== undefined ? needByDate : undefined,
         },
       },
       { status: 200 },
