@@ -115,7 +115,7 @@ import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { getRfqDestinations } from "@/server/rfqs/destinations";
-import { getRfqOffers } from "@/server/rfqs/offers";
+import { getRfqOffers, summarizeRfqOffers } from "@/server/rfqs/offers";
 import { listProvidersWithContact } from "@/server/providers";
 import {
   buildProviderEligibilityCriteria,
@@ -807,6 +807,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const fallbackBestPriceCurrency = fallbackBestPriceBid?.currency ?? null;
     const fallbackFastestLeadTime = findFastestLeadTime(bids);
     const aggregateBidCount = bidAggregate?.bidCount ?? bids.length;
+    const rfqOfferSummary = summarizeRfqOffers(rfqOffers ?? []);
+    const rfqOfferCount = rfqOfferSummary.nonWithdrawn;
     const canonicalAwardedBidId =
       typeof quote.awarded_bid_id === "string" ? quote.awarded_bid_id.trim() : "";
     const hasWinningBid =
@@ -990,9 +992,9 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const bidCountLabel =
       bidAggregate && aggregateBidCount >= 0
         ? formatAdminBidCountLabel(bidAggregate)
-        : aggregateBidCount === 0
+        : rfqOfferCount === 0
           ? "No offers yet"
-          : `${aggregateBidCount} offer${aggregateBidCount === 1 ? "" : "s"} received`;
+          : `${rfqOfferCount} offer${rfqOfferCount === 1 ? "" : "s"} received`;
     const offerCountLabel = bidCountLabel.replace(/\bbids?\b/gi, (match) =>
       match.toLowerCase() === "bid" ? "offer" : "offers",
     );
@@ -1008,7 +1010,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const lastBidAtLabel =
       bidAggregate?.lastBidAt
         ? formatDateTime(bidAggregate.lastBidAt, { includeTime: true })
-        : aggregateBidCount > 0
+        : rfqOfferCount > 0
           ? "See offer table"
           : "No offers yet";
     const winningBidExists = bidAggregate?.hasWinningBid || hasWinningBid;
@@ -2581,7 +2583,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   </p>
                 </div>
               ) : null}
-              {aggregateBidCount === 0 && !hasWinningBid ? (
+              {rfqOfferCount === 0 && !hasWinningBid ? (
                 <EmptyStateCard
                   title="No offers yet"
                   description="Invite a supplier to start quoting, or check back later."

@@ -11,6 +11,10 @@ import {
   type AdminSearchAlertFilter,
   SEARCH_ALERTS_RECENT_WINDOW_DAYS,
 } from "@/server/admin/searchAlerts";
+import {
+  loadRfqOffersForQuoteIds,
+  summarizeRfqOffers,
+} from "@/server/rfqs/offers";
 import { markSearchAlertNotifiedAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +34,7 @@ export default async function AdminSearchAlertsPage({
   const filter = normalizeFilter(usp.get("filter")) ?? "recent";
 
   const result = await loadAdminSearchAlertsQueue({ filter });
+  const offerCountsByQuoteId = await loadOfferCountsByQuoteId(result);
 
   return (
     <AdminDashboardShell
@@ -108,10 +113,15 @@ export default async function AdminSearchAlertsPage({
                   row.customerEmail && row.customerName
                     ? row.customerEmail
                     : row.company ?? row.customerEmail ?? "";
-                const offerLabel = formatOfferLabel(row.bidCount);
+                const offersCount =
+                  offerCountsByQuoteId.get(row.quoteId) ??
+                  (typeof row.bidCount === "number" && Number.isFinite(row.bidCount)
+                    ? row.bidCount
+                    : null);
+                const offerLabel = formatOfferLabel(offersCount);
                 const offerStatusLabel =
-                  typeof row.bidCount === "number"
-                    ? row.bidCount === 0
+                  typeof offersCount === "number"
+                    ? offersCount === 0
                       ? "Awaiting offers"
                       : "Offer activity"
                     : "Offer data unavailable";
@@ -222,6 +232,39 @@ function formatOfferLabel(value: number | null): string {
   }
   if (value === 0) return "0 offers";
   return `${value} offer${value === 1 ? "" : "s"}`;
+}
+
+async function loadOfferCountsByQuoteId(
+  result: Awaited<ReturnType<typeof loadAdminSearchAlertsQueue>>,
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (!result.ok || !result.supported || result.rows.length === 0) {
+    return map;
+  }
+  const quoteIds = result.rows.map((row) => row.quoteId).filter(Boolean);
+  const offersResult = await loadRfqOffersForQuoteIds(quoteIds);
+  if (!offersResult.ok) {
+    return map;
+  }
+  const offersByQuoteId = new Map<string, Array<{ status: unknown; received_at: string; created_at: string }>>();
+  for (const offer of offersResult.offers) {
+    const quoteId = typeof offer.rfq_id === "string" ? offer.rfq_id.trim() : "";
+    if (!quoteId) continue;
+    if (!offersByQuoteId.has(quoteId)) {
+      offersByQuoteId.set(quoteId, []);
+    }
+    offersByQuoteId.get(quoteId)!.push(offer);
+  }
+  for (const [quoteId, offers] of offersByQuoteId.entries()) {
+    map.set(quoteId, summarizeRfqOffers(offers).nonWithdrawn);
+  }
+  // Ensure deterministic presence for 0 counts (so we still override "Awaiting offers").
+  for (const quoteId of quoteIds) {
+    if (!map.has(quoteId)) {
+      map.set(quoteId, 0);
+    }
+  }
+  return map;
 }
 
 function normalizeFilter(value: unknown): AdminSearchAlertFilter | null {
