@@ -1,5 +1,7 @@
 import { getCustomerByUserId } from "@/server/customers";
 import { loadSupplierByUserId } from "@/server/suppliers";
+import { requireSchema } from "@/server/db/schemaContract";
+import { isDemoModeEnabled } from "@/server/demo/demoMode";
 
 export type UserRole = "customer" | "supplier" | "admin" | "unknown";
 
@@ -12,12 +14,20 @@ export type UserRoleSummary = {
 type CustomerRecord = Awaited<ReturnType<typeof getCustomerByUserId>>;
 type SupplierRecord = Awaited<ReturnType<typeof loadSupplierByUserId>>;
 
+type ResolveUserRolesDeps = {
+  getCustomerByUserId?: typeof getCustomerByUserId;
+  loadSupplierByUserId?: typeof loadSupplierByUserId;
+  requireSchema?: typeof requireSchema;
+  isDemoModeEnabled?: typeof isDemoModeEnabled;
+};
+
 export async function resolveUserRoles(
   userId: string | null | undefined,
   preloaded?: {
     customer?: CustomerRecord;
     supplier?: SupplierRecord;
   },
+  deps?: ResolveUserRolesDeps,
 ): Promise<UserRoleSummary> {
   if (!userId) {
     console.log("[roles] resolveUserRoles called without user id");
@@ -30,27 +40,49 @@ export async function resolveUserRoles(
 
   console.log("[roles] resolving roles", { userId });
 
+  const getCustomer = deps?.getCustomerByUserId ?? getCustomerByUserId;
+  const getSupplier = deps?.loadSupplierByUserId ?? loadSupplierByUserId;
+  const requireSchemaFn = deps?.requireSchema ?? requireSchema;
+  const demoEnabled = (deps?.isDemoModeEnabled ?? isDemoModeEnabled)();
+
   let customer = preloaded?.customer;
   let supplier = preloaded?.supplier;
 
-  if (customer === undefined || supplier === undefined) {
+  // Resolve customer independently (never let supplier checks block customer role).
+  if (customer === undefined) {
     try {
-      const [resolvedCustomer, resolvedSupplier] = await Promise.all([
-        customer === undefined ? getCustomerByUserId(userId) : Promise.resolve(customer),
-        supplier === undefined ? loadSupplierByUserId(userId) : Promise.resolve(supplier),
-      ]);
-      customer = resolvedCustomer;
-      supplier = resolvedSupplier;
+      customer = await getCustomer(userId);
     } catch (error) {
-      console.error("[roles] resolveUserRoles lookup failed", {
-        userId,
-        error,
+      console.error("[roles] customer lookup failed", { userId, error });
+      customer = null;
+    }
+  }
+
+  // Resolve supplier independently, but short-circuit when the suppliers relation is missing.
+  if (supplier === undefined) {
+    try {
+      const suppliersSchema = await requireSchemaFn({
+        relation: "suppliers",
+        // Keep it column-agnostic to avoid assuming `id` in legacy environments.
+        requiredColumns: [],
+        warnPrefix: "[roles]",
+        warnKey: "roles:suppliers",
       });
-      return {
-        primaryRole: "unknown",
-        isCustomer: false,
-        isSupplier: false,
-      };
+
+      if (!suppliersSchema.ok && suppliersSchema.reason === "missing_relation") {
+        // Demo-safe: treat supplier membership as false if the table isn't present.
+        supplier = null;
+      } else {
+        supplier = await getSupplier(userId);
+      }
+    } catch (error) {
+      // Demo safety: never let supplier resolution crash role resolution.
+      if (!demoEnabled) {
+        console.error("[roles] supplier lookup failed", { userId, error });
+      } else {
+        console.warn("[roles] supplier lookup failed (demo-safe)", { userId, error: String(error) });
+      }
+      supplier = null;
     }
   }
 
@@ -62,6 +94,9 @@ export async function resolveUserRoles(
     primaryRole = "customer";
   } else if (!isCustomer && isSupplier) {
     primaryRole = "supplier";
+  } else if (isCustomer && isSupplier) {
+    // Deterministic tie-break: prefer customer UX unless explicitly handled elsewhere.
+    primaryRole = "customer";
   }
 
   console.log("[roles] resolved roles", {

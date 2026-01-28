@@ -2,6 +2,7 @@
 
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { requireAdminUser } from "@/server/auth";
 import { assertDemoModeEnabled } from "@/server/demo/demoMode";
 import { seedDemoSearchRequest } from "@/server/demo/seedDemoSearchRequest";
@@ -10,6 +11,27 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { schemaGate } from "@/server/db/schemaContract";
 import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 import { awardOfferActionImpl } from "@/app/(portals)/customer/quotes/[id]/actions";
+
+function safeRevalidate(targetPath: string) {
+  try {
+    revalidatePath(targetPath);
+  } catch (error) {
+    console.warn("[demo] revalidate failed", { targetPath, error: String(error) });
+  }
+}
+
+function safeRedirect(target: string): never {
+  try {
+    redirect(target);
+  } catch (error) {
+    // next/navigation redirect throws; allow it to bubble.
+    if (isRedirectError(error)) {
+      throw error;
+    }
+    console.warn("[demo] redirect failed", { target, error: String(error) });
+    throw error;
+  }
+}
 
 export async function createDemoSearchRequestAction(): Promise<void> {
   const gitSha = process.env.VERCEL_GIT_COMMIT_SHA || "";
@@ -30,11 +52,11 @@ export async function createDemoSearchRequestAction(): Promise<void> {
   });
 
   if (!result.ok) {
-    revalidatePath("/admin/quotes");
-    redirect("/admin/quotes?demoSeed=error");
+    safeRevalidate("/admin/quotes");
+    safeRedirect("/admin/quotes?demoSeed=error");
   }
 
-  redirect(`/customer/search?quote=${result.quoteId}&demo=1`);
+  safeRedirect(`/customer/search?quote=${result.quoteId}&demo=1`);
 }
 
 function getFormString(formData: FormData, key: string): string {
