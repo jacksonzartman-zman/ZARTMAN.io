@@ -47,7 +47,7 @@ export default function AdminTable({
           <th className="px-5 py-4">Contact</th>
           <th className="px-5 py-4">Process</th>
           <th className="px-5 py-4">Quantity / volumes</th>
-          <th className="px-5 py-4">Bids</th>
+          <th className="px-5 py-4">Offers</th>
           <th className="px-5 py-4">Status</th>
           <th className="px-5 py-4 text-right">Details</th>
         </tr>
@@ -85,15 +85,15 @@ export default function AdminTable({
               : `/admin/uploads/${row.id}`;
             const bidSummary =
               row.bidCount === 0
-                ? "No bids"
-                : `${row.bidCount} bid${row.bidCount === 1 ? "" : "s"}${
+                ? "No offers"
+                : `${row.bidCount} offer${row.bidCount === 1 ? "" : "s"}${
                     row.hasWinningBid ? " • winner selected" : ""
                   }`;
             const formattedLastBid = formatDateTime(row.lastBidAt);
             const lastBidLabel =
               row.bidCount > 0 && row.lastBidAt
-                ? `Last bid: ${formattedLastBid}`
-                : "Last bid: —";
+                ? `Last offer: ${formattedLastBid}`
+                : "Last offer: —";
             const statusVariant = STATUS_BADGE_VARIANTS[row.status];
 
             return (

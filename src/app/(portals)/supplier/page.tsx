@@ -103,7 +103,7 @@ async function SupplierDashboardPage({
       <PortalShell
         workspace="supplier"
         title="Dashboard"
-        subtitle="Search requests, offers, and compliance docs stay aligned here."
+        subtitle="Search requests, quotes, and compliance docs stay aligned here."
         headerContent={
           <WorkspaceWelcomeBanner
             role="supplier"
@@ -317,7 +317,7 @@ async function SupplierDashboardPage({
     <PortalShell
       workspace="supplier"
       title="Dashboard"
-      subtitle="Search requests, bids, and compliance docs stay aligned here."
+      subtitle="Search requests, quotes, and compliance docs stay aligned here."
       actions={headerActions}
       headerContent={headerContent}
     >
@@ -394,10 +394,10 @@ async function SupplierDashboardPage({
                   href="/supplier/quotes?status=open"
                   className="font-semibold text-blue-200 underline-offset-4 hover:underline"
                 >
-                  Bid on your first search request
+                  Submit your first quote
                 </Link>
                 <p className="mt-0.5 text-xs text-slate-400">
-                  Open a matched search request and submit pricing to start building history.
+                  Open a matched search request and submit a quote to start building history.
                 </p>
               </div>
             </li>
@@ -414,10 +414,10 @@ async function SupplierDashboardPage({
           Supplier workspace
         </p>
         <h2 className="mt-2 text-2xl font-semibold text-white">
-          Search requests, bids, and compliance docs in one place
+          Search requests, quotes, and compliance docs in one place
         </h2>
         <p className="mt-2 text-sm text-slate-400">
-          Review matched search requests, submit bids, and keep your onboarding profile current
+          Review matched search requests, submit quotes, and keep your onboarding profile current
           without leaving this dashboard.
         </p>
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400">
@@ -457,7 +457,7 @@ async function SupplierDashboardPage({
 
       <PortalCard
         title="Recent activity"
-        description="Quick pulse on search requests, bids, and status changes routed to your shop."
+        description="Quick pulse on search requests, quotes, and status changes routed to your shop."
       >
         {isApprovalGateActive(approvalGate) ? (
           <EmptyStateNotice
@@ -504,8 +504,8 @@ async function SupplierDashboardPage({
             description={
               activityEmptyState?.description ??
               (supplierExists
-                ? "We’ll stream search request assignments and bid updates here as they happen."
-                : "Finish onboarding to start tracking search requests and bids in this feed.")
+                ? "We’ll stream search request assignments and quote updates here as they happen."
+                : "Finish onboarding to start tracking search requests and quotes in this feed.")
             }
           />
         )}
@@ -614,7 +614,7 @@ function SupplierReputationCard({
       >
         <EmptyStateNotice
           title="Reputation unlocks after onboarding"
-          description="Finish onboarding and start bidding to build your reputation score over time."
+          description="Finish onboarding and start quoting to build your reputation score over time."
           action={
             <Link
               href="/supplier/onboarding"
@@ -636,7 +636,7 @@ function SupplierReputationCard({
       >
         <EmptyStateNotice
           title="We’ll show your reputation here soon"
-          description="We’ll show your reputation here once you’ve bid on a few search requests and completed work."
+          description="We’ll show your reputation here once you’ve quoted on a few search requests and completed work."
         />
       </PortalCard>
     );
@@ -654,7 +654,9 @@ function SupplierReputationCard({
 
   const improvementHints: string[] = [];
   if ((reputation.participationScore ?? 0) < 0) {
-    improvementHints.push("Bid on more matched search requests to build recent participation.");
+    improvementHints.push(
+      "Submit quotes on more matched search requests to build recent participation.",
+    );
   }
   if ((reputation.kickoffScore ?? 0) < 0) {
     improvementHints.push("Tighten kickoff completion so projects move to production faster.");
@@ -710,7 +712,7 @@ function SupplierReputationCard({
           </div>
         ) : (
           <p className="text-xs text-slate-400">
-            Keep bidding and completing kickoff tasks to maintain a strong reputation.
+            Keep quoting and completing kickoff tasks to maintain a strong reputation.
           </p>
         )}
       </div>
@@ -731,7 +733,7 @@ function getApprovalHoldCopy(status?: SupplierApprovalStatus) {
   }
   return {
     title: "Search requests unlock after approval",
-    description: "Search requests and bids will appear here once your account is approved.",
+    description: "Search requests and quotes will appear here once your account is approved.",
   };
 }
 
@@ -771,8 +773,8 @@ function MatchHealthCard({
         description="Your recent match + utilization signals across routed search requests."
       >
         <EmptyStateNotice
-          title="We’ll show match health here once you start bidding"
-          description="As you bid on more search requests, we’ll start to show how well you’re matched to the work coming through."
+          title="We’ll show match health here once you start quoting"
+          description="As you submit more quotes, we’ll start to show how well you’re matched to the work coming through."
         />
       </PortalCard>
     );
@@ -795,7 +797,7 @@ function MatchHealthCard({
               Match health
             </p>
             <p className="mt-1 text-sm text-slate-300">
-              You’ve bid on <span className="font-semibold text-white">{rfqsBid}</span>{" "}
+              You’ve quoted on <span className="font-semibold text-white">{rfqsBid}</span>{" "}
               search requests and won{" "}
               <span className="font-semibold text-white">{rfqsWon}</span> in the last 90 days.
             </p>
@@ -878,7 +880,7 @@ function formatBenchStatusNudge(value: SupplierSelfBenchHealth["benchStatus"]): 
     case "balanced":
       return "You’re in a good spot; keep your capacity updated to maintain a healthy mix of work.";
     default:
-      return "As you bid on more search requests, we’ll start to show how well you’re matched to the work coming through.";
+      return "As you submit more quotes, we’ll start to show how well you’re matched to the work coming through.";
   }
 }
 
@@ -963,8 +965,8 @@ function BidsCard({
     const copy = getApprovalHoldCopy(approvalGate?.status);
     return (
       <PortalCard
-        title="Submitted bids"
-        description="Track the quotes you’ve priced and see where each bid stands."
+        title="Submitted quotes"
+        description="Track the quotes you’ve priced and see where each quote stands."
       >
         <EmptyStateNotice title={copy.title} description={copy.description} />
       </PortalCard>
@@ -972,8 +974,8 @@ function BidsCard({
   }
   return (
     <PortalCard
-      title="Submitted bids"
-      description="Track the quotes you’ve priced and see where each bid stands."
+      title="Submitted quotes"
+      description="Track the quotes you’ve priced and see where each quote stands."
       action={
         bids.length > 0 ? (
           <Link
@@ -1015,8 +1017,8 @@ function BidsCard({
         </ul>
       ) : (
         <EmptyStateNotice
-          title="No bids submitted"
-          description="No bids yet. Open a matched search request to send pricing—every submission lands here."
+          title="No quotes submitted"
+          description="No quotes yet. Open a matched search request to submit pricing—every submission lands here."
         />
       )}
     </PortalCard>
@@ -1045,7 +1047,7 @@ function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {
     rfq_submitted: "Search request",
     status_changed: "Status",
     message_posted: "Message",
-    bid_received: "Bid",
+    bid_received: "Quote",
     winner_selected: "Winner",
   };
   const colorMap: Record<QuoteActivityEvent["type"], string> = {
@@ -1119,15 +1121,15 @@ function deriveSupplierMetrics(
           : "We’ll auto-populate this once your profile attracts matches.",
     },
     {
-      label: "Bids submitted",
+      label: "Quotes submitted",
       value: bidsSubmitted,
       helper:
         bidsSubmitted > 0
           ? "Tracked across every quote you’ve priced"
-          : "Send your first bid from a search request match above.",
+          : "Send your first quote from a search request match above.",
     },
     {
-      label: "Bids accepted",
+      label: "Quotes accepted",
       value: bidsAccepted,
       helper:
         bidsAccepted > 0

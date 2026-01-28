@@ -73,7 +73,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
             Files &amp; value
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Your bid
+            Your quote
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Search request status
@@ -121,7 +121,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               ? `Updated ${formatDateTime(row.lastBidAt, {
                   includeTime: true,
                 })}`
-              : "No bids on file yet";
+              : "No quote on file yet";
         const bidStatusLabel = getSupplierBidSummaryLabel(row.supplierBidState);
         const bidStatusHint = resolveBidStatusHint({
           row,
@@ -267,7 +267,7 @@ function resolveBidStatusHint({
 }): string {
   switch (row.supplierBidState) {
     case "no_bid":
-      return "Invite assigned—share pricing to stay in the rotation.";
+      return "Invite assigned—share a quote to stay in the rotation.";
     case "submitted":
       return lastBidLabel;
     case "won":

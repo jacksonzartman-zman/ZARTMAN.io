@@ -18,9 +18,9 @@ import {
 const SORT_OPTIONS: Array<{ value: AdminQuotesSortKey; label: string }> = [
   { value: "inbox", label: "Inbox" },
   { value: "newest_rfq", label: "Newest RFQ" },
-  { value: "latest_bid_activity", label: "Latest bid activity" },
+  { value: "latest_bid_activity", label: "Latest offer activity" },
   { value: "awarded_recently", label: "Awarded recently" },
-  { value: "most_bids", label: "Most bids" },
+  { value: "most_bids", label: "Most offers" },
 ];
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
@@ -167,7 +167,7 @@ export default function AdminQuotesInboxControls({
             disabled={pending}
             className="h-4 w-4 rounded border-slate-700 bg-slate-950/60 text-emerald-500"
           />
-          Has bids
+          Has offers
         </label>
 
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
