@@ -16,6 +16,7 @@ import { assertSupplierQuoteAccess } from "@/server/quotes/access";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import type { QuoteEventActorRole } from "@/server/quotes/events";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getDemoSupplierProviderIdFromCookie } from "@/server/demo/demoSupplierProvider";
 import {
   DEFAULT_SUPPLIER_KICKOFF_TASKS,
   type SupplierKickoffTask,
@@ -1571,16 +1572,19 @@ export async function updateKickoffTaskStatusAction(args: {
     if (!supplierId) {
       return { ok: false, error: "missing_supplier_profile" };
     }
+    const demoProviderId = await getDemoSupplierProviderIdFromCookie();
     const supplierProviderId =
-      typeof (profile?.supplier as { provider_id?: string | null } | null)?.provider_id ===
+      demoProviderId ??
+      (typeof (profile?.supplier as { provider_id?: string | null } | null)?.provider_id ===
       "string"
         ? (profile?.supplier as any).provider_id.trim()
-        : null;
+        : null);
 
     const access = await assertSupplierQuoteAccess({
       quoteId,
       supplierId,
       supplierUserEmail: user.email ?? null,
+      supplierProviderId,
     });
     if (!access.ok) {
       return { ok: false, error: "forbidden" };
@@ -1593,7 +1597,29 @@ export async function updateKickoffTaskStatusAction(args: {
       .eq("id", quoteId)
       .maybeSingle<{ awarded_supplier_id: string | null }>();
     const awardedSupplierId = normalizeId(quoteRow?.awarded_supplier_id ?? null) || null;
-    if (!awardedSupplierId || awardedSupplierId !== supplierId) {
+    if (demoProviderId) {
+      // Demo-only: winner is determined by `rfq_awards.provider_id === cookieProviderId`.
+      const rfqAwardsReady = await schemaGate({
+        enabled: true,
+        relation: "rfq_awards",
+        requiredColumns: ["rfq_id", "provider_id"],
+        warnPrefix: "[kickoff quote tasks]",
+        warnKey: "kickoff_quote_tasks:rfq_awards_schema",
+      });
+      if (rfqAwardsReady) {
+        const { data: awardRow } = await supabaseServer()
+          .from("rfq_awards")
+          .select("provider_id")
+          .eq("rfq_id", quoteId)
+          .maybeSingle<{ provider_id: string | null }>();
+        const awardedProviderId = normalizeId(awardRow?.provider_id ?? null) || null;
+        if (!awardedProviderId || awardedProviderId !== demoProviderId) {
+          return { ok: false, error: "not_awarded_supplier" };
+        }
+      } else {
+        return { ok: false, error: "not_awarded_supplier" };
+      }
+    } else if (!awardedSupplierId || awardedSupplierId !== supplierId) {
       // Offer-award fallback: environments may use `rfq_awards.provider_id` instead.
       if (supplierProviderId) {
         const rfqAwardsReady = await schemaGate({

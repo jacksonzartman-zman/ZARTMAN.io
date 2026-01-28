@@ -77,6 +77,10 @@ type QuotesTableProps = {
   totalCount: number;
   currentView: AdminQuotesView;
   searchTerm?: string;
+  demoSupplierProvidersByQuoteId?: Record<
+    string,
+    Array<{ providerId: string; label: string }>
+  >;
 };
 
 export default function QuotesTable({
@@ -84,6 +88,7 @@ export default function QuotesTable({
   totalCount,
   currentView,
   searchTerm,
+  demoSupplierProvidersByQuoteId,
 }: QuotesTableProps) {
   const showEmptyState = quotes.length === 0;
   const emptyState = getEmptyStateCopy({ totalCount, currentView, searchTerm });
@@ -315,6 +320,22 @@ export default function QuotesTable({
                   ) : (
                     <p className="text-slate-500">Not awarded</p>
                   )}
+                  {demoSupplierProvidersByQuoteId?.[row.id]?.length ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {demoSupplierProvidersByQuoteId[row.id]!.slice(0, 3).map((provider) => (
+                        <Link
+                          key={provider.providerId}
+                          href={`/admin/quotes/demo/supplier?providerId=${encodeURIComponent(
+                            provider.providerId,
+                          )}&quoteId=${encodeURIComponent(row.id)}`}
+                          className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
+                          title={`Set demo supplier provider: ${provider.label}`}
+                        >
+                          View as {provider.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
                 </td>
                 <td className={clsx(adminTableCellClass, "text-right")}>
                   <CapacityCell summary={row.capacityNextWeek ?? null} />

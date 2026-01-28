@@ -97,6 +97,7 @@ function deriveKickoffStatus(input: {
 
 export async function loadSupplierQuotesList(
   supplierUserId: string,
+  options?: { providerIdOverride?: string | null },
 ): Promise<SupplierQuoteListRow[]> {
   const userId = normalizeId(supplierUserId);
   if (!userId) return [];
@@ -104,8 +105,11 @@ export async function loadSupplierQuotesList(
   const profile = await loadSupplierProfileByUserId(userId);
   const supplier = profile?.supplier ?? null;
   const supplierId = normalizeId(supplier?.id);
+  const providerOverride = normalizeId(options?.providerIdOverride);
   const supplierProviderId =
-    normalizeId((supplier as { provider_id?: string | null } | null)?.provider_id) || "";
+    providerOverride ||
+    normalizeId((supplier as { provider_id?: string | null } | null)?.provider_id) ||
+    "";
   const supplierEmail = normalizeId(supplier?.primary_email);
   if (!supplierId) return [];
 

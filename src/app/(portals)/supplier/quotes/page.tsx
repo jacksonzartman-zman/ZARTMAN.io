@@ -12,6 +12,7 @@ import {
   loadSupplierProfileByUserId,
 } from "@/server/suppliers";
 import { approvalsEnabled } from "@/server/suppliers/flags";
+import { getDemoSupplierProviderIdFromCookie } from "@/server/demo/demoSupplierProvider";
 
 import {
   loadSupplierQuotesList,
@@ -212,7 +213,10 @@ export default async function SupplierQuotesPage({
   const partsCoverageFilter = normalizeText(sp.get("partsCoverage"));
   const rfqQualityFilter = normalizeText(sp.get("rfqQuality"));
 
-  const allRows = approvalGateActive ? [] : await loadSupplierQuotesList(user.id);
+  const demoProviderId = await getDemoSupplierProviderIdFromCookie();
+  const allRows = approvalGateActive
+    ? []
+    : await loadSupplierQuotesList(user.id, { providerIdOverride: demoProviderId });
 
   let filteredRows = allRows
     .filter((row) => {
