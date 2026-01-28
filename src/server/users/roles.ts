@@ -21,6 +21,8 @@ type ResolveUserRolesDeps = {
   isDemoModeEnabled?: typeof isDemoModeEnabled;
 };
 
+let DID_LOG_SUPPLIER_ROLE_SKIPPED_MISSING_SUPPLIERS_RELATION = false;
+
 export async function resolveUserRoles(
   userId: string | null | undefined,
   preloaded?: {
@@ -58,23 +60,40 @@ export async function resolveUserRoles(
     }
   }
 
-  // Resolve supplier independently, but short-circuit when the suppliers relation is missing.
-  if (supplier === undefined) {
-    try {
-      const suppliersSchema = await requireSchemaFn({
-        relation: "suppliers",
-        // Keep it column-agnostic to avoid assuming `id` in legacy environments.
-        requiredColumns: [],
-        warnPrefix: "[roles]",
-        warnKey: "roles:suppliers",
-      });
+  // Resolve supplier independently, but schema-gate supplier role on the `suppliers` relation.
+  // If the relation is missing (per schema_contract), treat isSupplier as false, do not attempt
+  // supplier lookups, and keep the customer role if present.
+  let suppliersRelationMissing = false;
+  try {
+    const suppliersSchema = await requireSchemaFn({
+      relation: "suppliers",
+      // Keep it column-agnostic to avoid assuming `id` in legacy environments.
+      requiredColumns: [],
+      warnPrefix: "[roles]",
+      warnKey: "roles:suppliers",
+    });
+    suppliersRelationMissing = !suppliersSchema.ok && suppliersSchema.reason === "missing_relation";
+  } catch (error) {
+    // If schema probing fails unexpectedly, don't block supplier resolution.
+    // (Only skip supplier role when schema_contract explicitly reports missing_relation.)
+    suppliersRelationMissing = false;
+    if (!demoEnabled) {
+      console.error("[roles] suppliers schema probe failed", { userId, error });
+    } else {
+      console.warn("[roles] suppliers schema probe failed (demo-safe)", { userId, error: String(error) });
+    }
+  }
 
-      if (!suppliersSchema.ok && suppliersSchema.reason === "missing_relation") {
-        // Demo-safe: treat supplier membership as false if the table isn't present.
-        supplier = null;
-      } else {
-        supplier = await getSupplier(userId);
-      }
+  if (suppliersRelationMissing) {
+    if (!DID_LOG_SUPPLIER_ROLE_SKIPPED_MISSING_SUPPLIERS_RELATION) {
+      DID_LOG_SUPPLIER_ROLE_SKIPPED_MISSING_SUPPLIERS_RELATION = true;
+      console.info("[roles] supplier role skipped due to missing suppliers relation");
+    }
+    // Even if a supplier was preloaded, do not grant supplier role when the relation is absent.
+    supplier = null;
+  } else if (supplier === undefined) {
+    try {
+      supplier = await getSupplier(userId);
     } catch (error) {
       // Demo safety: never let supplier resolution crash role resolution.
       if (!demoEnabled) {
