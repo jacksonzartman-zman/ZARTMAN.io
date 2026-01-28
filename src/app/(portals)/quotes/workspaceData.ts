@@ -298,7 +298,7 @@ export async function loadQuoteWorkspaceData(
     const uploadGroups = await loadQuoteUploadGroups(quoteId);
     const parts = await loadQuotePartsWithFiles(quoteId);
     const includeOffers = Boolean(options?.includeOffers);
-    const rfqOffersRaw = includeOffers ? await getRfqOffers(quote.id) : [];
+    const rfqOffersRaw: RfqOffer[] = includeOffers ? await getRfqOffers(quote.id) : [];
     const includeDestinationDetails = options?.includeDestinationDetails ?? true;
     const rfqDestinationsRaw = includeDestinationDetails
       ? await getRfqDestinations(quote.id)
@@ -331,8 +331,7 @@ export async function loadQuoteWorkspaceData(
     }
 
     let offersPatchedDestinationId = 0;
-    const rfqOffersWithDestinationIds = (rfqOffersRaw ?? []).map((offer) => {
-      if (!offer) return offer;
+    const rfqOffersWithDestinationIds: RfqOffer[] = rfqOffersRaw.map((offer): RfqOffer => {
       if (offer.destination_id) return offer;
       if (!offer.provider_id) return offer;
       const providerId = typeof offer.provider_id === "string" ? offer.provider_id.trim() : "";
@@ -343,7 +342,7 @@ export async function loadQuoteWorkspaceData(
       return { ...offer, destination_id: destinationId };
     });
 
-    let rfqOffers = rfqOffersWithDestinationIds;
+    let rfqOffers: RfqOffer[] = rfqOffersWithDestinationIds;
     let rfqDestinations = rfqDestinationsRaw;
 
     if (options?.viewerRole === "customer") {
@@ -372,6 +371,10 @@ export async function loadQuoteWorkspaceData(
           if (!snapshot) return false;
           return snapshot.is_active && snapshot.verification_status === "verified";
         };
+        const offerHasProviderId = (
+          offer: RfqOffer,
+        ): offer is RfqOffer & { provider_id: string } =>
+          typeof offer.provider_id === "string" && offer.provider_id.trim().length > 0;
         const attachProviderStatus = <
           T extends { provider_id: string; provider?: Record<string, unknown> | null },
         >(
@@ -412,6 +415,7 @@ export async function loadQuoteWorkspaceData(
           const destinationsBefore = rfqDestinationsRaw.length;
 
           rfqOffers = rfqOffersWithDestinationIds
+            .filter(offerHasProviderId)
             .filter((offer) => isVisibleToCustomer(offer.provider_id))
             .map((offer) => attachProviderStatus(offer));
           rfqDestinations = rfqDestinationsRaw

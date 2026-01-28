@@ -232,7 +232,12 @@ function pickByNumeric(
 function compareProviderName(a: DecoratedRfqOffer, b: DecoratedRfqOffer): number {
   const nameCompare = a.providerName.localeCompare(b.providerName);
   if (nameCompare !== 0) return nameCompare;
-  return a.provider_id.localeCompare(b.provider_id);
+  const aProviderId = a.provider_id ?? "";
+  const bProviderId = b.provider_id ?? "";
+  if (!aProviderId && !bProviderId) return 0;
+  if (!aProviderId) return 1;
+  if (!bProviderId) return -1;
+  return aProviderId.localeCompare(bProviderId);
 }
 
 function resolveLeadTimeAverage(
