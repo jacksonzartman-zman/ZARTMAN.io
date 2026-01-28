@@ -404,7 +404,7 @@ export default async function CustomerQuoteDetailPage({
       ? `${customerKickoffSummary.completedTasks} / ${customerKickoffSummary.totalTasks} tasks completed`
       : customerKickoffSummary.isComplete
         ? "All tasks completed"
-        : "Kickoff pending"
+        : "Kickoff pending (0/—)"
     : "—";
 
   const { summary: partsCoverageSummary } = computePartsCoverage(parts ?? []);
@@ -604,7 +604,7 @@ export default async function CustomerQuoteDetailPage({
       : quoteHasWinner
         ? customerKickoffSummary.isComplete
           ? "Kickoff complete"
-          : "Kickoff pending"
+          : "Kickoff pending (0/—)"
         : "—";
   const kickoffStarted =
     customerKickoffSummary.totalTasks > 0 &&
@@ -2199,7 +2199,7 @@ function buildCustomerQuoteSections(args: {
     : args.kickoffRatio
       ? args.kickoffRatio
       : args.hasWinner
-        ? "In progress"
+        ? "0/—"
         : "Locked";
   const uploadsBadge = args.fileCount > 0 ? `${args.fileCount}` : undefined;
 

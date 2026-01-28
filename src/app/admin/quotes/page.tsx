@@ -73,6 +73,10 @@ export default async function AdminQuotesPage({
   const usp = normalizeSearchParams(searchParams ? await searchParams : undefined);
   const demoSeedStatus = (usp.get("demoSeed") ?? "").trim().toLowerCase();
   const demoEnabled = isDemoModeEnabled();
+  const returnToBase = (() => {
+    const qs = usp.toString();
+    return qs ? `/admin/quotes?${qs}` : "/admin/quotes";
+  })();
   const listState = parseListState(usp, ADMIN_QUOTES_LIST_STATE_CONFIG);
   const currentView = normalizeAdminQuotesView(usp.get("view") ?? null);
   const partsCoverageFilter = normalizePartsCoverageFilter(usp.get("partsCoverage"));
@@ -123,6 +127,13 @@ export default async function AdminQuotesPage({
     demoEnabled && quoteIdsOnPage.length > 0
       ? await loadOfferProviderIdsByQuoteId(quoteIdsOnPage)
       : new Map<string, string[]>();
+  const kickoffProgressResult =
+    demoEnabled && quoteIdsOnPage.length > 0
+      ? await loadKickoffProgressByQuoteId(quoteIdsOnPage)
+      : {
+          schemaReady: false,
+          progressByQuoteId: new Map<string, { completed: number; total: number | null }>(),
+        };
   const providerIdsToName = new Set<string>();
   for (const award of rfqAwardsByQuoteId.values()) {
     if (award?.provider_id) providerIdsToName.add(award.provider_id);
@@ -275,6 +286,14 @@ export default async function AdminQuotesPage({
       ? (capacitySummaryBySupplierId.get(supplierId) ??
         buildEmptyCapacitySummary(supplierId, nextWeekStartDateIso))
       : null;
+    const kickoffProgress = demoEnabled
+      ? kickoffProgressResult.schemaReady
+        ? (kickoffProgressResult.progressByQuoteId.get(row.id) ?? {
+            completed: 0,
+            total: null,
+          })
+        : null
+      : undefined;
 
     return {
       id: row.id,
@@ -306,6 +325,7 @@ export default async function AdminQuotesPage({
       awardedAt: row.awarded_at ?? rfqAward?.awarded_at ?? null,
       awardedSupplierName: row.awarded_supplier_name ?? null,
       awardWinnerName: rfqAwardWinnerName,
+      kickoffProgress: demoEnabled ? kickoffProgress : undefined,
       capacityNextWeek,
       partsCoverageHealth: partsSignal.partsCoverageHealth,
       partsCount: partsSignal.partsCount,
@@ -409,6 +429,7 @@ export default async function AdminQuotesPage({
             demoSupplierProvidersByQuoteId={
               demoEnabled ? demoSupplierProvidersByQuoteId : undefined
             }
+            demoReturnToBase={demoEnabled ? returnToBase : undefined}
           />
           <TablePaginationControls
             basePath="/admin/quotes"
@@ -487,6 +508,84 @@ async function loadOfferProviderIdsByQuoteId(
   }
 
   return map;
+}
+
+async function loadKickoffProgressByQuoteId(
+  quoteIds: string[],
+): Promise<{
+  schemaReady: boolean;
+  progressByQuoteId: Map<string, { completed: number; total: number | null }>;
+}> {
+  const progressByQuoteId = new Map<string, { completed: number; total: number | null }>();
+  const ids = Array.from(
+    new Set(
+      (quoteIds ?? [])
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+  if (ids.length === 0) {
+    return { schemaReady: false, progressByQuoteId };
+  }
+
+  const schemaReady = await schemaGate({
+    enabled: true,
+    relation: "quote_kickoff_tasks",
+    requiredColumns: ["quote_id", "status"],
+    warnPrefix: "[admin quotes]",
+    warnKey: "admin_quotes:kickoff_progress_schema",
+  });
+  if (!schemaReady) {
+    return { schemaReady: false, progressByQuoteId };
+  }
+
+  try {
+    const { data, error } = await supabaseServer()
+      .from("quote_kickoff_tasks")
+      .select("quote_id,status")
+      .in("quote_id", ids)
+      .returns<Array<{ quote_id: string | null; status: string | null }>>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return { schemaReady: false, progressByQuoteId };
+      }
+      console.warn("[admin quotes] quote_kickoff_tasks query failed", {
+        quoteIdsCount: ids.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return { schemaReady: true, progressByQuoteId };
+    }
+
+    for (const row of data ?? []) {
+      const quoteId = typeof row?.quote_id === "string" ? row.quote_id.trim() : "";
+      if (!quoteId) continue;
+      const status = typeof row?.status === "string" ? row.status.trim().toLowerCase() : "";
+      const existing = progressByQuoteId.get(quoteId) ?? { completed: 0, total: 0 };
+      existing.total = (existing.total ?? 0) + 1;
+      if (status === "complete") {
+        existing.completed += 1;
+      }
+      progressByQuoteId.set(quoteId, existing);
+    }
+
+    // Ensure all ids exist in the map: schema is present but tasks might not be seeded yet.
+    for (const id of ids) {
+      if (!progressByQuoteId.has(id)) {
+        progressByQuoteId.set(id, { completed: 0, total: null });
+      }
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      return { schemaReady: false, progressByQuoteId };
+    }
+    console.warn("[admin quotes] quote_kickoff_tasks query crashed", {
+      quoteIdsCount: ids.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return { schemaReady: true, progressByQuoteId };
 }
 
 function buildInboxAggregate(row: {

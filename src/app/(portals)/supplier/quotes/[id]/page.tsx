@@ -632,6 +632,20 @@ function SupplierQuoteWorkspace({
       tone: awardedToSupplier ? "success" : quoteHasWinner ? "neutral" : "info",
       href: awardedToSupplier ? "#kickoff" : undefined,
     },
+    ...(awardedToSupplier
+      ? ([
+          {
+            key: "kickoff",
+            label: "Kickoff",
+            value:
+              kickoffTasksAvailable && kickoffTotalCount > 0
+                ? `${kickoffCompletedCount}/${kickoffTotalCount} complete`
+                : "0/— complete",
+            tone: kickoffProgressBasisForRail.isComplete ? "success" : "info",
+            href: "#kickoff",
+          },
+        ] as const)
+      : []),
     {
       key: "supplier",
       label: "Working as",

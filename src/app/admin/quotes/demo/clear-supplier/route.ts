@@ -10,6 +10,15 @@ function normalizeQuoteId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeReturnTo(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  // Only allow redirecting back into the admin quotes list (same-origin enforced below).
+  if (!trimmed.startsWith("/admin/quotes")) return null;
+  return trimmed;
+}
+
 function shouldUseSecureCookie(): boolean {
   const vercelEnv = (process.env.VERCEL_ENV ?? "").trim();
   if (vercelEnv) return true;
@@ -17,6 +26,11 @@ function shouldUseSecureCookie(): boolean {
 }
 
 export async function GET(req: Request) {
+  // Defense-in-depth: even if a misconfiguration enables DEMO_MODE, never expose this in production.
+  if ((process.env.VERCEL_ENV ?? "").trim().toLowerCase() === "production") {
+    return new Response("Not found", { status: 404 });
+  }
+
   if (!isDemoModeEnabled()) {
     return new Response("Not found", { status: 404 });
   }
@@ -25,7 +39,8 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const quoteId = normalizeQuoteId(url.searchParams.get("quoteId"));
-  const redirectTo = quoteId ? `/supplier/quotes/${encodeURIComponent(quoteId)}` : "/admin/quotes";
+  const returnTo = normalizeReturnTo(url.searchParams.get("returnTo"));
+  const redirectTo = returnTo ?? "/admin/quotes";
 
   const res = NextResponse.redirect(new URL(redirectTo, url.origin));
   res.cookies.set({

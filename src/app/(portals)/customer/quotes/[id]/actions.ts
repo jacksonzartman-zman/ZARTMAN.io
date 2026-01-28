@@ -857,6 +857,12 @@ export async function awardOfferActionImpl(
   deps?: {
     supabase?: ReturnType<typeof supabaseServer>;
     ensureKickoff?: typeof ensureKickoffTasksForOfferAward;
+    /**
+     * Optional actor override.
+     * - Used by demo/admin-only server actions to reuse the offer-award flow.
+     * - When role is "admin", customer session + ownership checks are skipped.
+     */
+    actor?: { role: "customer" | "admin"; userId: string | null };
   },
 ): Promise<AwardOfferActionResponse> {
   const rfqId = normalizeId(input?.rfqId);
@@ -868,13 +874,18 @@ export async function awardOfferActionImpl(
   try {
     const supabase = deps?.supabase ?? supabaseServer();
     const ensureKickoff = deps?.ensureKickoff ?? ensureKickoffTasksForOfferAward;
-    const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${rfqId}`);
-    // User id may be null-ish in some flows; keep nullable in DB.
-    const awardedBy = normalizeId(user?.id ?? null) || null;
+    const actorRole = deps?.actor?.role === "admin" ? "admin" : "customer";
+    let awardedBy = normalizeId(deps?.actor?.userId ?? null) || null;
+    let customer: Awaited<ReturnType<typeof getCustomerByUserId>> | null = null;
 
-    const customer = await getCustomerByUserId(user.id);
-    if (!customer) {
-      return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
+    if (actorRole === "customer") {
+      const user = await requireCustomerSessionOrRedirect(`/customer/quotes/${rfqId}`);
+      // User id may be null-ish in some flows; keep nullable in DB.
+      awardedBy = normalizeId(user?.id ?? null) || null;
+      customer = await getCustomerByUserId(user.id);
+      if (!customer) {
+        return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
+      }
     }
 
     const { data: quoteRow, error: quoteError } = await supabase
@@ -895,22 +906,26 @@ export async function awardOfferActionImpl(
       return { ok: false, error: "Quote not found." };
     }
 
-    const quoteCustomerId = normalizeId(quoteRow.customer_id ?? null);
-    const customerIdMatches = Boolean(quoteCustomerId) && quoteCustomerId === customer.id;
-    const normalizedQuoteEmail = normalizeEmailInput(quoteRow.customer_email ?? null);
-    const normalizedCustomerEmail = normalizeEmailInput(customer.email);
-    const customerEmailMatches =
-      Boolean(normalizedQuoteEmail) &&
-      Boolean(normalizedCustomerEmail) &&
-      normalizedQuoteEmail === normalizedCustomerEmail;
+    if (actorRole === "customer") {
+      if (!customer) {
+        return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
+      }
+      const quoteCustomerId = normalizeId(quoteRow.customer_id ?? null);
+      const customerIdMatches = Boolean(quoteCustomerId) && quoteCustomerId === customer.id;
+      const normalizedQuoteEmail = normalizeEmailInput(quoteRow.customer_email ?? null);
+      const normalizedCustomerEmail = normalizeEmailInput(customer.email);
+      const customerEmailMatches =
+        Boolean(normalizedQuoteEmail) &&
+        Boolean(normalizedCustomerEmail) &&
+        normalizedQuoteEmail === normalizedCustomerEmail;
 
-    if (!customerIdMatches && !customerEmailMatches) {
-      console.warn("[customer offer award] access denied", {
-        rfqId,
-        userId: user.id,
-        customerId: customer.id,
-      });
-      return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
+      if (!customerIdMatches && !customerEmailMatches) {
+        console.warn("[customer offer award] access denied", {
+          rfqId,
+          customerId: customer.id,
+        });
+        return { ok: false, error: CUSTOMER_SELECT_OFFER_ACCESS_ERROR };
+      }
     }
 
     const { data: offerRow, error: offerError } = await supabase
