@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import {
   CAD_ACCEPT_STRING,
@@ -20,11 +21,15 @@ const MAX_FILES_PER_RFQ = 20;
 const MAX_UPLOAD_SIZE_LABEL = formatMaxUploadSize();
 
 export function HomeUploadHero() {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const navigationTimerRef = useRef<number | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [step, setStep] = useState<UploadStep>("idle");
   const [error, setError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<Extract<UploadResult, { ok: true }> | null>(null);
+  const [showOpenFallback, setShowOpenFallback] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   const statusLabel = useMemo(() => {
     if (step === "uploading") return "Uploading…";
@@ -33,13 +38,23 @@ export function HomeUploadHero() {
     return null;
   }, [step]);
 
+  const buildTrackingHref = useCallback((quoteId: string, intakeKey: string) => {
+    const params = new URLSearchParams();
+    params.set("quote", quoteId);
+    params.set("key", intakeKey);
+    return `/rfq?${params.toString()}`;
+  }, []);
+
   const trackingHref = useMemo(() => {
     if (!lastResult) return null;
-    const params = new URLSearchParams();
-    params.set("quote", lastResult.quoteId);
-    params.set("key", lastResult.intakeKey);
-    return `/rfq?${params.toString()}`;
-  }, [lastResult]);
+    return buildTrackingHref(lastResult.quoteId, lastResult.intakeKey);
+  }, [buildTrackingHref, lastResult]);
+
+  const trackingFullUrl = useMemo(() => {
+    if (!trackingHref) return null;
+    if (typeof window === "undefined") return null;
+    return new URL(trackingHref, window.location.origin).toString();
+  }, [trackingHref]);
 
   const validateFiles = useCallback((files: File[]): string | null => {
     if (files.length === 0) return "Add at least one CAD or ZIP file.";
@@ -63,6 +78,12 @@ export function HomeUploadHero() {
       if (step !== "idle") return;
       setError(null);
       setLastResult(null);
+      setShowOpenFallback(false);
+      setCopyStatus("idle");
+      if (navigationTimerRef.current) {
+        window.clearTimeout(navigationTimerRef.current);
+        navigationTimerRef.current = null;
+      }
 
       const validationError = validateFiles(files);
       if (validationError) {
@@ -89,10 +110,18 @@ export function HomeUploadHero() {
         }
 
         setLastResult(payload);
-        setStep("processing");
+        setStep("offers");
 
-        // UI-only: give the backend a moment to enqueue analysis.
-        window.setTimeout(() => setStep("offers"), 1600);
+        const href = buildTrackingHref(payload.quoteId, payload.intakeKey);
+        try {
+          router.push(href);
+        } catch {
+          // In practice `router.push` is not expected to throw, but keep a fallback UI just in case.
+          setShowOpenFallback(true);
+        }
+
+        // If navigation doesn't happen (blocked/failed), surface the "Open RFQ status" action.
+        navigationTimerRef.current = window.setTimeout(() => setShowOpenFallback(true), 1750);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Upload failed. Please try again.");
         setStep("idle");
@@ -100,6 +129,18 @@ export function HomeUploadHero() {
     },
     [step, validateFiles],
   );
+
+  const onCopyTrackingLink = useCallback(async () => {
+    if (!trackingFullUrl) return;
+    try {
+      await navigator.clipboard.writeText(trackingFullUrl);
+      setCopyStatus("copied");
+      window.setTimeout(() => setCopyStatus("idle"), 1800);
+    } catch {
+      setCopyStatus("failed");
+      window.setTimeout(() => setCopyStatus("idle"), 2200);
+    }
+  }, [trackingFullUrl]);
 
   const onDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
@@ -205,12 +246,30 @@ export function HomeUploadHero() {
         {trackingHref && step !== "idle" ? (
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-sm text-ink-soft">
             <span className="text-ink-soft">Want to check back later?</span>
-            <Link
-              href={trackingHref}
+            <button
+              type="button"
+              onClick={() => void onCopyTrackingLink()}
               className="rounded-full border border-slate-800 bg-slate-950/40 px-4 py-2 text-xs font-semibold text-ink transition hover:border-slate-700"
             >
-              Open your RFQ status
-            </Link>
+              Copy RFQ link
+            </button>
+            {copyStatus === "copied" ? <span className="text-xs text-emerald-200">Copied</span> : null}
+            {copyStatus === "failed" ? (
+              <span className="text-xs text-amber-200">Copy failed — open and bookmark instead</span>
+            ) : null}
+
+            {showOpenFallback ? (
+              <Link
+                href={trackingHref}
+                className="rounded-full border border-emerald-400/35 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-100 transition hover:border-emerald-300/60"
+              >
+                Open RFQ status
+              </Link>
+            ) : (
+              <Link href={trackingHref} className="text-xs font-semibold text-ink-soft underline underline-offset-4">
+                Open RFQ status
+              </Link>
+            )}
           </div>
         ) : null}
       </div>
