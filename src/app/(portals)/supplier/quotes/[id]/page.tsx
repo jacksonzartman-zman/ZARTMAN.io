@@ -175,7 +175,7 @@ export default async function SupplierQuoteDetailPage({
     return (
       <PortalNoticeCard
         title="Not invited to this search request"
-        description="You can only open search requests you’ve been invited to (or where you’ve submitted a bid). If you believe you should have access, contact the Zartman team."
+        description="You can only open search requests you’ve been invited to (or where you’ve submitted a quote). If you believe you should have access, contact the Zartman team."
       />
     );
   }
@@ -600,9 +600,9 @@ function SupplierQuoteWorkspace({
     : canSubmitBid
       ? "Submit pricing and lead time when you’re ready."
       : acceptedLock
-        ? "Bid is accepted — bidding is locked."
+        ? "Quote is accepted — quoting is locked."
         : closedWindowLock
-          ? "Bidding is closed for this search request."
+          ? "Quoting is closed for this search request."
           : "Follow updates in the shared thread below.";
   const bidPillValue =
     existingBid?.status && typeof existingBid.status === "string" && existingBid.status.trim()
@@ -620,7 +620,7 @@ function SupplierQuoteWorkspace({
     { key: "files", label: "Files", value: fileCountText },
     {
       key: "bid",
-      label: "Bid",
+      label: "Quote",
       value: bidPillValue,
       tone: existingBid ? "info" : "neutral",
       href: "#bid",
@@ -748,11 +748,11 @@ function SupplierQuoteWorkspace({
     ) : (
       <PortalCard
         title="Project kickoff"
-        description="Read-only PO details unlock once your bid is selected as the winner."
+        description="Read-only PO details unlock once your quote is selected as the winner."
       >
         <p className="text-sm text-slate-300">
           We’ll surface the customer’s PO number, target ship date, and kickoff notes as soon as they select
-          your bid.
+          your quote.
         </p>
       </PortalCard>
     );
@@ -763,7 +763,7 @@ function SupplierQuoteWorkspace({
         description="Stay tuned—project details appear for the supplier that wins the search request."
       >
         <p className="text-sm text-slate-300">
-          Keep bidding with your best pricing and lead times. Once a customer selects your proposal, we’ll
+          Keep quoting with your best pricing and lead times. Once a customer selects your proposal, we’ll
           unlock the kickoff prep card automatically.
         </p>
       </PortalCard>
@@ -774,7 +774,7 @@ function SupplierQuoteWorkspace({
     <DisclosureSection
       id="bid"
       className={clsx(cardClasses, "scroll-mt-24")}
-      title="Bid"
+      title="Quote"
       description="Submit pricing and lead time."
       defaultOpen={canSubmitBid}
       summary={
@@ -786,7 +786,7 @@ function SupplierQuoteWorkspace({
       <div className="space-y-4">
         <header className="space-y-1">
           <h2 className="text-lg font-semibold text-white">
-            Submit pricing and lead time
+            Submit your quote
           </h2>
           <p className="text-sm text-slate-300">
             Only the Zartman team and the requesting customer can see these details.
@@ -798,12 +798,12 @@ function SupplierQuoteWorkspace({
         </header>
         {acceptedLock ? (
           <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-            This bid is locked because the customer already accepted it.
+            This quote is locked because the customer already accepted it.
           </p>
         ) : null}
         {closedWindowLock ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
-            Bidding is disabled because this search request is no longer accepting new proposals.
+            Quoting is disabled because this search request is no longer accepting new proposals.
           </p>
         ) : null}
         {canSubmitBid && !acceptedLock && !closedWindowLock ? (
@@ -1285,7 +1285,7 @@ function buildSupplierQuoteSections(args: {
   return [
     {
       key: "bid",
-      label: "Bid",
+      label: "Quote",
       href: "#bid",
       badge: bidBadge,
       tone: args.canSubmitBid ? "info" : "neutral",

@@ -991,8 +991,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       bidAggregate && aggregateBidCount >= 0
         ? formatAdminBidCountLabel(bidAggregate)
         : aggregateBidCount === 0
-          ? "No bids yet"
-          : `${aggregateBidCount} bid${aggregateBidCount === 1 ? "" : "s"} received`;
+          ? "No offers yet"
+          : `${aggregateBidCount} offer${aggregateBidCount === 1 ? "" : "s"} received`;
+    const offerCountLabel = bidCountLabel.replace(/\bbids?\b/gi, (match) =>
+      match.toLowerCase() === "bid" ? "offer" : "offers",
+    );
     const bestPriceDisplay =
       formatAdminBestPriceLabel(
         bidAggregate?.bestPriceAmount ?? fallbackBestPriceAmount,
@@ -1006,8 +1009,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       bidAggregate?.lastBidAt
         ? formatDateTime(bidAggregate.lastBidAt, { includeTime: true })
         : aggregateBidCount > 0
-          ? "See bid table"
-          : "No bids yet";
+          ? "See offer table"
+          : "No offers yet";
     const winningBidExists = bidAggregate?.hasWinningBid || hasWinningBid;
     const fallbackWinningAmount =
       typeof winningBidRow?.amount === "number" ? winningBidRow.amount : null;
@@ -1215,16 +1218,16 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-              Bid summary
+              Offer summary
             </p>
             <p className="text-xs text-slate-400">
               {aggregateBidCount > 0
-                ? "Latest supplier bidding snapshot."
-                : "We’ll surface supplier bids here as they arrive."}
+                ? "Latest supplier offer snapshot."
+                : "We’ll surface supplier offers here as they arrive."}
             </p>
           </div>
           <span className="rounded-full border border-slate-800 bg-slate-900/60 px-3 py-1 text-xs font-semibold text-slate-100">
-            {bidCountLabel}
+            {offerCountLabel}
           </span>
         </div>
         <dl className="mt-4 grid gap-4 text-slate-100 sm:grid-cols-3">
@@ -1495,7 +1498,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               label="Winning supplier"
               value={winningSupplierName ?? "Supplier selected"}
             />
-            <SnapshotField label="Winning bid" value={winningBidAmountLabel} />
+            <SnapshotField label="Winning offer" value={winningBidAmountLabel} />
             <SnapshotField label="Lead time" value={winningLeadTimeLabel} />
           </dl>
           <p className="mt-3 text-xs text-slate-400">
@@ -2294,8 +2297,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       { key: "quote", label: "Quote", value: formatShortId(quote.id) },
       {
         key: "bids",
-        label: "Bids",
-        value: bidCountLabel,
+        label: "Offers",
+        value: offerCountLabel,
         tone: attentionState.needsDecision ? "warning" : "neutral",
         href: "#decision",
       },
@@ -2529,7 +2532,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             className="scroll-mt-24"
             hashAliases={["bids-panel", "suppliers-panel"]}
             title="Decision"
-            description="Invite suppliers, review bids, and award a winner."
+            description="Invite suppliers, review offers, and award a winner."
             defaultOpen={!hasWinningBid && aggregateBidCount > 0}
             summary={
               hasWinningBid ? (
@@ -2538,7 +2541,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 </span>
               ) : (
                 <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
-                  {bidCountLabel}
+                  {offerCountLabel}
                 </span>
               )
             }
@@ -2550,7 +2553,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                     Decision assistant
                   </p>
                   <p className="mt-1 text-sm text-slate-300">
-                    Only one supplier has bid on this RFQ so far.
+                    Only one supplier has submitted an offer on this RFQ so far.
                   </p>
                 </div>
               ) : bidCompareRows.length > 1 ? (
@@ -2565,7 +2568,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                         .slice(0, 2)
                         .map((row) => row.supplierName);
                       if (candidates.length === 0) {
-                        return "Review bids below to make an award decision.";
+                        return "Review offers below to make an award decision.";
                       }
                       if (candidates.length === 1) {
                         return `Based on price, lead time, and supplier fit, ${candidates[0]} looks like the best candidate.`;
@@ -2580,8 +2583,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
               ) : null}
               {aggregateBidCount === 0 && !hasWinningBid ? (
                 <EmptyStateCard
-                  title="No bids yet"
-                  description="Invite a supplier to start bidding, or check back later."
+                  title="No offers yet"
+                  description="Invite a supplier to start quoting, or check back later."
                   action={
                     showInviteSupplierCta
                       ? { label: "Invite a supplier", href: "#suppliers-panel" }

@@ -72,17 +72,17 @@ export function SupplierBidsCard({
       className="mt-8 rounded-2xl border border-slate-900 bg-slate-950/40 p-4"
     >
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-100">Supplier bids</h2>
+        <h2 className="text-sm font-semibold text-slate-100">Offers</h2>
         {!bidsLoaded ? (
           <span className="text-xs text-slate-400">
-            Bids are temporarily unavailable.
+            Offers are temporarily unavailable.
           </span>
         ) : null}
       </div>
 
       {!bidsLoaded ? (
         <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
-          <p>We couldn’t load bids. Refresh the page to try again.</p>
+          <p>We couldn’t load offers. Refresh the page to try again.</p>
           {errorMessage ? (
             <details className="mt-3 rounded-lg border border-amber-500/20 bg-black/20 px-3 py-2 text-xs">
               <summary className="cursor-pointer select-none font-semibold">
@@ -98,7 +98,7 @@ export function SupplierBidsCard({
 
       {bidsLoaded && bids.length === 0 ? (
         <p className="text-xs text-slate-400">
-          No bids have been submitted for this quote yet.
+          No offers have been submitted for this RFQ yet.
         </p>
       ) : null}
 

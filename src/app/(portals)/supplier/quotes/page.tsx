@@ -292,7 +292,7 @@ export default async function SupplierQuotesPage({
     <PortalShell
       workspace="supplier"
       title="Quotes"
-      subtitle="Search requests you’re invited to, have bid on, or have been awarded."
+      subtitle="Search requests you’re invited to, have quoted on, or have been awarded."
       actions={
         <div className="flex flex-wrap gap-3">
           <Link
@@ -427,7 +427,7 @@ export default async function SupplierQuotesPage({
               <>
                 <p className="text-sm font-semibold text-slate-100">No search requests yet</p>
                 <p className="mt-2 text-sm text-slate-400">
-                  No search requests yet. When customers invite you to bid or we route work your
+                  No search requests yet. When customers invite you to quote or we route work your
                   way, search requests will appear here.
                 </p>
                 <div className="mt-4">
@@ -480,7 +480,7 @@ export default async function SupplierQuotesPage({
                       : open
                         ? "Open"
                         : "Closed";
-                  const subtext = row.hasBid ? `${coreStatus} • Bid submitted` : coreStatus;
+                  const subtext = row.hasBid ? `${coreStatus} • Quote submitted` : coreStatus;
                   const kickoff = kickoffPill(row.kickoffStatus);
                   const unread = Math.max(0, Math.floor(row.unreadMessagesCount ?? 0));
                   const matchChip = matchHealthChip(row.matchHealth);

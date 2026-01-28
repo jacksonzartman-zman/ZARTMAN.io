@@ -7,11 +7,6 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/formatDate";
-import {
-  formatRelativeTimeCompactFromTimestamp,
-  toTimestamp,
-} from "@/lib/relativeTime";
-import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import type { AdminQuoteListStatus, AdminQuotesView } from "@/types/adminQuotes";
 import AdminTableShell, { adminTableCellClass } from "./AdminTableShell";
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
@@ -19,7 +14,6 @@ import {
   type CapacityCapability,
   type CapacityLevel,
 } from "@/server/admin/capacity";
-import { CapacitySummaryPills } from "@/app/admin/components/CapacitySummaryPills";
 import {
   ActionGroup,
   ActionGroupSection,
@@ -107,7 +101,7 @@ export default function QuotesTable({
 
   return (
     <AdminTableShell
-      tableClassName="min-w-[1460px] w-full border-separate border-spacing-0 text-sm"
+      tableClassName="min-w-[1180px] w-full border-separate border-spacing-0 text-sm"
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -117,25 +111,16 @@ export default function QuotesTable({
             Customer
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Files
-          </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Parts
-          </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Status
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Thread
-          </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Bids
+            Offers
           </th>
           <th className="w-[16rem] min-w-[16rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Award
           </th>
-          <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Capacity (Next Week)
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            Kickoff
           </th>
           <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Actions
@@ -146,7 +131,7 @@ export default function QuotesTable({
         showEmptyState ? (
           <tr>
             <td
-              colSpan={10}
+              colSpan={7}
               className="px-6 py-12 text-center text-base text-slate-300"
             >
               <p className="font-medium text-slate-100">{emptyState.title}</p>
@@ -164,25 +149,23 @@ export default function QuotesTable({
             const awardedAtLabel = row.awardedAt
               ? formatDateTime(row.awardedAt, { includeTime: true })
               : null;
-            const lastMessageLabel = row.threadLastMessageAt
-              ? formatRelativeTimeCompactFromTimestamp(toTimestamp(row.threadLastMessageAt)) ??
-                "—"
-              : null;
-            const threadLabel = resolveThreadStatusLabel(
-              "admin",
-              row.threadNeedsReplyFrom ? row.threadNeedsReplyFrom : "none",
-            );
-            const threadPillClasses =
-              threadLabel === "Needs your reply"
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
-                : threadLabel === "Up to date"
-                  ? "border-slate-800 bg-slate-950/50 text-slate-300"
-                  : threadLabel === "Status unknown"
-                    ? "border-slate-800 bg-slate-950/50 text-slate-400"
-                    : "border-slate-800 bg-slate-900/40 text-slate-200";
             const rowAnchorId = `rfq-${row.id}`;
             const returnToWithAnchor =
               demoEnabled && demoReturnToBase ? `${demoReturnToBase}#${rowAnchorId}` : null;
+
+            const offersLabel =
+              row.bidCount > 0
+                ? `${row.bidCount} offer${row.bidCount === 1 ? "" : "s"}`
+                : "No offers yet";
+            const kickoffLabel = (() => {
+              if (!row.hasAward) return "Locked";
+              if (!demoEnabled) return "Unlocked";
+              if (!row.kickoffProgress) return "—";
+              const completed = row.kickoffProgress.completed;
+              const total = row.kickoffProgress.total;
+              if (typeof total === "number" && total > 0) return `${completed}/${total}`;
+              return `${completed}/—`;
+            })();
 
             return (
               <tr
@@ -224,111 +207,23 @@ export default function QuotesTable({
                   </div>
                 </td>
                 <td className={adminTableCellClass}>
-                  <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-300">
-                    {row.fileCountLabel}
-                  </span>
-                </td>
-                <td className={adminTableCellClass}>
-                  <Link
-                    href={`/admin/quotes/${row.id}#parts`}
-                    className="group inline-flex flex-col items-start gap-1 underline-offset-4 hover:underline"
-                  >
-                    <span
-                      className={clsx(
-                        "inline-flex w-fit items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
-                        row.partsCoverageHealth === "needs_attention"
-                          ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
-                          : row.partsCoverageHealth === "good"
-                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
-                            : "border-slate-800 bg-slate-950/50 text-slate-300",
-                      )}
-                    >
-                      {row.partsCoverageHealth === "none"
-                        ? "No parts"
-                        : row.partsCoverageHealth === "good"
-                          ? "Parts: Good"
-                          : "Parts: Needs attention"}
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      {(typeof row.partsCount === "number" ? row.partsCount : 0).toLocaleString()}{" "}
-                      part{(row.partsCount ?? 0) === 1 ? "" : "s"}
-                    </span>
-                  </Link>
-                </td>
-                <td className={adminTableCellClass}>
                   <div className="space-y-1">
                     <span
                       className={clsx("pill pill-table", row.statusClassName)}
                     >
                       {row.statusLabel}
                     </span>
-                    {row.hasAward ? (
-                      <span className="inline-flex w-fit rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
-                        Awarded
-                      </span>
-                    ) : null}
-                    {demoEnabled ? (
-                      <span className="inline-flex w-fit rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
-                        Kickoff:{" "}
-                        {row.kickoffProgress
-                          ? `${row.kickoffProgress.completed}/${row.kickoffProgress.total ?? "—"}`
-                          : "—"}
-                      </span>
-                    ) : null}
                     <p className="text-xs text-slate-400">{row.statusHelper}</p>
                   </div>
                 </td>
-                <td className={adminTableCellClass}>
-                  <div className="space-y-1">
-                    {row.threadLastMessageAt ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={clsx(
-                            "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold",
-                            threadPillClasses,
-                          )}
-                        >
-                          {row.threadUnreadForAdmin ? (
-                            <span className="h-2 w-2 rounded-full bg-emerald-300" />
-                          ) : null}
-                          {threadLabel}
-                        </span>
-                        {row.adminOverdue ? (
-                          <span className="inline-flex rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-red-100">
-                            Overdue
-                          </span>
-                        ) : row.adminNeedsReply ? (
-                          <span className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-100">
-                            Needs reply
-                          </span>
-                        ) : null}
-                        {row.threadStalenessBucket === "very_stale" ? (
-                          <span className="inline-flex rounded-full border border-slate-800 bg-slate-900/60 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200">
-                            Stale
-                          </span>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {row.threadLastMessageAt ? (
-                      <p className="text-xs text-slate-400">
-                        Last msg {lastMessageLabel ?? "—"}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-slate-500">No messages</p>
-                    )}
-                  </div>
-                </td>
                 <td className={clsx(adminTableCellClass, "text-xs text-slate-200")}>
-                  <p className="font-semibold text-slate-100">{row.bidCountLabel}</p>
-                  <p className="text-slate-400">{row.bidSummary}</p>
-                  <div className="mt-2 flex flex-col gap-1 text-slate-400">
-                    <span>
-                      Latest bid:{" "}
-                      {row.bidCount > 0 ? latestBidLabel ?? "—" : "—"}
-                    </span>
-                    <span>Best: {row.bestPriceLabel}</span>
-                    <span>Lead: {row.leadTimeLabel}</span>
-                  </div>
+                  <p className="font-semibold text-slate-100">{offersLabel}</p>
+                  <p className="text-slate-400">
+                    Best: {row.bestPriceLabel} · Lead: {row.leadTimeLabel}
+                  </p>
+                  <p className="mt-2 text-slate-500">
+                    Latest offer: {row.bidCount > 0 ? latestBidLabel ?? "—" : "—"}
+                  </p>
                 </td>
                 <td className={clsx(adminTableCellClass, "text-xs text-slate-200")}>
                   {row.hasAward ? (
@@ -423,8 +318,26 @@ export default function QuotesTable({
                     </div>
                   ) : null}
                 </td>
-                <td className={clsx(adminTableCellClass, "text-right")}>
-                  <CapacityCell summary={row.capacityNextWeek ?? null} />
+                <td className={clsx(adminTableCellClass, "text-xs text-slate-200")}>
+                  <span
+                    className={clsx(
+                      "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold",
+                      kickoffLabel === "Locked"
+                        ? "border-slate-800 bg-slate-950/50 text-slate-300"
+                        : kickoffLabel === "Unlocked"
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+                          : "border-slate-800 bg-slate-950/50 text-slate-200",
+                    )}
+                  >
+                    {kickoffLabel === "Unlocked"
+                      ? "Unlocked"
+                      : kickoffLabel === "Locked"
+                        ? "Locked"
+                        : kickoffLabel}
+                  </span>
+                  {demoEnabled && kickoffLabel !== "Locked" && kickoffLabel !== "Unlocked" ? (
+                    <p className="mt-2 text-xs text-slate-500">Completed / total tasks</p>
+                  ) : null}
                 </td>
                 <td className={clsx(adminTableCellClass, "text-right")}>
                   <div className="flex flex-col items-end gap-2">
@@ -442,7 +355,7 @@ export default function QuotesTable({
                       href={row.bidsHref}
                       className="text-xs font-semibold text-emerald-200 hover:text-emerald-100"
                     >
-                      View bids
+                      View offers
                     </Link>
                   </div>
                 </td>
@@ -451,22 +364,6 @@ export default function QuotesTable({
           })
         )
       }
-    />
-  );
-}
-
-function CapacityCell({ summary }: { summary: QuoteCapacitySummary | null }) {
-  if (!summary) {
-    return <p className="text-xs font-semibold text-slate-500">Capacity: —</p>;
-  }
-
-  return (
-    <CapacitySummaryPills
-      coverageCount={summary.coverageCount}
-      totalCount={summary.totalCount}
-      levels={summary.levels}
-      lastUpdatedAt={summary.lastUpdatedAt}
-      align="end"
     />
   );
 }
@@ -498,7 +395,7 @@ function getEmptyStateCopy({
     return {
       title: "No items need a reply right now.",
       description:
-        "New messages, uploads, and bid activity will show up here automatically.",
+        "New messages, uploads, and offer activity will show up here automatically.",
     };
   }
 
