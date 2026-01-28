@@ -1,6 +1,7 @@
 import Link from "next/link";
 import clsx from "clsx";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { QuickSpecsPanel } from "./QuickSpecsPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -49,13 +50,14 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
 
   const quoteRes = await supabaseServer()
     .from("quotes")
-    .select("id,upload_id,status,created_at")
+    .select("id,upload_id,status,created_at,target_date")
     .eq("id", quoteId)
     .maybeSingle<{
       id: string;
       upload_id: string | null;
       status: string | null;
       created_at: string | null;
+      target_date: string | null;
     }>();
 
   const quote = quoteRes.data?.id ? quoteRes.data : null;
@@ -63,18 +65,35 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
 
   let uploadOk = false;
   let primaryFileName: string | null = null;
+  let uploadManufacturingProcess: string | null = null;
+  let uploadQuantity: string | null = null;
 
   if (uploadId) {
     const uploadRes = await supabaseServer()
       .from("uploads")
-      .select("id,intake_idempotency_key,file_name")
+      .select("id,intake_idempotency_key,file_name,manufacturing_process,quantity")
       .eq("id", uploadId)
       .eq("intake_idempotency_key", intakeKey)
-      .maybeSingle<{ id: string; intake_idempotency_key: string | null; file_name: string | null }>();
+      .maybeSingle<{
+        id: string;
+        intake_idempotency_key: string | null;
+        file_name: string | null;
+        manufacturing_process: string | null;
+        quantity: string | null;
+      }>();
     uploadOk = Boolean(uploadRes.data?.id);
     primaryFileName =
       typeof uploadRes.data?.file_name === "string" && uploadRes.data.file_name.trim()
         ? uploadRes.data.file_name.trim()
+        : null;
+    uploadManufacturingProcess =
+      typeof uploadRes.data?.manufacturing_process === "string" &&
+      uploadRes.data.manufacturing_process.trim().length > 0
+        ? uploadRes.data.manufacturing_process.trim()
+        : null;
+    uploadQuantity =
+      typeof uploadRes.data?.quantity === "string" && uploadRes.data.quantity.trim().length > 0
+        ? uploadRes.data.quantity.trim()
         : null;
   }
 
@@ -104,6 +123,24 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
     { key: "processing", label: "Processing" },
     { key: "offers", label: "Offers coming" },
   ] as const;
+
+  const initialProcesses = (() => {
+    const raw = (uploadManufacturingProcess ?? "").toLowerCase();
+    const keys: Array<"cnc" | "3dp" | "sheet" | "injection"> = [];
+    if (raw.includes("cnc")) keys.push("cnc");
+    if (raw.includes("3d") || raw.includes("3dp") || raw.includes("printing") || raw.includes("additive")) {
+      keys.push("3dp");
+    }
+    if (raw.includes("sheet")) keys.push("sheet");
+    if (raw.includes("injection") || raw.includes("mold")) keys.push("injection");
+    return Array.from(new Set(keys));
+  })();
+
+  const initialQuantity = (() => {
+    if (!uploadQuantity) return null;
+    const parsed = Number.parseInt(uploadQuantity, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  })();
 
   return (
     <main className="main-shell">
@@ -178,6 +215,16 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
               </p>
             </div>
           </div>
+
+          <QuickSpecsPanel
+            quoteId={quote.id}
+            intakeKey={intakeKey}
+            initial={{
+              manufacturingProcesses: initialProcesses,
+              targetDate: quote.target_date ?? null,
+              quantity: initialQuantity,
+            }}
+          />
         </section>
       </div>
     </main>
