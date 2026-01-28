@@ -22,56 +22,70 @@ type AdminNavClientProps = {
   signOutAction?: () => Promise<void> | void;
 };
 
-const PRIMARY_LINK: PortalNavLink = { label: "Quotes", href: "/admin/quotes" };
+const PRIMARY_LINKS: PortalNavLink[] = [
+  { label: "Quotes", href: "/admin/quotes" },
+  { label: "Uploads", href: "/admin/uploads" },
+  { label: "Messages", href: "/admin/messages" },
+  // Prefer Suppliers as the primary label; keep Providers accessible under Advanced.
+  { label: "Suppliers", href: "/admin/suppliers" },
+];
 
-const MORE_LINKS: PortalNavLink[] = [
+const OPS_LINKS: PortalNavLink[] = [
+  { label: "Ops inbox", href: "/admin/ops/inbox" },
+  { label: "System health", href: "/admin/system-health" },
+];
+
+// Keep all existing routes intact; just group + simplify visibility.
+const ADVANCED_LINKS: PortalNavLink[] = [
   { label: "Overview", href: "/admin/overview" },
   { label: "Change requests", href: "/admin/change-requests" },
   { label: "Analytics", href: "/admin/analytics" },
-  { label: "Uploads", href: "/admin/uploads" },
-  { label: "Messages", href: "/admin/messages" },
-  { label: "Activity", href: "/admin/activity" },
   { label: "Capacity", href: "/admin/capacity" },
-  { label: "Ops inbox", href: "/admin/ops/inbox" },
   { label: "Ops metrics", href: "/admin/metrics" },
   { label: "Pricing", href: "/admin/pricing" },
   { label: "Search alerts", href: "/admin/search-alerts" },
-  { label: "Suppliers", href: "/admin/suppliers" },
-  { label: "Providers", href: "/admin/providers" },
   { label: "Pipeline", href: "/admin/providers/pipeline" },
+  { label: "Providers", href: "/admin/providers" },
   { label: "Provider import", href: "/admin/providers/import" },
   { label: "Bench health", href: "/admin/bench-health" },
   { label: "Bench tasks", href: "/admin/bench-health/tasks" },
-  { label: "System health", href: "/admin/system-health" },
   { label: "Email ops", href: "/admin/email-ops" },
+  // Not part of the MVP visibility list, but still reachable.
+  { label: "Activity", href: "/admin/activity" },
 ];
 
-const MOBILE_LINKS: PortalNavLink[] = [
-  PRIMARY_LINK,
-  { label: "Notifications", href: "/admin/notifications" },
-  ...MORE_LINKS,
-];
+const NOTIFICATIONS_LINK: PortalNavLink = { label: "Notifications", href: "/admin/notifications" };
 
 export default function AdminNavClient({ user, signOutAction }: AdminNavClientProps) {
   const pathname = usePathname() ?? "/admin/overview";
   const [moreOpen, setMoreOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement | null>(null);
   const mobileRef = useRef<HTMLDivElement | null>(null);
 
-  const primaryActive = useMemo(
-    () => defaultIsPortalNavLinkActive(pathname, PRIMARY_LINK.href),
-    [pathname],
-  );
-
-  const moreActive = useMemo(() => {
-    return MORE_LINKS.some((link) => defaultIsPortalNavLinkActive(pathname, link.href));
+  const primaryActiveHref = useMemo(() => {
+    const match = PRIMARY_LINKS.find((link) => defaultIsPortalNavLinkActive(pathname, link.href));
+    return match?.href ?? null;
   }, [pathname]);
+
+  const opsActive = useMemo(() => {
+    return OPS_LINKS.some((link) => defaultIsPortalNavLinkActive(pathname, link.href));
+  }, [pathname]);
+
+  const advancedActive = useMemo(() => {
+    return ADVANCED_LINKS.some((link) => defaultIsPortalNavLinkActive(pathname, link.href));
+  }, [pathname]);
+
+  const moreActive = advancedActive;
 
   useEffect(() => {
     setMoreOpen(false);
     setMobileOpen(false);
-  }, [pathname]);
+    // Keep Advanced collapsed by default, but auto-expand if you're on an advanced page
+    // so the active location isn't hidden.
+    setAdvancedOpen(advancedActive);
+  }, [pathname, advancedActive]);
 
   useEffect(() => {
     function handleClick(event: MouseEvent) {
@@ -117,17 +131,44 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
 
           {/* Desktop nav */}
           <nav className="hidden items-center gap-2 text-sm font-medium text-slate-400 lg:flex">
-            <Link
-              href={PRIMARY_LINK.href}
-              className={clsx(
-                "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
-                primaryActive
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-400 hover:text-white",
-              )}
-            >
-              {PRIMARY_LINK.label}
-            </Link>
+            <span className="ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Primary
+            </span>
+            {PRIMARY_LINKS.map((link) => {
+              const active = link.href === primaryActiveHref;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
+                    active ? "bg-slate-900 text-white" : "text-slate-400 hover:text-white",
+                  )}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+
+            <span className="mx-1 h-5 w-px bg-slate-900/80" aria-hidden="true" />
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Ops
+            </span>
+            {OPS_LINKS.map((link) => {
+              const active = defaultIsPortalNavLinkActive(pathname, link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={clsx(
+                    "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
+                    active ? "bg-slate-900 text-white" : "text-slate-400 hover:text-white",
+                  )}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
 
             <div className="relative" ref={moreRef}>
               <button
@@ -141,37 +182,27 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
                 )}
                 aria-haspopup="menu"
                 aria-expanded={moreOpen}
-                aria-label="More admin links"
+                aria-label="Advanced admin links"
               >
-                <span>More</span>
+                <span>Advanced</span>
                 <ChevronIcon className={clsx("h-4 w-4", moreOpen ? "rotate-180" : "")} />
               </button>
 
               {moreOpen ? (
                 <div
                   role="menu"
-                  aria-label="More admin links"
+                  aria-label="Advanced admin links"
                   className="absolute left-0 z-50 mt-2 w-64 rounded-2xl border border-slate-900/80 bg-slate-950/95 p-2 text-sm text-slate-200 shadow-[0_18px_40px_rgba(2,6,23,0.65)]"
                 >
-                  {MORE_LINKS.map((link) => {
-                    const active = defaultIsPortalNavLinkActive(pathname, link.href);
-                    return (
-                      <Link
-                        key={link.href}
-                        href={link.href}
-                        role="menuitem"
-                        className={clsx(
-                          "flex items-center justify-between rounded-xl px-3 py-2 font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300",
-                          active
-                            ? "bg-slate-900 text-white"
-                            : "text-slate-300 hover:bg-slate-900/60 hover:text-white",
-                        )}
-                        onClick={() => setMoreOpen(false)}
-                      >
-                        <span>{link.label}</span>
-                      </Link>
-                    );
-                  })}
+                  <MenuSection title="Advanced" />
+                  {ADVANCED_LINKS.map((link) => (
+                    <MenuLink
+                      key={link.href}
+                      link={link}
+                      pathname={pathname}
+                      onClick={() => setMoreOpen(false)}
+                    />
+                  ))}
                 </div>
               ) : null}
             </div>
@@ -198,25 +229,63 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
                 aria-label="Admin menu"
                 className="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-900/80 bg-slate-950/95 p-2 text-sm text-slate-200 shadow-[0_18px_40px_rgba(2,6,23,0.65)]"
               >
-                {MOBILE_LINKS.map((link) => {
-                  const active = defaultIsPortalNavLinkActive(pathname, link.href);
-                  return (
-                    <Link
-                      key={link.href}
-                      href={link.href}
-                      role="menuitem"
-                      className={clsx(
-                        "flex items-center justify-between rounded-xl px-3 py-2 font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300",
-                        active
-                          ? "bg-slate-900 text-white"
-                          : "text-slate-300 hover:bg-slate-900/60 hover:text-white",
-                      )}
-                      onClick={() => setMobileOpen(false)}
-                    >
-                      <span>{link.label}</span>
-                    </Link>
-                  );
-                })}
+                <MenuLink
+                  link={NOTIFICATIONS_LINK}
+                  pathname={pathname}
+                  onClick={() => setMobileOpen(false)}
+                />
+                <div className="my-2 h-px bg-slate-900/80" />
+
+                <MenuSection title="Primary" />
+                {PRIMARY_LINKS.map((link) => (
+                  <MenuLink
+                    key={link.href}
+                    link={link}
+                    pathname={pathname}
+                    onClick={() => setMobileOpen(false)}
+                  />
+                ))}
+
+                <div className="my-2 h-px bg-slate-900/80" />
+                <MenuSection title="Ops" />
+                {OPS_LINKS.map((link) => (
+                  <MenuLink
+                    key={link.href}
+                    link={link}
+                    pathname={pathname}
+                    onClick={() => setMobileOpen(false)}
+                  />
+                ))}
+
+                <div className="my-2 h-px bg-slate-900/80" />
+                <MenuSection title="Advanced" />
+                <button
+                  type="button"
+                  className={clsx(
+                    "flex w-full items-center justify-between rounded-xl px-3 py-2 text-left font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300",
+                    advancedOpen
+                      ? "bg-slate-900/60 text-white"
+                      : "text-slate-300 hover:bg-slate-900/60 hover:text-white",
+                  )}
+                  aria-expanded={advancedOpen}
+                  onClick={() => setAdvancedOpen((prev) => !prev)}
+                >
+                  <span>{advancedOpen ? "Hide advanced links" : "Show advanced links"}</span>
+                  <ChevronIcon className={clsx("h-4 w-4", advancedOpen ? "rotate-180" : "")} />
+                </button>
+
+                {advancedOpen ? (
+                  <div className="mt-1">
+                    {ADVANCED_LINKS.map((link) => (
+                      <MenuLink
+                        key={link.href}
+                        link={link}
+                        pathname={pathname}
+                        onClick={() => setMobileOpen(false)}
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -356,6 +425,40 @@ function HamburgerIcon({ className }: { className?: string }) {
       <path d="M4 12h16" />
       <path d="M4 17h16" />
     </svg>
+  );
+}
+
+function MenuSection({ title }: { title: string }) {
+  return (
+    <div className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+      {title}
+    </div>
+  );
+}
+
+function MenuLink({
+  link,
+  pathname,
+  onClick,
+}: {
+  link: PortalNavLink;
+  pathname: string;
+  onClick: () => void;
+}) {
+  const active = defaultIsPortalNavLinkActive(pathname, link.href);
+  return (
+    <Link
+      key={link.href}
+      href={link.href}
+      role="menuitem"
+      className={clsx(
+        "flex items-center justify-between rounded-xl px-3 py-2 font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300",
+        active ? "bg-slate-900 text-white" : "text-slate-300 hover:bg-slate-900/60 hover:text-white",
+      )}
+      onClick={onClick}
+    >
+      <span>{link.label}</span>
+    </Link>
   );
 }
 
