@@ -4,6 +4,7 @@ import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { supabasePublic } from "@/lib/supabaseServer";
 import { debugOnce } from "@/server/db/schemaErrors";
 import { buildAuthCallbackRedirectTo, getRequestOrigin } from "@/server/requestOrigin";
+import { checkOtpThrottle, markOtpAttempt } from "@/server/auth/otpThrottle";
 import type { PortalRole } from "@/types/portal";
 import { randomUUID } from "crypto";
 import { headers } from "next/headers";
@@ -18,10 +19,12 @@ export type RequestMagicLinkInput = {
 export type RequestMagicLinkResult = {
   ok: true;
   requestId: string;
+  retryAfterSeconds: number;
 } | {
   ok: false;
   requestId: string;
   error: string;
+  retryAfterSeconds: number;
   /**
    * Non-production only: returned to the client for debugging.
    * Never includes tokens/codes/cookies.
@@ -33,6 +36,7 @@ export type RequestMagicLinkResult = {
 };
 
 const MAGIC_LINK_ERROR_MESSAGE = "We couldn’t send a magic link right now. Please try again.";
+const OTP_COOLDOWN_SECONDS = 60;
 
 function maskEmailForLogs(email: string): string {
   const trimmed = email.trim();
@@ -45,14 +49,30 @@ function maskEmailForLogs(email: string): string {
   return `${prefix}***@${domainRoot}.***`;
 }
 
-function classifySupabaseOtpError(message: string, requestId: string): string {
+function resolveClientIp(headerList: Awaited<ReturnType<typeof headers>>): string | null {
+  const forwarded = headerList.get("x-forwarded-for");
+  if (forwarded) {
+    const first = forwarded.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  const realIp = headerList.get("x-real-ip")?.trim();
+  return realIp && realIp.length > 0 ? realIp : null;
+}
+
+function classifySupabaseOtpError(message: string): {
+  error: string;
+  retryAfterSeconds: number;
+} {
   const haystack = message.toLowerCase();
 
   if (
     haystack.includes("rate limit") ||
     haystack.includes("for security purposes")
   ) {
-    return `Supabase rate-limited the request. Wait 60 seconds and try again. (Request ID: ${requestId})`;
+    return {
+      error: "Supabase rate-limited the request. Wait 60 seconds and try again.",
+      retryAfterSeconds: OTP_COOLDOWN_SECONDS,
+    };
   }
 
   if (
@@ -61,14 +81,20 @@ function classifySupabaseOtpError(message: string, requestId: string): string {
     haystack.includes("not allowlisted") ||
     haystack.includes("not whitelisted")
   ) {
-    return `Supabase rejected the redirect URL. The preview domain must be allowlisted. (Request ID: ${requestId})`;
+    return {
+      error: "Supabase rejected the redirect URL. The preview domain must be allowlisted.",
+      retryAfterSeconds: 0,
+    };
   }
 
   if (haystack.includes("provider") && haystack.includes("disabled")) {
-    return `Supabase email provider is disabled for this project. (Request ID: ${requestId})`;
+    return {
+      error: "Supabase email provider is disabled for this project.",
+      retryAfterSeconds: 0,
+    };
   }
 
-  return `${MAGIC_LINK_ERROR_MESSAGE} (Request ID: ${requestId})`;
+  return { error: MAGIC_LINK_ERROR_MESSAGE, retryAfterSeconds: 0 };
 }
 
 export async function requestMagicLinkForEmail(
@@ -89,6 +115,7 @@ export async function requestMagicLinkForEmail(
 
     const headerList = await headers();
     const origin = getRequestOrigin(headerList, { clientOrigin: input.clientOrigin });
+    const clientIp = resolveClientIp(headerList);
     const { redirectTo: emailRedirectTo, next } = buildAuthCallbackRedirectTo({
       origin,
       nextPath: input.nextPath,
@@ -102,6 +129,7 @@ export async function requestMagicLinkForEmail(
       emailRedirectTo,
       vercelEnv,
       nodeEnv,
+      clientIp,
     });
 
     if (!normalizedEmail) {
@@ -115,7 +143,23 @@ export async function requestMagicLinkForEmail(
         message: "invalid email",
         name: "validation_error",
       });
-      return { ok: false, requestId, error };
+      return { ok: false, requestId, retryAfterSeconds: 0, error };
+    }
+
+    const throttle = checkOtpThrottle(normalizedEmail);
+    if (!throttle.allowed) {
+      console.warn("[auth otp] throttled", {
+        requestId,
+        email: maskEmailForLogs(normalizedEmail),
+        retryAfterSeconds: throttle.retryAfterSeconds,
+        clientIp,
+      });
+      return {
+        ok: false,
+        requestId,
+        retryAfterSeconds: throttle.retryAfterSeconds,
+        error: `Please wait ${throttle.retryAfterSeconds} seconds before requesting another link.`,
+      };
     }
 
     // Server-only structured debug log. Do not include tokens/codes/cookies.
@@ -127,6 +171,9 @@ export async function requestMagicLinkForEmail(
       VERCEL_ENV: vercelEnv,
       NODE_ENV: nodeEnv,
     });
+
+    // Mark before calling Supabase to prevent rapid repeat attempts (even if Supabase errors).
+    markOtpAttempt(normalizedEmail);
 
     // Confirmed: magic link login uses signInWithOtp (NOT recovery/reset flows).
     const { error } = await supabasePublic().auth.signInWithOtp({
@@ -146,11 +193,12 @@ export async function requestMagicLinkForEmail(
         name: (error as any)?.name ?? null,
       });
 
-      const errorMessage = classifySupabaseOtpError(error.message, requestId);
+      const classified = classifySupabaseOtpError(error.message);
       return {
         ok: false,
         requestId,
-        error: errorMessage,
+        retryAfterSeconds: classified.retryAfterSeconds,
+        error: classified.error,
         ...(isProduction
           ? {}
           : {
@@ -163,7 +211,7 @@ export async function requestMagicLinkForEmail(
     }
 
     console.error("[auth otp] success", { requestId });
-    return { ok: true, requestId };
+    return { ok: true, requestId, retryAfterSeconds: OTP_COOLDOWN_SECONDS };
   } catch (thrown) {
     const message =
       thrown instanceof Error ? thrown.message : typeof thrown === "string" ? thrown : "unknown error";
@@ -177,7 +225,8 @@ export async function requestMagicLinkForEmail(
     return {
       ok: false,
       requestId,
-      error: `${MAGIC_LINK_ERROR_MESSAGE} (Request ID: ${requestId})`,
+      retryAfterSeconds: 0,
+      error: MAGIC_LINK_ERROR_MESSAGE,
       ...(isProduction ? {} : { debug: { supabaseMessage: message, status: null } }),
     };
   }

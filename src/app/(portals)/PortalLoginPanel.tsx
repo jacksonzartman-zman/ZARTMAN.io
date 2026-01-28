@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { requestMagicLinkForEmail } from "@/app/auth/actions";
 import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
@@ -71,7 +71,9 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
   );
   const [lastSentTo, setLastSentTo] = useState<string | null>(null);
   const [lastRequestId, setLastRequestId] = useState<string | null>(null);
-  const [cooldown, setCooldown] = useState(false);
+  const [cooldownUntilMs, setCooldownUntilMs] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const inFlightRef = useRef(false);
   const pathname = usePathname();
   const roleIsKnown = Object.prototype.hasOwnProperty.call(ROLE_COPY, role);
   if (!roleIsKnown) {
@@ -91,15 +93,48 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
       : fallbackRedirect);
   const quoteFlow = isQuoteFlow(normalizedNextPath);
 
+  const normalizedEmail = email.trim().toLowerCase();
+  const cooldownKey =
+    normalizedEmail && normalizedEmail.includes("@") ? `otpCooldownUntil:${normalizedEmail}` : null;
+  const cooldownSecondsLeft =
+    cooldownUntilMs && cooldownUntilMs > nowMs
+      ? Math.max(0, Math.ceil((cooldownUntilMs - nowMs) / 1000))
+      : 0;
+  const cooldownActive = cooldownSecondsLeft > 0;
+
   useEffect(() => {
     if (quoteFlow) {
       console.log("[login] rendering quote-flow login", { nextPath: normalizedNextPath });
     }
   }, [quoteFlow, normalizedNextPath]);
 
+  useEffect(() => {
+    setNowMs(Date.now());
+    setCooldownUntilMs(null);
+    if (!cooldownKey) return;
+    try {
+      const raw = window.sessionStorage.getItem(cooldownKey);
+      const parsed = raw ? Number(raw) : NaN;
+      if (!Number.isFinite(parsed)) return;
+      if (parsed > Date.now()) {
+        setCooldownUntilMs(parsed);
+      }
+    } catch (err) {
+      console.warn("[portal-login] failed to read otp cooldown from sessionStorage", err);
+    }
+  }, [cooldownKey]);
+
+  useEffect(() => {
+    if (!cooldownUntilMs) return;
+    if (cooldownUntilMs <= Date.now()) return;
+    const interval = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(interval);
+  }, [cooldownUntilMs]);
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    const normalizedEmail = email.trim().toLowerCase();
+    if (inFlightRef.current) return;
+    if (cooldownActive) return;
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
       setError(
         resolvedRole === "supplier"
@@ -113,6 +148,7 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
     }
 
     try {
+      inFlightRef.current = true;
       setStatus("sending");
       setError(null);
       setDebug(null);
@@ -128,10 +164,28 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
         setStatus("error");
         setError(result.error);
         setDebug(result.debug ?? null);
+        if (result.retryAfterSeconds > 0) {
+          const until = Date.now() + result.retryAfterSeconds * 1000;
+          setCooldownUntilMs(until);
+          try {
+            window.sessionStorage.setItem(`otpCooldownUntil:${normalizedEmail}`, String(until));
+          } catch (err) {
+            console.warn("[portal-login] failed to persist otp cooldown", err);
+          }
+        }
         return;
       }
       setStatus("sent");
       setLastSentTo(normalizedEmail);
+      if (result.retryAfterSeconds > 0) {
+        const until = Date.now() + result.retryAfterSeconds * 1000;
+        setCooldownUntilMs(until);
+        try {
+          window.sessionStorage.setItem(`otpCooldownUntil:${normalizedEmail}`, String(until));
+        } catch (err) {
+          console.warn("[portal-login] failed to persist otp cooldown", err);
+        }
+      }
     } catch (err) {
       console.error("Portal login: failed to request magic link", err);
       setError(
@@ -143,8 +197,7 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
       setLastRequestId(null);
       setStatus("error");
     } finally {
-      setCooldown(true);
-      window.setTimeout(() => setCooldown(false), 2500);
+      inFlightRef.current = false;
     }
   }
 
@@ -181,11 +234,18 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
         />
         <button
           type="submit"
-          disabled={status === "sending" || cooldown}
+          disabled={status === "sending" || cooldownActive}
           className="w-full rounded-full border border-slate-800 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:opacity-60"
         >
-          {status === "sending" ? "Sending..." : copy.cta}
+          {status === "sending"
+            ? "Sending..."
+            : cooldownActive
+              ? `Try again in ${cooldownSecondsLeft}s`
+              : copy.cta}
         </button>
+        <p className="text-xs text-slate-500">
+          To prevent rate limits, you can request one link per minute.
+        </p>
         {status === "sent" ? (
             <div className="space-y-1">
               <p className="text-sm text-emerald-200">
