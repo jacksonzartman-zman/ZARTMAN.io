@@ -35,6 +35,7 @@ export default async function AdminSearchAlertsPage({
 
   const result = await loadAdminSearchAlertsQueue({ filter });
   const offerCountsByQuoteId = await loadOfferCountsByQuoteId(result);
+  const displayRows = deriveDisplayRows({ result, filter, offerCountsByQuoteId });
 
   return (
     <AdminDashboardShell
@@ -58,8 +59,8 @@ export default async function AdminSearchAlertsPage({
           </div>
           {result.ok && result.supported ? (
             <p className="text-sm text-slate-300">
-              {formatCount(result.rows.length)} alert
-              {result.rows.length === 1 ? "" : "s"}
+              {formatCount(displayRows.length)} alert
+              {displayRows.length === 1 ? "" : "s"}
             </p>
           ) : null}
         </div>
@@ -81,7 +82,7 @@ export default async function AdminSearchAlertsPage({
         <p className="text-sm text-slate-400">
           Search alerts queue is unavailable on this schema.
         </p>
-      ) : result.rows.length === 0 ? (
+      ) : displayRows.length === 0 ? (
         <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-8 text-center">
           <p className="text-base font-semibold text-slate-100">No alerts to review</p>
           <p className="mt-2 text-sm text-slate-400">
@@ -103,7 +104,7 @@ export default async function AdminSearchAlertsPage({
           }
           body={
             <>
-              {result.rows.map((row) => {
+              {displayRows.map((row) => {
                 const quoteHref = `/admin/quotes/${row.quoteId}`;
                 const searchSubtitle =
                   row.uploadName ?? row.fileName ?? `Quote ${formatShortId(row.quoteId)}`;
@@ -265,6 +266,28 @@ async function loadOfferCountsByQuoteId(
     }
   }
   return map;
+}
+
+function deriveDisplayRows(args: {
+  result: Awaited<ReturnType<typeof loadAdminSearchAlertsQueue>>;
+  filter: AdminSearchAlertFilter;
+  offerCountsByQuoteId: Map<string, number>;
+}) {
+  if (!args.result.ok || !args.result.supported) {
+    return [];
+  }
+  const rows = args.result.rows;
+  // If we couldn't load offer counts, keep server-side filtering behavior.
+  if (args.offerCountsByQuoteId.size === 0) {
+    return rows;
+  }
+  if (args.filter === "awaiting_offers") {
+    return rows.filter((row) => (args.offerCountsByQuoteId.get(row.quoteId) ?? 0) === 0);
+  }
+  if (args.filter === "offers_received") {
+    return rows.filter((row) => (args.offerCountsByQuoteId.get(row.quoteId) ?? 0) > 0);
+  }
+  return rows;
 }
 
 function normalizeFilter(value: unknown): AdminSearchAlertFilter | null {
