@@ -71,6 +71,29 @@ import assert from "node:assert";
       created_at: nowIso,
       provider: null,
     },
+    {
+      id: "offer-4",
+      rfq_id: rfqId,
+      provider_id: null,
+      destination_id: null,
+      currency: "USD",
+      total_price: 900,
+      unit_price: null,
+      tooling_price: null,
+      shipping_price: null,
+      lead_time_days_min: 9,
+      lead_time_days_max: 9,
+      assumptions: null,
+      notes: "Brokered via marketplace",
+      source_type: "marketplace",
+      source_name: "Xometry",
+      confidence_score: null,
+      quality_risk_flags: [],
+      status: "quoted",
+      received_at: nowIso,
+      created_at: nowIso,
+      provider: null,
+    },
   ];
 
   const fakeClient = {
@@ -94,18 +117,23 @@ import assert from "node:assert";
   };
 
   const offers = await getRfqOffers(rfqId, { client: fakeClient as any });
-  assert.strictEqual(offers.length, 3, "Expected loader to return 3 rfq_offers rows");
+  assert.strictEqual(offers.length, 4, "Expected loader to return 4 rfq_offers rows");
   assert.ok(
     offers.every((o) => o.rfq_id === rfqId),
     "Expected offers to match requested rfq_id",
   );
-  assert.ok(
-    offers.every((o) => o.status === "received"),
-    "Expected demo offers to normalize to received status",
-  );
+  assert.ok(offers.some((o) => o.status === "quoted"), "Expected external offer status to be quoted");
 
   const compareOffers = await buildCustomerCompareOffers(offers);
-  assert.strictEqual(compareOffers.length, 3, "Expected UI compare offers to render 3 offer cards");
+  assert.strictEqual(compareOffers.length, 4, "Expected UI compare offers to render 4 offer cards");
+  const broker = compareOffers.find((o) => o.id === "offer-4");
+  assert.ok(broker, "Expected broker offer to be present in compare offers");
+  assert.strictEqual(broker?.providerName, "Xometry", "Expected broker offer provider name to use source_name");
+  assert.strictEqual(
+    broker?.provider_id,
+    "external:offer-4",
+    "Expected broker offer provider_id to be a stable synthetic key",
+  );
 
   console.log("customerOffersLoader tests passed");
 })().catch((err) => {

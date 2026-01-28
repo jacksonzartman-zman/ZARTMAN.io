@@ -76,7 +76,7 @@ export type RfqOfferProvider = {
 export type RfqOffer = {
   id: string;
   rfq_id: string;
-  provider_id: string;
+  provider_id: string | null;
   destination_id: string | null;
   currency: string;
   total_price: number | string | null;
@@ -87,6 +87,8 @@ export type RfqOffer = {
   lead_time_days_max: number | null;
   assumptions: string | null;
   notes: string | null;
+  source_type?: string | null;
+  source_name?: string | null;
   confidence_score: number | null;
   quality_risk_flags: string[];
   status: RfqOfferStatus;
@@ -109,6 +111,8 @@ type RawRfqOfferRow = {
   lead_time_days_max: number | string | null;
   assumptions: string | null;
   notes: string | null;
+  source_type?: string | null;
+  source_name?: string | null;
   confidence_score: number | string | null;
   quality_risk_flags: string[] | null;
   status: string | null;
@@ -257,8 +261,8 @@ export async function loadRfqOffersForQuoteIds(
 function normalizeOfferRow(row: RawRfqOfferRow): RfqOffer | null {
   const id = normalizeId(row?.id);
   const rfqId = normalizeId(row?.rfq_id);
-  const providerId = normalizeId(row?.provider_id);
-  if (!id || !rfqId || !providerId) {
+  const providerId = normalizeId(row?.provider_id) || null;
+  if (!id || !rfqId) {
     return null;
   }
 
@@ -279,6 +283,14 @@ function normalizeOfferRow(row: RawRfqOfferRow): RfqOffer | null {
     lead_time_days_max: normalizeInteger(row?.lead_time_days_max),
     assumptions: normalizeOptionalText(row?.assumptions),
     notes: normalizeOptionalText(row?.notes),
+    source_type:
+      typeof (row as any)?.source_type === "string"
+        ? ((row as any).source_type as string).trim() || null
+        : (row as any)?.source_type ?? null,
+    source_name:
+      typeof (row as any)?.source_name === "string"
+        ? ((row as any).source_name as string).trim() || null
+        : (row as any)?.source_name ?? null,
     confidence_score: normalizeInteger(row?.confidence_score),
     quality_risk_flags: normalizeRiskFlags(row?.quality_risk_flags),
     status: normalizeStatus(row?.status),

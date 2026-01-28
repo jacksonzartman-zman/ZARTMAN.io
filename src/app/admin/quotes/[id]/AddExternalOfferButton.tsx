@@ -137,8 +137,8 @@ export function AddExternalOfferButton({
                   {success ? "External offer saved" : "Add external offer"}
                 </h3>
                 <p className="mt-1 text-sm text-slate-300">
-                  This creates a provider + destination + offer record. Customer-visible fields
-                  include price, lead time, and notes.
+                  This creates an offer record that can be compared alongside supplier offers.
+                  Customer-visible fields include price, lead time, and notes.
                 </p>
               </div>
               <button

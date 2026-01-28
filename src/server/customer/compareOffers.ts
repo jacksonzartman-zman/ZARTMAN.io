@@ -50,7 +50,8 @@ function normalizeId(value: unknown): string {
 
 function resolveProviderName(offer: RfqOffer): string {
   const name = typeof offer.provider?.name === "string" ? offer.provider.name.trim() : "";
-  return name || offer.provider_id || "Supplier";
+  const sourceName = typeof offer.source_name === "string" ? offer.source_name.trim() : "";
+  return name || sourceName || "Supplier";
 }
 
 function resolveLeadTimeAverage(minDays: number | null, maxDays: number | null): number | null {
@@ -192,6 +193,10 @@ export async function buildCustomerCompareOffers(
   offers: RfqOffer[],
 ): Promise<CustomerCompareOffer[]> {
   const normalized = (offers ?? []).map((offer) => {
+    const providerId =
+      typeof offer.provider_id === "string" && offer.provider_id.trim()
+        ? offer.provider_id.trim()
+        : null;
     const providerName = resolveProviderName(offer);
     const totalPriceValue = toFiniteNumber(offer.total_price);
     const leadTimeDaysAverage = resolveLeadTimeAverage(
@@ -202,12 +207,14 @@ export async function buildCustomerCompareOffers(
       typeof offer.provider?.verification_status === "string"
         ? offer.provider.verification_status.trim().toLowerCase()
         : "";
-    const isVerifiedSupplier = verificationRaw === "verified" || verificationRaw === "";
+    const isVerifiedSupplier =
+      Boolean(providerId) && (verificationRaw === "verified" || verificationRaw === "");
+    const syntheticProviderId = providerId ?? `external:${offer.id}`;
 
     const safeOffer: CustomerCompareOffer = {
       id: offer.id,
       rfq_id: offer.rfq_id,
-      provider_id: offer.provider_id,
+      provider_id: syntheticProviderId,
       destination_id: offer.destination_id ?? null,
       currency: offer.currency,
       total_price: offer.total_price,
@@ -228,15 +235,17 @@ export async function buildCustomerCompareOffers(
       trustBadges: [],
     };
 
-    return { safeOffer, isVerifiedSupplier };
+    return { safeOffer, isVerifiedSupplier, providerIdForMatchHealth: providerId };
   });
 
-  const supplierIds = normalized.map((o) => o.safeOffer.provider_id).filter(Boolean);
+  const supplierIds = normalized
+    .map((o) => o.providerIdForMatchHealth)
+    .filter((v): v is string => Boolean(v));
   const matchHealthBySupplierId = await loadMatchHealthBySupplierId(supplierIds);
 
   const bestValueOfferId = pickBestValueOfferId(normalized.map((o) => o.safeOffer));
 
-  return normalized.map(({ safeOffer: offer, isVerifiedSupplier }) => {
+  return normalized.map(({ safeOffer: offer, isVerifiedSupplier, providerIdForMatchHealth }) => {
     const badges: CustomerTrustBadge[] = [];
 
     // Verified supplier: customer-safe, and should never mention routing/ops.
@@ -253,7 +262,10 @@ export async function buildCustomerCompareOffers(
       badges.push(buildBadge("best_value"));
     }
 
-    const mh = matchHealthBySupplierId.get(offer.provider_id) ?? "unknown";
+    const mh =
+      providerIdForMatchHealth
+        ? (matchHealthBySupplierId.get(providerIdForMatchHealth) ?? "unknown")
+        : "unknown";
     if (mh === "good") {
       badges.push(buildBadge("great_fit"));
     }

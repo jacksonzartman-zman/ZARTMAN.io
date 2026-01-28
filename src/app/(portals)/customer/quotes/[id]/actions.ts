@@ -796,10 +796,7 @@ export async function selectOfferAction(
       return { ok: false, error: CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR };
     }
 
-    const providerId = normalizeId(offerRow.provider_id ?? null);
-    if (!providerId) {
-      return { ok: false, error: CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR };
-    }
+    const providerId = normalizeId(offerRow.provider_id ?? null) || null;
 
     const { error: updateError } = await supabaseServer()
       .from("quotes")
@@ -952,36 +949,35 @@ export async function awardOfferActionImpl(
       return { ok: false, error: "That offer has been withdrawn." };
     }
 
-    const providerId = normalizeId(offerRow.provider_id ?? null);
-    if (!providerId) {
-      return { ok: false, error: CUSTOMER_AWARD_OFFER_NOT_FOUND_ERROR };
-    }
+    const providerId = normalizeId(offerRow.provider_id ?? null) || null;
+    if (providerId) {
+      const { data: providerRow, error: providerError } = await supabase
+        .from("providers")
+        .select("id,is_active,verification_status")
+        .eq("id", providerId)
+        .maybeSingle<{ id: string; is_active: boolean | null; verification_status: string | null }>();
 
-    const { data: providerRow, error: providerError } = await supabase
-      .from("providers")
-      .select("id,is_active,verification_status")
-      .eq("id", providerId)
-      .maybeSingle<{ id: string; is_active: boolean | null; verification_status: string | null }>();
+      if (providerError) {
+        console.error("[customer offer award] provider lookup failed", {
+          rfqId,
+          providerId,
+          error: serializeActionError(providerError),
+        });
+        return { ok: false, error: CUSTOMER_AWARD_OFFER_GENERIC_ERROR };
+      }
 
-    if (providerError) {
-      console.error("[customer offer award] provider lookup failed", {
-        rfqId,
-        providerId,
-        error: serializeActionError(providerError),
-      });
-      return { ok: false, error: CUSTOMER_AWARD_OFFER_GENERIC_ERROR };
-    }
-
-    const isActive = Boolean(providerRow?.is_active);
-    const verification = typeof providerRow?.verification_status === "string"
-      ? providerRow.verification_status.trim().toLowerCase()
-      : "";
-    if (!isActive || verification !== "verified") {
-      return { ok: false, error: CUSTOMER_AWARD_OFFER_INELIGIBLE_ERROR };
+      const isActive = Boolean(providerRow?.is_active);
+      const verification =
+        typeof providerRow?.verification_status === "string"
+          ? providerRow.verification_status.trim().toLowerCase()
+          : "";
+      if (!isActive || verification !== "verified") {
+        return { ok: false, error: CUSTOMER_AWARD_OFFER_INELIGIBLE_ERROR };
+      }
     }
 
     let destinationId = normalizeId(offerRow.destination_id ?? null) || null;
-    if (!destinationId) {
+    if (!destinationId && providerId) {
       const { data: destinationRow } = await supabase
         .from("rfq_destinations")
         .select("id")
@@ -992,40 +988,50 @@ export async function awardOfferActionImpl(
     }
 
     const now = new Date().toISOString();
-    const { error: awardError } = await supabase
-      .from("rfq_awards")
-      .upsert(
-        {
-          rfq_id: rfqId,
-          offer_id: offerId,
-          provider_id: providerId,
-          destination_id: destinationId,
-          awarded_at: now,
-          awarded_by: awardedBy,
-        },
-        { onConflict: "rfq_id" },
-      );
+    // Best-effort: some environments may not have offer award tracking migrated yet.
+    try {
+      const { error: awardError } = await supabase
+        .from("rfq_awards")
+        .upsert(
+          {
+            rfq_id: rfqId,
+            offer_id: offerId,
+            provider_id: providerId,
+            destination_id: destinationId,
+            awarded_at: now,
+            awarded_by: awardedBy,
+          },
+          { onConflict: "rfq_id" },
+        );
 
-    if (awardError) {
-      console.error("[customer offer award] rfq_awards upsert failed", {
+      if (awardError) {
+        console.error("[customer offer award] rfq_awards upsert failed (non-blocking)", {
+          rfqId,
+          offerId,
+          error: serializeActionError(awardError),
+        });
+      }
+    } catch (error) {
+      console.error("[customer offer award] rfq_awards upsert crashed (non-blocking)", {
         rfqId,
         offerId,
-        error: serializeActionError(awardError),
+        error: serializeActionError(error),
       });
-      return { ok: false, error: CUSTOMER_AWARD_OFFER_GENERIC_ERROR };
     }
 
     // Phase 18.2-lite: kickoff tasks should exist immediately after offer award.
     // Best-effort: never block award success.
-    try {
-      await ensureKickoff({ quoteId: rfqId, providerId });
-    } catch (error) {
-      console.warn("[customer offer award] kickoff ensure crashed (non-blocking)", {
-        rfqId,
-        offerId,
-        providerId,
-        error: serializeActionError(error),
-      });
+    if (providerId) {
+      try {
+        await ensureKickoff({ quoteId: rfqId, providerId });
+      } catch (error) {
+        console.warn("[customer offer award] kickoff ensure crashed (non-blocking)", {
+          rfqId,
+          offerId,
+          providerId,
+          error: serializeActionError(error),
+        });
+      }
     }
 
     if (destinationId) {

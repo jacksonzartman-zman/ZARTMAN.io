@@ -134,7 +134,9 @@ export function AdminRfqDestinationsCard({
   const offersByProviderId = useMemo(() => {
     const map = new Map<string, RfqOffer>();
     for (const offer of offers) {
-      map.set(offer.provider_id, offer);
+      if (typeof offer.provider_id === "string" && offer.provider_id.trim()) {
+        map.set(offer.provider_id, offer);
+      }
     }
     return map;
   }, [offers]);
