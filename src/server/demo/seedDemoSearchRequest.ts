@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabaseServer";
-import { schemaGate } from "@/server/db/schemaContract";
-import { serializeSupabaseError } from "@/server/admin/logging";
+import { hasColumns, schemaGate } from "@/server/db/schemaContract";
+import { isMissingTableOrColumnError, serializeSupabaseError } from "@/server/admin/logging";
 
 type SeedResult =
   | { ok: true; quoteId: string }
@@ -14,6 +14,14 @@ type DemoSeedContext = {
 type ProviderRow = {
   id: string;
   name: string;
+};
+
+type DemoMessageSeed = {
+  role: "customer" | "admin" | "supplier";
+  body: string;
+  senderName?: string | null;
+  providerId?: string | null;
+  createdAtIso: string;
 };
 
 type DemoUploadInsertPayload = {
@@ -520,6 +528,15 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
 
     console.log("[demo seed] quote inserted", { quoteId: quote.id, uploadId });
 
+    // Phase 18.3: best-effort seeded thread messages (never block quote creation).
+    await seedDemoQuoteMessagesBestEffort({
+      admin,
+      quoteId: quote.id,
+      ctx,
+      providers: providersResult.providers,
+      nowIso,
+    });
+
     const destinationIdByProviderId = new Map<string, string>();
     const destinationsSupported = await schemaGate({
       enabled: true,
@@ -664,6 +681,149 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
       error: serializeSupabaseError(error) ?? error,
     });
     return { ok: false, error: "Demo seed failed unexpectedly." };
+  }
+}
+
+function shiftIso(baseIso: string, deltaMs: number): string {
+  const base = Date.parse(baseIso);
+  if (!Number.isFinite(base)) return new Date().toISOString();
+  return new Date(base + deltaMs).toISOString();
+}
+
+async function seedDemoQuoteMessagesBestEffort(args: {
+  admin: ReturnType<typeof supabaseAdmin>;
+  quoteId: string;
+  ctx: DemoSeedContext;
+  providers: ProviderRow[];
+  nowIso: string;
+}): Promise<void> {
+  const quoteId = normalizeId(args.quoteId);
+  if (!quoteId) return;
+
+  // If the `quote_messages` relation is missing, skip quietly.
+  const hasAnySchema = await schemaGate({
+    enabled: true,
+    relation: "quote_messages",
+    requiredColumns: ["quote_id", "created_at"],
+    warnPrefix: "[demo seed]",
+    warnKey: "demo_seed:quote_messages",
+  });
+  if (!hasAnySchema) return;
+
+  // Determine schema flavor.
+  const hasNewSchema = await hasColumns("quote_messages", ["message", "author_role"]);
+  const hasLegacySchema = await hasColumns("quote_messages", ["body", "sender_role", "sender_id"]);
+  if (!hasNewSchema && !hasLegacySchema) {
+    return;
+  }
+
+  const providerWinner = args.providers?.[0] ?? null;
+  const providerId = providerWinner ? normalizeId(providerWinner.id) : "";
+  const providerName = providerWinner ? providerWinner.name : "";
+
+  const actorUserId = normalizeId(args.ctx.adminUserId) || null;
+  const nowIso = args.nowIso;
+  const seeds: DemoMessageSeed[] = [
+    {
+      role: "customer",
+      body: "Uploaded bracket STEP. Need quote + lead time.",
+      senderName: "Demo Customer",
+      createdAtIso: shiftIso(nowIso, -3 * 60 * 1000),
+    },
+    {
+      role: "admin",
+      body: "Got it — routing to 3 suppliers now.",
+      senderName: "Admin",
+      createdAtIso: shiftIso(nowIso, -2 * 60 * 1000),
+    },
+    ...(providerId
+      ? ([
+          {
+            role: "supplier" as const,
+            body: "We can hit 7–10 days. Any anodize requirement?",
+            senderName: providerName || "Supplier",
+            providerId,
+            createdAtIso: shiftIso(nowIso, -1 * 60 * 1000),
+          },
+        ] as DemoMessageSeed[])
+      : []),
+  ];
+
+  try {
+    if (hasNewSchema) {
+      const includeProviderId = await hasColumns("quote_messages", ["provider_id"]);
+      const includeSenderName = await hasColumns("quote_messages", ["sender_name"]);
+      const includeAuthorUserId = await hasColumns("quote_messages", ["author_user_id"]);
+
+      const rows = seeds.map((m) => {
+        const authorRole = m.role === "supplier" ? "provider" : m.role;
+        const payload: Record<string, unknown> = {
+          quote_id: quoteId,
+          created_at: m.createdAtIso,
+          author_role: authorRole,
+          message: m.body,
+        };
+        if (includeAuthorUserId) {
+          payload.author_user_id = actorUserId;
+        }
+        if (includeSenderName && m.senderName) {
+          payload.sender_name = m.senderName;
+        }
+        if (includeProviderId && m.providerId) {
+          payload.provider_id = m.providerId;
+        }
+        return payload;
+      });
+
+      const { error } = await args.admin.from("quote_messages").insert(rows);
+      if (error) {
+        if (!isMissingTableOrColumnError(error)) {
+          console.warn("[demo seed] quote_messages insert failed; continuing", {
+            quoteId,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      }
+      return;
+    }
+
+    if (hasLegacySchema) {
+      const includeSenderName = await hasColumns("quote_messages", ["sender_name"]);
+      const includeProviderId = await hasColumns("quote_messages", ["provider_id"]);
+      const rows = seeds.map((m) => {
+        const senderRole = m.role === "supplier" ? "supplier" : m.role;
+        const payload: Record<string, unknown> = {
+          quote_id: quoteId,
+          created_at: m.createdAtIso,
+          sender_role: senderRole,
+          sender_id: actorUserId ?? quoteId,
+          body: m.body,
+        };
+        if (includeSenderName && m.senderName) {
+          payload.sender_name = m.senderName;
+        }
+        if (includeProviderId && m.providerId) {
+          payload.provider_id = m.providerId;
+        }
+        return payload;
+      });
+      const { error } = await args.admin.from("quote_messages").insert(rows);
+      if (error) {
+        if (!isMissingTableOrColumnError(error)) {
+          console.warn("[demo seed] quote_messages insert failed; continuing", {
+            quoteId,
+            error: serializeSupabaseError(error) ?? error,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    if (!isMissingTableOrColumnError(error)) {
+      console.warn("[demo seed] quote_messages insert crashed; continuing", {
+        quoteId,
+        error: serializeSupabaseError(error) ?? error,
+      });
+    }
   }
 }
 

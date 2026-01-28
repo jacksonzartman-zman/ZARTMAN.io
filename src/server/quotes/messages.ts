@@ -38,6 +38,11 @@ export type QuoteMessageRecord = {
 export type LoadQuoteMessagesResult = {
   ok: boolean;
   messages: QuoteMessageRecord[];
+  /**
+   * True when the underlying `quote_messages` relation is missing in this environment.
+   * Consumers should hide messaging UI and show a friendly placeholder.
+   */
+  schemaMissing?: boolean;
   reason?: "not_found" | "schema_error" | "unauthorized" | "unknown";
   error?: unknown;
 };
@@ -301,7 +306,7 @@ export async function loadQuoteMessages(
   }
 
   if (isSupabaseRelationMarkedMissing(QUOTE_MESSAGES_RELATION)) {
-    return { ok: true, messages: [] };
+    return { ok: true, messages: [], schemaMissing: true };
   }
 
   try {
@@ -320,7 +325,7 @@ export async function loadQuoteMessages(
 
     // Missing schema should fail-soft: return an empty thread without warn spam.
     if (result.missing) {
-      return { ok: true, messages: [] };
+      return { ok: true, messages: [], schemaMissing: true };
     }
 
     return {
@@ -339,7 +344,10 @@ export async function loadQuoteMessages(
       }) ||
       isMissingTableOrColumnError(error)
     ) {
-      return { ok: true, messages: [] };
+      // `handleMissingSupabaseSchema` marks the relation missing when appropriate.
+      // Treat a marked-missing relation as a signal to hide messaging UI.
+      const schemaMissing = isSupabaseRelationMarkedMissing(QUOTE_MESSAGES_RELATION);
+      return { ok: true, messages: [], ...(schemaMissing ? { schemaMissing: true } : {}) };
     }
     const serialized = serializeSupabaseError(error);
     warnOnce("quote_messages:load_crashed", "[quote_messages] load crashed", {

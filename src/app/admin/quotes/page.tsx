@@ -54,8 +54,7 @@ import {
   type QuotePartsCoverageSignal,
 } from "@/server/quotes/partsCoverageHealth";
 import {
-  computeAdminNeedsReply,
-  computeAdminThreadSla,
+  inferLastMessageAuthorRole,
   loadQuoteMessageRollups,
   type QuoteMessageRollup,
 } from "@/server/quotes/messageState";
@@ -63,6 +62,7 @@ import { isDemoModeEnabled } from "@/server/demo/demoMode";
 import { createDemoSearchRequestAction } from "./demoActions";
 import { schemaGate } from "@/server/db/schemaContract";
 import { loadRfqOffersForQuoteIds, summarizeRfqOffers } from "@/server/rfqs/offers";
+import { computeThreadNeedsReplyFromLastMessage } from "@/server/messages/threadNeedsReply";
 
 export const dynamic = "force-dynamic";
 
@@ -251,9 +251,17 @@ export default async function AdminQuotesPage({
       : null;
     const threadSla = threadSlaByQuoteId[row.id] ?? null;
     const messageRollup = messageRollupsByQuoteId[row.id] ?? null;
-    const sla = messageRollup ? computeAdminThreadSla(messageRollup) : null;
-    const adminNeedsReply = sla ? sla.status !== "clear" : messageRollup ? computeAdminNeedsReply(messageRollup) : false;
-    const adminOverdue = sla?.status === "overdue";
+    const lastMessageAt = messageRollup?.lastMessageAt ?? threadSla?.lastMessageAt ?? null;
+    const lastMessageAuthorRole =
+      messageRollup ? inferLastMessageAuthorRole(messageRollup) : threadSla?.lastMessageAuthorRole ?? null;
+    const needsReply = computeThreadNeedsReplyFromLastMessage({
+      lastMessageAt,
+      lastMessageAuthorRole,
+    });
+    const adminNeedsReply = needsReply.needs_reply_role === "admin";
+    const adminOverdue = adminNeedsReply && needsReply.sla_bucket === ">24h";
+    const adminReplySlaBucket =
+      adminNeedsReply && needsReply.sla_bucket !== "none" ? needsReply.sla_bucket : null;
     const partsSignal = partsCoverageByQuoteId.get(row.id) ?? {
       partsCoverageHealth: "none" as const,
       partsCount: 0,
@@ -313,6 +321,7 @@ export default async function AdminQuotesPage({
       threadStalenessBucket: threadSla?.stalenessBucket ?? "none",
       threadUnreadForAdmin: Boolean(threadSla?.unreadForAdmin),
       adminNeedsReply,
+      adminReplySlaBucket,
       adminOverdue,
       bidSummary: formatAdminBidSummary(aggregate),
       bidCountLabel,
