@@ -25,6 +25,7 @@ import type {
   AdminThreadStalenessBucket,
 } from "@/server/admin/messageSla";
 import type { PartsCoverageHealth } from "@/lib/quote/partsCoverage";
+import { awardCheapestOfferAction } from "./quotes/demoActions";
 
 export type QuoteCapacitySummary = {
   supplierId: string;
@@ -47,6 +48,7 @@ export type QuoteRow = {
   statusLabel: string;
   statusHelper: string;
   statusClassName: string;
+  kickoffProgress?: { completed: number; total: number | null } | null;
   threadLastMessageAt: string | null;
   threadNeedsReplyFrom: AdminThreadNeedsReplyFrom | null;
   threadStalenessBucket: AdminThreadStalenessBucket;
@@ -81,6 +83,7 @@ type QuotesTableProps = {
     string,
     Array<{ providerId: string; label: string }>
   >;
+  demoReturnToBase?: string;
 };
 
 export default function QuotesTable({
@@ -89,9 +92,11 @@ export default function QuotesTable({
   currentView,
   searchTerm,
   demoSupplierProvidersByQuoteId,
+  demoReturnToBase,
 }: QuotesTableProps) {
   const showEmptyState = quotes.length === 0;
   const emptyState = getEmptyStateCopy({ totalCount, currentView, searchTerm });
+  const demoEnabled = Boolean(demoReturnToBase && demoReturnToBase.startsWith("/admin/quotes"));
 
   return (
     <AdminTableShell
@@ -168,10 +173,14 @@ export default function QuotesTable({
                   : threadLabel === "Status unknown"
                     ? "border-slate-800 bg-slate-950/50 text-slate-400"
                     : "border-slate-800 bg-slate-900/40 text-slate-200";
+            const rowAnchorId = `rfq-${row.id}`;
+            const returnToWithAnchor =
+              demoEnabled && demoReturnToBase ? `${demoReturnToBase}#${rowAnchorId}` : null;
 
             return (
               <tr
                 key={row.id}
+                id={rowAnchorId}
                 className="border-b border-slate-800/60 bg-slate-950/40 transition hover:bg-slate-900/40"
               >
                 <td className={adminTableCellClass}>
@@ -249,6 +258,14 @@ export default function QuotesTable({
                     {row.hasAward ? (
                       <span className="inline-flex w-fit rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
                         Awarded
+                      </span>
+                    ) : null}
+                    {demoEnabled ? (
+                      <span className="inline-flex w-fit rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                        Kickoff:{" "}
+                        {row.kickoffProgress
+                          ? `${row.kickoffProgress.completed}/${row.kickoffProgress.total ?? "—"}`
+                          : "—"}
                       </span>
                     ) : null}
                     <p className="text-xs text-slate-400">{row.statusHelper}</p>
@@ -334,6 +351,47 @@ export default function QuotesTable({
                           View as {provider.label}
                         </Link>
                       ))}
+                    </div>
+                  ) : null}
+                  {demoEnabled ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link
+                        href={`/customer/quotes/${encodeURIComponent(row.id)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
+                        title="Open the customer quote page in a new tab"
+                      >
+                        View as Customer
+                      </Link>
+                      <Link
+                        href={`/admin/quotes/demo/clear-supplier?quoteId=${encodeURIComponent(
+                          row.id,
+                        )}${
+                          returnToWithAnchor
+                            ? `&returnTo=${encodeURIComponent(returnToWithAnchor)}`
+                            : ""
+                        }`}
+                        className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
+                        title="Clear the demo supplier provider cookie"
+                      >
+                        Clear demo supplier
+                      </Link>
+                      <form action={awardCheapestOfferAction}>
+                        <input type="hidden" name="quoteId" value={row.id} />
+                        <input
+                          type="hidden"
+                          name="returnTo"
+                          value={returnToWithAnchor ?? demoReturnToBase ?? "/admin/quotes"}
+                        />
+                        <button
+                          type="submit"
+                          className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-100 transition hover:border-amber-400 hover:bg-amber-500/15"
+                          title="Award the lowest total price offer"
+                        >
+                          Award cheapest
+                        </button>
+                      </form>
                     </div>
                   ) : null}
                 </td>
