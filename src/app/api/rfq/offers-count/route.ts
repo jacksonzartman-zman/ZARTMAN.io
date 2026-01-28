@@ -84,7 +84,7 @@ export async function GET(req: Request) {
 
   const payloadOffers: OfferCardDto[] = nonWithdrawnOffers.map((offer) => ({
     id: offer.id,
-    providerName: offer.provider?.name ?? null,
+    providerName: offer.provider?.name ?? offer.source_name ?? null,
     currency: offer.currency,
     totalPrice: offer.total_price,
     leadTimeDaysMin: offer.lead_time_days_min ?? null,
