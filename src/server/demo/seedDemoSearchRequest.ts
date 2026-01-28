@@ -60,6 +60,31 @@ function getAdminClientOrThrow() {
   return supabaseAdmin();
 }
 
+function safeStringifyError(error: unknown): string {
+  if (typeof error === "string") return error;
+  const serialized = serializeSupabaseError(error);
+  const message =
+    typeof serialized?.message === "string" && serialized.message.trim().length > 0
+      ? serialized.message.trim()
+      : error instanceof Error
+        ? error.message
+        : "";
+  const code =
+    typeof (serialized as any)?.code === "string" && String((serialized as any).code).trim()
+      ? String((serialized as any).code).trim()
+      : "";
+  const parts = [code ? `code=${code}` : "", message].filter(Boolean);
+  const oneLine = parts.join(" ").replace(/\s+/g, " ").trim();
+  return oneLine || "unknown_error";
+}
+
+function warnOptionalStepFailed(step: string, error: unknown) {
+  console.warn("[demo seed] optional step failed", {
+    step,
+    error: safeStringifyError(error),
+  });
+}
+
 /**
  * Test-only helper: build the minimal uploads insert payload for demo seed.
  * Keep in sync with the schema expectations in `ensureDemoSchema`.
@@ -426,7 +451,257 @@ async function ensureDemoProviders(
   }
 }
 
-export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedResult> {
+type SeedDemoSearchRequestOverrides = {
+  /**
+   * Test hook: bypass real Supabase admin client.
+   */
+  adminClient?: ReturnType<typeof supabaseAdmin>;
+  /**
+   * Test hook: bypass schema gate.
+   */
+  ensureSchema?: () => Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * Test hook: bypass customer upsert.
+   */
+  ensureCustomer?: (
+    admin: ReturnType<typeof supabaseAdmin>,
+    ctx: DemoSeedContext,
+  ) => Promise<{ ok: true; customerId: string; email: string } | { ok: false; error: string }>;
+  /**
+   * Test hook: bypass provider seeding.
+   */
+  ensureProviders?: (
+    admin: ReturnType<typeof supabaseAdmin>,
+  ) => Promise<{ ok: true; providers: ProviderRow[] } | { ok: false; error: string }>;
+  /**
+   * Test hook: short-circuit DB inserts and return an already-inserted quote.
+   */
+  createUploadAndQuote?: (args: {
+    admin: ReturnType<typeof supabaseAdmin>;
+    customerId: string;
+    customerEmail: string;
+    nowIso: string;
+  }) => Promise<{ ok: true; uploadId: string; quoteId: string } | { ok: false; error: SeedResult }>;
+  /**
+   * Test hook: override optional post-insert steps.
+   */
+  optionalSteps?: Partial<{
+    seedMessages: (args: {
+      admin: ReturnType<typeof supabaseAdmin>;
+      quoteId: string;
+      uploadId: string;
+      ctx: DemoSeedContext;
+      providers: ProviderRow[];
+      nowIso: string;
+    }) => Promise<void>;
+    seedDestinations: (args: {
+      admin: ReturnType<typeof supabaseAdmin>;
+      quoteId: string;
+      uploadId: string;
+      providers: ProviderRow[];
+      nowIso: string;
+    }) => Promise<Map<string, string>>;
+    seedOffers: (args: {
+      admin: ReturnType<typeof supabaseAdmin>;
+      quoteId: string;
+      uploadId: string;
+      providers: ProviderRow[];
+      destinationIdByProviderId: Map<string, string>;
+      nowIso: string;
+    }) => Promise<void>;
+  }>;
+};
+
+async function createUploadAndQuoteDefault(args: {
+  admin: ReturnType<typeof supabaseAdmin>;
+  customerId: string;
+  customerEmail: string;
+  nowIso: string;
+}): Promise<{ ok: true; uploadId: string; quoteId: string } | { ok: false; error: SeedResult }> {
+  const uploadPayload = buildDemoUploadInsertPayload({
+    customerId: args.customerId,
+    customerEmail: args.customerEmail,
+    nowIso: args.nowIso,
+  });
+
+  const uploadInsert = await args.admin
+    .from("uploads")
+    .insert(uploadPayload)
+    .select("id")
+    .single<{ id: string }>();
+
+  if (uploadInsert.error || !uploadInsert.data?.id) {
+    console.error("[demo seed] upload insert failed", {
+      customerId: args.customerId,
+      customerEmail: args.customerEmail,
+      payloadFields: Object.keys(uploadPayload),
+      payload: uploadPayload,
+      error: serializeSupabaseError(uploadInsert.error) ?? uploadInsert.error,
+    });
+    return { ok: false, error: { ok: false, error: "Unable to create demo upload." } };
+  }
+
+  const uploadId = uploadInsert.data.id;
+  if (!isUuid(uploadId)) {
+    console.error("[demo seed] upload insert failed", {
+      reason: "upload insert returned non-uuid id",
+      uploadId,
+      payloadFields: Object.keys(uploadPayload),
+    });
+    return { ok: false, error: { ok: false, error: "Unable to create demo upload." } };
+  }
+
+  const demoQuotePayloadBase = buildDemoQuoteInsertPayload({
+    customerId: args.customerId,
+    customerEmail: args.customerEmail,
+    uploadId,
+    nowIso: args.nowIso,
+  });
+
+  const quoteInsertPayload: any = { ...demoQuotePayloadBase, upload_id: uploadId };
+  const { data: quote, error: quoteError } = await args.admin
+    .from("quotes")
+    .insert(quoteInsertPayload)
+    .select("id")
+    .single<{ id: string }>();
+
+  if (quoteError || !quote?.id) {
+    console.error("[demo seed] quote insert failed", {
+      uploadId,
+      payloadFields: Object.keys(quoteInsertPayload),
+      payload: quoteInsertPayload,
+      error: serializeSupabaseError(quoteError) ?? quoteError,
+    });
+    return { ok: false, error: { ok: false, error: "Unable to create demo quote." } };
+  }
+
+  return { ok: true, uploadId, quoteId: quote.id };
+}
+
+async function seedDestinationsBestEffort(args: {
+  admin: ReturnType<typeof supabaseAdmin>;
+  quoteId: string;
+  providers: ProviderRow[];
+  nowIso: string;
+}): Promise<Map<string, string>> {
+  const destinationIdByProviderId = new Map<string, string>();
+  const destinationsSupported = await schemaGate({
+    enabled: true,
+    relation: "rfq_destinations",
+    requiredColumns: [
+      "id",
+      "rfq_id",
+      "provider_id",
+      "status",
+      "sent_at",
+      "last_status_at",
+      "created_at",
+      "offer_token",
+    ],
+    warnPrefix: "[demo seed]",
+    warnKey: "demo_seed:rfq_destinations",
+  });
+  if (!destinationsSupported) {
+    return destinationIdByProviderId;
+  }
+
+  const destinationPayload = args.providers.slice(0, 3).map((provider) => ({
+    rfq_id: args.quoteId,
+    provider_id: provider.id,
+    status: "quoted",
+    sent_at: args.nowIso,
+    last_status_at: args.nowIso,
+    offer_token: `demo-${args.quoteId}-${provider.id}`,
+    created_at: args.nowIso,
+  }));
+
+  const { data: insertedDestinations, error: destinationsError } = await args.admin
+    .from("rfq_destinations")
+    .insert(destinationPayload)
+    .select("id,provider_id")
+    .returns<Array<{ id: string; provider_id: string }>>();
+
+  if (destinationsError) {
+    throw destinationsError;
+  }
+
+  for (const row of insertedDestinations ?? []) {
+    const destinationId = normalizeId(row?.id);
+    const providerId = normalizeId(row?.provider_id);
+    if (destinationId && providerId) {
+      destinationIdByProviderId.set(providerId, destinationId);
+    }
+  }
+
+  return destinationIdByProviderId;
+}
+
+async function seedOffersBestEffort(args: {
+  admin: ReturnType<typeof supabaseAdmin>;
+  quoteId: string;
+  providers: ProviderRow[];
+  destinationIdByProviderId: Map<string, string>;
+  nowIso: string;
+}): Promise<void> {
+  const demoOffers = [
+    {
+      provider: args.providers[0]!,
+      total_price: 1450,
+      lead_time_days_min: 7,
+      lead_time_days_max: 10,
+      confidence_score: 92,
+      quality_risk_flags: [] as string[],
+      assumptions: "Includes basic deburr. Excludes anodize.",
+    },
+    {
+      provider: args.providers[1]!,
+      total_price: 1195,
+      lead_time_days_min: 12,
+      lead_time_days_max: 16,
+      confidence_score: 78,
+      quality_risk_flags: ["long_lead_time"],
+      assumptions: "Material subject to availability. Standard tolerances.",
+    },
+    {
+      provider: args.providers[2] ?? args.providers[0]!,
+      total_price: 1690,
+      lead_time_days_min: 5,
+      lead_time_days_max: 7,
+      confidence_score: 88,
+      quality_risk_flags: ["expedited"],
+      assumptions: "Expedite fee included. Shipping billed at cost.",
+    },
+  ].slice(0, 3);
+
+  const offerPayload = demoOffers.map((offer) => ({
+    rfq_id: args.quoteId,
+    provider_id: offer.provider.id,
+    destination_id: args.destinationIdByProviderId.get(offer.provider.id) ?? null,
+    currency: "USD",
+    total_price: offer.total_price,
+    unit_price: null,
+    tooling_price: null,
+    shipping_price: null,
+    lead_time_days_min: offer.lead_time_days_min,
+    lead_time_days_max: offer.lead_time_days_max,
+    assumptions: offer.assumptions,
+    confidence_score: offer.confidence_score,
+    quality_risk_flags: offer.quality_risk_flags,
+    status: "received",
+    received_at: args.nowIso,
+    created_at: args.nowIso,
+  }));
+
+  const { error: offersError } = await args.admin.from("rfq_offers").insert(offerPayload);
+  if (offersError) {
+    throw offersError;
+  }
+}
+
+export async function seedDemoSearchRequest(
+  ctx: DemoSeedContext,
+  overrides?: SeedDemoSearchRequestOverrides,
+): Promise<SeedResult> {
   const gitSha = process.env.VERCEL_GIT_COMMIT_SHA || "unknown";
   const vercelEnv = process.env.VERCEL_ENV || "unknown";
   console.error(
@@ -435,7 +710,7 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
 
   let admin: ReturnType<typeof supabaseAdmin>;
   try {
-    admin = getAdminClientOrThrow();
+    admin = overrides?.adminClient ?? getAdminClientOrThrow();
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Demo seed requires admin client.";
@@ -447,235 +722,117 @@ export async function seedDemoSearchRequest(ctx: DemoSeedContext): Promise<SeedR
     return { ok: false, error: message };
   }
 
-  const schema = await ensureDemoSchema();
+  const schema = await (overrides?.ensureSchema ? overrides.ensureSchema() : ensureDemoSchema());
   if (!schema.ok) return schema;
 
-  const customer = await ensureDemoCustomer(admin, ctx);
+  const customer = await (overrides?.ensureCustomer
+    ? overrides.ensureCustomer(admin, ctx)
+    : ensureDemoCustomer(admin, ctx));
   if (!customer.ok) return customer;
 
-  const providersResult = await ensureDemoProviders(admin);
+  const providersResult = await (overrides?.ensureProviders
+    ? overrides.ensureProviders(admin)
+    : ensureDemoProviders(admin));
   if (!providersResult.ok) return providersResult;
 
   const nowIso = new Date().toISOString();
 
   try {
-    const uploadPayload = buildDemoUploadInsertPayload({
+    const createUploadAndQuote =
+      overrides?.createUploadAndQuote ?? createUploadAndQuoteDefault;
+    const created = await createUploadAndQuote({
+      admin,
       customerId: customer.customerId,
       customerEmail: customer.email,
       nowIso,
     });
 
-    const uploadInsert = await admin
-      .from("uploads")
-      .insert(uploadPayload)
-      .select("id")
-      .single<{ id: string }>();
-
-    if (uploadInsert.error || !uploadInsert.data?.id) {
-      console.error("[demo seed] upload insert failed", {
-        customerId: customer.customerId,
-        customerEmail: customer.email,
-        payloadFields: Object.keys(uploadPayload),
-        payload: uploadPayload,
-        error: serializeSupabaseError(uploadInsert.error) ?? uploadInsert.error,
-      });
-      return { ok: false, error: "Unable to create demo upload." };
+    if (!created.ok) {
+      return created.error;
     }
 
-    const uploadId = uploadInsert.data.id;
-    if (!isUuid(uploadId)) {
-      console.error("[demo seed] upload insert failed", {
-        reason: "upload insert returned non-uuid id",
+    const uploadId = created.uploadId;
+    const quoteId = created.quoteId;
+
+    console.log("[demo seed] quote inserted", { quoteId, uploadId });
+
+    // From here on out, demo seed must be fail-soft: never throw, never return ok:false.
+    const optional = overrides?.optionalSteps ?? {};
+
+    try {
+      const seedMessages = optional.seedMessages ?? (async (args) => {
+        await seedDemoQuoteMessagesBestEffort({
+          admin: args.admin,
+          quoteId: args.quoteId,
+          ctx: args.ctx,
+          providers: args.providers,
+          nowIso: args.nowIso,
+        });
+      });
+      await seedMessages({
+        admin,
+        quoteId,
         uploadId,
-        payloadFields: Object.keys(uploadPayload),
+        ctx,
+        providers: providersResult.providers,
+        nowIso,
       });
-      return { ok: false, error: "Unable to create demo upload." };
+    } catch (error) {
+      warnOptionalStepFailed("quote_messages", error);
     }
 
-    console.error("[demo seed] UPLOAD INSERTED", { gitSha, vercelEnv, uploadId });
+    let destinationIdByProviderId = new Map<string, string>();
+    try {
+      const seedDestinations = optional.seedDestinations ?? (async (args) => {
+        return await seedDestinationsBestEffort({
+          admin: args.admin,
+          quoteId: args.quoteId,
+          providers: args.providers,
+          nowIso: args.nowIso,
+        });
+      });
+      destinationIdByProviderId = await seedDestinations({
+        admin,
+        quoteId,
+        uploadId,
+        providers: providersResult.providers,
+        nowIso,
+      });
+    } catch (error) {
+      warnOptionalStepFailed("rfq_destinations", error);
+      destinationIdByProviderId = new Map<string, string>();
+    }
 
-    const demoQuotePayloadBase = buildDemoQuoteInsertPayload({
-      customerId: customer.customerId,
-      customerEmail: customer.email,
+    try {
+      const seedOffers = optional.seedOffers ?? (async (args) => {
+        await seedOffersBestEffort({
+          admin: args.admin,
+          quoteId: args.quoteId,
+          providers: args.providers,
+          destinationIdByProviderId: args.destinationIdByProviderId,
+          nowIso: args.nowIso,
+        });
+      });
+      await seedOffers({
+        admin,
+        quoteId,
+        uploadId,
+        providers: providersResult.providers,
+        destinationIdByProviderId,
+        nowIso,
+      });
+    } catch (error) {
+      warnOptionalStepFailed("rfq_offers", error);
+    }
+
+    console.info("[demo seed] done", {
+      quoteId,
       uploadId,
-      nowIso,
-    });
-
-    const quoteInsertPayload: any = { ...demoQuotePayloadBase, upload_id: uploadId };
-    console.error("[demo seed] PRE-INSERT QUOTE", {
       gitSha,
       vercelEnv,
-      uploadId,
-      payloadKeys: Object.keys(quoteInsertPayload),
-      payloadUploadId: (quoteInsertPayload as any).upload_id,
     });
 
-    const { data: quote, error: quoteError } = await admin
-      .from("quotes")
-      .insert(quoteInsertPayload)
-      .select("id")
-      .single<{ id: string }>();
-
-    if (quoteError || !quote?.id) {
-      console.error("[demo seed] quote insert failed", {
-        uploadId,
-        payloadFields: Object.keys(quoteInsertPayload),
-        payload: quoteInsertPayload,
-        error: serializeSupabaseError(quoteError) ?? quoteError,
-      });
-      return { ok: false, error: "Unable to create demo quote." };
-    }
-
-    console.log("[demo seed] quote inserted", { quoteId: quote.id, uploadId });
-
-    // Phase 18.3: best-effort seeded thread messages (never block quote creation).
-    await seedDemoQuoteMessagesBestEffort({
-      admin,
-      quoteId: quote.id,
-      ctx,
-      providers: providersResult.providers,
-      nowIso,
-    });
-
-    const destinationIdByProviderId = new Map<string, string>();
-    const destinationsSupported = await schemaGate({
-      enabled: true,
-      relation: "rfq_destinations",
-      requiredColumns: [
-        "id",
-        "rfq_id",
-        "provider_id",
-        "status",
-        "sent_at",
-        "last_status_at",
-        "created_at",
-        "offer_token",
-      ],
-      warnPrefix: "[demo seed]",
-      warnKey: "demo_seed:rfq_destinations",
-    });
-    if (destinationsSupported) {
-      try {
-        const destinationPayload = providersResult.providers.slice(0, 3).map((provider) => ({
-          rfq_id: quote.id,
-          provider_id: provider.id,
-          status: "quoted",
-          sent_at: nowIso,
-          last_status_at: nowIso,
-          offer_token: `demo-${quote.id}-${provider.id}`,
-          created_at: nowIso,
-        }));
-
-        const { data: insertedDestinations, error: destinationsError } = await admin
-          .from("rfq_destinations")
-          .insert(destinationPayload)
-          .select("id,provider_id")
-          .returns<Array<{ id: string; provider_id: string }>>();
-
-        if (destinationsError) {
-          console.warn("[demo seed] destinations insert failed; continuing without destinations", {
-            quoteId: quote.id,
-            error: serializeSupabaseError(destinationsError) ?? destinationsError,
-          });
-        } else {
-          for (const row of insertedDestinations ?? []) {
-            const destinationId = normalizeId(row?.id);
-            const providerId = normalizeId(row?.provider_id);
-            if (destinationId && providerId) {
-              destinationIdByProviderId.set(providerId, destinationId);
-            }
-          }
-        }
-      } catch (destinationsError) {
-        console.warn("[demo seed] destinations insert crashed; continuing without destinations", {
-          quoteId: quote.id,
-          error: serializeSupabaseError(destinationsError) ?? destinationsError,
-        });
-      }
-    }
-
-    const demoOffers = [
-      {
-        provider: providersResult.providers[0]!,
-        total_price: 1450,
-        lead_time_days_min: 7,
-        lead_time_days_max: 10,
-        confidence_score: 92,
-        quality_risk_flags: [] as string[],
-        assumptions: "Includes basic deburr. Excludes anodize.",
-      },
-      {
-        provider: providersResult.providers[1]!,
-        total_price: 1195,
-        lead_time_days_min: 12,
-        lead_time_days_max: 16,
-        confidence_score: 78,
-        quality_risk_flags: ["long_lead_time"],
-        assumptions: "Material subject to availability. Standard tolerances.",
-      },
-      {
-        provider: providersResult.providers[2] ?? providersResult.providers[0]!,
-        total_price: 1690,
-        lead_time_days_min: 5,
-        lead_time_days_max: 7,
-        confidence_score: 88,
-        quality_risk_flags: ["expedited"],
-        assumptions: "Expedite fee included. Shipping billed at cost.",
-      },
-    ].slice(0, 3);
-
-    const offerPayload = demoOffers.map((offer) => ({
-      rfq_id: quote.id,
-      provider_id: offer.provider.id,
-      destination_id: destinationIdByProviderId.get(offer.provider.id) ?? null,
-      currency: "USD",
-      total_price: offer.total_price,
-      unit_price: null,
-      tooling_price: null,
-      shipping_price: null,
-      lead_time_days_min: offer.lead_time_days_min,
-      lead_time_days_max: offer.lead_time_days_max,
-      assumptions: offer.assumptions,
-      confidence_score: offer.confidence_score,
-      quality_risk_flags: offer.quality_risk_flags,
-      status: "received",
-      received_at: nowIso,
-      created_at: nowIso,
-    }));
-
-    const { error: offersError } = await admin
-      .from("rfq_offers")
-      .insert(offerPayload);
-
-    if (offersError) {
-      console.error("[demo seed] offers insert failed", {
-        quoteId: quote.id,
-        error: serializeSupabaseError(offersError) ?? offersError,
-      });
-      try {
-        const { error: cleanupError } = await admin
-          .from("quotes")
-          .delete()
-          .eq("id", quote.id);
-        if (cleanupError) {
-          console.warn("[demo seed] cleanup failed after offers insert error", {
-            quoteId: quote.id,
-            error: serializeSupabaseError(cleanupError) ?? cleanupError,
-          });
-        }
-      } catch (cleanupError) {
-        console.warn("[demo seed] cleanup crashed after offers insert error", {
-          quoteId: quote.id,
-          error: serializeSupabaseError(cleanupError) ?? cleanupError,
-        });
-      }
-      return {
-        ok: false,
-        error: "Failed to create demo offers.",
-      };
-    }
-
-    return { ok: true, quoteId: quote.id };
+    return { ok: true, quoteId };
   } catch (error) {
     console.error("[demo seed] seed crashed", {
       error: serializeSupabaseError(error) ?? error,
