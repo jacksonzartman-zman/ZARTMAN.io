@@ -1,7 +1,9 @@
 import Link from "next/link";
-import clsx from "clsx";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { QuickSpecsPanel } from "./QuickSpecsPanel";
+import { getRfqOffers, isRfqOfferWithdrawn, summarizeRfqOffers } from "@/server/rfqs/offers";
+import { normalizeQuoteStatus } from "@/server/quotes/status";
+import { PublicOffersSection } from "./PublicOffersSection";
 
 export const dynamic = "force-dynamic";
 
@@ -118,11 +120,21 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
     );
   }
 
-  const steps = [
-    { key: "uploading", label: "Uploading" },
-    { key: "processing", label: "Processing" },
-    { key: "offers", label: "Offers coming" },
-  ] as const;
+  const offers = await getRfqOffers(quote.id);
+  const offersSummary = summarizeRfqOffers(offers);
+  const offersCount = offersSummary.nonWithdrawn;
+  const nonWithdrawnOffers = offers.filter((offer) => !isRfqOfferWithdrawn(offer.status));
+  const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
+  const initialOfferDtos = nonWithdrawnOffers.map((offer) => ({
+    id: offer.id,
+    providerName: offer.provider?.name ?? null,
+    currency: offer.currency,
+    totalPrice: offer.total_price,
+    leadTimeDaysMin: offer.lead_time_days_min ?? null,
+    leadTimeDaysMax: offer.lead_time_days_max ?? null,
+    status: offer.status,
+    receivedAt: offer.received_at ?? offer.created_at ?? null,
+  }));
 
   const initialProcesses = (() => {
     const raw = (uploadManufacturingProcess ?? "").toLowerCase();
@@ -146,75 +158,15 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16">
         <section className="mx-auto max-w-2xl space-y-6">
-          <header className="space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
-              RFQ status
-            </p>
-            <h1 className="text-2xl sm:text-3xl font-semibold text-ink">
-              Offers are on the way
-            </h1>
-            <p className="text-sm text-ink-muted">
-              We’re processing your files and routing your RFQ to manufacturing providers.
-            </p>
-          </header>
-
-          <div className="rounded-3xl border border-slate-900/60 bg-slate-950/55 p-6 shadow-[0_20px_60px_rgba(2,6,23,0.45)]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-ink">Quote ID</p>
-                <p className="text-xs text-ink-soft">{quote.id}</p>
-              </div>
-              <div className="text-xs font-semibold text-ink-soft">
-                Status: <span className="text-ink">{(quote.status ?? "Submitted").trim() || "Submitted"}</span>
-              </div>
-            </div>
-
-            {primaryFileName ? (
-              <p className="mt-3 text-xs text-ink-soft">
-                Primary file: <span className="font-semibold text-ink">{primaryFileName}</span>
-              </p>
-            ) : null}
-
-            <ol className="mt-5 grid gap-3 sm:grid-cols-3">
-              {steps.map((s, idx) => (
-                <li
-                  key={s.key}
-                  className={clsx(
-                    "rounded-2xl border px-4 py-4",
-                    idx === steps.length - 1
-                      ? "border-emerald-400/30 bg-emerald-500/10"
-                      : "border-slate-900/60 bg-slate-950/30",
-                  )}
-                >
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-ink-soft">
-                    Step {idx + 1}
-                  </p>
-                  <p className={clsx("mt-2 text-sm font-semibold", idx === steps.length - 1 ? "text-emerald-100" : "text-ink")}>
-                    {s.label}
-                  </p>
-                  <p className="mt-1 text-xs text-ink-soft">
-                    {s.key === "uploading"
-                      ? "Files received and secured."
-                      : s.key === "processing"
-                        ? "Extracting parts and preparing quotes."
-                        : "We’ll surface offers as providers respond."}
-                  </p>
-                </li>
-              ))}
-            </ol>
-
-            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-              <Link
-                href="/"
-                className="rounded-full border border-slate-800 bg-slate-950/40 px-4 py-2 text-xs font-semibold text-ink transition hover:border-slate-700"
-              >
-                Upload another RFQ
-              </Link>
-              <p className="text-xs text-ink-soft">
-                Keep this page open or bookmark it to check back.
-              </p>
-            </div>
-          </div>
+          <PublicOffersSection
+            quoteId={quote.id}
+            quoteStatus={quote.status ?? null}
+            normalizedStatus={normalizedStatus}
+            intakeKey={intakeKey}
+            primaryFileName={primaryFileName}
+            initialOffersCount={offersCount}
+            initialOffers={initialOfferDtos}
+          />
 
           <QuickSpecsPanel
             quoteId={quote.id}
