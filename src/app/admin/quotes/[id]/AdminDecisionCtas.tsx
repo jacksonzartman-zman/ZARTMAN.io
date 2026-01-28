@@ -5,10 +5,11 @@ import { useMemo } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import type { QuoteStatus } from "@/server/quotes/status";
 import {
-  dangerCtaClasses,
-  infoCtaClasses,
-  primaryCtaClasses,
-} from "@/lib/ctas";
+  ActionGroup,
+  ActionGroupSection,
+  ActionPillButton,
+  ActionPillLink,
+} from "@/components/actions/ActionGroup";
 import {
   archiveAdminQuoteAction,
   reopenAdminQuoteAction,
@@ -54,73 +55,72 @@ export function AdminDecisionCtas({
   >(archiveAction, INITIAL_STATE);
 
   return (
-    <div className={clsx("flex flex-wrap items-center gap-2", className)}>
-      {showAwardLink ? (
-        <a
-          href={`#${awardAnchorId}`}
-          className={clsx(primaryCtaClasses, "whitespace-nowrap")}
-        >
-          Award
-        </a>
-      ) : null}
+    <ActionGroup className={className}>
+      <ActionGroupSection title="Quote actions">
+        {showAwardLink ? (
+          <ActionPillLink
+            href={`#${awardAnchorId}`}
+            className="border-emerald-400/50 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20 focus-visible:outline-emerald-400"
+          >
+            Award
+          </ActionPillLink>
+        ) : null}
 
-      <form
-        action={reopenFormAction}
-        onSubmit={(event) => {
-          if (!canReopen) {
-            event.preventDefault();
-            return;
-          }
-          const confirmed = window.confirm(
-            "Reopen this RFQ?\n\nReopening means invited suppliers can bid again.",
-          );
-          if (!confirmed) {
-            event.preventDefault();
-          }
-        }}
-        className="flex items-center gap-2"
-      >
-        <StatusButton
-          disabled={!canReopen}
-          className={clsx(infoCtaClasses, "whitespace-nowrap")}
+        <form
+          action={reopenFormAction}
+          onSubmit={(event) => {
+            if (!canReopen) {
+              event.preventDefault();
+              return;
+            }
+            const confirmed = window.confirm(
+              "Reopen this RFQ?\n\nReopening means invited suppliers can bid again.",
+            );
+            if (!confirmed) {
+              event.preventDefault();
+            }
+          }}
+          className="w-full space-y-1"
         >
-          Reopen
-        </StatusButton>
-        <InlineState state={reopenState} />
-      </form>
+          <StatusPillButton
+            disabled={!canReopen}
+            className="border-blue-400/70 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20 focus-visible:outline-blue-300"
+          >
+            Reopen
+          </StatusPillButton>
+          <InlineState state={reopenState} />
+        </form>
 
-      <form
-        action={archiveFormAction}
-        onSubmit={(event) => {
-          if (!canArchive) {
-            event.preventDefault();
-            return;
-          }
-          const confirmed = window.confirm(
-            "Archive this RFQ?\n\nArchiving hides it from active lists, but keeps its timeline and files available.",
-          );
-          if (!confirmed) {
-            event.preventDefault();
-          }
-        }}
-        className="flex items-center gap-2"
-      >
-        <StatusButton
-          disabled={!canArchive}
-          className={clsx(
-            dangerCtaClasses,
-            "whitespace-nowrap",
-          )}
+        <form
+          action={archiveFormAction}
+          onSubmit={(event) => {
+            if (!canArchive) {
+              event.preventDefault();
+              return;
+            }
+            const confirmed = window.confirm(
+              "Archive this RFQ?\n\nArchiving hides it from active lists, but keeps its timeline and files available.",
+            );
+            if (!confirmed) {
+              event.preventDefault();
+            }
+          }}
+          className="w-full space-y-1"
         >
-          Archive
-        </StatusButton>
-        <InlineState state={archiveState} />
-      </form>
-    </div>
+          <StatusPillButton
+            disabled={!canArchive}
+            className="border-red-400/60 bg-red-500/10 text-red-100 hover:bg-red-500/20 focus-visible:outline-red-300"
+          >
+            Archive
+          </StatusPillButton>
+          <InlineState state={archiveState} />
+        </form>
+      </ActionGroupSection>
+    </ActionGroup>
   );
 }
 
-function StatusButton({
+function StatusPillButton({
   disabled,
   className,
   children,
@@ -132,16 +132,17 @@ function StatusButton({
   const { pending } = useFormStatus();
   const isDisabled = pending || disabled;
   return (
-    <button
+    <ActionPillButton
       type="submit"
       disabled={isDisabled}
       className={clsx(
         className,
+        "items-center justify-center text-center",
         isDisabled ? "cursor-not-allowed opacity-70" : null,
       )}
     >
       {pending ? "Working..." : children}
-    </button>
+    </ActionPillButton>
   );
 }
 

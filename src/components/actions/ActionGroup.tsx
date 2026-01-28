@@ -1,9 +1,9 @@
 import clsx from "clsx";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 const ACTION_PILL_BASE =
-  "w-full inline-flex items-start justify-start rounded-xl border px-3 py-2 text-[11px] font-semibold leading-snug transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
+  "w-full inline-flex items-start justify-start rounded-xl border px-3 py-2 text-[11px] font-semibold leading-snug transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
 
 const ACTION_PILL_DEFAULT =
   "border-slate-800 bg-slate-950/50 text-slate-200 hover:border-slate-600 hover:text-white focus-visible:outline-emerald-400";
@@ -96,9 +96,13 @@ export function ActionPillLink({
   );
 }
 
-export type ActionPillButtonProps = ActionPillCommonProps & {
-  type?: "button" | "submit" | "reset";
-};
+export type ActionPillButtonProps = ActionPillCommonProps &
+  Omit<
+    ComponentPropsWithoutRef<"button">,
+    "children" | "className" | "title" | "type"
+  > & {
+    type?: "button" | "submit" | "reset";
+  };
 
 export function ActionPillButton({
   type = "button",
@@ -106,10 +110,12 @@ export function ActionPillButton({
   children,
   className,
   variant = "default",
+  ...buttonProps
 }: ActionPillButtonProps) {
   return (
     <button
       type={type}
+      {...buttonProps}
       className={clsx(
         ACTION_PILL_BASE,
         getVariantClasses(variant),
