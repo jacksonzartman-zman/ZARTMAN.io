@@ -163,13 +163,19 @@ export function OpsInboxDispatchDrawer({
   const offersByProviderId = useMemo(() => {
     const map = new Map<string, RfqOffer>();
     for (const offer of row.offers) {
-      map.set(offer.provider_id, offer);
+      if (typeof offer.provider_id === "string" && offer.provider_id.trim()) {
+        map.set(offer.provider_id, offer);
+      }
     }
     return map;
   }, [row.offers]);
 
   const offerProviderIds = useMemo(() => {
-    return new Set(row.offers.map((offer) => offer.provider_id));
+    return new Set(
+      row.offers
+        .map((offer) => (typeof offer.provider_id === "string" ? offer.provider_id.trim() : ""))
+        .filter(Boolean),
+    );
   }, [row.offers]);
 
   const groupedDestinations = useMemo(() => {
