@@ -197,7 +197,7 @@ const ADMIN_AWARD_EMAIL_ERROR =
   "We couldn't generate the award email right now. Please try again.";
 
 export type CreateExternalOfferResult =
-  | { ok: true; offerId: string; providerId: string; destinationId: string }
+  | { ok: true; offerId: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
 
 const EXTERNAL_OFFER_GENERIC_ERROR =
@@ -297,88 +297,34 @@ export async function createExternalOfferAction(args: {
 
     const now = new Date().toISOString();
 
-    // Create a dedicated provider row per external offer so we can store multiple offers per RFQ.
-    const providerPayload: Record<string, unknown> = {
-      name: "External offer",
-      provider_type: "direct_supplier",
-      quoting_mode: "manual",
-      is_active: true,
-    };
-    try {
-      const supportsVerification = await hasColumns("providers", [
-        "verification_status",
-        "verified_at",
-        "source",
-      ]);
-      if (supportsVerification) {
-        providerPayload.verification_status = "verified";
-        providerPayload.verified_at = now;
-        providerPayload.source = "manual";
-      }
-    } catch {
-      // Fail-soft: keep base provider payload.
-    }
-
-    const { data: providerRow, error: providerError } = await supabaseServer()
-      .from("providers")
-      .insert(providerPayload)
-      .select("id")
-      .single<{ id: string }>();
-
-    if (providerError || !providerRow?.id) {
-      console.error("[admin external offer] provider insert failed", {
-        quoteId,
-        error: serializeSupabaseError(providerError),
-      });
-      return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
-    }
-
-    const providerId = providerRow.id;
-
-    // Create a destination row so the offer shows up in the admin destinations/dispatch UI.
-    const { data: destinationRow, error: destinationError } = await supabaseServer()
-      .from("rfq_destinations")
-      .insert({
-        rfq_id: quoteId,
-        provider_id: providerId,
-        status: "quoted",
-        last_status_at: now,
-      })
-      .select("id")
-      .single<{ id: string }>();
-
-    if (destinationError || !destinationRow?.id) {
-      console.error("[admin external offer] destination insert failed", {
-        quoteId,
-        providerId,
-        error: serializeSupabaseError(destinationError),
-      });
-      return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
-    }
-
-    const destinationId = destinationRow.id;
-
     const offerPayload: Record<string, unknown> = {
       rfq_id: quoteId,
-      provider_id: providerId,
-      destination_id: destinationId,
+      provider_id: null, // external/broker offers are not tied to internal suppliers
+      destination_id: null,
       currency: "USD",
       total_price: price,
       lead_time_days_min: leadTimeDays,
       lead_time_days_max: leadTimeDays,
-      status: "received",
+      status: "quoted",
       received_at: now,
       ...(notesRaw ? { notes: notesRaw } : {}),
     };
 
-    // Optional admin-only metadata (schema-gated).
+    // Optional provenance metadata (schema-gated).
     try {
-      const supportsExternalMeta = await hasColumns("rfq_offers", [
+      const supportsSource = await hasColumns("rfq_offers", ["source_type", "source_name"]);
+      if (supportsSource) {
+        if (sourceTypeRaw) offerPayload.source_type = sourceTypeRaw;
+        if (sourceNameRaw) offerPayload.source_name = sourceNameRaw;
+      }
+
+      // Back-compat: older environments used admin_* columns for internal-only metadata.
+      const supportsLegacyExternalMeta = await hasColumns("rfq_offers", [
         "admin_source_type",
         "admin_source_name",
         "process",
       ]);
-      if (supportsExternalMeta) {
+      if (supportsLegacyExternalMeta) {
         if (sourceTypeRaw) offerPayload.admin_source_type = sourceTypeRaw;
         if (sourceNameRaw) offerPayload.admin_source_name = sourceNameRaw;
         if (processRaw) offerPayload.process = processRaw;
@@ -396,8 +342,6 @@ export async function createExternalOfferAction(args: {
     if (offerError || !offerRow?.id) {
       console.error("[admin external offer] offer insert failed", {
         quoteId,
-        providerId,
-        destinationId,
         error: serializeSupabaseError(offerError),
       });
       return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
@@ -407,11 +351,10 @@ export async function createExternalOfferAction(args: {
 
     await logOpsEvent({
       quoteId,
-      destinationId,
       eventType: "offer_upserted",
       payload: {
-        provider_id: providerId,
-        status: "received",
+        provider_id: null,
+        status: "quoted",
         offer_id: offerId,
         source: "admin_external_offer",
       },
@@ -429,7 +372,7 @@ export async function createExternalOfferAction(args: {
     revalidatePath(`/customer/quotes/${quoteId}`);
     revalidatePath("/customer/quotes");
 
-    return { ok: true, offerId, providerId, destinationId };
+    return { ok: true, offerId };
   } catch (error) {
     console.error("[admin external offer] action crashed", {
       quoteId,
