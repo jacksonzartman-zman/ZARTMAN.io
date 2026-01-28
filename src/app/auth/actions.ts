@@ -131,9 +131,11 @@ export async function requestMagicLinkForEmail(
     // Confirmed: magic link login uses signInWithOtp (NOT recovery/reset flows).
     const { error } = await supabasePublic().auth.signInWithOtp({
       email: normalizedEmail,
-      options: { emailRedirectTo },
-      // Explicit: this app relies on OTP sign-in to create users for first-time flows (signup/invites).
-      shouldCreateUser: true,
+      options: {
+        emailRedirectTo,
+        // Explicit: this app relies on OTP sign-in to create users for first-time flows (signup/invites).
+        shouldCreateUser: true,
+      },
     });
 
     if (error) {
