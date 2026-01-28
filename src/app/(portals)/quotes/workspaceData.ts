@@ -334,7 +334,10 @@ export async function loadQuoteWorkspaceData(
     const rfqOffersWithDestinationIds = (rfqOffersRaw ?? []).map((offer) => {
       if (!offer) return offer;
       if (offer.destination_id) return offer;
-      const destinationId = destinationIdByProviderId.get(offer.provider_id) ?? null;
+      if (!offer.provider_id) return offer;
+      const providerId = typeof offer.provider_id === "string" ? offer.provider_id.trim() : "";
+      if (!providerId) return offer;
+      const destinationId = destinationIdByProviderId.get(providerId) ?? null;
       if (!destinationId) return offer;
       offersPatchedDestinationId += 1;
       return { ...offer, destination_id: destinationId };
