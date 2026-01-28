@@ -82,7 +82,9 @@ const PROVIDER_COLUMNS = [
   "created_at",
 ] as const;
 
-async function resolveProviderSelectColumns(): Promise<string[]> {
+type HasColumnsFn = typeof hasColumns;
+
+async function resolveProviderSelectColumnsWithDeps(hasColumnsFn: HasColumnsFn): Promise<string[]> {
   const [
     supportsDispatchMode,
     supportsRfqUrl,
@@ -92,13 +94,13 @@ async function resolveProviderSelectColumns(): Promise<string[]> {
     supportsStates,
     supportsShowInDirectory,
   ] = await Promise.all([
-    hasColumns(PROVIDERS_TABLE, ["dispatch_mode"]),
-    hasColumns(PROVIDERS_TABLE, ["rfq_url"]),
-    hasColumns(PROVIDERS_TABLE, ["processes"]),
-    hasColumns(PROVIDERS_TABLE, ["materials"]),
-    hasColumns(PROVIDERS_TABLE, ["country"]),
-    hasColumns(PROVIDERS_TABLE, ["states"]),
-    hasColumns(PROVIDERS_TABLE, ["show_in_directory"]),
+    hasColumnsFn(PROVIDERS_TABLE, ["dispatch_mode"]),
+    hasColumnsFn(PROVIDERS_TABLE, ["rfq_url"]),
+    hasColumnsFn(PROVIDERS_TABLE, ["processes"]),
+    hasColumnsFn(PROVIDERS_TABLE, ["materials"]),
+    hasColumnsFn(PROVIDERS_TABLE, ["country"]),
+    hasColumnsFn(PROVIDERS_TABLE, ["states"]),
+    hasColumnsFn(PROVIDERS_TABLE, ["show_in_directory"]),
   ]);
 
   return [
@@ -111,6 +113,10 @@ async function resolveProviderSelectColumns(): Promise<string[]> {
     ...(supportsStates ? ["states"] : []),
     ...(supportsShowInDirectory ? ["show_in_directory"] : []),
   ];
+}
+
+async function resolveProviderSelectColumns(): Promise<string[]> {
+  return await resolveProviderSelectColumnsWithDeps(hasColumns);
 }
 
 export async function getActiveProviders(): Promise<ProviderRow[]> {
@@ -374,6 +380,39 @@ export async function resolveProviderEmailColumn(): Promise<ProviderEmailColumn 
   if (supportsEmail) return "email";
   if (supportsContactEmail) return "contact_email";
   return null;
+}
+
+async function resolveProviderEmailColumnWithDeps(hasColumnsFn: HasColumnsFn): Promise<ProviderEmailColumn | null> {
+  const [supportsPrimaryEmail, supportsEmail, supportsContactEmail] = await Promise.all([
+    hasColumnsFn(PROVIDERS_TABLE, ["primary_email"]),
+    hasColumnsFn(PROVIDERS_TABLE, ["email"]),
+    hasColumnsFn(PROVIDERS_TABLE, ["contact_email"]),
+  ]);
+
+  if (supportsPrimaryEmail) return "primary_email";
+  if (supportsEmail) return "email";
+  if (supportsContactEmail) return "contact_email";
+  return null;
+}
+
+/**
+ * Test-only helper: build the select list for provider contact queries without hitting Supabase.
+ * This is used by unit tests to assert optional email columns are omitted when schema probes fail.
+ */
+export async function __test__buildProviderListWithContactSelect(args: {
+  hasColumns: HasColumnsFn;
+}): Promise<{ selectColumns: string[]; emailColumn: ProviderEmailColumn | null }> {
+  const [emailColumn, supportsContactedAt, baseColumns] = await Promise.all([
+    resolveProviderEmailColumnWithDeps(args.hasColumns),
+    args.hasColumns(PROVIDERS_TABLE, ["contacted_at"]),
+    resolveProviderSelectColumnsWithDeps(args.hasColumns),
+  ]);
+  const selectColumns = [
+    ...baseColumns,
+    ...(emailColumn ? [emailColumn] : []),
+    ...(supportsContactedAt ? ["contacted_at"] : []),
+  ];
+  return { selectColumns, emailColumn };
 }
 
 export type CreateProviderStubInput = {

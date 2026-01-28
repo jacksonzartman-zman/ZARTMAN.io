@@ -25,17 +25,28 @@ const SUPPLIER_SELECT_COLUMNS_BASE = [
 
 let cachedSupplierSelect: Promise<string> | null = null;
 
+type HasColumnsFn = typeof hasColumns;
+
+async function computeSupplierSelect(hasColumnsFn: HasColumnsFn): Promise<string> {
+  const columns: string[] = [...SUPPLIER_SELECT_COLUMNS_BASE];
+  const supportsProviderId = await hasColumnsFn("suppliers", ["provider_id"]);
+  if (supportsProviderId) {
+    columns.push("provider_id");
+  }
+  return columns.join(",");
+}
+
 async function buildSupplierSelect(): Promise<string> {
   if (cachedSupplierSelect) return cachedSupplierSelect;
-  cachedSupplierSelect = (async () => {
-    const columns: string[] = [...SUPPLIER_SELECT_COLUMNS_BASE];
-    const supportsProviderId = await hasColumns("suppliers", ["provider_id"]);
-    if (supportsProviderId) {
-      columns.push("provider_id");
-    }
-    return columns.join(",");
-  })();
+  cachedSupplierSelect = computeSupplierSelect(hasColumns);
   return cachedSupplierSelect;
+}
+
+/**
+ * Test-only helper: build the supplier select list without relying on live Supabase.
+ */
+export async function __test__buildSupplierSelect(args: { hasColumns: HasColumnsFn }): Promise<string> {
+  return await computeSupplierSelect(args.hasColumns);
 }
 
 function normalizeEmail(value?: string | null): string | null {
