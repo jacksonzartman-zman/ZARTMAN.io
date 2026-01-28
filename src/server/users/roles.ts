@@ -105,8 +105,11 @@ export async function resolveUserRoles(
     }
   }
 
+  // Final schema gate: even if upstream code preloaded/merged supplier flags or a supplier record,
+  // supplier role must always be false when schema_contract reports `suppliers` is missing.
+  // (This also ensures our "resolved roles" log reflects post-gate values.)
   const isCustomer = Boolean(customer);
-  const isSupplier = Boolean(supplier);
+  const isSupplier = suppliersRelationMissing ? false : Boolean(supplier);
 
   let primaryRole: UserRole = "unknown";
   if (isCustomer && !isSupplier) {
@@ -123,6 +126,7 @@ export async function resolveUserRoles(
     primaryRole,
     isCustomer,
     isSupplier,
+    suppliersRelationMissing,
   });
 
   return {
