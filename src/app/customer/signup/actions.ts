@@ -71,7 +71,7 @@ export async function createCustomerAndSendMagicLinkAction(
       nextPath: "/customer",
     });
 
-    if (!magicLinkResult.success) {
+    if (!magicLinkResult.ok) {
       return {
         success: false,
         error: magicLinkResult.error ?? GENERIC_ERROR,
@@ -81,7 +81,7 @@ export async function createCustomerAndSendMagicLinkAction(
     return {
       success: true,
       error: null,
-      submittedEmail: magicLinkResult.normalizedEmail ?? normalizedEmail!,
+      submittedEmail: normalizedEmail!,
     };
   } catch (error) {
     console.error("createCustomerAndSendMagicLinkAction: unexpected error", {
