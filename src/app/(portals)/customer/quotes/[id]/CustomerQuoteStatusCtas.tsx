@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { useMemo } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import type { QuoteStatus } from "@/server/quotes/status";
-import { dangerCtaClasses, infoCtaClasses } from "@/lib/ctas";
+import { ActionPillButton } from "@/components/actions/ActionGroup";
 import {
   archiveCustomerQuoteAction,
   reopenCustomerQuoteAction,
@@ -64,9 +64,11 @@ export function CustomerQuoteStatusCtas({
               event.preventDefault();
             }
           }}
-          className="flex items-center gap-2"
+          className="flex flex-col items-start gap-1"
         >
-          <StatusButton className={clsx(infoCtaClasses, "whitespace-nowrap")}>Reopen</StatusButton>
+          <StatusButton className="border-blue-400/70 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20 focus-visible:outline-blue-300">
+            Reopen
+          </StatusButton>
           <InlineState state={reopenState} />
         </form>
       ) : null}
@@ -82,9 +84,11 @@ export function CustomerQuoteStatusCtas({
               event.preventDefault();
             }
           }}
-          className="flex items-center gap-2"
+          className="flex flex-col items-start gap-1"
         >
-          <StatusButton className={clsx(dangerCtaClasses, "whitespace-nowrap")}>Archive</StatusButton>
+          <StatusButton className="border-red-400/60 bg-red-500/10 text-red-100 hover:bg-red-500/20 focus-visible:outline-red-300">
+            Archive
+          </StatusButton>
           <InlineState state={archiveState} />
         </form>
       ) : null}
@@ -101,13 +105,17 @@ function StatusButton({
 }) {
   const { pending } = useFormStatus();
   return (
-    <button
+    <ActionPillButton
       type="submit"
       disabled={pending}
-      className={clsx(className, pending ? "cursor-not-allowed opacity-70" : null)}
+      className={clsx(
+        className,
+        "w-auto min-w-[6.5rem] items-center justify-center text-center whitespace-nowrap",
+        pending ? "cursor-not-allowed opacity-70" : null,
+      )}
     >
       {pending ? "Working..." : children}
-    </button>
+    </ActionPillButton>
   );
 }
 

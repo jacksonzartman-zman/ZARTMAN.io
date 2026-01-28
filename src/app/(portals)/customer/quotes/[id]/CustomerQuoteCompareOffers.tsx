@@ -4,6 +4,11 @@ import clsx from "clsx";
 import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TagPill } from "@/components/shared/primitives/TagPill";
+import {
+  ActionGroup,
+  ActionGroupSection,
+  ActionPillButton,
+} from "@/components/actions/ActionGroup";
 import { RequestIntroductionModal } from "./RequestIntroductionModal";
 import type { CustomerCompareOffer } from "@/lib/customerTrustBadges";
 import {
@@ -510,19 +515,23 @@ export function CustomerQuoteCompareOffers({
                           </div>
                         </td>
                         <td className="px-5 py-4 align-top text-right">
-                          <div className="inline-flex items-center justify-end gap-2">
-                            <ShortlistToggleButton
-                              shortlisted={isShortlisted}
-                              pending={isShortlistPending}
-                              disabled={pendingShortlist || awardLocked}
-                              onClick={() => handleShortlistToggle(offer.id)}
-                            />
-                            <SelectOfferButton
-                              disabled={(selectionLocked && !isSelected) || pendingAward}
-                              selected={isSelected}
-                              pending={isAwardPending}
-                              onClick={() => handleAwardOffer(offer.id)}
-                            />
+                          <div className="ml-auto w-[12rem]">
+                            <ActionGroup>
+                              <ActionGroupSection>
+                                <OfferShortlistPill
+                                  shortlisted={isShortlisted}
+                                  pending={isShortlistPending}
+                                  disabled={pendingShortlist || awardLocked}
+                                  onClick={() => handleShortlistToggle(offer.id)}
+                                />
+                                <OfferSelectPill
+                                  disabled={(selectionLocked && !isSelected) || pendingAward}
+                                  selected={isSelected}
+                                  pending={isAwardPending}
+                                  onClick={() => handleAwardOffer(offer.id)}
+                                />
+                              </ActionGroupSection>
+                            </ActionGroup>
                           </div>
                         </td>
                       </tr>
@@ -567,7 +576,7 @@ export function CustomerQuoteCompareOffers({
   );
 }
 
-function SelectOfferButton({
+function OfferSelectPill({
   disabled,
   selected,
   pending,
@@ -588,25 +597,33 @@ function SelectOfferButton({
         : "SELECT";
 
   return (
-    <button
-      type="button"
+    <ActionPillButton
       onClick={onClick}
       disabled={isDisabled}
+      title={
+        pending
+          ? "Selecting offer…"
+          : selected
+            ? "Offer selected"
+            : disabled
+              ? "Selection locked"
+              : "Select this offer"
+      }
       className={clsx(
-        "inline-flex items-center rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-wide transition",
+        "items-center justify-center text-center",
         selected
           ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-100"
           : disabled
-            ? "border-slate-800/80 text-slate-400 opacity-70"
+            ? "border-slate-800/80 text-slate-400"
             : "border-emerald-400/50 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20",
       )}
     >
       {label}
-    </button>
+    </ActionPillButton>
   );
 }
 
-function ShortlistToggleButton({
+function OfferShortlistPill({
   shortlisted,
   pending,
   disabled,
@@ -621,24 +638,28 @@ function ShortlistToggleButton({
   const isDisabled = disabled || pending;
 
   return (
-    <button
-      type="button"
+    <ActionPillButton
       onClick={onClick}
       disabled={isDisabled}
       aria-pressed={shortlisted}
       aria-label={label}
       title={label}
       className={clsx(
-        "inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs transition",
+        "items-center justify-center text-center",
         shortlisted
           ? "border-amber-400/70 bg-amber-500/15 text-amber-200"
-          : "border-slate-800/80 bg-slate-950/50 text-slate-400 hover:border-amber-400/60 hover:text-amber-200",
+          : "border-slate-800/80 bg-slate-950/50 text-slate-300 hover:border-amber-400/60 hover:text-amber-200",
         isDisabled &&
-          "cursor-not-allowed border-slate-800/80 text-slate-500 hover:border-slate-800/80 hover:text-slate-500",
+          "border-slate-800/80 text-slate-500 hover:border-slate-800/80 hover:text-slate-500",
       )}
     >
-      <StarIcon className="h-4 w-4" filled={shortlisted} />
-    </button>
+      <span className="inline-flex items-center gap-2">
+        <StarIcon className="h-4 w-4" filled={shortlisted} />
+        <span className="text-[11px] font-semibold">
+          {shortlisted ? "Shortlisted" : "Shortlist"}
+        </span>
+      </span>
+    </ActionPillButton>
   );
 }
 
