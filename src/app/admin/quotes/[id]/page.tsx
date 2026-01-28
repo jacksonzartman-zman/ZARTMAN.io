@@ -14,13 +14,15 @@ import { formatDateTime } from "@/lib/formatDate";
 import { formatAwardedByLabel, formatShortId } from "@/lib/awards";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { getQuoteMessages } from "@/server/messages/quoteMessages";
-import { computeNeedsReplySummary } from "@/server/messages/needsReply";
+import {
+  computeThreadNeedsReplyFromLastMessage,
+  computeThreadNeedsReplyFromMessages,
+} from "@/server/messages/threadNeedsReply";
 import type { QuoteMessageRecord } from "@/server/quotes/messages";
 import { getCustomerReplyToAddress, getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
 import { getEmailOutboundStatus } from "@/server/quotes/emailOutbound";
 import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 import { CopyTextButton } from "@/components/CopyTextButton";
-import { getOpsMessageReplyMaxHours } from "@/server/ops/settings";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
 import {
@@ -84,8 +86,7 @@ import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime
 import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { loadAdminThreadSlaForQuotes } from "@/server/admin/messageSla";
 import {
-  computeAdminNeedsReply,
-  computeAdminThreadSla,
+  inferLastMessageAuthorRole,
   loadQuoteMessageRollups,
 } from "@/server/quotes/messageState";
 import {
@@ -669,21 +670,20 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
     const threadSla = threadSlaByQuoteId[quote.id] ?? null;
     const messageRollupsByQuoteId = await loadQuoteMessageRollups([quote.id]);
     const messageRollup = messageRollupsByQuoteId[quote.id] ?? null;
-    const adminThreadSla = messageRollup ? computeAdminThreadSla(messageRollup) : null;
-    const adminNeedsReply = adminThreadSla
-      ? adminThreadSla.status !== "clear"
-      : messageRollup
-        ? computeAdminNeedsReply(messageRollup)
-        : false;
-    const adminOverdue = adminThreadSla?.status === "overdue";
     const lastMessageAtForState =
       messageRollup?.lastMessageAt ?? threadSla?.lastMessageAt ?? null;
+    const lastMessageAuthorRoleForState =
+      messageRollup ? inferLastMessageAuthorRole(messageRollup) : threadSla?.lastMessageAuthorRole ?? null;
+    const threadNeedsReplyForState = messagesResult.missing
+      ? computeThreadNeedsReplyFromLastMessage({
+          lastMessageAt: lastMessageAtForState,
+          lastMessageAuthorRole: lastMessageAuthorRoleForState,
+        })
+      : computeThreadNeedsReplyFromMessages(quoteMessages);
+    const adminNeedsReply = !messagesResult.missing && threadNeedsReplyForState.needs_reply_role === "admin";
+    const adminOverdue = adminNeedsReply && threadNeedsReplyForState.sla_bucket === ">24h";
     const lastMessage = quoteMessages.length > 0 ? quoteMessages[quoteMessages.length - 1] : null;
     const lastMessagePreview = lastMessage ? truncateThreadPreview(lastMessage.body, 80) : null;
-    const messageReplyMaxHours = await getOpsMessageReplyMaxHours();
-    const customerSupplierNeedsReply = computeNeedsReplySummary(quoteMessages, {
-      slaWindowHours: messageReplyMaxHours,
-    });
     const bidsResult = await loadBidsForQuote(quote.id);
     const bidAggregateMap = await loadQuoteBidAggregates([quote.id]);
     const bidAggregate = bidAggregateMap[quote.id];
@@ -1579,7 +1579,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       />
     );
 
-    const messagesUnavailable = !messagesResult.ok || messagesResult.missing || Boolean(quoteMessagesError);
+    const messagesSchemaMissing = messagesResult.missing;
+    const messagesUnavailable = !messagesResult.ok || Boolean(quoteMessagesError);
     const postMessageAction = postAdminQuoteMessage.bind(null, quote.id);
     const outboundEmailEnabled = getEmailOutboundStatus().enabled;
     const outboundFileOptions = await loadOutboundFileOptions({ quoteId: quote.id, limit: 50 });
@@ -1633,47 +1634,45 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         ) : null}
         <EmailSupplierForm quoteId={quote.id} enabled={outboundEmailEnabled} fileOptions={outboundFileOptions} />
         <EmailCustomerForm quoteId={quote.id} enabled={outboundEmailEnabled} fileOptions={outboundFileOptions} />
-        {messagesUnavailable ? (
+        {messagesSchemaMissing ? (
+          <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-3 text-sm text-slate-400">
+            Messaging not enabled in this environment.
+          </p>
+        ) : messagesUnavailable ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
             Messages are temporarily unavailable. Refresh the page to try again.
           </p>
         ) : null}
-        {!messagesUnavailable &&
-        (customerSupplierNeedsReply.supplierOwesReply || customerSupplierNeedsReply.customerOwesReply) ? (
+        {!messagesSchemaMissing &&
+        threadNeedsReplyForState.needs_reply_role === "admin" ? (
           <div
             className={clsx(
               "rounded-xl border px-5 py-3 text-sm",
-              customerSupplierNeedsReply.supplierReplyOverdue || customerSupplierNeedsReply.customerReplyOverdue
+              threadNeedsReplyForState.sla_bucket === ">24h"
                 ? "border-red-500/30 bg-red-500/10 text-red-100"
                 : "border-amber-500/30 bg-amber-500/10 text-amber-100",
             )}
           >
-            <p className="font-semibold text-white">
-              {customerSupplierNeedsReply.supplierReplyOverdue || customerSupplierNeedsReply.customerReplyOverdue
-                ? "Overdue reply"
-                : "Needs reply"}
-            </p>
+            <p className="font-semibold text-white">Needs reply</p>
             <p className="mt-1 text-xs">
-              {customerSupplierNeedsReply.supplierOwesReply
-                ? "Supplier owes the next reply in this thread."
-                : customerSupplierNeedsReply.customerOwesReply
-                  ? "Customer owes the next reply in this thread."
-                  : null}
+              SLA bucket: {threadNeedsReplyForState.sla_bucket}
             </p>
           </div>
         ) : null}
-        <QuoteMessagesThread
-          quoteId={quote.id}
-          messages={quoteMessages}
-          canPost
-          postAction={postMessageAction}
-          currentUserId={null}
-          viewerRole="admin"
-          title="Customer & supplier messages"
-          description="One shared conversation across portals."
-          helperText="Replies notify the customer inbox immediately."
-          emptyStateCopy="Send the first update to keep the customer and suppliers aligned."
-        />
+        {!messagesSchemaMissing ? (
+          <QuoteMessagesThread
+            quoteId={quote.id}
+            messages={quoteMessages}
+            canPost
+            postAction={postMessageAction}
+            currentUserId={null}
+            viewerRole="admin"
+            title="Customer & supplier messages"
+            description="One shared conversation across portals."
+            helperText="Replies notify the customer inbox immediately."
+            emptyStateCopy="Send the first update to keep the customer and suppliers aligned."
+          />
+        ) : null}
       </div>
     );
 

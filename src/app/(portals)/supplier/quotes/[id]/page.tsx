@@ -59,12 +59,11 @@ import {
 } from "@/server/quotes/projects";
 import { SupplierQuoteProjectCard } from "./SupplierQuoteProjectCard";
 import { QuoteMessagesThread } from "@/app/(portals)/shared/QuoteMessagesThread";
-import { computeNeedsReplySummary } from "@/server/messages/needsReply";
+import { computeThreadNeedsReplyFromMessages } from "@/server/messages/threadNeedsReply";
 import {
   loadQuoteMessages,
   type QuoteMessageRecord,
 } from "@/server/quotes/messages";
-import { getOpsMessageReplyMaxHours } from "@/server/ops/settings";
 import { getSupplierReplyToAddress } from "@/server/quotes/emailBridge";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import {
@@ -312,10 +311,8 @@ export default async function SupplierQuoteDetailPage({
   }
   const quoteMessages = messagesResult.messages;
   const messagesUnavailable = !messagesResult.ok;
-  const messageReplyMaxHours = await getOpsMessageReplyMaxHours();
-  const customerSupplierNeedsReply = computeNeedsReplySummary(quoteMessages, {
-    slaWindowHours: messageReplyMaxHours,
-  });
+  const messagesSchemaMissing = Boolean(messagesResult.schemaMissing);
+  const threadNeedsReply = computeThreadNeedsReplyFromMessages(quoteMessages);
 
   const unreadSummary = await loadUnreadMessageSummary({
     quoteIds: [quoteId],
@@ -371,10 +368,11 @@ export default async function SupplierQuoteDetailPage({
       messagingDisabledReason={messagingDisabledReason}
       quoteMessages={quoteMessages}
       messagesUnavailable={messagesUnavailable}
+      messagesSchemaMissing={messagesSchemaMissing}
       messagesUnreadCount={messagesUnreadCount}
       postMessageAction={supplierPostMessageAction}
       currentUserId={user.id}
-      customerSupplierNeedsReply={customerSupplierNeedsReply}
+      threadNeedsReply={threadNeedsReply}
       project={project}
       projectUnavailable={projectUnavailable}
       kickoffTasks={kickoffTasks}
@@ -412,10 +410,11 @@ function SupplierQuoteWorkspace({
   messagingDisabledReason,
   quoteMessages,
   messagesUnavailable,
+  messagesSchemaMissing,
   messagesUnreadCount,
   postMessageAction,
   currentUserId,
-  customerSupplierNeedsReply,
+  threadNeedsReply,
   project,
   projectUnavailable,
   kickoffTasks,
@@ -449,13 +448,14 @@ function SupplierQuoteWorkspace({
   messagingDisabledReason?: string | null;
   quoteMessages: QuoteMessageRecord[];
   messagesUnavailable: boolean;
+  messagesSchemaMissing: boolean;
   messagesUnreadCount: number;
   postMessageAction: (
     prevState: QuoteMessageFormState,
     formData: FormData,
   ) => Promise<QuoteMessageFormState>;
   currentUserId: string;
-  customerSupplierNeedsReply: ReturnType<typeof computeNeedsReplySummary>;
+  threadNeedsReply: ReturnType<typeof computeThreadNeedsReplyFromMessages>;
   project: QuoteProjectRecord | null;
   projectUnavailable: boolean;
   kickoffTasks: QuoteKickoffTask[];
@@ -1153,40 +1153,52 @@ function SupplierQuoteWorkspace({
               )
             }
           >
-            {customerSupplierNeedsReply.customerOwesReply ? (
-              <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
-                Waiting for customer reply.
+            {messagesSchemaMissing ? (
+              <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-3 text-sm text-slate-400">
+                Messaging not enabled in this environment.
               </p>
-            ) : customerSupplierNeedsReply.supplierOwesReply ? (
-              <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
-                Customer is waiting for your reply.
-              </p>
-            ) : null}
-            <QuoteMessagesThread
-              quoteId={quote.id}
-              messages={quoteMessages}
-              canPost={messagingUnlocked}
-              postAction={postMessageAction}
-              currentUserId={currentUserId}
-              viewerRole="supplier"
-              markRead={tabParam === "messages"}
-              title="Messages"
-              description="Customer, supplier, and admin updates for this search request."
-              portalEmail={{
-                enabled: portalEmailEnabled,
-                recipientRole: "customer",
-                fileOptions: portalEmailFileOptions,
-                disabledCopy: portalEmailDisabledCopy,
-              }}
-              emailReplyIndicator={
-                replyToAddress
-                  ? { state: "enabled", replyTo: replyToAddress }
-                  : { state: "off", helper: "Reply-by-email not configured." }
-              }
-              helperText="Your note notifies the customer and the Zartman team."
-              disabledCopy={messagingDisabledReason ?? undefined}
-              emptyStateCopy="Send the first message to align on scope and timing."
-            />
+            ) : (
+              <>
+                {threadNeedsReply.needs_reply_role === "admin" ? (
+                  <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+                    Waiting on Admin.
+                  </p>
+                ) : threadNeedsReply.needs_reply_role === "customer" ? (
+                  <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+                    Waiting on Customer.
+                  </p>
+                ) : null}
+                <QuoteMessagesThread
+                  quoteId={quote.id}
+                  messages={quoteMessages}
+                  canPost={messagingUnlocked && awardedToSupplier}
+                  postAction={postMessageAction}
+                  currentUserId={currentUserId}
+                  viewerRole="supplier"
+                  markRead={tabParam === "messages"}
+                  title="Messages"
+                  description="Customer, supplier, and admin updates for this search request."
+                  portalEmail={{
+                    enabled: portalEmailEnabled,
+                    recipientRole: "customer",
+                    fileOptions: portalEmailFileOptions,
+                    disabledCopy: portalEmailDisabledCopy,
+                  }}
+                  emailReplyIndicator={
+                    replyToAddress
+                      ? { state: "enabled", replyTo: replyToAddress }
+                      : { state: "off", helper: "Reply-by-email not configured." }
+                  }
+                  helperText="Your note notifies the customer and the Zartman team."
+                  disabledCopy={
+                    !awardedToSupplier
+                      ? "Messaging unlocks once this search request is awarded to you."
+                      : messagingDisabledReason ?? undefined
+                  }
+                  emptyStateCopy="Send the first message to align on scope and timing."
+                />
+              </>
+            )}
           </DisclosureSection>
         </div>
         <div className="space-y-5">

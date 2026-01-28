@@ -37,6 +37,29 @@ function ms(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+export type QuoteThreadLastMessageAuthorRole = "customer" | "supplier" | "admin" | "system" | null;
+
+export function inferLastMessageAuthorRole(
+  rollup: QuoteMessageRollup,
+): QuoteThreadLastMessageAuthorRole {
+  const lastMessageMs = ms(rollup.lastMessageAt);
+  if (lastMessageMs === null) return null;
+
+  // Prefer deterministic ordering when timestamps tie.
+  const candidates: Array<[QuoteThreadLastMessageAuthorRole, number | null]> = [
+    ["customer", ms(rollup.lastCustomerAt)],
+    ["supplier", ms(rollup.lastSupplierAt)],
+    ["admin", ms(rollup.lastAdminAt)],
+    ["system", ms(rollup.lastSystemAt)],
+  ];
+
+  for (const [role, ts] of candidates) {
+    if (ts !== null && ts === lastMessageMs) return role;
+  }
+
+  return null;
+}
+
 export async function loadQuoteMessageRollups(
   quoteIds: string[],
 ): Promise<Record<string, QuoteMessageRollup>> {
@@ -146,14 +169,17 @@ export function computeAdminReplyState(rollup: QuoteMessageRollup): AdminMessage
   const lastMessageAt = rollup.lastMessageAt;
 
   const lastCustomerMs = ms(lastCustomerMessageAt);
+  const lastSupplierMs = ms(rollup.lastSupplierAt);
   const lastAdminMs = ms(lastAdminMessageAt);
   const lastMessageMs = ms(lastMessageAt);
 
+  const lastInboundMs = maxNullable(lastCustomerMs, lastSupplierMs);
+
   const needsReply =
-    lastCustomerMs !== null &&
+    lastInboundMs !== null &&
     lastMessageMs !== null &&
-    lastCustomerMs === lastMessageMs &&
-    (lastAdminMs === null || lastAdminMs < lastCustomerMs);
+    lastInboundMs === lastMessageMs &&
+    (lastAdminMs === null || lastAdminMs < lastInboundMs);
 
   return { needsReply, lastCustomerMessageAt, lastAdminMessageAt };
 }

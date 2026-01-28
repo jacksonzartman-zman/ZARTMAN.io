@@ -57,7 +57,7 @@ import {
   type QuoteProjectRecord,
 } from "@/server/quotes/projects";
 import { loadSupplierById } from "@/server/suppliers/profile";
-import { postCustomerQuoteMessageAction } from "./actions";
+import { postQuoteMessage } from "./actions";
 import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
 import { CustomerQuoteCompareOffers } from "./CustomerQuoteCompareOffers";
 import { CustomerQuoteSelectionConfirmation } from "./CustomerQuoteSelectionConfirmation";
@@ -90,8 +90,8 @@ import {
   isSupabaseRelationMarkedMissing,
   serializeSupabaseError,
 } from "@/server/admin/logging";
-import { getOpsMessageReplyMaxHours, getOpsSlaSettings } from "@/server/ops/settings";
-import { computeNeedsReplySummary } from "@/server/messages/needsReply";
+import { getOpsSlaSettings } from "@/server/ops/settings";
+import { computeThreadNeedsReplyFromMessages } from "@/server/messages/threadNeedsReply";
 import { loadCadFeaturesForQuote } from "@/server/quotes/cadFeatures";
 import { CustomerQuoteOrderWorkspace } from "./CustomerQuoteOrderWorkspace";
 import {
@@ -107,8 +107,7 @@ import { CoverageConfidenceBadge } from "@/components/CoverageConfidenceBadge";
 import { CustomerEmailRepliesCard } from "./CustomerEmailRepliesCard";
 import { isCustomerEmailBridgeEnabled, isCustomerEmailOptedIn } from "@/server/quotes/customerEmailPrefs";
 import { getCustomerReplyToAddress } from "@/server/quotes/emailBridge";
-import { CustomerQuoteMessagesSection } from "./CustomerQuoteMessagesSection";
-import { CustomerQuoteMessagesReadMarker } from "./CustomerQuoteMessagesReadMarker";
+import { QuoteMessagesThread } from "@/app/(portals)/shared/QuoteMessagesThread";
 import { CustomerEstimatedPriceTile } from "@/components/CustomerEstimatedPriceTile";
 import { buildOpsEventSessionKey, logOpsEvent } from "@/server/ops/events";
 import { loadCustomerOfferShortlist } from "@/server/customer/offerShortlist";
@@ -223,7 +222,8 @@ export default async function CustomerQuoteDetailPage({
     filesMissingCanonical,
     legacyFileNames,
   } = workspaceResult.data;
-  const messagesUnavailable = Boolean(messagesError);
+  const messagesSchemaMissing = messagesError === "missing_schema";
+  const messagesUnavailable = Boolean(messagesError && !messagesSchemaMissing);
   const rfqOfferSummary = summarizeRfqOffers(rfqOffers ?? []);
   const rfqOfferCount = rfqOfferSummary.nonWithdrawn;
   const customerCompareOffersPromise =
@@ -1337,7 +1337,7 @@ export default async function CustomerQuoteDetailPage({
       />
     ) : null;
 
-  const postMessageAction = postCustomerQuoteMessageAction.bind(null, quote.id);
+  const postMessageAction = postQuoteMessage.bind(null, quote.id);
 
   const orderWorkspaceSection = (
     <CustomerQuoteOrderWorkspace
@@ -1824,10 +1824,7 @@ export default async function CustomerQuoteDetailPage({
     messagesHref,
   });
 
-  const messageReplyMaxHours = await getOpsMessageReplyMaxHours();
-  const customerSupplierNeedsReply = computeNeedsReplySummary(quoteMessages, {
-    slaWindowHours: messageReplyMaxHours,
-  });
+  const threadNeedsReply = computeThreadNeedsReplyFromMessages(quoteMessages);
 
   return (
     <PortalShell
@@ -1872,48 +1869,58 @@ export default async function CustomerQuoteDetailPage({
             )
           }
         >
-          <CustomerQuoteMessagesReadMarker
-            quoteId={quote.id}
-            enabled={tabParam === "messages"}
-            currentUserId={user.id}
-          />
-          {customerSupplierNeedsReply.supplierOwesReply ? (
-            <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
-              Waiting for supplier reply.
+          {messagesSchemaMissing ? (
+            <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-3 text-sm text-slate-400">
+              Messaging not enabled in this environment.
             </p>
-          ) : customerSupplierNeedsReply.customerOwesReply ? (
-            <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
-              Supplier is waiting for your reply.
-            </p>
-          ) : null}
-          <div id="email-replies">
-            <CustomerEmailRepliesCard
-              quoteId={quote.id}
-              initialOptedIn={customerEmailOptedIn}
-              bridgeEnabled={customerEmailBridgeEnabled}
-              replyToAddress={customerReplyToAddress}
-            />
-          </div>
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
-            <div className="max-w-[46rem]">
-              <p className="text-sm font-semibold text-white">Need to request a change?</p>
-              <p className="mt-1 text-xs text-slate-400">
-                Submit a change request and we’ll coordinate next steps here in Messages.
-              </p>
-            </div>
-            <RequestChangeScaffold
-              quoteId={quote.id}
-              messagesHref={messagesHref}
-              disabled={readOnly}
-            />
-          </div>
-          <CustomerQuoteMessagesSection
-            quoteId={quote.id}
-            messages={quoteMessages}
-            currentUserId={user.id}
-            canPost={!readOnly}
-            postAction={postMessageAction}
-          />
+          ) : (
+            <>
+              {threadNeedsReply.needs_reply_role === "admin" ? (
+                <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+                  Waiting on Admin.
+                </p>
+              ) : threadNeedsReply.needs_reply_role === "customer" ? (
+                <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+                  Admin is waiting for your reply.
+                </p>
+              ) : null}
+              <div id="email-replies">
+                <CustomerEmailRepliesCard
+                  quoteId={quote.id}
+                  initialOptedIn={customerEmailOptedIn}
+                  bridgeEnabled={customerEmailBridgeEnabled}
+                  replyToAddress={customerReplyToAddress}
+                />
+              </div>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
+                <div className="max-w-[46rem]">
+                  <p className="text-sm font-semibold text-white">Need to request a change?</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Submit a change request and we’ll coordinate next steps here in Messages.
+                  </p>
+                </div>
+                <RequestChangeScaffold
+                  quoteId={quote.id}
+                  messagesHref={messagesHref}
+                  disabled={readOnly}
+                />
+              </div>
+              <QuoteMessagesThread
+                quoteId={quote.id}
+                messages={quoteMessages}
+                canPost={!readOnly}
+                postAction={postMessageAction}
+                currentUserId={user.id}
+                viewerRole="customer"
+                markRead={tabParam === "messages"}
+                title="Messages"
+                description="Shared thread with your supplier and the Zartman team."
+                helperText="Your message notifies the Zartman team immediately."
+                disabledCopy={readOnly ? "Messaging is disabled in read-only mode." : undefined}
+                emptyStateCopy="Send the first message if you need clarification, want to request a change, or have a question."
+              />
+            </>
+          )}
         </DisclosureSection>
 
         {filesSection}

@@ -27,6 +27,7 @@ import type {
 } from "@/server/admin/messageSla";
 import type { PartsCoverageHealth } from "@/lib/quote/partsCoverage";
 import { awardCheapestOfferAction } from "./quotes/demoActions";
+import { TagPill } from "@/components/shared/primitives/TagPill";
 
 export type QuoteCapacitySummary = {
   supplierId: string;
@@ -55,6 +56,7 @@ export type QuoteRow = {
   threadStalenessBucket: AdminThreadStalenessBucket;
   threadUnreadForAdmin: boolean;
   adminNeedsReply: boolean;
+  adminReplySlaBucket?: "<2h" | "<24h" | ">24h" | null;
   adminOverdue?: boolean;
   bidSummary: string;
   bidCountLabel: string;
@@ -214,6 +216,16 @@ export default function QuotesTable({
                       {row.statusLabel}
                     </span>
                     <p className="text-xs text-slate-400">{row.statusHelper}</p>
+                    {row.adminNeedsReply ? (
+                      <TagPill
+                        size="sm"
+                        tone={row.adminOverdue ? "red" : "amber"}
+                        className="mt-2 normal-case tracking-normal"
+                        title="Latest message needs an admin reply"
+                      >
+                        Needs reply · {row.adminReplySlaBucket ?? (row.adminOverdue ? ">24h" : "<24h")}
+                      </TagPill>
+                    ) : null}
                   </div>
                 </td>
                 <td className={clsx(adminTableCellClass, "text-xs text-slate-200")}>
