@@ -4,6 +4,7 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency } from "@/lib/formatCurrency";
+import { NotifyMePanel } from "./NotifyMePanel";
 
 type OfferCardDto = {
   id: string;
@@ -275,6 +276,8 @@ export function PublicOffersSection({
           <p className="text-xs text-ink-soft">Keep this page open or bookmark it to check back.</p>
         </div>
       </div>
+
+      {!hasOffers && !isTerminal ? <NotifyMePanel quoteId={quoteId} intakeKey={intakeKey} /> : null}
 
       {hasOffers ? (
         <section className="space-y-4">
