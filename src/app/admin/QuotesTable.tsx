@@ -20,6 +20,13 @@ import {
   type CapacityLevel,
 } from "@/server/admin/capacity";
 import { CapacitySummaryPills } from "@/app/admin/components/CapacitySummaryPills";
+import {
+  ActionGroup,
+  ActionGroupSection,
+  ActionPillButton,
+  ActionPillLink,
+  ActionPillMenu,
+} from "@/components/actions/ActionGroup";
 import type {
   AdminThreadNeedsReplyFrom,
   AdminThreadStalenessBucket,
@@ -124,7 +131,7 @@ export default function QuotesTable({
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Bids
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className="w-[16rem] min-w-[16rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Award
           </th>
           <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -337,61 +344,82 @@ export default function QuotesTable({
                   ) : (
                     <p className="text-slate-500">Not awarded</p>
                   )}
-                  {demoSupplierProvidersByQuoteId?.[row.id]?.length ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {demoSupplierProvidersByQuoteId[row.id]!.slice(0, 3).map((provider) => (
-                        <Link
-                          key={provider.providerId}
-                          href={`/admin/quotes/demo/supplier?providerId=${encodeURIComponent(
-                            provider.providerId,
-                          )}&quoteId=${encodeURIComponent(row.id)}`}
-                          className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
-                          title={`Set demo supplier provider: ${provider.label}`}
-                        >
-                          View as {provider.label}
-                        </Link>
-                      ))}
-                    </div>
-                  ) : null}
-                  {demoEnabled ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Link
-                        href={`/customer/quotes/${encodeURIComponent(row.id)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
-                        title="Open the customer quote page in a new tab"
-                      >
-                        View as Customer
-                      </Link>
-                      <Link
-                        href={`/admin/quotes/demo/clear-supplier?quoteId=${encodeURIComponent(
-                          row.id,
-                        )}${
-                          returnToWithAnchor
-                            ? `&returnTo=${encodeURIComponent(returnToWithAnchor)}`
-                            : ""
-                        }`}
-                        className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
-                        title="Clear the demo supplier provider cookie"
-                      >
-                        Clear demo supplier
-                      </Link>
-                      <form action={awardCheapestOfferAction}>
-                        <input type="hidden" name="quoteId" value={row.id} />
-                        <input
-                          type="hidden"
-                          name="returnTo"
-                          value={returnToWithAnchor ?? demoReturnToBase ?? "/admin/quotes"}
-                        />
-                        <button
-                          type="submit"
-                          className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-100 transition hover:border-amber-400 hover:bg-amber-500/15"
-                          title="Award the lowest total price offer"
-                        >
-                          Award cheapest
-                        </button>
-                      </form>
+                  {demoSupplierProvidersByQuoteId?.[row.id]?.length || demoEnabled ? (
+                    <div className="mt-3">
+                      <ActionGroup>
+                        {demoSupplierProvidersByQuoteId?.[row.id]?.length ? (
+                          <ActionGroupSection title="View as">
+                            {demoSupplierProvidersByQuoteId[row.id]!.slice(0, 3).map((provider) => (
+                              <ActionPillLink
+                                key={provider.providerId}
+                                href={`/admin/quotes/demo/supplier?providerId=${encodeURIComponent(
+                                  provider.providerId,
+                                )}&quoteId=${encodeURIComponent(row.id)}`}
+                                title={`Set demo supplier provider: ${provider.label}`}
+                              >
+                                View as {provider.label}
+                              </ActionPillLink>
+                            ))}
+                            {demoSupplierProvidersByQuoteId[row.id]!.length > 3 ? (
+                              <ActionPillMenu
+                                label="More…"
+                                title="More demo supplier providers"
+                                items={demoSupplierProvidersByQuoteId[row.id]!
+                                  .slice(3)
+                                  .map((provider) => ({
+                                    key: provider.providerId,
+                                    label: `View as ${provider.label}`,
+                                    href: `/admin/quotes/demo/supplier?providerId=${encodeURIComponent(
+                                      provider.providerId,
+                                    )}&quoteId=${encodeURIComponent(row.id)}`,
+                                    title: `Set demo supplier provider: ${provider.label}`,
+                                  }))}
+                              />
+                            ) : null}
+                          </ActionGroupSection>
+                        ) : null}
+                        {demoEnabled ? (
+                          <ActionGroupSection title="Demo tools" divider>
+                            <ActionPillLink
+                              href={`/customer/quotes/${encodeURIComponent(row.id)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Open the customer quote page in a new tab"
+                            >
+                              View as Customer
+                            </ActionPillLink>
+                            <ActionPillLink
+                              href={`/admin/quotes/demo/clear-supplier?quoteId=${encodeURIComponent(
+                                row.id,
+                              )}${
+                                returnToWithAnchor
+                                  ? `&returnTo=${encodeURIComponent(returnToWithAnchor)}`
+                                  : ""
+                              }`}
+                              title="Clear the demo supplier provider cookie"
+                            >
+                              Clear demo supplier
+                            </ActionPillLink>
+                            <form action={awardCheapestOfferAction} className="w-full">
+                              <input type="hidden" name="quoteId" value={row.id} />
+                              <input
+                                type="hidden"
+                                name="returnTo"
+                                value={
+                                  returnToWithAnchor ?? demoReturnToBase ?? "/admin/quotes"
+                                }
+                              />
+                              <ActionPillButton
+                                type="submit"
+                                variant="warning"
+                                title="Award the lowest total price offer"
+                              >
+                                Award cheapest
+                              </ActionPillButton>
+                            </form>
+                          </ActionGroupSection>
+                        ) : null}
+                      </ActionGroup>
                     </div>
                   ) : null}
                 </td>
