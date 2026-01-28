@@ -41,6 +41,8 @@ type PublicOffersSectionProps = {
 };
 
 const POLL_INTERVAL_MS = 8000;
+const POLL_FAST_INTERVAL_MS = 2000;
+const POLL_FAST_PHASE_MS = 60 * 1000;
 const POLL_MAX_MS = 10 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(["won", "lost", "cancelled"]);
 
@@ -106,7 +108,7 @@ export function PublicOffersSection({
     if (checkBackLater) return;
 
     const startedAt = Date.now();
-    let interval: ReturnType<typeof setInterval> | null = null;
+    let tickTimeout: ReturnType<typeof setTimeout> | null = null;
     let timeout: ReturnType<typeof setTimeout> | null = null;
 
     const tick = async () => {
@@ -115,7 +117,7 @@ export function PublicOffersSection({
       if (elapsed >= POLL_MAX_MS) {
         stopPollingRef.current = true;
         setCheckBackLater(true);
-        if (interval) clearInterval(interval);
+        if (tickTimeout) clearTimeout(tickTimeout);
         if (timeout) clearTimeout(timeout);
         return;
       }
@@ -139,7 +141,7 @@ export function PublicOffersSection({
           setOffers(Array.isArray(json.offers) ? json.offers : []);
           setCelebrate(true);
           setTimeout(() => setCelebrate(false), 4500);
-          if (interval) clearInterval(interval);
+          if (tickTimeout) clearTimeout(tickTimeout);
           if (timeout) clearTimeout(timeout);
           return;
         }
@@ -148,19 +150,24 @@ export function PublicOffersSection({
       } catch {
         // Fail-soft; try again on next tick.
       }
+
+      // Adaptive polling: start fast, then slow down.
+      if (!stopPollingRef.current) {
+        const intervalMs = elapsed < POLL_FAST_PHASE_MS ? POLL_FAST_INTERVAL_MS : POLL_INTERVAL_MS;
+        tickTimeout = setTimeout(() => void tick(), intervalMs);
+      }
     };
 
-    interval = setInterval(tick, POLL_INTERVAL_MS);
     timeout = setTimeout(() => {
       stopPollingRef.current = true;
       setCheckBackLater(true);
-      if (interval) clearInterval(interval);
+      if (tickTimeout) clearTimeout(tickTimeout);
     }, POLL_MAX_MS);
 
     void tick();
 
     return () => {
-      if (interval) clearInterval(interval);
+      if (tickTimeout) clearTimeout(tickTimeout);
       if (timeout) clearTimeout(timeout);
     };
   }, [checkBackLater, hasOffers, intakeKey, isTerminal, quoteId]);

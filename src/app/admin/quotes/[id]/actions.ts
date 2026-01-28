@@ -72,13 +72,13 @@ import { buildAwardEmail } from "@/server/quotes/awardEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
-import { notifyQuoteSubscribersFirstOfferArrived } from "@/server/rfqs/offerArrivalNotifications";
 import {
   ensureDefaultKickoffTasksForQuote,
   updateKickoffTaskStatusAction,
   type QuoteKickoffTaskStatus,
 } from "@/server/quotes/kickoffTasks";
 import { deriveProviderQuoteMismatch } from "@/lib/provider/quoteMismatch";
+import { writeRfqOffer } from "@/server/rfqs/writeRfqOffer";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -276,48 +276,12 @@ export async function createExternalOfferAction(args: {
   }
 
   try {
-    // Determine whether this is the first offer (used for offer-arrival notifications).
-    let existingOfferCount = 0;
-    try {
-      const { data } = await supabaseServer()
-        .from("rfq_offers")
-        .select("id,status")
-        .eq("rfq_id", quoteId)
-        .returns<Array<{ id: string | null; status: string | null }>>();
-      const rows = Array.isArray(data) ? data : [];
-      existingOfferCount = rows.filter(
-        (row) => (row.status ?? "").trim().toLowerCase() !== "withdrawn",
-      ).length;
-    } catch (error) {
-      console.warn("[admin external offer] offer count lookup skipped", {
-        quoteId,
-        error: serializeActionError(error),
-      });
-    }
-
     const now = new Date().toISOString();
 
-    const offerPayload: Record<string, unknown> = {
-      rfq_id: quoteId,
-      provider_id: null, // external/broker offers are not tied to internal suppliers
-      destination_id: null,
-      currency: "USD",
-      total_price: price,
-      lead_time_days_min: leadTimeDays,
-      lead_time_days_max: leadTimeDays,
-      status: "quoted",
-      received_at: now,
-      ...(notesRaw ? { notes: notesRaw } : {}),
-    };
+    const extraOfferColumns: Record<string, unknown> = {};
 
     // Optional provenance metadata (schema-gated).
     try {
-      const supportsSource = await hasColumns("rfq_offers", ["source_type", "source_name"]);
-      if (supportsSource) {
-        if (sourceTypeRaw) offerPayload.source_type = sourceTypeRaw;
-        if (sourceNameRaw) offerPayload.source_name = sourceNameRaw;
-      }
-
       // Back-compat: older environments used admin_* columns for internal-only metadata.
       const supportsLegacyExternalMeta = await hasColumns("rfq_offers", [
         "admin_source_type",
@@ -325,44 +289,34 @@ export async function createExternalOfferAction(args: {
         "process",
       ]);
       if (supportsLegacyExternalMeta) {
-        if (sourceTypeRaw) offerPayload.admin_source_type = sourceTypeRaw;
-        if (sourceNameRaw) offerPayload.admin_source_name = sourceNameRaw;
-        if (processRaw) offerPayload.process = processRaw;
+        if (sourceTypeRaw) extraOfferColumns.admin_source_type = sourceTypeRaw;
+        if (sourceNameRaw) extraOfferColumns.admin_source_name = sourceNameRaw;
+        if (processRaw) extraOfferColumns.process = processRaw;
       }
     } catch {
       // ignore
     }
 
-    const { data: offerRow, error: offerError } = await supabaseServer()
-      .from("rfq_offers")
-      .insert(offerPayload)
-      .select("id")
-      .single<{ id: string }>();
-
-    if (offerError || !offerRow?.id) {
-      console.error("[admin external offer] offer insert failed", {
-        quoteId,
-        error: serializeSupabaseError(offerError),
-      });
-      return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
-    }
-
-    const offerId = offerRow.id;
-
-    await logOpsEvent({
-      quoteId,
-      eventType: "offer_upserted",
-      payload: {
-        provider_id: null,
-        status: "quoted",
-        offer_id: offerId,
-        source: "admin_external_offer",
-      },
+    const result = await writeRfqOffer({
+      rfqId: quoteId,
+      providerId: null, // external/broker offers are not tied to internal suppliers
+      destinationId: null,
+      currency: "USD",
+      totalPrice: price,
+      leadTimeDaysMin: leadTimeDays,
+      leadTimeDaysMax: leadTimeDays,
+      status: "quoted",
+      receivedAt: now,
+      notes: notesRaw || null,
+      sourceType: sourceTypeRaw || null,
+      sourceName: sourceNameRaw || null,
+      extraOfferColumns,
+      actorSource: "admin_external_offer",
+      deps: { client: supabaseServer() },
     });
 
-    // First offer arrival notification for the public RFQ page opt-in.
-    if (existingOfferCount === 0) {
-      void notifyQuoteSubscribersFirstOfferArrived({ quoteId, offerId });
+    if (!result.ok) {
+      return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
     }
 
     revalidatePath("/admin/quotes");
@@ -372,7 +326,7 @@ export async function createExternalOfferAction(args: {
     revalidatePath(`/customer/quotes/${quoteId}`);
     revalidatePath("/customer/quotes");
 
-    return { ok: true, offerId };
+    return { ok: true, offerId: result.offerId };
   } catch (error) {
     console.error("[admin external offer] action crashed", {
       quoteId,
