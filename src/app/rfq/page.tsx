@@ -4,6 +4,8 @@ import { QuickSpecsPanel } from "./QuickSpecsPanel";
 import { getRfqOffers, isRfqOfferWithdrawn, summarizeRfqOffers } from "@/server/rfqs/offers";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 import { PublicOffersSection } from "./PublicOffersSection";
+import { getServerAuthUser } from "@/server/auth";
+import { getCustomerByUserId } from "@/server/customers";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,13 @@ function normalizeKey(value: string): string {
 function isValidIntakeKey(key: string): boolean {
   return /^[a-f0-9]{16,128}$/.test(key);
 }
+
+type ClaimState =
+  | "anon"
+  | "no_customer_profile"
+  | "can_claim"
+  | "already_saved_to_you"
+  | "already_saved_elsewhere";
 
 export default async function RfqStatusPage({ searchParams }: PageProps) {
   const sp = (await searchParams) ?? {};
@@ -52,7 +61,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
 
   const quoteRes = await supabaseServer()
     .from("quotes")
-    .select("id,upload_id,status,created_at,target_date")
+    .select("id,upload_id,status,created_at,target_date,customer_id")
     .eq("id", quoteId)
     .maybeSingle<{
       id: string;
@@ -60,6 +69,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
       status: string | null;
       created_at: string | null;
       target_date: string | null;
+      customer_id: string | null;
     }>();
 
   const quote = quoteRes.data?.id ? quoteRes.data : null;
@@ -120,6 +130,19 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
     );
   }
 
+  const { user } = await getServerAuthUser({ quiet: true });
+  const viewerCustomer = user ? await getCustomerByUserId(user.id) : null;
+  const viewerCustomerId = viewerCustomer?.id ?? null;
+  const quoteCustomerId = typeof quote.customer_id === "string" ? quote.customer_id : null;
+
+  const claimState: ClaimState = (() => {
+    if (!user) return "anon";
+    if (!viewerCustomerId) return "no_customer_profile";
+    if (!quoteCustomerId) return "can_claim";
+    if (quoteCustomerId === viewerCustomerId) return "already_saved_to_you";
+    return "already_saved_elsewhere";
+  })();
+
   const offers = await getRfqOffers(quote.id);
   const offersSummary = summarizeRfqOffers(offers);
   const offersCount = offersSummary.nonWithdrawn;
@@ -166,6 +189,10 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
             primaryFileName={primaryFileName}
             initialOffersCount={offersCount}
             initialOffers={initialOfferDtos}
+            claimState={claimState}
+            loginNextPath={`/rfq?quote=${encodeURIComponent(quote.id)}&key=${encodeURIComponent(
+              intakeKey,
+            )}`}
           />
 
           <QuickSpecsPanel

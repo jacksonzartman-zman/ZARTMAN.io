@@ -36,6 +36,8 @@ type PublicOffersSectionProps = {
   primaryFileName: string | null;
   initialOffersCount: number;
   initialOffers: OfferCardDto[];
+  claimState: "anon" | "no_customer_profile" | "can_claim" | "already_saved_to_you" | "already_saved_elsewhere";
+  loginNextPath: string;
 };
 
 const POLL_INTERVAL_MS = 8000;
@@ -50,6 +52,8 @@ export function PublicOffersSection({
   primaryFileName,
   initialOffersCount,
   initialOffers,
+  claimState,
+  loginNextPath,
 }: PublicOffersSectionProps) {
   const [offersCount, setOffersCount] = useState<number>(() =>
     Number.isFinite(initialOffersCount) ? initialOffersCount : 0,
@@ -60,6 +64,9 @@ export function PublicOffersSection({
   const [currentNormalizedStatus, setCurrentNormalizedStatus] = useState(normalizedStatus);
   const previousOffersCountRef = useRef(offersCount);
   const stopPollingRef = useRef(false);
+  const [claiming, setClaiming] = useState(false);
+  const [claimOk, setClaimOk] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
 
   const isTerminal = TERMINAL_STATUSES.has((currentNormalizedStatus ?? "").trim().toLowerCase());
   const hasOffers = offersCount > 0;
@@ -219,6 +226,98 @@ export function PublicOffersSection({
             Primary file: <span className="font-semibold text-ink">{primaryFileName}</span>
           </p>
         ) : null}
+
+        <div className="mt-5">
+          {claimOk || claimState === "already_saved_to_you" ? (
+            <div className="rounded-2xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100">
+              Saved to your workspace.{" "}
+              <Link href="/customer" className="font-semibold underline underline-offset-4">
+                Open dashboard
+              </Link>
+            </div>
+          ) : claimState === "can_claim" ? (
+            <div className="flex flex-col gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-ink">Save to my workspace</p>
+                <p className="mt-1 text-xs text-ink-soft">
+                  Claim this RFQ so it shows up in your customer portal.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={claiming}
+                className="inline-flex items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={async () => {
+                  setClaimError(null);
+                  setClaiming(true);
+                  try {
+                    const res = await fetch("/api/rfq/claim", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ quoteId, intakeKey }),
+                    });
+                    const json = (await res.json().catch(() => null)) as
+                      | { ok: true }
+                      | { ok: false; error?: string };
+                    if (!res.ok || !json || json.ok !== true) {
+                      setClaimError(
+                        (json && "error" in json && json.error) || "Couldn’t save this RFQ. Please retry.",
+                      );
+                      return;
+                    }
+                    setClaimOk(true);
+                  } catch {
+                    setClaimError("Couldn’t save this RFQ. Please retry.");
+                  } finally {
+                    setClaiming(false);
+                  }
+                }}
+              >
+                {claiming ? "Saving…" : "Save to my workspace"}
+              </button>
+            </div>
+          ) : claimState === "anon" ? (
+            <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4">
+              <p className="text-sm font-semibold text-ink">Create account to save and track this RFQ</p>
+              <p className="mt-1 text-xs text-ink-soft">
+                Log in to claim this RFQ and track offers in your customer workspace.
+              </p>
+              <div className="mt-3">
+                <Link
+                  href={`/login?next=${encodeURIComponent(loginNextPath)}`}
+                  className="inline-flex items-center justify-center rounded-full border border-slate-800 bg-slate-950/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink transition hover:border-slate-700"
+                >
+                  Log in to save
+                </Link>
+              </div>
+            </div>
+          ) : claimState === "no_customer_profile" ? (
+            <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4">
+              <p className="text-sm font-semibold text-ink">Finish your customer profile to save</p>
+              <p className="mt-1 text-xs text-ink-soft">
+                Your account is signed in, but doesn’t yet have a customer workspace attached.
+              </p>
+              <div className="mt-3">
+                <Link
+                  href="/customer"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-800 bg-slate-950/40 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-ink transition hover:border-slate-700"
+                >
+                  Go to customer portal
+                </Link>
+              </div>
+            </div>
+          ) : claimState === "already_saved_elsewhere" ? (
+            <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4 text-xs text-ink-soft">
+              This RFQ has already been saved to a workspace.
+            </div>
+          ) : null}
+
+          {claimError ? (
+            <p className="mt-2 text-xs font-semibold text-rose-200" role="alert">
+              {claimError}
+            </p>
+          ) : null}
+        </div>
 
         <ol className="mt-5 grid gap-3 sm:grid-cols-3">
           <li className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4">
