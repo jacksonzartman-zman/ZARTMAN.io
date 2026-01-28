@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { DEFAULT_QUOTE_STATUS } from "@/server/quotes/status";
 import {
@@ -78,10 +78,40 @@ function buildIntakeKey(): string {
   return randomBytes(16).toString("hex");
 }
 
-function buildStorageKey(args: { quoteId: string; fileName: string }): string {
-  const timestamp = Date.now();
-  const random = randomBytes(6).toString("hex");
-  return `uploads/intake/public/${args.quoteId}/${timestamp}-${random}-${args.fileName}`;
+function buildStoragePath(args: { uploadId: string; fileName: string }): string {
+  return `uploads/intake/${args.uploadId}/${args.fileName}`;
+}
+
+function addNumericSuffix(fileName: string, suffix: number): string {
+  if (!fileName) return fileName;
+  const dotIdx = fileName.lastIndexOf(".");
+  if (dotIdx > 0 && dotIdx < fileName.length - 1) {
+    const base = fileName.slice(0, dotIdx);
+    const ext = fileName.slice(dotIdx);
+    return `${base}-${suffix}${ext}`;
+  }
+  return `${fileName}-${suffix}`;
+}
+
+function dedupeSanitizedFileNames(fileNames: string[]): string[] {
+  const seen = new Map<string, number>();
+  return fileNames.map((name) => {
+    const key = name.toLowerCase();
+    const prev = seen.get(key) ?? 0;
+    const next = prev + 1;
+    seen.set(key, next);
+    if (next === 1) return name;
+    return addNumericSuffix(name, next);
+  });
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code =
+    "code" in error && typeof (error as { code?: unknown }).code === "string"
+      ? ((error as { code?: string }).code as string)
+      : null;
+  return code === "23505";
 }
 
 function errorResponse(message: string, status = 400) {
@@ -114,71 +144,137 @@ export async function POST(req: NextRequest) {
     }
 
     let intakeKey = buildIntakeKey();
+    const uploadId = randomUUID();
 
-    // Create an upload row first so we have an immutable reference + key for public tracking.
+    // Build deterministic storage paths for each file (required by prod schema).
     const primary = files[0]!;
     const primaryExtension = getFileExtension(primary.name);
     const primaryMimeType = detectMimeType(primary, primaryExtension);
 
-    const uploadInsert = await supabaseServer()
+    const perFileSanitized = files.map((file) => {
+      const extension = getFileExtension(file.name);
+      return sanitizeFileName(file.name, extension);
+    });
+    const dedupedSanitized = dedupeSanitizedFileNames(perFileSanitized);
+
+    // Upload all files to storage first. If storage fails, do not insert an uploads row.
+    const supabase = supabaseServer();
+    const uploadedPaths: string[] = [];
+    const targets: Array<{
+      bucketId: string;
+      storagePath: string;
+      originalFileName: string;
+      mimeType: string;
+      sizeBytes: number;
+    }> = [];
+
+    for (const [index, file] of files.entries()) {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const extension = getFileExtension(file.name);
+      const mimeType = detectMimeType(file, extension);
+      const safeName = dedupedSanitized[index] ?? sanitizeFileName(file.name, extension);
+      const storagePath = buildStoragePath({ uploadId, fileName: safeName });
+
+      const { error: storageError } = await supabase.storage.from(CAD_BUCKET).upload(
+        storagePath,
+        buffer,
+        {
+          cacheControl: "3600",
+          contentType: mimeType,
+          upsert: false,
+        },
+      );
+
+      if (storageError) {
+        console.error("[public intake] storage upload failed", {
+          uploadId,
+          fileName: file.name,
+          error: storageError,
+        });
+        try {
+          if (uploadedPaths.length > 0) {
+            await supabase.storage.from(CAD_BUCKET).remove(uploadedPaths);
+          }
+        } catch {
+          // best-effort cleanup
+        }
+        return errorResponse("Upload failed. Please try again.", 500);
+      }
+
+      uploadedPaths.push(storagePath);
+      console.log("[public intake] storage upload ok", { path: storagePath });
+
+      targets.push({
+        bucketId: CAD_BUCKET,
+        storagePath,
+        originalFileName: file.name,
+        mimeType,
+        sizeBytes: file.size,
+      });
+    }
+
+    const primaryTarget = targets[0];
+    const primaryPath = primaryTarget?.storagePath ?? buildStoragePath({
+      uploadId,
+      fileName: sanitizeFileName(primary.name, primaryExtension),
+    });
+
+    const insertPayloadBase = {
+      id: uploadId,
+      file_name: primary.name,
+      file_path: primaryPath,
+      mime_type: primaryMimeType,
+      status: DEFAULT_QUOTE_STATUS,
+      name: "Anonymous",
+      email: null,
+      company: null,
+      notes: null,
+      first_name: null,
+      last_name: null,
+      phone: null,
+      manufacturing_process: null,
+      quantity: null,
+      shipping_postal_code: null,
+      export_restriction: "Not applicable / None",
+      rfq_reason: null,
+      itar_acknowledged: true,
+      terms_accepted: true,
+      intake_idempotency_key: intakeKey,
+    };
+
+    let uploadInsert = await supabase
       .from("uploads")
-      .insert({
-        file_name: primary.name,
-        file_path: null,
-        mime_type: primaryMimeType,
-        status: DEFAULT_QUOTE_STATUS,
-        name: "Anonymous",
-        email: null,
-        company: null,
-        notes: null,
-        first_name: null,
-        last_name: null,
-        phone: null,
-        manufacturing_process: null,
-        quantity: null,
-        shipping_postal_code: null,
-        export_restriction: "Not applicable / None",
-        rfq_reason: null,
-        itar_acknowledged: true,
-        terms_accepted: true,
-        intake_idempotency_key: intakeKey,
-      })
+      .insert(insertPayloadBase)
       .select("id")
       .single<{ id: string }>();
 
     if (uploadInsert.error || !uploadInsert.data?.id) {
-      // Retry once if the key collided (unique index).
-      intakeKey = buildIntakeKey();
-      const retry = await supabaseServer()
-        .from("uploads")
-        .insert({
-          file_name: primary.name,
-          file_path: null,
-          mime_type: primaryMimeType,
-          status: DEFAULT_QUOTE_STATUS,
-          name: "Anonymous",
-          email: null,
-          company: null,
-          notes: null,
-          export_restriction: "Not applicable / None",
-          itar_acknowledged: true,
-          terms_accepted: true,
-          intake_idempotency_key: intakeKey,
-        })
-        .select("id")
-        .single<{ id: string }>();
-
-      if (retry.error || !retry.data?.id) {
-        console.error("[public intake] upload insert failed", uploadInsert.error, retry.error);
-        return errorResponse("We couldn’t start your RFQ. Please try again.", 500);
+      // Retry once if the idempotency key collided (unique index).
+      if (uploadInsert.error && isUniqueViolation(uploadInsert.error)) {
+        intakeKey = buildIntakeKey();
+        uploadInsert = await supabase
+          .from("uploads")
+          .insert({ ...insertPayloadBase, intake_idempotency_key: intakeKey })
+          .select("id")
+          .single<{ id: string }>();
       }
 
-      uploadInsert.data = retry.data;
+      if (uploadInsert.error || !uploadInsert.data?.id) {
+        console.error("[public intake] upload insert failed", uploadInsert.error);
+        try {
+          if (uploadedPaths.length > 0) {
+            await supabase.storage.from(CAD_BUCKET).remove(uploadedPaths);
+          }
+        } catch {
+          // best-effort cleanup
+        }
+        return errorResponse("We couldn’t start your RFQ. Please try again.", 500);
+      }
     }
 
-    const uploadId = uploadInsert.data.id;
+    console.log("[public intake] uploads insert ok", { uploadId, path: primaryPath });
 
-    const quoteInsert = await supabaseServer()
+    const quoteInsert = await supabase
       .from("quotes")
       .insert({
         upload_id: uploadId,
@@ -195,61 +291,29 @@ export async function POST(req: NextRequest) {
 
     if (quoteInsert.error || !quoteInsert.data?.id) {
       console.error("[public intake] quote insert failed", quoteInsert.error);
+      // Best-effort cleanup: remove storage + upload row so we don't strand orphaned objects.
+      try {
+        if (uploadedPaths.length > 0) {
+          await supabase.storage.from(CAD_BUCKET).remove(uploadedPaths);
+        }
+      } catch {
+        // best-effort cleanup
+      }
+      try {
+        await supabase.from("uploads").delete().eq("id", uploadId);
+      } catch {
+        // best-effort cleanup
+      }
       return errorResponse("We couldn’t start your RFQ. Please try again.", 500);
     }
 
     const quoteId = quoteInsert.data.id;
 
-    // Upload all files to storage and register canonical file metadata.
-    const targets: Array<{
-      bucketId: string;
-      storagePath: string;
-      originalFileName: string;
-      mimeType: string;
-      sizeBytes: number;
-    }> = [];
-
-    for (const file of files) {
-      const buffer = Buffer.from(await file.arrayBuffer());
-      const extension = getFileExtension(file.name);
-      const mimeType = detectMimeType(file, extension);
-      const safeName = sanitizeFileName(file.name, extension);
-      const storagePath = buildStorageKey({ quoteId, fileName: safeName });
-
-      const { error: storageError } = await supabaseServer().storage.from(CAD_BUCKET).upload(
-        storagePath,
-        buffer,
-        {
-          cacheControl: "3600",
-          contentType: mimeType,
-          upsert: false,
-        },
-      );
-
-      if (storageError) {
-        console.error("[public intake] storage upload failed", {
-          quoteId,
-          uploadId,
-          fileName: file.name,
-          error: storageError,
-        });
-        return errorResponse("Upload failed. Please try again.", 500);
-      }
-
-      targets.push({
-        bucketId: CAD_BUCKET,
-        storagePath,
-        originalFileName: file.name,
-        mimeType,
-        sizeBytes: file.size,
-      });
-    }
-
     const registerResult = await registerUploadedObjectsForExistingUpload({
       quoteId,
       uploadId,
       targets,
-      supabase: supabaseServer(),
+      supabase,
     });
 
     if (!registerResult.ok) {
@@ -260,12 +324,10 @@ export async function POST(req: NextRequest) {
       return errorResponse("We couldn’t start processing your files. Please try again.", 500);
     }
 
-    const primaryTarget = targets[0];
-    await supabaseServer()
+    await supabase
       .from("uploads")
       .update({
         quote_id: quoteId,
-        file_path: primaryTarget ? `${CAD_BUCKET}/${primaryTarget.storagePath}` : null,
         status: DEFAULT_QUOTE_STATUS,
       })
       .eq("id", uploadId);
