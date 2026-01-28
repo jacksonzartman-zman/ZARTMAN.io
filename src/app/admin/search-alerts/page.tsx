@@ -246,7 +246,7 @@ async function loadOfferCountsByQuoteId(
   if (!offersResult.ok) {
     return map;
   }
-  const offersByQuoteId = new Map<string, Array<{ status: unknown; received_at: string; created_at: string }>>();
+  const offersByQuoteId = new Map<string, typeof offersResult.offers>();
   for (const offer of offersResult.offers) {
     const quoteId = typeof offer.rfq_id === "string" ? offer.rfq_id.trim() : "";
     if (!quoteId) continue;
