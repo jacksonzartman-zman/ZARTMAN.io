@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { ADMIN_COOKIE_NAME } from "@/app/admin/constants";
 import { getServerAuthUser } from "@/server/auth";
+import { debugOnce } from "@/server/db/schemaErrors";
+import { shouldLogAdminDebug } from "@/server/admin/adminDebug";
 
 const ALLOWED_ADMIN_USER_IDS = new Set([
   "5c7018e4-7860-40ec-abe6-8b83d3177733", // jackson
@@ -21,9 +23,23 @@ function resolveVercelEnv(): string {
   return process.env.VERCEL_ENV ?? "unknown";
 }
 
+function resolveSafeNextAdminPath(requestUrl: URL): string | null {
+  const next = requestUrl.searchParams.get("next");
+  if (typeof next !== "string") return null;
+  const trimmed = next.trim();
+  // Safe-deny open redirects.
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return null;
+  // Only allow navigating within /admin/* after unlocking.
+  if (!trimmed.startsWith("/admin")) return null;
+  return trimmed;
+}
+
 function loginRedirect(request: NextRequest) {
   const url = new URL("/login", request.url);
-  url.searchParams.set("next", "/admin/unlock");
+  // Preserve the original requested unlock URL (including ?next=) so /login can
+  // send the user back to the correct destination post-auth.
+  const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  url.searchParams.set("next", nextPath);
   return NextResponse.redirect(url);
 }
 
@@ -40,12 +56,16 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Not Found", { status: 404 });
   }
 
+  const requestUrl = new URL(request.url);
+  const nextPath = resolveSafeNextAdminPath(requestUrl);
+
   const { user } = await getServerAuthUser({ quiet: true });
   if (!user) {
     console.info("[admin] /admin/unlock: anonymous -> redirect to /login", {
       userId: null,
       hasAdminCookie: false,
       vercelEnv,
+      next: nextPath,
       redirectTarget: "/login?next=/admin/unlock",
     });
     return loginRedirect(request);
@@ -54,13 +74,15 @@ export async function GET(request: NextRequest) {
   const cookieStore = await cookies();
   const hasAdminCookie = cookieStore.get(ADMIN_COOKIE_NAME)?.value === "1";
   if (hasAdminCookie) {
-    console.info("[admin] /admin/unlock: already unlocked -> /admin/quotes", {
+    const redirectTarget = nextPath ?? "/admin/quotes";
+    console.info("[admin] /admin/unlock: already unlocked -> redirect", {
       userId: user.id,
       hasAdminCookie: true,
       vercelEnv,
-      redirectTarget: "/admin/quotes",
+      next: nextPath,
+      redirectTarget,
     });
-    return NextResponse.redirect(new URL("/admin/quotes", request.url));
+    return NextResponse.redirect(new URL(redirectTarget, request.url));
   }
 
   const allowlisted = isAllowlisted({ id: user.id, email: user.email });
@@ -70,11 +92,16 @@ export async function GET(request: NextRequest) {
     vercelEnv,
     redirectTarget: null,
     allowlisted,
+    next: nextPath,
   });
+
+  const formAction = nextPath
+    ? `/admin/unlock?next=${encodeURIComponent(nextPath)}`
+    : "/admin/unlock";
 
   const body = allowlisted
     ? `
-      <form method="post" action="/admin/unlock" style="margin-top: 16px">
+      <form method="post" action="${formAction}" style="margin-top: 16px">
         <button type="submit" style="padding: 10px 14px; border-radius: 10px; background: #10b981; color: #052e16; font-weight: 700; border: none; cursor: pointer;">
           Unlock admin for this environment
         </button>
@@ -140,15 +167,34 @@ export async function POST(request: NextRequest) {
     return htmlResponse("Not authorized.", 403);
   }
 
-  const redirectTarget = "/admin/quotes";
+  const nextPath = resolveSafeNextAdminPath(new URL(request.url));
+  const redirectTarget = nextPath ?? "/admin/quotes";
   const res = NextResponse.redirect(new URL(redirectTarget, request.url));
+
+  const secure = request.nextUrl.protocol === "https:";
+  const maxAge = 60 * 60 * 8; // 8 hours
   res.cookies.set(ADMIN_COOKIE_NAME, "1", {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure,
     path: "/",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge,
   });
+
+  if (shouldLogAdminDebug()) {
+    debugOnce(
+      `admin_unlock:set_cookie:${ADMIN_COOKIE_NAME}:${secure}:${maxAge}`,
+      "[admin unlock] set admin cookie with",
+      {
+        name: ADMIN_COOKIE_NAME,
+        httpOnly: true,
+        sameSite: "lax",
+        secure,
+        path: "/",
+        maxAge,
+      },
+    );
+  }
 
   console.info("[admin] /admin/unlock POST: unlocked", {
     userId: user.id,
