@@ -704,7 +704,7 @@ export async function seedDemoSearchRequest(
 ): Promise<SeedResult> {
   const gitSha = process.env.VERCEL_GIT_COMMIT_SHA || "unknown";
   const vercelEnv = process.env.VERCEL_ENV || "unknown";
-  console.error(
+  console.info(
     `[demo seed] handler start fn=seedDemoSearchRequest gitSha=${gitSha} vercelEnv=${vercelEnv}`,
   );
 
@@ -754,7 +754,7 @@ export async function seedDemoSearchRequest(
     const uploadId = created.uploadId;
     const quoteId = created.quoteId;
 
-    console.log("[demo seed] quote inserted", { quoteId, uploadId });
+    console.info("[demo seed] quote inserted", { quoteId, uploadId });
 
     // From here on out, demo seed must be fail-soft: never throw, never return ok:false.
     const optional = overrides?.optionalSteps ?? {};
