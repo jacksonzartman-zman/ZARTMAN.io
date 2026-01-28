@@ -99,6 +99,7 @@ import { canSupplierEmailCustomer, isCustomerEmailBridgeEnabled } from "@/server
 import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 import { isPortalEmailSendEnabledFlag } from "@/server/quotes/emailOpsFlags";
 import type { KickoffTaskRow } from "@/components/KickoffTasksChecklist";
+import { getDemoSupplierProviderIdFromCookie } from "@/server/demo/demoSupplierProvider";
 
 export const dynamic = "force-dynamic";
 
@@ -149,15 +150,18 @@ export default async function SupplierQuoteDetailPage({
       />
     );
   }
+  const demoProviderId = await getDemoSupplierProviderIdFromCookie();
   const supplierProviderId =
-    typeof (profile.supplier as { provider_id?: string | null } | null)?.provider_id === "string"
+    demoProviderId ??
+    (typeof (profile.supplier as { provider_id?: string | null } | null)?.provider_id === "string"
       ? (profile.supplier as any).provider_id.trim()
-      : null;
+      : null);
 
   const accessResult = await assertSupplierQuoteAccess({
     quoteId,
     supplierId: profile.supplier.id,
     supplierUserEmail: user.email ?? null,
+    supplierProviderId,
   });
 
   if (!accessResult.ok) {
@@ -216,16 +220,17 @@ export default async function SupplierQuoteDetailPage({
     Boolean(supplierProviderId) &&
     typeof workspaceData.award?.provider_id === "string" &&
     workspaceData.award.provider_id.trim() === supplierProviderId;
-  const awardedToSupplier =
-    awardedToSupplierViaOfferAward ||
-    isKickoffReadyForSupplier({
-      quote: {
-        awarded_supplier_id: workspaceData.quote.awarded_supplier_id ?? null,
-        awarded_at: workspaceData.quote.awarded_at ?? null,
-        awarded_bid_id: workspaceData.quote.awarded_bid_id ?? null,
-      },
-      supplierId: profile.supplier.id,
-    });
+  const awardedToSupplier = demoProviderId
+    ? awardedToSupplierViaOfferAward
+    : awardedToSupplierViaOfferAward ||
+      isKickoffReadyForSupplier({
+        quote: {
+          awarded_supplier_id: workspaceData.quote.awarded_supplier_id ?? null,
+          awarded_at: workspaceData.quote.awarded_at ?? null,
+          awarded_bid_id: workspaceData.quote.awarded_bid_id ?? null,
+        },
+        supplierId: profile.supplier.id,
+      });
   const isWinningSupplier = awardedToSupplier;
   const outboundStatus = getEmailOutboundStatus();
   const portalEmailEnvEnabled = isPortalEmailSendEnabledFlag();

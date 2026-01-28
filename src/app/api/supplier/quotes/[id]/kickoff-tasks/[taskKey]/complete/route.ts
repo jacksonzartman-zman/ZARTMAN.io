@@ -12,6 +12,7 @@ import {
   serializeSupabaseError,
 } from "@/server/admin/logging";
 import { schemaGate } from "@/server/db/schemaContract";
+import { getDemoSupplierProviderIdFromCookie } from "@/server/demo/demoSupplierProvider";
 
 const LOG_PREFIX = "[supplier kickoff tasks api]";
 const SUPPLIER_KICKOFF_TASKS_TABLE_LEGACY = "quote_kickoff_tasks";
@@ -68,6 +69,8 @@ export async function POST(
       "string"
         ? (profile?.supplier as any).provider_id.trim()
         : null;
+    const demoProviderId = await getDemoSupplierProviderIdFromCookie();
+    const effectiveProviderId = demoProviderId ?? supplierProviderId;
 
     if (!isUuidLike(supplierId)) {
       return NextResponse.json(
@@ -80,6 +83,7 @@ export async function POST(
       quoteId,
       supplierId,
       supplierUserEmail: user.email ?? null,
+      supplierProviderId: effectiveProviderId,
     });
     if (!access.ok) {
       return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
@@ -106,9 +110,37 @@ export async function POST(
       typeof quoteRow?.awarded_supplier_id === "string"
         ? quoteRow.awarded_supplier_id.trim()
         : "";
-    if (!awardedSupplierId || awardedSupplierId !== supplierId) {
+    if (demoProviderId) {
+      // Demo-only: winner is determined by `rfq_awards.provider_id === cookieProviderId`.
+      const rfqAwardsReady = await schemaGate({
+        enabled: true,
+        relation: "rfq_awards",
+        requiredColumns: ["rfq_id", "provider_id"],
+        warnPrefix: LOG_PREFIX,
+        warnKey: "supplier_kickoff_api:rfq_awards_schema",
+      });
+      if (!rfqAwardsReady) {
+        return NextResponse.json(
+          { ok: false, error: "not_awarded_supplier" },
+          { status: 403 },
+        );
+      }
+      const { data: awardRow } = await supabaseServer()
+        .from("rfq_awards")
+        .select("provider_id")
+        .eq("rfq_id", quoteId)
+        .maybeSingle<{ provider_id: string | null }>();
+      const awardedProviderId =
+        typeof awardRow?.provider_id === "string" ? awardRow.provider_id.trim() : "";
+      if (!awardedProviderId || awardedProviderId !== demoProviderId) {
+        return NextResponse.json(
+          { ok: false, error: "not_awarded_supplier" },
+          { status: 403 },
+        );
+      }
+    } else if (!awardedSupplierId || awardedSupplierId !== supplierId) {
       // Offer-award fallback: some environments award via `rfq_awards.provider_id` only.
-      if (supplierProviderId) {
+      if (effectiveProviderId) {
         const rfqAwardsReady = await schemaGate({
           enabled: true,
           relation: "rfq_awards",
@@ -124,7 +156,7 @@ export async function POST(
             .maybeSingle<{ provider_id: string | null }>();
           const awardedProviderId =
             typeof awardRow?.provider_id === "string" ? awardRow.provider_id.trim() : "";
-          if (!awardedProviderId || awardedProviderId !== supplierProviderId) {
+          if (!awardedProviderId || awardedProviderId !== effectiveProviderId) {
             return NextResponse.json(
               { ok: false, error: "not_awarded_supplier" },
               { status: 403 },

@@ -17,6 +17,7 @@ import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMess
 import { createAuthClient, getServerAuthUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { assertSupplierQuoteAccess } from "@/server/quotes/access";
+import { getDemoSupplierProviderIdFromCookie } from "@/server/demo/demoSupplierProvider";
 import type { SupplierFeedbackCategory } from "@/server/quotes/rfqQualitySignals";
 import {
   handleMissingSupabaseRelation,
@@ -175,10 +176,16 @@ export async function saveSupplierBidDraftAction(
     return { ok: false, error: "Supplier profile not found." };
   }
 
+  const supplierProviderId =
+    (await getDemoSupplierProviderIdFromCookie()) ??
+    (typeof (profile?.supplier as { provider_id?: string | null } | null)?.provider_id === "string"
+      ? (profile?.supplier as any).provider_id.trim()
+      : null);
   const access = await assertSupplierQuoteAccess({
     quoteId: normalizedQuoteId,
     supplierId,
     supplierUserEmail: user.email ?? null,
+    supplierProviderId,
   });
   if (!access.ok) {
     return { ok: false, error: "Not invited to this search request." };
@@ -213,10 +220,16 @@ export async function ensureCadMetricsForSupplierQuoteAction(
   const supplierId = profile?.supplier?.id ?? null;
   if (!supplierId) return { ok: false, error: "Supplier profile not found." };
 
+  const supplierProviderId =
+    (await getDemoSupplierProviderIdFromCookie()) ??
+    (typeof (profile?.supplier as { provider_id?: string | null } | null)?.provider_id === "string"
+      ? (profile?.supplier as any).provider_id.trim()
+      : null);
   const access = await assertSupplierQuoteAccess({
     quoteId: normalizedQuoteId,
     supplierId,
     supplierUserEmail: user.email ?? null,
+    supplierProviderId,
   });
   if (!access.ok) return { ok: false, error: "Not invited to this search request." };
 
@@ -312,10 +325,16 @@ export async function getUploadTargetsForSupplierQuote(
     return { status: "error", message: "Supplier profile not found." };
   }
 
+  const supplierProviderId =
+    (await getDemoSupplierProviderIdFromCookie()) ??
+    (typeof (profile?.supplier as { provider_id?: string | null } | null)?.provider_id === "string"
+      ? (profile?.supplier as any).provider_id.trim()
+      : null);
   const access = await assertSupplierQuoteAccess({
     quoteId: normalizedQuoteId,
     supplierId,
     supplierUserEmail: user.email ?? null,
+    supplierProviderId,
   });
   if (!access.ok) {
     return { status: "error", message: "Not invited to this search request." };
@@ -378,10 +397,16 @@ export async function registerUploadedFilesForSupplierQuote(
     return { status: "error", message: "Supplier profile not found." };
   }
 
+  const supplierProviderId =
+    (await getDemoSupplierProviderIdFromCookie()) ??
+    (typeof (profile?.supplier as { provider_id?: string | null } | null)?.provider_id === "string"
+      ? (profile?.supplier as any).provider_id.trim()
+      : null);
   const access = await assertSupplierQuoteAccess({
     quoteId: normalizedQuoteId,
     supplierId,
     supplierUserEmail: user.email ?? null,
+    supplierProviderId,
   });
   if (!access.ok) {
     return { status: "error", message: "Not invited to this search request." };
@@ -448,10 +473,16 @@ export async function supplierDeclineRfqWithFeedbackAction(
     return { ok: false, error: "Supplier profile not found." };
   }
 
+  const supplierProviderId =
+    (await getDemoSupplierProviderIdFromCookie()) ??
+    (typeof (profile?.supplier as { provider_id?: string | null } | null)?.provider_id === "string"
+      ? (profile?.supplier as any).provider_id.trim()
+      : null);
   const access = await assertSupplierQuoteAccess({
     quoteId: normalizedQuoteId,
     supplierId,
     supplierUserEmail: user.email ?? null,
+    supplierProviderId,
   });
   if (!access.ok) {
     return { ok: false, error: "Not invited to this search request." };

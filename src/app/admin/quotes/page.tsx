@@ -61,6 +61,7 @@ import {
 } from "@/server/quotes/messageState";
 import { isDemoModeEnabled } from "@/server/demo/demoMode";
 import { createDemoSearchRequestAction } from "./demoActions";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export const dynamic = "force-dynamic";
 
@@ -118,12 +119,33 @@ export default async function AdminQuotesPage({
 
   const rfqAwardsByQuoteId =
     quoteIdsOnPage.length > 0 ? await loadRfqAwardsByQuoteId(quoteIdsOnPage) : new Map();
+  const demoOfferProviderIdsByQuoteId =
+    demoEnabled && quoteIdsOnPage.length > 0
+      ? await loadOfferProviderIdsByQuoteId(quoteIdsOnPage)
+      : new Map<string, string[]>();
+  const providerIdsToName = new Set<string>();
+  for (const award of rfqAwardsByQuoteId.values()) {
+    if (award?.provider_id) providerIdsToName.add(award.provider_id);
+  }
+  for (const providerIds of demoOfferProviderIdsByQuoteId.values()) {
+    for (const providerId of providerIds) {
+      if (providerId) providerIdsToName.add(providerId);
+    }
+  }
   const providerNameById =
-    rfqAwardsByQuoteId.size > 0
-      ? await loadProviderNameMapByIds(
-          Array.from(new Set(Array.from(rfqAwardsByQuoteId.values()).map((a) => a.provider_id))),
-        )
-      : new Map();
+    providerIdsToName.size > 0
+      ? await loadProviderNameMapByIds(Array.from(providerIdsToName))
+      : new Map<string, string>();
+  const demoSupplierProvidersByQuoteId: Record<string, Array<{ providerId: string; label: string }>> =
+    {};
+  if (demoEnabled && demoOfferProviderIdsByQuoteId.size > 0) {
+    for (const [quoteId, providerIds] of demoOfferProviderIdsByQuoteId.entries()) {
+      demoSupplierProvidersByQuoteId[quoteId] = providerIds.slice(0, 3).map((providerId) => ({
+        providerId,
+        label: providerNameById.get(providerId) ?? `Provider ${providerId.slice(0, 6)}`,
+      }));
+    }
+  }
   const emptyThreadSlaByQuoteId: Record<string, AdminThreadSla> = {};
   const emptyPartsCoverageByQuoteId = new Map<string, QuotePartsCoverageSignal>();
   const emptyMessageRollupsByQuoteId: Record<string, QuoteMessageRollup> = {};
@@ -384,6 +406,9 @@ export default async function AdminQuotesPage({
             totalCount={effectiveTotalCount}
             currentView={currentView as AdminQuotesView}
             searchTerm={normalizedSearch}
+            demoSupplierProvidersByQuoteId={
+              demoEnabled ? demoSupplierProvidersByQuoteId : undefined
+            }
           />
           <TablePaginationControls
             basePath="/admin/quotes"
@@ -398,6 +423,70 @@ export default async function AdminQuotesPage({
       </div>
     </AdminDashboardShell>
   );
+}
+
+async function loadOfferProviderIdsByQuoteId(
+  quoteIds: string[],
+): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  const ids = Array.from(
+    new Set(
+      (quoteIds ?? [])
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+  if (ids.length === 0) return map;
+
+  const schemaReady = await schemaGate({
+    enabled: true,
+    relation: "rfq_offers",
+    requiredColumns: ["rfq_id", "provider_id"],
+    warnPrefix: "[admin quotes demo]",
+    warnKey: "admin_quotes_demo:rfq_offers_schema",
+  });
+  if (!schemaReady) return map;
+
+  try {
+    const { data, error } = await supabaseServer()
+      .from("rfq_offers")
+      .select("rfq_id,provider_id")
+      .in("rfq_id", ids)
+      .returns<Array<{ rfq_id: string | null; provider_id: string | null }>>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return map;
+      console.warn("[admin quotes demo] rfq_offers query failed", {
+        quoteIdsCount: ids.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return map;
+    }
+
+    for (const row of data ?? []) {
+      const rfqId = typeof row?.rfq_id === "string" ? row.rfq_id.trim() : "";
+      const providerId = typeof row?.provider_id === "string" ? row.provider_id.trim() : "";
+      if (!rfqId || !providerId) continue;
+      const existing = map.get(rfqId) ?? [];
+      if (!existing.includes(providerId)) {
+        existing.push(providerId);
+      }
+      map.set(rfqId, existing);
+    }
+
+    for (const [rfqId, providerIds] of map.entries()) {
+      providerIds.sort((a, b) => a.localeCompare(b));
+      map.set(rfqId, providerIds.slice(0, 3));
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return map;
+    console.warn("[admin quotes demo] rfq_offers query crashed", {
+      quoteIdsCount: ids.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
 }
 
 function buildInboxAggregate(row: {

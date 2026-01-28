@@ -3,6 +3,7 @@ import {
   isMissingTableOrColumnError,
   serializeSupabaseError,
 } from "@/server/admin/logging";
+import { schemaGate } from "@/server/db/schemaContract";
 
 export type SupplierQuoteAccessDeniedReason =
   | "no_access"
@@ -35,10 +36,12 @@ export async function assertSupplierQuoteAccess(args: {
   quoteId: string;
   supplierId: string | null | undefined;
   supplierUserEmail?: string | null | undefined;
+  supplierProviderId?: string | null | undefined;
 }): Promise<SupplierQuoteAccessResult> {
   const quoteId = normalizeId(args.quoteId);
   const supplierId = normalizeId(args.supplierId);
   const supplierUserEmail = normalizeEmail(args.supplierUserEmail);
+  const supplierProviderId = normalizeId(args.supplierProviderId);
 
   if (!supplierId) {
     return { ok: false, reason: "profile_missing" };
@@ -48,7 +51,7 @@ export async function assertSupplierQuoteAccess(args: {
   }
 
   try {
-    const [bidResult, quoteResult, inviteResult] = await Promise.all([
+    const [bidResult, quoteResult, inviteResult, rfqAwardResult] = await Promise.all([
       supabaseServer()
         .from("supplier_bids")
         .select("id")
@@ -69,6 +72,26 @@ export async function assertSupplierQuoteAccess(args: {
         .eq("quote_id", quoteId)
         .eq("supplier_id", supplierId)
         .limit(1),
+      supplierProviderId
+        ? (async () => {
+            const rfqAwardsReady = await schemaGate({
+              enabled: true,
+              relation: "rfq_awards",
+              requiredColumns: ["rfq_id", "provider_id"],
+              warnPrefix: "[supplier access]",
+              warnKey: "supplier_access:rfq_awards_schema",
+            });
+            if (!rfqAwardsReady) {
+              return { data: null, error: null } as const;
+            }
+            const { data, error } = await supabaseServer()
+              .from("rfq_awards")
+              .select("provider_id")
+              .eq("rfq_id", quoteId)
+              .maybeSingle<{ provider_id: string | null }>();
+            return { data: data ?? null, error: error ?? null } as const;
+          })()
+        : Promise.resolve({ data: null, error: null } as const),
     ]);
 
     if (bidResult.error) {
@@ -96,6 +119,12 @@ export async function assertSupplierQuoteAccess(args: {
     const hasBid = Array.isArray(bidResult.data) && bidResult.data.length > 0;
     const awardedSupplierId = normalizeId(quoteResult.data?.awarded_supplier_id);
     const awarded = Boolean(awardedSupplierId && awardedSupplierId === supplierId);
+    const awardedByProvider = (() => {
+      if (!supplierProviderId) return false;
+      if (rfqAwardResult.error) return false;
+      const awardProviderId = normalizeId(rfqAwardResult.data?.provider_id);
+      return Boolean(awardProviderId && awardProviderId === supplierProviderId);
+    })();
 
     const inviteSchemaMissing = Boolean(
       inviteResult.error && isMissingTableOrColumnError(inviteResult.error),
@@ -114,7 +143,7 @@ export async function assertSupplierQuoteAccess(args: {
         assignedSupplierEmail === supplierUserEmail,
     );
 
-    if (awarded) {
+    if (awarded || awardedByProvider) {
       return { ok: true, reason: "awarded" };
     }
 
@@ -137,7 +166,7 @@ export async function assertSupplierQuoteAccess(args: {
         reason: "unknown",
         error: serialized ?? inviteResult.error,
         debug: {
-          awarded,
+          awarded: awarded || awardedByProvider,
           has_bid: hasBid,
           has_invite: false,
           assigned_email_match: assignedEmailMatch,
@@ -149,7 +178,7 @@ export async function assertSupplierQuoteAccess(args: {
       ok: false,
       reason: "no_access",
       debug: {
-        awarded,
+        awarded: awarded || awardedByProvider,
         has_bid: hasBid,
         has_invite: false,
         assigned_email_match: assignedEmailMatch,
