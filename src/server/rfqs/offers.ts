@@ -6,7 +6,9 @@ import {
 } from "@/server/admin/logging";
 import type { ProviderSource, ProviderVerificationStatus } from "@/server/providers";
 
-export const RFQ_OFFER_STATUSES = ["received", "revised", "withdrawn"] as const;
+// Note: `quoted` appears in some schema variants / backfills.
+// Treat it as a returned (non-withdrawn) offer for UI + counts.
+export const RFQ_OFFER_STATUSES = ["received", "revised", "quoted", "withdrawn"] as const;
 
 export type RfqOfferStatus = (typeof RFQ_OFFER_STATUSES)[number];
 
@@ -16,7 +18,49 @@ export function isRfqOfferWithdrawn(status: unknown): boolean {
 
 export function isRfqOfferReturned(status: unknown): boolean {
   const normalized = parseRfqOfferStatus(status);
-  return normalized === "received" || normalized === "revised";
+  return normalized === "received" || normalized === "revised" || normalized === "quoted";
+}
+
+export type RfqOfferSummary = {
+  total: number;
+  withdrawn: number;
+  nonWithdrawn: number;
+  returned: number;
+  latestReturnedAt: string | null;
+};
+
+export function summarizeRfqOffers(
+  offers: readonly Pick<RfqOffer, "status" | "received_at" | "created_at">[],
+): RfqOfferSummary {
+  let total = 0;
+  let withdrawn = 0;
+  let returned = 0;
+  let latestReturnedAt: string | null = null;
+
+  for (const offer of offers ?? []) {
+    total += 1;
+    if (isRfqOfferWithdrawn(offer.status)) {
+      withdrawn += 1;
+      continue;
+    }
+    if (isRfqOfferReturned(offer.status)) {
+      returned += 1;
+      const ts = offer.received_at ?? offer.created_at;
+      if (typeof ts === "string" && ts.trim()) {
+        if (!latestReturnedAt || ts > latestReturnedAt) {
+          latestReturnedAt = ts;
+        }
+      }
+    }
+  }
+
+  return {
+    total,
+    withdrawn,
+    nonWithdrawn: Math.max(0, total - withdrawn),
+    returned,
+    latestReturnedAt,
+  };
 }
 
 export type RfqOfferProvider = {
@@ -143,6 +187,70 @@ export async function getRfqOffers(
       error: serializeSupabaseError(error) ?? error,
     });
     return [];
+  }
+}
+
+export async function loadRfqOffersForQuoteIds(
+  quoteIds: readonly (string | null | undefined)[],
+  options?: { client?: ReturnType<typeof supabaseServer> },
+): Promise<
+  | { ok: true; offers: RfqOffer[] }
+  | { ok: false; offers: []; reason: "missing_schema" | "query_failed" | "unexpected" }
+> {
+  const normalizedIds = Array.from(
+    new Set(
+      (quoteIds ?? [])
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+  if (normalizedIds.length === 0) {
+    return { ok: true, offers: [] };
+  }
+
+  try {
+    const offerSelect = await buildOfferSelect();
+    const client = options?.client ?? supabaseServer();
+    const { data, error } = await client
+      .from("rfq_offers")
+      .select(offerSelect)
+      .in("rfq_id", normalizedIds)
+      .order("created_at", { ascending: true })
+      .returns<RawRfqOfferRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[rfq offers] missing schema for bulk load; returning empty", {
+          quoteIdsCount: normalizedIds.length,
+          supabaseError: serializeSupabaseError(error),
+        });
+        return { ok: false, offers: [], reason: "missing_schema" };
+      }
+      console.error("[rfq offers] bulk query failed", {
+        quoteIdsCount: normalizedIds.length,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return { ok: false, offers: [], reason: "query_failed" };
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    const offers = rows
+      .map((row) => normalizeOfferRow(row))
+      .filter((row): row is RfqOffer => Boolean(row));
+    return { ok: true, offers };
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[rfq offers] bulk load crashed (missing schema); returning empty", {
+        quoteIdsCount: normalizedIds.length,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return { ok: false, offers: [], reason: "missing_schema" };
+    }
+    console.error("[rfq offers] bulk load unexpected error", {
+      quoteIdsCount: normalizedIds.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return { ok: false, offers: [], reason: "unexpected" };
   }
 }
 

@@ -32,7 +32,9 @@ const PENDING_DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set(
   "viewed",
 ]);
 
-const RETURNED_OFFER_STATUSES: ReadonlySet<string> = new Set(["received", "revised"]);
+// Keep this list in sync with rfq offer status buckets used elsewhere.
+// NOTE: This module is imported by client components, so it must stay server-free.
+const RETURNED_OFFER_STATUSES: ReadonlySet<string> = new Set(["received", "revised", "quoted"]);
 
 function isReturnedOfferStatus(value: unknown): boolean {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";

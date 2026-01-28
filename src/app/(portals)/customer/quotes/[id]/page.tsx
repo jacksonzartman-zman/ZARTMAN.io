@@ -35,6 +35,7 @@ import {
   type QuoteWorkspaceData,
 } from "@/app/(portals)/quotes/workspaceData";
 import { deriveQuotePresentation } from "@/app/(portals)/quotes/deriveQuotePresentation";
+import { summarizeRfqOffers } from "@/server/rfqs/offers";
 import { loadBidsForQuote, type BidRow } from "@/server/bids";
 import { loadCustomerQuoteBidSummaries } from "@/server/customers/bids";
 import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
@@ -223,8 +224,10 @@ export default async function CustomerQuoteDetailPage({
     legacyFileNames,
   } = workspaceResult.data;
   const messagesUnavailable = Boolean(messagesError);
+  const rfqOfferSummary = summarizeRfqOffers(rfqOffers ?? []);
+  const rfqOfferCount = rfqOfferSummary.nonWithdrawn;
   const customerCompareOffersPromise =
-    rfqOffers.length > 0 ? buildCustomerCompareOffers(rfqOffers) : Promise.resolve([]);
+    rfqOfferCount > 0 ? buildCustomerCompareOffers(rfqOffers) : Promise.resolve([]);
   const [
     customerBidSummariesResult,
     bidsResult,
@@ -804,7 +807,7 @@ export default async function CustomerQuoteDetailPage({
   let showSlaNudge = false;
   let slaElapsedLabel: string | null = null;
   let slaResponseTimeLabel: string | null = null;
-  if (rfqOffers.length === 0) {
+  if (rfqOfferCount === 0) {
     const slaSettings = await getOpsSlaSettings();
     slaResponseTimeLabel = slaSettings.usingFallback
       ? null
@@ -904,12 +907,12 @@ export default async function CustomerQuoteDetailPage({
 
   const bidSummaryBadgeLabel = bidsUnavailable
     ? "Offers unavailable"
-    : bidCount === 0
+    : rfqOfferCount === 0
       ? "No offers yet"
-      : `${bidCount} offer${bidCount === 1 ? "" : "s"}`;
+      : `${rfqOfferCount} offer${rfqOfferCount === 1 ? "" : "s"}`;
   const bidSummaryHelper = bidsUnavailable
     ? "Offers aren’t available in this workspace right now."
-    : bidCount === 0
+    : rfqOfferCount === 0
       ? "Waiting on suppliers to send offers."
       : quoteHasWinner
         ? "Selection confirmed—kickoff tasks are unlocked."
@@ -1202,9 +1205,9 @@ export default async function CustomerQuoteDetailPage({
               We collect offers from vetted suppliers, then review options before finalizing your quote.
             </p>
           </div>
-          {bidCount > 0 ? (
+          {rfqOfferCount > 0 ? (
             <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
-              {bidCount} offer{bidCount === 1 ? "" : "s"} received
+              {rfqOfferCount} offer{rfqOfferCount === 1 ? "" : "s"} received
             </TagPill>
           ) : null}
         </div>
@@ -1213,7 +1216,7 @@ export default async function CustomerQuoteDetailPage({
             Offers aren’t available here right now, but your search request is still saved and in
             review. Check Messages for updates.
           </p>
-        ) : bidCount === 0 ? (
+        ) : rfqOfferCount === 0 ? (
           <EmptyStateCard
             title="No offers yet"
             description="Next, suppliers will review your files and we’ll message you here if anything needs clarification."
@@ -1245,7 +1248,7 @@ export default async function CustomerQuoteDetailPage({
                   Total offers
                 </dt>
                 <dd className="mt-1">
-                  {bidCount} offer{bidCount === 1 ? "" : "s"}
+                  {rfqOfferCount} offer{rfqOfferCount === 1 ? "" : "s"}
                 </dd>
               </div>
             </dl>
@@ -1681,20 +1684,20 @@ export default async function CustomerQuoteDetailPage({
       className="scroll-mt-24"
       title="Compare Offers"
       description="Review supplier offers and pick a best-fit option."
-      defaultOpen={rfqOffers.length > 0}
+      defaultOpen={rfqOfferCount > 0}
       summary={
         <TagPill
           size="md"
-          tone={rfqOffers.length > 0 ? "emerald" : "slate"}
+          tone={rfqOfferCount > 0 ? "emerald" : "slate"}
           className="normal-case tracking-normal"
         >
-          {rfqOffers.length > 0
-            ? `${rfqOffers.length} offer${rfqOffers.length === 1 ? "" : "s"}`
+          {rfqOfferCount > 0
+            ? `${rfqOfferCount} offer${rfqOfferCount === 1 ? "" : "s"}`
             : "No offers"}
         </TagPill>
       }
     >
-      {rfqOffers.length === 0 ? (
+      {rfqOfferCount === 0 ? (
         <EmptyStateCard
           title="Offers are on the way"
           description={pendingOffersDescription}
@@ -1812,7 +1815,7 @@ export default async function CustomerQuoteDetailPage({
   const sectionRailSections = buildCustomerQuoteSections({
     bidCount,
     hasWinner: quoteHasWinner,
-    offerCount: rfqOffers.length,
+    offerCount: rfqOfferCount,
     kickoffRatio: kickoffTasksRatio,
     kickoffComplete: kickoffProgressBasis.isComplete,
     messageCount: quoteMessages.length,
@@ -1843,7 +1846,7 @@ export default async function CustomerQuoteDetailPage({
         {compareOffersSection}
         {selectionConfirmedSection}
         {orderWorkspaceSection}
-        {rfqOffers.length === 0 ? decisionSection : null}
+        {rfqOfferCount === 0 ? decisionSection : null}
         {kickoffSection}
         {messagesUnavailable ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">

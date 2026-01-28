@@ -62,6 +62,7 @@ import {
 import { isDemoModeEnabled } from "@/server/demo/demoMode";
 import { createDemoSearchRequestAction } from "./demoActions";
 import { schemaGate } from "@/server/db/schemaContract";
+import { loadRfqOffersForQuoteIds, summarizeRfqOffers } from "@/server/rfqs/offers";
 
 export const dynamic = "force-dynamic";
 
@@ -358,6 +359,8 @@ export default async function AdminQuotesPage({
       })()
     : sortedQuotes;
 
+  const pagedQuotesWithOfferCounts = await attachOfferCounts(pagedQuotes);
+
   const effectiveTotalCount = wantsInboxOrdering ? sortedQuotes.length : baseTotalCount;
   const effectiveHasMore = wantsInboxOrdering
     ? sortedQuotes.length > page * pageSize
@@ -422,7 +425,7 @@ export default async function AdminQuotesPage({
       <div className="mt-6 overflow-x-auto">
         <div className="inline-block min-w-full align-middle">
           <QuotesTable
-            quotes={pagedQuotes}
+            quotes={pagedQuotesWithOfferCounts}
             totalCount={effectiveTotalCount}
             currentView={currentView as AdminQuotesView}
             searchTerm={normalizedSearch}
@@ -437,13 +440,58 @@ export default async function AdminQuotesPage({
             pageSize={pageSize}
             hasMore={effectiveHasMore}
             totalCount={effectiveTotalCount}
-            rowsOnPage={pagedQuotes.length}
+            rowsOnPage={pagedQuotesWithOfferCounts.length}
             listStateConfig={ADMIN_QUOTES_LIST_STATE_CONFIG}
           />
         </div>
       </div>
     </AdminDashboardShell>
   );
+}
+
+async function attachOfferCounts(quotes: QuoteRow[]): Promise<QuoteRow[]> {
+  const quoteIds = quotes
+    .map((row) => (typeof row?.id === "string" ? row.id.trim() : ""))
+    .filter(Boolean);
+  if (quoteIds.length === 0) {
+    return quotes;
+  }
+
+  const offersResult = await loadRfqOffersForQuoteIds(quoteIds);
+  if (!offersResult.ok) {
+    return quotes;
+  }
+
+  const offersByQuoteId = new Map<string, typeof offersResult.offers>();
+  for (const offer of offersResult.offers) {
+    const quoteId = typeof offer.rfq_id === "string" ? offer.rfq_id.trim() : "";
+    if (!quoteId) continue;
+    if (!offersByQuoteId.has(quoteId)) {
+      offersByQuoteId.set(quoteId, []);
+    }
+    offersByQuoteId.get(quoteId)!.push(offer);
+  }
+
+  const summaryByQuoteId = new Map<string, ReturnType<typeof summarizeRfqOffers>>();
+  for (const quoteId of quoteIds) {
+    const offers = offersByQuoteId.get(quoteId) ?? [];
+    summaryByQuoteId.set(quoteId, summarizeRfqOffers(offers));
+  }
+
+  return quotes.map((row) => {
+    const quoteId = typeof row?.id === "string" ? row.id.trim() : "";
+    const summary = quoteId ? summaryByQuoteId.get(quoteId) ?? null : null;
+    if (!quoteId || !summary) {
+      return row;
+    }
+    return {
+      ...row,
+      // Source of truth for the offers column: rfq_offers excluding withdrawn.
+      bidCount: summary.nonWithdrawn,
+      // And the latest "offer received" timestamp where possible.
+      latestBidAt: summary.latestReturnedAt ?? row.latestBidAt ?? null,
+    };
+  });
 }
 
 async function loadOfferProviderIdsByQuoteId(
