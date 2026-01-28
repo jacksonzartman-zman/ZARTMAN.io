@@ -1,6 +1,6 @@
 import { getActiveProviders } from "@/server/providers";
 import { getServerAuthUser } from "@/server/auth";
-import HomeSearchWidget, { type HomeSearchProcess } from "@/components/marketing/HomeSearchWidget";
+import { HomeUploadHero } from "@/components/marketing/HomeUploadHero";
 
 export const dynamic = "force-dynamic";
 
@@ -40,34 +40,9 @@ function getProviderInitials(name: string) {
 export default async function HomePage({ searchParams }: PageProps) {
   const sp = (await searchParams) ?? {};
   const activeProviders = await getActiveProviders();
-  const { hasUser } = await getServerAuthUser({ quiet: true });
-
-  const openUploadRaw = sp.openUpload;
-  const openUpload = (Array.isArray(openUploadRaw) ? openUploadRaw[0] : openUploadRaw) === "1";
-
-  const processRaw = sp.process;
-  const initialProcessKey =
-    typeof processRaw === "string" ? processRaw : Array.isArray(processRaw) ? processRaw[0] : null;
-
-  const qtyRaw = sp.qty;
-  const initialQuantity =
-    typeof qtyRaw === "string" ? qtyRaw : Array.isArray(qtyRaw) ? qtyRaw[0] : undefined;
-
-  const targetDateRaw = sp.targetDate;
-  const initialTargetDate =
-    typeof targetDateRaw === "string"
-      ? targetDateRaw
-      : Array.isArray(targetDateRaw)
-        ? targetDateRaw[0]
-        : undefined;
-
-  const processes: HomeSearchProcess[] = [
-    { key: "cnc", label: "CNC Machining" },
-    { key: "sheet-metal", label: "Sheet Metal" },
-    { key: "3dp", label: "3D Printing" },
-    { key: "injection", label: "Injection Molding" },
-    { key: "ai-mode", label: "AI mode", disabled: true },
-  ];
+  // Keep auth lookup available for downstream sections, but homepage upload is anonymous-first.
+  await getServerAuthUser({ quiet: true });
+  void sp;
 
   return (
     <main className="main-shell">
@@ -79,28 +54,7 @@ export default async function HomePage({ searchParams }: PageProps) {
             className="pointer-events-none absolute inset-x-0 -top-10 -bottom-12 rounded-[52px] bg-[radial-gradient(80%_60%_at_50%_0%,rgba(16,185,129,0.12),transparent_60%),linear-gradient(to_bottom,rgba(2,6,23,0.55),rgba(2,6,23,0.08),transparent)] ring-1 ring-slate-900/40"
           />
           <div className="relative">
-            <div className="mx-auto max-w-3xl text-center space-y-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
-                RFQs without the chaos
-              </p>
-              <h1 className="text-4xl sm:text-5xl font-semibold text-ink heading-tight">
-                Upload once. Compare manufacturing offers from verified suppliers.
-              </h1>
-              <p className="mx-auto max-w-2xl text-base sm:text-lg text-ink-muted heading-snug">
-                Get price and lead-time ranges fast, then request introductions only when you&apos;re ready.
-              </p>
-            </div>
-
-            <div className="mx-auto mt-8 max-w-4xl sm:mt-10">
-              <HomeSearchWidget
-                isAuthenticated={hasUser}
-                processes={processes}
-                initialProcessKey={initialProcessKey}
-                initialQuantity={initialQuantity}
-                initialTargetDate={initialTargetDate}
-                autoOpenUpload={openUpload && hasUser}
-              />
-            </div>
+            <HomeUploadHero />
           </div>
         </section>
 
