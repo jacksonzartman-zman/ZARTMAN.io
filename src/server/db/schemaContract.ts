@@ -35,6 +35,23 @@ const PROBE_CACHE = new Map<string, RelationProbeResult>();
 const IN_FLIGHT = new Map<string, Promise<RelationProbeResult>>();
 const QUOTE_MESSAGES_RELATION = "quote_messages";
 
+/**
+ * Some legacy/optional columns are frequently absent in older environments.
+ * Probing them via PostgREST head-selects (ex: `select=email`) causes noisy PARSE
+ * errors in Supabase logs. For these, prefer a best-effort information_schema probe.
+ */
+const INFO_SCHEMA_ONLY_COLUMNS: Record<string, ReadonlySet<string>> = {
+  suppliers: new Set(["provider_id"]),
+  providers: new Set(["contact_email", "primary_email", "email"]),
+};
+
+function shouldPreferInfoSchemaProbe(args: { relation: string; requiredColumns: string[] }): boolean {
+  const relationKey = args.relation.trim().toLowerCase();
+  const risky = INFO_SCHEMA_ONLY_COLUMNS[relationKey];
+  if (!risky || args.requiredColumns.length === 0) return false;
+  return args.requiredColumns.some((col) => risky.has(col.trim().toLowerCase()));
+}
+
 function schemaContractUseInfoSchema(): boolean {
   return String(process.env.SCHEMA_CONTRACT_USE_INFO_SCHEMA ?? "")
     .trim()
@@ -134,13 +151,64 @@ async function probeColumnsExist(args: {
     return relationProbe;
   }
 
-  const select = args.requiredColumns.join(",");
+  const normalizedRelation = normalizeRelation(args.relation);
+  const normalizedCols = normalizeColumns(args.requiredColumns);
+  const select = normalizedCols.join(",");
+
+  const probeViaInfoSchema = async (): Promise<
+    { ok: true } | { ok: false; reason: ProbeFailReason; missing?: string[]; error?: unknown }
+  > => {
+    try {
+      const { data, error } = await supabaseServer()
+        .from("information_schema.columns" as any)
+        .select("column_name")
+        .eq("table_schema", "public")
+        .eq("table_name", normalizedRelation)
+        .limit(500);
+
+      if (error) {
+        if (isMissingSupabaseRelationError(error)) {
+          return { ok: false, reason: "missing_relation", error };
+        }
+        if (isRowLevelSecurityDeniedError(error)) {
+          // Can't verify columns, but also shouldn't mark missing.
+          return { ok: true };
+        }
+        return { ok: false, reason: "unknown", error };
+      }
+
+      const columns = (Array.isArray(data) ? data : [])
+        .map((r) => (typeof (r as any)?.column_name === "string" ? String((r as any).column_name).trim() : ""))
+        .filter(Boolean);
+
+      if (columns.length === 0) {
+        // Can't confidently infer anything (permissions / schema exposure edge cases).
+        return { ok: false, reason: "unknown" };
+      }
+
+      const colSet = new Set(columns.map((c) => c.toLowerCase()));
+      const missing = normalizedCols.filter((c) => !colSet.has(c.toLowerCase()));
+      if (missing.length > 0) {
+        return { ok: false, reason: "missing_column", missing };
+      }
+
+      return { ok: true };
+    } catch (error) {
+      if (isMissingSupabaseRelationError(error)) {
+        return { ok: false, reason: "missing_relation", error };
+      }
+      if (isRowLevelSecurityDeniedError(error)) {
+        return { ok: true };
+      }
+      return { ok: false, reason: "unknown", error };
+    }
+  };
 
   const probeIndividually = async (): Promise<
     { ok: true } | { ok: false; reason: ProbeFailReason; missing?: string[]; error?: unknown }
   > => {
     const missing: string[] = [];
-    for (const col of args.requiredColumns) {
+    for (const col of normalizedCols) {
       try {
         const { error: colError } = await supabaseServer()
           .from(args.relation)
@@ -182,6 +250,16 @@ async function probeColumnsExist(args: {
   };
 
   try {
+    // Avoid noisy PARSE errors for known-optional columns by preferring info_schema probes.
+    if (shouldPreferInfoSchemaProbe({ relation: normalizedRelation, requiredColumns: normalizedCols })) {
+      const info = await probeViaInfoSchema();
+      // If we can't verify via info_schema, fail-closed (do not assume the column exists),
+      // so callers won't include the column in normal queries.
+      if (info.ok) return info;
+      if (info.reason === "missing_column" || info.reason === "missing_relation") return info;
+      return { ok: false, reason: "unknown", error: info.error };
+    }
+
     const { error } = await supabaseServer()
       .from(args.relation)
       .select(select as any, { head: true, count: "exact" })
@@ -212,6 +290,14 @@ async function probeColumnsExist(args: {
 
     return { ok: false, reason: "unknown", error };
   } catch (error) {
+    // Avoid noisy PARSE errors for known-optional columns by preferring info_schema probes.
+    if (shouldPreferInfoSchemaProbe({ relation: normalizedRelation, requiredColumns: normalizedCols })) {
+      const info = await probeViaInfoSchema();
+      if (info.ok) return info;
+      if (info.reason === "missing_column" || info.reason === "missing_relation") return info;
+      return { ok: false, reason: "unknown", error: info.error ?? error };
+    }
+
     if (isMissingSupabaseRelationError(error)) {
       return { ok: false, reason: "missing_relation", error };
     }
