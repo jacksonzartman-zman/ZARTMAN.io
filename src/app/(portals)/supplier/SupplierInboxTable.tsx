@@ -21,6 +21,7 @@ export type SupplierInboxRow = {
   id: string;
   quoteId: string;
   rfqLabel: string;
+  fileNames: string[];
   primaryFileName: string | null;
   companyName: string;
   processHint: string | null;
