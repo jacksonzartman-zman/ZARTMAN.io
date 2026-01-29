@@ -22,10 +22,8 @@ export function RfqNextStepsPanel({
 }: RfqNextStepsPanelProps) {
   const matched =
     typeof matchedCount === "number" && Number.isFinite(matchedCount) ? Math.max(0, Math.floor(matchedCount)) : null;
-  const matchedLabel =
-    matched !== null && matched > 0
-      ? `Matched with ${matched} qualified supplier${matched === 1 ? "" : "s"}`
-      : "Matching with qualified suppliers";
+  const trustMatchedSuffix =
+    matched !== null && matched > 0 ? ` Matched with ${matched} partner${matched === 1 ? "" : "s"}.` : "";
 
   const minsLabel = formatFirstOfferMinutes(typicalFirstOfferMins);
   const firstOfferLabel = minsLabel ? `Typical first offer: ~${minsLabel} min` : "Typical first offer: minutes";
@@ -52,9 +50,7 @@ export function RfqNextStepsPanel({
       <ul className="mt-3 space-y-2" role="list">
         <li className="flex items-start gap-3">
           <RowIcon variant="network" />
-          <p className="text-sm text-ink">
-            <span className={clsx(matched !== null && matched > 0 && "tabular-nums")}>{matchedLabel}</span>
-          </p>
+          <p className="text-sm text-ink">Matching with manufacturing partners</p>
         </li>
         <li className="flex items-start gap-3">
           <RowIcon variant="clock" />
@@ -69,6 +65,11 @@ export function RfqNextStepsPanel({
           </li>
         ) : null}
       </ul>
+
+      <p className="mt-3 border-t border-slate-900/60 pt-2 text-[12px] text-ink opacity-80">
+        Quotes are provided by verified manufacturing partners.
+        <span className={clsx(trustMatchedSuffix && "tabular-nums")}>{trustMatchedSuffix}</span>
+      </p>
     </section>
   );
 }
