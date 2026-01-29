@@ -85,6 +85,7 @@ export type AdminUploadDetailRow = AdminUploadInboxRow & {
   file_path: string | null;
   notes: string | null;
   admin_notes: string | null;
+  intake_idempotency_key?: string | null;
 };
 
 export type AdminInboxBidAggregate = {
@@ -271,10 +272,36 @@ export async function loadAdminUploadDetail(
       };
     }
 
+    // Optional field: intake idempotency key (used for customer-facing RFQ status links).
+    // Best-effort only: do not fail the admin page if this column doesn't exist.
+    let intake_idempotency_key: string | null | undefined = undefined;
+    try {
+      const { data: keyRow, error: keyError } = await supabaseServer()
+        .from("uploads")
+        .select("intake_idempotency_key")
+        .eq("id", uploadId)
+        .maybeSingle<{ intake_idempotency_key: string | null }>();
+      if (!keyError) {
+        intake_idempotency_key = keyRow?.intake_idempotency_key ?? null;
+      }
+    } catch (error) {
+      if (!isMissingTableOrColumnError(error)) {
+        logAdminUploadsWarn("intake key lookup crashed", {
+          uploadId,
+          supabaseError: serializeSupabaseError(error),
+        });
+      }
+    }
+
     logAdminUploadsInfo("detail loaded", { uploadId });
     return {
       ok: true,
-      data,
+      data: {
+        ...data,
+        ...(typeof intake_idempotency_key !== "undefined"
+          ? { intake_idempotency_key }
+          : {}),
+      },
       error: null,
     };
   } catch (error) {

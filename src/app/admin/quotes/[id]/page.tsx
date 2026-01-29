@@ -25,6 +25,7 @@ import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 import { CopyTextButton } from "@/components/CopyTextButton";
 import { getQuoteFilePreviews } from "@/server/quotes/files";
 import type { UploadMeta } from "@/server/quotes/types";
+import { buildAdminRfqPackText } from "@/lib/admin/rfqPack";
 import {
   DEFAULT_QUOTE_STATUS,
   QUOTE_STATUS_LABELS,
@@ -347,6 +348,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         export_restriction: data.export_restriction,
         rfq_reason: data.rfq_reason,
         notes: data.notes,
+        intake_idempotency_key: data.intake_idempotency_key ?? null,
         itar_acknowledged: data.itar_acknowledged,
         terms_accepted: data.terms_accepted,
       };
@@ -464,6 +466,48 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       : null;
     const showOrderDetailsConfirmation =
       Boolean(selectionConfirmedAt) || Boolean(orderDetailsPoNumber) || Boolean(orderDetailsShipTo);
+
+    const needByLabel =
+      targetDateValue
+        ? formatDateTime(targetDateValue, { includeTime: false }) ?? targetDateValue
+        : null;
+    const rfqPackText = buildAdminRfqPackText({
+      quoteId: quote.id,
+      intakeKey: uploadMeta?.intake_idempotency_key ?? null,
+      manufacturingProcess: uploadMeta?.manufacturing_process ?? null,
+      quantity: uploadMeta?.quantity ?? null,
+      needBy: needByLabel,
+      customerNotes: intakeNotes,
+      poNumber:
+        orderDetailsPoNumber ??
+        project?.po_number ??
+        (typeof quote.po_number === "string" && quote.po_number.trim().length > 0
+          ? quote.po_number.trim()
+          : null),
+      shipTo: {
+        freeform: orderDetailsShipTo,
+        name: quote.ship_to_name ?? null,
+        company: quote.ship_to_company ?? null,
+        address1: quote.ship_to_address1 ?? null,
+        address2: quote.ship_to_address2 ?? null,
+        city: quote.ship_to_city ?? null,
+        state: quote.ship_to_state ?? null,
+        postalCode: quote.ship_to_postal_code ?? null,
+        country: quote.ship_to_country ?? null,
+      },
+      canonicalFiles: filePreviews.map((file) => ({
+        fileName: file.fileName ?? file.label ?? null,
+        storageSource: file.storageSource
+          ? { bucket: file.storageSource.bucket, path: file.storageSource.path }
+          : null,
+      })),
+      uploadEntries: uploadGroups.flatMap((group) =>
+        (group.entries ?? []).map((entry) => ({
+          filename: entry.filename,
+          path: entry.path,
+        })),
+      ),
+    });
     const parts = workspaceResult.ok && workspaceResult.data ? workspaceResult.data.parts : [];
     const cadFeaturesByFileId = await (async () => {
       // Best-effort pre-population: never block the page on heavy work.
@@ -2396,18 +2440,26 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
         title={headerTitle}
         description={headerDescription}
         actions={
-          quote.upload_id ? (
-            <Link
-              href={`/admin/uploads/${quote.upload_id}`}
-              className={clsx(
-                secondaryCtaClasses,
-                ctaSizeClasses.sm,
-                "whitespace-nowrap",
-              )}
-            >
-              View upload
-            </Link>
-          ) : null
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <CopyTextButton
+              text={rfqPackText}
+              idleLabel="Copy RFQ pack"
+              className={clsx(secondaryCtaClasses, ctaSizeClasses.sm, "whitespace-nowrap")}
+              logPrefix="[rfq_pack]"
+            />
+            {quote.upload_id ? (
+              <Link
+                href={`/admin/uploads/${quote.upload_id}`}
+                className={clsx(
+                  secondaryCtaClasses,
+                  ctaSizeClasses.sm,
+                  "whitespace-nowrap",
+                )}
+              >
+                View upload
+              </Link>
+            ) : null}
+          </div>
         }
       >
         <div className="space-y-6">
