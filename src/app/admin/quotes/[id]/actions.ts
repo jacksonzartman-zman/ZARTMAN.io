@@ -71,6 +71,7 @@ import {
 } from "@/server/rfqs/outboundEmail";
 import { buildAwardEmail } from "@/server/quotes/awardEmail";
 import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
+import { DESTINATION_STATUS_VALUES } from "@/lib/rfq/destinationStatus";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 import {
@@ -1571,17 +1572,14 @@ export type MarkDestinationSubmittedActionResult =
   | { ok: true; message: string }
   | { ok: false; error: string };
 
-const DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
+const DESTINATION_STATUSES: ReadonlySet<string> = new Set([
   "draft",
-  "pending",
-  "queued",
-  "sent",
-  "submitted",
-  "viewed",
-  "quoted",
-  "declined",
-  "error",
+  ...DESTINATION_STATUS_VALUES,
 ]);
+
+function isRfqDestinationStatus(value: string): value is RfqDestinationStatus {
+  return DESTINATION_STATUSES.has(value);
+}
 
 export async function addDestinationsAction(args: {
   quoteId: string;
@@ -2036,9 +2034,7 @@ export async function markDestinationSubmittedAction(args: {
 
 function normalizeDestinationStatus(value: unknown): RfqDestinationStatus | null {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  return DESTINATION_STATUSES.has(normalized as RfqDestinationStatus)
-    ? (normalized as RfqDestinationStatus)
-    : null;
+  return isRfqDestinationStatus(normalized) ? normalized : null;
 }
 
 export type QuoteStatusTransitionState =

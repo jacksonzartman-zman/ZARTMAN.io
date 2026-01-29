@@ -10,7 +10,7 @@ const CONTACTED_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
   "error",
 ]);
 
-const DESTINATION_SLA_URGENCY_ORDER: Record<RfqDestinationStatus, number> = {
+const DESTINATION_SLA_URGENCY_ORDER: Partial<Record<RfqDestinationStatus, number>> = {
   error: 0,
   draft: 1,
   pending: 2,

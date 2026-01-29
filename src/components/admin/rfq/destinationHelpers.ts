@@ -1,5 +1,4 @@
 import { formatCurrency } from "@/lib/formatCurrency";
-import type { RfqDestinationStatus } from "@/server/rfqs/destinations";
 import type { RfqOffer } from "@/server/rfqs/offers";
 
 export type OfferDraft = {
@@ -12,50 +11,6 @@ export type OfferDraft = {
   confidenceScore: string;
   riskFlags: string;
   assumptions: string;
-};
-
-export type StatusMeta = {
-  label: string;
-  className: string;
-};
-
-export const DESTINATION_STATUS_META: Record<RfqDestinationStatus, StatusMeta> = {
-  draft: {
-    label: "Draft",
-    className: "border-slate-700 bg-slate-900/40 text-slate-200",
-  },
-  pending: {
-    label: "Pending",
-    className: "border-slate-600/60 bg-slate-950/40 text-slate-100",
-  },
-  queued: {
-    label: "Queued",
-    className: "border-amber-500/40 bg-amber-500/10 text-amber-100",
-  },
-  sent: {
-    label: "Sent",
-    className: "border-blue-500/40 bg-blue-500/10 text-blue-100",
-  },
-  submitted: {
-    label: "Submitted",
-    className: "border-teal-500/40 bg-teal-500/10 text-teal-100",
-  },
-  viewed: {
-    label: "Viewed",
-    className: "border-indigo-500/40 bg-indigo-500/10 text-indigo-100",
-  },
-  quoted: {
-    label: "Quoted",
-    className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
-  },
-  declined: {
-    label: "Declined",
-    className: "border-red-500/40 bg-red-500/10 text-red-100",
-  },
-  error: {
-    label: "Error",
-    className: "border-red-500/60 bg-red-500/15 text-red-100",
-  },
 };
 
 export const EMPTY_OFFER_DRAFT: OfferDraft = {

@@ -9,13 +9,13 @@ import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime
 import { ctaSizeClasses, secondaryCtaClasses } from "@/lib/ctas";
 import { computeDestinationNeedsAction, type SlaConfig } from "@/lib/ops/sla";
 import {
-  DESTINATION_STATUS_META,
   EMPTY_OFFER_DRAFT,
   buildOfferDraft,
   formatEnumLabel,
   formatOfferSummary,
   type OfferDraft,
 } from "@/components/admin/rfq/destinationHelpers";
+import { DESTINATION_STATUS_META as CANONICAL_DESTINATION_STATUS_META } from "@/lib/rfq/destinationStatus";
 import {
   BulkDestinationEmailModal,
   DestinationErrorModal,
@@ -90,6 +90,7 @@ const EMPTY_OFFER_STATE: UpsertRfqOfferState = {
 };
 
 const STATUS_ORDER: DestinationStatusKey[] = [
+  "pending",
   "queued",
   "sent",
   "submitted",
@@ -982,7 +983,9 @@ export function OpsInboxDispatchDrawer({
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                         {group.status === "unknown"
                           ? "Other"
-                          : DESTINATION_STATUS_META[group.status].label}{" "}
+                          : group.status === "draft"
+                            ? "Draft"
+                            : CANONICAL_DESTINATION_STATUS_META[group.status].label}{" "}
                         ({group.destinations.length})
                       </p>
                     </div>
@@ -1261,6 +1264,7 @@ function normalizeStatus(value: string | null | undefined): DestinationStatusKey
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
   if (
     normalized === "draft" ||
+    normalized === "pending" ||
     normalized === "queued" ||
     normalized === "sent" ||
     normalized === "submitted" ||
