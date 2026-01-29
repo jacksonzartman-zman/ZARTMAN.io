@@ -112,12 +112,14 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
                     <StepIcon state={state} index={idx} />
                     <p
                       className={clsx(
-                        "mt-2 w-full min-w-0 text-[11px] font-semibold uppercase tracking-[0.12em] leading-tight transition-colors duration-300 motion-reduce:transition-none",
+                        "mt-2 w-full min-w-0 text-[11px] font-semibold uppercase tracking-[0.12em] leading-tight transition-colors duration-300 motion-reduce:transition-none md:tracking-[0.08em] md:leading-snug",
                         state === "done" ? "text-emerald-100" : state === "active" ? "text-ink" : "text-ink-soft",
                       )}
                       title={stage.label}
                     >
-                      <span className="block w-full truncate">{stage.label}</span>
+                      <span className="block w-full truncate md:whitespace-normal md:break-words md:max-h-[2.6em] md:overflow-hidden">
+                        {stage.label}
+                      </span>
                     </p>
                   </div>
                 </li>

@@ -228,7 +228,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
   return (
     <main className="main-shell">
       <div className="mx-auto max-w-page px-4 sm:px-6 lg:px-8 py-16">
-        <section className="mx-auto max-w-2xl space-y-6">
+        <section className="mx-auto max-w-3xl space-y-6">
           <PublicOffersSection
             quoteId={quote.id}
             quoteStatus={quote.status ?? null}

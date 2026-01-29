@@ -296,7 +296,7 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
         </div>
       </header>
 
-      <div className="mt-4 grid gap-6 md:grid-cols-2 md:items-center">
+      <div className="mt-4 grid gap-6 md:grid-cols-[1fr_360px] md:gap-10 md:items-start">
         <div className="min-w-0 space-y-2">
           <div className="space-y-1">
             <p className="text-xs font-semibold text-ink">Process</p>
@@ -329,7 +329,7 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
           </div>
         </div>
 
-        <div className="min-w-0 space-y-5 md:self-center">
+        <div className="min-w-0 space-y-6">
           <div className="grid gap-2">
             <label className="block text-xs font-semibold text-ink" htmlFor="quick-specs-needby">
               Need-by date <span className="text-ink-soft font-normal">(optional)</span>
@@ -350,7 +350,7 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
             <label className="block text-xs font-semibold text-ink" htmlFor="quick-specs-qty">
               Quantity
             </label>
-            <div className="flex items-center gap-2">
+            <div className="grid w-full grid-cols-[2.5rem_1fr_2.5rem] items-center gap-2">
               <button
                 type="button"
                 aria-label="Decrease quantity"
@@ -358,7 +358,7 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
                   const current = clampQuantity(parseQuantityOrDefault(quantityInput, MIN_QUANTITY));
                   setQuantityFromNumber(current - 1);
                 }}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-800/90 bg-slate-950/30 text-sm font-semibold text-ink transition hover:border-slate-700/90 disabled:opacity-40"
+                className="inline-flex h-10 w-full items-center justify-center rounded-2xl border border-slate-800/90 bg-slate-950/30 text-sm font-semibold text-ink transition hover:border-slate-700/90 disabled:opacity-40"
                 disabled={clampQuantity(parseQuantityOrDefault(quantityInput, MIN_QUANTITY)) <= MIN_QUANTITY}
               >
                 −
@@ -386,7 +386,7 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
                   const current = clampQuantity(parseQuantityOrDefault(quantityInput, MIN_QUANTITY));
                   setQuantityFromNumber(current + 1);
                 }}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-800/90 bg-slate-950/30 text-sm font-semibold text-ink transition hover:border-slate-700/90 disabled:opacity-40"
+                className="inline-flex h-10 w-full items-center justify-center rounded-2xl border border-slate-800/90 bg-slate-950/30 text-sm font-semibold text-ink transition hover:border-slate-700/90 disabled:opacity-40"
                 disabled={clampQuantity(parseQuantityOrDefault(quantityInput, MIN_QUANTITY)) >= MAX_QUANTITY}
               >
                 +
