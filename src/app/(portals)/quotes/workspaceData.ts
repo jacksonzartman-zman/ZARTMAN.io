@@ -45,6 +45,7 @@ import {
 export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
   files: QuoteFileMeta[];
   fileCount: number;
+  ops_status?: string | null;
 };
 
 export type QuoteWorkspaceData = {
@@ -140,6 +141,10 @@ type LoadQuoteWorkspaceOptions = {
 
 type SafeQuoteRow = Pick<QuoteWithUploadsRow, SafeQuoteWithUploadsField>;
 
+type QuoteWithUploadsWithOpsStatus = QuoteWithUploadsRow & {
+  ops_status?: string | null;
+};
+
 type QuoteExtrasRow = Pick<
   QuoteWithUploadsRow,
   | "customer_id"
@@ -152,7 +157,9 @@ type QuoteExtrasRow = Pick<
   | "ship_to"
   | "inspection_requirements"
   | "selection_confirmed_at"
->;
+> & {
+  ops_status?: string | null;
+};
 
 type UploadMetaRow = UploadMeta & {
   id?: string | null;
@@ -172,7 +179,7 @@ export async function loadQuoteWorkspaceData(
 ): Promise<LoaderResult<QuoteWorkspaceData>> {
   try {
     const safeOnly = Boolean(options?.safeOnly);
-    let quote: QuoteWithUploadsRow | null = null;
+    let quote: QuoteWithUploadsWithOpsStatus | null = null;
 
     if (safeOnly) {
       const { data: safeQuote, error } = await supabaseServer()
@@ -196,7 +203,7 @@ export async function loadQuoteWorkspaceData(
       const { data: extras, error: extrasError } = await supabaseServer()
         .from("quotes")
         .select(
-          "customer_id,dfm_notes,internal_notes,selected_provider_id,selected_offer_id,selected_at,po_number,ship_to,inspection_requirements,selection_confirmed_at",
+          "customer_id,dfm_notes,internal_notes,ops_status,selected_provider_id,selected_offer_id,selected_at,po_number,ship_to,inspection_requirements,selection_confirmed_at",
         )
         .eq("id", quoteId)
         .maybeSingle<QuoteExtrasRow>();
@@ -213,6 +220,7 @@ export async function loadQuoteWorkspaceData(
         customer_id: extras?.customer_id ?? null,
         dfm_notes: extras?.dfm_notes ?? null,
         internal_notes: extras?.internal_notes ?? null,
+        ops_status: extras?.ops_status ?? null,
         selected_provider_id: extras?.selected_provider_id ?? null,
         selected_offer_id: extras?.selected_offer_id ?? null,
         selected_at: extras?.selected_at ?? null,
@@ -240,7 +248,7 @@ export async function loadQuoteWorkspaceData(
         };
       }
 
-      quote = fullQuote;
+      quote = fullQuote as QuoteWithUploadsWithOpsStatus;
     }
 
     if (!quote) {
