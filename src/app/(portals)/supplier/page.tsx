@@ -155,7 +155,7 @@ async function SupplierDashboardPage({
   const newRfqs = supplierInboxRows.filter((row) => row.supplierBidState === "no_bid");
   const matchesUnavailable = supplierExists && !matchesResult.ok;
 
-  let quotesList = [];
+  let quotesList: Awaited<ReturnType<typeof loadSupplierQuotesList>> = [];
   if (supplier) {
     try {
       quotesList = await loadSupplierQuotesList(user.id);
