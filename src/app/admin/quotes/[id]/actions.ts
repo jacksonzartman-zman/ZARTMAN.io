@@ -228,6 +228,9 @@ export async function createExternalOfferAction(args: {
   notes?: string | null;
   sourceType?: string | null;
   sourceName?: string | null;
+  internalCost?: number | null;
+  sourceUrl?: string | null;
+  internalNotes?: string | null;
 }): Promise<CreateExternalOfferResult> {
   const quoteId = normalizeIdInput(args.quoteId);
   if (!quoteId) {
@@ -254,6 +257,9 @@ export async function createExternalOfferAction(args: {
   const notesRaw = typeof args.notes === "string" ? args.notes.trim() : "";
   const sourceTypeRaw = typeof args.sourceType === "string" ? args.sourceType.trim() : "";
   const sourceNameRaw = typeof args.sourceName === "string" ? args.sourceName.trim() : "";
+  const internalNotesRaw = typeof args.internalNotes === "string" ? args.internalNotes.trim() : "";
+  const sourceUrlRaw = typeof args.sourceUrl === "string" ? args.sourceUrl.trim() : "";
+  const internalCostRaw = typeof args.internalCost === "number" ? args.internalCost : null;
 
   const fieldErrors: Record<string, string> = {};
   if (!Number.isFinite(price) || price <= 0) {
@@ -273,6 +279,17 @@ export async function createExternalOfferAction(args: {
   }
   if (sourceNameRaw.length > 200) {
     fieldErrors.sourceName = "Source name must be 200 characters or fewer.";
+  }
+  if (internalNotesRaw.length > 5000) {
+    fieldErrors.internalNotes = "Internal notes must be 5000 characters or fewer.";
+  }
+  if (sourceUrlRaw.length > 5000) {
+    fieldErrors.sourceUrl = "Source URL must be 5000 characters or fewer.";
+  }
+  if (internalCostRaw !== null) {
+    if (!Number.isFinite(internalCostRaw) || internalCostRaw < 0) {
+      fieldErrors.internalCost = "Enter a valid internal cost (0 or greater).";
+    }
   }
 
   if (Object.keys(fieldErrors).length > 0) {
@@ -296,6 +313,23 @@ export async function createExternalOfferAction(args: {
         if (sourceTypeRaw) extraOfferColumns.admin_source_type = sourceTypeRaw;
         if (sourceNameRaw) extraOfferColumns.admin_source_name = sourceNameRaw;
         if (processRaw) extraOfferColumns.process = processRaw;
+      }
+    } catch {
+      // ignore
+    }
+
+    // Optional internal tracking fields (schema-gated).
+    try {
+      const supportsInternalTracking = await hasColumns("rfq_offers", [
+        "internal_cost",
+        "internal_shipping_cost",
+        "internal_notes",
+        "source_url",
+      ]);
+      if (supportsInternalTracking) {
+        if (internalCostRaw !== null) extraOfferColumns.internal_cost = internalCostRaw;
+        if (internalNotesRaw) extraOfferColumns.internal_notes = internalNotesRaw;
+        if (sourceUrlRaw) extraOfferColumns.source_url = sourceUrlRaw;
       }
     } catch {
       // ignore

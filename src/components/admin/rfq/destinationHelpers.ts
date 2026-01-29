@@ -100,9 +100,30 @@ export function formatOfferSummary(offer: RfqOffer): string {
   const total = toFiniteNumber(offer.total_price);
   const unit = toFiniteNumber(offer.unit_price);
   if (typeof total === "number") {
-    parts.push(`Total ${formatCurrency(total, currency)}`);
+    parts.push(`Customer ${formatCurrency(total, currency)}`);
   } else if (typeof unit === "number") {
     parts.push(`Unit ${formatCurrency(unit, currency)}`);
+  }
+
+  const internalCost = toFiniteNumber((offer as any)?.internal_cost);
+  const internalShipping = toFiniteNumber((offer as any)?.internal_shipping_cost);
+  const internalTotal =
+    internalCost === null && internalShipping === null
+      ? null
+      : (internalCost ?? 0) + (internalShipping ?? 0);
+  if (typeof internalTotal === "number" && Number.isFinite(internalTotal) && internalTotal > 0) {
+    parts.push(`Internal ${formatCurrency(internalTotal, currency)}`);
+  } else if (typeof internalCost === "number" && Number.isFinite(internalCost) && internalCost === 0) {
+    parts.push(`Internal ${formatCurrency(0, currency)}`);
+  }
+  if (
+    typeof total === "number" &&
+    typeof internalTotal === "number" &&
+    Number.isFinite(total) &&
+    Number.isFinite(internalTotal)
+  ) {
+    const margin = total - internalTotal;
+    parts.push(`Margin ${formatCurrency(margin, currency)}`);
   }
 
   const leadTimeLabel = formatLeadTimeSummary(offer.lead_time_days_min, offer.lead_time_days_max);
