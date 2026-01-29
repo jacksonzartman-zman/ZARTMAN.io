@@ -54,6 +54,7 @@ export function SupplierBidPanel({
   const formRef = useRef<HTMLFormElement>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
+  const prefersReducedMotion = usePrefersReducedMotion();
   const [optimisticBid, setOptimisticBid] = useState<{
     amount: number | null;
     leadTimeDays: number | null;
@@ -110,11 +111,16 @@ export function SupplierBidPanel({
 
   useEffect(() => {
     if (!showLiveSuccess) return;
+    const delayMs = prefersReducedMotion ? 120 : 900;
     const timeout = window.setTimeout(() => {
-      router.push("/supplier?offer=sent");
-    }, 900);
+      try {
+        router.push("/supplier?offer=sent");
+      } catch (error) {
+        console.warn("[supplier bid] redirect failed", error);
+      }
+    }, delayMs);
     return () => window.clearTimeout(timeout);
-  }, [router, showLiveSuccess]);
+  }, [prefersReducedMotion, router, showLiveSuccess]);
 
   const baseDisabled =
     (approvalsOn && !approved) || Boolean(bidsUnavailableMessage);
@@ -198,96 +204,112 @@ export function SupplierBidPanel({
         </div>
       ) : null}
 
-      <form ref={formRef} action={handleSubmit} className="space-y-4">
-        <input type="hidden" name="quoteId" value={quoteId} />
-        <input type="hidden" name="currency" value="USD" />
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field
-            label="Price (USD)"
-            name="amount"
-            type="text"
-            inputMode="decimal"
-            placeholder="15000"
-            defaultValue={initialBid?.amount ?? undefined}
-            disabled={inputsDisabled}
-            prefix="$"
-            autoComplete="off"
-            autoFocus
-            size="lg"
-            error={hasSubmitted && !state.ok ? state.fieldErrors.price : undefined}
-          />
-          <Field
-            label="Lead time (days)"
-            name="leadTimeDays"
-            type="number"
-            placeholder="14"
-            defaultValue={
-              typeof initialBid?.lead_time_days === "number"
-                ? initialBid.lead_time_days
-                : undefined
-            }
-            disabled={inputsDisabled}
-            min="1"
-            step="1"
-            inputMode="numeric"
-            size="lg"
-            error={
-              hasSubmitted && !state.ok ? state.fieldErrors.leadTimeDays : undefined
-            }
-          />
-        </div>
-
-        <div>
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Notes (optional)
-          </label>
-          <textarea
-            name="notes"
-            defaultValue={initialBid?.notes ?? ""}
-            rows={4}
-            disabled={inputsDisabled}
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-black/40 px-4 py-3 text-base text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none disabled:opacity-60"
-            placeholder="Optional details (certifications, MOQ, inspection plan, assumptions)."
-          />
-        </div>
-
-        {hasSubmitted && !state.ok ? (
-          <p className="text-sm text-red-300" role="alert">
-            {state.error}
+      {showLiveSuccess ? (
+        <section
+          className={[
+            "rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-6 py-5",
+            prefersReducedMotion ? "" : "transition-opacity duration-300",
+          ].join(" ")}
+          role="status"
+          aria-live="polite"
+        >
+          <h3 className="text-lg font-semibold text-white">Offer sent</h3>
+          <p className="mt-1 text-sm text-emerald-50/80">
+            We’ll notify you if the customer has questions.
           </p>
-        ) : null}
-
-        {(showLiveSuccess || showPersistedSuccess) && successMessage ? (
-          <p
-            className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-3 text-base text-emerald-100"
-            role="status"
-          >
-            {successMessage}
-          </p>
-        ) : null}
-
-        <div className="flex flex-wrap items-center gap-3">
-          <SubmitButton label={buttonLabel} disabled={inputsDisabled} />
-          {showLiveSuccess ? (
+          <div className="mt-4">
             <button
               type="button"
               onClick={() => router.push("/supplier?offer=sent")}
-              className={`${ctaSizeClasses.md} rounded-full border border-slate-700 bg-slate-950/20 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600`}
+              className={`${primaryCtaClasses} ${ctaSizeClasses.md}`}
             >
-              Back to New RFQs
+              Back to dashboard
             </button>
+          </div>
+        </section>
+      ) : (
+        <form ref={formRef} action={handleSubmit} className="space-y-4">
+          <input type="hidden" name="quoteId" value={quoteId} />
+          <input type="hidden" name="currency" value="USD" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field
+              label="Price (USD)"
+              name="amount"
+              type="text"
+              inputMode="decimal"
+              placeholder="15000"
+              defaultValue={initialBid?.amount ?? undefined}
+              disabled={inputsDisabled}
+              prefix="$"
+              autoComplete="off"
+              autoFocus
+              size="lg"
+              error={hasSubmitted && !state.ok ? state.fieldErrors.price : undefined}
+            />
+            <Field
+              label="Lead time (days)"
+              name="leadTimeDays"
+              type="number"
+              placeholder="14"
+              defaultValue={
+                typeof initialBid?.lead_time_days === "number"
+                  ? initialBid.lead_time_days
+                  : undefined
+              }
+              disabled={inputsDisabled}
+              min="1"
+              step="1"
+              inputMode="numeric"
+              size="lg"
+              error={
+                hasSubmitted && !state.ok ? state.fieldErrors.leadTimeDays : undefined
+              }
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Notes (optional)
+            </label>
+            <textarea
+              name="notes"
+              defaultValue={initialBid?.notes ?? ""}
+              rows={4}
+              disabled={inputsDisabled}
+              className="mt-2 w-full rounded-2xl border border-slate-800 bg-black/40 px-4 py-3 text-base text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none disabled:opacity-60"
+              placeholder="Optional details (certifications, MOQ, inspection plan, assumptions)."
+            />
+          </div>
+
+          {hasSubmitted && !state.ok ? (
+            <p className="text-sm text-red-300" role="alert">
+              {state.error}
+            </p>
           ) : null}
-          {showDecline && !inputsDisabled ? (
-            <button
-              type="button"
-              onClick={() => setDeclineOpen(true)}
-              className={`${ctaSizeClasses.md} rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:border-red-400 hover:text-white`}
+
+          {showPersistedSuccess && successMessage ? (
+            <p
+              className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-3 text-base text-emerald-100"
+              role="status"
             >
-              Decline search request
-            </button>
+              {successMessage}
+            </p>
           ) : null}
-        </div>
-      </form>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <SubmitButton label={buttonLabel} disabled={inputsDisabled} />
+            {showDecline && !inputsDisabled ? (
+              <button
+                type="button"
+                onClick={() => setDeclineOpen(true)}
+                className={`${ctaSizeClasses.md} rounded-full border border-red-500/40 bg-red-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:border-red-400 hover:text-white`}
+              >
+                Decline search request
+              </button>
+            ) : null}
+          </div>
+        </form>
+      )}
 
       <SupplierDeclineRfqModal
         quoteId={quoteId}
@@ -341,6 +363,30 @@ export function SupplierBidPanel({
       ) : null}
     </div>
   );
+}
+
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setPrefersReducedMotion(mediaQuery.matches);
+
+    update();
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", update);
+      return () => mediaQuery.removeEventListener("change", update);
+    }
+
+    mediaQuery.addListener(update);
+    return () => mediaQuery.removeListener(update);
+  }, []);
+
+  return prefersReducedMotion;
 }
 
 function Field({
