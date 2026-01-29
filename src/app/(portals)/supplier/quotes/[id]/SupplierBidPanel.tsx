@@ -56,7 +56,6 @@ export function SupplierBidPanel({
   const [declineOpen, setDeclineOpen] = useState(false);
   const [optimisticBid, setOptimisticBid] = useState<{
     amount: number | null;
-    currency: string;
     leadTimeDays: number | null;
     submittedAt: string;
   } | null>(null);
@@ -78,7 +77,6 @@ export function SupplierBidPanel({
     const normalizedAmount = normalizeBidAmountInput(formData.get("amount"));
     formData.set("amount", normalizedAmount);
     const parsedAmount = normalizedAmount ? Number(normalizedAmount) : Number.NaN;
-    const rawCurrency = formData.get("currency");
     const rawLeadTime = formData.get("leadTimeDays");
     const leadTimeDays =
       typeof rawLeadTime === "string" && rawLeadTime.trim().length > 0
@@ -86,10 +84,6 @@ export function SupplierBidPanel({
         : null;
     setOptimisticBid({
       amount: Number.isFinite(parsedAmount) ? parsedAmount : null,
-      currency:
-        typeof rawCurrency === "string" && rawCurrency.trim().length > 0
-          ? rawCurrency.trim().toUpperCase()
-          : "USD",
       leadTimeDays: Number.isFinite(leadTimeDays ?? Number.NaN)
         ? leadTimeDays
         : null,
@@ -114,11 +108,19 @@ export function SupplierBidPanel({
     }
   }, [router, showLiveSuccess]);
 
+  useEffect(() => {
+    if (!showLiveSuccess) return;
+    const timeout = window.setTimeout(() => {
+      router.push("/supplier?offer=sent");
+    }, 900);
+    return () => window.clearTimeout(timeout);
+  }, [router, showLiveSuccess]);
+
   const baseDisabled =
     (approvalsOn && !approved) || Boolean(bidsUnavailableMessage);
   const inputsDisabled = baseDisabled || bidLocked;
   const hasBidForCta = Boolean(initialBid) || showLiveSuccess;
-  const buttonLabel = hasBidForCta ? "Update bid" : "Submit bid";
+  const buttonLabel = hasBidForCta ? "Update offer" : "Send offer";
   const lastSubmittedAt = initialBid?.updated_at ?? initialBid?.created_at ?? null;
   const bidSummary =
     showLiveSuccess && optimisticBid
@@ -127,7 +129,6 @@ export function SupplierBidPanel({
         ? {
             amount:
               typeof initialBid.amount === "number" ? initialBid.amount : null,
-            currency: initialBid.currency ?? "USD",
             leadTimeDays:
               typeof initialBid.lead_time_days === "number"
                 ? initialBid.lead_time_days
@@ -153,9 +154,9 @@ export function SupplierBidPanel({
       ) : null}
 
       {showBidRow && bidSummary ? (
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
+        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-emerald-100">Your bid</p>
+            <p className="text-sm font-semibold text-emerald-100">Offer</p>
             <span className="pill pill-info px-3 py-1 text-[11px]">
               {bidStatusLabel}
             </span>
@@ -163,11 +164,11 @@ export function SupplierBidPanel({
           <dl className="mt-2 grid gap-3 text-xs text-slate-200 sm:grid-cols-3">
             <div>
               <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                Amount
+                Price
               </dt>
               <dd className="font-medium text-slate-100">
                 {bidSummary.amount !== null
-                  ? formatCurrency(bidSummary.amount, bidSummary.currency)
+                  ? formatCurrency(bidSummary.amount, initialBid?.currency ?? "USD")
                   : "—"}
               </dd>
             </div>
@@ -199,9 +200,10 @@ export function SupplierBidPanel({
 
       <form ref={formRef} action={handleSubmit} className="space-y-4">
         <input type="hidden" name="quoteId" value={quoteId} />
-        <div className="grid gap-4 md:grid-cols-3">
+        <input type="hidden" name="currency" value="USD" />
+        <div className="grid gap-4 md:grid-cols-2">
           <Field
-            label="Amount"
+            label="Price (USD)"
             name="amount"
             type="text"
             inputMode="decimal"
@@ -210,16 +212,9 @@ export function SupplierBidPanel({
             disabled={inputsDisabled}
             prefix="$"
             autoComplete="off"
-            error={
-              hasSubmitted && !state.ok ? state.fieldErrors.price : undefined
-            }
-          />
-          <Field
-            label="Currency"
-            name="currency"
-            placeholder="USD"
-            defaultValue={initialBid?.currency ?? "USD"}
-            disabled={inputsDisabled}
+            autoFocus
+            size="lg"
+            error={hasSubmitted && !state.ok ? state.fieldErrors.price : undefined}
           />
           <Field
             label="Lead time (days)"
@@ -232,25 +227,27 @@ export function SupplierBidPanel({
                 : undefined
             }
             disabled={inputsDisabled}
+            min="1"
+            step="1"
+            inputMode="numeric"
+            size="lg"
             error={
-              hasSubmitted && !state.ok
-                ? state.fieldErrors.leadTimeDays
-                : undefined
+              hasSubmitted && !state.ok ? state.fieldErrors.leadTimeDays : undefined
             }
           />
         </div>
 
         <div>
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Notes & certifications
+            Notes (optional)
           </label>
           <textarea
             name="notes"
             defaultValue={initialBid?.notes ?? ""}
             rows={4}
             disabled={inputsDisabled}
-            className="mt-1 w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none disabled:opacity-60"
-            placeholder="Call out certifications, MOQ, inspection plans, or anything the customer should know."
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-black/40 px-4 py-3 text-base text-slate-100 placeholder:text-slate-500 focus:border-blue-400 focus:outline-none disabled:opacity-60"
+            placeholder="Optional details (certifications, MOQ, inspection plan, assumptions)."
           />
         </div>
 
@@ -262,7 +259,7 @@ export function SupplierBidPanel({
 
         {(showLiveSuccess || showPersistedSuccess) && successMessage ? (
           <p
-            className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100"
+            className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-3 text-base text-emerald-100"
             role="status"
           >
             {successMessage}
@@ -271,6 +268,15 @@ export function SupplierBidPanel({
 
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton label={buttonLabel} disabled={inputsDisabled} />
+          {showLiveSuccess ? (
+            <button
+              type="button"
+              onClick={() => router.push("/supplier?offer=sent")}
+              className={`${ctaSizeClasses.md} rounded-full border border-slate-700 bg-slate-950/20 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-100 transition hover:border-slate-600`}
+            >
+              Back to New RFQs
+            </button>
+          ) : null}
           {showDecline && !inputsDisabled ? (
             <button
               type="button"
@@ -297,7 +303,7 @@ export function SupplierBidPanel({
           <dl className="mt-2 grid gap-3 sm:grid-cols-3">
             <div>
               <dt className="text-[11px] uppercase tracking-wide text-slate-500">
-                Amount
+                Price
               </dt>
               <dd className="font-medium text-slate-100">
                 {typeof initialBid.amount === "number"
@@ -349,6 +355,9 @@ function Field({
   error,
   inputMode,
   autoComplete,
+  autoFocus,
+  min,
+  size = "md",
 }: {
   label: string;
   name: string;
@@ -361,14 +370,25 @@ function Field({
   error?: string;
   inputMode?: ComponentProps<"input">["inputMode"];
   autoComplete?: ComponentProps<"input">["autoComplete"];
+  autoFocus?: boolean;
+  min?: ComponentProps<"input">["min"];
+  size?: "md" | "lg";
 }) {
+  const inputTextClass = size === "lg" ? "text-2xl" : "text-sm";
+  const inputPaddingClass = size === "lg" ? "py-3" : "py-2";
+  const labelClass = size === "lg"
+    ? "text-xs font-semibold uppercase tracking-wide text-slate-400"
+    : "text-xs font-semibold uppercase tracking-wide text-slate-500";
+
   return (
     <div>
-      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <label className={labelClass}>
         {label}
       </label>
-      <div className="mt-1 flex items-center rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 focus-within:border-blue-400">
-        {prefix ? <span className="mr-1 text-slate-500">{prefix}</span> : null}
+      <div
+        className={`mt-2 flex items-center rounded-2xl border border-slate-800 bg-black/40 px-4 ${inputPaddingClass} text-slate-100 focus-within:border-blue-400`}
+      >
+        {prefix ? <span className={`mr-2 ${inputTextClass} text-slate-500`}>{prefix}</span> : null}
         <input
           type={type}
           name={name}
@@ -376,9 +396,11 @@ function Field({
           defaultValue={defaultValue}
           disabled={disabled}
           step={step}
+          min={min}
           inputMode={inputMode}
           autoComplete={autoComplete}
-          className="w-full bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none disabled:opacity-60"
+          autoFocus={autoFocus}
+          className={`w-full bg-transparent ${inputTextClass} text-slate-100 placeholder:text-slate-500 focus:outline-none disabled:opacity-60`}
         />
       </div>
       {error ? (
@@ -460,18 +482,18 @@ function buildPersistedSuccessMessage(bid: BidRow | null): string {
   const submittedLabel = submittedAt ? formatDateTime(submittedAt) : null;
 
   if (formattedAmount && submittedLabel) {
-    return `${formattedAmount} bid on file (submitted ${submittedLabel}). Update it anytime.`;
+    return `Offer sent (${formattedAmount}, ${submittedLabel}).`;
   }
 
   if (formattedAmount) {
-    return `${formattedAmount} bid on file. Update it anytime.`;
+    return `Offer sent (${formattedAmount}).`;
   }
 
   if (submittedLabel) {
-    return `Bid submitted ${submittedLabel}. Update it anytime.`;
+    return `Offer sent (${submittedLabel}).`;
   }
 
-  return "Your latest bid is on file. Update it anytime.";
+  return "Offer sent.";
 }
 
 function SubmitButton({
@@ -490,7 +512,7 @@ function SubmitButton({
         pending || disabled ? "opacity-60" : ""
       }`}
     >
-      {pending ? "Saving..." : label}
+      {pending ? "Sending..." : label}
     </button>
   );
 }
@@ -502,10 +524,10 @@ function resolveBidStatusLabel(
   const normalized =
     typeof rawStatus === "string" ? rawStatus.trim().toLowerCase() : "";
   if (!normalized && optimisticSubmitted) {
-    return "Bid submitted";
+    return "Offer sent";
   }
   if (normalized === "submitted" || normalized === "pending" || !normalized) {
-    return "Bid submitted";
+    return "Offer sent";
   }
   if (normalized === "accepted" || normalized === "won" || normalized === "winner") {
     return "Winner";

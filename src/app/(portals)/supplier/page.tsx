@@ -77,6 +77,7 @@ async function SupplierDashboardPage({
     getSearchParamValue(searchParams, "invite") === "accepted";
   const invitedJustCompleted =
     getSearchParamValue(searchParams, "invited") === "1";
+  const offerJustSent = getSearchParamValue(searchParams, "offer") === "sent";
 
   if (!supplierEmail) {
     return (
@@ -367,6 +368,14 @@ async function SupplierDashboardPage({
       {invitedJustCompleted ? (
         <PortalCard title="Welcome">
           <p className="text-sm text-slate-300">Your supplier portal is ready.</p>
+        </PortalCard>
+      ) : null}
+
+      {offerJustSent ? (
+        <PortalCard title="Offer sent">
+          <p className="text-sm text-slate-300">
+            Your offer is on file. This RFQ has been removed from your “New RFQs” list.
+          </p>
         </PortalCard>
       ) : null}
     </PortalShell>

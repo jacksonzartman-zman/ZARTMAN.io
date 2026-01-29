@@ -520,6 +520,7 @@ function SupplierQuoteWorkspace({
     typeof existingBid?.status === "string" ? existingBid.status.trim().toLowerCase() : "";
   const acceptedLock = normalizedBidStatus === "accepted";
   const closedWindowLock = bidLocked && !acceptedLock;
+  const quickBidLocked = !canSubmitBid || acceptedLock || closedWindowLock;
   const hasProject = Boolean(project);
   const { showKickoffChecklist } = kickoffVisibility;
   const isWinningSupplier = awardedToSupplier;
@@ -792,8 +793,7 @@ function SupplierQuoteWorkspace({
             Only the Zartman team and the requesting customer can see these details.
           </p>
           <p className="text-xs text-slate-500">
-            Share a unit price, realistic lead time, and highlight any certifications or notes that help
-            the buyer approve your shop.
+            Price + lead time are all we need. Notes are optional.
           </p>
         </header>
         {acceptedLock ? (
@@ -806,25 +806,31 @@ function SupplierQuoteWorkspace({
             Quoting is disabled because this search request is no longer accepting new proposals.
           </p>
         ) : null}
+        <SupplierBidPanel
+          quoteId={quote.id}
+          initialBid={initialBid}
+          approvalsOn={approvalsOn}
+          approved={approved}
+          bidsUnavailableMessage={bidsUnavailableMessage}
+          bidLocked={quickBidLocked}
+          showDecline={false}
+        />
+
         {canSubmitBid && !acceptedLock && !closedWindowLock ? (
-          <BidWorkspace
-            quote={quote}
-            parts={parts ?? []}
-            initialDraft={initialDraft}
-            uploadTargets={{ accept: UPLOAD_ACCEPT }}
-            cadFeaturesByFileId={cadFeaturesByFileId}
-          />
-        ) : (
-          <SupplierBidPanel
-            quoteId={quote.id}
-            initialBid={initialBid}
-            approvalsOn={approvalsOn}
-            approved={approved}
-            bidsUnavailableMessage={bidsUnavailableMessage}
-            bidLocked={true}
-            showDecline={false}
-          />
-        )}
+          <CollapsibleCard
+            title="Detailed line items (optional)"
+            description="If you need per-part pricing, you can fill out the detailed workspace—but it’s not required to send an offer."
+            defaultOpen={false}
+          >
+            <BidWorkspace
+              quote={quote}
+              parts={parts ?? []}
+              initialDraft={initialDraft}
+              uploadTargets={{ accept: UPLOAD_ACCEPT }}
+              cadFeaturesByFileId={cadFeaturesByFileId}
+            />
+          </CollapsibleCard>
+        ) : null}
       </div>
     </DisclosureSection>
   );
