@@ -119,4 +119,95 @@
       opacity: 0;
     }
   }
+
+  /* RFQ first-offer arrival feedback (subtle, one-time). */
+  @keyframes rfq-first-offer-glow {
+    0% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      opacity: 0;
+    }
+    20% {
+      opacity: 1;
+    }
+    100% {
+      box-shadow:
+        0 0 0 1px rgba(16, 185, 129, 0.12),
+        0 14px 40px rgba(16, 185, 129, 0.07);
+      opacity: 0;
+    }
+  }
+
+  @keyframes rfq-first-offer-sweep {
+    0% {
+      transform: translateX(-40%) skewX(-12deg);
+      opacity: 0;
+    }
+    18% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(130%) skewX(-12deg);
+      opacity: 0;
+    }
+  }
+
+  .rfq-first-offer-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .rfq-first-offer-card::before,
+  .rfq-first-offer-card::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  .rfq-first-offer-card::before {
+    animation: rfq-first-offer-glow 1100ms ease-out both;
+  }
+
+  .rfq-first-offer-card::after {
+    inset: 0;
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      rgba(148, 163, 184, 0.05) 42%,
+      rgba(16, 185, 129, 0.12) 50%,
+      rgba(148, 163, 184, 0.05) 58%,
+      transparent 72%
+    );
+    animation: rfq-first-offer-sweep 950ms ease-out both;
+  }
+
+  @keyframes rfq-compare-cta-glow {
+    0% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      border-color: rgb(30 41 59 / 1);
+    }
+    45% {
+      box-shadow:
+        0 0 0 2px rgba(16, 185, 129, 0.16),
+        0 18px 45px rgba(16, 185, 129, 0.08);
+      border-color: rgb(16 185 129 / 0.35);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      border-color: rgb(30 41 59 / 1);
+    }
+  }
+
+  .rfq-compare-cta-pulse {
+    animation: rfq-compare-cta-glow 1400ms ease-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rfq-first-offer-card::before,
+    .rfq-first-offer-card::after,
+    .rfq-compare-cta-pulse {
+      animation: none !important;
+    }
+  }
 }
