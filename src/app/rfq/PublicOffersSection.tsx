@@ -367,6 +367,8 @@ export function PublicOffersSection({
       <div
         className={clsx(
           "rounded-3xl border border-slate-900/60 bg-slate-950/55 p-6 shadow-[0_20px_60px_rgba(2,6,23,0.45)]",
+          "transition duration-200 ease-out motion-reduce:transition-none",
+          "hover:-translate-y-0.5 hover:border-slate-700/70 hover:bg-slate-950/60 hover:shadow-[0_24px_75px_rgba(2,6,23,0.55)] motion-reduce:hover:translate-y-0",
           submittedCardHighlight && "rfq-submitted-card",
         )}
       >
@@ -548,7 +550,7 @@ export function PublicOffersSection({
             <span className="text-xs font-semibold text-ink-soft">{badgeLabel}</span>
           </header>
 
-          <div className="grid gap-3">
+          <div className="grid gap-4">
             {offers.map((offer, idx) => (
               <OfferCard
                 key={offer.id}
@@ -560,7 +562,7 @@ export function PublicOffersSection({
 
           {compareCtaVisible ? (
             <section id="compare-offers" className="scroll-mt-24">
-              <div className="mt-6 overflow-hidden rounded-3xl border border-slate-900/60 bg-slate-950/40">
+              <div className="mt-6 overflow-hidden rounded-3xl border border-slate-900/60 bg-slate-950/40 shadow-[0_18px_50px_rgba(2,6,23,0.35)]">
                 <div className="border-b border-slate-900/60 px-5 py-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
                     Compare offers
@@ -580,7 +582,10 @@ export function PublicOffersSection({
                     </thead>
                     <tbody className="divide-y divide-slate-900/60">
                       {compareRows.map((row) => (
-                        <tr key={row.id}>
+                        <tr
+                          key={row.id}
+                          className="transition-colors duration-200 hover:bg-slate-950/50"
+                        >
                           <td className="px-5 py-4 font-semibold text-ink">{row.providerName}</td>
                           <td className="px-5 py-4 text-ink">{row.priceLabel}</td>
                           <td className="px-5 py-4 text-ink">{row.leadTimeLabel}</td>
@@ -651,7 +656,14 @@ function OfferCard({ offer, className }: { offer: OfferCardDto; className?: stri
   const statusLabel = formatOfferStatus(offer.status);
 
   return (
-    <article className={clsx("rounded-3xl border border-slate-900/60 bg-slate-950/35 p-5", className)}>
+    <article
+      className={clsx(
+        "rounded-3xl border border-slate-900/60 bg-slate-950/35 p-5",
+        "transition duration-200 ease-out motion-reduce:transition-none",
+        "hover:-translate-y-0.5 hover:border-slate-700/70 hover:bg-slate-950/45 hover:shadow-[0_18px_55px_rgba(2,6,23,0.45)] motion-reduce:hover:translate-y-0",
+        className,
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-base font-semibold text-ink" title={providerName}>

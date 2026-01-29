@@ -32,8 +32,8 @@ export default async function RfqWorkspacePage({
 
   if (!workspace) {
     return (
-      <main className="mx-auto max-w-4xl px-4 py-10">
-        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
+      <main className="mx-auto max-w-4xl px-4 py-12">
+        <section className="rounded-3xl border border-slate-900/70 bg-slate-950/50 p-7 text-center shadow-[0_18px_55px_rgba(2,6,23,0.45)]">
           <h1 className="text-xl font-semibold text-white">Workspace unavailable</h1>
           <p className="mt-2 text-sm text-slate-400">
             We couldn’t open this search request workspace. Double-check the link or ask the
@@ -45,8 +45,8 @@ export default async function RfqWorkspacePage({
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10">
-      <header className="space-y-3 border-b border-slate-900 pb-6">
+    <main className="mx-auto max-w-5xl px-4 py-12">
+      <header className="space-y-4 border-b border-slate-900/70 pb-8">
         <p className="text-xs uppercase tracking-[0.3em] text-emerald-300">
           Open search request workspace
         </p>
@@ -80,7 +80,7 @@ export default async function RfqWorkspacePage({
         </div>
       </header>
 
-      <div className="mt-8 space-y-6">
+      <div className="mt-10 space-y-8">
         <RfqSummaryCard rfq={workspace.rfq} />
         <SupplierActivityFeed
           supplierBids={workspace.supplierBids}
@@ -98,7 +98,7 @@ function RfqSummaryCard({ rfq }: { rfq: MarketplaceRfq }) {
   const priority = formatPriority(rfq.priority);
 
   return (
-    <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-5">
+    <section className="rounded-3xl border border-slate-900/60 bg-slate-950/45 p-6 shadow-[0_18px_55px_rgba(2,6,23,0.35)]">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Search request summary
@@ -137,7 +137,7 @@ function SupplierActivityFeed({
   supplierBidError,
 }: SupplierActivityFeedProps) {
   return (
-    <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-5">
+    <section className="rounded-3xl border border-slate-900/60 bg-slate-950/45 p-6 shadow-[0_18px_55px_rgba(2,6,23,0.35)]">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -167,7 +167,7 @@ function SupplierActivityFeed({
           supplierBids.map((bid) => (
             <article
               key={bid.id}
-              className="rounded-2xl border border-slate-900 bg-slate-950/60 p-4"
+              className="rounded-3xl border border-slate-900/60 bg-slate-950/55 p-4 transition duration-200 ease-out hover:-translate-y-0.5 hover:border-slate-700/70 hover:bg-slate-950/65 hover:shadow-[0_18px_50px_rgba(2,6,23,0.4)] motion-reduce:hover:translate-y-0"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -210,7 +210,7 @@ function SupplierActivityFeed({
 
 function CollaborationPanel({ threads }: { threads: RfqCollaborationThread[] }) {
   return (
-    <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-5">
+    <section className="rounded-3xl border border-slate-900/60 bg-slate-950/45 p-6 shadow-[0_18px_55px_rgba(2,6,23,0.35)]">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Collaboration panel
@@ -229,7 +229,7 @@ function CollaborationPanel({ threads }: { threads: RfqCollaborationThread[] }) 
           {threads.map((thread) => (
             <article
               key={thread.id}
-              className="rounded-2xl border border-slate-900 bg-black/30 p-4"
+              className="rounded-3xl border border-slate-900/60 bg-black/30 p-4"
             >
               <header className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -278,7 +278,7 @@ function FilesAndRevisions({
   attachments: RfqWorkspaceData["fileAttachments"];
 }) {
   return (
-    <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-5">
+    <section className="rounded-3xl border border-slate-900/60 bg-slate-950/45 p-6 shadow-[0_18px_55px_rgba(2,6,23,0.35)]">
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Files & revisions
@@ -297,7 +297,7 @@ function FilesAndRevisions({
           {attachments.map((file) => (
             <li
               key={file.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-900 bg-slate-950/60 px-4 py-3 text-sm text-slate-100"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 transition-colors duration-200 hover:border-slate-700/70 hover:bg-slate-950/70"
             >
               <div>
                 <p className="font-semibold text-white">{file.fileName}</p>
@@ -321,7 +321,7 @@ function FilesAndRevisions({
 
 function SummaryItem({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-xl border border-slate-900 bg-black/20 px-3 py-2">
+    <div className="rounded-2xl border border-slate-900/60 bg-black/20 px-3 py-2">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
         {label}
       </p>

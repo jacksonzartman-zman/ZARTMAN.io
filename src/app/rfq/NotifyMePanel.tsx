@@ -51,7 +51,7 @@ export function NotifyMePanel({ quoteId, intakeKey }: NotifyMePanelProps) {
 
   if (submitted) {
     return (
-      <section className="rounded-3xl border border-slate-900/60 bg-slate-950/35 p-5">
+      <section className="rounded-3xl border border-slate-900/60 bg-slate-950/35 p-5 shadow-[0_16px_45px_rgba(2,6,23,0.28)]">
         <p className="text-sm font-semibold text-ink">Notify me when offers arrive</p>
         <p className="mt-1 text-sm text-ink-muted" aria-live="polite">
           We’ll email you when offers arrive.
@@ -61,7 +61,7 @@ export function NotifyMePanel({ quoteId, intakeKey }: NotifyMePanelProps) {
   }
 
   return (
-    <section className="rounded-3xl border border-slate-900/60 bg-slate-950/35 p-5">
+    <section className="rounded-3xl border border-slate-900/60 bg-slate-950/35 p-5 shadow-[0_16px_45px_rgba(2,6,23,0.28)]">
       <p className="text-sm font-semibold text-ink">Notify me when offers arrive</p>
       <p className="mt-1 text-sm text-ink-muted">
         Optional. Enter an email and we’ll send you a message when your first offer shows up.
