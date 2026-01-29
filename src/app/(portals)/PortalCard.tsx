@@ -19,7 +19,9 @@ export default function PortalCard({
   return (
     <section
       className={clsx(
-        "rounded-2xl border border-slate-900/70 bg-slate-950/70 px-6 py-5 shadow-[0_10px_30px_rgba(2,6,23,0.45)]",
+        "rounded-3xl border border-slate-900/60 bg-slate-950/60 px-6 py-5 shadow-[0_16px_45px_rgba(2,6,23,0.45)]",
+        "transition duration-200 ease-out motion-reduce:transition-none",
+        "hover:-translate-y-0.5 hover:border-slate-700/70 hover:bg-slate-950/65 hover:shadow-[0_20px_60px_rgba(2,6,23,0.55)] motion-reduce:hover:translate-y-0",
         className,
       )}
     >

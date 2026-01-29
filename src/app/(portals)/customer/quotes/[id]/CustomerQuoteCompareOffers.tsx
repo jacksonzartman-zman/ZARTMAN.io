@@ -292,7 +292,7 @@ export function CustomerQuoteCompareOffers({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {awardLocked ? (
         <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
           <p className="font-semibold text-white">Awarded supplier selected.</p>
@@ -334,8 +334,8 @@ export function CustomerQuoteCompareOffers({
         </p>
       ) : null}
 
-      <div className="overflow-hidden rounded-2xl border border-slate-900/60 bg-slate-950/30">
-        <div className="border-b border-slate-900/60 px-5 py-4">
+      <div className="overflow-hidden rounded-3xl border border-slate-900/60 bg-slate-950/30 shadow-[0_18px_55px_rgba(2,6,23,0.35)]">
+        <div className="border-b border-slate-900/60 px-6 py-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -409,7 +409,7 @@ export function CustomerQuoteCompareOffers({
             </div>
           </div>
         </div>
-        <div className="p-5">
+        <div className="p-6">
           {showShortlistedOnly && shortlistedCount === 0 ? (
             <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4 text-sm text-slate-300">
               No offers shortlisted yet.{" "}
@@ -460,8 +460,9 @@ export function CustomerQuoteCompareOffers({
                   <div
                     key={offer.id}
                     className={clsx(
-                      "rounded-2xl border bg-slate-950/30 p-4 transition duration-200 ease-out",
-                      "hover:-translate-y-0.5 hover:border-slate-700 hover:bg-slate-950/40 hover:shadow-lg hover:shadow-black/20",
+                      "rounded-3xl border bg-slate-950/30 p-5",
+                      "transition duration-200 ease-out motion-reduce:transition-none",
+                      "hover:-translate-y-0.5 hover:border-slate-700/80 hover:bg-slate-950/40 hover:shadow-[0_18px_50px_rgba(2,6,23,0.45)] motion-reduce:hover:translate-y-0",
                       isSelected
                         ? "border-emerald-400/40 bg-emerald-500/10 shadow-lg shadow-emerald-500/5"
                         : "border-slate-900/60",
@@ -510,7 +511,7 @@ export function CustomerQuoteCompareOffers({
                       </div>
 
                       <div className="grid w-full gap-3 sm:w-auto sm:grid-cols-2">
-                        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+                        <div className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                             Total price
                           </p>
@@ -518,7 +519,7 @@ export function CustomerQuoteCompareOffers({
                             {offer.priceDisplay}
                           </p>
                         </div>
-                        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+                        <div className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
                           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                             Lead time
                           </p>
@@ -549,7 +550,7 @@ export function CustomerQuoteCompareOffers({
                     </div>
 
                     {expandedOfferId === offer.id ? (
-                      <div className="mt-4 rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">
+                      <div className="mt-4 rounded-2xl border border-slate-900/60 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">
                         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                           Assumptions
                         </p>
