@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import clsx from "clsx";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
@@ -21,6 +21,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
   const [items, setItems] = useState<SupplierInboxRow[]>(() => rows);
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const [errorById, setErrorById] = useState<Record<string, string>>({});
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     setItems(filterSnoozedRows(rows));
@@ -29,6 +30,18 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
   if (items.length === 0) {
     return null;
   }
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   return (
     <AdminTableShell
@@ -58,6 +71,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
         const href = `/supplier/quotes/${row.quoteId}`;
         const fileCount = Math.max(0, row.fileCount ?? 0);
         const fileNames = Array.isArray(row.fileNames) ? row.fileNames : [];
+        const expanded = expandedIds.has(row.id);
         const primary =
           fileNames[0] ??
           row.primaryFileName ??
@@ -77,159 +91,312 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
           formatRelativeTimeFromTimestamp(toTimestamp(row.createdAt)) ?? "—";
         const pending = pendingIds.has(row.id);
         const error = errorById[row.id];
+        const previewFiles = fileNames.length > 0
+          ? fileNames
+          : row.primaryFileName
+            ? [row.primaryFileName]
+            : [];
+        const previewId = `new-rfq-preview-${row.id}`;
 
         return (
-          <tr key={row.id} className="bg-slate-950/40 transition hover:bg-slate-900/40">
-            <td className={clsx(adminTableCellClass, "px-5 py-4")}>
-              <Link
-                href={href}
-                className="block font-semibold text-white underline-offset-4 hover:underline"
-                title={filesTitle}
-              >
-                {filesLabel}
-              </Link>
-              <p className="mt-1 text-xs text-slate-400">
-                {fileCount > 0 ? `${fileCount} file${fileCount === 1 ? "" : "s"}` : "Files pending"}
-              </p>
-            </td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>{processLabel}</td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>{quantityLabel}</td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>{needByLabel}</td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400")}>{receivedLabel}</td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-right")}>
-              <div className="flex flex-col items-end gap-2">
-                <Link
-                  href={href}
-                  className={clsx(
-                    primaryCtaClasses,
-                    ctaSizeClasses.sm,
-                    "inline-flex min-w-[9rem] justify-center",
-                    pending ? "pointer-events-none opacity-60" : "",
-                  )}
-                >
-                  Submit offer
-                </Link>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={async () => {
-                    if (pending) return;
-                    setErrorById((prev) => {
-                      if (!prev[row.id]) return prev;
-                      const next = { ...prev };
-                      delete next[row.id];
-                      return next;
-                    });
-                    setPendingIds((prev) => new Set(prev).add(row.id));
-
-                    try {
-                      const res = await fetch(`/api/supplier/rfqs/${row.quoteId}/snooze`, {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ hours: 24 }),
-                      });
-                      const payload = (await res.json().catch(() => null)) as any;
-                      if (!res.ok || !payload?.ok) {
-                        const errorCode =
-                          typeof payload?.error === "string" && payload.error
-                            ? payload.error
-                            : "unknown";
-                        throw new Error(errorCode);
-                      }
-
-                      if (typeof payload?.snoozeUntil === "string" && payload.snoozeUntil) {
-                        persistSnooze(row.quoteId, payload.snoozeUntil);
-                      }
-
-                      // Optimistically remove from the current list.
-                      setItems((prev) => prev.filter((candidate) => candidate.id !== row.id));
-                      // Refresh server-rendered pills/status (DB-backed snooze will keep it out).
-                      router.refresh();
-                    } catch (err) {
-                      const message =
-                        err instanceof Error && err.message
-                          ? err.message
-                          : "Unable to snooze right now.";
-                      setErrorById((prev) => ({ ...prev, [row.id]: message }));
-                    } finally {
-                      setPendingIds((prev) => {
-                        const next = new Set(prev);
-                        next.delete(row.id);
+          <Fragment key={row.id}>
+            <tr className="bg-slate-950/40 transition hover:bg-slate-900/40">
+              <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+                <div className="flex items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(row.id)}
+                    aria-label={expanded ? "Hide preview" : "Show preview"}
+                    aria-expanded={expanded}
+                    aria-controls={previewId}
+                    className={clsx(
+                      "mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-800 bg-slate-950/40 text-slate-300 transition hover:border-slate-600 hover:text-white",
+                      expanded ? "text-white" : "",
+                    )}
+                  >
+                    <ChevronIcon rotated={expanded} />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={href}
+                      className="block truncate font-semibold text-white underline-offset-4 hover:underline"
+                      title={filesTitle ?? filesLabel}
+                    >
+                      {filesLabel}
+                    </Link>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {fileCount > 0
+                        ? `${fileCount} file${fileCount === 1 ? "" : "s"}`
+                        : "Files pending"}
+                    </p>
+                  </div>
+                </div>
+              </td>
+              <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>
+                {processLabel}
+              </td>
+              <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>
+                {quantityLabel}
+              </td>
+              <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>
+                {needByLabel}
+              </td>
+              <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400")}>
+                {receivedLabel}
+              </td>
+              <td className={clsx(adminTableCellClass, "px-5 py-4 text-right")}>
+                <div className="flex flex-col items-end gap-2">
+                  <Link
+                    href={href}
+                    className={clsx(
+                      primaryCtaClasses,
+                      ctaSizeClasses.sm,
+                      "inline-flex min-w-[9rem] justify-center",
+                      pending ? "pointer-events-none opacity-60" : "",
+                    )}
+                  >
+                    Submit offer
+                  </Link>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={async () => {
+                      if (pending) return;
+                      setErrorById((prev) => {
+                        if (!prev[row.id]) return prev;
+                        const next = { ...prev };
+                        delete next[row.id];
                         return next;
                       });
-                    }
-                  }}
-                  className={clsx(
-                    ctaSizeClasses.sm,
-                    "rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white",
-                    pending ? "opacity-60" : "",
-                  )}
-                >
-                  {pending ? "Snoozing..." : "Snooze 24h"}
-                </button>
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={async () => {
-                    if (pending) return;
-                    setErrorById((prev) => {
-                      if (!prev[row.id]) return prev;
-                      const next = { ...prev };
-                      delete next[row.id];
-                      return next;
-                    });
-                    setPendingIds((prev) => new Set(prev).add(row.id));
+                      setPendingIds((prev) => new Set(prev).add(row.id));
 
-                    try {
-                      const res = await fetch(`/api/supplier/rfqs/${row.quoteId}/decline`, {
-                        method: "POST",
-                      });
-                      const payload = (await res.json().catch(() => null)) as any;
-                      if (!res.ok || !payload?.ok) {
-                        const errorCode =
-                          typeof payload?.error === "string" && payload.error
-                            ? payload.error
-                            : "unknown";
-                        throw new Error(errorCode);
+                      try {
+                        const res = await fetch(
+                          `/api/supplier/rfqs/${row.quoteId}/snooze`,
+                          {
+                            method: "POST",
+                            headers: { "content-type": "application/json" },
+                            body: JSON.stringify({ hours: 24 }),
+                          },
+                        );
+                        const payload = (await res.json().catch(() => null)) as any;
+                        if (!res.ok || !payload?.ok) {
+                          const errorCode =
+                            typeof payload?.error === "string" && payload.error
+                              ? payload.error
+                              : "unknown";
+                          throw new Error(errorCode);
+                        }
+
+                        if (
+                          typeof payload?.snoozeUntil === "string" &&
+                          payload.snoozeUntil
+                        ) {
+                          persistSnooze(row.quoteId, payload.snoozeUntil);
+                        }
+
+                        // Optimistically remove from the current list.
+                        setItems((prev) =>
+                          prev.filter((candidate) => candidate.id !== row.id),
+                        );
+                        // Refresh server-rendered pills/status (DB-backed snooze will keep it out).
+                        router.refresh();
+                      } catch (err) {
+                        const message =
+                          err instanceof Error && err.message
+                            ? err.message
+                            : "Unable to snooze right now.";
+                        setErrorById((prev) => ({ ...prev, [row.id]: message }));
+                      } finally {
+                        setPendingIds((prev) => {
+                          const next = new Set(prev);
+                          next.delete(row.id);
+                          return next;
+                        });
                       }
-
-                      // Optimistically remove from the current list.
-                      setItems((prev) => prev.filter((candidate) => candidate.id !== row.id));
-                      // Refresh server-rendered pills/status + ensure the RFQ stays out.
-                      router.refresh();
-                    } catch (err) {
-                      const message =
-                        err instanceof Error && err.message
-                          ? err.message
-                          : "Unable to decline right now.";
-                      setErrorById((prev) => ({ ...prev, [row.id]: message }));
-                    } finally {
-                      setPendingIds((prev) => {
-                        const next = new Set(prev);
-                        next.delete(row.id);
+                    }}
+                    className={clsx(
+                      ctaSizeClasses.sm,
+                      "rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white",
+                      pending ? "opacity-60" : "",
+                    )}
+                  >
+                    {pending ? "Snoozing..." : "Snooze 24h"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={async () => {
+                      if (pending) return;
+                      setErrorById((prev) => {
+                        if (!prev[row.id]) return prev;
+                        const next = { ...prev };
+                        delete next[row.id];
                         return next;
                       });
-                    }
-                  }}
-                  className={clsx(
-                    ctaSizeClasses.sm,
-                    "rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white",
-                    pending ? "opacity-60" : "",
-                  )}
+                      setPendingIds((prev) => new Set(prev).add(row.id));
+
+                      try {
+                        const res = await fetch(
+                          `/api/supplier/rfqs/${row.quoteId}/decline`,
+                          {
+                            method: "POST",
+                          },
+                        );
+                        const payload = (await res.json().catch(() => null)) as any;
+                        if (!res.ok || !payload?.ok) {
+                          const errorCode =
+                            typeof payload?.error === "string" && payload.error
+                              ? payload.error
+                              : "unknown";
+                          throw new Error(errorCode);
+                        }
+
+                        // Optimistically remove from the current list.
+                        setItems((prev) =>
+                          prev.filter((candidate) => candidate.id !== row.id),
+                        );
+                        // Refresh server-rendered pills/status + ensure the RFQ stays out.
+                        router.refresh();
+                      } catch (err) {
+                        const message =
+                          err instanceof Error && err.message
+                            ? err.message
+                            : "Unable to decline right now.";
+                        setErrorById((prev) => ({ ...prev, [row.id]: message }));
+                      } finally {
+                        setPendingIds((prev) => {
+                          const next = new Set(prev);
+                          next.delete(row.id);
+                          return next;
+                        });
+                      }
+                    }}
+                    className={clsx(
+                      ctaSizeClasses.sm,
+                      "rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white",
+                      pending ? "opacity-60" : "",
+                    )}
+                  >
+                    {pending ? "Declining..." : "Not a fit"}
+                  </button>
+                  {error ? (
+                    <p
+                      className="max-w-[12rem] text-right text-xs text-red-300"
+                      role="alert"
+                    >
+                      {error}
+                    </p>
+                  ) : null}
+                </div>
+              </td>
+            </tr>
+            {expanded ? (
+              <tr className="bg-slate-950/25">
+                <td
+                  colSpan={6}
+                  className={clsx(adminTableCellClass, "px-5 pb-5 pt-0")}
                 >
-                  {pending ? "Declining..." : "Not a fit"}
-                </button>
-                {error ? (
-                  <p className="max-w-[12rem] text-right text-xs text-red-300" role="alert">
-                    {error}
-                  </p>
-                ) : null}
-              </div>
-            </td>
-          </tr>
+                  <NewRfqPreviewPanel
+                    id={previewId}
+                    fileNames={previewFiles}
+                    processLabel={processLabel}
+                    quantityLabel={quantityLabel}
+                    needByLabel={needByLabel}
+                  />
+                </td>
+              </tr>
+            ) : null}
+          </Fragment>
         );
       })}
     />
+  );
+}
+
+function NewRfqPreviewPanel({
+  id,
+  fileNames,
+  processLabel,
+  quantityLabel,
+  needByLabel,
+}: {
+  id: string;
+  fileNames: string[];
+  processLabel: string;
+  quantityLabel: string;
+  needByLabel: string;
+}) {
+  const fileList = useMemo(() => {
+    const cleaned = fileNames
+      .map((name) => (typeof name === "string" ? name.trim() : ""))
+      .filter((name) => name.length > 0);
+    return cleaned;
+  }, [fileNames]);
+
+  return (
+    <div
+      id={id}
+      className="rounded-2xl border border-slate-800/70 bg-slate-950/40 px-4 py-3"
+    >
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="md:col-span-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+            Files
+          </p>
+          {fileList.length > 0 ? (
+            <ul className="mt-2 space-y-1 text-sm text-slate-200">
+              {fileList.map((name) => (
+                <li key={name} className="min-w-0">
+                  <span className="block truncate" title={name}>
+                    {name}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-slate-200">—</p>
+          )}
+        </div>
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+            Process(es)
+          </p>
+          <p className="mt-2 text-sm text-slate-200">{processLabel || "—"}</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-1">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+              Qty
+            </p>
+            <p className="mt-2 text-sm text-slate-200">{quantityLabel || "—"}</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+              Need-by
+            </p>
+            <p className="mt-2 text-sm text-slate-200">{needByLabel || "—"}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChevronIcon({ rotated }: { rotated: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={clsx("h-4 w-4 transition-transform", rotated ? "rotate-180" : "")}
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.24 4.5a.75.75 0 0 1-1.08 0l-4.24-4.5a.75.75 0 0 1 .02-1.06Z"
+        clipRule="evenodd"
+      />
+    </svg>
   );
 }
 
