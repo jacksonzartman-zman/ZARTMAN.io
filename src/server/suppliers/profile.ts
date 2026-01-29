@@ -413,6 +413,12 @@ export async function loadSupplierByUserId(
         ? membership.data.supplier_id
         : "";
     if (!supplierId) {
+      // Fallback: if this auth user matches an existing supplier by primary_email,
+      // link them automatically (common for invite-based onboarding).
+      const linked = await linkSupplierByAuthEmail(userId);
+      if (linked) {
+        return linked;
+      }
       return null;
     }
 
@@ -428,12 +434,64 @@ export async function loadSupplierByUserId(
         supplierId,
         error: supplierError,
       });
+      // Best-effort fallback to email-based linkage.
+      const linked = await linkSupplierByAuthEmail(userId);
+      if (linked) {
+        return linked;
+      }
       return null;
     }
 
     return supplier ?? null;
   } catch (error) {
     console.error("loadSupplierByUserId: unexpected error", { userId, error });
+    return null;
+  }
+}
+
+async function linkSupplierByAuthEmail(userId: string): Promise<SupplierRow | null> {
+  const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
+  if (!normalizedUserId) return null;
+
+  try {
+    const auth = await supabaseServer().auth.admin.getUserById(normalizedUserId);
+    const email = normalizeEmail(auth.data.user?.email ?? null);
+    if (!email) return null;
+
+    const { data: supplier, error } = await supabaseServer()
+      .from("suppliers")
+      .select(await buildSupplierSelect())
+      .eq("primary_email", email)
+      .maybeSingle<SupplierRow>();
+
+    if (error || !supplier) {
+      return null;
+    }
+
+    const currentUserId = typeof supplier.user_id === "string" ? supplier.user_id.trim() : "";
+    if (currentUserId && currentUserId !== normalizedUserId) {
+      // Already linked to a different account; don't overwrite.
+      return supplier;
+    }
+
+    if (!currentUserId) {
+      const { error: linkError } = await supabaseServer()
+        .from("suppliers")
+        .update({ user_id: normalizedUserId })
+        .eq("id", supplier.id);
+      if (linkError) {
+        console.error("loadSupplierByUserId: email-based link failed", {
+          userId: normalizedUserId,
+          supplierId: supplier.id,
+          error: linkError,
+        });
+        return supplier;
+      }
+      supplier.user_id = normalizedUserId;
+    }
+
+    return supplier;
+  } catch {
     return null;
   }
 }

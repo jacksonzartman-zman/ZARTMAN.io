@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getFormString, serializeActionError } from "@/lib/forms";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
+import { requestMagicLinkForEmail } from "@/app/auth/actions";
 import { serializeSupabaseError } from "@/server/admin/logging";
 import {
   logProviderContactedOpsEvent,
@@ -13,12 +14,20 @@ import {
 } from "@/server/ops/events";
 import { resolveProviderEmailColumn } from "@/server/providers";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
+import { getOrCreateSupplierByEmail, loadSupplierByPrimaryEmail } from "@/server/suppliers/profile";
 
 const PROVIDER_ACTION_ERROR = "We couldn't update this provider right now.";
 const BULK_PROVIDERS_INPUT_ERROR = "Select at least one provider.";
 const BULK_PROVIDERS_GENERIC_ERROR = "We couldn't update these providers right now.";
 const BULK_DIRECTORY_VISIBILITY_ERROR = "Directory visibility isn't available yet.";
 const BULK_NOTES_ERROR = "Response summary is required.";
+
+export type InviteSupplierActionState =
+  | { status?: undefined }
+  | { status: "success"; message: string }
+  | { status: "error"; error: string };
+
+export const INVITE_SUPPLIER_INITIAL_STATE: InviteSupplierActionState = {};
 
 export type BulkProviderActionResult =
   | { ok: true; message: string; updatedCount: number; skippedCount: number }
@@ -1018,12 +1027,98 @@ export async function bulkMarkProvidersRespondedAction(args: {
   }
 }
 
+export async function inviteSupplierAction(
+  _prevState: InviteSupplierActionState,
+  formData: FormData,
+): Promise<InviteSupplierActionState> {
+  const supplierName = normalizeText(getFormString(formData, "supplierName"));
+  const email = normalizeEmail(getFormString(formData, "email"));
+  const processes = normalizeStringList(formData.getAll("processes"));
+
+  if (!supplierName) {
+    return { status: "error", error: "Supplier name is required." };
+  }
+  if (!email) {
+    return { status: "error", error: "Enter a valid email address." };
+  }
+
+  try {
+    await requireAdminUser();
+
+    const { providerId, providerError } = await upsertInvitedSupplierProvider({
+      supplierName,
+      email,
+      processes,
+    });
+    if (!providerId) {
+      return { status: "error", error: providerError ?? "We couldn't create the provider record." };
+    }
+
+    const supplier = await getOrCreateSupplierByEmail(email, supplierName, null);
+
+    const supportsProviderId = await hasColumns("suppliers", ["provider_id"]);
+    const supportsStatus = await hasColumns("suppliers", ["status"]);
+    const updatePayload: Record<string, unknown> = {
+      company_name: supplierName,
+      primary_email: email,
+      verified: true,
+      ...(supportsProviderId ? { provider_id: providerId } : {}),
+      ...(supportsStatus ? { status: "approved" } : {}),
+    };
+
+    const updateSupported = await schemaGate({
+      enabled: true,
+      relation: "suppliers",
+      requiredColumns: ["id", ...Object.keys(updatePayload)],
+      warnPrefix: "[admin providers]",
+      warnKey: "admin_providers_invite_supplier_update_supplier",
+    });
+    if (updateSupported) {
+      const { error: supplierUpdateError } = await supabaseServer()
+        .from("suppliers")
+        .update(updatePayload)
+        .eq("id", supplier.id);
+      if (supplierUpdateError) {
+        console.error("[admin providers] supplier update failed", {
+          supplierId: supplier.id,
+          email,
+          error: serializeSupabaseError(supplierUpdateError) ?? supplierUpdateError,
+        });
+      }
+    }
+
+    const magic = await requestMagicLinkForEmail({
+      role: "supplier",
+      email,
+      nextPath: "/supplier?invited=1",
+    });
+    if (!magic.ok) {
+      return { status: "error", error: magic.error };
+    }
+
+    revalidatePath("/admin/providers");
+    return { status: "success", message: `Invite sent to ${email}.` };
+  } catch (error) {
+    console.error("[admin providers] invite supplier crashed", {
+      error: serializeActionError(error),
+    });
+    return { status: "error", error: "We couldn't send that invite right now." };
+  }
+}
+
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
 function normalizeText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || !normalized.includes("@")) return null;
+  return normalized;
 }
 
 function normalizeOptionalText(value: unknown): string | null {
@@ -1076,4 +1171,144 @@ function normalizeProviderIds(value: unknown): string[] {
     .map((id) => (typeof id === "string" ? id.trim() : ""))
     .filter((id) => id.length > 0);
   return Array.from(new Set(normalized));
+}
+
+function normalizeStringList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const normalized = values
+    .map((value) => (typeof value === "string" ? value.trim() : ""))
+    .filter((value) => value.length > 0);
+  return Array.from(new Set(normalized));
+}
+
+async function upsertInvitedSupplierProvider(args: {
+  supplierName: string;
+  email: string;
+  processes: string[];
+}): Promise<{ providerId: string | null; providerError?: string }> {
+  const supported = await schemaGate({
+    enabled: true,
+    relation: "providers",
+    requiredColumns: ["id", "name", "provider_type", "quoting_mode", "is_active"],
+    warnPrefix: "[admin providers]",
+    warnKey: "admin_providers_invite_supplier_provider_schema",
+  });
+  if (!supported) {
+    return { providerId: null, providerError: "Provider schema unavailable." };
+  }
+
+  const normalizedProcesses = args.processes
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => p.toLowerCase());
+
+  let providerId: string | null = null;
+  try {
+    const supplier = await loadSupplierByPrimaryEmail(args.email);
+    const linkedProviderId =
+      typeof (supplier as any)?.provider_id === "string" ? (supplier as any).provider_id.trim() : "";
+    if (linkedProviderId) {
+      providerId = linkedProviderId;
+    }
+  } catch {
+    // ignore
+  }
+
+  const [emailColumn, supportsProcesses, supportsVerificationStatus, supportsVerifiedAt, supportsSource] =
+    await Promise.all([
+      resolveProviderEmailColumn(),
+      hasColumns("providers", ["processes"]),
+      hasColumns("providers", ["verification_status"]),
+      hasColumns("providers", ["verified_at"]),
+      hasColumns("providers", ["source"]),
+    ]);
+
+  if (!providerId && emailColumn) {
+    const lookupSupported = await schemaGate({
+      enabled: true,
+      relation: "providers",
+      requiredColumns: ["id", emailColumn],
+      warnPrefix: "[admin providers]",
+      warnKey: "admin_providers_invite_supplier_provider_lookup",
+    });
+    if (lookupSupported) {
+      const { data } = await supabaseServer()
+        .from("providers")
+        .select(`id,${emailColumn}`)
+        .eq(emailColumn, args.email)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ id: string | null }>();
+      providerId = typeof data?.id === "string" ? data.id.trim() : null;
+    }
+  }
+
+  const payload: Record<string, unknown> = {
+    name: args.supplierName,
+    provider_type: "direct_supplier",
+    quoting_mode: "manual",
+    is_active: true,
+    ...(supportsVerificationStatus ? { verification_status: "verified" } : {}),
+    ...(supportsVerifiedAt ? { verified_at: new Date().toISOString() } : {}),
+    ...(supportsSource ? { source: "manual" } : {}),
+    ...(supportsProcesses ? { processes: normalizedProcesses } : {}),
+    ...(emailColumn ? { [emailColumn]: args.email } : {}),
+  };
+
+  try {
+    if (providerId) {
+      const updateSupported = await schemaGate({
+        enabled: true,
+        relation: "providers",
+        requiredColumns: ["id", ...Object.keys(payload)],
+        warnPrefix: "[admin providers]",
+        warnKey: "admin_providers_invite_supplier_provider_update",
+      });
+      if (!updateSupported) {
+        return { providerId: null, providerError: "Provider schema unavailable." };
+      }
+      const { error } = await supabaseServer().from("providers").update(payload).eq("id", providerId);
+      if (error) {
+        console.error("[admin providers] provider update failed", {
+          providerId,
+          email: args.email,
+          error: serializeSupabaseError(error) ?? error,
+        });
+        return { providerId: null, providerError: "Unable to update provider." };
+      }
+      return { providerId };
+    }
+
+    const insertSupported = await schemaGate({
+      enabled: true,
+      relation: "providers",
+      requiredColumns: ["name", "provider_type", "quoting_mode", "is_active"],
+      warnPrefix: "[admin providers]",
+      warnKey: "admin_providers_invite_supplier_provider_insert",
+    });
+    if (!insertSupported) {
+      return { providerId: null, providerError: "Provider schema unavailable." };
+    }
+
+    const { data, error } = await supabaseServer()
+      .from("providers")
+      .insert(payload)
+      .select("id")
+      .maybeSingle<{ id: string | null }>();
+    if (error) {
+      console.error("[admin providers] provider insert failed", {
+        email: args.email,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return { providerId: null, providerError: "Unable to create provider." };
+    }
+    const insertedId = typeof data?.id === "string" ? data.id.trim() : "";
+    return { providerId: insertedId || null };
+  } catch (error) {
+    console.error("[admin providers] provider upsert crashed", {
+      email: args.email,
+      error: serializeActionError(error),
+    });
+    return { providerId: null, providerError: "Unable to create provider." };
+  }
 }
