@@ -11,6 +11,7 @@ import {
 } from "@/lib/cadFileTypes";
 import { MAX_UPLOAD_BYTES, formatMaxUploadSize } from "@/lib/uploads/uploadLimits";
 import { registerUploadedObjectsForExistingUpload } from "@/server/quotes/uploadFiles";
+import { notifySuppliersForPendingRfqDestinations } from "@/server/rfqs/supplierDestinationNotifications";
 
 export const runtime = "nodejs";
 
@@ -431,6 +432,14 @@ export async function POST(req: NextRequest) {
       } else {
         quoteId = createdQuote.id;
         logContext.quoteId = quoteId;
+
+        // Phase 101: best-effort provider notifications for newly routed (pending) destinations.
+        // Routing is DB-triggered on quote insert.
+        try {
+          await notifySuppliersForPendingRfqDestinations({ rfqId: quoteId });
+        } catch {
+          // fail-soft: never block upload flow
+        }
 
         const { error: uploadLinkError } = await supabase
           .from("uploads")
