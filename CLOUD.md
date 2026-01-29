@@ -130,6 +130,9 @@ Where to find logs:
 - Vercel Dashboard → Project → Deployments → Build Logs
 - Vercel Dashboard → Project → Deployments → Runtime Logs (Functions/Edge)
 
+Strict build guard:
+- See `docs/STRICT_BUILD_GUARD_CHECKLIST.md` (covers union/status maps, typed empty arrays, and always running `npm run build`).
+
 Common causes:
 - TypeScript or ESLint errors during `npm run build`
 - Missing/incorrect env vars (for example `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`)
