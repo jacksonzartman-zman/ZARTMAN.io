@@ -296,14 +296,16 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
         </div>
       </header>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
-        <div className="md:col-span-2">
-          <p className="text-xs font-semibold text-ink">Process</p>
-          <p className="mt-1 text-xs text-ink-soft">Pick one or more (optional).</p>
+      <div className="mt-4 grid gap-6 md:grid-cols-2 md:items-center">
+        <div className="min-w-0 space-y-2">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-ink">Process</p>
+            <p className="text-xs text-ink-soft">Pick one or more (optional).</p>
+          </div>
           {showNoProcessNudge ? (
-            <p className="mt-1 text-xs text-amber-100/90">Pick a process to get faster matching</p>
+            <p className="text-xs text-amber-100/90">Pick a process to get faster matching</p>
           ) : null}
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {PROCESS_OPTIONS.map((option) => {
               const active = processes.includes(option.key);
               return (
@@ -327,8 +329,8 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div>
+        <div className="min-w-0 space-y-5 md:self-center">
+          <div className="grid gap-2">
             <label className="block text-xs font-semibold text-ink" htmlFor="quick-specs-needby">
               Need-by date <span className="text-ink-soft font-normal">(optional)</span>
             </label>
@@ -337,18 +339,18 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
               type="date"
               value={targetDate}
               onChange={(e) => setTargetDate(e.target.value)}
-              className="mt-2 h-10 w-full rounded-2xl border border-slate-800/90 bg-slate-950/30 px-3 text-sm text-ink outline-none focus:border-slate-600"
+              className="h-10 w-full rounded-2xl border border-slate-800/90 bg-slate-950/30 px-3 text-sm text-ink outline-none focus:border-slate-600"
             />
             {targetDate && !isValidIsoDate(normalizeIsoDate(targetDate)) ? (
-              <p className="mt-1 text-xs text-red-200">Enter a valid date.</p>
+              <p className="text-xs text-red-200">Enter a valid date.</p>
             ) : null}
           </div>
 
-          <div>
+          <div className="grid gap-2">
             <label className="block text-xs font-semibold text-ink" htmlFor="quick-specs-qty">
               Quantity
             </label>
-            <div className="mt-2 flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 aria-label="Decrease quantity"
@@ -391,9 +393,9 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
               </button>
             </div>
             {showProductionQtyNudge ? (
-              <p className="mt-1 text-xs text-amber-100/90">Qty 1? This looks like production — want more?</p>
+              <p className="text-xs text-amber-100/90">Qty 1? This looks like production — want more?</p>
             ) : null}
-            <p className="mt-1 text-xs text-ink-soft">
+            <p className="text-xs text-ink-soft">
               Min {MIN_QUANTITY.toLocaleString()}, max {MAX_QUANTITY.toLocaleString()}.
             </p>
           </div>
