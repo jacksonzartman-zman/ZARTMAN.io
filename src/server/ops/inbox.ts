@@ -17,6 +17,11 @@ import { getOpsSlaSettings } from "@/server/ops/settings";
 import { parseRfqOfferStatus, type RfqOffer } from "@/server/rfqs/offers";
 import { resolveProviderEmailColumn } from "@/server/providers";
 import {
+  DESTINATION_STATUS_VALUES,
+  type DestinationStatus,
+  type DestinationStatusCounts,
+} from "@/lib/rfq/destinationStatus";
+import {
   computeAdminReplyState,
   loadQuoteMessageRollups,
   type AdminMessageReplyState,
@@ -73,15 +78,7 @@ export type AdminOpsInboxDestination = {
 export type AdminOpsInboxOffer = RfqOffer;
 
 export type AdminOpsInboxSummary = {
-  counts: {
-    queued: number;
-    sent: number;
-    submitted: number;
-    viewed: number;
-    quoted: number;
-    declined: number;
-    error: number;
-  };
+  counts: DestinationStatusCounts;
   needsActionCount: number;
   needsReplyCount: number;
   errorsCount: number;
@@ -186,16 +183,6 @@ type OfferRow = {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-const DESTINATION_STATUS_COUNTS = [
-  "queued",
-  "sent",
-  "submitted",
-  "viewed",
-  "quoted",
-  "declined",
-  "error",
-] as const;
-
 const OFFER_SELECT = [
   "id",
   "rfq_id",
@@ -217,7 +204,9 @@ const OFFER_SELECT = [
   "created_at",
 ].join(",");
 
-type DestinationStatusCountKey = (typeof DESTINATION_STATUS_COUNTS)[number];
+function isDestinationStatus(value: string): value is DestinationStatus {
+  return (DESTINATION_STATUS_VALUES as readonly string[]).includes(value);
+}
 
 export async function getAdminOpsInboxRows(
   args: AdminOpsInboxArgs = {},
@@ -895,20 +884,12 @@ function buildQuoteSummary(
   lastMessageAt: string | null,
   lastMessagePreview: string | null,
 ): AdminOpsInboxSummary {
-  const counts: Record<DestinationStatusCountKey, number> = {
-    queued: 0,
-    sent: 0,
-    submitted: 0,
-    viewed: 0,
-    quoted: 0,
-    declined: 0,
-    error: 0,
-  };
+  const counts: DestinationStatusCounts = {};
 
   for (const destination of destinations) {
-    const status = normalizeString(destination.status).toLowerCase() as DestinationStatusCountKey;
-    if (DESTINATION_STATUS_COUNTS.includes(status)) {
-      counts[status] += 1;
+    const status = normalizeString(destination.status).toLowerCase();
+    if (isDestinationStatus(status)) {
+      counts[status] = (counts[status] ?? 0) + 1;
     }
   }
 

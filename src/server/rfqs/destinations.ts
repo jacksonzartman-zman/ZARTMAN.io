@@ -5,17 +5,12 @@ import {
 } from "@/server/admin/logging";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 import type { ProviderSource, ProviderVerificationStatus } from "@/server/providers";
+import {
+  DESTINATION_STATUS_VALUES,
+  type DestinationStatus,
+} from "@/lib/rfq/destinationStatus";
 
-export type RfqDestinationStatus =
-  | "draft"
-  | "pending"
-  | "queued"
-  | "sent"
-  | "submitted"
-  | "viewed"
-  | "quoted"
-  | "declined"
-  | "error";
+export type RfqDestinationStatus = "draft" | DestinationStatus;
 
 export type RfqDestinationProvider = {
   name: string | null;
@@ -176,17 +171,14 @@ const OFFER_TOKEN_SELECT = [
   `quote:quotes(${OFFER_TOKEN_QUOTE_COLUMNS.join(",")})`,
 ].join(",");
 
-const DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
+const DESTINATION_STATUSES: ReadonlySet<string> = new Set([
   "draft",
-  "pending",
-  "queued",
-  "sent",
-  "submitted",
-  "viewed",
-  "quoted",
-  "declined",
-  "error",
+  ...DESTINATION_STATUS_VALUES,
 ]);
+
+function isRfqDestinationStatus(value: string): value is RfqDestinationStatus {
+  return DESTINATION_STATUSES.has(value);
+}
 
 export async function getRfqDestinations(rfqId: string): Promise<RfqDestination[]> {
   const normalizedId = normalizeId(rfqId);
@@ -557,9 +549,7 @@ function normalizeOfferTokenQuote(
 
 function normalizeDestinationStatus(value: string | null | undefined): RfqDestinationStatus {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (DESTINATION_STATUSES.has(normalized as RfqDestinationStatus)) {
-    return normalized as RfqDestinationStatus;
-  }
+  if (isRfqDestinationStatus(normalized)) return normalized;
   return "draft";
 }
 

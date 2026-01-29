@@ -9,54 +9,27 @@ import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relat
 import { getAdminOpsInboxRows, type AdminOpsInboxRow } from "@/server/ops/inbox";
 import { getOpsSlaConfig } from "@/server/ops/settings";
 import { listProviders } from "@/server/providers";
+import {
+  DESTINATION_STATUS_META,
+  DESTINATION_STATUS_VALUES,
+  type DestinationStatus,
+  type DestinationStatusCounts,
+} from "@/lib/rfq/destinationStatus";
 import { OpsInboxDispatchDrawer } from "./OpsInboxDispatchDrawer";
 import { IntroRequestsHandleButton } from "./IntroRequestsHandleButton";
 import { OpsInboxNudgeButton } from "./OpsInboxNudgeButton";
 
 export const dynamic = "force-dynamic";
 
-const DESTINATION_STATUS_VALUES = [
-  "pending",
-  "queued",
-  "sent",
-  "submitted",
-  "viewed",
-  "quoted",
-  "declined",
-  "error",
-] as const;
-
-const DESTINATION_STATUS_OPTIONS = [
-  { value: "all", label: "All" },
-  { value: "pending", label: "Pending" },
-  { value: "queued", label: "Queued" },
-  { value: "sent", label: "Sent" },
-  { value: "submitted", label: "Submitted" },
-  { value: "viewed", label: "Viewed" },
-  { value: "quoted", label: "Quoted" },
-  { value: "declined", label: "Declined" },
-  { value: "error", label: "Error" },
-] as const;
-
-type DestinationStatus = (typeof DESTINATION_STATUS_VALUES)[number];
 type DestinationStatusFilter = DestinationStatus | "all";
 
-const DESTINATION_STATUS_META: Record<
-  DestinationStatus,
-  { label: string; className: string }
-> = {
-  pending: { label: "Pending", className: "pill-muted" },
-  queued: { label: "Queued", className: "pill-muted" },
-  sent: { label: "Sent", className: "pill-info" },
-  submitted: { label: "Submitted", className: "pill-info" },
-  viewed: { label: "Viewed", className: "pill-info" },
-  quoted: { label: "Quoted", className: "pill-success" },
-  declined: { label: "Declined", className: "pill-warning" },
-  error: {
-    label: "Error",
-    className: "border-red-400/60 bg-red-500/15 text-red-100",
-  },
-};
+const DESTINATION_STATUS_OPTIONS: Array<{ value: DestinationStatusFilter; label: string }> = [
+  { value: "all", label: "All" },
+  ...DESTINATION_STATUS_VALUES.map((value) => ({
+    value,
+    label: DESTINATION_STATUS_META[value].label,
+  })),
+];
 
 type NeedsActionChip = {
   key:
@@ -405,6 +378,7 @@ export default async function AdminOpsInboxPage({
                 const email = row.customer.email?.trim() || "";
                 const lastActivity = lastActivityMs > 0 ? new Date(lastActivityMs) : null;
                 const hasIntroRequests = (row.summary.introRequestsCount ?? 0) > 0;
+                const destinationCounts: DestinationStatusCounts = row.summary.counts;
                 const owedBy = row.summary.threadOwedReplyBy;
                 const lastMessageAt =
                   row.summary.lastMessageAt ??
@@ -527,13 +501,16 @@ export default async function AdminOpsInboxPage({
                         <td className={clsx(adminTableCellClass, "px-5 py-4")}>
                           <div className="flex flex-wrap gap-2">
                             {DESTINATION_STATUS_VALUES.map((status) => {
-                              const count = row.summary.counts[status] ?? 0;
+                              const count = destinationCounts[status] ?? 0;
                               if (count <= 0) return null;
                               const meta = DESTINATION_STATUS_META[status];
                               return (
                                 <span
                                   key={status}
-                                  className={clsx("pill pill-table", meta.className)}
+                                  className={clsx(
+                                    "pill pill-table",
+                                    destinationStatusPillClassName(status),
+                                  )}
                                 >
                                   {meta.label} {count}
                                 </span>
@@ -626,10 +603,27 @@ function toMs(value: string | null | undefined): number {
 
 function normalizeDestinationStatus(value: unknown): DestinationStatusFilter {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if ((DESTINATION_STATUS_VALUES as readonly string[]).includes(normalized)) {
-    return normalized as DestinationStatusFilter;
+  return isDestinationStatus(normalized) ? normalized : "all";
+}
+
+function isDestinationStatus(value: string): value is DestinationStatus {
+  return (DESTINATION_STATUS_VALUES as readonly string[]).includes(value);
+}
+
+function destinationStatusPillClassName(status: DestinationStatus): string {
+  if (status === "error") {
+    return "border-red-400/60 bg-red-500/15 text-red-100";
   }
-  return "all";
+  if (status === "quoted") {
+    return "pill-success";
+  }
+  if (status === "declined") {
+    return "pill-warning";
+  }
+  if (status === "sent" || status === "submitted" || status === "viewed") {
+    return "pill-info";
+  }
+  return "pill-muted";
 }
 
 function parseToggle(value: string | null): boolean {
