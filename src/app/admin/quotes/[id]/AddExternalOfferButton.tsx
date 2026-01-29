@@ -44,10 +44,12 @@ function normalizeInt(value: string): number | null {
 
 export function AddExternalOfferButton({
   quoteId,
+  excludedSourceNames,
   className,
   buttonSize = "sm",
 }: {
   quoteId: string;
+  excludedSourceNames?: string[];
   className?: string;
   buttonSize?: "sm" | "xs";
 }) {
@@ -79,6 +81,16 @@ export function AddExternalOfferButton({
       leadTimeDays > 0
     );
   }, [draft.leadTimeDays, draft.price, pending, quoteId]);
+
+  const excludedSourceWarning = useMemo(() => {
+    const excluded = Array.isArray(excludedSourceNames) ? excludedSourceNames : [];
+    if (excluded.length === 0) return null;
+    const normalized = draft.sourceName.trim().toLowerCase();
+    if (!normalized) return null;
+    const match = excluded.find((name) => name.trim().toLowerCase() === normalized) ?? null;
+    if (!match) return null;
+    return `This customer excludes “${match.trim() || draft.sourceName.trim()}”.`;
+  }, [draft.sourceName, excludedSourceNames]);
 
   const submit = () => {
     if (!canSubmit) return;
@@ -299,6 +311,11 @@ export function AddExternalOfferButton({
                       )}
                       placeholder='e.g. “Xometry”, “Direct supplier – ABC Machining”'
                     />
+                    {excludedSourceWarning ? (
+                      <p className="text-xs text-amber-200" aria-live="polite">
+                        {excludedSourceWarning}
+                      </p>
+                    ) : null}
                     {fieldErrors.sourceName ? (
                       <p className="text-xs text-amber-300" aria-live="polite">
                         {fieldErrors.sourceName}

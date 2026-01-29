@@ -2,6 +2,10 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { QuickSpecsPanel } from "./QuickSpecsPanel";
 import { getRfqOffers, isRfqOfferWithdrawn, summarizeRfqOffers } from "@/server/rfqs/offers";
+import {
+  filterOffersByCustomerExclusions,
+  loadCustomerExclusions,
+} from "@/server/customers/exclusions";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 import { PublicOffersSection } from "./PublicOffersSection";
 import { getServerAuthUser } from "@/server/auth";
@@ -171,7 +175,14 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
     return "already_saved_elsewhere";
   })();
 
-  const offers = await getRfqOffers(quote.id);
+  const offersRaw = await getRfqOffers(quote.id);
+  const offers =
+    quoteCustomerId && offersRaw.length > 0
+      ? filterOffersByCustomerExclusions(
+          offersRaw,
+          await loadCustomerExclusions(quoteCustomerId),
+        )
+      : offersRaw;
   const offersSummary = summarizeRfqOffers(offers);
   const offersCount = offersSummary.nonWithdrawn;
   const nonWithdrawnOffers = offers.filter((offer) => !isRfqOfferWithdrawn(offer.status));

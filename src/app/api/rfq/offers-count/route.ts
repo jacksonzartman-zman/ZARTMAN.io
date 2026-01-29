@@ -6,6 +6,10 @@ import {
   summarizeRfqOffers,
 } from "@/server/rfqs/offers";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
+import {
+  filterOffersByCustomerExclusions,
+  loadCustomerExclusions,
+} from "@/server/customers/exclusions";
 
 export const dynamic = "force-dynamic";
 
@@ -47,12 +51,13 @@ export async function GET(req: Request) {
   const client = supabaseServer();
   const quoteRes = await client
     .from("quotes")
-    .select("id,upload_id,status")
+    .select("id,upload_id,status,customer_id")
     .eq("id", quoteId)
     .maybeSingle<{
       id: string;
       upload_id: string | null;
       status: string | null;
+      customer_id: string | null;
     }>();
 
   const quote = quoteRes.data?.id ? quoteRes.data : null;
@@ -78,7 +83,18 @@ export async function GET(req: Request) {
     );
   }
 
-  const offers = await getRfqOffers(quote.id, { client });
+  const offersRaw = await getRfqOffers(quote.id, { client });
+  const quoteCustomerId =
+    typeof quote.customer_id === "string" && quote.customer_id.trim().length > 0
+      ? quote.customer_id.trim()
+      : null;
+  const offers =
+    quoteCustomerId && offersRaw.length > 0
+      ? filterOffersByCustomerExclusions(
+          offersRaw,
+          await loadCustomerExclusions(quoteCustomerId, { client }),
+        )
+      : offersRaw;
   const summary = summarizeRfqOffers(offers);
   const nonWithdrawnOffers = offers.filter((offer) => !isRfqOfferWithdrawn(offer.status));
 

@@ -79,6 +79,10 @@ import {
 } from "@/server/quotes/kickoffTasks";
 import { deriveProviderQuoteMismatch } from "@/lib/provider/quoteMismatch";
 import { writeRfqOffer } from "@/server/rfqs/writeRfqOffer";
+import {
+  findCustomerExclusionMatch,
+  loadCustomerExclusions,
+} from "@/server/customers/exclusions";
 
 export type { AwardBidFormState } from "./awardFormState";
 
@@ -316,6 +320,9 @@ export async function createExternalOfferAction(args: {
     });
 
     if (!result.ok) {
+      if (result.reason === "customer_exclusion") {
+        return { ok: false, error: result.error };
+      }
       return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
     }
 
@@ -333,6 +340,155 @@ export async function createExternalOfferAction(args: {
       error: serializeActionError(error),
     });
     return { ok: false, error: EXTERNAL_OFFER_GENERIC_ERROR };
+  }
+}
+
+export type CustomerExclusionRow = {
+  id: string;
+  customer_id: string;
+  excluded_provider_id: string | null;
+  excluded_source_name: string | null;
+  reason: string | null;
+  created_at: string | null;
+};
+
+export type CustomerExclusionActionResult =
+  | { ok: true }
+  | { ok: false; error: string; fieldErrors?: Record<string, string> };
+
+const CUSTOMER_EXCLUSION_GENERIC_ERROR =
+  "We couldn’t update exclusions right now. Please try again.";
+
+export async function addCustomerExclusionAction(args: {
+  quoteId: string;
+  customerId: string;
+  excludedProviderId?: string | null;
+  excludedSourceName?: string | null;
+  reason?: string | null;
+}): Promise<CustomerExclusionActionResult> {
+  const quoteId = normalizeIdInput(args.quoteId);
+  const customerId = normalizeIdInput(args.customerId);
+  const excludedProviderId = normalizeIdInput(args.excludedProviderId);
+  const excludedSourceName =
+    typeof args.excludedSourceName === "string" ? args.excludedSourceName.trim() : "";
+  const reason = typeof args.reason === "string" ? args.reason.trim() : "";
+
+  if (!quoteId || !customerId) {
+    return { ok: false, error: CUSTOMER_EXCLUSION_GENERIC_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { ok: false, error: ADMIN_RFQ_OFFER_AUTH_ERROR };
+    }
+    throw error;
+  }
+
+  const fieldErrors: Record<string, string> = {};
+  if (excludedSourceName.length > 200) {
+    fieldErrors.excludedSourceName = "Source name must be 200 characters or fewer.";
+  }
+  if (reason.length > 500) {
+    fieldErrors.reason = "Reason must be 500 characters or fewer.";
+  }
+  if (!excludedProviderId && excludedSourceName.length === 0) {
+    const message = "Select a provider or enter a source name.";
+    fieldErrors.excludedProviderId = message;
+    fieldErrors.excludedSourceName = message;
+  }
+  if (Object.keys(fieldErrors).length > 0) {
+    return { ok: false, error: "Please review the highlighted fields.", fieldErrors };
+  }
+
+  try {
+    const payload: Record<string, unknown> = {
+      customer_id: customerId,
+      excluded_provider_id: excludedProviderId || null,
+      excluded_source_name: excludedSourceName || null,
+      reason: reason || null,
+    };
+
+    const { error } = await supabaseServer().from("customer_exclusions").insert(payload);
+    if (error) {
+      const serialized = serializeSupabaseError(error);
+      if (serialized.code === "23505") {
+        return { ok: false, error: "That exclusion already exists." };
+      }
+      if (!isMissingTableOrColumnError(error)) {
+        console.error("[customer exclusions] insert failed", {
+          quoteId,
+          customerId,
+          error: serialized,
+        });
+      }
+      return { ok: false, error: CUSTOMER_EXCLUSION_GENERIC_ERROR };
+    }
+
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    return { ok: true };
+  } catch (error) {
+    console.error("[customer exclusions] insert crashed", {
+      quoteId,
+      customerId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_EXCLUSION_GENERIC_ERROR };
+  }
+}
+
+export async function removeCustomerExclusionAction(args: {
+  quoteId: string;
+  customerId: string;
+  exclusionId: string;
+}): Promise<CustomerExclusionActionResult> {
+  const quoteId = normalizeIdInput(args.quoteId);
+  const customerId = normalizeIdInput(args.customerId);
+  const exclusionId = normalizeIdInput(args.exclusionId);
+
+  if (!quoteId || !customerId || !exclusionId) {
+    return { ok: false, error: CUSTOMER_EXCLUSION_GENERIC_ERROR };
+  }
+
+  try {
+    await requireAdminUser();
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { ok: false, error: ADMIN_RFQ_OFFER_AUTH_ERROR };
+    }
+    throw error;
+  }
+
+  try {
+    const { error } = await supabaseServer()
+      .from("customer_exclusions")
+      .delete()
+      .eq("id", exclusionId)
+      .eq("customer_id", customerId);
+
+    if (error) {
+      if (!isMissingTableOrColumnError(error)) {
+        console.error("[customer exclusions] delete failed", {
+          quoteId,
+          customerId,
+          exclusionId,
+          error: serializeSupabaseError(error) ?? error,
+        });
+      }
+      return { ok: false, error: CUSTOMER_EXCLUSION_GENERIC_ERROR };
+    }
+
+    revalidatePath(`/admin/quotes/${quoteId}`);
+    return { ok: true };
+  } catch (error) {
+    console.error("[customer exclusions] delete crashed", {
+      quoteId,
+      customerId,
+      exclusionId,
+      error: serializeActionError(error),
+    });
+    return { ok: false, error: CUSTOMER_EXCLUSION_GENERIC_ERROR };
   }
 }
 
@@ -1067,6 +1223,36 @@ export async function upsertRfqOffer(
         error: ADMIN_RFQ_OFFER_PROVIDER_ERROR,
         fieldErrors: { providerId: ADMIN_RFQ_OFFER_PROVIDER_ERROR },
       };
+    }
+
+    // Customer exclusions: block saving offers for excluded providers (admin sees clear error).
+    try {
+      const { data: quoteRow, error: quoteError } = await supabaseServer()
+        .from("quotes")
+        .select("customer_id")
+        .eq("id", normalizedRfqId)
+        .maybeSingle<{ customer_id: string | null }>();
+      if (!quoteError) {
+        const customerId = normalizeIdInput(quoteRow?.customer_id);
+        if (customerId) {
+          const exclusions = await loadCustomerExclusions(customerId);
+          const match = findCustomerExclusionMatch({
+            exclusions,
+            providerId,
+            sourceName: null,
+          });
+          if (match?.kind === "provider") {
+            const message = "This customer excludes offers from the selected provider.";
+            return {
+              ok: false,
+              error: message,
+              fieldErrors: { providerId: message },
+            };
+          }
+        }
+      }
+    } catch {
+      // Best-effort: do not crash admin offer editor if exclusion lookup fails.
     }
 
     const statusInput = getFormString(formData, "status");

@@ -4,6 +4,10 @@ import { hasColumns } from "@/server/db/schemaContract";
 import { logOpsEvent } from "@/server/ops/events";
 import { notifyQuoteSubscribersFirstOfferArrived } from "@/server/rfqs/offerArrivalNotifications";
 import { parseRfqOfferStatus, type RfqOfferStatus } from "@/server/rfqs/offers";
+import {
+  findCustomerExclusionMatch,
+  loadCustomerExclusions,
+} from "@/server/customers/exclusions";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -17,7 +21,7 @@ function normalizeOptionalText(value: unknown): string | null {
 
 export type WriteRfqOfferResult =
   | { ok: true; offerId: string; wasRevision: boolean; triggeredFirstOfferNotification: boolean }
-  | { ok: false; error: string };
+  | { ok: false; error: string; reason?: "customer_exclusion" };
 
 type RfqOfferRowForCount = {
   id: string | null;
@@ -105,6 +109,50 @@ export async function writeRfqOffer(args: {
       return false;
     }
   })();
+
+  // Enforce customer exclusions (best-effort schema gate: fail open on lookup errors).
+  try {
+    const { data: quoteRow, error: quoteError } = await client
+      .from("quotes")
+      .select("customer_id")
+      .eq("id", rfqId)
+      .maybeSingle<{ customer_id: string | null }>();
+
+    if (!quoteError) {
+      const customerId = normalizeId(quoteRow?.customer_id) || null;
+      if (customerId) {
+        const exclusions = await loadCustomerExclusions(customerId, { client });
+        const match = findCustomerExclusionMatch({
+          exclusions,
+          providerId,
+          sourceName: normalizeOptionalText(args.sourceName),
+        });
+
+        if (match) {
+          const detail =
+            match.kind === "provider"
+              ? `provider ${match.providerId}`
+              : `source “${match.sourceName}”`;
+          return {
+            ok: false,
+            reason: "customer_exclusion",
+            error: `This customer excludes offers from ${detail}.`,
+          };
+        }
+      }
+    } else {
+      // Best-effort; don't block write if quote lookup fails.
+      console.warn("[rfq offer write] customer exclusion quote lookup failed (best-effort)", {
+        rfqId,
+        error: serializeSupabaseError(quoteError),
+      });
+    }
+  } catch (error) {
+    console.warn("[rfq offer write] customer exclusion check crashed (best-effort)", {
+      rfqId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
 
   // Determine whether this write represents the first non-withdrawn offer.
   // Also used to infer whether a provider-scoped upsert is a revision.

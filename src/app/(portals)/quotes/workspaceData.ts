@@ -37,6 +37,10 @@ import {
 } from "@/server/quotes/kickoffSummary";
 import { debugOnce } from "@/server/db/schemaErrors";
 import { isDemoModeEnabled } from "@/server/demo/demoMode";
+import {
+  filterOffersByCustomerExclusions,
+  loadCustomerExclusions,
+} from "@/server/customers/exclusions";
 
 export type QuoteWorkspaceQuote = QuoteWithUploadsRow & {
   files: QuoteFileMeta[];
@@ -439,6 +443,18 @@ export async function loadQuoteWorkspaceData(
               },
             );
           }
+        }
+      }
+
+      // Customer-specific exclusions (neutral UX: excluded offers are simply omitted).
+      const customerId =
+        typeof (quote as { customer_id?: unknown })?.customer_id === "string"
+          ? ((quote as { customer_id?: string }).customer_id ?? "").trim()
+          : "";
+      if (customerId && rfqOffers.length > 0) {
+        const exclusions = await loadCustomerExclusions(customerId);
+        if (exclusions.length > 0) {
+          rfqOffers = filterOffersByCustomerExclusions(rfqOffers, exclusions);
         }
       }
     }
