@@ -78,6 +78,21 @@ export default async function SupplierSettingsPage() {
       </section>
 
       <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
+        <h2 className="text-lg font-semibold text-white">Processes</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Update the manufacturing processes you support so RFQ matching stays accurate.
+        </p>
+        <div className="mt-4">
+          <Link
+            href="/supplier/settings/processes"
+            className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+          >
+            Open process settings
+          </Link>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
         <h2 className="text-lg font-semibold text-white">Organization</h2>
         <p className="mt-1 text-sm text-slate-400">
           Track which plan you&apos;re on and how many teammates can join the supplier portal.
