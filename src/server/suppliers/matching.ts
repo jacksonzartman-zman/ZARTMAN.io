@@ -119,6 +119,10 @@ export async function matchQuotesToSupplier(
       };
     }
 
+    const supplierProviderId =
+      typeof (supplier as { provider_id?: string | null }).provider_id === "string"
+        ? (supplier as any).provider_id.trim()
+        : "";
     const decisionContext = {
       supplierId: supplier.id,
       supplierEmail: supplier.primary_email ?? supplierEmail,
@@ -202,6 +206,14 @@ export async function matchQuotesToSupplier(
       };
     }
 
+    const declinedDestinationQuoteIds =
+      supplierProviderId && quotes.length > 0
+        ? await selectDeclinedDestinationQuoteIdsForProvider({
+            providerId: supplierProviderId,
+            quoteIds: quotes.map((q) => q.id),
+          })
+        : new Set<string>();
+
     const uploadMetaMap = await selectUploadMeta(quotes);
     const feedbackSummaryByQuoteId = await safeLoadQuoteRfqFeedbackSummaryByQuoteId(
       quotes.map((q) => q.id),
@@ -223,6 +235,11 @@ export async function matchQuotesToSupplier(
         quoteId,
         quoteStatus,
       };
+
+      if (declinedDestinationQuoteIds.has(quoteId)) {
+        logMatchDecision("supplier skipped - destination declined", decisionPayload);
+        continue;
+      }
 
       if (!isOpenQuoteStatus(quoteStatus)) {
         logMatchDecision("supplier skipped - RFQ not open", decisionPayload);
@@ -457,6 +474,7 @@ type MatchDecisionEvent =
   | "supplier skipped - not approved"
   | "supplier skipped - capability mismatch"
   | "supplier skipped - RFQ not open"
+  | "supplier skipped - destination declined"
   | "supplier skipped - supplier inactive"
   | "supplier skipped - bidding blocked"
   | "supplier matched";
@@ -588,6 +606,72 @@ export function normalizeEmail(value?: string | null): string | null {
   }
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
+}
+
+async function selectDeclinedDestinationQuoteIdsForProvider(args: {
+  providerId: string;
+  quoteIds: string[];
+}): Promise<Set<string>> {
+  const providerId = normalizeId(args.providerId);
+  const quoteIds = Array.from(
+    new Set(
+      (args.quoteIds ?? [])
+        .map((id) => (typeof id === "string" ? id.trim() : ""))
+        .filter(Boolean),
+    ),
+  );
+
+  const declined = new Set<string>();
+  if (!providerId || quoteIds.length === 0) return declined;
+
+  const ready = await schemaGate({
+    enabled: true,
+    relation: "rfq_destinations",
+    requiredColumns: ["rfq_id", "provider_id", "status"],
+    warnPrefix: "[supplier activity]",
+    warnKey: "supplier_matches:rfq_destinations_schema",
+  });
+  if (!ready) return declined;
+
+  try {
+    const { data, error } = await supabaseServer()
+      .from("rfq_destinations")
+      .select("rfq_id,status")
+      .eq("provider_id", providerId)
+      .eq("status", "declined")
+      .in("rfq_id", quoteIds)
+      .returns<Array<{ rfq_id: string | null; status: string | null }>>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) return declined;
+      console.warn("[supplier activity] rfq_destinations declined lookup failed (non-blocking)", {
+        providerId,
+        quoteCount: quoteIds.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return declined;
+    }
+
+    for (const row of data ?? []) {
+      const rfqId = normalizeId(row?.rfq_id);
+      if (rfqId) declined.add(rfqId);
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return declined;
+    console.warn("[supplier activity] rfq_destinations declined lookup crashed (non-blocking)", {
+      providerId,
+      quoteCount: quoteIds.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return declined;
+}
+
+function normalizeId(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : "";
 }
 
 async function selectOpenQuotes(limit = DEFAULT_OPEN_QUOTE_FETCH_LIMIT): Promise<SupplierQuoteRow[]> {
