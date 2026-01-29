@@ -67,6 +67,7 @@ function StepIcon({ state, index }: { state: "done" | "active" | "todo"; index: 
 export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
   const current = clampStageIndex(stageIndex);
   const percent = Math.round((current / (STAGES.length - 1)) * 100);
+  const fillScale = percent / 100;
 
   return (
     <section className="rounded-3xl border border-slate-900/60 bg-slate-950/35 px-5 py-5">
@@ -92,14 +93,17 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
 
       <div className="mt-4">
         <div className="relative">
-          <div className="absolute left-4 right-4 top-4 h-[2px] bg-slate-900/60" aria-hidden="true" />
           <div
-            className="absolute left-4 top-4 h-[2px] bg-emerald-400/50 transition-[width] duration-700 ease-out motion-reduce:transition-none"
-            style={{ width: `${percent}%` }}
+            className="absolute left-[8.333%] right-[8.333%] top-4 h-[2px] bg-slate-900/60"
+            aria-hidden="true"
+          />
+          <div
+            className="absolute left-[8.333%] right-[8.333%] top-4 h-[2px] origin-left bg-emerald-400/50 transition-transform duration-700 ease-out motion-reduce:transition-none"
+            style={{ transform: `scaleX(${fillScale})` }}
             aria-hidden="true"
           />
 
-          <ol className="relative grid grid-cols-6 gap-2">
+          <ol className="relative grid w-full grid-cols-6 gap-x-3">
             {STAGES.map((stage, idx) => {
               const state = idx < current ? "done" : idx === current ? "active" : "todo";
               return (
@@ -108,12 +112,12 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
                     <StepIcon state={state} index={idx} />
                     <p
                       className={clsx(
-                        "mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors duration-300 motion-reduce:transition-none",
+                        "mt-2 w-full min-w-0 text-[11px] font-semibold uppercase tracking-[0.12em] leading-tight transition-colors duration-300 motion-reduce:transition-none",
                         state === "done" ? "text-emerald-100" : state === "active" ? "text-ink" : "text-ink-soft",
                       )}
                       title={stage.label}
                     >
-                      <span className="block truncate">{stage.label}</span>
+                      <span className="block w-full truncate">{stage.label}</span>
                     </p>
                   </div>
                 </li>
