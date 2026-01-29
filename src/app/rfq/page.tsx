@@ -111,6 +111,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
   let primaryFileName: string | null = null;
   let uploadManufacturingProcess: string | null = null;
   let uploadQuantity: string | null = null;
+  let projectStatus: string | null = null;
 
   if (uploadId) {
     const uploadRes = await supabaseServer()
@@ -187,6 +188,24 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
   const offersCount = offersSummary.nonWithdrawn;
   const nonWithdrawnOffers = offers.filter((offer) => !isRfqOfferWithdrawn(offer.status));
   const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
+
+  // Optional: if a project has been created after award, use it to show "In progress".
+  // Fail-soft if schema is missing or query errors.
+  try {
+    const projectRes = await supabaseServer()
+      .from("quote_projects")
+      .select("status")
+      .eq("quote_id", quote.id)
+      .maybeSingle<{ status: string | null }>();
+    if (!projectRes.error && projectRes.data) {
+      projectStatus =
+        typeof projectRes.data.status === "string" && projectRes.data.status.trim()
+          ? projectRes.data.status.trim()
+          : null;
+    }
+  } catch {
+    // ignore
+  }
   const initialOfferDtos = nonWithdrawnOffers.map((offer) => ({
     id: offer.id,
     providerName: offer.provider?.name ?? null,
@@ -218,6 +237,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
             primaryFileName={primaryFileName}
             initialOffersCount={offersCount}
             initialOffers={initialOfferDtos}
+            initialProjectStatus={projectStatus}
             claimState={claimState}
             loginNextPath={`/rfq?quote=${encodeURIComponent(quote.id)}&key=${encodeURIComponent(
               intakeKey,
