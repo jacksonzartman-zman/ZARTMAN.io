@@ -247,6 +247,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
           <QuickSpecsPanel
             quoteId={quote.id}
             intakeKey={intakeKey}
+            primaryFileName={primaryFileName}
             initial={{
               manufacturingProcesses: initialProcesses,
               targetDate: quote.target_date ?? null,

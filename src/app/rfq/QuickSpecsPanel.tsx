@@ -15,6 +15,7 @@ const PROCESS_OPTIONS: Array<{ key: ProcessKey; label: string }> = [
 type QuickSpecsPanelProps = {
   quoteId: string;
   intakeKey: string;
+  primaryFileName?: string | null;
   initial: {
     manufacturingProcesses: ProcessKey[];
     targetDate: string | null;
@@ -42,6 +43,12 @@ const MAX_QUANTITY = 100000;
 function clampQuantity(value: number): number {
   if (!Number.isFinite(value)) return MIN_QUANTITY;
   return Math.max(MIN_QUANTITY, Math.min(MAX_QUANTITY, Math.round(value)));
+}
+
+function looksLikeProductionFile(fileName: string | null | undefined): boolean {
+  const normalized = typeof fileName === "string" ? fileName.trim().toLowerCase() : "";
+  if (!normalized) return false;
+  return normalized.includes("assy") || normalized.includes("batch");
 }
 
 function ProcessIcon({ processKey }: { processKey: ProcessKey }) {
@@ -105,7 +112,7 @@ function ProcessIcon({ processKey }: { processKey: ProcessKey }) {
   }
 }
 
-export function QuickSpecsPanel({ quoteId, intakeKey, initial }: QuickSpecsPanelProps) {
+export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }: QuickSpecsPanelProps) {
   const [processes, setProcesses] = useState<ProcessKey[]>(initial.manufacturingProcesses ?? []);
   const [targetDate, setTargetDate] = useState<string>(initial.targetDate ?? "");
   const [quantityInput, setQuantityInput] = useState<string>(
@@ -119,6 +126,12 @@ export function QuickSpecsPanel({ quoteId, intakeKey, initial }: QuickSpecsPanel
   const didHydrateRef = useRef(false);
   const pendingTimerRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const showNoProcessNudge = processes.length === 0;
+  const showProductionQtyNudge = useMemo(() => {
+    const current = clampQuantity(parseQuantityOrDefault(quantityInput, MIN_QUANTITY));
+    return current === 1 && looksLikeProductionFile(primaryFileName);
+  }, [primaryFileName, quantityInput]);
 
   const normalizedPayload = useMemo(() => {
     const qty = Number.parseInt(quantityInput, 10);
@@ -287,6 +300,9 @@ export function QuickSpecsPanel({ quoteId, intakeKey, initial }: QuickSpecsPanel
         <div className="md:col-span-2">
           <p className="text-xs font-semibold text-ink">Process</p>
           <p className="mt-1 text-xs text-ink-soft">Pick one or more (optional).</p>
+          {showNoProcessNudge ? (
+            <p className="mt-1 text-xs text-amber-100/90">Pick a process to get faster matching</p>
+          ) : null}
           <div className="mt-3 grid grid-cols-2 gap-2">
             {PROCESS_OPTIONS.map((option) => {
               const active = processes.includes(option.key);
@@ -374,6 +390,9 @@ export function QuickSpecsPanel({ quoteId, intakeKey, initial }: QuickSpecsPanel
                 +
               </button>
             </div>
+            {showProductionQtyNudge ? (
+              <p className="mt-1 text-xs text-amber-100/90">Qty 1? This looks like production — want more?</p>
+            ) : null}
             <p className="mt-1 text-xs text-ink-soft">
               Min {MIN_QUANTITY.toLocaleString()}, max {MAX_QUANTITY.toLocaleString()}.
             </p>
