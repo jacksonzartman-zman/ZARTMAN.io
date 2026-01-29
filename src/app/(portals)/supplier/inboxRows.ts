@@ -98,6 +98,7 @@ export function buildSupplierInboxRows({
       quoteId,
       companyName,
       rfqLabel,
+      fileNames,
       primaryFileName,
       processHint: match.processHint,
       materials: match.materialMatches,
