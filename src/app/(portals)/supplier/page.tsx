@@ -24,6 +24,7 @@ import {
 } from "@/server/suppliers";
 import { loadSupplierQuotesList } from "@/server/suppliers/quotesList";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { countUniqueSupplierProcessesFromCapabilities } from "@/lib/supplier/processes";
 import {
   getSearchParamValue,
   normalizeEmailInput,
@@ -124,6 +125,8 @@ async function SupplierDashboardPage({
     ? await loadSupplierOnboardingState(user.id)
     : { hasAnyBids: false, hasAnyAwards: false, hasRecentCapacitySnapshot: false };
   const hasCapabilities = (profile?.capabilities ?? []).length > 0;
+  const supplierProcessCount = countUniqueSupplierProcessesFromCapabilities(profile?.capabilities ?? []);
+  const showProfileCompletionNudge = supplierExists && supplierProcessCount < 2;
   const showGettingSetUp =
     supplierExists && (!onboardingState.hasAnyBids || !onboardingState.hasRecentCapacitySnapshot);
 
@@ -264,6 +267,21 @@ async function SupplierDashboardPage({
             ) : null}
           </ul>
         </PortalCard>
+      ) : null}
+
+      {showProfileCompletionNudge ? (
+        <PortalCard
+          title="Complete your profile to receive better matched RFQs"
+          action={
+            <Link
+              href="/supplier/settings/processes"
+              className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-slate-500 hover:text-white"
+            >
+              Update processes
+            </Link>
+          }
+          className="py-4"
+        />
       ) : null}
 
       <PortalCard
