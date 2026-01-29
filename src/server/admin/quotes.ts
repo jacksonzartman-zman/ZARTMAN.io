@@ -49,6 +49,7 @@ export type QuoteNotesRow = {
   dfm_notes: string | null;
   internal_notes: string | null;
   kickoff_completed_at: string | null;
+  ops_status?: string | null;
 };
 export type QuoteShipToConfirmationRow = {
   ship_to_name: string | null;
@@ -88,6 +89,7 @@ export type AdminQuoteUpdateInput = {
   targetDate?: string | null;
   dfmNotes?: string | null;
   internalNotes?: string | null;
+  opsStatus?: string | null;
 };
 
 export type AdminQuoteUpdateResult =
@@ -262,12 +264,13 @@ async function loadQuoteNotes(quoteId: string): Promise<QuoteNotesRow> {
     dfm_notes: null,
     internal_notes: null,
     kickoff_completed_at: null,
+    ops_status: null,
   };
 
   try {
     const { data, error } = await supabaseServer()
       .from("quotes")
-      .select("dfm_notes,internal_notes,kickoff_completed_at")
+      .select("dfm_notes,internal_notes,kickoff_completed_at,ops_status")
       .eq("id", quoteId)
       .maybeSingle<QuoteNotesRow>();
 
@@ -812,7 +815,37 @@ function normalizeAdminQuoteUpdateInput(
     updates.internal_notes = internalNotes;
   }
 
+  const opsStatus = normalizeOptionalOpsStatus(input.opsStatus);
+  if (typeof opsStatus !== "undefined") {
+    updates.ops_status = opsStatus;
+  }
+
   return { quoteId, updates };
+}
+
+const OPS_STATUS_OPTIONS = [
+  "needs_sourcing",
+  "waiting_on_quotes",
+  "ready_for_review",
+  "awaiting_award",
+  "awaiting_order_details",
+  "placed",
+  "in_production",
+  "shipped",
+  "delivered",
+] as const;
+
+type OpsStatus = (typeof OPS_STATUS_OPTIONS)[number];
+
+function normalizeOptionalOpsStatus(value: unknown): OpsStatus | null | undefined {
+  const normalized = normalizeOptionalString(value);
+  if (typeof normalized === "undefined" || normalized === null) {
+    return normalized;
+  }
+  const candidate = normalized.trim().toLowerCase();
+  return (OPS_STATUS_OPTIONS as readonly string[]).includes(candidate)
+    ? (candidate as OpsStatus)
+    : null;
 }
 
 function normalizeOptionalString(

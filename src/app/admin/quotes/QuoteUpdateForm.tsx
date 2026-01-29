@@ -25,10 +25,24 @@ type QuoteUpdateFormProps = {
     targetDate: string | null;
     internalNotes: string | null;
     dfmNotes: string | null;
+    opsStatus: string | null;
+    opsStatusSuggestion?: string | null;
   };
 };
 
 const CURRENCY_OPTIONS = ["USD", "EUR", "GBP"];
+
+const OPS_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "needs_sourcing", label: "Needs sourcing" },
+  { value: "waiting_on_quotes", label: "Waiting on quotes" },
+  { value: "ready_for_review", label: "Ready for review" },
+  { value: "awaiting_award", label: "Awaiting award" },
+  { value: "awaiting_order_details", label: "Awaiting order details" },
+  { value: "placed", label: "Placed" },
+  { value: "in_production", label: "In production" },
+  { value: "shipped", label: "Shipped" },
+  { value: "delivered", label: "Delivered" },
+];
 
 const STATUS_OPTIONS: { value: QuoteStatus; label: string }[] =
   QUOTE_STATUS_OPTIONS.map((status) => ({
@@ -125,6 +139,36 @@ export default function QuoteUpdateForm({ quote }: QuoteUpdateFormProps) {
           defaultValue={formatDateInputValue(quote.targetDate)}
           className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <label
+          htmlFor="opsStatus"
+          className="block text-sm font-medium text-slate-200"
+        >
+          Ops status (admin-only)
+        </label>
+        <select
+          id="opsStatus"
+          name="opsStatus"
+          defaultValue={quote.opsStatus ?? ""}
+          className="w-full rounded-md border border-slate-700 bg-black/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-emerald-400"
+        >
+          <option value="">—</option>
+          {OPS_STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {!quote.opsStatus && quote.opsStatusSuggestion ? (
+          <p className="text-xs text-slate-500">
+            Suggested:{" "}
+            <span className="font-semibold text-slate-200">
+              {quote.opsStatusSuggestion}
+            </span>
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-1.5">

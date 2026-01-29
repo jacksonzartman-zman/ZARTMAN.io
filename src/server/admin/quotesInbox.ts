@@ -27,6 +27,7 @@ export type AdminQuotesInboxFilter = {
   hasBids?: boolean | null;
   awarded?: boolean | null;
   needsOrderDetails?: boolean | null;
+  opsStatus?: string | null;
   search?: string | null;
   supplierId?: string | null;
 };
@@ -48,7 +49,8 @@ type InboxExtraField =
   | "awarded_bid_id"
   | "po_number"
   | "ship_to"
-  | "selection_confirmed_at";
+  | "selection_confirmed_at"
+  | "ops_status";
 
 const ADMIN_QUOTES_INBOX_TABLE = "admin_quotes_inbox" as const;
 
@@ -75,6 +77,7 @@ const ADMIN_QUOTES_INBOX_SELECT = [
   "po_number",
   "ship_to",
   "selection_confirmed_at",
+  "ops_status",
   // View-projected admin activity fields
   "bid_count",
   "latest_bid_at",
@@ -104,6 +107,7 @@ export type AdminQuotesInboxRow = {
   po_number?: string | null;
   ship_to?: string | null;
   selection_confirmed_at?: string | null;
+  ops_status?: string | null;
   bid_count: number;
   latest_bid_at: string | null;
   has_awarded_bid: boolean;
@@ -258,6 +262,14 @@ export async function getAdminQuotesInbox(
       // Awarded but missing at least one of the order details fields.
       query = query.eq("has_awarded_bid", true);
       query = query.or("po_number.is.null,ship_to.is.null");
+    }
+
+    if (filter.opsStatus) {
+      if (filter.opsStatus === "unset") {
+        query = query.is("ops_status", null);
+      } else {
+        query = query.eq("ops_status", filter.opsStatus);
+      }
     }
 
     if (normalizedSearch) {
@@ -483,6 +495,10 @@ function normalizeFilter(raw?: AdminQuotesInboxFilter): Required<AdminQuotesInbo
   const hasBids = Boolean(raw?.hasBids);
   const awarded = Boolean(raw?.awarded);
   const needsOrderDetails = Boolean(raw?.needsOrderDetails);
+  const opsStatus =
+    typeof raw?.opsStatus === "string" && raw.opsStatus.trim().length > 0
+      ? raw.opsStatus.trim().toLowerCase()
+      : null;
   const search =
     typeof raw?.search === "string"
       ? raw.search.trim().toLowerCase().replace(/\s+/g, " ")
@@ -497,6 +513,7 @@ function normalizeFilter(raw?: AdminQuotesInboxFilter): Required<AdminQuotesInbo
     hasBids,
     awarded,
     needsOrderDetails,
+    opsStatus,
     search: search && search.length > 0 ? search : null,
     supplierId,
   };
