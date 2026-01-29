@@ -109,6 +109,24 @@ export async function GET(req: Request) {
     receivedAt: offer.received_at ?? offer.created_at ?? null,
   }));
 
+  // Optional: show if a project is already in flight after award.
+  let projectStatus: string | null = null;
+  try {
+    const projectRes = await client
+      .from("quote_projects")
+      .select("status")
+      .eq("quote_id", quote.id)
+      .maybeSingle<{ status: string | null }>();
+    if (!projectRes.error && projectRes.data) {
+      projectStatus =
+        typeof projectRes.data.status === "string" && projectRes.data.status.trim()
+          ? projectRes.data.status.trim()
+          : null;
+    }
+  } catch {
+    // ignore
+  }
+
   return NextResponse.json(
     {
       ok: true,
@@ -117,6 +135,7 @@ export async function GET(req: Request) {
       normalizedStatus: normalizeQuoteStatus(quote.status ?? undefined),
       offersCount: summary.nonWithdrawn,
       offers: payloadOffers,
+      projectStatus,
     },
     { headers: { "Cache-Control": "no-store" } },
   );

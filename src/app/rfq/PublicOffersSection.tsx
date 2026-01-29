@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { NotifyMePanel } from "./NotifyMePanel";
+import { RfqJourneyStepper } from "./RfqJourneyStepper";
 
 type OfferCardDto = {
   id: string;
@@ -26,6 +27,7 @@ type OffersCountApiResponse =
       normalizedStatus: string;
       offersCount: number;
       offers: OfferCardDto[];
+      projectStatus?: string | null;
     };
 
 type PublicOffersSectionProps = {
@@ -36,6 +38,7 @@ type PublicOffersSectionProps = {
   primaryFileName: string | null;
   initialOffersCount: number;
   initialOffers: OfferCardDto[];
+  initialProjectStatus?: string | null;
   claimState: "anon" | "no_customer_profile" | "can_claim" | "already_saved_to_you" | "already_saved_elsewhere";
   loginNextPath: string;
 };
@@ -54,6 +57,7 @@ export function PublicOffersSection({
   primaryFileName,
   initialOffersCount,
   initialOffers,
+  initialProjectStatus,
   claimState,
   loginNextPath,
 }: PublicOffersSectionProps) {
@@ -64,6 +68,10 @@ export function PublicOffersSection({
   const [celebrate, setCelebrate] = useState(false);
   const [checkBackLater, setCheckBackLater] = useState(false);
   const [currentNormalizedStatus, setCurrentNormalizedStatus] = useState(normalizedStatus);
+  const [projectStatus, setProjectStatus] = useState<string | null>(() => {
+    const v = typeof initialProjectStatus === "string" ? initialProjectStatus.trim() : "";
+    return v ? v : null;
+  });
   const previousOffersCountRef = useRef(offersCount);
   const stopPollingRef = useRef(false);
   const [claiming, setClaiming] = useState(false);
@@ -73,15 +81,54 @@ export function PublicOffersSection({
   const isTerminal = TERMINAL_STATUSES.has((currentNormalizedStatus ?? "").trim().toLowerCase());
   const hasOffers = offersCount > 0;
 
-  const headline = hasOffers ? "Your offers are ready" : "Offers are on the way";
-  const subhead = hasOffers
-    ? "We’ve received supplier offers for your RFQ. Review them below."
-    : "We’re processing your files and routing your RFQ to manufacturing providers.";
+  const journey = useMemo(() => {
+    const normalized = (currentNormalizedStatus ?? "").trim().toLowerCase();
+    const project = (projectStatus ?? "").trim().toLowerCase();
 
-  const step3Label = hasOffers ? "Offers ready" : "Offers coming";
-  const step3Description = hasOffers
-    ? "Offers are ready to review below."
-    : "We’ll surface offers as providers respond.";
+    const isProjectInProgress =
+      project === "in_progress" ||
+      project === "in-progress" ||
+      project === "production" ||
+      project === "in_production" ||
+      project === "in-production" ||
+      project === "active";
+
+    // Stages requested: Upload → Processing → Waiting on offers → Offers ready → Awarded → In progress
+    // We always treat "Upload" as complete if the viewer can see this page.
+    if (isProjectInProgress) {
+      return {
+        stageIndex: 5,
+        headline: "In progress",
+        subhead: "Your project is underway. We’ll keep the status up to date here.",
+      };
+    }
+    if (normalized === "won" || normalized === "approved") {
+      return {
+        stageIndex: 4,
+        headline: "Awarded",
+        subhead: "A supplier has been selected. Next steps are moving into kickoff.",
+      };
+    }
+    if (hasOffers || normalized === "quoted") {
+      return {
+        stageIndex: 3,
+        headline: "Offers ready",
+        subhead: "We’ve received supplier offers for your RFQ. Review them below.",
+      };
+    }
+    if (normalized === "in_review") {
+      return {
+        stageIndex: 2,
+        headline: "Waiting on offers",
+        subhead: "Suppliers are reviewing your files. We’ll surface offers as they respond.",
+      };
+    }
+    return {
+      stageIndex: 1,
+      headline: "Processing",
+      subhead: "We’re processing your files and routing your RFQ to manufacturing providers.",
+    };
+  }, [currentNormalizedStatus, hasOffers, projectStatus]);
 
   const badgeLabel = `${offersCount} offer${offersCount === 1 ? "" : "s"} received`;
 
@@ -133,6 +180,10 @@ export function PublicOffersSection({
         if (!json || json.ok !== true) return;
 
         setCurrentNormalizedStatus(json.normalizedStatus);
+        setProjectStatus(() => {
+          const v = typeof json.projectStatus === "string" ? json.projectStatus.trim() : "";
+          return v ? v : null;
+        });
 
         const nextCount = Number.isFinite(json.offersCount) ? json.offersCount : 0;
         if (nextCount > 0) {
@@ -190,8 +241,8 @@ export function PublicOffersSection({
         <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
           RFQ status
         </p>
-        <h1 className="text-2xl sm:text-3xl font-semibold text-ink">{headline}</h1>
-        <p className="text-sm text-ink-muted">{subhead}</p>
+        <h1 className="text-2xl sm:text-3xl font-semibold text-ink">{journey.headline}</h1>
+        <p className="text-sm text-ink-muted">{journey.subhead}</p>
       </header>
 
       <div className="rounded-3xl border border-slate-900/60 bg-slate-950/55 p-6 shadow-[0_20px_60px_rgba(2,6,23,0.45)]">
@@ -326,38 +377,9 @@ export function PublicOffersSection({
           ) : null}
         </div>
 
-        <ol className="mt-5 grid gap-3 sm:grid-cols-3">
-          <li className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-ink-soft">
-              Step 1
-            </p>
-            <p className="mt-2 text-sm font-semibold text-ink">Uploading</p>
-            <p className="mt-1 text-xs text-ink-soft">Files received and secured.</p>
-          </li>
-          <li className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-ink-soft">
-              Step 2
-            </p>
-            <p className="mt-2 text-sm font-semibold text-ink">Processing</p>
-            <p className="mt-1 text-xs text-ink-soft">
-              Extracting parts and preparing quotes.
-            </p>
-          </li>
-          <li
-            className={clsx(
-              "rounded-2xl border px-4 py-4",
-              hasOffers
-                ? "border-emerald-400/40 bg-emerald-500/10"
-                : "border-emerald-400/30 bg-emerald-500/10",
-            )}
-          >
-            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-ink-soft">
-              Step 3
-            </p>
-            <p className="mt-2 text-sm font-semibold text-emerald-100">{step3Label}</p>
-            <p className="mt-1 text-xs text-ink-soft">{step3Description}</p>
-          </li>
-        </ol>
+        <div className="mt-6">
+          <RfqJourneyStepper stageIndex={journey.stageIndex} />
+        </div>
 
         {checkBackLater && !hasOffers && !isTerminal ? (
           <p className="mt-5 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-3 text-xs text-ink-soft">
