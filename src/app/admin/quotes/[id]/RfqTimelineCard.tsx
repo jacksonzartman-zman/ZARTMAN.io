@@ -18,7 +18,8 @@ const EVENT_LABELS: Record<string, string> = {
 
 function resolveEventLabel(eventType: string): string {
   const key = (eventType ?? "").toString().trim();
-  return EVENT_LABELS[key] ?? key || "Event";
+  const label = EVENT_LABELS[key] ?? key;
+  return label || "Event";
 }
 
 function resolveIconAccent(eventType: string): { glyph: string; className: string } {
