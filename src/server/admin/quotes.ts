@@ -30,11 +30,21 @@ const ADMIN_QUOTE_LIST_FIELDS: QuoteListField[] = [
   ...SAFE_QUOTE_WITH_UPLOADS_FIELDS,
 ];
 
-const ADMIN_QUOTE_DETAIL_FIELDS: readonly QuoteListField[] = [
+type AdminQuoteDetailField =
+  | QuoteListField
+  | "po_number"
+  | "ship_to"
+  | "selection_confirmed_at";
+
+const ADMIN_QUOTE_DETAIL_FIELDS: readonly AdminQuoteDetailField[] = [
   ...ADMIN_QUOTE_LIST_FIELDS,
+  "po_number",
+  "ship_to",
+  "selection_confirmed_at",
 ];
 
 export type AdminQuoteListRow = Pick<QuoteWithUploadsRow, QuoteListField>;
+type AdminQuoteDetailBaseRow = Pick<QuoteWithUploadsRow, AdminQuoteDetailField>;
 export type QuoteNotesRow = {
   dfm_notes: string | null;
   internal_notes: string | null;
@@ -50,7 +60,7 @@ export type QuoteShipToConfirmationRow = {
   ship_to_postal_code: string | null;
   ship_to_country: string | null;
 };
-export type AdminQuoteDetailRow = AdminQuoteListRow &
+export type AdminQuoteDetailRow = AdminQuoteDetailBaseRow &
   QuoteNotesRow &
   QuoteShipToConfirmationRow;
 
@@ -180,13 +190,13 @@ export async function loadAdminQuoteDetail(
 
   try {
     const result = await withRetry<
-      PostgrestSingleResponse<AdminQuoteListRow | null>
+      PostgrestSingleResponse<AdminQuoteDetailBaseRow | null>
     >(async () => {
       return await supabaseServer()
         .from("quotes_with_uploads")
         .select(ADMIN_QUOTE_DETAIL_FIELDS.join(","))
         .eq("id", quoteId)
-        .maybeSingle<AdminQuoteListRow>();
+        .maybeSingle<AdminQuoteDetailBaseRow>();
     });
     const { data, error } = result;
 
