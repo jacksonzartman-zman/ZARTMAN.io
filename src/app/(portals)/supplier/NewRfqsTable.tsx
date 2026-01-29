@@ -14,6 +14,8 @@ type NewRfqsTableProps = {
   rows: SupplierInboxRow[];
 };
 
+const SNOOZE_STORAGE_KEY = "supplier_rfq_snoozes_v1";
+
 export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
   const router = useRouter();
   const [items, setItems] = useState<SupplierInboxRow[]>(() => rows);
@@ -21,7 +23,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
   const [errorById, setErrorById] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setItems(rows);
+    setItems(filterSnoozedRows(rows));
   }, [rows]);
 
   if (items.length === 0) {
@@ -121,6 +123,64 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                     setPendingIds((prev) => new Set(prev).add(row.id));
 
                     try {
+                      const res = await fetch(`/api/supplier/rfqs/${row.quoteId}/snooze`, {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ hours: 24 }),
+                      });
+                      const payload = (await res.json().catch(() => null)) as any;
+                      if (!res.ok || !payload?.ok) {
+                        const errorCode =
+                          typeof payload?.error === "string" && payload.error
+                            ? payload.error
+                            : "unknown";
+                        throw new Error(errorCode);
+                      }
+
+                      if (typeof payload?.snoozeUntil === "string" && payload.snoozeUntil) {
+                        persistSnooze(row.quoteId, payload.snoozeUntil);
+                      }
+
+                      // Optimistically remove from the current list.
+                      setItems((prev) => prev.filter((candidate) => candidate.id !== row.id));
+                      // Refresh server-rendered pills/status (DB-backed snooze will keep it out).
+                      router.refresh();
+                    } catch (err) {
+                      const message =
+                        err instanceof Error && err.message
+                          ? err.message
+                          : "Unable to snooze right now.";
+                      setErrorById((prev) => ({ ...prev, [row.id]: message }));
+                    } finally {
+                      setPendingIds((prev) => {
+                        const next = new Set(prev);
+                        next.delete(row.id);
+                        return next;
+                      });
+                    }
+                  }}
+                  className={clsx(
+                    ctaSizeClasses.sm,
+                    "rounded-full border border-slate-800 bg-slate-950/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white",
+                    pending ? "opacity-60" : "",
+                  )}
+                >
+                  {pending ? "Snoozing..." : "Snooze 24h"}
+                </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={async () => {
+                    if (pending) return;
+                    setErrorById((prev) => {
+                      if (!prev[row.id]) return prev;
+                      const next = { ...prev };
+                      delete next[row.id];
+                      return next;
+                    });
+                    setPendingIds((prev) => new Set(prev).add(row.id));
+
+                    try {
                       const res = await fetch(`/api/supplier/rfqs/${row.quoteId}/decline`, {
                         method: "POST",
                       });
@@ -171,5 +231,64 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
       })}
     />
   );
+}
+
+function filterSnoozedRows(rows: SupplierInboxRow[]): SupplierInboxRow[] {
+  if (typeof window === "undefined") {
+    return rows;
+  }
+  const snoozes = readSnoozes();
+  const now = Date.now();
+  return rows.filter((row) => {
+    const untilIso = snoozes[row.quoteId];
+    if (!untilIso) return true;
+    const ms = Date.parse(untilIso);
+    if (Number.isNaN(ms) || ms <= now) return true;
+    return false;
+  });
+}
+
+function persistSnooze(quoteId: string, snoozeUntilIso: string) {
+  if (typeof window === "undefined") return;
+  const id = typeof quoteId === "string" ? quoteId.trim() : "";
+  if (!id) return;
+  const ms = Date.parse(snoozeUntilIso);
+  if (Number.isNaN(ms)) return;
+
+  const snoozes = readSnoozes();
+  snoozes[id] = snoozeUntilIso;
+  writeSnoozes(snoozes);
+}
+
+function readSnoozes(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(SNOOZE_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    const now = Date.now();
+    const next: Record<string, string> = {};
+    if (parsed && typeof parsed === "object") {
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        const quoteId = typeof key === "string" ? key.trim() : "";
+        const untilIso = typeof value === "string" ? value.trim() : "";
+        if (!quoteId || !untilIso) continue;
+        const ms = Date.parse(untilIso);
+        if (Number.isNaN(ms) || ms <= now) continue;
+        next[quoteId] = untilIso;
+      }
+    }
+    // Prune expired entries.
+    window.localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(next));
+    return next;
+  } catch {
+    return {};
+  }
+}
+
+function writeSnoozes(next: Record<string, string>) {
+  try {
+    window.localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
 }
 
