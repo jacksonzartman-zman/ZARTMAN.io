@@ -6,8 +6,19 @@ import assert from "node:assert";
   function buildClient(args: {
     preRows: Array<{ id: string; status: string; provider_id: string | null }>;
     nextOfferId: string;
-    mode: "insert" | "upsert";
+    quoteCustomerId?: string | null;
+    exclusions?: Array<{
+      id: string;
+      customer_id: string;
+      excluded_provider_id: string | null;
+      excluded_source_name: string | null;
+      reason: string | null;
+      created_at: string;
+    }>;
+    failOnWrite?: boolean;
   }) {
+    const quoteCustomerId = args.quoteCustomerId ?? null;
+    const exclusions = args.exclusions ?? [];
     return {
       from(table: string) {
         if (table === "rfq_offers") {
@@ -22,6 +33,9 @@ import assert from "node:assert";
               };
             },
             upsert() {
+              if (args.failOnWrite) {
+                throw new Error("Unexpected rfq_offers upsert (should have been blocked)");
+              }
               return {
                 select() {
                   return {
@@ -31,10 +45,48 @@ import assert from "node:assert";
               };
             },
             insert() {
+              if (args.failOnWrite) {
+                throw new Error("Unexpected rfq_offers insert (should have been blocked)");
+              }
               return {
                 select() {
                   return {
                     maybeSingle: async () => ({ data: { id: args.nextOfferId }, error: null }),
+                  };
+                },
+              };
+            },
+          };
+        }
+
+        if (table === "quotes") {
+          return {
+            select() {
+              return {
+                eq() {
+                  return {
+                    maybeSingle: async () => ({
+                      data: { customer_id: quoteCustomerId },
+                      error: null,
+                    }),
+                  };
+                },
+              };
+            },
+          };
+        }
+
+        if (table === "customer_exclusions") {
+          return {
+            select() {
+              return {
+                eq() {
+                  return {
+                    order() {
+                      return {
+                        returns: async () => ({ data: exclusions, error: null }),
+                      };
+                    },
                   };
                 },
               };
@@ -69,7 +121,7 @@ import assert from "node:assert";
     const client = buildClient({
       preRows: [],
       nextOfferId: "offer-external-1",
-      mode: "insert",
+      quoteCustomerId: null,
     });
 
     const result = await writeRfqOffer({
@@ -104,7 +156,7 @@ import assert from "node:assert";
     const client = buildClient({
       preRows: [{ id: "old-1", status: "withdrawn", provider_id: "provider-old" }],
       nextOfferId: "offer-supplier-1",
-      mode: "upsert",
+      quoteCustomerId: null,
     });
 
     const result = await writeRfqOffer({
@@ -139,7 +191,7 @@ import assert from "node:assert";
     const client = buildClient({
       preRows: [{ id: "existing", status: "received", provider_id: "provider-x" }],
       nextOfferId: "existing",
-      mode: "upsert",
+      quoteCustomerId: null,
     });
 
     const result = await writeRfqOffer({
@@ -166,6 +218,92 @@ import assert from "node:assert";
     assert.strictEqual((result as any).wasRevision, true);
     assert.strictEqual((result as any).triggeredFirstOfferNotification, false);
     assert.deepStrictEqual(calls, []);
+  }
+
+  // Case 4: excluded provider offer is blocked (clear error).
+  {
+    const nowIso = new Date().toISOString();
+    const client = buildClient({
+      preRows: [],
+      nextOfferId: "should-not-write",
+      quoteCustomerId: "cust-1",
+      exclusions: [
+        {
+          id: "ex-1",
+          customer_id: "cust-1",
+          excluded_provider_id: "provider-blocked",
+          excluded_source_name: null,
+          reason: "policy",
+          created_at: nowIso,
+        },
+      ],
+      failOnWrite: true,
+    });
+
+    const result = await writeRfqOffer({
+      rfqId: "rfq-4",
+      providerId: "provider-blocked",
+      destinationId: "dest-x",
+      currency: "USD",
+      totalPrice: 3000,
+      leadTimeDaysMin: 12,
+      leadTimeDaysMax: 12,
+      status: "received",
+      actorSource: "provider_token",
+      deps: { client: client as any, logOps: async () => {}, notifyFirstOffer: async () => {} },
+    });
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual((result as any).reason, "customer_exclusion");
+    assert.ok(
+      typeof (result as any).error === "string" &&
+        (result as any).error.toLowerCase().includes("excludes"),
+      "Expected an exclusion error message",
+    );
+  }
+
+  // Case 5: excluded source_name offer is blocked (case-insensitive).
+  {
+    const nowIso = new Date().toISOString();
+    const client = buildClient({
+      preRows: [],
+      nextOfferId: "should-not-write",
+      quoteCustomerId: "cust-2",
+      exclusions: [
+        {
+          id: "ex-2",
+          customer_id: "cust-2",
+          excluded_provider_id: null,
+          excluded_source_name: "xometry",
+          reason: null,
+          created_at: nowIso,
+        },
+      ],
+      failOnWrite: true,
+    });
+
+    const result = await writeRfqOffer({
+      rfqId: "rfq-5",
+      providerId: null,
+      destinationId: null,
+      currency: "USD",
+      totalPrice: 3000,
+      leadTimeDaysMin: 12,
+      leadTimeDaysMax: 12,
+      status: "quoted",
+      sourceType: "marketplace",
+      sourceName: "Xometry",
+      actorSource: "admin_external_offer",
+      deps: { client: client as any, logOps: async () => {}, notifyFirstOffer: async () => {} },
+    });
+
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual((result as any).reason, "customer_exclusion");
+    assert.ok(
+      typeof (result as any).error === "string" &&
+        (result as any).error.toLowerCase().includes("xometry"),
+      "Expected source exclusion to mention source name",
+    );
   }
 
   console.log("writeRfqOffer tests passed");
