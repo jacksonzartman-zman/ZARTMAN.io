@@ -119,6 +119,7 @@ import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { getRfqDestinations } from "@/server/rfqs/destinations";
 import { getAdminRfqOffers, summarizeRfqOffers } from "@/server/rfqs/offers";
+import { listRfqEventsForRfq } from "@/server/rfqs/events";
 import {
   findCustomerExclusionMatch,
   loadCustomerExclusions,
@@ -149,6 +150,7 @@ import { EmailSupplierForm } from "./EmailSupplierForm";
 import { EmailCustomerForm } from "./EmailCustomerForm";
 import { InviteEmailThreadButton } from "./InviteEmailThreadButton";
 import { AdminRfqDestinationsCard } from "./AdminRfqDestinationsCard";
+import { RfqTimelineCard } from "./RfqTimelineCard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -1774,14 +1776,29 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       </div>
     );
 
+    const rfqEventsResult = await listRfqEventsForRfq(quote.id, { limit: 200 });
+    const rfqEvents = rfqEventsResult.events;
+
     const trackingContent = (
-      <div className={cardClasses}>
-        <QuoteTimeline
-          quoteId={quote.id}
-          actorRole="admin"
-          actorUserId={null}
-          emptyState="No events yet. Activity will appear here as your RFQ progresses."
-        />
+      <div className="space-y-4 lg:space-y-5">
+        <section className={cardClasses}>
+          <RfqTimelineCard
+            events={rfqEvents}
+            emptyState={
+              rfqEventsResult.ok
+                ? "No events yet. Activity will appear here as your RFQ progresses."
+                : "Timeline is temporarily unavailable."
+            }
+          />
+        </section>
+        <div className={cardClasses}>
+          <QuoteTimeline
+            quoteId={quote.id}
+            actorRole="admin"
+            actorUserId={null}
+            emptyState="No quote events yet. Activity will appear here as your RFQ progresses."
+          />
+        </div>
       </div>
     );
 

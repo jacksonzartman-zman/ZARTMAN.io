@@ -11,6 +11,7 @@ import { ensureQuoteProjectForWinner } from "@/server/quotes/projects";
 import { dispatchWinnerNotification } from "@/server/quotes/winnerNotifications";
 import { loadSupplierById } from "@/server/suppliers/profile";
 import { emitQuoteEvent } from "@/server/quotes/events";
+import { emitRfqEvent } from "@/server/rfqs/events";
 import { ensureKickoffTasksForAwardedSupplier } from "@/server/quotes/kickoffTasks";
 import { sendSupplierInviteEmail } from "@/server/quotes/emailInvites";
 import { markInviteSent, wasInviteSent } from "@/server/quotes/emailInviteMarkers";
@@ -594,6 +595,15 @@ async function emitAwardTimelineEvents({
     actorRole,
     actorUserId,
     metadata,
+    createdAt,
+  });
+
+  // RFQ-specific admin timeline (best-effort).
+  void emitRfqEvent({
+    rfqId: quoteId,
+    eventType: "awarded",
+    actorRole,
+    actorUserId,
     createdAt,
   });
 

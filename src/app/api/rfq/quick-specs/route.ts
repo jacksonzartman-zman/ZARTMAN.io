@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
+import { emitRfqEvent } from "@/server/rfqs/events";
 
 export const runtime = "nodejs";
 
@@ -153,6 +154,18 @@ export async function POST(req: NextRequest) {
       if (error) {
         return jsonError("Couldn’t save. Please retry.", 500);
       }
+    }
+
+    // Best-effort RFQ event log; never block quick specs save.
+    try {
+      void emitRfqEvent({
+        rfqId: quoteId,
+        eventType: "quick_specs_updated",
+        actorRole: "customer",
+        actorUserId: null,
+      });
+    } catch {
+      // ignore
     }
 
     return NextResponse.json(

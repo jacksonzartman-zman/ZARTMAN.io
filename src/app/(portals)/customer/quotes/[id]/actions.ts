@@ -20,6 +20,7 @@ import { upsertQuoteProject } from "@/server/quotes/projects";
 import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
 import { updateCustomerOfferShortlist } from "@/server/customer/offerShortlist";
 import { ensureKickoffTasksForOfferAward } from "@/server/quotes/kickoffTasks";
+import { emitRfqEvent } from "@/server/rfqs/events";
 import {
   customerCreateQuotePart,
   customerUpdateQuotePartFiles,
@@ -1065,6 +1066,19 @@ export async function awardOfferActionImpl(
       })
       .eq("id", rfqId);
 
+    // Best-effort RFQ event log.
+    try {
+      void emitRfqEvent({
+        rfqId,
+        eventType: "awarded",
+        actorRole,
+        actorUserId: awardedBy,
+        createdAt: now,
+      });
+    } catch {
+      // ignore
+    }
+
     revalidatePath(`/customer/quotes/${rfqId}`);
     revalidatePath(`/customer/search`);
     // Best-effort: supplier portal is not supplier-scoped.
@@ -1291,6 +1305,18 @@ export async function confirmSelectionAction(args: {
         error: serializeActionError(updateError),
       });
       return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR };
+    }
+
+    // Best-effort RFQ event log.
+    try {
+      void emitRfqEvent({
+        rfqId: quoteId,
+        eventType: "order_details_confirmed",
+        actorRole: "customer",
+        actorUserId: user.id,
+      });
+    } catch {
+      // ignore
     }
 
     revalidatePath(`/customer/quotes/${quoteId}`);

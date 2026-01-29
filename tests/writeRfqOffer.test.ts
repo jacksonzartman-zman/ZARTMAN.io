@@ -110,6 +110,12 @@ import assert from "node:assert";
           };
         }
 
+        if (table === "rfq_events") {
+          return {
+            insert: async () => ({ data: null, error: null }),
+          };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       },
     };

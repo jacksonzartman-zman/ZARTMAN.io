@@ -37,6 +37,7 @@ import {
   type AwardFailureReason,
 } from "@/server/quotes/award";
 import { emitQuoteEvent } from "@/server/quotes/events";
+import { emitRfqEvent } from "@/server/rfqs/events";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 import { transitionQuoteStatus } from "@/server/quotes/transitionQuoteStatus";
 import type { AwardBidFormState } from "./awardFormState";
@@ -1138,6 +1139,15 @@ export async function awardProviderForQuoteAction(
         award_notes: awardNotes ?? null,
         awarded_by_role: "admin",
       },
+      createdAt: awardedAt,
+    });
+
+    // Best-effort RFQ event log.
+    void emitRfqEvent({
+      rfqId: normalizedQuoteId,
+      eventType: "awarded",
+      actorRole: "admin",
+      actorUserId: adminUser.id,
       createdAt: awardedAt,
     });
 
