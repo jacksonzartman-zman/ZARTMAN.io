@@ -15,6 +15,7 @@ import {
 import { notifyAdminOnQuoteSubmitted } from "@/server/quotes/notifications";
 import { emitQuoteEvent } from "@/server/quotes/events";
 import { emitRfqEvent } from "@/server/rfqs/events";
+import { notifySuppliersForPendingRfqDestinations } from "@/server/rfqs/supplierDestinationNotifications";
 import {
   buildUploadTargetForQuote,
   type UploadTarget,
@@ -323,6 +324,13 @@ export async function persistQuoteIntakeDirectUpload(params: {
       actorRole: "customer",
       actorUserId: user.id,
     });
+
+    // Phase 101: best-effort provider notifications for newly routed (pending) destinations.
+    try {
+      await notifySuppliersForPendingRfqDestinations({ rfqId: quoteId });
+    } catch {
+      // fail-soft: never block quote creation
+    }
 
     // Phase 19.3.13: best-effort default email replies for new quotes.
     // Safe-by-default: helper does not probe when the bridge env flag is off.
@@ -765,6 +773,13 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
       actorUserId: user.id,
     });
 
+    // Phase 101: best-effort provider notifications for newly routed (pending) destinations.
+    try {
+      await notifySuppliersForPendingRfqDestinations({ rfqId: quoteId });
+    } catch {
+      // fail-soft: never block quote creation
+    }
+
     // Phase 19.3.13: best-effort default email replies for new quotes.
     // Safe-by-default: helper does not probe when the bridge env flag is off.
     if (customerId) {
@@ -1133,6 +1148,13 @@ export async function persistQuoteIntake(
       actorRole: "customer",
       actorUserId: user.id,
     });
+
+    // Phase 101: best-effort provider notifications for newly routed (pending) destinations.
+    try {
+      await notifySuppliersForPendingRfqDestinations({ rfqId: quoteId });
+    } catch {
+      // fail-soft: never block quote creation
+    }
 
     // Phase 19.3.13: best-effort default email replies for new quotes.
     // Safe-by-default: helper does not probe when the bridge env flag is off.

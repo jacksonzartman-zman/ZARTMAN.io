@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { emitRfqEvent } from "@/server/rfqs/events";
+import { notifySuppliersForPendingRfqDestinations } from "@/server/rfqs/supplierDestinationNotifications";
 
 export const runtime = "nodejs";
 
@@ -143,6 +144,16 @@ export async function POST(req: NextRequest) {
         .eq("id", uploadId);
       if (error) {
         return jsonError("Couldn’t save. Please retry.", 500);
+      }
+    }
+
+    // Phase 101: best-effort provider notifications for newly routed (pending) destinations.
+    // Routing is DB-triggered off uploads.manufacturing_process changes.
+    if (uploadUpdates.manufacturing_process !== undefined) {
+      try {
+        await notifySuppliersForPendingRfqDestinations({ rfqId: quoteId });
+      } catch {
+        // fail-soft: never block quick specs save
       }
     }
 
