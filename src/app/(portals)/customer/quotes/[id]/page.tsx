@@ -1722,7 +1722,7 @@ export default async function CustomerQuoteDetailPage({
   );
 
   const selectionConfirmedSection =
-    selectedOfferId ? (
+    selectedOfferId || quoteHasWinner ? (
       <DisclosureSection
         id="order-confirmation"
         className="scroll-mt-24"

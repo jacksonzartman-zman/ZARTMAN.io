@@ -50,6 +50,11 @@ export type QuoteRow = {
   statusLabel: string;
   statusHelper: string;
   statusClassName: string;
+  /**
+   * True when the quote is awarded but missing PO number and/or ship-to details.
+   * (Used by the "Needs order details" filter in /admin/quotes.)
+   */
+  needsOrderDetails?: boolean;
   kickoffProgress?: { completed: number; total: number | null } | null;
   threadLastMessageAt: string | null;
   threadNeedsReplyFrom: AdminThreadNeedsReplyFrom | null;
