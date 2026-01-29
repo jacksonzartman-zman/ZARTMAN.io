@@ -777,7 +777,7 @@ export async function submitSupplierBidImpl(
 
       return {
         ok: true,
-        message: isUpdate ? "Your bid has been updated." : "Your bid has been submitted.",
+        message: isUpdate ? "Offer updated." : "Offer sent.",
       };
     } catch (error) {
       const serialized = serializeSupabaseError(error);
