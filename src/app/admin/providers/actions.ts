@@ -15,6 +15,7 @@ import {
 import { resolveProviderEmailColumn } from "@/server/providers";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
 import { getOrCreateSupplierByEmail, loadSupplierByPrimaryEmail } from "@/server/suppliers/profile";
+import type { InviteSupplierActionState } from "./inviteSupplierActionState";
 
 const PROVIDER_ACTION_ERROR = "We couldn't update this provider right now.";
 const BULK_PROVIDERS_INPUT_ERROR = "Select at least one provider.";
@@ -22,14 +23,7 @@ const BULK_PROVIDERS_GENERIC_ERROR = "We couldn't update these providers right n
 const BULK_DIRECTORY_VISIBILITY_ERROR = "Directory visibility isn't available yet.";
 const BULK_NOTES_ERROR = "Response summary is required.";
 
-export type InviteSupplierActionState =
-  | { status?: undefined }
-  | { status: "success"; message: string }
-  | { status: "error"; error: string };
-
-export const INVITE_SUPPLIER_INITIAL_STATE: InviteSupplierActionState = {};
-
-export type BulkProviderActionResult =
+type BulkProviderActionResult =
   | { ok: true; message: string; updatedCount: number; skippedCount: number }
   | { ok: false; error: string };
 

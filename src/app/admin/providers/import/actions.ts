@@ -7,10 +7,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { requireAdminUser } from "@/server/auth";
 import { serializeSupabaseError } from "@/server/admin/logging";
 import { hasColumns, schemaGate } from "@/server/db/schemaContract";
-
-export type ProviderImportActionState =
-  | { ok: true; message: string; createdCount: number }
-  | { ok: false; error: string };
+import type { ProviderImportActionState } from "./providerImportActionState";
 
 const PROVIDER_IMPORT_GENERIC_ERROR =
   "We couldn't import providers right now. Please try again.";
