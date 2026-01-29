@@ -10,6 +10,7 @@ import {
   filterOffersByCustomerExclusions,
   loadCustomerExclusions,
 } from "@/server/customers/exclusions";
+import { getRfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +128,12 @@ export async function GET(req: Request) {
     // ignore
   }
 
+  // Performance feedback: only compute once offers exist (this endpoint polls frequently).
+  const performance =
+    summary.nonWithdrawn > 0
+      ? await getRfqPerformanceFeedback(quote.id, { client })
+      : { firstOfferMinutes: null, suppliersMatched: null };
+
   return NextResponse.json(
     {
       ok: true,
@@ -136,6 +143,7 @@ export async function GET(req: Request) {
       offersCount: summary.nonWithdrawn,
       offers: payloadOffers,
       projectStatus,
+      performance,
     },
     { headers: { "Cache-Control": "no-store" } },
   );
