@@ -118,7 +118,7 @@ import { loadQuoteWorkspaceData } from "@/app/(portals)/quotes/workspaceData";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { getRfqDestinations } from "@/server/rfqs/destinations";
-import { getRfqOffers, summarizeRfqOffers } from "@/server/rfqs/offers";
+import { getAdminRfqOffers, summarizeRfqOffers } from "@/server/rfqs/offers";
 import {
   findCustomerExclusionMatch,
   loadCustomerExclusions,
@@ -477,7 +477,7 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       await Promise.all([
         listProvidersWithContact(),
         getRfqDestinations(quote.id),
-        getRfqOffers(quote.id),
+        getAdminRfqOffers(quote.id),
         listOpsEventsForQuote(quote.id, { limit: 20 }),
         (async () => {
           try {

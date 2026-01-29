@@ -73,6 +73,13 @@ export type RfqOfferProvider = {
   country?: string | null;
 };
 
+/**
+ * Customer-safe offer shape.
+ *
+ * IMPORTANT: Do not add admin-only/internal columns here. This type is used in
+ * customer workspace payloads, and adding internal fields would leak them into
+ * the client bundle.
+ */
 export type RfqOffer = {
   id: string;
   rfq_id: string;
@@ -119,6 +126,13 @@ type RawRfqOfferRow = {
   received_at: string | null;
   created_at: string | null;
   provider: RfqOfferProvider | null;
+};
+
+export type AdminRfqOffer = RfqOffer & {
+  internal_cost: number | string | null;
+  internal_shipping_cost: number | string | null;
+  internal_notes: string | null;
+  source_url: string | null;
 };
 
 const RFQ_OFFER_STATUS_SET = new Set<RfqOfferStatus>(RFQ_OFFER_STATUSES);
@@ -178,6 +192,60 @@ export async function getRfqOffers(
     return rows
       .map((row) => normalizeOfferRow(row))
       .filter((row): row is RfqOffer => Boolean(row));
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      console.warn("[rfq offers] missing schema; returning empty", {
+        quoteId: normalizedQuoteId,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return [];
+    }
+    console.error("[rfq offers] unexpected error", {
+      quoteId: normalizedQuoteId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return [];
+  }
+}
+
+export async function getAdminRfqOffers(
+  quoteId: string,
+  options?: { client?: ReturnType<typeof supabaseServer> },
+): Promise<AdminRfqOffer[]> {
+  const normalizedQuoteId = normalizeId(quoteId);
+  if (!normalizedQuoteId) {
+    return [];
+  }
+
+  try {
+    const offerSelect = await buildOfferSelect();
+    const client = options?.client ?? supabaseServer();
+    const { data, error } = await client
+      .from("rfq_offers")
+      .select(offerSelect)
+      .eq("rfq_id", normalizedQuoteId)
+      .order("created_at", { ascending: true })
+      .returns<RawRfqOfferRow[]>();
+
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        console.warn("[rfq offers] missing schema; returning empty", {
+          quoteId: normalizedQuoteId,
+          supabaseError: serializeSupabaseError(error),
+        });
+        return [];
+      }
+      console.error("[rfq offers] query failed", {
+        quoteId: normalizedQuoteId,
+        supabaseError: serializeSupabaseError(error),
+      });
+      return [];
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+    return rows
+      .map((row) => normalizeAdminOfferRow(row))
+      .filter((row): row is AdminRfqOffer => Boolean(row));
   } catch (error) {
     if (isMissingTableOrColumnError(error)) {
       console.warn("[rfq offers] missing schema; returning empty", {
@@ -297,6 +365,19 @@ function normalizeOfferRow(row: RawRfqOfferRow): RfqOffer | null {
     received_at: receivedAt,
     created_at: createdAt,
     provider: row?.provider ?? null,
+  };
+}
+
+function normalizeAdminOfferRow(row: RawRfqOfferRow): AdminRfqOffer | null {
+  const base = normalizeOfferRow(row);
+  if (!base) return null;
+
+  return {
+    ...base,
+    internal_cost: normalizeNumeric((row as any)?.internal_cost),
+    internal_shipping_cost: normalizeNumeric((row as any)?.internal_shipping_cost),
+    internal_notes: normalizeOptionalText((row as any)?.internal_notes),
+    source_url: normalizeOptionalText((row as any)?.source_url),
   };
 }
 

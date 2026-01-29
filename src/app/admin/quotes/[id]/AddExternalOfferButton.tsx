@@ -11,6 +11,9 @@ type SourceTypeOption = "" | "manual" | "marketplace" | "network";
 const INITIAL_STATE: Required<Pick<
   Draft,
   "price" | "leadTimeDays" | "process" | "notes" | "sourceType" | "sourceName"
+  | "internalCost"
+  | "sourceUrl"
+  | "internalNotes"
 >> = {
   price: "",
   leadTimeDays: "",
@@ -18,6 +21,9 @@ const INITIAL_STATE: Required<Pick<
   notes: "",
   sourceType: "",
   sourceName: "",
+  internalCost: "",
+  sourceUrl: "",
+  internalNotes: "",
 };
 
 type Draft = {
@@ -27,6 +33,9 @@ type Draft = {
   notes: string;
   sourceType: SourceTypeOption;
   sourceName: string;
+  internalCost: string;
+  sourceUrl: string;
+  internalNotes: string;
 };
 
 function normalizeNumber(value: string): number | null {
@@ -99,6 +108,7 @@ export function AddExternalOfferButton({
     if (typeof price !== "number" || typeof leadTimeDays !== "number") return;
 
     startTransition(async () => {
+      const internalCost = normalizeNumber(draft.internalCost);
       const result = await createExternalOfferAction({
         quoteId,
         price,
@@ -107,6 +117,9 @@ export function AddExternalOfferButton({
         notes: draft.notes.trim() || null,
         sourceType: draft.sourceType || null,
         sourceName: draft.sourceName.trim() || null,
+        internalCost,
+        sourceUrl: draft.sourceUrl.trim() || null,
+        internalNotes: draft.internalNotes.trim() || null,
       });
       setState(result);
       if (result.ok) {
@@ -266,6 +279,78 @@ export function AddExternalOfferButton({
                   Internal source fields (hidden from customer)
                 </summary>
                 <div className="mt-4 space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="space-y-1 block">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Internal cost (optional)
+                      </span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={draft.internalCost}
+                        onChange={(e) =>
+                          setDraft((prev) => ({ ...prev, internalCost: e.target.value }))
+                        }
+                        className={clsx(
+                          "w-full rounded-xl border bg-slate-950/40 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                          fieldErrors.internalCost ? "border-amber-500/50" : "border-slate-800",
+                        )}
+                        placeholder="0"
+                      />
+                      {fieldErrors.internalCost ? (
+                        <p className="text-xs text-amber-300" aria-live="polite">
+                          {fieldErrors.internalCost}
+                        </p>
+                      ) : null}
+                    </label>
+
+                    <label className="space-y-1 block">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Source URL (optional)
+                      </span>
+                      <input
+                        value={draft.sourceUrl}
+                        onChange={(e) =>
+                          setDraft((prev) => ({ ...prev, sourceUrl: e.target.value }))
+                        }
+                        className={clsx(
+                          "w-full rounded-xl border bg-slate-950/40 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                          fieldErrors.sourceUrl ? "border-amber-500/50" : "border-slate-800",
+                        )}
+                        placeholder="https://…"
+                      />
+                      {fieldErrors.sourceUrl ? (
+                        <p className="text-xs text-amber-300" aria-live="polite">
+                          {fieldErrors.sourceUrl}
+                        </p>
+                      ) : null}
+                    </label>
+                  </div>
+
+                  <label className="space-y-1 block">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Internal notes (optional)
+                    </span>
+                    <textarea
+                      rows={3}
+                      maxLength={5000}
+                      value={draft.internalNotes}
+                      onChange={(e) =>
+                        setDraft((prev) => ({ ...prev, internalNotes: e.target.value }))
+                      }
+                      className={clsx(
+                        "w-full resize-none rounded-xl border bg-slate-950/40 px-3 py-2 text-sm text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+                        fieldErrors.internalNotes ? "border-amber-500/50" : "border-slate-800",
+                      )}
+                      placeholder="Margin notes, vendor constraints, etc."
+                    />
+                    {fieldErrors.internalNotes ? (
+                      <p className="text-xs text-amber-300" aria-live="polite">
+                        {fieldErrors.internalNotes}
+                      </p>
+                    ) : null}
+                  </label>
+
                   <label className="space-y-1 block">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       source_type

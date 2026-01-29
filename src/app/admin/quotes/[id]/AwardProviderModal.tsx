@@ -6,6 +6,7 @@ import { useFormState, useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import type { ProviderContactRow } from "@/server/providers";
 import type { RfqOffer } from "@/server/rfqs/offers";
+import { formatCurrency } from "@/lib/formatCurrency";
 import {
   awardProviderForQuoteAction,
   type AwardProviderFormState,
@@ -63,6 +64,28 @@ export function AwardProviderModal({
     if (!providerId) return [];
     return offers.filter((offer) => offer.provider_id === providerId);
   }, [offers, providerId]);
+
+  const formatOfferFinancialSummary = (offer: RfqOffer): string => {
+    const currency = offer.currency ?? "USD";
+    const total = toFiniteNumber(offer.total_price);
+    const internalCost = toFiniteNumber((offer as any)?.internal_cost);
+    const internalShipping = toFiniteNumber((offer as any)?.internal_shipping_cost);
+    const internalTotal =
+      internalCost === null && internalShipping === null
+        ? null
+        : (internalCost ?? 0) + (internalShipping ?? 0);
+    const parts: string[] = [];
+    if (typeof total === "number") {
+      parts.push(`Customer ${formatCurrency(total, currency)}`);
+    }
+    if (typeof internalTotal === "number" && Number.isFinite(internalTotal)) {
+      parts.push(`Internal ${formatCurrency(internalTotal, currency)}`);
+      if (typeof total === "number" && Number.isFinite(total)) {
+        parts.push(`Margin ${formatCurrency(total - internalTotal, currency)}`);
+      }
+    }
+    return parts.length > 0 ? parts.join(" · ") : "";
+  };
 
   const selectedProviderLabel = useMemo(() => {
     const match = providerOptions.find((p) => p.id === providerId);
@@ -190,7 +213,10 @@ export function AwardProviderModal({
                     {offersForProvider.map((offer) => (
                       <option key={offer.id} value={offer.id}>
                         {offer.id.slice(0, 8).toUpperCase()}
-                        {offer.total_price ? ` · ${offer.total_price} ${offer.currency}` : ""}
+                        {(() => {
+                          const financial = formatOfferFinancialSummary(offer);
+                          return financial ? ` · ${financial}` : "";
+                        })()}
                         {offer.lead_time_days_min || offer.lead_time_days_max
                           ? ` · ${offer.lead_time_days_min ?? "?"}-${offer.lead_time_days_max ?? "?"}d`
                           : ""}
@@ -265,5 +291,18 @@ function SubmitButton() {
       {pending ? "Awarding..." : "Confirm award"}
     </button>
   );
+}
+
+function toFiniteNumber(value: number | string | null | undefined): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
