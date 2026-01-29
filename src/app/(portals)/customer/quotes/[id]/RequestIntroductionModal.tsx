@@ -50,7 +50,7 @@ function compareOffersBestValue(a: CustomerCompareOffer, b: CustomerCompareOffer
   const priceB = typeof b.totalPriceValue === "number" ? b.totalPriceValue : Number.POSITIVE_INFINITY;
   if (priceA !== priceB) return priceA - priceB;
 
-  return (a.providerName ?? "").localeCompare(b.providerName ?? "");
+  return a.provider_id.localeCompare(b.provider_id);
 }
 
 export function RequestIntroductionModal({
@@ -78,12 +78,20 @@ export function RequestIntroductionModal({
 
   const offerOptions = useMemo(() => {
     const sorted = [...offers].sort(compareOffersBestValue);
-    return sorted.map((offer) => ({
-      offerId: offer.id,
-      providerId: offer.provider_id,
-      label: offer.providerName || offer.provider_id,
-      shortlisted: shortlistedSet.has(offer.id),
-    }));
+    return sorted.map((offer, index) => {
+      const badges = new Set(offer.trustBadges.map((b) => b.id));
+      const highlights: string[] = [];
+      if (badges.has("best_value")) highlights.push("Best value");
+      if (badges.has("fastest")) highlights.push("Fastest");
+      const suffix = highlights.length > 0 ? ` — ${highlights.join(" + ")}` : "";
+      const label = `Marketplace Partner · Option ${index + 1}${suffix} — ${offer.priceDisplay} • ${offer.leadTimeDisplay}`;
+      return {
+        offerId: offer.id,
+        providerId: offer.provider_id,
+        label,
+        shortlisted: shortlistedSet.has(offer.id),
+      };
+    });
   }, [offers, shortlistedSet]);
 
   const recommendedOfferId = useMemo(() => {
@@ -169,7 +177,7 @@ export function RequestIntroductionModal({
               Request introduction
             </p>
             <h3 className="mt-1 text-lg font-semibold text-white">
-              {mode === "success" ? "We’ll connect you shortly" : "We’ll connect you to the supplier"}
+              {mode === "success" ? "We’ll connect you shortly" : "We’ll connect you to the partner"}
             </h3>
             {mode === "success" ? (
               <p className="mt-1 text-sm text-slate-300">
@@ -198,7 +206,7 @@ export function RequestIntroductionModal({
           <div className="mt-5 space-y-4">
             <label className="flex flex-col gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Supplier offer
+                Offer option
               </span>
               <select
                 value={selectedOfferId}

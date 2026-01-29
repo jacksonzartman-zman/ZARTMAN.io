@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TagPill } from "@/components/shared/primitives/TagPill";
 import {
@@ -23,9 +23,6 @@ import {
   type IntroRequestedState,
 } from "./introRequestClientState";
 
-type SortKey = "bestValue" | "fastest" | "lowestPrice";
-type SortDirection = "asc" | "desc";
-
 type CustomerQuoteCompareOffersProps = {
   quoteId: string;
   offers: CustomerCompareOffer[];
@@ -45,13 +42,15 @@ type CustomerQuoteCompareOffersProps = {
 
 const SORT_PARAM_KEY = "sort";
 const SHORTLIST_PARAM_KEY = "shortlisted";
-const SORT_KEYS: SortKey[] = ["bestValue", "fastest", "lowestPrice"];
+type SortKey = "bestValue" | "fastest";
+type SortDirection = "asc" | "desc";
+
+const SORT_KEYS: SortKey[] = ["bestValue", "fastest"];
 const DEFAULT_SORT_KEY: SortKey = "bestValue";
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: "bestValue", label: "Best Value" },
+  { value: "bestValue", label: "Best value" },
   { value: "fastest", label: "Fastest" },
-  { value: "lowestPrice", label: "Lowest Price" },
 ];
 
 function parseSortKey(value: string | null): SortKey | null {
@@ -343,7 +342,7 @@ export function CustomerQuoteCompareOffers({
                 Compare offers
               </p>
               <p className="mt-1 text-sm text-slate-300">
-                Compare pricing and lead time. Select the supplier you want to proceed with.
+                Compare pricing and lead time. Select the option you want to proceed with.
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -410,151 +409,160 @@ export function CustomerQuoteCompareOffers({
             </div>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse text-left text-sm">
-            <thead className="border-b border-slate-900/60 bg-slate-950/70">
-              <tr className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                <th className="px-5 py-3">Supplier</th>
-                <th className="px-5 py-3">Total price</th>
-                <th className="px-5 py-3">Lead time</th>
-                <th className="px-5 py-3">Badges</th>
-                <th className="px-5 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-900/60">
-              {showShortlistedOnly && shortlistedCount === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-6 text-sm text-slate-300">
-                    No offers shortlisted yet.{" "}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowBadgeWinnersOnly(false);
-                        setShowShortlistedOnly(false);
-                      }}
-                      className="text-xs font-semibold text-slate-100 underline-offset-4 hover:underline"
-                    >
-                      Show all offers
-                    </button>
-                  </td>
-                </tr>
-              ) : sortedOffers.length === 0 && hasQuickFilters ? (
-                <tr>
-                  <td colSpan={5} className="px-5 py-6 text-sm text-slate-400">
-                    No offers match these quick filters.{" "}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowBadgeWinnersOnly(false);
-                        setShowShortlistedOnly(false);
-                      }}
-                      className="text-xs font-semibold text-slate-300 underline-offset-4 hover:underline"
-                    >
-                      Clear filters
-                    </button>
-                  </td>
-                </tr>
-              ) : (
-                sortedOffers.map((offer, index) => {
-                  const isSelected = resolvedSelectedOfferId === offer.id;
-                  const dimNonWinner =
-                    selectionLocked && Boolean(resolvedSelectedOfferId) && !isSelected;
-                  const isShortlisted = shortlistedOfferIds.has(offer.id);
-                  const isShortlistPending =
-                    pendingShortlist && pendingShortlistOfferId === offer.id;
-                  const isAwardPending = pendingAward && pendingAwardOfferId === offer.id;
-                  const hasAssumptions = Boolean(offer.assumptions?.trim());
+        <div className="p-5">
+          {showShortlistedOnly && shortlistedCount === 0 ? (
+            <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4 text-sm text-slate-300">
+              No offers shortlisted yet.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBadgeWinnersOnly(false);
+                  setShowShortlistedOnly(false);
+                }}
+                className="text-xs font-semibold text-slate-100 underline-offset-4 hover:underline"
+              >
+                Show all offers
+              </button>
+            </div>
+          ) : sortedOffers.length === 0 && hasQuickFilters ? (
+            <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4 text-sm text-slate-400">
+              No offers match these quick filters.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBadgeWinnersOnly(false);
+                  setShowShortlistedOnly(false);
+                }}
+                className="text-xs font-semibold text-slate-300 underline-offset-4 hover:underline"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {sortedOffers.map((offer, index) => {
+                const isSelected = resolvedSelectedOfferId === offer.id;
+                const dimNonWinner = selectionLocked && Boolean(resolvedSelectedOfferId) && !isSelected;
+                const isShortlisted = shortlistedOfferIds.has(offer.id);
+                const isShortlistPending = pendingShortlist && pendingShortlistOfferId === offer.id;
+                const isAwardPending = pendingAward && pendingAwardOfferId === offer.id;
+                const hasAssumptions = Boolean(offer.assumptions?.trim());
+                const optionLabel = `Option ${index + 1}`;
 
-                  return (
-                    <Fragment key={offer.id}>
-                      <tr
-                        className={clsx(
-                          isSelected
-                            ? "bg-emerald-500/10"
-                            : dimNonWinner
-                              ? "opacity-70"
-                              : "bg-transparent",
-                        )}
-                      >
-                        <td className="px-5 py-4 align-top">
-                          <div className="min-w-0">
-                            <p className="truncate text-base font-semibold text-white" title={offer.providerName}>
-                              {offer.providerName}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedOfferId((prev) => (prev === offer.id ? null : offer.id))
-                              }
-                              className="mt-2 text-xs font-semibold text-slate-300 hover:text-white"
+                const primaryBadges = offer.trustBadges.filter(
+                  (badge) => badge.id === "best_value" || badge.id === "fastest",
+                );
+                const secondaryBadges = offer.trustBadges.filter(
+                  (badge) => badge.id !== "best_value" && badge.id !== "fastest",
+                );
+
+                return (
+                  <div
+                    key={offer.id}
+                    className={clsx(
+                      "rounded-2xl border bg-slate-950/30 p-4 transition duration-200 ease-out",
+                      "hover:-translate-y-0.5 hover:border-slate-700 hover:bg-slate-950/40 hover:shadow-lg hover:shadow-black/20",
+                      isSelected
+                        ? "border-emerald-400/40 bg-emerald-500/10 shadow-lg shadow-emerald-500/5"
+                        : "border-slate-900/60",
+                      dimNonWinner && "opacity-65 hover:-translate-y-0",
+                    )}
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                            Marketplace partner
+                          </p>
+                          <p className="text-xs font-semibold text-slate-200">{optionLabel}</p>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {primaryBadges.map((badge) => (
+                            <TagPill
+                              key={badge.id}
+                              size="sm"
+                              tone={badge.tone}
+                              title={badge.tooltip}
+                              className={clsx(
+                                "normal-case tracking-normal",
+                                badge.id === "best_value" ? "ring-1 ring-emerald-400/40" : "",
+                                badge.id === "fastest" ? "ring-1 ring-blue-300/30" : "",
+                              )}
                             >
-                              {expandedOfferId === offer.id ? "Hide details" : "Details"}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 align-top text-slate-100">
-                          <span className="font-semibold text-white">{offer.priceDisplay}</span>
-                        </td>
-                        <td className="px-5 py-4 align-top text-slate-100">
-                          <span className="font-semibold text-white">{offer.leadTimeDisplay}</span>
-                        </td>
-                        <td className="px-5 py-4 align-top">
-                          <div className="space-y-2">
-                            <div className="flex flex-wrap gap-1.5">
-                              {offer.trustBadges.map((badge) => (
-                                <TagPill
-                                  key={badge.id}
-                                  size="sm"
-                                  tone={badge.tone}
-                                  title={badge.tooltip}
-                                >
-                                  {badge.label}
-                                </TagPill>
-                              ))}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 align-top text-right">
-                          <div className="ml-auto w-[12rem]">
-                            <ActionGroup>
-                              <ActionGroupSection>
-                                <OfferShortlistPill
-                                  shortlisted={isShortlisted}
-                                  pending={isShortlistPending}
-                                  disabled={pendingShortlist || awardLocked}
-                                  onClick={() => handleShortlistToggle(offer.id)}
-                                />
-                                <OfferSelectPill
-                                  disabled={(selectionLocked && !isSelected) || pendingAward}
-                                  selected={isSelected}
-                                  pending={isAwardPending}
-                                  onClick={() => handleAwardOffer(offer.id)}
-                                />
-                              </ActionGroupSection>
-                            </ActionGroup>
-                          </div>
-                        </td>
-                      </tr>
-                      {expandedOfferId === offer.id ? (
-                        <tr className="bg-slate-950/40">
-                          <td colSpan={5} className="px-5 pb-4 pt-0">
-                            <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                Assumptions
-                              </p>
-                              <p className="mt-2 whitespace-pre-line text-sm text-slate-200">
-                                {hasAssumptions ? offer.assumptions : "No assumptions provided."}
-                              </p>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                              {badge.label}
+                            </TagPill>
+                          ))}
+                          {secondaryBadges.map((badge) => (
+                            <TagPill key={badge.id} size="sm" tone={badge.tone} title={badge.tooltip}>
+                              {badge.label}
+                            </TagPill>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setExpandedOfferId((prev) => (prev === offer.id ? null : offer.id))}
+                          className="mt-3 text-xs font-semibold text-slate-300 transition hover:text-white"
+                        >
+                          {expandedOfferId === offer.id ? "Hide details" : "Details"}
+                        </button>
+                      </div>
+
+                      <div className="grid w-full gap-3 sm:w-auto sm:grid-cols-2">
+                        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Total price
+                          </p>
+                          <p className="mt-1 tabular-nums text-base font-semibold text-white">
+                            {offer.priceDisplay}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Lead time
+                          </p>
+                          <p className="mt-1 tabular-nums text-base font-semibold text-white">
+                            {offer.leadTimeDisplay}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="sm:ml-auto sm:w-[12rem]">
+                        <ActionGroup>
+                          <ActionGroupSection>
+                            <OfferShortlistPill
+                              shortlisted={isShortlisted}
+                              pending={isShortlistPending}
+                              disabled={pendingShortlist || awardLocked}
+                              onClick={() => handleShortlistToggle(offer.id)}
+                            />
+                            <OfferSelectPill
+                              disabled={(selectionLocked && !isSelected) || pendingAward}
+                              selected={isSelected}
+                              pending={isAwardPending}
+                              onClick={() => handleAwardOffer(offer.id)}
+                            />
+                          </ActionGroupSection>
+                        </ActionGroup>
+                      </div>
+                    </div>
+
+                    {expandedOfferId === offer.id ? (
+                      <div className="mt-4 rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Assumptions
+                        </p>
+                        <p className="mt-2 whitespace-pre-line text-sm text-slate-200">
+                          {hasAssumptions ? offer.assumptions : "No assumptions provided."}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -680,13 +688,6 @@ function StarIcon({ className, filled }: { className?: string; filled?: boolean 
 
 function compareOffers(a: CustomerCompareOffer, b: CustomerCompareOffer, sortKey: SortKey): number {
   switch (sortKey) {
-    case "lowestPrice": {
-      return compareBy(
-        compareNullableNumber(a.totalPriceValue, b.totalPriceValue, "asc"),
-        compareNullableNumber(a.leadTimeDaysAverage, b.leadTimeDaysAverage, "asc"),
-        compareProviderName(a, b),
-      );
-    }
     case "fastest": {
       return compareBy(
         compareNullableNumber(a.leadTimeDaysAverage, b.leadTimeDaysAverage, "asc"),
@@ -716,8 +717,6 @@ function compareBy(...comparisons: number[]): number {
 }
 
 function compareProviderName(a: CustomerCompareOffer, b: CustomerCompareOffer): number {
-  const nameCompare = (a.providerName ?? "").localeCompare(b.providerName ?? "");
-  if (nameCompare !== 0) return nameCompare;
   return a.provider_id.localeCompare(b.provider_id);
 }
 
