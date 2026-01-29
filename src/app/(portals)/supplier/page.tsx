@@ -32,6 +32,7 @@ import {
 import type { WorkspaceMetric } from "../WorkspaceMetrics";
 import { buildSupplierInboxRows } from "./inboxRows";
 import { InvitedSupplierWelcomePanel } from "./InvitedSupplierWelcomePanel";
+import { SupplierOfferSentBanner } from "./SupplierOfferSentBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -226,6 +227,9 @@ async function SupplierDashboardPage({
       actions={headerActions}
       headerContent={headerContent}
     >
+      <div className="space-y-3">
+        <SupplierOfferSentBanner enabled={offerJustSent} />
+      </div>
       <PortalStatPills
         role="supplier"
         metrics={supplierMetrics}
@@ -364,14 +368,6 @@ async function SupplierDashboardPage({
         <PortalCard title="Invite accepted">
           <p className="text-sm text-slate-300">
             Invite accepted! You’re now part of this supplier workspace.
-          </p>
-        </PortalCard>
-      ) : null}
-
-      {offerJustSent ? (
-        <PortalCard title="Offer sent">
-          <p className="text-sm text-slate-300">
-            Your offer is on file. This RFQ has been removed from your “New RFQs” list.
           </p>
         </PortalCard>
       ) : null}
