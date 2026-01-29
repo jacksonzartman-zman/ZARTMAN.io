@@ -57,6 +57,7 @@ import { loadAdminUploadDetail } from "@/server/admin/uploads";
 import { listSupplierBidsForQuote } from "@/server/suppliers/bids";
 import { SupplierBidsCard, type AdminSupplierBidRow } from "./SupplierBidsCard";
 import { AddExternalOfferButton } from "./AddExternalOfferButton";
+import { CustomerExclusionsSection } from "./CustomerExclusionsSection";
 import ChangeRequestsCard from "./ChangeRequestsCard";
 import {
   loadQuoteProjectForQuote,
@@ -118,6 +119,10 @@ import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { isRfqFeedbackEnabled } from "@/server/quotes/rfqFeedback";
 import { getRfqDestinations } from "@/server/rfqs/destinations";
 import { getRfqOffers, summarizeRfqOffers } from "@/server/rfqs/offers";
+import {
+  findCustomerExclusionMatch,
+  loadCustomerExclusions,
+} from "@/server/customers/exclusions";
 import { listProvidersWithContact } from "@/server/providers";
 import {
   buildProviderEligibilityCriteria,
@@ -1074,6 +1079,35 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       ((quote as { customer_id?: string }).customer_id ?? "").trim().length > 0
         ? ((quote as { customer_id?: string }).customer_id ?? "").trim()
         : null;
+    const customerExclusions = customerId ? await loadCustomerExclusions(customerId) : [];
+    const excludedSourceNames = customerExclusions
+      .map((row) => (typeof row.excluded_source_name === "string" ? row.excluded_source_name.trim() : ""))
+      .filter((name) => name.length > 0);
+    const excludedOfferSummaries = (() => {
+      if (!customerId || customerExclusions.length === 0) return [];
+      return (rfqOffers ?? [])
+        .map((offer) => {
+          const match = findCustomerExclusionMatch({
+            exclusions: customerExclusions,
+            providerId: offer?.provider_id ?? null,
+            sourceName: (offer as { source_name?: string | null })?.source_name ?? null,
+          });
+          if (!match) return null;
+          const offerId = typeof offer?.id === "string" ? offer.id : "";
+          const providerLabel =
+            typeof offer?.provider?.name === "string" && offer.provider.name.trim()
+              ? offer.provider.name.trim()
+              : offer?.provider_id
+                ? providerLabelById.get(offer.provider_id) ?? offer.provider_id
+                : null;
+          const matchLabel =
+            match.kind === "provider"
+              ? `Provider ${providerLabel ?? match.providerId}`
+              : `Source ${match.sourceName}`;
+          return offerId ? `${matchLabel} (offer ${formatShortId(offerId)})` : matchLabel;
+        })
+        .filter((value): value is string => Boolean(value));
+    })();
     const customerReplyToResult = customerId
       ? getCustomerReplyToAddress({ quoteId: quote.id, customerId })
       : null;
@@ -2549,6 +2583,22 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             }
           >
             <div className="space-y-4">
+              {excludedOfferSummaries.length > 0 ? (
+                <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100">
+                  <p className="font-semibold text-amber-50">
+                    Warning: {excludedOfferSummaries.length} offer
+                    {excludedOfferSummaries.length === 1 ? "" : "s"} violate customer exclusions.
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-100/90">
+                    {excludedOfferSummaries.slice(0, 6).map((label) => (
+                      <li key={label}>{label}</li>
+                    ))}
+                    {excludedOfferSummaries.length > 6 ? (
+                      <li>{excludedOfferSummaries.length - 6} more…</li>
+                    ) : null}
+                  </ul>
+                </div>
+              ) : null}
               {bidCompareRows.length === 1 ? (
                 <div className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4 text-sm text-slate-200">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -2620,12 +2670,47 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 recommendedSupplierIds={recommendedSupplierIds}
                 bidsLoaded={bidsResult.ok}
                 errorMessage={bidsResult.error ?? null}
-                headerActions={<AddExternalOfferButton quoteId={quote.id} buttonSize="xs" />}
+                headerActions={
+                  <AddExternalOfferButton
+                    quoteId={quote.id}
+                    excludedSourceNames={excludedSourceNames}
+                    buttonSize="xs"
+                  />
+                }
               />
             </div>
           </DisclosureSection>
 
           <div className="space-y-4">
+            <DisclosureSection
+              id="exclusions"
+              className="scroll-mt-24"
+              title="Exclusions"
+              description="Block offers from specific providers or external sources for this customer."
+              defaultOpen={customerExclusions.length > 0}
+              summary={
+                <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
+                  {customerExclusions.length} exclusion{customerExclusions.length === 1 ? "" : "s"}
+                </span>
+              }
+            >
+              {customerId ? (
+                <CustomerExclusionsSection
+                  quoteId={quote.id}
+                  customerId={customerId}
+                  providers={providers.map((provider) => ({
+                    id: provider.id,
+                    name: provider.name ?? null,
+                  }))}
+                  exclusions={customerExclusions}
+                />
+              ) : (
+                <p className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-300">
+                  This quote is not linked to a customer profile; exclusions can’t be applied.
+                </p>
+              )}
+            </DisclosureSection>
+
             <DisclosureSection
               id="destinations"
               className="scroll-mt-24"
