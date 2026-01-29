@@ -10,7 +10,8 @@ import {
   parseProviderImportCsv,
   type ProviderImportRow,
 } from "@/lib/providerImport";
-import { importProvidersAction, type ProviderImportActionState } from "./actions";
+import { importProvidersAction } from "./actions";
+import type { ProviderImportActionState } from "./providerImportActionState";
 
 const INITIAL_STATE: ProviderImportActionState = {
   ok: true,

@@ -3,11 +3,11 @@
 import clsx from "clsx";
 import { useEffect, useMemo, useRef } from "react";
 import { useFormState, useFormStatus } from "react-dom";
+import { inviteSupplierAction } from "./actions";
 import {
-  inviteSupplierAction,
   INVITE_SUPPLIER_INITIAL_STATE,
   type InviteSupplierActionState,
-} from "./actions";
+} from "./inviteSupplierActionState";
 
 const PROCESS_OPTIONS = ["CNC", "3DP", "Sheet Metal", "Injection Molding"] as const;
 
