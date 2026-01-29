@@ -16,6 +16,7 @@ import { OpsInboxNudgeButton } from "./OpsInboxNudgeButton";
 export const dynamic = "force-dynamic";
 
 const DESTINATION_STATUS_VALUES = [
+  "pending",
   "queued",
   "sent",
   "submitted",
@@ -27,6 +28,7 @@ const DESTINATION_STATUS_VALUES = [
 
 const DESTINATION_STATUS_OPTIONS = [
   { value: "all", label: "All" },
+  { value: "pending", label: "Pending" },
   { value: "queued", label: "Queued" },
   { value: "sent", label: "Sent" },
   { value: "submitted", label: "Submitted" },
@@ -43,6 +45,7 @@ const DESTINATION_STATUS_META: Record<
   DestinationStatus,
   { label: string; className: string }
 > = {
+  pending: { label: "Pending", className: "pill-muted" },
   queued: { label: "Queued", className: "pill-muted" },
   sent: { label: "Sent", className: "pill-info" },
   submitted: { label: "Submitted", className: "pill-info" },

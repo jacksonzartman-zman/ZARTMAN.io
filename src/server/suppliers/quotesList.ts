@@ -120,6 +120,7 @@ export async function loadSupplierQuotesList(
     const [
       awarded,
       rfqAwardsByProvider,
+      rfqDestinationsByProvider,
       bids,
       invites,
       assignedLegacy,
@@ -133,6 +134,13 @@ export async function loadSupplierQuotesList(
       supplierProviderId
         ? supabaseServer()
             .from("rfq_awards")
+            .select("rfq_id")
+            .eq("provider_id", supplierProviderId)
+            .returns<{ rfq_id: string }[]>()
+        : Promise.resolve({ data: [], error: null } as any),
+      supplierProviderId
+        ? supabaseServer()
+            .from("rfq_destinations")
             .select("rfq_id")
             .eq("provider_id", supplierProviderId)
             .returns<{ rfq_id: string }[]>()
@@ -187,6 +195,10 @@ export async function loadSupplierQuotesList(
       const id = normalizeId((row as any)?.rfq_id);
       if (id) quoteIds.add(id);
     }
+    for (const row of rfqDestinationsByProvider.data ?? []) {
+      const id = normalizeId((row as any)?.rfq_id);
+      if (id) quoteIds.add(id);
+    }
 
     // Best-effort: ignore missing optional tables/columns.
     if (invites.error && !isMissingTableOrColumnError(invites.error)) {
@@ -227,6 +239,18 @@ export async function loadSupplierQuotesList(
         supplierId,
         supplierProviderId: supplierProviderId || null,
         error: serializeSupabaseError(rfqAwardsByProvider.error) ?? rfqAwardsByProvider.error,
+      });
+    }
+    if (
+      rfqDestinationsByProvider.error &&
+      !isMissingTableOrColumnError(rfqDestinationsByProvider.error)
+    ) {
+      console.error("[supplier quotes list] rfq_destinations visibility query failed", {
+        supplierId,
+        supplierProviderId: supplierProviderId || null,
+        error:
+          serializeSupabaseError(rfqDestinationsByProvider.error) ??
+          rfqDestinationsByProvider.error,
       });
     }
   } catch (error) {

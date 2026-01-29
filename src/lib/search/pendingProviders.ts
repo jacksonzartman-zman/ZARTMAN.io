@@ -13,12 +13,13 @@ const CONTACTED_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
 const DESTINATION_SLA_URGENCY_ORDER: Record<RfqDestinationStatus, number> = {
   error: 0,
   draft: 1,
-  queued: 2,
-  sent: 3,
-  submitted: 4,
-  viewed: 5,
-  quoted: 6,
-  declined: 7,
+  pending: 2,
+  queued: 3,
+  sent: 4,
+  submitted: 5,
+  viewed: 6,
+  quoted: 7,
+  declined: 8,
 };
 
 export function countContactedSuppliers(destinations: RfqDestination[]): number {
