@@ -93,6 +93,7 @@ export function CustomerQuoteCompareOffers({
   const [pendingAwardOfferId, setPendingAwardOfferId] = useState<string | null>(null);
   const [awardError, setAwardError] = useState<string | null>(null);
   const [awardResult, setAwardResult] = useState<AwardOfferActionResponse | null>(null);
+  const [selectionFeedbackOfferId, setSelectionFeedbackOfferId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>(() =>
     resolveSortKey(searchParams.get(SORT_PARAM_KEY)),
   );
@@ -123,6 +124,8 @@ export function CustomerQuoteCompareOffers({
   const awardLocked = Boolean(awardLockedProp);
   const selectionLocked = Boolean(resolvedSelectedOfferId) || awardLocked;
   const hasQuickFilters = showBadgeWinnersOnly || showShortlistedOnly;
+  const showSelectionConfirmation =
+    Boolean(selectionFeedbackOfferId) && !awardLocked && !awardError;
 
   const shortlistedCount = useMemo(() => {
     if (shortlistedOfferIds.size === 0) return 0;
@@ -247,26 +250,39 @@ export function CustomerQuoteCompareOffers({
       if (awardLocked) return;
       if (!offerId) return;
       if (pendingAwardOfferId) return;
+      if (selectionLocked) return;
 
       setAwardError(null);
       setAwardResult(null);
+      setSelectionFeedbackOfferId(offerId);
+      const previousSelectedOfferId = resolvedSelectedOfferId;
+      setSelectedOfferIdState(offerId);
       setPendingAwardOfferId(offerId);
       startAwardTransition(async () => {
         try {
           const result = await awardOfferAction({ rfqId: quoteId, offerId });
           setAwardResult(result);
           if (result.ok) {
-            setSelectedOfferIdState(offerId);
             router.refresh();
           } else {
             setAwardError(result.error ?? "We couldn’t record that selection. Please try again.");
+            setSelectionFeedbackOfferId(null);
+            setSelectedOfferIdState(previousSelectedOfferId);
           }
         } finally {
           setPendingAwardOfferId(null);
         }
       });
     },
-    [awardLocked, pendingAwardOfferId, quoteId, router, startAwardTransition],
+    [
+      awardLocked,
+      pendingAwardOfferId,
+      quoteId,
+      resolvedSelectedOfferId,
+      router,
+      selectionLocked,
+      startAwardTransition,
+    ],
   );
 
   const filteredOffers = useMemo(() => {
@@ -318,10 +334,13 @@ export function CustomerQuoteCompareOffers({
           </button>
         </div>
       ) : null}
-      {awardResult?.ok ? (
-        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          Offer selected.
-        </p>
+      {showSelectionConfirmation ? (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 transition-opacity duration-200 ease-out motion-reduce:transition-none">
+          <p className="text-sm font-semibold text-white">Supplier selected</p>
+          <p className="mt-1 text-xs text-emerald-100/80">
+            We’ll move this order into production and keep you updated.
+          </p>
+        </div>
       ) : null}
       {awardError ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
@@ -448,6 +467,7 @@ export function CustomerQuoteCompareOffers({
                 const isAwardPending = pendingAward && pendingAwardOfferId === offer.id;
                 const hasAssumptions = Boolean(offer.assumptions?.trim());
                 const optionLabel = `Option ${index + 1}`;
+                const interactionsDisabled = dimNonWinner;
 
                 const primaryBadges = offer.trustBadges.filter(
                   (badge) => badge.id === "best_value" || badge.id === "fastest",
@@ -460,15 +480,24 @@ export function CustomerQuoteCompareOffers({
                   <div
                     key={offer.id}
                     className={clsx(
-                      "rounded-3xl border bg-slate-950/30 p-5",
+                      "relative rounded-3xl border bg-slate-950/30 p-5",
                       "transition duration-200 ease-out motion-reduce:transition-none",
                       "hover:-translate-y-0.5 hover:border-slate-700/80 hover:bg-slate-950/40 hover:shadow-[0_18px_50px_rgba(2,6,23,0.45)] motion-reduce:hover:translate-y-0",
                       isSelected
                         ? "border-emerald-400/40 bg-emerald-500/10 shadow-lg shadow-emerald-500/5"
                         : "border-slate-900/60",
                       dimNonWinner && "opacity-65 hover:-translate-y-0",
+                      interactionsDisabled && "pointer-events-none",
                     )}
+                    aria-disabled={interactionsDisabled}
                   >
+                    {isSelected ? (
+                      <div className="absolute right-4 top-4">
+                        <span className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-100">
+                          Selected
+                        </span>
+                      </div>
+                    ) : null}
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -535,7 +564,7 @@ export function CustomerQuoteCompareOffers({
                             <OfferShortlistPill
                               shortlisted={isShortlisted}
                               pending={isShortlistPending}
-                              disabled={pendingShortlist || awardLocked}
+                              disabled={pendingShortlist || awardLocked || selectionLocked}
                               onClick={() => handleShortlistToggle(offer.id)}
                             />
                             <OfferSelectPill
