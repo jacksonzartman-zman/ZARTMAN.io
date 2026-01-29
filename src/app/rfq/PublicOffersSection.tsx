@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { NotifyMePanel } from "./NotifyMePanel";
 import { RfqJourneyStepper } from "./RfqJourneyStepper";
@@ -49,6 +50,25 @@ const POLL_FAST_PHASE_MS = 60 * 1000;
 const POLL_MAX_MS = 10 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(["won", "lost", "cancelled"]);
 
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setReduced(Boolean(media.matches));
+    onChange();
+    try {
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    } catch {
+      // Safari fallback.
+      media.addListener(onChange);
+      return () => media.removeListener(onChange);
+    }
+  }, []);
+  return reduced;
+}
+
 export function PublicOffersSection({
   quoteId,
   quoteStatus,
@@ -61,6 +81,11 @@ export function PublicOffersSection({
   claimState,
   loginNextPath,
 }: PublicOffersSectionProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const prefersReducedMotion = usePrefersReducedMotion();
+
   const [offersCount, setOffersCount] = useState<number>(() =>
     Number.isFinite(initialOffersCount) ? initialOffersCount : 0,
   );
@@ -68,6 +93,9 @@ export function PublicOffersSection({
   const [celebrate, setCelebrate] = useState(false);
   const [checkBackLater, setCheckBackLater] = useState(false);
   const [currentNormalizedStatus, setCurrentNormalizedStatus] = useState(normalizedStatus);
+  const [showSubmittedBanner, setShowSubmittedBanner] = useState(false);
+  const [submittedCardHighlight, setSubmittedCardHighlight] = useState(false);
+  const [overrideStageIndex, setOverrideStageIndex] = useState<number | null>(null);
   const [projectStatus, setProjectStatus] = useState<string | null>(() => {
     const v = typeof initialProjectStatus === "string" ? initialProjectStatus.trim() : "";
     return v ? v : null;
@@ -129,6 +157,56 @@ export function PublicOffersSection({
       subhead: "We’re processing your files and routing your RFQ to manufacturing providers.",
     };
   }, [currentNormalizedStatus, hasOffers, projectStatus]);
+
+  const stageIndex = overrideStageIndex ?? journey.stageIndex;
+
+  const submittedPlayedRef = useRef(false);
+  useEffect(() => {
+    if (submittedPlayedRef.current) return;
+    if (!searchParams) return;
+
+    const submittedRaw = (searchParams.get("submitted") ?? "").trim().toLowerCase();
+    const submitted = submittedRaw === "1" || submittedRaw === "true" || submittedRaw === "yes";
+    if (!submitted) return;
+
+    submittedPlayedRef.current = true;
+
+    // Clean up URL so the effect doesn't re-run on refresh/share.
+    const cleaned = new URLSearchParams(searchParams.toString());
+    cleaned.delete("submitted");
+    const qs = cleaned.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+
+    setShowSubmittedBanner(true);
+    const bannerT = window.setTimeout(() => setShowSubmittedBanner(false), 2600);
+
+    if (!prefersReducedMotion) {
+      setSubmittedCardHighlight(true);
+      const highlightT = window.setTimeout(() => setSubmittedCardHighlight(false), 1200);
+
+      // Smoothly "activate" Processing (stage 1) from Upload (stage 0) on first load.
+      if (journey.stageIndex === 1) {
+        setOverrideStageIndex(0);
+        const kickoff = window.setTimeout(() => setOverrideStageIndex(1), 60);
+        const release = window.setTimeout(() => setOverrideStageIndex(null), 950);
+        return () => {
+          window.clearTimeout(bannerT);
+          window.clearTimeout(highlightT);
+          window.clearTimeout(kickoff);
+          window.clearTimeout(release);
+        };
+      }
+
+      return () => {
+        window.clearTimeout(bannerT);
+        window.clearTimeout(highlightT);
+      };
+    }
+
+    return () => {
+      window.clearTimeout(bannerT);
+    };
+  }, [journey.stageIndex, pathname, prefersReducedMotion, router, searchParams]);
 
   const badgeLabel = `${offersCount} offer${offersCount === 1 ? "" : "s"} received`;
 
@@ -237,6 +315,18 @@ export function PublicOffersSection({
 
   return (
     <>
+      {showSubmittedBanner ? (
+        <div
+          className={clsx(
+            "mb-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-100",
+            "transition-opacity duration-300 motion-reduce:transition-none",
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          RFQ submitted — matching in progress
+        </div>
+      ) : null}
       <header className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-ink-soft">
           RFQ status
@@ -245,7 +335,12 @@ export function PublicOffersSection({
         <p className="text-sm text-ink-muted">{journey.subhead}</p>
       </header>
 
-      <div className="rounded-3xl border border-slate-900/60 bg-slate-950/55 p-6 shadow-[0_20px_60px_rgba(2,6,23,0.45)]">
+      <div
+        className={clsx(
+          "rounded-3xl border border-slate-900/60 bg-slate-950/55 p-6 shadow-[0_20px_60px_rgba(2,6,23,0.45)]",
+          submittedCardHighlight && "rfq-submitted-card",
+        )}
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
             <p className="text-sm font-semibold text-ink">Quote ID</p>
@@ -378,7 +473,7 @@ export function PublicOffersSection({
         </div>
 
         <div className="mt-6">
-          <RfqJourneyStepper stageIndex={journey.stageIndex} />
+          <RfqJourneyStepper stageIndex={stageIndex} />
         </div>
 
         {checkBackLater && !hasOffers && !isTerminal ? (

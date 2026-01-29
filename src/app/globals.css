@@ -49,4 +49,74 @@
     overflow-wrap: anywhere;
     word-break: break-word;
   }
+
+  /* RFQ success micro-celebration (premium, subtle). */
+  @keyframes rfq-submitted-sweep {
+    0% {
+      transform: translateX(-35%) skewX(-12deg);
+      opacity: 0;
+    }
+    15% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(120%) skewX(-12deg);
+      opacity: 0;
+    }
+  }
+
+  @keyframes rfq-submitted-glow {
+    0% {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+      opacity: 0;
+    }
+    20% {
+      opacity: 1;
+    }
+    100% {
+      box-shadow:
+        0 0 0 1px rgba(16, 185, 129, 0.14),
+        0 10px 35px rgba(16, 185, 129, 0.08);
+      opacity: 0;
+    }
+  }
+
+  .rfq-submitted-card {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .rfq-submitted-card::before,
+  .rfq-submitted-card::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+
+  .rfq-submitted-card::before {
+    animation: rfq-submitted-glow 1100ms ease-out both;
+  }
+
+  .rfq-submitted-card::after {
+    inset: 0;
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      rgba(148, 163, 184, 0.06) 42%,
+      rgba(16, 185, 129, 0.18) 50%,
+      rgba(148, 163, 184, 0.06) 58%,
+      transparent 70%
+    );
+    animation: rfq-submitted-sweep 900ms ease-out both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rfq-submitted-card::before,
+    .rfq-submitted-card::after {
+      animation: none;
+      opacity: 0;
+    }
+  }
 }

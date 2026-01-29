@@ -38,15 +38,19 @@ export function HomeUploadHero() {
     return null;
   }, [step]);
 
-  const buildTrackingHref = useCallback((quoteId: string, intakeKey: string) => {
+  const buildTrackingHref = useCallback((quoteId: string, intakeKey: string, opts?: { submitted?: boolean }) => {
     const params = new URLSearchParams();
     params.set("quote", quoteId);
     params.set("key", intakeKey);
+    if (opts?.submitted) {
+      params.set("submitted", "1");
+    }
     return `/rfq?${params.toString()}`;
   }, []);
 
   const trackingHref = useMemo(() => {
     if (!lastResult) return null;
+    // Keep share/copy links clean; "submitted" is only for the immediate post-intake redirect.
     return buildTrackingHref(lastResult.quoteId, lastResult.intakeKey);
   }, [buildTrackingHref, lastResult]);
 
@@ -112,7 +116,7 @@ export function HomeUploadHero() {
         setLastResult(payload);
         setStep("offers");
 
-        const href = buildTrackingHref(payload.quoteId, payload.intakeKey);
+        const href = buildTrackingHref(payload.quoteId, payload.intakeKey, { submitted: true });
         try {
           router.push(href);
         } catch {
