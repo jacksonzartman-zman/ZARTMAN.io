@@ -190,10 +190,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
   const nonWithdrawnOffers = offers.filter((offer) => !isRfqOfferWithdrawn(offer.status));
   const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
 
-  const performance =
-    offersCount > 0
-      ? await getRfqPerformanceFeedback(quote.id)
-      : { firstOfferMinutes: null, suppliersMatched: null };
+  const performance = await getRfqPerformanceFeedback(quote.id, { skipEvents: offersCount === 0 });
 
   // Optional: if a project has been created after award, use it to show "In progress".
   // Fail-soft if schema is missing or query errors.

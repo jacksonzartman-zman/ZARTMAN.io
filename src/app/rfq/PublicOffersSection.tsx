@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { NotifyMePanel } from "./NotifyMePanel";
 import { RfqJourneyStepper } from "./RfqJourneyStepper";
+import { RfqNextStepsPanel } from "./RfqNextStepsPanel";
 import type { RfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
 
 type OfferCardDto = {
@@ -114,6 +115,8 @@ export function PublicOffersSection({
 
   const isTerminal = TERMINAL_STATUSES.has((currentNormalizedStatus ?? "").trim().toLowerCase());
   const hasOffers = offersCount > 0;
+  const isLoggedIn = claimState !== "anon";
+  const showNotifyRow = !isTerminal && (!hasOffers || isLoggedIn);
 
   const journey = useMemo(() => {
     const normalized = (currentNormalizedStatus ?? "").trim().toLowerCase();
@@ -278,15 +281,15 @@ export function PublicOffersSection({
           const v = typeof json.projectStatus === "string" ? json.projectStatus.trim() : "";
           return v ? v : null;
         });
+        if (json.performance) {
+          setPerformance(json.performance);
+        }
 
         const nextCount = Number.isFinite(json.offersCount) ? json.offersCount : 0;
         if (nextCount > 0) {
           stopPollingRef.current = true;
           setOffersCount(nextCount);
           setOffers(Array.isArray(json.offers) ? json.offers : []);
-          if (json.performance) {
-            setPerformance(json.performance);
-          }
           if (tickTimeout) clearTimeout(tickTimeout);
           if (timeout) clearTimeout(timeout);
           return;
@@ -506,6 +509,12 @@ export function PublicOffersSection({
 
         <div className="mt-6">
           <RfqJourneyStepper stageIndex={stageIndex} />
+          <RfqNextStepsPanel
+            className="mt-4"
+            matchedCount={performance?.suppliersMatched ?? null}
+            typicalFirstOfferMins={performance?.firstOfferMinutes ?? null}
+            showNotifyRow={showNotifyRow}
+          />
           <PerformanceStatsRow visible={hasOffers} performance={performance} />
         </div>
 
