@@ -180,6 +180,10 @@ export function PublicOffersSection({
         if (!json || json.ok !== true) return;
 
         setCurrentNormalizedStatus(json.normalizedStatus);
+        setProjectStatus(() => {
+          const v = typeof json.projectStatus === "string" ? json.projectStatus.trim() : "";
+          return v ? v : null;
+        });
 
         const nextCount = Number.isFinite(json.offersCount) ? json.offersCount : 0;
         if (nextCount > 0) {
