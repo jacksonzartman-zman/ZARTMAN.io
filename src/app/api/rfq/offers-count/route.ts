@@ -129,10 +129,10 @@ export async function GET(req: Request) {
   }
 
   // Performance feedback: only compute once offers exist (this endpoint polls frequently).
-  const performance =
-    summary.nonWithdrawn > 0
-      ? await getRfqPerformanceFeedback(quote.id, { client })
-      : { firstOfferMinutes: null, suppliersMatched: null };
+  const performance = await getRfqPerformanceFeedback(quote.id, {
+    client,
+    skipEvents: summary.nonWithdrawn === 0,
+  });
 
   return NextResponse.json(
     {

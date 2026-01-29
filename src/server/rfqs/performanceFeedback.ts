@@ -28,7 +28,7 @@ function parseIsoMs(value: string | null): number | null {
 
 export async function getRfqPerformanceFeedback(
   rfqId: string,
-  options?: { client?: ReturnType<typeof supabaseServer> },
+  options?: { client?: ReturnType<typeof supabaseServer>; skipEvents?: boolean },
 ): Promise<RfqPerformanceFeedback> {
   const normalizedId = normalizeId(rfqId);
   if (!normalizedId) {
@@ -36,6 +36,7 @@ export async function getRfqPerformanceFeedback(
   }
 
   const client = options?.client ?? supabaseServer();
+  const skipEvents = options?.skipEvents === true;
 
   const result: RfqPerformanceFeedback = {
     firstOfferMinutes: null,
@@ -67,6 +68,10 @@ export async function getRfqPerformanceFeedback(
         error: serializeSupabaseError(error) ?? error,
       });
     }
+  }
+
+  if (skipEvents) {
+    return result;
   }
 
   // First offer in minutes: supplier_notified -> first offer_created
