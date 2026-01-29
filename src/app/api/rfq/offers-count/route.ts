@@ -5,12 +5,14 @@ import {
   isRfqOfferWithdrawn,
   summarizeRfqOffers,
 } from "@/server/rfqs/offers";
+import { pickPublicOfferHighlights } from "@/server/rfqs/publicOfferHighlights";
 import { normalizeQuoteStatus } from "@/server/quotes/status";
 import {
   filterOffersByCustomerExclusions,
   loadCustomerExclusions,
 } from "@/server/customers/exclusions";
 import { getRfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
+import type { PublicRfqOfferCardDto } from "@/types/rfqPublicOffer";
 
 export const dynamic = "force-dynamic";
 
@@ -26,16 +28,7 @@ function isValidIntakeKey(key: string): boolean {
   return /^[a-f0-9]{16,128}$/.test(key);
 }
 
-type OfferCardDto = {
-  id: string;
-  providerName: string | null;
-  currency: string;
-  totalPrice: number | string | null;
-  leadTimeDaysMin: number | null;
-  leadTimeDaysMax: number | null;
-  status: string;
-  receivedAt: string | null;
-};
+type OfferCardDto = PublicRfqOfferCardDto;
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -99,15 +92,20 @@ export async function GET(req: Request) {
   const summary = summarizeRfqOffers(offers);
   const nonWithdrawnOffers = offers.filter((offer) => !isRfqOfferWithdrawn(offer.status));
 
+  const highlights = pickPublicOfferHighlights(nonWithdrawnOffers);
   const payloadOffers: OfferCardDto[] = nonWithdrawnOffers.map((offer) => ({
     id: offer.id,
-    providerName: offer.provider?.name ?? offer.source_name ?? null,
+    providerName: offer.provider?.name ?? null,
+    sourceName: offer.source_name ?? null,
     currency: offer.currency,
     totalPrice: offer.total_price,
     leadTimeDaysMin: offer.lead_time_days_min ?? null,
     leadTimeDaysMax: offer.lead_time_days_max ?? null,
     status: offer.status,
     receivedAt: offer.received_at ?? offer.created_at ?? null,
+    notes: offer.notes ?? null,
+    isBestValue: highlights.bestValueOfferId === offer.id,
+    isFastest: highlights.fastestOfferId === offer.id,
   }));
 
   // Optional: show if a project is already in flight after award.

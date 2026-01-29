@@ -8,18 +8,11 @@ import { formatCurrency } from "@/lib/formatCurrency";
 import { NotifyMePanel } from "./NotifyMePanel";
 import { RfqJourneyStepper } from "./RfqJourneyStepper";
 import { RfqNextStepsPanel } from "./RfqNextStepsPanel";
+import { PublicOfferCard } from "./PublicOfferCard";
 import type { RfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
+import type { PublicRfqOfferCardDto } from "@/types/rfqPublicOffer";
 
-type OfferCardDto = {
-  id: string;
-  providerName: string | null;
-  currency: string;
-  totalPrice: number | string | null;
-  leadTimeDaysMin: number | null;
-  leadTimeDaysMax: number | null;
-  status: string;
-  receivedAt: string | null;
-};
+type OfferCardDto = PublicRfqOfferCardDto;
 
 type OffersCountApiResponse =
   | { ok: false; error?: string }
@@ -223,12 +216,15 @@ export function PublicOffersSection({
 
   const compareRows = useMemo(() => {
     if (!Array.isArray(offers) || offers.length === 0) return [];
-    return offers.map((offer) => ({
-      id: offer.id,
-      providerName: offer.providerName?.trim() || `Provider ${offer.id.slice(0, 6)}`,
-      priceLabel: formatOfferTotalPrice(offer),
-      leadTimeLabel: formatOfferLeadTime(offer),
-    }));
+    return offers.map((offer, idx) => {
+      const supplierLabel = resolveSupplierLabel(offer, idx + 1);
+      return {
+        id: offer.id,
+        providerName: supplierLabel,
+        priceLabel: formatOfferTotalPrice(offer),
+        leadTimeLabel: formatOfferLeadTime(offer),
+      };
+    });
   }, [offers]);
 
   const firstOfferArrivalStorageKey = useMemo(
@@ -561,9 +557,10 @@ export function PublicOffersSection({
 
           <div className="grid gap-4">
             {offers.map((offer, idx) => (
-              <OfferCard
+              <PublicOfferCard
                 key={offer.id}
                 offer={offer}
+                optionNumber={idx + 1}
                 className={clsx(idx === 0 && firstOfferArrivalActive && "rfq-first-offer-card")}
               />
             ))}
@@ -658,40 +655,10 @@ function PerformanceStatsRow({
   );
 }
 
-function OfferCard({ offer, className }: { offer: OfferCardDto; className?: string }) {
-  const providerName = offer.providerName?.trim() || `Provider ${offer.id.slice(0, 6)}`;
-  const priceLabel = formatOfferTotalPrice(offer);
-  const leadTimeLabel = formatOfferLeadTime(offer);
-  const statusLabel = formatOfferStatus(offer.status);
-
-  return (
-    <article
-      className={clsx(
-        "rounded-3xl border border-slate-900/60 bg-slate-950/35 p-5",
-        "transition duration-200 ease-out motion-reduce:transition-none",
-        "hover:-translate-y-0.5 hover:border-slate-700/70 hover:bg-slate-950/45 hover:shadow-[0_18px_55px_rgba(2,6,23,0.45)] motion-reduce:hover:translate-y-0",
-        className,
-      )}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-ink" title={providerName}>
-            {providerName}
-          </p>
-          <p className="mt-1 text-xs text-ink-soft">
-            Status: <span className="font-semibold text-ink">{statusLabel}</span>
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-ink-soft">
-            Total
-          </p>
-          <p className="mt-1 text-base font-semibold text-ink">{priceLabel}</p>
-          <p className="mt-1 text-xs text-ink-soft">{leadTimeLabel}</p>
-        </div>
-      </div>
-    </article>
-  );
+function resolveSupplierLabel(offer: OfferCardDto, optionNumber: number): string {
+  const sourceName = typeof offer.sourceName === "string" ? offer.sourceName.trim() : "";
+  if (sourceName) return sourceName;
+  return `Marketplace partner · Option ${optionNumber}`;
 }
 
 function formatOfferTotalPrice(offer: OfferCardDto): string {
@@ -709,25 +676,15 @@ function formatOfferLeadTime(offer: OfferCardDto): string {
   const min = offer.leadTimeDaysMin;
   const max = offer.leadTimeDaysMax;
   if (typeof min === "number" && typeof max === "number" && min > 0 && max > 0) {
-    if (min === max) return `Lead time: ${min} day${min === 1 ? "" : "s"}`;
-    return `Lead time: ${min}–${max} days`;
+    if (min === max) return `${min} day${min === 1 ? "" : "s"}`;
+    return `${min}–${max} days`;
   }
   if (typeof min === "number" && min > 0) {
-    return `Lead time: ${min} day${min === 1 ? "" : "s"}`;
+    return `${min} day${min === 1 ? "" : "s"}`;
   }
   if (typeof max === "number" && max > 0) {
-    return `Lead time: ${max} day${max === 1 ? "" : "s"}`;
+    return `${max} day${max === 1 ? "" : "s"}`;
   }
-  return "Lead time: —";
-}
-
-function formatOfferStatus(value: string): string {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (!normalized) return "Received";
-  if (normalized === "received") return "Received";
-  if (normalized === "revised") return "Revised";
-  if (normalized === "quoted") return "Quoted";
-  if (normalized === "withdrawn") return "Withdrawn";
-  return normalized.replace(/[_-]+/g, " ").replace(/^\w/, (m) => m.toUpperCase());
+  return "—";
 }
 

@@ -11,6 +11,7 @@ import { PublicOffersSection } from "./PublicOffersSection";
 import { getServerAuthUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { getRfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
+import { pickPublicOfferHighlights } from "@/server/rfqs/publicOfferHighlights";
 
 export const dynamic = "force-dynamic";
 
@@ -209,15 +210,20 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
   } catch {
     // ignore
   }
+  const highlights = pickPublicOfferHighlights(nonWithdrawnOffers);
   const initialOfferDtos = nonWithdrawnOffers.map((offer) => ({
     id: offer.id,
     providerName: offer.provider?.name ?? null,
+    sourceName: offer.source_name ?? null,
     currency: offer.currency,
     totalPrice: offer.total_price,
     leadTimeDaysMin: offer.lead_time_days_min ?? null,
     leadTimeDaysMax: offer.lead_time_days_max ?? null,
     status: offer.status,
     receivedAt: offer.received_at ?? offer.created_at ?? null,
+    notes: offer.notes ?? null,
+    isBestValue: highlights.bestValueOfferId === offer.id,
+    isFastest: highlights.fastestOfferId === offer.id,
   }));
 
   const initialProcesses = parseManufacturingProcessKeys(uploadManufacturingProcess);
