@@ -59,6 +59,11 @@ export type UploadMeta = {
   export_restriction: string | null;
   rfq_reason: string | null;
   notes: string | null;
+  /**
+   * Intake idempotency key used to render the customer-facing RFQ status page.
+   * Optional because older deployments / data loaders may not include it.
+   */
+  intake_idempotency_key?: string | null;
   itar_acknowledged: boolean | null;
   terms_accepted: boolean | null;
 };
