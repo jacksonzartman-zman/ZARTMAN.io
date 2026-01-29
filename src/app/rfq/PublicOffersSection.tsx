@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatCurrency } from "@/lib/formatCurrency";
 import { NotifyMePanel } from "./NotifyMePanel";
 import { RfqJourneyStepper } from "./RfqJourneyStepper";
+import type { RfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
 
 type OfferCardDto = {
   id: string;
@@ -29,6 +30,7 @@ type OffersCountApiResponse =
       offersCount: number;
       offers: OfferCardDto[];
       projectStatus?: string | null;
+      performance?: RfqPerformanceFeedback;
     };
 
 type PublicOffersSectionProps = {
@@ -40,6 +42,7 @@ type PublicOffersSectionProps = {
   initialOffersCount: number;
   initialOffers: OfferCardDto[];
   initialProjectStatus?: string | null;
+  initialPerformance?: RfqPerformanceFeedback;
   claimState: "anon" | "no_customer_profile" | "can_claim" | "already_saved_to_you" | "already_saved_elsewhere";
   loginNextPath: string;
 };
@@ -78,6 +81,7 @@ export function PublicOffersSection({
   initialOffersCount,
   initialOffers,
   initialProjectStatus,
+  initialPerformance,
   claimState,
   loginNextPath,
 }: PublicOffersSectionProps) {
@@ -100,6 +104,7 @@ export function PublicOffersSection({
     const v = typeof initialProjectStatus === "string" ? initialProjectStatus.trim() : "";
     return v ? v : null;
   });
+  const [performance, setPerformance] = useState<RfqPerformanceFeedback | null>(() => initialPerformance ?? null);
   const previousOffersCountRef = useRef(offersCount);
   const stopPollingRef = useRef(false);
   const [claiming, setClaiming] = useState(false);
@@ -279,6 +284,9 @@ export function PublicOffersSection({
           stopPollingRef.current = true;
           setOffersCount(nextCount);
           setOffers(Array.isArray(json.offers) ? json.offers : []);
+          if (json.performance) {
+            setPerformance(json.performance);
+          }
           if (tickTimeout) clearTimeout(tickTimeout);
           if (timeout) clearTimeout(timeout);
           return;
@@ -496,6 +504,7 @@ export function PublicOffersSection({
 
         <div className="mt-6">
           <RfqJourneyStepper stageIndex={stageIndex} />
+          <PerformanceStatsRow visible={hasOffers} performance={performance} />
         </div>
 
         {checkBackLater && !hasOffers && !isTerminal ? (
@@ -586,6 +595,52 @@ export function PublicOffersSection({
         </section>
       ) : null}
     </>
+  );
+}
+
+function PerformanceStatsRow({
+  visible,
+  performance,
+}: {
+  visible: boolean;
+  performance: RfqPerformanceFeedback | null;
+}) {
+  if (!visible) return null;
+  if (!performance) return null;
+
+  const suppliersMatched =
+    typeof performance.suppliersMatched === "number" && Number.isFinite(performance.suppliersMatched)
+      ? Math.max(0, Math.floor(performance.suppliersMatched))
+      : null;
+
+  const firstOfferMinutes =
+    typeof performance.firstOfferMinutes === "number" && Number.isFinite(performance.firstOfferMinutes)
+      ? Math.max(0, Math.floor(performance.firstOfferMinutes))
+      : null;
+
+  // Only display once we can compute the "supplier_notified -> offer_created" interval.
+  if (firstOfferMinutes === null) return null;
+
+  const firstOfferLabel = firstOfferMinutes <= 0 ? "<1 min" : `${firstOfferMinutes} min`;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-ink-soft">
+        Performance
+      </p>
+      <div className="h-4 w-px bg-slate-900/70" aria-hidden="true" />
+      <p className="text-xs text-ink-muted">
+        First offer in:{" "}
+        <span className="font-semibold text-ink tabular-nums">{firstOfferLabel}</span>
+      </p>
+      <div className="h-4 w-px bg-slate-900/70" aria-hidden="true" />
+      <p className="text-xs text-ink-muted">
+        Suppliers matched:{" "}
+        <span className="font-semibold text-ink tabular-nums">
+          {suppliersMatched === null ? "—" : suppliersMatched}
+        </span>
+      </p>
+    </div>
   );
 }
 

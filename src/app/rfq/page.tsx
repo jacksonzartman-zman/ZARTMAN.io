@@ -10,6 +10,7 @@ import { normalizeQuoteStatus } from "@/server/quotes/status";
 import { PublicOffersSection } from "./PublicOffersSection";
 import { getServerAuthUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
+import { getRfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
 
 export const dynamic = "force-dynamic";
 
@@ -189,6 +190,11 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
   const nonWithdrawnOffers = offers.filter((offer) => !isRfqOfferWithdrawn(offer.status));
   const normalizedStatus = normalizeQuoteStatus(quote.status ?? undefined);
 
+  const performance =
+    offersCount > 0
+      ? await getRfqPerformanceFeedback(quote.id)
+      : { firstOfferMinutes: null, suppliersMatched: null };
+
   // Optional: if a project has been created after award, use it to show "In progress".
   // Fail-soft if schema is missing or query errors.
   try {
@@ -238,6 +244,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
             initialOffersCount={offersCount}
             initialOffers={initialOfferDtos}
             initialProjectStatus={projectStatus}
+            initialPerformance={performance}
             claimState={claimState}
             loginNextPath={`/rfq?quote=${encodeURIComponent(quote.id)}&key=${encodeURIComponent(
               intakeKey,
