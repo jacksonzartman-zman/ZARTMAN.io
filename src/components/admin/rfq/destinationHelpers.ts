@@ -24,6 +24,10 @@ export const DESTINATION_STATUS_META: Record<RfqDestinationStatus, StatusMeta> =
     label: "Draft",
     className: "border-slate-700 bg-slate-900/40 text-slate-200",
   },
+  pending: {
+    label: "Pending",
+    className: "border-slate-600/60 bg-slate-950/40 text-slate-100",
+  },
   queued: {
     label: "Queued",
     className: "border-amber-500/40 bg-amber-500/10 text-amber-100",

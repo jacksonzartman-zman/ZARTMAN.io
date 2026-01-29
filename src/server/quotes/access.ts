@@ -14,6 +14,7 @@ export type SupplierQuoteAccessDeniedReason =
   | "awarded"
   | "has_bid"
   | "has_invite"
+  | "has_destination"
   | "assigned_email_match"
   | "profile_missing"
   | "schema_error"
@@ -22,7 +23,7 @@ export type SupplierQuoteAccessDeniedReason =
 export type SupplierQuoteAccessResult =
   | {
       ok: true;
-      reason: "awarded" | "has_bid" | "has_invite" | "assigned_email_match";
+      reason: "awarded" | "has_bid" | "has_invite" | "has_destination" | "assigned_email_match";
     }
   | {
       ok: false;
@@ -32,6 +33,7 @@ export type SupplierQuoteAccessResult =
         awarded: boolean;
         has_bid: boolean;
         has_invite: boolean;
+        has_destination: boolean;
         assigned_email_match: boolean;
       };
     };
@@ -69,7 +71,7 @@ export async function assertSupplierQuoteAccess(args: {
       normalizeId(args.demoProviderId) || (await readDemoProviderIdFromCookie());
     const demoModeEnabled = Boolean(demoProviderId) && isDemoModeEnabled();
 
-    const [bidResult, quoteResult, inviteResult, rfqAwardResult] = await Promise.all([
+    const [bidResult, quoteResult, inviteResult, rfqAwardResult, destinationResult] = await Promise.all([
       supabase
         .from("supplier_bids")
         .select("id")
@@ -109,6 +111,15 @@ export async function assertSupplierQuoteAccess(args: {
               .maybeSingle<{ provider_id: string | null }>();
             return { data: data ?? null, error: error ?? null } as const;
           })()
+        : Promise.resolve({ data: null, error: null } as const),
+      supplierProviderId
+        ? supabase
+            .from("rfq_destinations")
+            .select("id")
+            .eq("rfq_id", quoteId)
+            .eq("provider_id", supplierProviderId)
+            .limit(1)
+            .maybeSingle<{ id: string | null }>()
         : Promise.resolve({ data: null, error: null } as const),
     ]);
 
@@ -161,6 +172,11 @@ export async function assertSupplierQuoteAccess(args: {
         assignedSupplierEmail === supplierUserEmail,
     );
 
+    const hasDestination =
+      Boolean(destinationResult.data?.id) &&
+      !destinationResult.error &&
+      !isMissingTableOrColumnError(destinationResult.error);
+
     if (awarded || awardedByProvider) {
       return { ok: true, reason: "awarded" };
     }
@@ -171,6 +187,10 @@ export async function assertSupplierQuoteAccess(args: {
 
     if (hasInvite) {
       return { ok: true, reason: "has_invite" };
+    }
+
+    if (hasDestination) {
+      return { ok: true, reason: "has_destination" };
     }
 
     if (assignedEmailMatch) {
@@ -212,6 +232,7 @@ export async function assertSupplierQuoteAccess(args: {
           awarded: awarded || awardedByProvider,
           has_bid: hasBid,
           has_invite: false,
+          has_destination: hasDestination,
           assigned_email_match: assignedEmailMatch,
         },
       };
@@ -224,6 +245,7 @@ export async function assertSupplierQuoteAccess(args: {
         awarded: awarded || awardedByProvider,
         has_bid: hasBid,
         has_invite: false,
+        has_destination: hasDestination,
         assigned_email_match: assignedEmailMatch,
       },
     };

@@ -26,6 +26,7 @@ export type SearchStateSummary = {
 
 const PENDING_DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
   "draft",
+  "pending",
   "queued",
   "sent",
   "submitted",

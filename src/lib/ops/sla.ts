@@ -45,6 +45,7 @@ export const DEFAULT_SLA_CONFIG: SlaConfig = {
 const HOURS_IN_MS = 60 * 60 * 1000;
 const DESTINATION_STATUSES = new Set([
   "draft",
+  "pending",
   "queued",
   "sent",
   "submitted",
@@ -68,6 +69,7 @@ export function formatSlaResponseTime(hours: number): string | null {
 
 type DestinationStatus =
   | "draft"
+  | "pending"
   | "queued"
   | "sent"
   | "submitted"
@@ -98,6 +100,7 @@ export function computeDestinationNeedsAction(
       return resolvedConfig.errorAlwaysNeedsAction
         ? { needsAction: true, reason: "error", ageHours }
         : { needsAction: false, reason: null, ageHours };
+    case "pending":
     case "queued":
       return ageHours > resolvedConfig.queuedMaxHours
         ? { needsAction: true, reason: "queued_too_long", ageHours }
@@ -167,7 +170,7 @@ function resolveReferenceDate(
   status: DestinationStatus,
   destination: DestinationNeedsActionInput,
 ): Date | null {
-  if (status === "queued") {
+  if (status === "pending" || status === "queued") {
     return resolveTimestamp(destination.created_at, destination.last_status_at);
   }
   if (status === "sent" || status === "submitted" || status === "viewed") {

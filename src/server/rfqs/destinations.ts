@@ -8,6 +8,7 @@ import type { ProviderSource, ProviderVerificationStatus } from "@/server/provid
 
 export type RfqDestinationStatus =
   | "draft"
+  | "pending"
   | "queued"
   | "sent"
   | "submitted"
@@ -177,6 +178,7 @@ const OFFER_TOKEN_SELECT = [
 
 const DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
   "draft",
+  "pending",
   "queued",
   "sent",
   "submitted",

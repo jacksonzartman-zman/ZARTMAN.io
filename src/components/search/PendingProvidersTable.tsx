@@ -108,6 +108,8 @@ function resolvePendingProviderStatus(
   switch (destination.status) {
     case "draft":
       return { label: "Not started", tone: "slate" };
+    case "pending":
+      return { label: "Matched", tone: "slate" };
     case "queued":
       return { label: "Outreach started", tone: "blue" };
     case "sent":

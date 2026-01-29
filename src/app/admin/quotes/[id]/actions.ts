@@ -1573,6 +1573,7 @@ export type MarkDestinationSubmittedActionResult =
 
 const DESTINATION_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
   "draft",
+  "pending",
   "queued",
   "sent",
   "submitted",

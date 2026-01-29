@@ -45,6 +45,7 @@ const CONTACTED_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
 ]);
 const REPLIED_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set(["quoted", "declined"]);
 const PENDING_STATUSES: ReadonlySet<RfqDestinationStatus> = new Set([
+  "pending",
   "queued",
   "sent",
   "submitted",
