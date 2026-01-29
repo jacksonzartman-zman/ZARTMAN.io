@@ -90,7 +90,7 @@ export function PublicOffersSection({
     Number.isFinite(initialOffersCount) ? initialOffersCount : 0,
   );
   const [offers, setOffers] = useState<OfferCardDto[]>(() => initialOffers ?? []);
-  const [celebrate, setCelebrate] = useState(false);
+  const [firstOfferArrivalActive, setFirstOfferArrivalActive] = useState(false);
   const [checkBackLater, setCheckBackLater] = useState(false);
   const [currentNormalizedStatus, setCurrentNormalizedStatus] = useState(normalizedStatus);
   const [showSubmittedBanner, setShowSubmittedBanner] = useState(false);
@@ -105,6 +105,7 @@ export function PublicOffersSection({
   const [claiming, setClaiming] = useState(false);
   const [claimOk, setClaimOk] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
+  const firstOfferArrivalPlayedRef = useRef(false);
 
   const isTerminal = TERMINAL_STATUSES.has((currentNormalizedStatus ?? "").trim().toLowerCase());
   const hasOffers = offersCount > 0;
@@ -222,9 +223,19 @@ export function PublicOffersSection({
     }));
   }, [offers]);
 
+  const firstOfferArrivalStorageKey = useMemo(
+    () => `rfq:first-offer-arrival:v1:${quoteId}`,
+    [quoteId],
+  );
+
   useEffect(() => {
-    previousOffersCountRef.current = offersCount;
-  }, [offersCount]);
+    if (typeof window === "undefined") return;
+    try {
+      firstOfferArrivalPlayedRef.current = window.localStorage.getItem(firstOfferArrivalStorageKey) === "1";
+    } catch {
+      // ignore
+    }
+  }, [firstOfferArrivalStorageKey]);
 
   useEffect(() => {
     if (stopPollingRef.current) return;
@@ -268,8 +279,6 @@ export function PublicOffersSection({
           stopPollingRef.current = true;
           setOffersCount(nextCount);
           setOffers(Array.isArray(json.offers) ? json.offers : []);
-          setCelebrate(true);
-          setTimeout(() => setCelebrate(false), 4500);
           if (tickTimeout) clearTimeout(tickTimeout);
           if (timeout) clearTimeout(timeout);
           return;
@@ -303,13 +312,25 @@ export function PublicOffersSection({
 
   useEffect(() => {
     const prev = previousOffersCountRef.current;
+    previousOffersCountRef.current = offersCount;
+
+    if (prefersReducedMotion) return;
+    if (firstOfferArrivalPlayedRef.current) return;
+
     if (prev === 0 && offersCount > 0) {
-      setCelebrate(true);
-      const t = setTimeout(() => setCelebrate(false), 4500);
-      return () => clearTimeout(t);
+      firstOfferArrivalPlayedRef.current = true;
+      try {
+        window.localStorage.setItem(firstOfferArrivalStorageKey, "1");
+      } catch {
+        // ignore
+      }
+
+      setFirstOfferArrivalActive(true);
+      const t = window.setTimeout(() => setFirstOfferArrivalActive(false), 2600);
+      return () => window.clearTimeout(t);
     }
     return;
-  }, [offersCount]);
+  }, [firstOfferArrivalStorageKey, offersCount, prefersReducedMotion]);
 
   const statusText = (quoteStatus ?? "Submitted").trim() || "Submitted";
 
@@ -355,8 +376,6 @@ export function PublicOffersSection({
                 className={clsx(
                   "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide",
                   "border-slate-800 bg-slate-950/40 text-ink",
-                  celebrate && "border-emerald-400/60 bg-emerald-500/10 text-emerald-100",
-                  celebrate && "animate-pulse",
                 )}
                 aria-live="polite"
               >
@@ -366,7 +385,10 @@ export function PublicOffersSection({
             {compareCtaVisible ? (
               <a
                 href="#compare-offers"
-                className="inline-flex items-center justify-center rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink transition hover:border-slate-700"
+                className={clsx(
+                  "inline-flex items-center justify-center rounded-full border border-slate-800 bg-slate-950/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink transition hover:border-slate-700",
+                  firstOfferArrivalActive && "rfq-compare-cta-pulse",
+                )}
               >
                 Compare offers
               </a>
@@ -483,9 +505,9 @@ export function PublicOffersSection({
           </p>
         ) : null}
 
-        {celebrate && hasOffers ? (
-          <p className="mt-4 text-xs font-semibold text-emerald-200" aria-live="polite">
-            Offer received.
+        {firstOfferArrivalActive && hasOffers ? (
+          <p className="mt-4 text-xs font-semibold text-emerald-200" aria-live="polite" role="status">
+            Your first offer just arrived.
           </p>
         ) : null}
 
@@ -518,8 +540,12 @@ export function PublicOffersSection({
           </header>
 
           <div className="grid gap-3">
-            {offers.map((offer) => (
-              <OfferCard key={offer.id} offer={offer} />
+            {offers.map((offer, idx) => (
+              <OfferCard
+                key={offer.id}
+                offer={offer}
+                className={clsx(idx === 0 && firstOfferArrivalActive && "rfq-first-offer-card")}
+              />
             ))}
           </div>
 
@@ -563,14 +589,14 @@ export function PublicOffersSection({
   );
 }
 
-function OfferCard({ offer }: { offer: OfferCardDto }) {
+function OfferCard({ offer, className }: { offer: OfferCardDto; className?: string }) {
   const providerName = offer.providerName?.trim() || `Provider ${offer.id.slice(0, 6)}`;
   const priceLabel = formatOfferTotalPrice(offer);
   const leadTimeLabel = formatOfferLeadTime(offer);
   const statusLabel = formatOfferStatus(offer.status);
 
   return (
-    <article className="rounded-3xl border border-slate-900/60 bg-slate-950/35 p-5">
+    <article className={clsx("rounded-3xl border border-slate-900/60 bg-slate-950/35 p-5", className)}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-base font-semibold text-ink" title={providerName}>
