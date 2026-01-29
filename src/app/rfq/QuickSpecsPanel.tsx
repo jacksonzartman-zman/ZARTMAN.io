@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 
 type ProcessKey = "cnc" | "3dp" | "sheet" | "injection";
@@ -16,6 +16,7 @@ type QuickSpecsPanelProps = {
   quoteId: string;
   intakeKey: string;
   primaryFileName?: string | null;
+  initialOffersCount: number;
   initial: {
     manufacturingProcesses: ProcessKey[];
     targetDate: string | null;
@@ -48,7 +49,29 @@ function clampQuantity(value: number): number {
 function looksLikeProductionFile(fileName: string | null | undefined): boolean {
   const normalized = typeof fileName === "string" ? fileName.trim().toLowerCase() : "";
   if (!normalized) return false;
-  return normalized.includes("assy") || normalized.includes("batch");
+  return /(^|[^a-z0-9])(assy|assembly|batch|prod|production|lot)([^a-z0-9]|$)/.test(normalized);
+}
+
+function QuickSpecsNudge({ children }: { children: ReactNode }) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    // Defer one tick so newly-mounted nudges can fade in.
+    const t = window.setTimeout(() => setVisible(true), 20);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  return (
+    <p
+      className={clsx(
+        "text-xs text-amber-100/90",
+        "transition-opacity duration-300 ease-out motion-reduce:transition-none",
+        visible ? "opacity-100" : "opacity-0",
+      )}
+    >
+      {children}
+    </p>
+  );
 }
 
 function ProcessIcon({ processKey }: { processKey: ProcessKey }) {
@@ -112,7 +135,7 @@ function ProcessIcon({ processKey }: { processKey: ProcessKey }) {
   }
 }
 
-export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }: QuickSpecsPanelProps) {
+export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initialOffersCount, initial }: QuickSpecsPanelProps) {
   const [processes, setProcesses] = useState<ProcessKey[]>(initial.manufacturingProcesses ?? []);
   const [targetDate, setTargetDate] = useState<string>(initial.targetDate ?? "");
   const [quantityInput, setQuantityInput] = useState<string>(
@@ -127,11 +150,50 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
   const pendingTimerRef = useRef<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const showNoProcessNudge = processes.length === 0;
+  const hasUploadedFile = typeof primaryFileName === "string" && primaryFileName.trim().length > 0;
+  const showNoProcessNudge = hasUploadedFile && processes.length === 0;
   const showProductionQtyNudge = useMemo(() => {
     const current = clampQuantity(parseQuantityOrDefault(quantityInput, MIN_QUANTITY));
     return current === 1 && looksLikeProductionFile(primaryFileName);
   }, [primaryFileName, quantityInput]);
+  const showNeedByNudge = useMemo(() => {
+    // Only helpful while the customer is still waiting on offers.
+    if (initialOffersCount > 0) return false;
+    return !normalizeIsoDate(targetDate);
+  }, [initialOffersCount, targetDate]);
+
+  const activeNudges = useMemo(() => {
+    const nudges: Array<{ id: "process" | "quantity" | "date"; message: string }> = [];
+
+    if (showNoProcessNudge) {
+      nudges.push({
+        id: "process",
+        message: "Selecting a process helps us match the right suppliers faster.",
+      });
+    }
+
+    if (showProductionQtyNudge) {
+      nudges.push({
+        id: "quantity",
+        message: "This looks like a production job — consider entering expected quantity.",
+      });
+    }
+
+    if (showNeedByNudge) {
+      nudges.push({
+        id: "date",
+        message: "Adding a need-by date can improve lead time accuracy.",
+      });
+    }
+
+    return nudges.slice(0, 2);
+  }, [showNeedByNudge, showNoProcessNudge, showProductionQtyNudge]);
+
+  const activeNudgeIds = useMemo(() => new Set(activeNudges.map((n) => n.id)), [activeNudges]);
+  const nudgeById = useMemo(() => {
+    const map = new Map(activeNudges.map((n) => [n.id, n.message] as const));
+    return map;
+  }, [activeNudges]);
 
   const normalizedPayload = useMemo(() => {
     const qty = Number.parseInt(quantityInput, 10);
@@ -302,9 +364,7 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
             <p className="text-xs font-semibold text-ink">Process</p>
             <p className="text-xs text-ink-soft">Pick one or more (optional).</p>
           </div>
-          {showNoProcessNudge ? (
-            <p className="text-xs text-amber-100/90">Pick a process to get faster matching</p>
-          ) : null}
+          {activeNudgeIds.has("process") ? <QuickSpecsNudge>{nudgeById.get("process")}</QuickSpecsNudge> : null}
           <div className="grid grid-cols-2 gap-2">
             {PROCESS_OPTIONS.map((option) => {
               const active = processes.includes(option.key);
@@ -344,6 +404,7 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
             {targetDate && !isValidIsoDate(normalizeIsoDate(targetDate)) ? (
               <p className="text-xs text-red-200">Enter a valid date.</p>
             ) : null}
+            {activeNudgeIds.has("date") ? <QuickSpecsNudge>{nudgeById.get("date")}</QuickSpecsNudge> : null}
           </div>
 
           <div className="grid gap-2">
@@ -392,8 +453,8 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initial }
                 +
               </button>
             </div>
-            {showProductionQtyNudge ? (
-              <p className="text-xs text-amber-100/90">Qty 1? This looks like production — want more?</p>
+            {activeNudgeIds.has("quantity") ? (
+              <QuickSpecsNudge>{nudgeById.get("quantity")}</QuickSpecsNudge>
             ) : null}
             <p className="text-xs text-ink-soft">
               Min {MIN_QUANTITY.toLocaleString()}, max {MAX_QUANTITY.toLocaleString()}.

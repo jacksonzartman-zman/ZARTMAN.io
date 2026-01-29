@@ -258,6 +258,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
             quoteId={quote.id}
             intakeKey={intakeKey}
             primaryFileName={primaryFileName}
+            initialOffersCount={offersCount}
             initial={{
               manufacturingProcesses: initialProcesses,
               targetDate: quote.target_date ?? null,
