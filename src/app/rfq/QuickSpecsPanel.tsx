@@ -2,15 +2,10 @@
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-
-type ProcessKey = "cnc" | "3dp" | "sheet" | "injection";
-
-const PROCESS_OPTIONS: Array<{ key: ProcessKey; label: string }> = [
-  { key: "cnc", label: "CNC" },
-  { key: "3dp", label: "3DP" },
-  { key: "sheet", label: "Sheet Metal" },
-  { key: "injection", label: "Injection Molding" },
-];
+import {
+  MANUFACTURING_PROCESS_OPTIONS as PROCESS_OPTIONS,
+  type ManufacturingProcessKey as ProcessKey,
+} from "@/lib/rfq/manufacturingProcesses";
 
 type QuickSpecsPanelProps = {
   quoteId: string;

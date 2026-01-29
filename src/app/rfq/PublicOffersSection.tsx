@@ -11,6 +11,7 @@ import { RfqNextStepsPanel } from "./RfqNextStepsPanel";
 import { PublicOfferCard } from "./PublicOfferCard";
 import type { RfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
 import type { PublicRfqOfferCardDto } from "@/types/rfqPublicOffer";
+import type { ManufacturingProcessKey } from "@/lib/rfq/manufacturingProcesses";
 
 type OfferCardDto = PublicRfqOfferCardDto;
 
@@ -33,6 +34,7 @@ type PublicOffersSectionProps = {
   normalizedStatus: string;
   intakeKey: string;
   primaryFileName: string | null;
+  manufacturingProcesses: ManufacturingProcessKey[];
   initialOffersCount: number;
   initialOffers: OfferCardDto[];
   initialProjectStatus?: string | null;
@@ -72,6 +74,7 @@ export function PublicOffersSection({
   normalizedStatus,
   intakeKey,
   primaryFileName,
+  manufacturingProcesses,
   initialOffersCount,
   initialOffers,
   initialProjectStatus,
@@ -561,6 +564,7 @@ export function PublicOffersSection({
                 key={offer.id}
                 offer={offer}
                 optionNumber={idx + 1}
+                manufacturingProcesses={manufacturingProcesses}
                 className={clsx(idx === 0 && firstOfferArrivalActive && "rfq-first-offer-card")}
               />
             ))}
