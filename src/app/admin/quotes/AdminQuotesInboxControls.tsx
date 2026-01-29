@@ -46,6 +46,7 @@ export default function AdminQuotesInboxControls({
   const hasBids = Boolean(listState.hasBids);
   const awarded = Boolean(listState.awarded);
   const status = listState.status ?? "";
+  const needsOrderDetails = (searchParams.get("needsOrderDetails") ?? "").trim() === "1";
 
   const messageFilter = (() => {
     const raw = (searchParams.get("msg") ?? "").trim().toLowerCase();
@@ -188,6 +189,33 @@ export default function AdminQuotesInboxControls({
           />
           Awarded
         </label>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-300">Order</span>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              const nextParams = new URLSearchParams(searchParams.toString());
+              if (needsOrderDetails) {
+                nextParams.delete("needsOrderDetails");
+              } else {
+                nextParams.set("needsOrderDetails", "1");
+              }
+              navigateRawParams(nextParams);
+            }}
+            className={clsx(
+              "rounded-full border px-3 py-1 text-[11px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
+              needsOrderDetails
+                ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
+                : "border-slate-800 bg-slate-900 text-slate-300 hover:border-emerald-400 hover:text-emerald-100",
+            )}
+            aria-pressed={needsOrderDetails}
+            title="Awarded quotes missing PO number or ship-to details"
+          >
+            Needs order details
+          </button>
+        </div>
 
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
           Parts

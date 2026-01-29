@@ -125,7 +125,7 @@ const CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR =
 const CUSTOMER_CONFIRM_SELECTION_ACCESS_ERROR =
   "We couldn’t confirm your access to this quote.";
 const CUSTOMER_CONFIRM_SELECTION_MISSING_OFFER_ERROR =
-  "Select an offer before confirming.";
+  "Select a supplier before confirming order details.";
 const CUSTOMER_CONFIRM_SELECTION_ALREADY_CONFIRMED_ERROR =
   "Selection is already confirmed for this quote.";
 const CUSTOMER_CONFIRM_SELECTION_PO_LENGTH_ERROR =
@@ -201,6 +201,9 @@ type CustomerSelectionConfirmQuoteRow = {
   customer_id: string | null;
   customer_email: string | null;
   selected_offer_id: string | null;
+  awarded_bid_id?: string | null;
+  awarded_supplier_id?: string | null;
+  awarded_at?: string | null;
   selection_confirmed_at: string | null;
 };
 
@@ -1223,7 +1226,9 @@ export async function confirmSelectionAction(args: {
 
     const { data: quoteRow, error: quoteError } = await supabaseServer()
       .from("quotes")
-      .select("id,customer_id,customer_email,selected_offer_id,selection_confirmed_at")
+      .select(
+        "id,customer_id,customer_email,selected_offer_id,awarded_bid_id,awarded_supplier_id,awarded_at,selection_confirmed_at",
+      )
       .eq("id", quoteId)
       .maybeSingle<CustomerSelectionConfirmQuoteRow>();
 
@@ -1258,7 +1263,11 @@ export async function confirmSelectionAction(args: {
     }
 
     const selectedOfferId = normalizeId(quoteRow.selected_offer_id ?? null);
-    if (!selectedOfferId) {
+    const hasAward =
+      Boolean(normalizeId(quoteRow.awarded_bid_id ?? null)) ||
+      Boolean(normalizeId(quoteRow.awarded_supplier_id ?? null)) ||
+      Boolean(normalizeId(quoteRow.awarded_at ?? null));
+    if (!selectedOfferId && !hasAward) {
       return { ok: false, error: CUSTOMER_CONFIRM_SELECTION_MISSING_OFFER_ERROR };
     }
 

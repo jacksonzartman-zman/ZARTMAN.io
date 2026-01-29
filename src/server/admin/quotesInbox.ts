@@ -26,6 +26,7 @@ export type AdminQuotesInboxFilter = {
   status?: string | null;
   hasBids?: boolean | null;
   awarded?: boolean | null;
+  needsOrderDetails?: boolean | null;
   search?: string | null;
   supplierId?: string | null;
 };
@@ -44,7 +45,10 @@ type InboxExtraField =
   | "has_awarded_bid"
   | "awarded_supplier_name"
   | "awarded_supplier_id"
-  | "awarded_bid_id";
+  | "awarded_bid_id"
+  | "po_number"
+  | "ship_to"
+  | "selection_confirmed_at";
 
 const ADMIN_QUOTES_INBOX_TABLE = "admin_quotes_inbox" as const;
 
@@ -68,6 +72,9 @@ const ADMIN_QUOTES_INBOX_SELECT = [
   "awarded_at",
   "awarded_supplier_id",
   "awarded_bid_id",
+  "po_number",
+  "ship_to",
+  "selection_confirmed_at",
   // View-projected admin activity fields
   "bid_count",
   "latest_bid_at",
@@ -94,6 +101,9 @@ export type AdminQuotesInboxRow = {
   awarded_at?: string | null;
   awarded_supplier_id?: string | null;
   awarded_bid_id?: string | null;
+  po_number?: string | null;
+  ship_to?: string | null;
+  selection_confirmed_at?: string | null;
   bid_count: number;
   latest_bid_at: string | null;
   has_awarded_bid: boolean;
@@ -242,6 +252,12 @@ export async function getAdminQuotesInbox(
 
     if (filter.awarded) {
       query = query.eq("has_awarded_bid", true);
+    }
+
+    if (filter.needsOrderDetails) {
+      // Awarded but missing at least one of the order details fields.
+      query = query.eq("has_awarded_bid", true);
+      query = query.or("po_number.is.null,ship_to.is.null");
     }
 
     if (normalizedSearch) {
@@ -466,6 +482,7 @@ function normalizeFilter(raw?: AdminQuotesInboxFilter): Required<AdminQuotesInbo
       : null;
   const hasBids = Boolean(raw?.hasBids);
   const awarded = Boolean(raw?.awarded);
+  const needsOrderDetails = Boolean(raw?.needsOrderDetails);
   const search =
     typeof raw?.search === "string"
       ? raw.search.trim().toLowerCase().replace(/\s+/g, " ")
@@ -479,6 +496,7 @@ function normalizeFilter(raw?: AdminQuotesInboxFilter): Required<AdminQuotesInbo
     status,
     hasBids,
     awarded,
+    needsOrderDetails,
     search: search && search.length > 0 ? search : null,
     supplierId,
   };

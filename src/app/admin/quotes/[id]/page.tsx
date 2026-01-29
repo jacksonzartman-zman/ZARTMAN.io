@@ -449,6 +449,19 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       workspaceResult.ok && workspaceResult.data ? workspaceResult.data.quote : null;
     const selectedOfferId = workspaceQuote?.selected_offer_id ?? null;
     const selectionConfirmedAt = workspaceQuote?.selection_confirmed_at ?? null;
+    const orderDetailsPoNumber =
+      typeof workspaceQuote?.po_number === "string" && workspaceQuote.po_number.trim().length > 0
+        ? workspaceQuote.po_number.trim()
+        : null;
+    const orderDetailsShipTo =
+      typeof workspaceQuote?.ship_to === "string" && workspaceQuote.ship_to.trim().length > 0
+        ? workspaceQuote.ship_to.trim()
+        : null;
+    const orderDetailsConfirmedAtLabel = selectionConfirmedAt
+      ? formatDateTime(selectionConfirmedAt, { includeTime: true }) ?? selectionConfirmedAt
+      : null;
+    const showOrderDetailsConfirmation =
+      Boolean(selectionConfirmedAt) || Boolean(orderDetailsPoNumber) || Boolean(orderDetailsShipTo);
     const parts = workspaceResult.ok && workspaceResult.data ? workspaceResult.data.parts : [];
     const cadFeaturesByFileId = await (async () => {
       // Best-effort pre-population: never block the page on heavy work.
@@ -2754,6 +2767,47 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                   selectedOfferId={selectedOfferId}
                   selectionConfirmedAt={selectionConfirmedAt}
                 />
+                {showOrderDetailsConfirmation ? (
+                  <div className="rounded-2xl border border-slate-900 bg-slate-950/40 px-5 py-4 text-sm text-slate-200">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Order confirmation
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      {selectionConfirmedAt ? "Order details confirmed" : "Order details pending"}
+                    </p>
+                    {orderDetailsConfirmedAtLabel ? (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Confirmed {orderDetailsConfirmedAtLabel}
+                      </p>
+                    ) : null}
+                    {orderDetailsPoNumber || orderDetailsShipTo ? (
+                      <dl className="mt-4 grid gap-3 rounded-xl border border-slate-800 bg-black/20 px-4 py-3 text-sm">
+                        {orderDetailsPoNumber ? (
+                          <div className="space-y-1">
+                            <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                              PO number
+                            </dt>
+                            <dd className="break-anywhere text-slate-100">{orderDetailsPoNumber}</dd>
+                          </div>
+                        ) : null}
+                        {orderDetailsShipTo ? (
+                          <div className="space-y-1">
+                            <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                              Ship-to
+                            </dt>
+                            <dd className="whitespace-pre-line break-words text-slate-100">
+                              {orderDetailsShipTo}
+                            </dd>
+                          </div>
+                        ) : null}
+                      </dl>
+                    ) : (
+                      <p className="mt-3 text-xs text-slate-400">
+                        No PO number or ship-to details captured yet.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
                 <AdminRfqDestinationsCard
                   quoteId={quote.id}
                   providers={providers}

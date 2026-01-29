@@ -60,7 +60,7 @@ import { loadSupplierById } from "@/server/suppliers/profile";
 import { postQuoteMessage } from "./actions";
 import { CustomerQuoteStatusCtas } from "./CustomerQuoteStatusCtas";
 import { CustomerQuoteCompareOffers } from "./CustomerQuoteCompareOffers";
-import { CustomerQuoteSelectionConfirmation } from "./CustomerQuoteSelectionConfirmation";
+import { CustomerQuoteOrderConfirmation } from "./CustomerQuoteSelectionConfirmation";
 import { CustomerQuoteDecisionCtaRow } from "./CustomerQuoteDecisionCtaRow";
 import {
   getCustomerKickoffSummary,
@@ -1722,12 +1722,12 @@ export default async function CustomerQuoteDetailPage({
   );
 
   const selectionConfirmedSection =
-    selectedOfferId ? (
+    selectedOfferId || quoteHasWinner ? (
       <DisclosureSection
-        id="selection-confirmed"
+        id="order-confirmation"
         className="scroll-mt-24"
-        title="Selection confirmed"
-        description="Confirm supplier details and draft the award pack."
+        title="Order confirmation"
+        description="Optional PO number + ship-to details for the awarded quote."
         defaultOpen
         summary={
           <TagPill size="md" tone={selectionConfirmedAt ? "emerald" : "slate"}>
@@ -1735,14 +1735,11 @@ export default async function CustomerQuoteDetailPage({
           </TagPill>
         }
       >
-        <CustomerQuoteSelectionConfirmation
+        <CustomerQuoteOrderConfirmation
           quoteId={quote.id}
-          selectedOffer={selectedOffer}
           selectionConfirmedAt={selectionConfirmedAt}
           poNumber={quote.po_number ?? null}
           shipTo={quote.ship_to ?? null}
-          inspectionRequirements={quote.inspection_requirements ?? null}
-          files={filePreviews}
           readOnly={readOnly}
         />
       </DisclosureSection>

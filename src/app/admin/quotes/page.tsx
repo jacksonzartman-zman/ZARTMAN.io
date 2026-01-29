@@ -82,6 +82,7 @@ export default async function AdminQuotesPage({
   const currentView = normalizeAdminQuotesView(usp.get("view") ?? null);
   const partsCoverageFilter = normalizePartsCoverageFilter(usp.get("partsCoverage"));
   const messageFilter = normalizeAdminMessageFilter(usp.get("msg"));
+  const needsOrderDetails = (usp.get("needsOrderDetails") ?? "").trim() === "1";
   const supplierId = typeof listState.supplierId === "string" ? listState.supplierId.trim() : "";
 
   const sort = listState.sort ?? ADMIN_QUOTES_LIST_STATE_CONFIG.defaultSort ?? null;
@@ -95,7 +96,8 @@ export default async function AdminQuotesPage({
   const page = listState.page;
   const pageSize = listState.pageSize;
 
-  const wantsInboxOrdering = sort === "inbox" || messageFilter !== "all";
+  const wantsInboxOrdering =
+    sort === "inbox" || messageFilter !== "all" || needsOrderDetails;
   const candidatePageSize = wantsInboxOrdering
     ? Math.min(1000, page * pageSize + 200)
     : pageSize;
@@ -304,6 +306,17 @@ export default async function AdminQuotesPage({
         : null
       : undefined;
 
+    const hasAward = Boolean(row.has_awarded_bid) || hasRfqAward;
+    const poNumber =
+      typeof row.po_number === "string" && row.po_number.trim().length > 0
+        ? row.po_number.trim()
+        : null;
+    const shipTo =
+      typeof row.ship_to === "string" && row.ship_to.trim().length > 0
+        ? row.ship_to.trim()
+        : null;
+    const needsOrderDetailsForRow = hasAward && (!poNumber || !shipTo);
+
     return {
       id: row.id,
       rfqLabel,
@@ -316,6 +329,7 @@ export default async function AdminQuotesPage({
       statusLabel: statusMeta.label,
       statusHelper: statusMeta.helper,
       statusClassName: statusMeta.pillClass,
+      needsOrderDetails: needsOrderDetailsForRow,
       threadLastMessageAt: messageRollup?.lastMessageAt ?? threadSla?.lastMessageAt ?? null,
       threadNeedsReplyFrom: threadSla?.needsReplyFrom ?? null,
       threadStalenessBucket: threadSla?.stalenessBucket ?? "none",
@@ -331,7 +345,7 @@ export default async function AdminQuotesPage({
       bidCount: aggregate?.bidCount ?? 0,
       latestBidAt: aggregate?.lastBidAt ?? null,
       hasAwardedBid: Boolean(row.has_awarded_bid),
-      hasAward: Boolean(row.has_awarded_bid) || hasRfqAward,
+      hasAward,
       awardedAt: row.awarded_at ?? rfqAward?.awarded_at ?? null,
       awardedSupplierName: row.awarded_supplier_name ?? null,
       awardWinnerName: rfqAwardWinnerName,
@@ -346,6 +360,7 @@ export default async function AdminQuotesPage({
 
   const filteredQuotes = enrichedRows
     .filter((row) => viewIncludesStatus(currentView, row.status))
+    .filter((row) => (needsOrderDetails ? Boolean(row.needsOrderDetails) : true))
     .filter((row) => {
       if (partsCoverageFilter === "all") return true;
       return row.partsCoverageHealth === partsCoverageFilter;
