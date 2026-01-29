@@ -82,6 +82,7 @@ export default async function AdminQuotesPage({
   const currentView = normalizeAdminQuotesView(usp.get("view") ?? null);
   const partsCoverageFilter = normalizePartsCoverageFilter(usp.get("partsCoverage"));
   const messageFilter = normalizeAdminMessageFilter(usp.get("msg"));
+  const needsOrderDetails = (usp.get("needsOrderDetails") ?? "").trim() === "1";
   const supplierId = typeof listState.supplierId === "string" ? listState.supplierId.trim() : "";
 
   const sort = listState.sort ?? ADMIN_QUOTES_LIST_STATE_CONFIG.defaultSort ?? null;
@@ -110,6 +111,7 @@ export default async function AdminQuotesPage({
       search: normalizedSearch || null,
       hasBids: hasBids || null,
       awarded: awarded || null,
+      needsOrderDetails: needsOrderDetails || null,
       supplierId: supplierId || null,
     },
   });
