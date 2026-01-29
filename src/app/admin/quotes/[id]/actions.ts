@@ -1212,6 +1212,7 @@ export async function submitAdminQuoteUpdateAction(
       targetDate: getFormString(formData, "targetDate"),
       dfmNotes: getFormString(formData, "dfmNotes"),
       internalNotes: getFormString(formData, "internalNotes"),
+      opsStatus: getFormString(formData, "opsStatus"),
     };
 
     const result = await updateAdminQuote(payload);

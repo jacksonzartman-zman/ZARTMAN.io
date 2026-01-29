@@ -461,6 +461,18 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       typeof workspaceQuote?.ship_to === "string" && workspaceQuote.ship_to.trim().length > 0
         ? workspaceQuote.ship_to.trim()
         : null;
+    const quotePoNumber =
+      typeof quote.po_number === "string" && quote.po_number.trim().length > 0
+        ? quote.po_number.trim()
+        : null;
+    const quoteShipTo =
+      typeof quote.ship_to === "string" && quote.ship_to.trim().length > 0
+        ? quote.ship_to.trim()
+        : null;
+    const effectivePoNumber = orderDetailsPoNumber ?? project?.po_number ?? quotePoNumber;
+    const effectiveShipTo = orderDetailsShipTo ?? quoteShipTo;
+    const needsOrderDetailsForOps =
+      status === "won" && (!effectivePoNumber || !effectiveShipTo);
     const orderDetailsConfirmedAtLabel = selectionConfirmedAt
       ? formatDateTime(selectionConfirmedAt, { includeTime: true }) ?? selectionConfirmedAt
       : null;
@@ -716,6 +728,11 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
       quote.internal_notes.trim().length > 0
         ? quote.internal_notes
         : null;
+    const opsStatus =
+      typeof quote.ops_status === "string" && quote.ops_status.trim().length > 0
+        ? quote.ops_status.trim()
+        : null;
+    const opsStatusSuggestion = needsOrderDetailsForOps ? "awaiting_order_details" : null;
     const messagesResult = await getQuoteMessages({
       quoteId: quote.id,
       viewerRole: "admin",
@@ -1795,6 +1812,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
             targetDate: targetDateValue,
             internalNotes,
             dfmNotes,
+            opsStatus,
+            opsStatusSuggestion: !opsStatus ? opsStatusSuggestion : null,
           }}
         />
       </section>

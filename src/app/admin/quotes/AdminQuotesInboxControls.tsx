@@ -47,6 +47,7 @@ export default function AdminQuotesInboxControls({
   const awarded = Boolean(listState.awarded);
   const status = listState.status ?? "";
   const needsOrderDetails = (searchParams.get("needsOrderDetails") ?? "").trim() === "1";
+  const opsStatus = (searchParams.get("opsStatus") ?? "").trim().toLowerCase();
 
   const messageFilter = (() => {
     const raw = (searchParams.get("msg") ?? "").trim().toLowerCase();
@@ -215,6 +216,41 @@ export default function AdminQuotesInboxControls({
           >
             Needs order details
           </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-slate-300">Ops status</span>
+          <StatusFilterChips
+            currentStatus={opsStatus}
+            basePath={basePath}
+            options={[
+              { value: "unset", label: "Unset" },
+              { value: "needs_sourcing", label: "Needs sourcing" },
+              { value: "waiting_on_quotes", label: "Waiting on quotes" },
+              { value: "ready_for_review", label: "Ready for review" },
+              { value: "awaiting_award", label: "Awaiting award" },
+              { value: "awaiting_order_details", label: "Awaiting order details" },
+              { value: "placed", label: "Placed" },
+              { value: "in_production", label: "In production" },
+              { value: "shipped", label: "Shipped" },
+              { value: "delivered", label: "Delivered" },
+            ]}
+            onSelect={(value) => {
+              const resolvedCurrent = (opsStatus ?? "").trim().toLowerCase();
+              const resolvedNext = value.trim().toLowerCase();
+              const isActive =
+                (resolvedNext === "all" && !resolvedCurrent) ||
+                (resolvedNext !== "all" && resolvedCurrent === resolvedNext);
+
+              const nextParams = new URLSearchParams(searchParams.toString());
+              if (resolvedNext === "all" || isActive) {
+                nextParams.delete("opsStatus");
+              } else {
+                nextParams.set("opsStatus", resolvedNext);
+              }
+              navigateRawParams(nextParams);
+            }}
+          />
         </div>
 
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-300">
