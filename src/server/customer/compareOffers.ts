@@ -17,20 +17,20 @@ const MATCH_HEALTH_VIEW = "supplier_match_health_summary" as const;
 
 const TRUST_BADGE_DEFS: Record<CustomerTrustBadgeId, Omit<CustomerTrustBadge, "id">> = {
   verified_supplier: {
-    label: "Verified supplier",
-    tooltip: "This supplier has been verified by our team.",
+    label: "Verified provider",
+    tooltip: "This provider has been verified by our team.",
     tone: "blue",
     highlight: false,
   },
-  fast_turnaround: {
-    label: "Fast turnaround",
-    tooltip: "Short lead time compared to typical turnaround.",
+  fastest: {
+    label: "Fastest",
+    tooltip: "Shortest lead time among these offers.",
     tone: "blue",
     highlight: true,
   },
   best_value: {
     label: "Best value",
-    tooltip: "Strong balance of price and lead time.",
+    tooltip: "Lowest total price among these offers.",
     tone: "emerald",
     highlight: true,
   },
@@ -41,8 +41,6 @@ const TRUST_BADGE_DEFS: Record<CustomerTrustBadgeId, Omit<CustomerTrustBadge, "i
     highlight: true,
   },
 };
-
-const FAST_TURNAROUND_DAYS_THRESHOLD = 10;
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -96,45 +94,66 @@ function formatPriceDisplay(value: number | string | null, currency: string): st
   return "-";
 }
 
-function scoreRelative(minValue: number | null, value: number | null): number {
-  if (typeof minValue !== "number" || !Number.isFinite(minValue)) return 0;
-  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
-  if (minValue === 0) return value === 0 ? 1 : 0;
-  return minValue / value;
-}
-
-function minNumeric(values: Array<number | null>): number | null {
-  let min: number | null = null;
-  for (const value of values) {
-    if (typeof value !== "number" || !Number.isFinite(value)) continue;
-    if (min === null || value < min) min = value;
-  }
-  return min;
-}
-
-function pickBestValueOfferId(offers: Array<Pick<CustomerCompareOffer, "id" | "totalPriceValue" | "leadTimeDaysAverage">>): string | null {
-  const minPrice = minNumeric(offers.map((o) => o.totalPriceValue));
-  const minLead = minNumeric(offers.map((o) => o.leadTimeDaysAverage));
-
-  // Internal heuristic (not exposed): prioritize price, then lead time.
-  const PRICE_WEIGHT = 0.6;
-  const LEAD_WEIGHT = 0.4;
-
-  let bestId: string | null = null;
-  let bestScore: number | null = null;
-
+function pickLowestPriceOfferId(
+  offers: Array<Pick<CustomerCompareOffer, "id" | "totalPriceValue" | "leadTimeDaysAverage">>,
+): string | null {
+  let best: { id: string; price: number; lead: number | null } | null = null;
   for (const offer of offers) {
-    const priceScore = scoreRelative(minPrice, offer.totalPriceValue);
-    const leadScore = scoreRelative(minLead, offer.leadTimeDaysAverage);
-    const score = priceScore * PRICE_WEIGHT + leadScore * LEAD_WEIGHT;
-    if (!Number.isFinite(score) || score <= 0) continue;
-    if (bestScore === null || score > bestScore) {
-      bestScore = score;
-      bestId = offer.id;
+    const price = offer.totalPriceValue;
+    if (typeof price !== "number" || !Number.isFinite(price)) continue;
+    const lead =
+      typeof offer.leadTimeDaysAverage === "number" && Number.isFinite(offer.leadTimeDaysAverage)
+        ? offer.leadTimeDaysAverage
+        : null;
+    if (!best) {
+      best = { id: offer.id, price, lead };
+      continue;
+    }
+    if (price < best.price) {
+      best = { id: offer.id, price, lead };
+      continue;
+    }
+    if (price === best.price) {
+      // Tie-break: faster lead time if available.
+      const bestLead = best.lead ?? Number.POSITIVE_INFINITY;
+      const offerLead = lead ?? Number.POSITIVE_INFINITY;
+      if (offerLead < bestLead) {
+        best = { id: offer.id, price, lead };
+      }
     }
   }
+  return best?.id ?? null;
+}
 
-  return bestId;
+function pickFastestOfferId(
+  offers: Array<Pick<CustomerCompareOffer, "id" | "totalPriceValue" | "leadTimeDaysAverage">>,
+): string | null {
+  let best: { id: string; lead: number; price: number | null } | null = null;
+  for (const offer of offers) {
+    const lead = offer.leadTimeDaysAverage;
+    if (typeof lead !== "number" || !Number.isFinite(lead)) continue;
+    const price =
+      typeof offer.totalPriceValue === "number" && Number.isFinite(offer.totalPriceValue)
+        ? offer.totalPriceValue
+        : null;
+    if (!best) {
+      best = { id: offer.id, lead, price };
+      continue;
+    }
+    if (lead < best.lead) {
+      best = { id: offer.id, lead, price };
+      continue;
+    }
+    if (lead === best.lead) {
+      // Tie-break: lower price if available.
+      const bestPrice = best.price ?? Number.POSITIVE_INFINITY;
+      const offerPrice = price ?? Number.POSITIVE_INFINITY;
+      if (offerPrice < bestPrice) {
+        best = { id: offer.id, lead, price };
+      }
+    }
+  }
+  return best?.id ?? null;
 }
 
 async function loadMatchHealthBySupplierId(
@@ -243,7 +262,9 @@ export async function buildCustomerCompareOffers(
     .filter((v): v is string => Boolean(v));
   const matchHealthBySupplierId = await loadMatchHealthBySupplierId(supplierIds);
 
-  const bestValueOfferId = pickBestValueOfferId(normalized.map((o) => o.safeOffer));
+  const safeOffers = normalized.map((o) => o.safeOffer);
+  const lowestPriceOfferId = pickLowestPriceOfferId(safeOffers);
+  const fastestOfferId = pickFastestOfferId(safeOffers);
 
   return normalized.map(({ safeOffer: offer, isVerifiedSupplier, providerIdForMatchHealth }) => {
     const badges: CustomerTrustBadge[] = [];
@@ -253,12 +274,11 @@ export async function buildCustomerCompareOffers(
       badges.push(buildBadge("verified_supplier"));
     }
 
-    const avg = offer.leadTimeDaysAverage;
-    if (typeof avg === "number" && Number.isFinite(avg) && avg > 0 && avg <= FAST_TURNAROUND_DAYS_THRESHOLD) {
-      badges.push(buildBadge("fast_turnaround"));
+    if (offer.id === fastestOfferId) {
+      badges.push(buildBadge("fastest"));
     }
 
-    if (offer.id === bestValueOfferId) {
+    if (offer.id === lowestPriceOfferId) {
       badges.push(buildBadge("best_value"));
     }
 

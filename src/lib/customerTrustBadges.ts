@@ -1,6 +1,6 @@
 export type CustomerTrustBadgeId =
   | "verified_supplier"
-  | "fast_turnaround"
+  | "fastest"
   | "best_value"
   | "great_fit";
 
