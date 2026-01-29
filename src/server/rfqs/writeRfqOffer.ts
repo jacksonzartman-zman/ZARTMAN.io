@@ -4,6 +4,7 @@ import { hasColumns } from "@/server/db/schemaContract";
 import { logOpsEvent } from "@/server/ops/events";
 import { notifyQuoteSubscribersFirstOfferArrived } from "@/server/rfqs/offerArrivalNotifications";
 import { parseRfqOfferStatus, type RfqOfferStatus } from "@/server/rfqs/offers";
+import { emitRfqEvent, type RfqEventActorRole } from "@/server/rfqs/events";
 import {
   findCustomerExclusionMatch,
   loadCustomerExclusions,
@@ -53,6 +54,12 @@ export async function writeRfqOffer(args: {
   notes?: string | null;
   confidenceScore?: number | null;
   qualityRiskFlags?: string[];
+  /**
+   * Optional actor identity for RFQ event log.
+   * (Not required for token-based supplier submissions.)
+   */
+  actorRole?: RfqEventActorRole;
+  actorUserId?: string | null;
   /**
    * Optional metadata used to label external/broker offers, when supported by schema.
    */
@@ -306,6 +313,32 @@ export async function writeRfqOffer(args: {
       });
     }
 
+    // Best-effort RFQ event log (admin timeline).
+    try {
+      const actorRole =
+        normalizeActorRole(args.actorRole) ?? inferActorRoleFromSource(args.actorSource);
+      const actorUserId = normalizeId(args.actorUserId) || null;
+      const eventType =
+        status === "withdrawn"
+          ? "offer_withdrawn"
+          : wasRevision
+            ? "offer_revised"
+            : "offer_created";
+
+      void emitRfqEvent(
+        {
+          rfqId,
+          eventType,
+          actorRole,
+          actorUserId,
+          createdAt: now,
+        },
+        { client },
+      );
+    } catch {
+      // Best-effort: never block offer writes.
+    }
+
     const triggeredFirstOfferNotification =
       existingNonWithdrawnCount === 0 && status !== "withdrawn";
     if (triggeredFirstOfferNotification) {
@@ -325,5 +358,25 @@ export async function writeRfqOffer(args: {
     });
     return { ok: false, error: "We couldn’t save this offer right now." };
   }
+}
+
+function normalizeActorRole(value: unknown): RfqEventActorRole | null {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (
+    normalized === "admin" ||
+    normalized === "customer" ||
+    normalized === "supplier" ||
+    normalized === "system"
+  ) {
+    return normalized;
+  }
+  return null;
+}
+
+function inferActorRoleFromSource(source: unknown): RfqEventActorRole {
+  const normalized = typeof source === "string" ? source.trim().toLowerCase() : "";
+  if (normalized.includes("provider")) return "supplier";
+  if (normalized.includes("admin")) return "admin";
+  return "system";
 }
 

@@ -14,6 +14,7 @@ import {
 } from "@/server/admin/logging";
 import { notifyAdminOnQuoteSubmitted } from "@/server/quotes/notifications";
 import { emitQuoteEvent } from "@/server/quotes/events";
+import { emitRfqEvent } from "@/server/rfqs/events";
 import {
   buildUploadTargetForQuote,
   type UploadTarget,
@@ -314,6 +315,14 @@ export async function persistQuoteIntakeDirectUpload(params: {
     }
 
     const quoteId = quoteInsert.data.id;
+
+    // Best-effort RFQ event log (admin timeline).
+    void emitRfqEvent({
+      rfqId: quoteId,
+      eventType: "rfq_created",
+      actorRole: "customer",
+      actorUserId: user.id,
+    });
 
     // Phase 19.3.13: best-effort default email replies for new quotes.
     // Safe-by-default: helper does not probe when the bridge env flag is off.
@@ -748,6 +757,14 @@ export async function persistQuoteIntakeFromUploadedTargets(params: {
 
     quoteId = quoteInsert.data.id;
 
+    // Best-effort RFQ event log (admin timeline).
+    void emitRfqEvent({
+      rfqId: quoteId,
+      eventType: "rfq_created",
+      actorRole: "customer",
+      actorUserId: user.id,
+    });
+
     // Phase 19.3.13: best-effort default email replies for new quotes.
     // Safe-by-default: helper does not probe when the bridge env flag is off.
     if (customerId) {
@@ -1108,6 +1125,14 @@ export async function persistQuoteIntake(
     }
 
     const quoteId = quoteInsert.data.id;
+
+    // Best-effort RFQ event log (admin timeline).
+    void emitRfqEvent({
+      rfqId: quoteId,
+      eventType: "rfq_created",
+      actorRole: "customer",
+      actorUserId: user.id,
+    });
 
     // Phase 19.3.13: best-effort default email replies for new quotes.
     // Safe-by-default: helper does not probe when the bridge env flag is off.
