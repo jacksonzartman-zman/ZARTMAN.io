@@ -3,17 +3,19 @@
 import clsx from "clsx";
 import { useMemo, useState, type ReactNode } from "react";
 import { formatCurrency } from "@/lib/formatCurrency";
+import { formatMatchedForText, type ManufacturingProcessKey } from "@/lib/rfq/manufacturingProcesses";
 import type { PublicRfqOfferCardDto } from "@/types/rfqPublicOffer";
 
 type PublicOfferCardProps = {
   offer: PublicRfqOfferCardDto;
   optionNumber: number;
+  manufacturingProcesses?: ManufacturingProcessKey[];
   className?: string;
 };
 
 const NOTE_CLAMP_THRESHOLD = 140;
 
-export function PublicOfferCard({ offer, optionNumber, className }: PublicOfferCardProps) {
+export function PublicOfferCard({ offer, optionNumber, manufacturingProcesses, className }: PublicOfferCardProps) {
   const [notesExpanded, setNotesExpanded] = useState(false);
 
   const supplierLabel = useMemo(() => {
@@ -21,6 +23,8 @@ export function PublicOfferCard({ offer, optionNumber, className }: PublicOfferC
     if (sourceName) return sourceName;
     return `Marketplace partner · Option ${optionNumber}`;
   }, [offer.sourceName, optionNumber]);
+
+  const matchedForText = useMemo(() => formatMatchedForText(manufacturingProcesses), [manufacturingProcesses]);
 
   const priceLabel = formatOfferTotalPrice(offer.totalPrice, offer.currency);
   const leadTimeValue = formatLeadTimeValue(offer.leadTimeDaysMin, offer.leadTimeDaysMax);
@@ -43,6 +47,11 @@ export function PublicOfferCard({ offer, optionNumber, className }: PublicOfferC
           <p className="truncate text-xs font-semibold text-ink-soft" title={supplierLabel}>
             {supplierLabel}
           </p>
+          {matchedForText ? (
+            <p className="mt-1 text-[11px] text-ink-muted" title={matchedForText}>
+              {matchedForText}
+            </p>
+          ) : null}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {offer.isBestValue ? <HighlightPill tone="emerald">Best value</HighlightPill> : null}
             {offer.isFastest ? <HighlightPill tone="blue">Fastest</HighlightPill> : null}

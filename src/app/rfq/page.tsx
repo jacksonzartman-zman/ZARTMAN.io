@@ -12,6 +12,7 @@ import { getServerAuthUser } from "@/server/auth";
 import { getCustomerByUserId } from "@/server/customers";
 import { getRfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
 import { pickPublicOfferHighlights } from "@/server/rfqs/publicOfferHighlights";
+import { parseManufacturingProcessKeys } from "@/lib/rfq/manufacturingProcesses";
 
 export const dynamic = "force-dynamic";
 
@@ -40,34 +41,6 @@ type ClaimState =
   | "can_claim"
   | "already_saved_to_you"
   | "already_saved_elsewhere";
-
-type ProcessKey = "cnc" | "3dp" | "sheet" | "injection";
-
-function parseManufacturingProcessKeys(input: string | null): ProcessKey[] {
-  if (!input) return [];
-  const raw = input.trim();
-  if (!raw) return [];
-
-  // Preferred (new) format: comma-separated process keys, e.g. "cnc,3dp"
-  const csvKeys = raw
-    .split(",")
-    .map((v) => v.trim().toLowerCase())
-    .filter((v): v is ProcessKey => v === "cnc" || v === "3dp" || v === "sheet" || v === "injection");
-  if (csvKeys.length > 0) {
-    return Array.from(new Set(csvKeys));
-  }
-
-  // Backfill (legacy) format: human labels stored in the same column.
-  const legacy = raw.toLowerCase();
-  const keys: ProcessKey[] = [];
-  if (legacy.includes("cnc")) keys.push("cnc");
-  if (legacy.includes("3d") || legacy.includes("3dp") || legacy.includes("printing") || legacy.includes("additive")) {
-    keys.push("3dp");
-  }
-  if (legacy.includes("sheet")) keys.push("sheet");
-  if (legacy.includes("injection") || legacy.includes("mold")) keys.push("injection");
-  return Array.from(new Set(keys));
-}
 
 export default async function RfqStatusPage({ searchParams }: PageProps) {
   const sp = (await searchParams) ?? {};
@@ -244,6 +217,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
             normalizedStatus={normalizedStatus}
             intakeKey={intakeKey}
             primaryFileName={primaryFileName}
+            manufacturingProcesses={initialProcesses}
             initialOffersCount={offersCount}
             initialOffers={initialOfferDtos}
             initialProjectStatus={projectStatus}
