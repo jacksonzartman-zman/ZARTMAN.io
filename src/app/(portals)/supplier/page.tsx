@@ -31,6 +31,7 @@ import {
 } from "@/app/(portals)/quotes/pageUtils";
 import type { WorkspaceMetric } from "../WorkspaceMetrics";
 import { buildSupplierInboxRows } from "./inboxRows";
+import { InvitedSupplierWelcomePanel } from "./InvitedSupplierWelcomePanel";
 
 export const dynamic = "force-dynamic";
 
@@ -230,6 +231,7 @@ async function SupplierDashboardPage({
         metrics={supplierMetrics}
         lastUpdatedLabel={lastUpdatedLabel}
       />
+      <InvitedSupplierWelcomePanel enabled={invitedJustCompleted} />
       {showGettingSetUp ? (
         <PortalCard
           title="Quick setup"
@@ -363,11 +365,6 @@ async function SupplierDashboardPage({
           <p className="text-sm text-slate-300">
             Invite accepted! You’re now part of this supplier workspace.
           </p>
-        </PortalCard>
-      ) : null}
-      {invitedJustCompleted ? (
-        <PortalCard title="Welcome">
-          <p className="text-sm text-slate-300">Your supplier portal is ready.</p>
         </PortalCard>
       ) : null}
 
