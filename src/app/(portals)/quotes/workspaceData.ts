@@ -145,6 +145,7 @@ type QuoteExtrasRow = Pick<
   | "customer_id"
   | "dfm_notes"
   | "internal_notes"
+  | "ops_status"
   | "selected_provider_id"
   | "selected_offer_id"
   | "selected_at"
@@ -196,7 +197,7 @@ export async function loadQuoteWorkspaceData(
       const { data: extras, error: extrasError } = await supabaseServer()
         .from("quotes")
         .select(
-          "customer_id,dfm_notes,internal_notes,selected_provider_id,selected_offer_id,selected_at,po_number,ship_to,inspection_requirements,selection_confirmed_at",
+          "customer_id,dfm_notes,internal_notes,ops_status,selected_provider_id,selected_offer_id,selected_at,po_number,ship_to,inspection_requirements,selection_confirmed_at",
         )
         .eq("id", quoteId)
         .maybeSingle<QuoteExtrasRow>();
@@ -213,6 +214,7 @@ export async function loadQuoteWorkspaceData(
         customer_id: extras?.customer_id ?? null,
         dfm_notes: extras?.dfm_notes ?? null,
         internal_notes: extras?.internal_notes ?? null,
+        ops_status: extras?.ops_status ?? null,
         selected_provider_id: extras?.selected_provider_id ?? null,
         selected_offer_id: extras?.selected_offer_id ?? null,
         selected_at: extras?.selected_at ?? null,

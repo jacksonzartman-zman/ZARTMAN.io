@@ -119,6 +119,12 @@ import { buildCustomerCompareOffers } from "@/server/customer/compareOffers";
 import { userHasTeamAccessToQuote } from "@/server/customerTeams";
 import { canCustomerViewQuote } from "@/server/customerTeams/access";
 import { getCustomerPricingEstimate, partsBucketFromCount } from "@/server/customer/pricingEstimate";
+import {
+  CUSTOMER_OPS_STATUS_STEPS,
+  formatCustomerOpsStatusLabel,
+  getCustomerOpsStatusStepIndex,
+  normalizeCustomerOpsStatusStep,
+} from "@/lib/quote/customerOpsStatus";
 
 export const dynamic = "force-dynamic";
 
@@ -787,6 +793,12 @@ export default async function CustomerQuoteDetailPage({
     ? customerCompareOffers.find((offer) => offer.id === selectedOfferId) ?? null
     : null;
   const selectionConfirmedAt = quote.selection_confirmed_at ?? null;
+  const customerOpsStatusStep = normalizeCustomerOpsStatusStep(
+    (quote as { ops_status?: unknown })?.ops_status,
+  );
+  const customerOpsStatusLabel = formatCustomerOpsStatusLabel(customerOpsStatusStep);
+  const shouldShowCustomerOpsStatus =
+    quoteHasWinner && Boolean(selectionConfirmedAt) && Boolean(customerOpsStatusStep);
   const searchStateSummary = buildSearchStateSummary({
     destinations: rfqDestinations ?? [],
     offers: rfqOffers ?? [],
@@ -1836,6 +1848,9 @@ export default async function CustomerQuoteDetailPage({
       <div className="space-y-6">
         {awardedSupplierCard}
         <CustomerProjectTimelineStrip steps={projectTimeline.steps} />
+        {shouldShowCustomerOpsStatus && customerOpsStatusStep ? (
+          <CustomerProductionStatusRow step={customerOpsStatusStep} label={customerOpsStatusLabel} />
+        ) : null}
         {decisionCtaRow}
         {compareOffersSection}
         {selectionConfirmedSection}
@@ -1926,6 +1941,56 @@ export default async function CustomerQuoteDetailPage({
         {notesSection}
       </div>
     </PortalShell>
+  );
+}
+
+function CustomerProductionStatusRow({
+  step,
+  label,
+}: {
+  step: (typeof CUSTOMER_OPS_STATUS_STEPS)[number];
+  label: string | null;
+}) {
+  const currentIndex = getCustomerOpsStatusStepIndex(step);
+
+  return (
+    <section className="rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Production status
+          </p>
+          <p className="mt-1 text-sm font-semibold text-white">{label ?? "—"}</p>
+        </div>
+        <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
+          {label ?? "—"}
+        </TagPill>
+      </div>
+
+      <ol className="mt-4 grid gap-2 sm:grid-cols-4">
+        {CUSTOMER_OPS_STATUS_STEPS.map((value, idx) => {
+          const isComplete = idx < currentIndex;
+          const isCurrent = idx === currentIndex;
+          const stepLabel = formatCustomerOpsStatusLabel(value) ?? value;
+
+          return (
+            <li
+              key={value}
+              className={clsx(
+                "rounded-full border px-3 py-2 text-center text-xs font-semibold",
+                isCurrent
+                  ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-100"
+                  : isComplete
+                    ? "border-slate-700 bg-slate-950/40 text-slate-100"
+                    : "border-slate-900/60 bg-slate-950/20 text-slate-400",
+              )}
+            >
+              {stepLabel}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 
