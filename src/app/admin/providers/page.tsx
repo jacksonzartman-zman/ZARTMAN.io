@@ -29,6 +29,7 @@ import {
 } from "./actions";
 import { CopyOutreachEmailButton } from "./CopyOutreachEmailButton";
 import { assessProviderCapabilityMatch } from "@/lib/provider/capabilityMatch";
+import { InviteSupplierButton } from "./InviteSupplierButton";
 
 export const dynamic = "force-dynamic";
 
@@ -178,6 +179,7 @@ export default async function AdminProvidersPage({
       description="Review provider status before activating them for customer dispatch."
       actions={
         <div className="flex flex-col gap-2">
+          <InviteSupplierButton />
           <Link
             href="/admin/providers/import"
             className="text-sm font-semibold text-emerald-200 hover:text-emerald-100"

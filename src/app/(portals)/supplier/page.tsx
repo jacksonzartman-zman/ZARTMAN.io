@@ -48,6 +48,8 @@ import { PortalStatPills } from "../components/PortalStatPills";
 import { resolveSupplierActivityEmptyState } from "./activityEmptyState";
 import { loadSupplierOnboardingState } from "@/server/suppliers/onboarding";
 import { refreshNotificationsForUser } from "@/server/notifications";
+import { loadSupplierQuotesList, type SupplierQuoteListRow } from "@/server/suppliers/quotesList";
+import { isOpenQuoteStatus } from "@/server/quotes/status";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +99,8 @@ async function SupplierDashboardPage({
     getSearchParamValue(searchParams, "onboard") === "1";
   const inviteJustAccepted =
     getSearchParamValue(searchParams, "invite") === "accepted";
+  const invitedJustCompleted =
+    getSearchParamValue(searchParams, "invited") === "1";
 
   if (!supplierEmail) {
     return (
@@ -144,6 +148,23 @@ async function SupplierDashboardPage({
   const hasCapabilities = (profile?.capabilities ?? []).length > 0;
   const showGettingSetUp =
     supplierExists && (!onboardingState.hasAnyBids || !onboardingState.hasRecentCapacitySnapshot);
+
+  let pendingRfqRows: SupplierQuoteListRow[] = [];
+  if (supplier) {
+    try {
+      const all = await loadSupplierQuotesList(user.id);
+      pendingRfqRows = all.filter((row) => {
+        const closedByAward = Boolean(row.hasAward);
+        return isOpenQuoteStatus(row.status) && !closedByAward && !row.isAwardedToSupplier;
+      });
+    } catch (error) {
+      console.error("[supplier dashboard] pending rfqs load failed", {
+        supplierId: supplier.id,
+        error,
+      });
+      pendingRfqRows = [];
+    }
+  }
 
   let matchesResult: SupplierActivityResult<SupplierQuoteMatch[]> = {
     ok: true,
@@ -453,6 +474,11 @@ async function SupplierDashboardPage({
             Invite accepted! You’re now part of this supplier workspace.
           </p>
         ) : null}
+        {invitedJustCompleted ? (
+          <p className="mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            Welcome! Your supplier portal is ready.
+          </p>
+        ) : null}
       </section>
 
       <PortalCard
@@ -526,6 +552,7 @@ async function SupplierDashboardPage({
         result={bidsResult}
         approvalGate={bidsResult.approvalGate ?? approvalGate}
       />
+      <PendingRfqsCard supplierExists={supplierExists} rows={pendingRfqRows} />
       {bidsUnavailable ? (
         <DataFallbackNotice className="mt-2" />
       ) : null}
@@ -1019,6 +1046,96 @@ function BidsCard({
         <EmptyStateNotice
           title="No quotes submitted"
           description="No quotes yet. Open a matched search request to submit pricing—every submission lands here."
+        />
+      )}
+    </PortalCard>
+  );
+}
+
+function PendingRfqsCard({
+  supplierExists,
+  rows,
+}: {
+  supplierExists: boolean;
+  rows: SupplierQuoteListRow[];
+}) {
+  const pending = rows.slice(0, 8);
+  return (
+    <PortalCard
+      title="Pending RFQs"
+      description="Search requests routed to you that are still open."
+      action={
+        supplierExists ? (
+          <Link
+            href="/supplier/quotes?status=open"
+            className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+          >
+            View all
+          </Link>
+        ) : null
+      }
+    >
+      {supplierExists && pending.length > 0 ? (
+        <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
+          <table className="min-w-full divide-y divide-slate-900/70 text-sm">
+            <thead className="bg-slate-900/60">
+              <tr>
+                <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  Search request
+                </th>
+                <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  Status
+                </th>
+                <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  Last activity
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-900/70">
+              {pending.map((row) => (
+                <tr key={row.quoteId} className="hover:bg-slate-900/50">
+                  <td className="px-5 py-4 align-middle">
+                    <Link
+                      href={`/supplier/quotes/${row.quoteId}`}
+                      className="font-medium text-slate-100 underline-offset-4 transition hover:underline"
+                    >
+                      {row.rfqLabel}
+                    </Link>
+                  </td>
+                  <td className="px-5 py-4 align-middle text-slate-200">{row.status}</td>
+                  <td className="px-5 py-4 align-middle text-slate-400">
+                    {formatRelativeTimeFromTimestamp(toTimestamp(row.lastActivityAt)) ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : supplierExists ? (
+        <EmptyStateNotice
+          title="No pending RFQs"
+          description="When RFQs are routed to you, they’ll appear here immediately."
+          action={
+            <Link
+              href="/supplier/quotes"
+              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+            >
+              View all search requests
+            </Link>
+          }
+        />
+      ) : (
+        <EmptyStateNotice
+          title="Pending RFQs unlock after onboarding"
+          description="Sign in with your supplier email to see routed search requests."
+          action={
+            <Link
+              href="/login?next=/supplier"
+              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+            >
+              Go to login
+            </Link>
+          }
         />
       )}
     </PortalCard>
