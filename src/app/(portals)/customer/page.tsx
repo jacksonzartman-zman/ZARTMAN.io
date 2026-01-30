@@ -51,6 +51,8 @@ const CUSTOMER_UPLOAD_SOURCE_LABEL = SHOW_LEGACY_QUOTE_ENTRYPOINTS
 const IN_PROGRESS_STATUSES: QuoteStatus[] = ["in_review", "quoted", "approved"];
 const COMPLETED_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
 const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
+const QUIET_CARD_CLASSNAME =
+  "border-slate-900/45 bg-slate-950/25 shadow-none hover:border-slate-900/55 hover:bg-slate-950/30 hover:shadow-none";
 
 const TARGET_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -112,10 +114,12 @@ async function CustomerDashboardPage({
   void refreshNotificationsForUser(user.id, "customer").catch((error) => {
     console.error("[notifications] refresh failed (customer)", { userId: user.id, error });
   });
-  console.log("[portal] user id", user.id);
-  console.log("[portal] email", user.email);
-  console.log("[portal] isSupplier", roles?.isSupplier);
-  console.log("[portal] isCustomer", roles?.isCustomer);
+  if (DEBUG_PORTALS) {
+    console.log("[portal] user id", user.id);
+    console.log("[portal] email", user.email);
+    console.log("[portal] isSupplier", roles?.isSupplier);
+    console.log("[portal] isCustomer", roles?.isCustomer);
+  }
   const sessionCompanyName =
     sanitizeDisplayName(user.user_metadata?.company) ??
     sanitizeDisplayName(user.user_metadata?.full_name) ??
@@ -165,7 +169,7 @@ async function CustomerDashboardPage({
             null
           }
         />
-        <CustomerPortalDemoCard />
+        {DEBUG_PORTALS ? <CustomerPortalDemoCard /> : null}
         <DataFallbackNotice className="mt-2" />
         {DEBUG_PORTALS ? (
           <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
@@ -227,14 +231,16 @@ async function CustomerDashboardPage({
     typeof customer.website === "string" && customer.website.trim().length > 0
       ? customer.website.trim()
       : "";
-  console.log("[customer workspace] quotes loaded", {
-    userId: user.id,
-    customerId: usingOverride ? null : customer.id,
-    viewerEmail: viewerEmail ?? user.email ?? null,
-    quoteCount: portalData.quotes.length,
-    domainFallbackUsed: portalData.domainFallbackUsed,
-    error: portalData.error ?? null,
-  });
+  if (DEBUG_PORTALS) {
+    console.log("[customer workspace] quotes loaded", {
+      userId: user.id,
+      customerId: usingOverride ? null : customer.id,
+      viewerEmail: viewerEmail ?? user.email ?? null,
+      quoteCount: portalData.quotes.length,
+      domainFallbackUsed: portalData.domainFallbackUsed,
+      error: portalData.error ?? null,
+    });
+  }
 
   const openQuotes = portalData.quotes.filter((quote) =>
     isOpenQuoteStatus(quote.status),
@@ -256,11 +262,13 @@ async function CustomerDashboardPage({
         ? `${item.href}${quoteLinkQuery}`
         : item.href,
   }));
-  console.log("[customer dashboard] activity loaded", {
-    customerId: customer.id,
-    eventCount: recentActivity.length,
-    override: usingOverride,
-  });
+  if (DEBUG_PORTALS) {
+    console.log("[customer dashboard] activity loaded", {
+      customerId: customer.id,
+      eventCount: recentActivity.length,
+      override: usingOverride,
+    });
+  }
   const customerMetrics = deriveCustomerMetrics(portalData.quotes);
   const lastUpdatedTimestamp = getLatestCustomerActivityTimestamp(portalData.quotes);
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
@@ -277,16 +285,18 @@ async function CustomerDashboardPage({
   const showFirstRfqCard =
     !onboardingState.hasAnyQuotes && !onboardingState.hasAnyProjects;
 
-  console.info("[customer dashboard] loaded (post-website-fix)", {
-    userEmail: user.email ?? null,
-    customerId: customer?.id ?? null,
-    customerEmail: customer?.email ?? null,
-    companyName: customer?.company_name ?? null,
-    customerWebsite: customerWebsite || null,
-    hasProfile: Boolean(customer),
-    activityEventCount: Array.isArray(recentActivity) ? recentActivity.length : null,
-    quoteCount: Array.isArray(portalData.quotes) ? portalData.quotes.length : null,
-  });
+  if (DEBUG_PORTALS) {
+    console.info("[customer dashboard] loaded (post-website-fix)", {
+      userEmail: user.email ?? null,
+      customerId: customer?.id ?? null,
+      customerEmail: customer?.email ?? null,
+      companyName: customer?.company_name ?? null,
+      customerWebsite: customerWebsite || null,
+      hasProfile: Boolean(customer),
+      activityEventCount: Array.isArray(recentActivity) ? recentActivity.length : null,
+      quoteCount: Array.isArray(portalData.quotes) ? portalData.quotes.length : null,
+    });
+  }
 
   const headerContent = (
     <div className="space-y-4">
@@ -503,53 +513,66 @@ async function CustomerDashboardPage({
       ) : null}
 
       <PortalCard
-        title="Workspace scope"
+        title="Account details"
         description={
           usingOverride
-            ? "You’re previewing another teammate’s workspace in read-only mode."
-            : "Identity and sync details for this account."
+            ? "Read-only preview details."
+            : "Occasionally useful for support or demos."
         }
+        className={QUIET_CARD_CLASSNAME}
       >
-        {usingOverride ? (
-          <>
-            <p>
-              Showing read-only activity for{" "}
-              <span className="font-semibold text-white">{viewerDisplayEmail}</span>.
-            </p>
-            <p className="mt-2 text-xs text-slate-500">
-              Remove ?email from the URL to switch back to your own workspace.
-            </p>
-          </>
-        ) : (
-          <>
-            <p>
-              Signed in as{" "}
-              <span className="font-semibold text-white">
-                {customer.company_name ?? viewerDisplayEmail}
-              </span>
-              .
-            </p>
-            <p className="mt-2 text-xs text-slate-500">
-              Uploads from your account automatically sync back into this dashboard.
-            </p>
-            {customerWebsite ? (
-              <p className="mt-2 text-xs text-slate-500">
-                Website: <span className="font-mono text-slate-300">{customerWebsite}</span>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-950/55">
+            <span>Show details</span>
+            <span className="text-xs font-semibold text-slate-500 transition group-open:text-slate-300">
+              {usingOverride ? "Preview mode" : "Signed-in context"}
+            </span>
+          </summary>
+          <div className="mt-4 space-y-2 text-sm text-slate-300">
+            {usingOverride ? (
+              <>
+                <p>
+                  Showing read-only activity for{" "}
+                  <span className="font-semibold text-white">{viewerDisplayEmail}</span>.
+                </p>
+                <p className="text-xs text-slate-500">
+                  Remove ?email from the URL to switch back to your own workspace.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  Signed in as{" "}
+                  <span className="font-semibold text-white">
+                    {customer.company_name ?? viewerDisplayEmail}
+                  </span>
+                  .
+                </p>
+                <p className="text-xs text-slate-500">
+                  Uploads from your account automatically sync back into this dashboard.
+                </p>
+                {customerWebsite ? (
+                  <p className="text-xs text-slate-500">
+                    Website:{" "}
+                    <span className="font-mono text-slate-300">{customerWebsite}</span>
+                  </p>
+                ) : null}
+              </>
+            )}
+            {portalData.domainFallbackUsed && viewerDomain ? (
+              <p className="text-xs text-slate-500">
+                No direct matches found, so we’re showing other contacts at @{viewerDomain}.
               </p>
             ) : null}
-          </>
-        )}
-        {portalData.domainFallbackUsed && viewerDomain ? (
-          <p className="mt-2 text-xs text-slate-500">
-            No direct matches found, so we’re showing other contacts at @{viewerDomain}.
-          </p>
-        ) : null}
+          </div>
+        </details>
       </PortalCard>
 
       {portalData.error ? (
         <PortalCard
           title="Live search data"
           description="We ran into a temporary issue while loading Supabase data."
+          className={QUIET_CARD_CLASSNAME}
         >
           <p className="text-sm text-red-200">{portalData.error}</p>
         </PortalCard>
@@ -678,10 +701,12 @@ async function selectQuotesByCustomerId(
     return { quotes: [], domainFallbackUsed: false, error: "Unable to load quotes." };
   }
 
-  console.log("selectQuotesByCustomerId: resolving via email", {
-    customerId,
-    email: normalizedEmail,
-  });
+  if (DEBUG_PORTALS) {
+    console.log("selectQuotesByCustomerId: resolving via email", {
+      customerId,
+      email: normalizedEmail,
+    });
+  }
 
   try {
     return await loadCustomerPortalDataByEmail(
@@ -881,7 +906,7 @@ function CustomerPortalDemoCard() {
   return (
     <PortalCard
       title="Customer portal demo"
-        description="Signed-in teammates can append ?email=you@company.com to preview other accounts for demos."
+      description="Signed-in teammates can append ?email=you@company.com to preview other accounts for demos."
       action={
         SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
           <Link
@@ -894,9 +919,8 @@ function CustomerPortalDemoCard() {
       }
     >
       <p className="text-sm text-slate-300">
-          Example:{" "}
-          <code className="text-white">/customer?email=you@company.com</code>
-          {" — "}remove the query string to go back to your own workspace.
+        Example: <code className="text-white">/customer?email=you@company.com</code>
+        {" — "}remove the query string to go back to your own workspace.
       </p>
     </PortalCard>
   );
