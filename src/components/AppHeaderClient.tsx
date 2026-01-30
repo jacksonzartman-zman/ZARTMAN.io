@@ -28,21 +28,20 @@ const ROLE_BADGE_CLASSES: Record<PortalRole, string> = {
 
 const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
   customer: [
-    { label: "RFQs", href: "/customer/quotes" },
+    { label: "Quotes", href: "/customer/quotes" },
     { label: "Projects", href: "/customer/projects" },
     { label: "Messages", href: "/customer/messages" },
-    { label: "Settings", href: "/customer/settings" },
   ],
   supplier: [
     { label: "Dashboard", href: "/supplier" },
     { label: "Messages", href: "/supplier/messages" },
-    { label: "Settings", href: "/supplier/settings" },
   ],
 };
 
 const CUSTOMER_MORE_LINKS: PortalNavLink[] = [
   { label: "Search", href: "/customer/search" },
-  { label: "Saved searches", href: "/customer/saved" },
+  { label: "Saved Searches", href: "/customer/saved" },
+  { label: "Settings", href: "/customer/settings" },
 ];
 
 const SUPPLIER_MORE_LINKS: PortalNavLink[] = [
@@ -50,6 +49,7 @@ const SUPPLIER_MORE_LINKS: PortalNavLink[] = [
   { label: "Projects", href: "/supplier/projects" },
   { label: "Notifications", href: "/supplier/notifications" },
   { label: "Decisions", href: "/supplier/decisions" },
+  { label: "Settings", href: "/supplier/settings" },
 ];
 
 export type AppHeaderClientProps = {
@@ -105,8 +105,8 @@ export default function AppHeaderClient({
         : "/";
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-900/70 bg-neutral-950/95 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-page flex-col gap-3 px-4 py-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-40 border-b border-slate-800/60 bg-neutral-950/90 backdrop-blur">
+      <div className="mx-auto flex w-full max-w-page flex-col gap-2.5 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <BrandMark
@@ -166,6 +166,7 @@ export default function AppHeaderClient({
           <PortalNavTabs
             links={navLinksWithBadges}
             moreLinks={moreLinksWithBadges}
+            maxVisibleLinks={3}
             currentPath={pathname}
           />
         ) : null}

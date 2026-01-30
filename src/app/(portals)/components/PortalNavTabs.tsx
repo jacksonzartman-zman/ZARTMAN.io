@@ -14,6 +14,7 @@ type PortalNavTabsProps = {
   links: PortalNavLink[];
   moreLinks?: PortalNavLink[];
   moreLabel?: string;
+  maxVisibleLinks?: number;
   currentPath: string;
   className?: string;
   linkClassName?: string;
@@ -24,17 +25,44 @@ export function PortalNavTabs({
   links,
   moreLinks,
   moreLabel = "More",
+  maxVisibleLinks = 4,
   currentPath,
   className,
   linkClassName,
   isActive,
 }: PortalNavTabsProps) {
-  const hasPrimaryLinks = links.length > 0;
-  const hasMoreLinks = Boolean(moreLinks && moreLinks.length > 0);
   const path = currentPath || "/";
   const resolveActive =
     isActive ??
     ((href: string, pathname: string) => defaultIsPortalNavLinkActive(pathname, href));
+
+  const maxVisible = Math.max(0, Math.floor(maxVisibleLinks));
+
+  const initialVisibleLinks = maxVisible > 0 ? links.slice(0, maxVisible) : [];
+  const overflowLinks = maxVisible > 0 ? links.slice(maxVisible) : links;
+
+  const initialMoreLinks = [...overflowLinks, ...(moreLinks ?? [])];
+
+  // If the active link is in "More", surface it in the main row so location is obvious.
+  const activeInMoreIdx = initialMoreLinks.findIndex((link) => resolveActive(link.href, path));
+  const activeInMoreLink = activeInMoreIdx >= 0 ? initialMoreLinks[activeInMoreIdx] : null;
+
+  const visibleLinks =
+    activeInMoreLink && initialVisibleLinks.length > 0
+      ? [...initialVisibleLinks.slice(0, Math.max(0, maxVisible - 1)), activeInMoreLink]
+      : initialVisibleLinks;
+
+  const computedMoreLinks = (() => {
+    if (!activeInMoreLink) {
+      return initialMoreLinks;
+    }
+    const remaining = initialMoreLinks.filter((link) => link.href !== activeInMoreLink.href);
+    const displaced = initialVisibleLinks.length === maxVisible ? initialVisibleLinks[maxVisible - 1] : null;
+    return displaced ? [displaced, ...remaining] : remaining;
+  })();
+
+  const hasPrimaryLinks = visibleLinks.length > 0;
+  const hasMoreLinks = computedMoreLinks.length > 0;
 
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement | null>(null);
@@ -55,9 +83,7 @@ export function PortalNavTabs({
     setMoreOpen(false);
   }, [path]);
 
-  const moreLinksActive = (moreLinks ?? []).some((link) =>
-    resolveActive(link.href, path),
-  );
+  const moreLinksActive = computedMoreLinks.some((link) => resolveActive(link.href, path));
 
   if (!hasPrimaryLinks && !hasMoreLinks) {
     return null;
@@ -66,19 +92,22 @@ export function PortalNavTabs({
   return (
     <nav
       className={clsx(
-        "flex flex-wrap items-center gap-2 text-sm font-medium text-slate-400",
+        "flex flex-wrap items-center gap-1.5 text-sm font-medium text-slate-300",
         className,
       )}
     >
-      {links.map((link) => {
+      {visibleLinks.map((link) => {
         const active = resolveActive(link.href, path);
         return (
           <Link
             key={link.href}
             href={link.href}
+            aria-current={active ? "page" : undefined}
             className={clsx(
               "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
-              active ? "bg-slate-900 text-white" : "text-slate-400 hover:text-white",
+              active
+                ? "bg-white/5 text-white ring-1 ring-slate-700/60"
+                : "text-slate-300 hover:bg-white/5 hover:text-white",
               linkClassName,
             )}
           >
@@ -96,8 +125,8 @@ export function PortalNavTabs({
             className={clsx(
               "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
               moreLinksActive || moreOpen
-                ? "bg-slate-900 text-white"
-                : "text-slate-400 hover:text-white",
+                ? "bg-white/5 text-white ring-1 ring-slate-700/60"
+                : "text-slate-300 hover:bg-white/5 hover:text-white",
               linkClassName,
             )}
             aria-haspopup="menu"
@@ -124,19 +153,20 @@ export function PortalNavTabs({
           </button>
 
           {moreOpen ? (
-            <div className="absolute left-0 z-50 mt-2 w-64 rounded-2xl border border-slate-900 bg-slate-950/95 p-2 text-sm shadow-lg shadow-black/40">
-              {(moreLinks ?? []).map((link) => {
+            <div className="absolute left-0 z-50 mt-2 w-64 rounded-2xl border border-slate-800/80 bg-slate-950/95 p-2 text-sm shadow-lg shadow-black/40">
+              {computedMoreLinks.map((link) => {
                 const active = resolveActive(link.href, path);
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
+                    aria-current={active ? "page" : undefined}
                     onClick={() => setMoreOpen(false)}
                     className={clsx(
                       "flex items-center justify-between gap-3 rounded-xl px-3 py-2 font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
                       active
-                        ? "bg-slate-900/70 text-white"
-                        : "text-slate-200 hover:bg-slate-900/50 hover:text-white",
+                        ? "bg-white/5 text-white ring-1 ring-slate-700/60"
+                        : "text-slate-200 hover:bg-white/5 hover:text-white",
                     )}
                   >
                     <span>{link.label}</span>
