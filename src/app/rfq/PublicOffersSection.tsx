@@ -24,6 +24,7 @@ type OffersCountApiResponse =
       normalizedStatus: string;
       offersCount: number;
       offers: OfferCardDto[];
+      suppliersReviewing?: boolean;
       projectStatus?: string | null;
       performance?: RfqPerformanceFeedback;
     };
@@ -39,6 +40,7 @@ type PublicOffersSectionProps = {
   initialOffers: OfferCardDto[];
   initialProjectStatus?: string | null;
   initialPerformance?: RfqPerformanceFeedback;
+  initialSuppliersReviewing?: boolean;
   claimState: "anon" | "no_customer_profile" | "can_claim" | "already_saved_to_you" | "already_saved_elsewhere";
   loginNextPath: string;
 };
@@ -79,6 +81,7 @@ export function PublicOffersSection({
   initialOffers,
   initialProjectStatus,
   initialPerformance,
+  initialSuppliersReviewing,
   claimState,
   loginNextPath,
 }: PublicOffersSectionProps) {
@@ -97,6 +100,9 @@ export function PublicOffersSection({
   const [showSubmittedBanner, setShowSubmittedBanner] = useState(false);
   const [submittedCardHighlight, setSubmittedCardHighlight] = useState(false);
   const [overrideStageIndex, setOverrideStageIndex] = useState<number | null>(null);
+  const [suppliersReviewing, setSuppliersReviewing] = useState<boolean>(() =>
+    Boolean(initialSuppliersReviewing),
+  );
   const [projectStatus, setProjectStatus] = useState<string | null>(() => {
     const v = typeof initialProjectStatus === "string" ? initialProjectStatus.trim() : "";
     return v ? v : null;
@@ -280,6 +286,7 @@ export function PublicOffersSection({
           const v = typeof json.projectStatus === "string" ? json.projectStatus.trim() : "";
           return v ? v : null;
         });
+        setSuppliersReviewing(Boolean(json.suppliersReviewing));
         if (json.performance) {
           setPerformance(json.performance);
         }
@@ -371,6 +378,9 @@ export function PublicOffersSection({
         </p>
         <h1 className="text-2xl sm:text-3xl font-semibold text-ink">{journey.headline}</h1>
         <p className="text-sm text-ink-muted">{journey.subhead}</p>
+        {!hasOffers && !isTerminal && suppliersReviewing ? (
+          <p className="text-xs text-ink-soft">Suppliers are reviewing your RFQ.</p>
+        ) : null}
       </header>
 
       <div
