@@ -7,6 +7,7 @@ import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
 import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { CustomerQuotesListClient } from "./CustomerQuotesListClient";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,18 @@ function formatUpdatedAt(value: string | null): string {
   return label ?? "—";
 }
 
+type CustomerQuoteRow = {
+  id: string;
+  href: string;
+  primaryFileName: string;
+  secondaryFileName?: string;
+  fallbackLabel: string;
+  status: string;
+  statusTone: RfqStatusTone;
+  updatedLabel: string;
+  updatedTitle: string;
+};
+
 type CustomerQuotesPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -135,6 +148,23 @@ export default async function CustomerQuotesPage({
     return (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt);
   });
 
+  const rows: CustomerQuoteRow[] = sortedQuotes.map((quote) => {
+    const files = formatFileNames(quote.fileNames);
+    const status = quote.rfqHistoryStatus;
+    const updatedAt = quote.updatedAt ?? quote.createdAt;
+    return {
+      id: quote.id,
+      href: `/customer/quotes/${quote.id}`,
+      primaryFileName: files.primary,
+      secondaryFileName: files.secondary,
+      fallbackLabel: quote.rfqLabel,
+      status,
+      statusTone: getStatusTone(status),
+      updatedLabel: formatUpdatedAt(updatedAt),
+      updatedTitle: updatedAt,
+    };
+  });
+
   return (
     <PortalShell
       workspace="customer"
@@ -173,56 +203,7 @@ export default async function CustomerQuotesPage({
             ) : null}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
-            <div className="grid grid-cols-12 gap-3 border-b border-slate-900/70 px-5 py-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              <div className="col-span-12 sm:col-span-7">RFQ files</div>
-              <div className="col-span-6 sm:col-span-3">Status</div>
-              <div className="col-span-6 text-right sm:col-span-2">Updated</div>
-            </div>
-            <ul className="divide-y divide-slate-900/70">
-              {sortedQuotes.map((quote) => {
-                const files = formatFileNames(quote.fileNames);
-                const status = quote.rfqHistoryStatus;
-                const updatedAt = quote.updatedAt ?? quote.createdAt;
-                return (
-                  <li key={quote.id} className="hover:bg-slate-900/40">
-                    <Link
-                      href={`/customer/quotes/${quote.id}`}
-                      className="grid grid-cols-12 gap-3 px-5 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400"
-                    >
-                      <div className="col-span-12 min-w-0 sm:col-span-7">
-                        <p
-                          className="min-w-0 truncate text-sm font-semibold text-slate-100"
-                          title={files.primary}
-                        >
-                          {files.primary}
-                        </p>
-                        {files.secondary ? (
-                          <p className="mt-1 min-w-0 truncate text-xs text-slate-400" title={files.secondary}>
-                            {files.secondary}
-                          </p>
-                        ) : (
-                          <p className="mt-1 min-w-0 truncate text-xs text-slate-500" title={quote.rfqLabel}>
-                            {quote.rfqLabel}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="col-span-6 flex items-center sm:col-span-3">
-                        <StatusPill tone={getStatusTone(status)}>{status}</StatusPill>
-                      </div>
-
-                      <div className="col-span-6 flex items-center justify-end text-right sm:col-span-2">
-                        <span className="text-xs font-semibold text-slate-200" title={updatedAt}>
-                          {formatUpdatedAt(updatedAt)}
-                        </span>
-                      </div>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+          <CustomerQuotesListClient rows={rows} />
         )}
       </PortalCard>
     </PortalShell>
