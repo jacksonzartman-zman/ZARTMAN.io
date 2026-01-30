@@ -51,6 +51,7 @@ import {
 import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
 import { FocusScroll } from "./FocusScroll";
+import { PostAwardReassurancePanel } from "./PostAwardReassurancePanel";
 import { FocusTabScroll } from "@/app/(portals)/shared/FocusTabScroll";
 import {
   loadQuoteProjectForQuote,
@@ -1847,6 +1848,7 @@ export default async function CustomerQuoteDetailPage({
       {showDemoModeBanner ? <DemoModeBanner /> : null}
       <div className="space-y-6">
         {awardedSupplierCard}
+        {quoteHasWinner ? <PostAwardReassurancePanel quoteId={quote.id} /> : null}
         <CustomerProjectTimelineStrip steps={projectTimeline.steps} />
         {shouldShowCustomerOpsStatus && customerOpsStatusStep ? (
           <CustomerProductionStatusRow step={customerOpsStatusStep} label={customerOpsStatusLabel} />
