@@ -32,6 +32,7 @@ import {
 import { buildSupplierInboxRows } from "./inboxRows";
 import { InvitedSupplierWelcomePanel } from "./InvitedSupplierWelcomePanel";
 import { SupplierOfferSentBanner } from "./SupplierOfferSentBanner";
+import { AwardedJobSuccessBanner } from "./AwardedJobSuccessBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -253,6 +254,7 @@ async function SupplierDashboardPage({
       headerContent={headerContent}
     >
       <div className="space-y-3">
+        <AwardedJobSuccessBanner awardedQuoteIds={activeJobs.map((row) => row.quoteId)} />
         <SupplierOfferSentBanner enabled={offerJustSent} />
       </div>
       <SupplierActivityRecapStats
