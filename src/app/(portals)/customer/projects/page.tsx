@@ -268,7 +268,6 @@ export default async function CustomerProjectsPage({
                         ? project.supplierName
                         : "Supplier pending";
                       const originFileLabel = extractOriginFileLabel(project.projectName);
-                      const originFilesLabel = originFileLabel ?? "—";
                       const kickoff = formatKickoffStatus(project.kickoff);
                       const kickoffSubtext = project.kickoff.isComplete
                         ? "Kickoff complete"
@@ -298,23 +297,12 @@ export default async function CustomerProjectsPage({
                               <span className="font-medium text-slate-100">
                                 {originFileLabel ?? project.projectName}
                               </span>
-                              <p className="mt-1 text-xs text-slate-500" title={originFilesLabel}>
-                                From RFQ files: {originFilesLabel}
-                              </p>
-                              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                                <span>
-                                  RFQ{" "}
-                                  {project.id.startsWith("Q-")
-                                    ? project.id
-                                    : `#${project.id.slice(0, 6)}`}
-                                </span>
-                                <Link
-                                  href={`/customer/quotes/${project.id}#decision`}
-                                  className="font-semibold text-emerald-200 hover:underline"
-                                >
-                                  View RFQ
-                                </Link>
-                              </div>
+                              <span className="mt-1 text-xs text-slate-500">
+                                RFQ{" "}
+                                {project.id.startsWith("Q-")
+                                  ? project.id
+                                  : `#${project.id.slice(0, 6)}`}
+                              </span>
                             </div>
                           </td>
                           <td className="px-5 py-5 align-middle text-slate-200">

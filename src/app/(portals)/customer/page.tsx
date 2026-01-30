@@ -17,12 +17,10 @@ import {
 import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerById, getCustomerByUserId } from "@/server/customers";
 import { CompleteCustomerProfileCard } from "./CompleteCustomerProfileCard";
-import type { WorkspaceMetric } from "../WorkspaceMetrics";
 import { EmptyStateNotice } from "../EmptyStateNotice";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { SystemStatusBar } from "../SystemStatusBar";
 import { PortalShell } from "../components/PortalShell";
-import { PortalStatPills } from "../components/PortalStatPills";
 import { QuoteStatusBadge } from "../components/QuoteStatusBadge";
 import { loadRecentCustomerActivity } from "@/server/customers/activity";
 import { loadCustomerOnboardingState } from "@/server/customer/onboarding";
@@ -44,12 +42,6 @@ import { DEBUG_PORTALS } from "../debug";
 export const dynamic = "force-dynamic";
 
 const QUOTE_LIMIT = 20;
-const RECENT_ACTIVITY_LIMIT = 10;
-const CUSTOMER_UPLOAD_SOURCE_LABEL = SHOW_LEGACY_QUOTE_ENTRYPOINTS
-  ? "/quote"
-  : "the search flow";
-const IN_PROGRESS_STATUSES: QuoteStatus[] = ["in_review", "quoted", "approved"];
-const COMPLETED_STATUSES: QuoteStatus[] = ["won", "lost", "cancelled"];
 const QUOTE_FIELDS = SAFE_QUOTE_WITH_UPLOADS_FIELDS;
 const QUIET_CARD_CLASSNAME =
   "border-slate-900/45 bg-slate-950/25 shadow-none hover:border-slate-900/55 hover:bg-slate-950/30 hover:shadow-none";
@@ -269,7 +261,6 @@ async function CustomerDashboardPage({
       override: usingOverride,
     });
   }
-  const customerMetrics = deriveCustomerMetrics(portalData.quotes);
   const lastUpdatedTimestamp = getLatestCustomerActivityTimestamp(portalData.quotes);
   const lastUpdatedLabel = formatRelativeTimeFromTimestamp(lastUpdatedTimestamp);
   const systemStatusMessage = portalData.error
@@ -351,11 +342,6 @@ async function CustomerDashboardPage({
           </ul>
         </PortalCard>
       ) : null}
-      <PortalStatPills
-        role="customer"
-        metrics={customerMetrics}
-        lastUpdatedLabel={lastUpdatedLabel}
-      />
       <PortalCard
         title="Open search requests"
         description={
@@ -413,105 +399,92 @@ async function CustomerDashboardPage({
       </PortalCard>
 
       <PortalCard
-        title="Recent activity"
-        description="Latest search request, offer, and status updates routed through this workspace."
+        title="Updates"
+        description="Recent activity and decisions that keep offers moving."
+        className={QUIET_CARD_CLASSNAME}
       >
-        {recentActivity.length > 0 ? (
-          <ul className="space-y-3">
-            {recentActivity.map((item) => {
-              const inner = (
-                <div className="flex flex-col gap-2 rounded-xl border border-slate-900/60 bg-slate-900/20 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <ActivityTypeBadge type={item.type} />
-                    <p className="font-medium text-white">{item.title}</p>
-                    <p className="text-xs text-slate-400">{item.description}</p>
-                  </div>
-                  <div className="flex flex-col items-start gap-1 text-left sm:items-end sm:text-right">
-                    <p className="text-xs text-slate-500">
-                      {formatActivityDate(item.timestamp) ?? "Date pending"}
-                    </p>
-                  </div>
-                </div>
-              );
-              return (
-                <li key={item.id}>
-                  {item.href ? (
-                    <Link
-                      href={item.href}
-                      className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
-                    >
-                      {inner}
-                    </Link>
-                  ) : (
-                    inner
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <EmptyStateNotice
-            title="No activity to show"
-            description="Updates will appear here as things move."
-          />
-        )}
-      </PortalCard>
+        <div className="space-y-6">
+          <section className="space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Decisions</p>
+              <p className="text-xs text-slate-400">
+                Quick calls that keep offers and builds moving.
+              </p>
+            </div>
+            {hasDecisions ? (
+              <ul className="space-y-3">
+                {decisions.map((decision) => (
+                  <li
+                    key={decision.id}
+                    className="rounded-xl border border-slate-900/70 bg-slate-900/25 p-4"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="font-medium text-white">{decision.title}</p>
+                        <p className="text-xs text-slate-400">{decision.description}</p>
+                      </div>
+                      <UrgencyBadge level={decision.urgencyLevel} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyStateNotice
+                title="All set"
+                description="No decisions right now. We’ll surface anything that needs your input."
+              />
+            )}
+          </section>
 
-      <PortalCard
-        title="Decisions needed"
-        description="Quick calls that keep offers and builds moving."
-      >
-        {hasDecisions ? (
-          <ul className="space-y-3">
-            {decisions.map((decision) => (
-              <li
-                key={decision.id}
-                className="rounded-xl border border-slate-900/70 bg-slate-900/30 p-4"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="font-medium text-white">{decision.title}</p>
-                    <p className="text-xs text-slate-400">{decision.description}</p>
-                  </div>
-                  <UrgencyBadge level={decision.urgencyLevel} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyStateNotice
-            title="All set"
-            description="No decisions right now. We’ll surface anything that needs your input."
-          />
-        )}
+          <section className="space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Activity</p>
+              <p className="text-xs text-slate-400">
+                Latest search request, offer, and status updates.
+              </p>
+            </div>
+            {recentActivity.length > 0 ? (
+              <ul className="space-y-3">
+                {recentActivity.map((item) => {
+                  const inner = (
+                    <div className="flex flex-col gap-2 rounded-xl border border-slate-900/60 bg-slate-900/15 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <ActivityTypeBadge type={item.type} />
+                        <p className="font-medium text-white">{item.title}</p>
+                        <p className="text-xs text-slate-400">{item.description}</p>
+                      </div>
+                      <div className="flex flex-col items-start gap-1 text-left sm:items-end sm:text-right">
+                        <p className="text-xs text-slate-500">
+                          {formatActivityDate(item.timestamp) ?? "Date pending"}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                  return (
+                    <li key={item.id}>
+                      {item.href ? (
+                        <Link
+                          href={item.href}
+                          className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+                        >
+                          {inner}
+                        </Link>
+                      ) : (
+                        inner
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <EmptyStateNotice
+                title="No activity to show"
+                description="Updates will appear here as things move."
+              />
+            )}
+          </section>
+        </div>
       </PortalCard>
-
-      {!showFirstRfqCard ? (
-        <PortalCard
-          title="Next steps"
-          description="Keep momentum with a lightweight checklist."
-          action={
-            SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
-              <Link href="/quote" className={primaryCtaClasses}>
-                Submit a new search request
-              </Link>
-            ) : null
-          }
-        >
-          <ul className="list-disc space-y-2 pl-5 text-slate-300">
-            <li>Share this link with teammates — the portal is read-only today.</li>
-            <li>
-              {openQuotes.length > 0
-                ? `Track ${openQuotes.length} open quote${openQuotes.length === 1 ? "" : "s"} to keep reviews moving.`
-                : "Watch for new quotes here as soon as uploads are processed."}
-            </li>
-            <li>
-              Uploads from {CUSTOMER_UPLOAD_SOURCE_LABEL} will sync back into this workspace
-              automatically.
-            </li>
-          </ul>
-        </PortalCard>
-      ) : null}
 
       <PortalCard
         title="Account details"
@@ -568,16 +541,6 @@ async function CustomerDashboardPage({
           </div>
         </details>
       </PortalCard>
-
-      {portalData.error ? (
-        <PortalCard
-          title="Live search data"
-          description="We ran into a temporary issue while loading Supabase data."
-          className={QUIET_CARD_CLASSNAME}
-        >
-          <p className="text-sm text-red-200">{portalData.error}</p>
-        </PortalCard>
-      ) : null}
 
       {DEBUG_PORTALS ? (
         <pre className="mt-4 overflow-x-auto rounded-2xl border border-slate-900 bg-black/40 p-4 text-xs text-slate-500">
@@ -810,43 +773,6 @@ function formatQuoteId(id: string): string {
   }
 
   return id.startsWith("Q-") ? id : `#${id.slice(0, 6)}`;
-}
-
-function deriveCustomerMetrics(quotes: PortalQuote[]): WorkspaceMetric[] {
-  const submitted = quotes.length;
-  const inProgress = quotes.filter((quote) =>
-    IN_PROGRESS_STATUSES.includes(quote.status),
-  ).length;
-  const completed = quotes.filter((quote) =>
-    COMPLETED_STATUSES.includes(quote.status),
-  ).length;
-
-  return [
-    {
-      label: "Quotes submitted",
-      value: submitted,
-      helper:
-        submitted > 0
-          ? `${submitted} file${submitted === 1 ? "" : "s"} synced from ${CUSTOMER_UPLOAD_SOURCE_LABEL}`
-          : `Upload parts via ${CUSTOMER_UPLOAD_SOURCE_LABEL} to populate this workspace.`,
-    },
-    {
-      label: "Quotes in progress",
-      value: inProgress,
-      helper:
-        inProgress > 0
-          ? "In review or quoted by Zartman"
-          : "We’ll highlight live reviews here.",
-    },
-    {
-      label: "Quotes completed",
-      value: completed,
-      helper:
-        completed > 0
-          ? "Approved and ready to move forward"
-          : "Completed quotes will land once approvals happen.",
-    },
-  ];
 }
 
 function getLatestCustomerActivityTimestamp(quotes: PortalQuote[]): number | null {
