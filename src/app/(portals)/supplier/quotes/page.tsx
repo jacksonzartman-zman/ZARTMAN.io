@@ -28,6 +28,7 @@ import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import { resolveMaybePromise, type SearchParamsLike } from "@/app/(portals)/quotes/pageUtils";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
+import { SupplierFunnelBanner } from "../components/SupplierFunnelBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -311,6 +312,7 @@ export default async function SupplierQuotesPage({
         </div>
       }
     >
+      <SupplierFunnelBanner activeStep={2} />
       <PortalCard
         title="Search requests"
         description="Status, kickoff, messages, and match health at a glance."

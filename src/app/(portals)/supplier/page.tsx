@@ -33,6 +33,7 @@ import { buildSupplierInboxRows } from "./inboxRows";
 import { InvitedSupplierWelcomePanel } from "./InvitedSupplierWelcomePanel";
 import { SupplierOfferSentBanner } from "./SupplierOfferSentBanner";
 import { AwardedJobSuccessBanner } from "./AwardedJobSuccessBanner";
+import { SupplierFunnelBanner } from "./components/SupplierFunnelBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -231,10 +232,11 @@ async function SupplierDashboardPage({
         <SupplierOfferSentBanner enabled={offerJustSent} />
       </div>
       <InvitedSupplierWelcomePanel enabled={invitedJustCompleted} />
+      <SupplierFunnelBanner activeStep={1} />
       <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
         <div className="space-y-6 lg:col-span-8">
           <PortalCard
-            title="New RFQs"
+            title="Step 1 · New RFQs"
             description="RFQs waiting for your offer."
             className="border-slate-700/70 bg-slate-950/55 shadow-[0_12px_32px_rgba(2,6,23,0.32)] hover:border-slate-600/70 hover:bg-slate-950/60 hover:shadow-[0_14px_38px_rgba(2,6,23,0.38)]"
             action={
@@ -280,13 +282,13 @@ async function SupplierDashboardPage({
 
         <div className="space-y-6 lg:col-span-4">
           <PortalCard
-            title="Active jobs"
-            description="Awarded RFQs in progress."
+            title="Step 3 · Active jobs"
+            description="Awarded work in progress."
             className="border-slate-800/45 bg-slate-950/30 shadow-none hover:border-slate-700/55 hover:bg-slate-950/35 hover:shadow-[0_10px_26px_rgba(2,6,23,0.24)]"
             action={
               supplierExists ? (
                 <Link
-                  href="/supplier/quotes"
+                  href="/supplier/projects"
                   className="text-sm font-semibold text-slate-300 underline-offset-4 hover:text-white hover:underline"
                 >
                   View all

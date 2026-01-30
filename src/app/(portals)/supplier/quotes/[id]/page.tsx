@@ -99,6 +99,7 @@ import { loadOutboundFileOptions } from "@/server/quotes/outboundFilePicker";
 import { isPortalEmailSendEnabledFlag } from "@/server/quotes/emailOpsFlags";
 import type { KickoffTaskRow } from "@/components/KickoffTasksChecklist";
 import { getDemoSupplierProviderIdFromCookie } from "@/server/demo/demoSupplierProvider";
+import { SupplierFunnelBanner } from "../../components/SupplierFunnelBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -653,29 +654,33 @@ function SupplierQuoteWorkspace({
       value: supplierDisplayName,
     },
   ] as const;
+  const funnelStep = awardedToSupplier ? 3 : existingBid ? 2 : 1;
   const headerContent = (
-    <QuoteAtAGlanceBar
-      role="supplier"
-      statusLabel={derived.statusLabel}
-      whatsNext={supplierWhatsNext}
-      pills={[...supplierAtAGlancePills]}
-      primaryAction={supplierPrimaryAction}
-      below={
-        <QuoteSectionRail
-          sections={buildSupplierQuoteSections({
-            canSubmitBid,
-            existingBidStatus: existingBid?.status ?? null,
-            awardedToSupplier,
-            kickoffRatio: kickoffProgressRatioForRail,
-            kickoffComplete: kickoffProgressBasisForRail.isComplete,
-            messageCount: quoteMessages.length,
-            unreadCount: messagesUnreadCount,
-            fileCount,
-            messagesHref: buildQuoteTabHref(tabParam, "messages", "#messages"),
-          })}
-        />
-      }
-    />
+    <div className="space-y-4">
+      <SupplierFunnelBanner activeStep={funnelStep} />
+      <QuoteAtAGlanceBar
+        role="supplier"
+        statusLabel={derived.statusLabel}
+        whatsNext={supplierWhatsNext}
+        pills={[...supplierAtAGlancePills]}
+        primaryAction={supplierPrimaryAction}
+        below={
+          <QuoteSectionRail
+            sections={buildSupplierQuoteSections({
+              canSubmitBid,
+              existingBidStatus: existingBid?.status ?? null,
+              awardedToSupplier,
+              kickoffRatio: kickoffProgressRatioForRail,
+              kickoffComplete: kickoffProgressBasisForRail.isComplete,
+              messageCount: quoteMessages.length,
+              unreadCount: messagesUnreadCount,
+              fileCount,
+              messagesHref: buildQuoteTabHref(tabParam, "messages", "#messages"),
+            })}
+          />
+        }
+      />
+    </div>
   );
 
   const kickoffRequired =
