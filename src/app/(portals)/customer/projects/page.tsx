@@ -96,7 +96,7 @@ export default async function CustomerProjectsPage({
       <PortalShell
         workspace="customer"
         title="Projects"
-        subtitle="Awarded jobs in progress and history."
+        subtitle="Execution stage: awarded projects in progress and history."
       >
         <PortalCard
           title="Complete your customer profile"
@@ -187,21 +187,31 @@ export default async function CustomerProjectsPage({
     userId: user.id,
   });
 
+  function extractOriginFileLabel(projectName: string): string | null {
+    const raw = (projectName ?? "").trim();
+    if (!raw) return null;
+    if (raw.toLowerCase().startsWith("search request:")) {
+      const value = raw.slice("search request:".length).trim();
+      return value || null;
+    }
+    return null;
+  }
+
   return (
     <PortalShell
       workspace="customer"
       title="Projects"
-      subtitle="Awarded jobs in progress and history."
+      subtitle="Execution stage: awarded projects in progress and history."
     >
       <PortalCard
         title="Projects"
-        description="Track what’s happening now across awarded jobs, kickoff progress, and history."
+        description="Execution stage: kickoff progress, production status, and delivery history. Each project originates from an RFQ."
       >
         {projects.length === 0 ? (
           <EmptyStateCard
             title="No projects yet"
             description="Projects appear once you award a supplier."
-            action={{ label: "View Quotes", href: "/customer/quotes" }}
+            action={{ label: "View RFQs", href: "/customer/quotes" }}
           />
         ) : (
           <>
@@ -257,6 +267,8 @@ export default async function CustomerProjectsPage({
                       const supplierLabel = project.supplierName?.trim()
                         ? project.supplierName
                         : "Supplier pending";
+                      const originFileLabel = extractOriginFileLabel(project.projectName);
+                      const originFilesLabel = originFileLabel ?? "—";
                       const kickoff = formatKickoffStatus(project.kickoff);
                       const kickoffSubtext = project.kickoff.isComplete
                         ? "Kickoff complete"
@@ -284,11 +296,14 @@ export default async function CustomerProjectsPage({
                           <td className="px-5 py-5 align-middle">
                             <div className="flex flex-col">
                               <span className="font-medium text-slate-100">
-                                {project.projectName}
+                                {originFileLabel ?? project.projectName}
                               </span>
+                              <p className="mt-1 text-xs text-slate-500" title={originFilesLabel}>
+                                From RFQ files: {originFilesLabel}
+                              </p>
                               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                                 <span>
-                                  Quote{" "}
+                                  RFQ{" "}
                                   {project.id.startsWith("Q-")
                                     ? project.id
                                     : `#${project.id.slice(0, 6)}`}
@@ -297,7 +312,7 @@ export default async function CustomerProjectsPage({
                                   href={`/customer/quotes/${project.id}#decision`}
                                   className="font-semibold text-emerald-200 hover:underline"
                                 >
-                                  View search request
+                                  View RFQ
                                 </Link>
                               </div>
                             </div>
@@ -358,7 +373,7 @@ export default async function CustomerProjectsPage({
                                 href={`/customer/quotes/${project.id}`}
                                 className="inline-flex min-w-[9rem] items-center justify-center rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-emerald-400"
                               >
-                                View project
+                                Open project workspace
                               </Link>
                             </div>
                           </td>

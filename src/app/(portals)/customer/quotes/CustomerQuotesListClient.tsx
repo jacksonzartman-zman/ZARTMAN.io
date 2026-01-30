@@ -13,6 +13,7 @@ type CustomerQuoteRow = {
   secondaryFileName?: string;
   fallbackLabel: string;
   status: string;
+  stageLabel?: string;
   statusTone: RfqStatusTone;
   updatedLabel: string;
   updatedTitle: string;
@@ -162,8 +163,18 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                   )}
                 </div>
 
-                <div className="col-span-6 flex items-center gap-2 sm:col-span-3">
-                  <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
+                <div className="col-span-6 flex flex-col items-start gap-2 sm:col-span-3 sm:flex-row sm:items-center">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
+                      {hasNewOffers ? <NewOffersBadge /> : null}
+                    </div>
+                    {row.stageLabel ? (
+                      <p className="text-[11px] font-medium text-slate-500">
+                        {row.stageLabel}
+                      </p>
+                    ) : null}
+                  </div>
                   {row.status === "Delivered" ? (
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-xs font-medium text-slate-400">
@@ -197,7 +208,6 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                       </span>
                     </div>
                   ) : null}
-                  {hasNewOffers ? <NewOffersBadge /> : null}
                 </div>
 
                 <div className="col-span-6 flex items-center justify-end text-right sm:col-span-2">
