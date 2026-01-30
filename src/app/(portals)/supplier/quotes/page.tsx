@@ -27,6 +27,7 @@ import {
 import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import { resolveMaybePromise, type SearchParamsLike } from "@/app/(portals)/quotes/pageUtils";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 export const dynamic = "force-dynamic";
 
@@ -396,51 +397,31 @@ export default async function SupplierQuotesPage({
         </form>
 
         {approvalGateActive ? (
-          <div className="rounded-2xl border border-slate-900/70 bg-black/40 p-6">
-            <p className="text-sm font-semibold text-slate-100">
-              Search requests unlock after approval
-            </p>
-            <p className="mt-2 text-sm text-slate-400">
-              We’ll populate this list as soon as your supplier profile is approved.
-            </p>
-          </div>
+          <EmptyStateCard
+            title="Search requests unlock after approval"
+            description="We’ll populate this list as soon as your supplier profile is approved."
+            tone="info"
+            actionVariant="info"
+            action={{ label: "Back to dashboard", href: "/supplier" }}
+          />
         ) : filteredRows.length === 0 ? (
-          <div className="rounded-2xl border border-slate-900/70 bg-black/40 p-6">
-            {hasFilters ? (
-              <>
-                <p className="text-sm font-semibold text-slate-100">
-                  No search requests match these filters
-                </p>
-                <p className="mt-2 text-sm text-slate-400">
-                  Try clearing filters to see all search requests.
-                </p>
-                <div className="mt-4">
-                  <Link
-                    href="/supplier/quotes"
-                    className="inline-flex items-center rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-blue-400"
-                  >
-                    Clear filters
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-semibold text-slate-100">No search requests yet</p>
-                <p className="mt-2 text-sm text-slate-400">
-                  No search requests yet. When customers invite you to quote or we route work your
-                  way, search requests will appear here.
-                </p>
-                <div className="mt-4">
-                  <Link
-                    href="/supplier"
-                    className="inline-flex items-center rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-blue-400"
-                  >
-                    Back to dashboard
-                  </Link>
-                </div>
-              </>
-            )}
-          </div>
+          hasFilters ? (
+            <EmptyStateCard
+              title="No search requests match these filters"
+              description="Try clearing filters to see everything."
+              tone="info"
+              actionVariant="info"
+              action={{ label: "Clear filters", href: "/supplier/quotes" }}
+            />
+          ) : (
+            <EmptyStateCard
+              title="No search requests yet"
+              description="Invites and quotes will appear here as soon as you’re included."
+              tone="info"
+              actionVariant="info"
+              action={{ label: "Back to dashboard", href: "/supplier" }}
+            />
+          )
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
             <table className="min-w-full divide-y divide-slate-900/70 text-sm">

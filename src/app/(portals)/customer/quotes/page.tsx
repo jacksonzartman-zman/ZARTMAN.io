@@ -190,7 +190,7 @@ export default async function CustomerQuotesPage({
         {sortedQuotes.length === 0 ? (
           <EmptyStateCard
             title="No RFQs yet"
-            description="Upload your first part to get started. Once you submit an RFQ, it’ll show up here with status updates as offers come in."
+            description="Upload a part to start a search. We’ll keep status and offers here."
             action={
               SHOW_LEGACY_QUOTE_ENTRYPOINTS
                 ? { label: "Start a new RFQ", href: "/quote" }

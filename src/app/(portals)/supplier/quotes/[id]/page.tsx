@@ -1056,7 +1056,7 @@ function SupplierQuoteWorkspace({
         quoteId={quote.id}
         actorRole="supplier"
         actorUserId={currentUserId}
-        emptyState="No events yet. Activity will appear here as your search request progresses."
+        emptyState="No updates yet. Activity appears here as things move."
       />
     </DisclosureSection>
   );

@@ -52,7 +52,7 @@ export default async function CustomerSavedSearchesPage() {
       {!savedSearches.supported ? (
         <EmptyStateCard
           title="Saved searches unavailable"
-          description="Saved searches have not been enabled for this deployment yet."
+          description="Saved searches aren’t available in this environment yet."
           action={{ label: "View search results", href: "/customer/search" }}
         />
       ) : savedSearches.searches.length === 0 ? (

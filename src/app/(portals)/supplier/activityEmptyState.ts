@@ -22,21 +22,21 @@ export function resolveSupplierActivityEmptyState({
 
   if (reason === "assignments-disabled") {
     return {
-      title: "Workspace activity will appear here",
+      title: "Activity will appear here",
       description:
-        "We’ll show search request and bid activity once we start assigning workspaces through the marketplace.",
+        "We’ll start streaming marketplace assignments and bid updates once workspaces are enabled.",
     };
   }
 
   if (supplierExists) {
     return {
       title: "No activity yet",
-      description: "We’ll stream search request assignments and bid updates here as they happen.",
+      description: "New assignments, bids, and updates will show up here as they happen.",
     };
   }
 
   return {
-    title: "Activity unlocks after onboarding",
-    description: "Finish onboarding to start tracking search requests and bids in this feed.",
+    title: "Finish onboarding to unlock activity",
+    description: "Complete onboarding to start receiving assignments and tracking bid activity here.",
   };
 }
