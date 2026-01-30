@@ -207,10 +207,18 @@ export default async function CustomerProjectsPage({
             />
 
             {filteredProjects.length === 0 ? (
-              <EmptyStateCard
-                title="No projects match these filters"
-                description="Try switching status tabs or clearing the supplier filter."
-              />
+              status === "in_progress" && !supplierFilter ? (
+                <EmptyStateCard
+                  title="No active projects"
+                  description="You’re all caught up. When you award a supplier, active projects will appear here."
+                  action={{ label: "View completed", href: "/customer/projects?status=complete" }}
+                />
+              ) : (
+                <EmptyStateCard
+                  title="No projects match these filters"
+                  description="Try switching status tabs or clearing the supplier filter."
+                />
+              )
             ) : (
               <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
                 <table className="min-w-full divide-y divide-slate-900/70 text-sm">
