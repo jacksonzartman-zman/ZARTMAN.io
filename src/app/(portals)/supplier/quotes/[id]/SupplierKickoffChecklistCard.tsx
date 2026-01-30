@@ -14,6 +14,7 @@ import {
   type KickoffTasksChecklistUpdateResult,
 } from "@/components/KickoffTasksChecklist";
 import { updateSupplierKickoffTaskStatusAction } from "./actions";
+import PortalCard from "../../../PortalCard";
 
 type SupplierKickoffChecklistCardProps = {
   quoteId: string;
@@ -49,59 +50,51 @@ export function SupplierKickoffChecklistCard({
   }, [summary, tasks]);
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-950/60 px-6 py-5">
-      <header className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+    <PortalCard
+      title="Kickoff tasks"
+      description="Confirm timing, materials, and handoff details so the project can move forward."
+      action={
+        <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
+          {derived.totalCount > 0 ? `${derived.completedCount}/${derived.totalCount} complete` : "—"}
+        </span>
+      }
+    >
+      <div className="space-y-4">
+
+        {readOnly ? (
+          <p className="rounded-xl border border-slate-800 bg-black/30 px-4 py-2 text-xs text-slate-400">
+            Read-only: only the awarded supplier can update kickoff progress.
+          </p>
+        ) : null}
+
+        {!hasTasks ? (
+          <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-300">
+            Kickoff not ready yet. Refresh in a moment.
+          </p>
+        ) : (
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Kickoff tasks
-            </p>
-            <h2 className="text-lg font-semibold text-white">
-              Work starts now
-            </h2>
+            <KickoffTasksChecklist
+              tasks={tasks}
+              role={readOnly ? "customer" : "supplier"}
+              onUpdate={async (
+                update: KickoffTasksChecklistUpdate,
+              ): Promise<KickoffTasksChecklistUpdateResult> => {
+                const result = await updateSupplierKickoffTaskStatusAction({
+                  quoteId,
+                  taskKey: update.taskKey,
+                  status: update.status,
+                  blockedReason: update.blockedReason ?? null,
+                });
+                if (!result.ok) {
+                  return { ok: false, error: result.error };
+                }
+                router.refresh();
+                return { ok: true };
+              }}
+            />
           </div>
-          <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-xs font-semibold text-slate-200">
-            {derived.totalCount > 0 ? `${derived.completedCount}/${derived.totalCount} complete` : "—"}
-          </span>
-        </div>
-        <p className="text-sm text-slate-300">
-          Confirm timing, materials, and handoff details so the project can move forward.
-        </p>
-      </header>
-
-      {readOnly ? (
-        <p className="mt-3 rounded-xl border border-slate-800 bg-black/30 px-4 py-2 text-xs text-slate-400">
-          Read-only: only the awarded supplier can update kickoff progress.
-        </p>
-      ) : null}
-
-      {!hasTasks ? (
-        <p className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-300">
-          Kickoff not ready yet. Refresh in a moment.
-        </p>
-      ) : (
-        <div className="mt-4">
-          <KickoffTasksChecklist
-            tasks={tasks}
-            role={readOnly ? "customer" : "supplier"}
-            onUpdate={async (
-              update: KickoffTasksChecklistUpdate,
-            ): Promise<KickoffTasksChecklistUpdateResult> => {
-              const result = await updateSupplierKickoffTaskStatusAction({
-                quoteId,
-                taskKey: update.taskKey,
-                status: update.status,
-                blockedReason: update.blockedReason ?? null,
-              });
-              if (!result.ok) {
-                return { ok: false, error: result.error };
-              }
-              router.refresh();
-              return { ok: true };
-            }}
-          />
-        </div>
-      )}
-    </section>
+        )}
+      </div>
+    </PortalCard>
   );
 }

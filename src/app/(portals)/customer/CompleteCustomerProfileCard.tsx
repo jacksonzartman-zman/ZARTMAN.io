@@ -3,6 +3,7 @@
 import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
+import PortalCard from "../PortalCard";
 import {
   completeCustomerProfileAction,
   type CompleteCustomerProfileActionState,
@@ -44,17 +45,11 @@ export function CompleteCustomerProfileCard({
   }, [state.ok, router]);
 
   return (
-    <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
-      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300">
-        Customer profile
-      </p>
-      <h2 className="mt-2 text-2xl font-semibold text-white">Complete your workspace</h2>
-      <p className="mt-1 text-sm text-slate-400">
-        Share the basics about your company so we can link search requests, quotes, and future
-        orders to your account.
-      </p>
-
-      <form action={formAction} className="mt-6 space-y-4">
+    <PortalCard
+      title="Complete your workspace"
+      description="Share the basics about your company so we can link search requests, quotes, and future orders to your account."
+    >
+      <form action={formAction} className="space-y-4">
         <div>
           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Company name
@@ -84,7 +79,7 @@ export function CompleteCustomerProfileCard({
         ) : null}
         <SubmitButton />
       </form>
-    </section>
+    </PortalCard>
   );
 }
 

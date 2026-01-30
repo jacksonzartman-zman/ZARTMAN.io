@@ -2,6 +2,7 @@
 
 import clsx from "clsx";
 import { useMemo, useState } from "react";
+import PortalCard from "../../PortalCard";
 
 type SearchAlertOptInCardProps = {
   quoteId: string;
@@ -50,20 +51,12 @@ export function SearchAlertOptInCard({
         : "Search alerts are off. You can enable them anytime.");
 
   return (
-    <section className="rounded-2xl border border-slate-900/60 bg-slate-950/40 px-5 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Search alerts
-          </p>
-          <p className="mt-1 text-xs text-slate-400">{helper}</p>
-        </div>
-        <span className={clsx(STATUS_PILL_CLASSES, statusClasses)}>
-          {statusLabel}
-        </span>
-      </div>
-
-      <label className="mt-4 flex items-start gap-3 text-sm text-slate-200">
+    <PortalCard
+      title="Search alerts"
+      description={helper}
+      action={<span className={clsx(STATUS_PILL_CLASSES, statusClasses)}>{statusLabel}</span>}
+    >
+      <label className="flex items-start gap-3 text-sm text-slate-200">
         <input
           type="checkbox"
           className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-400 focus:ring-emerald-300"
@@ -145,6 +138,6 @@ export function SearchAlertOptInCard({
           {confirmationMessage}
         </p>
       ) : null}
-    </section>
+    </PortalCard>
   );
 }

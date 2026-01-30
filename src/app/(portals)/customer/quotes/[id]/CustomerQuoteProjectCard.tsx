@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 import type { QuoteProjectRecord } from "@/server/quotes/projects";
+import PortalCard from "../../../PortalCard";
 import {
   submitCustomerQuoteProjectAction,
   type CustomerProjectFormState,
@@ -61,142 +62,135 @@ export function CustomerQuoteProjectCard({
   };
 
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-900 bg-slate-950/40 p-4">
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Project kickoff
-        </p>
-        <h2 className="text-lg font-semibold text-white">
-          PO details & target dates
-        </h2>
-        <p className="text-sm text-slate-300">
-          Share your PO number, target ship date, and kickoff notes once this search request is
-          awarded.
-        </p>
-      </header>
+    <PortalCard
+      title="PO details & target dates"
+      description="Share your PO number, target ship date, and kickoff notes once this search request is awarded."
+    >
+      <div className="space-y-4">
 
-      {projectUnavailable ? (
-        <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-100">
-          Project details are temporarily unavailable.
-        </p>
-      ) : null}
+        {projectUnavailable ? (
+          <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-100">
+            Project details are temporarily unavailable.
+          </p>
+        ) : null}
 
-      <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
-        <SummaryItem
-          label="PO number"
-          value={project?.po_number ?? null}
-          placeholder="Pending"
-        />
-        <SummaryItem
-          label="Target ship date"
-          value={targetShipDateLabel}
-          placeholder="Not set"
-        />
-        <SummaryItem
-          label="Kickoff notes"
-          value={project?.notes ?? null}
-          placeholder="No kickoff notes yet."
-          multiline
-          className="sm:col-span-2"
-        />
-      </dl>
+        <dl className="grid gap-3 text-sm text-slate-200 sm:grid-cols-2">
+          <SummaryItem
+            label="PO number"
+            value={project?.po_number ?? null}
+            placeholder="Pending"
+          />
+          <SummaryItem
+            label="Target ship date"
+            value={targetShipDateLabel}
+            placeholder="Not set"
+          />
+          <SummaryItem
+            label="Kickoff notes"
+            value={project?.notes ?? null}
+            placeholder="No kickoff notes yet."
+            multiline
+            className="sm:col-span-2"
+          />
+        </dl>
 
-      {readOnly ? (
-        <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/40 px-3 py-2 text-xs text-slate-400">
-          Read-only preview. Switch back to your primary email to edit project details.
-        </p>
-      ) : (
-        <form action={handleSubmit} className="space-y-3">
-          {showEmptyState ? (
-            <p className="text-xs text-slate-400">
-              No project kickoff details saved yet. Add your PO number, target ship date,
-              and any handoff notes when you are ready.
-            </p>
-          ) : null}
-          {showSuccess && state.message ? (
-            <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
-              {state.message}
-            </p>
-          ) : null}
-          {showError && state.error ? (
-            <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-              {state.error}
-            </p>
-          ) : null}
-          <div className="space-y-1">
-            <label
-              htmlFor="customer-project-po"
-              className="text-sm font-medium text-slate-200"
-            >
-              Purchase order number
-            </label>
-            <input
-              id="customer-project-po"
-              name="poNumber"
-              type="text"
-              maxLength={100}
-              defaultValue={project?.po_number ?? ""}
-              disabled={disabled}
-              className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-              placeholder="PO-12345"
-            />
-            {showFieldErrors && state.fieldErrors.poNumber ? (
-              <p className="text-sm text-red-300" role="alert">
-                {state.fieldErrors.poNumber}
+        {readOnly ? (
+          <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/40 px-3 py-2 text-xs text-slate-400">
+            Read-only preview. Switch back to your primary email to edit project details.
+          </p>
+        ) : (
+          <form action={handleSubmit} className="space-y-3">
+            {showEmptyState ? (
+              <p className="text-xs text-slate-400">
+                No project kickoff details saved yet. Add your PO number, target ship date,
+                and any handoff notes when you are ready.
               </p>
             ) : null}
-          </div>
-          <div className="space-y-1">
-            <label
-              htmlFor="customer-project-target-date"
-              className="text-sm font-medium text-slate-200"
-            >
-              Target ship date
-            </label>
-            <input
-              id="customer-project-target-date"
-              name="targetShipDate"
-              type="date"
-              defaultValue={targetShipDateValue}
-              disabled={disabled}
-              className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-            />
-            {showFieldErrors && state.fieldErrors.targetShipDate ? (
-              <p className="text-sm text-red-300" role="alert">
-                {state.fieldErrors.targetShipDate}
+            {showSuccess && state.message ? (
+              <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+                {state.message}
               </p>
             ) : null}
-          </div>
-          <div className="space-y-1">
-            <label
-              htmlFor="customer-project-notes"
-              className="text-sm font-medium text-slate-200"
-            >
-              Kickoff notes
-            </label>
-            <textarea
-              id="customer-project-notes"
-              name="notes"
-              rows={4}
-              defaultValue={notesValue}
-              maxLength={2000}
-              disabled={disabled}
-              className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-              placeholder="Share packaging, address, or special handling notes."
-            />
-            <p className="text-xs text-slate-500">
-              Shared with your Zartman team and the winning supplier.
-            </p>
-            {showFieldErrors && state.fieldErrors.notes ? (
-              <p className="text-sm text-red-300" role="alert">
-                {state.fieldErrors.notes}
+            {showError && state.error ? (
+              <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                {state.error}
               </p>
             ) : null}
-          </div>
-          <ProjectSubmitButton disabled={disabled} />
-        </form>
-      )}
-    </section>
+            <div className="space-y-1">
+              <label
+                htmlFor="customer-project-po"
+                className="text-sm font-medium text-slate-200"
+              >
+                Purchase order number
+              </label>
+              <input
+                id="customer-project-po"
+                name="poNumber"
+                type="text"
+                maxLength={100}
+                defaultValue={project?.po_number ?? ""}
+                disabled={disabled}
+                className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder="PO-12345"
+              />
+              {showFieldErrors && state.fieldErrors.poNumber ? (
+                <p className="text-sm text-red-300" role="alert">
+                  {state.fieldErrors.poNumber}
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-1">
+              <label
+                htmlFor="customer-project-target-date"
+                className="text-sm font-medium text-slate-200"
+              >
+                Target ship date
+              </label>
+              <input
+                id="customer-project-target-date"
+                name="targetShipDate"
+                type="date"
+                defaultValue={targetShipDateValue}
+                disabled={disabled}
+                className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              {showFieldErrors && state.fieldErrors.targetShipDate ? (
+                <p className="text-sm text-red-300" role="alert">
+                  {state.fieldErrors.targetShipDate}
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-1">
+              <label
+                htmlFor="customer-project-notes"
+                className="text-sm font-medium text-slate-200"
+              >
+                Kickoff notes
+              </label>
+              <textarea
+                id="customer-project-notes"
+                name="notes"
+                rows={4}
+                defaultValue={notesValue}
+                maxLength={2000}
+                disabled={disabled}
+                className="w-full rounded-lg border border-slate-800 bg-black/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                placeholder="Share packaging, address, or special handling notes."
+              />
+              <p className="text-xs text-slate-500">
+                Shared with your Zartman team and the winning supplier.
+              </p>
+              {showFieldErrors && state.fieldErrors.notes ? (
+                <p className="text-sm text-red-300" role="alert">
+                  {state.fieldErrors.notes}
+                </p>
+              ) : null}
+            </div>
+            <ProjectSubmitButton disabled={disabled} />
+          </form>
+        )}
+      </div>
+    </PortalCard>
   );
 }
 
