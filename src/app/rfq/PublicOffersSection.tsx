@@ -34,6 +34,7 @@ type PublicOffersSectionProps = {
   quoteStatus: string | null;
   normalizedStatus: string;
   intakeKey: string;
+  quoteCreatedAt: string | null;
   primaryFileName: string | null;
   manufacturingProcesses: ManufacturingProcessKey[];
   initialOffersCount: number;
@@ -50,6 +51,7 @@ const POLL_FAST_INTERVAL_MS = 2000;
 const POLL_FAST_PHASE_MS = 60 * 1000;
 const POLL_MAX_MS = 10 * 60 * 1000;
 const TERMINAL_STATUSES = new Set(["won", "lost", "cancelled"]);
+const IDLE_NUDGE_AFTER_MS = 30 * 60 * 1000;
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -75,6 +77,7 @@ export function PublicOffersSection({
   quoteStatus,
   normalizedStatus,
   intakeKey,
+  quoteCreatedAt,
   primaryFileName,
   manufacturingProcesses,
   initialOffersCount,
@@ -119,6 +122,37 @@ export function PublicOffersSection({
   const hasOffers = offersCount > 0;
   const isLoggedIn = claimState !== "anon";
   const showNotifyRow = !isTerminal && (!hasOffers || isLoggedIn);
+
+  const quoteCreatedAtMs = useMemo(() => {
+    const raw = typeof quoteCreatedAt === "string" ? quoteCreatedAt.trim() : "";
+    if (!raw) return null;
+    const parsed = Date.parse(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, [quoteCreatedAt]);
+
+  const [idleNudgeEligible, setIdleNudgeEligible] = useState(() => {
+    if (!quoteCreatedAtMs) return false;
+    return Date.now() - quoteCreatedAtMs >= IDLE_NUDGE_AFTER_MS;
+  });
+
+  useEffect(() => {
+    if (hasOffers) {
+      setIdleNudgeEligible(false);
+      return;
+    }
+    if (!quoteCreatedAtMs) return;
+    const elapsed = Date.now() - quoteCreatedAtMs;
+    if (elapsed >= IDLE_NUDGE_AFTER_MS) {
+      setIdleNudgeEligible(true);
+      return;
+    }
+
+    const remaining = IDLE_NUDGE_AFTER_MS - elapsed;
+    const t = window.setTimeout(() => setIdleNudgeEligible(true), remaining);
+    return () => window.clearTimeout(t);
+  }, [hasOffers, quoteCreatedAtMs]);
+
+  const showIdleNudge = !isTerminal && !hasOffers && idleNudgeEligible;
 
   const journey = useMemo(() => {
     const normalized = (currentNormalizedStatus ?? "").trim().toLowerCase();
@@ -380,6 +414,27 @@ export function PublicOffersSection({
         <p className="text-sm text-ink-muted">{journey.subhead}</p>
         {!hasOffers && !isTerminal && suppliersReviewing ? (
           <p className="text-xs text-ink-soft">Suppliers are reviewing your RFQ.</p>
+        ) : null}
+        {showIdleNudge ? (
+          <p className="text-xs text-ink-soft">
+            No offers yet — adjusting specs can improve matching.{" "}
+            <a
+              href="#quick-specs"
+              className="text-ink-muted underline underline-offset-4 hover:text-ink"
+              onClick={(e) => {
+                // Smooth-scroll to Quick Specs (no navigation / no button styling).
+                e.preventDefault();
+                const el = document.getElementById("quick-specs");
+                if (!el) return;
+                el.scrollIntoView({
+                  behavior: prefersReducedMotion ? "auto" : "smooth",
+                  block: "start",
+                });
+              }}
+            >
+              Edit specs
+            </a>
+          </p>
         ) : null}
       </header>
 

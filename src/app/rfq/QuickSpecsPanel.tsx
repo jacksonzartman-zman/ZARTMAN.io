@@ -324,7 +324,10 @@ export function QuickSpecsPanel({ quoteId, intakeKey, primaryFileName, initialOf
   }
 
   return (
-    <section className="rounded-3xl border border-slate-900/50 bg-slate-950/35 p-5 shadow-[0_18px_50px_rgba(2,6,23,0.28)]">
+    <section
+      id="quick-specs"
+      className="scroll-mt-24 rounded-3xl border border-slate-900/50 bg-slate-950/35 p-5 shadow-[0_18px_50px_rgba(2,6,23,0.28)]"
+    >
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1.5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-ink-soft/90">
