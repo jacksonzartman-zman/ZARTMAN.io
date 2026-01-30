@@ -28,6 +28,7 @@ export type SupplierQuoteListRow = {
   hasAward: boolean;
   isAwardedToSupplier: boolean;
   awardedAt: string | null;
+  lastBidAt: string | null;
   kickoffStatus: "not_started" | "in_progress" | "complete" | "n/a";
   bidsCount: number | null;
   unreadMessagesCount: number;
@@ -376,6 +377,7 @@ export async function loadSupplierQuotesList(
       hasAward,
       isAwardedToSupplier,
       awardedAt: rfqAward?.awarded_at ?? quote.awarded_at ?? null,
+      lastBidAt,
       kickoffStatus,
       bidsCount: null,
       unreadMessagesCount: Math.max(0, Math.floor(unread)),
