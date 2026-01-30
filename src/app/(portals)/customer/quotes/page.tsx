@@ -81,6 +81,13 @@ function formatUpdatedAt(value: string | null): string {
   return label ?? "—";
 }
 
+function getProjectStageLabel(status: string): string | null {
+  if (status === "Awarded") return "Converted to project";
+  if (status === "In production") return "Now in production";
+  if (status === "Delivered") return "Project delivered";
+  return null;
+}
+
 type CustomerQuoteRow = {
   id: string;
   href: string;
@@ -88,6 +95,7 @@ type CustomerQuoteRow = {
   secondaryFileName?: string;
   fallbackLabel: string;
   status: string;
+  stageLabel?: string;
   statusTone: RfqStatusTone;
   updatedLabel: string;
   updatedTitle: string;
@@ -161,6 +169,7 @@ export default async function CustomerQuotesPage({
       secondaryFileName: files.secondary,
       fallbackLabel: quote.rfqLabel,
       status,
+      stageLabel: getProjectStageLabel(status) ?? undefined,
       statusTone: getStatusTone(status),
       updatedLabel: formatUpdatedAt(updatedAt),
       updatedTitle: updatedAt,
@@ -171,7 +180,7 @@ export default async function CustomerQuotesPage({
     <PortalShell
       workspace="customer"
       title="RFQ history"
-      subtitle="A simple list of your submitted RFQs, newest first."
+      subtitle="Intake stage: submitted RFQs, newest first. Awarded RFQs continue as Projects."
       actions={
         SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
           <Link
@@ -185,7 +194,7 @@ export default async function CustomerQuotesPage({
     >
       <PortalCard
         title="RFQs"
-        description="File names, current status, and latest update."
+        description="Intake stage: file names, current status, and latest update. Awarded RFQs appear under Projects."
       >
         {sortedQuotes.length === 0 ? (
           <EmptyStateCard
