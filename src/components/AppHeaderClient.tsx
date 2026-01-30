@@ -46,7 +46,6 @@ const CUSTOMER_MORE_LINKS: PortalNavLink[] = [
 ];
 
 const SUPPLIER_MORE_LINKS: PortalNavLink[] = [
-  { label: "RFQs", href: "/supplier/quotes" },
   { label: "Projects", href: "/supplier/projects" },
   { label: "Notifications", href: "/supplier/notifications" },
   { label: "Decisions", href: "/supplier/decisions" },
