@@ -234,6 +234,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
             quoteStatus={quote.status ?? null}
             normalizedStatus={normalizedStatus}
             intakeKey={intakeKey}
+            quoteCreatedAt={quote.created_at ?? null}
             primaryFileName={primaryFileName}
             manufacturingProcesses={initialProcesses}
             initialOffersCount={offersCount}
