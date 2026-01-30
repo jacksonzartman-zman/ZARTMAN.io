@@ -166,6 +166,24 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
 
   const performance = await getRfqPerformanceFeedback(quote.id, { skipEvents: offersCount === 0 });
 
+  // Customer-facing feedback: show when any destination has been viewed (only before offers arrive).
+  // Fail-soft if schema is missing or query errors.
+  let initialSuppliersReviewing = false;
+  if (offersCount === 0) {
+    try {
+      const { count, error } = await supabaseServer()
+        .from("rfq_destinations")
+        .select("id", { count: "exact", head: true })
+        .eq("rfq_id", quote.id)
+        .eq("status", "viewed");
+      if (!error && typeof count === "number" && Number.isFinite(count) && count > 0) {
+        initialSuppliersReviewing = true;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   // Optional: if a project has been created after award, use it to show "In progress".
   // Fail-soft if schema is missing or query errors.
   try {
@@ -222,6 +240,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
             initialOffers={initialOfferDtos}
             initialProjectStatus={projectStatus}
             initialPerformance={performance}
+            initialSuppliersReviewing={initialSuppliersReviewing}
             claimState={claimState}
             loginNextPath={`/rfq?quote=${encodeURIComponent(quote.id)}&key=${encodeURIComponent(
               intakeKey,

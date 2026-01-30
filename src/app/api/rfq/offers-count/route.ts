@@ -92,6 +92,24 @@ export async function GET(req: Request) {
   const summary = summarizeRfqOffers(offers);
   const nonWithdrawnOffers = offers.filter((offer) => !isRfqOfferWithdrawn(offer.status));
 
+  // Customer feedback: show when any destination has been viewed (only relevant before offers arrive).
+  // Fail-soft if schema is missing or query errors.
+  let suppliersReviewing = false;
+  if (summary.nonWithdrawn === 0) {
+    try {
+      const { count, error } = await client
+        .from("rfq_destinations")
+        .select("id", { count: "exact", head: true })
+        .eq("rfq_id", quote.id)
+        .eq("status", "viewed");
+      if (!error && typeof count === "number" && Number.isFinite(count) && count > 0) {
+        suppliersReviewing = true;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const highlights = pickPublicOfferHighlights(nonWithdrawnOffers);
   const payloadOffers: OfferCardDto[] = nonWithdrawnOffers.map((offer) => ({
     id: offer.id,
@@ -140,6 +158,7 @@ export async function GET(req: Request) {
       normalizedStatus: normalizeQuoteStatus(quote.status ?? undefined),
       offersCount: summary.nonWithdrawn,
       offers: payloadOffers,
+      suppliersReviewing,
       projectStatus,
       performance,
     },
