@@ -28,10 +28,10 @@ const ROLE_BADGE_CLASSES: Record<PortalRole, string> = {
 
 const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
   customer: [
-    { label: "Search", href: "/customer/search" },
-    { label: "Saved searches", href: "/customer/saved" },
-    { label: "Quotes", href: "/customer/quotes" },
-    { label: "Account", href: "/customer/settings" },
+    { label: "RFQs", href: "/customer/quotes" },
+    { label: "Projects", href: "/customer/projects" },
+    { label: "Messages", href: "/customer/messages" },
+    { label: "Settings", href: "/customer/settings" },
   ],
   supplier: [
     { label: "Dashboard", href: "/supplier" },
@@ -43,6 +43,11 @@ const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
     { label: "Settings", href: "/supplier/settings" },
   ],
 };
+
+const CUSTOMER_MORE_LINKS: PortalNavLink[] = [
+  { label: "Search", href: "/customer/search" },
+  { label: "Saved searches", href: "/customer/saved" },
+];
 
 export type AppHeaderClientProps = {
   user: HeaderUser | null;
@@ -58,6 +63,8 @@ export default function AppHeaderClient({
   const pathname = usePathname() ?? "/";
   const role = useMemo(() => deriveRoleFromPath(pathname), [pathname]);
   const navLinks: PortalNavLink[] = role ? NAV_LINKS[role] : [];
+  const moreLinks: PortalNavLink[] =
+    role === "customer" ? CUSTOMER_MORE_LINKS : [];
   const navLinksWithBadges = navLinks.map((link) => {
     const showBadge =
       role === "supplier" &&
@@ -79,12 +86,20 @@ export default function AppHeaderClient({
     };
   });
 
+  const brandHref =
+    role === "customer"
+      ? "/customer/quotes"
+      : role === "supplier"
+        ? "/supplier"
+        : "/";
+
   return (
     <header className="sticky top-0 z-40 border-b border-slate-900/70 bg-neutral-950/95 backdrop-blur">
       <div className="mx-auto flex w-full max-w-page flex-col gap-3 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <BrandMark
+              href={brandHref}
               withWordmark
               subLabel="Workspace"
               size={32}
@@ -137,7 +152,11 @@ export default function AppHeaderClient({
         </div>
 
         {user && navLinksWithBadges.length > 0 ? (
-          <PortalNavTabs links={navLinksWithBadges} currentPath={pathname} />
+          <PortalNavTabs
+            links={navLinksWithBadges}
+            moreLinks={moreLinks}
+            currentPath={pathname}
+          />
         ) : null}
       </div>
     </header>
