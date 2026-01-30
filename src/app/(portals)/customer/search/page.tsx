@@ -194,11 +194,13 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             updatedAt: data.updated_at ?? null,
             rfqLabel: "Shared search request",
             status: (data.status ?? "Submitted").trim() || "Submitted",
+            rfqHistoryStatus: "Waiting on offers",
             hasWinner: false,
             award: null,
             kickoffStatus: "n/a",
             bidsCount: 0,
             primaryFileName: data.file_name ?? null,
+            fileNames: data.file_name ? [data.file_name] : [],
             bestPriceAmount: null,
             bestPriceCurrency: null,
             bestLeadTimeDays: null,
@@ -253,12 +255,20 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           (typeof rfqAward?.provider_id === "string" && rfqAward.provider_id.trim()
             ? `Provider ${rfqAward.provider_id.trim().slice(0, 6)}`
             : "Provider");
+        const fileNames = Array.from(
+          new Set(
+            (workspaceData.quote.files ?? [])
+              .map((file) => (typeof file?.filename === "string" ? file.filename.trim() : ""))
+              .filter(Boolean),
+          ),
+        );
         activeQuote = {
           id: workspaceData.quote.id,
           createdAt,
           updatedAt,
           rfqLabel: "Search request",
           status: (workspaceData.quote.status ?? "Submitted").trim() || "Submitted",
+          rfqHistoryStatus: rfqAward ? "Awarded" : "Waiting on offers",
           hasWinner: Boolean(rfqAward),
           award: rfqAward
             ? {
@@ -273,6 +283,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           kickoffStatus: "n/a",
           bidsCount: 0,
           primaryFileName: fileName,
+          fileNames: fileNames.length > 0 ? fileNames : fileName ? [fileName] : [],
           bestPriceAmount: null,
           bestPriceCurrency: null,
           bestLeadTimeDays: null,

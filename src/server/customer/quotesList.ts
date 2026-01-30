@@ -22,6 +22,7 @@ export type CustomerQuoteListRow = {
   updatedAt: string | null;
   rfqLabel: string; // short description/title
   status: string; // reuse existing quote status helper labels
+  rfqHistoryStatus: CustomerRfqHistoryStatus;
   hasWinner: boolean;
   award:
     | {
@@ -36,6 +37,7 @@ export type CustomerQuoteListRow = {
   kickoffStatus: "not_started" | "in_progress" | "complete" | "n/a";
   bidsCount: number;
   primaryFileName: string | null;
+  fileNames: string[];
   bestPriceAmount: number | null;
   bestPriceCurrency: string | null;
   bestLeadTimeDays: number | null;
@@ -45,6 +47,13 @@ export type CustomerQuoteListRow = {
   unreadMessagesCount: number;
   lastActivityAt: string | null;
 };
+
+export type CustomerRfqHistoryStatus =
+  | "Waiting on offers"
+  | "Offers ready"
+  | "Awarded"
+  | "In production"
+  | "Delivered";
 
 export type CustomerQuotesListFilters = {
   status?: string; // e.g. "open" | "awarded" | "closed"
@@ -119,6 +128,44 @@ function maxIsoTimestamp(values: Array<string | null | undefined>): string | nul
     }
   }
   return best;
+}
+
+function normalizeOpsStatus(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function deriveRfqHistoryStatus(input: {
+  hasWinner: boolean;
+  bidsCount: number;
+  opsStatus: string | null;
+}): CustomerRfqHistoryStatus {
+  const ops = normalizeOpsStatus(input.opsStatus);
+
+  if (ops) {
+    // Delivered buckets.
+    if (["delivered", "shipped", "completed", "complete"].includes(ops)) {
+      return "Delivered";
+    }
+    // In production buckets.
+    if (
+      [
+        "in_production",
+        "in production",
+        "production",
+        "manufacturing",
+        "building",
+        "in_build",
+      ].includes(ops)
+    ) {
+      return "In production";
+    }
+  }
+
+  if (input.hasWinner) return "Awarded";
+  if (input.bidsCount > 0) return "Offers ready";
+  return "Waiting on offers";
 }
 
 type KickoffTotals = { total: number; completed: number };
@@ -206,6 +253,7 @@ export async function loadCustomerQuotesList(
   const lastEventAtByQuoteId = await loadLastCustomerVisibleEventAtByQuoteId(quoteIds);
 
   const kickoffCompletedAtByQuoteId = await loadKickoffCompletedAtByQuoteId(quoteIds);
+  const opsStatusByQuoteId = await loadOpsStatusByQuoteId(quoteIds);
   const kickoffTotalsByKey = await loadKickoffTotalsByWinnerSupplier(quoteRows);
 
   const statusFilter = normalizeFilterText(filters?.status);
@@ -229,10 +277,19 @@ export async function loadCustomerQuotesList(
       const rfqAward = rfqAwardsByQuoteId.get(quote.id) ?? null;
       const hasWinner = isWinnerQuote(quote) || Boolean(rfqAward);
       const bidsCount = aggregate?.bidCount ?? 0;
+      const opsStatus = opsStatusByQuoteId.get(quote.id) ?? null;
+      const rfqHistoryStatus = deriveRfqHistoryStatus({ hasWinner, bidsCount, opsStatus });
       const primaryFileName =
         typeof files[0]?.filename === "string" && files[0].filename.trim().length > 0
           ? files[0].filename.trim()
           : null;
+      const fileNames = Array.from(
+        new Set(
+          files
+            .map((file) => (typeof file?.filename === "string" ? file.filename.trim() : ""))
+            .filter(Boolean),
+        ),
+      );
       const bestPriceAmount = aggregate?.bestPriceAmount ?? null;
       const bestPriceCurrency = aggregate?.bestPriceCurrency ?? null;
       const bestLeadTimeDays = aggregate?.fastestLeadTimeDays ?? null;
@@ -276,6 +333,7 @@ export async function loadCustomerQuotesList(
         updatedAt: quote.updated_at ?? null,
         rfqLabel,
         status: statusMeta.label,
+        rfqHistoryStatus,
         hasWinner,
         award: rfqAward
           ? {
@@ -290,6 +348,7 @@ export async function loadCustomerQuotesList(
         kickoffStatus,
         bidsCount,
         primaryFileName,
+        fileNames,
         bestPriceAmount,
         bestPriceCurrency,
         bestLeadTimeDays,
@@ -518,6 +577,55 @@ async function loadKickoffCompletedAtByQuoteId(
       return map;
     }
     console.error("[customer quotes list] kickoff_completed_at query crashed", {
+      quoteIdsCount: ids.length,
+      error: serializeSupabaseError(error) ?? error,
+    });
+  }
+
+  return map;
+}
+
+async function loadOpsStatusByQuoteId(
+  quoteIds: string[],
+): Promise<Map<string, string | null>> {
+  const map = new Map<string, string | null>();
+  const ids = (Array.isArray(quoteIds) ? quoteIds : []).map((id) => normalizeId(id)).filter(Boolean);
+  if (ids.length === 0) return map;
+
+  for (const id of ids) {
+    map.set(id, null);
+  }
+
+  try {
+    const { data, error } = await supabaseServer()
+      .from("quotes")
+      .select("id,ops_status")
+      .in("id", ids)
+      .returns<{ id: string; ops_status?: string | null }[]>();
+    if (error) {
+      if (isMissingTableOrColumnError(error)) {
+        return map;
+      }
+      console.error("[customer quotes list] ops_status query failed", {
+        quoteIdsCount: ids.length,
+        error: serializeSupabaseError(error) ?? error,
+      });
+      return map;
+    }
+    for (const row of data ?? []) {
+      const id = normalizeId(row.id);
+      if (!id) continue;
+      const value =
+        typeof row.ops_status === "string" && row.ops_status.trim()
+          ? row.ops_status
+          : null;
+      map.set(id, value);
+    }
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) {
+      return map;
+    }
+    console.error("[customer quotes list] ops_status query crashed", {
       quoteIdsCount: ids.length,
       error: serializeSupabaseError(error) ?? error,
     });
