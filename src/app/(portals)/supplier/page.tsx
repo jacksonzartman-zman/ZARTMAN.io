@@ -11,6 +11,7 @@ import { getServerAuthUser } from "@/server/auth";
 import { approvalsEnabled } from "@/server/suppliers/flags";
 import { loadSupplierOnboardingState } from "@/server/suppliers/onboarding";
 import { refreshNotificationsForUser } from "@/server/notifications";
+import { getDemoSupplierProviderIdFromCookie } from "@/server/demo/demoSupplierProvider";
 import {
   getSupplierApprovalStatus,
   loadSupplierInboxBidAggregates,
@@ -151,18 +152,14 @@ async function SupplierDashboardPage({
     supplier && matchQuoteIds.length > 0
       ? await loadSupplierInboxBidAggregates(supplier.id, matchQuoteIds)
       : {};
-  const supplierInboxRows = buildSupplierInboxRows({
-    matches: matchesData,
-    bidAggregates,
-    capabilities: profile?.capabilities ?? [],
-  });
-  const newRfqs = supplierInboxRows.filter((row) => row.supplierBidState === "no_bid");
-  const matchesUnavailable = supplierExists && !matchesResult.ok;
 
   let quotesList: Awaited<ReturnType<typeof loadSupplierQuotesList>> = [];
   if (supplier) {
     try {
-      quotesList = await loadSupplierQuotesList(user.id);
+      const demoProviderId = await getDemoSupplierProviderIdFromCookie();
+      quotesList = await loadSupplierQuotesList(user.id, {
+        providerIdOverride: demoProviderId,
+      });
     } catch (error) {
       console.error("[supplier dashboard] quotes list load failed", {
         supplierId: supplier.id,
@@ -171,6 +168,21 @@ async function SupplierDashboardPage({
       quotesList = [];
     }
   }
+
+  // Align the dashboard “New RFQs” scope with the supplier quotes list scope.
+  // This avoids routing to RFQs that appear in the match feed but are not actually
+  // accessible for this supplier (which would surface “Not invited to this RFQ”).
+  const visibleQuoteIds = new Set(quotesList.map((row) => row.quoteId));
+
+  const supplierInboxRows = buildSupplierInboxRows({
+    matches: matchesData,
+    bidAggregates,
+    capabilities: profile?.capabilities ?? [],
+  });
+  const newRfqs = supplierInboxRows.filter(
+    (row) => row.supplierBidState === "no_bid" && visibleQuoteIds.has(row.quoteId),
+  );
+  const matchesUnavailable = supplierExists && !matchesResult.ok;
 
   const activeJobs = quotesList
     .filter((row) => row.isAwardedToSupplier)
