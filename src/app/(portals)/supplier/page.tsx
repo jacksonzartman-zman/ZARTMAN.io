@@ -289,7 +289,6 @@ async function SupplierDashboardPage({
                 </Link>
               ) : null
             }
-            className="py-6"
           >
             {isApprovalGateActive(approvalGate) ? (
               <EmptyStateNotice
@@ -335,7 +334,6 @@ async function SupplierDashboardPage({
                 </Link>
               ) : null
             }
-            className="shadow-none hover:translate-y-0 hover:shadow-none"
           >
             {supplierExists && activeJobs.length > 0 ? (
               <ActiveJobsTable rows={activeJobs.slice(0, 10)} />
@@ -364,7 +362,6 @@ async function SupplierDashboardPage({
             <PortalCard
               title="Quick setup"
               description="Two steps to ensure you receive the right RFQs."
-              className="shadow-none hover:translate-y-0 hover:shadow-none"
             >
               <ul className="space-y-2 text-sm">
                 {!hasCapabilities ? (
@@ -402,7 +399,6 @@ async function SupplierDashboardPage({
                   Update processes
                 </Link>
               }
-              className="py-4 shadow-none hover:translate-y-0 hover:shadow-none"
             />
           ) : null}
 
@@ -410,7 +406,6 @@ async function SupplierDashboardPage({
             <PortalCard
               title="Status"
               description="Your supplier profile is pending review."
-              className="shadow-none hover:translate-y-0 hover:shadow-none"
             >
               <p className="text-sm text-slate-300">
                 You can keep updating your profile. New RFQs will start flowing once you’re approved.
@@ -419,14 +414,14 @@ async function SupplierDashboardPage({
           ) : null}
 
           {onboardingJustCompleted ? (
-            <PortalCard title="Profile updated" className="shadow-none hover:translate-y-0 hover:shadow-none">
+            <PortalCard title="Profile updated">
               <p className="text-sm text-slate-300">
                 Profile updated! We’ll start routing matched RFQs to you automatically.
               </p>
             </PortalCard>
           ) : null}
           {inviteJustAccepted ? (
-            <PortalCard title="Invite accepted" className="shadow-none hover:translate-y-0 hover:shadow-none">
+            <PortalCard title="Invite accepted">
               <p className="text-sm text-slate-300">
                 Invite accepted! You’re now part of this supplier workspace.
               </p>
