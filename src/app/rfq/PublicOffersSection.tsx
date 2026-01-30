@@ -9,6 +9,7 @@ import { NotifyMePanel } from "./NotifyMePanel";
 import { RfqJourneyStepper } from "./RfqJourneyStepper";
 import { RfqNextStepsPanel } from "./RfqNextStepsPanel";
 import { PublicOfferCard } from "./PublicOfferCard";
+import { normalizeCustomerOpsStatusStep } from "@/lib/quote/customerOpsStatus";
 import type { RfqPerformanceFeedback } from "@/server/rfqs/performanceFeedback";
 import type { PublicRfqOfferCardDto } from "@/types/rfqPublicOffer";
 import type { ManufacturingProcessKey } from "@/lib/rfq/manufacturingProcesses";
@@ -22,6 +23,7 @@ type OffersCountApiResponse =
       quoteId: string;
       quoteStatus: string | null;
       normalizedStatus: string;
+      opsStatus?: string | null;
       offersCount: number;
       offers: OfferCardDto[];
       suppliersReviewing?: boolean;
@@ -33,6 +35,7 @@ type PublicOffersSectionProps = {
   quoteId: string;
   quoteStatus: string | null;
   normalizedStatus: string;
+  quoteOpsStatus: string | null;
   intakeKey: string;
   quoteCreatedAt: string | null;
   primaryFileName: string | null;
@@ -76,6 +79,7 @@ export function PublicOffersSection({
   quoteId,
   quoteStatus,
   normalizedStatus,
+  quoteOpsStatus,
   intakeKey,
   quoteCreatedAt,
   primaryFileName,
@@ -106,6 +110,10 @@ export function PublicOffersSection({
   const [suppliersReviewing, setSuppliersReviewing] = useState<boolean>(() =>
     Boolean(initialSuppliersReviewing),
   );
+  const [opsStatus, setOpsStatus] = useState<string | null>(() => {
+    const v = typeof quoteOpsStatus === "string" ? quoteOpsStatus.trim() : "";
+    return v ? v : null;
+  });
   const [projectStatus, setProjectStatus] = useState<string | null>(() => {
     const v = typeof initialProjectStatus === "string" ? initialProjectStatus.trim() : "";
     return v ? v : null;
@@ -122,6 +130,8 @@ export function PublicOffersSection({
   const hasOffers = offersCount > 0;
   const isLoggedIn = claimState !== "anon";
   const showNotifyRow = !isTerminal && (!hasOffers || isLoggedIn);
+
+  const isDelivered = normalizeCustomerOpsStatusStep(opsStatus) === "delivered";
 
   const quoteCreatedAtMs = useMemo(() => {
     const raw = typeof quoteCreatedAt === "string" ? quoteCreatedAt.trim() : "";
@@ -316,6 +326,10 @@ export function PublicOffersSection({
         if (!json || json.ok !== true) return;
 
         setCurrentNormalizedStatus(json.normalizedStatus);
+        setOpsStatus(() => {
+          const v = typeof json.opsStatus === "string" ? json.opsStatus.trim() : "";
+          return v ? v : null;
+        });
         setProjectStatus(() => {
           const v = typeof json.projectStatus === "string" ? json.projectStatus.trim() : "";
           return v ? v : null;
@@ -579,7 +593,7 @@ export function PublicOffersSection({
         </div>
 
         <div className="mt-6">
-          <RfqJourneyStepper stageIndex={stageIndex} />
+          <RfqJourneyStepper stageIndex={stageIndex} isDelivered={isDelivered} />
           <RfqNextStepsPanel
             className="mt-4"
             matchedCount={performance?.suppliersMatched ?? null}

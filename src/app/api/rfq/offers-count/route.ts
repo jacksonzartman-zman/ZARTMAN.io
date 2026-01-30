@@ -45,13 +45,14 @@ export async function GET(req: Request) {
   const client = supabaseServer();
   const quoteRes = await client
     .from("quotes")
-    .select("id,upload_id,status,customer_id")
+    .select("id,upload_id,status,customer_id,ops_status")
     .eq("id", quoteId)
     .maybeSingle<{
       id: string;
       upload_id: string | null;
       status: string | null;
       customer_id: string | null;
+      ops_status: string | null;
     }>();
 
   const quote = quoteRes.data?.id ? quoteRes.data : null;
@@ -156,6 +157,7 @@ export async function GET(req: Request) {
       quoteId: quote.id,
       quoteStatus: quote.status ?? null,
       normalizedStatus: normalizeQuoteStatus(quote.status ?? undefined),
+      opsStatus: quote.ops_status ?? null,
       offersCount: summary.nonWithdrawn,
       offers: payloadOffers,
       suppliersReviewing,
