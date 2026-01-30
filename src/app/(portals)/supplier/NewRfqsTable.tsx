@@ -5,7 +5,7 @@ import clsx from "clsx";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
-import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
+import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import type { SupplierInboxRow } from "./SupplierInboxTable";
@@ -215,7 +215,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                         <Link
                           href={href}
                           className={clsx(
-                            primaryCtaClasses,
+                            primaryInfoCtaClasses,
                             ctaSizeClasses.sm,
                             "inline-flex min-w-[9rem] justify-center",
                             pending ? "pointer-events-none opacity-60" : "",
@@ -283,7 +283,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                           }}
                           className={clsx(
                             ctaSizeClasses.sm,
-                            "rounded-full border border-transparent bg-transparent px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 transition hover:border-slate-700/70 hover:text-slate-100",
+                            "bg-transparent px-0 py-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400 underline-offset-4 transition hover:text-slate-100 hover:underline",
                             pending ? "opacity-60" : "",
                           )}
                         >
@@ -340,7 +340,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                           }}
                           className={clsx(
                             ctaSizeClasses.sm,
-                            "rounded-full border border-transparent bg-transparent px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 transition hover:border-slate-700/70 hover:text-slate-100",
+                            "bg-transparent px-0 py-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400 underline-offset-4 transition hover:text-slate-100 hover:underline",
                             pending ? "opacity-60" : "",
                           )}
                         >

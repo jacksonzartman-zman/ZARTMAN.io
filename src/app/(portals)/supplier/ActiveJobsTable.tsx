@@ -1,7 +1,7 @@
 import Link from "next/link";
 import clsx from "clsx";
 import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
-import { ctaSizeClasses } from "@/lib/ctas";
+import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import type { SupplierQuoteListRow } from "@/server/suppliers/quotesList";
 
@@ -80,7 +80,8 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
                 href={href}
                 className={clsx(
                   ctaSizeClasses.sm,
-                  "inline-flex min-w-[9rem] justify-center rounded-full border border-slate-700/70 bg-transparent text-slate-200 transition hover:border-slate-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400",
+                  primaryInfoCtaClasses,
+                  "inline-flex min-w-[9rem] justify-center",
                 )}
               >
                 Open job

@@ -7,6 +7,7 @@ import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requi
 import { loadCustomerInbox } from "@/server/messages/inbox";
 import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,9 @@ export default async function CustomerMessagesPage() {
                   <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 lg:table-cell">
                     Last message
                   </th>
+                  <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/40">
@@ -74,11 +78,12 @@ export default async function CustomerMessagesPage() {
                   const lastMessageAtLabel =
                     formatRelativeTimeCompactFromTimestamp(toTimestamp(row.lastMessageAt)) ?? "—";
                   const unread = Math.max(0, Math.floor(row.unreadCount ?? 0));
+                  const href = `/customer/quotes/${row.quoteId}?tab=messages#messages`;
                   return (
                     <tr key={row.quoteId} className="hover:bg-slate-900/20">
                       <td className="px-5 py-5 align-middle">
                         <Link
-                          href={`/customer/quotes/${row.quoteId}?tab=messages#messages`}
+                          href={href}
                           className="flex flex-col gap-1 underline-offset-4 hover:underline"
                         >
                           <span className="text-[15px] font-semibold text-slate-100">
@@ -113,6 +118,14 @@ export default async function CustomerMessagesPage() {
                             {lastMessageAtLabel}
                           </p>
                         </div>
+                      </td>
+                      <td className="px-5 py-5 align-middle text-right">
+                        <Link
+                          href={href}
+                          className={`${primaryCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
+                        >
+                          Open conversation
+                        </Link>
                       </td>
                     </tr>
                   );
