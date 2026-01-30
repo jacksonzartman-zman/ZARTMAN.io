@@ -1,4 +1,6 @@
 import Link from "next/link";
+import PortalCard from "@/app/(portals)/PortalCard";
+import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { requireUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers/profile";
 import {
@@ -26,25 +28,31 @@ export default async function SupplierCapacitySettingsPage({
 
   if (!supplier) {
     return (
-      <div className="space-y-6">
-        <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
-            Supplier workspace
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold text-white">Capacity</h1>
-          <p className="mt-2 text-sm text-slate-400">
-            Finish supplier onboarding to manage capacity snapshots.
-          </p>
-          <div className="mt-4">
-            <Link
-              href="/supplier/onboarding"
-              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
-            >
-              Complete onboarding
-            </Link>
-          </div>
-        </section>
-      </div>
+      <PortalShell
+        workspace="supplier"
+        title="Capacity"
+        subtitle="Share weekly capacity snapshots so timelines stay accurate."
+        actions={
+          <Link
+            href="/supplier/settings"
+            className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+          >
+            Back to settings
+          </Link>
+        }
+      >
+        <PortalCard
+          title="Finish onboarding"
+          description="Complete onboarding before managing capacity snapshots."
+        >
+          <Link
+            href="/supplier/onboarding"
+            className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+          >
+            Complete onboarding
+          </Link>
+        </PortalCard>
+      </PortalShell>
     );
   }
 
@@ -133,76 +141,83 @@ export default async function SupplierCapacitySettingsPage({
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6">
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
-          Supplier workspace
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold text-white">Capacity</h1>
-        <p className="mt-2 text-sm text-slate-400">
-          Share weekly capacity snapshots so the Zartman team can plan timelines across quotes.
-        </p>
-      </section>
-
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-white">Week</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Choose a week to view or update your saved snapshot.
-          </p>
-        </div>
-
-        <form method="get" className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Week starting (Monday)
-            </span>
-            <select
-              name="week"
-              defaultValue={selectedWeekStartDate}
-              className="w-full min-w-[16rem] rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-white"
-            >
-              {weekOptions.map((week) => (
-                <option key={week} value={week}>
-                  {formatWeekLabel(week, nextWeekStartDate)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="submit"
-            className="rounded-full border border-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-slate-700 hover:text-white"
+    <PortalShell
+      workspace="supplier"
+      title="Capacity"
+      subtitle="Share weekly capacity snapshots so the Zartman team can plan timelines across quotes."
+      actions={
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/supplier/settings"
+            className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
           >
-            Load week
-          </button>
-        </form>
-      </section>
-
-      <section className="rounded-2xl border border-slate-900 bg-slate-950/70 p-6 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold text-white">Weekly snapshot</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            Save levels for the selected week. Leave “Not set” to keep a capability unset.
-          </p>
+            Back to settings
+          </Link>
+          <Link
+            href="/supplier"
+            className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+          >
+            Dashboard
+          </Link>
         </div>
-        {showBanner ? (
-          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-100">
-            <p className="font-semibold">
-              Your capacity for next week is missing or stale. Keeping this updated improves quote routing.
-            </p>
-            {hasNewerRequest ? (
-              <p className="mt-1 text-xs text-yellow-100/80">
-                An admin requested a capacity update.
-              </p>
+      }
+    >
+      <div className="space-y-6">
+        <PortalCard
+          title="Week"
+          description="Choose a week to view or update your saved snapshot."
+        >
+          <form method="get" className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                Week starting (Monday)
+              </span>
+              <select
+                name="week"
+                defaultValue={selectedWeekStartDate}
+                className="w-full min-w-[16rem] rounded-xl bg-slate-950/35 px-3 py-2.5 text-sm text-slate-100 ring-1 ring-slate-800/50"
+              >
+                {weekOptions.map((week) => (
+                  <option key={week} value={week}>
+                    {formatWeekLabel(week, nextWeekStartDate)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="submit"
+              className="rounded-full border border-slate-800 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:border-slate-700 hover:text-white"
+            >
+              Load week
+            </button>
+          </form>
+        </PortalCard>
+
+        <PortalCard
+          title="Weekly snapshot"
+          description='Save levels for the selected week. Leave “Not set” to keep a capability unset.'
+        >
+          <div className="space-y-4">
+            {showBanner ? (
+              <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-100">
+                <p className="font-semibold">
+                  Your capacity for next week is missing or stale. Keeping this updated improves quote routing.
+                </p>
+                {hasNewerRequest ? (
+                  <p className="mt-1 text-xs text-yellow-100/80">
+                    An admin requested a capacity update.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
+            <SupplierCapacityEditor
+              weekStartDate={selectedWeekStartDate}
+              initialValues={initialValues}
+            />
           </div>
-        ) : null}
-        <SupplierCapacityEditor
-          weekStartDate={selectedWeekStartDate}
-          initialValues={initialValues}
-        />
-      </section>
-    </div>
+        </PortalCard>
+      </div>
+    </PortalShell>
   );
 }
 

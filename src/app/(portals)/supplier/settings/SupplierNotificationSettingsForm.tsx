@@ -96,7 +96,7 @@ function NotificationToggle({
   return (
     <label
       htmlFor={id}
-      className="flex items-start gap-4 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-6 py-4"
+      className="flex items-start gap-3 rounded-xl bg-slate-950/20 px-4 py-3 ring-1 ring-slate-800/50"
     >
       <input
         id={id}
