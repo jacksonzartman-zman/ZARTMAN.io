@@ -66,7 +66,7 @@ export function AwardedJobSuccessBanner(props: { awardedQuoteIds: string[] }) {
     <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-slate-100">
       <div className="flex items-start justify-between gap-3">
         <p className="font-medium text-slate-100">
-          Nice work — you’ve been selected for a new job.
+          Nice work — you’ve been selected for a new project.
         </p>
         <button
           type="button"
@@ -77,7 +77,7 @@ export function AwardedJobSuccessBanner(props: { awardedQuoteIds: string[] }) {
             currentQuoteIdRef.current = null;
           }}
           className="rounded-lg border border-emerald-500/20 bg-black/20 px-2 py-1 text-xs font-semibold text-slate-100/90 transition hover:border-emerald-400/40 hover:text-white"
-          aria-label="Dismiss awarded job banner"
+          aria-label="Dismiss awarded project banner"
         >
           Close
         </button>

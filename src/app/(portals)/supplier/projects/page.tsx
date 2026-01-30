@@ -75,7 +75,7 @@ export default async function SupplierProjectsPage() {
       <PortalShell
         workspace="supplier"
         title="Projects"
-        subtitle="Awarded jobs in progress and history."
+        subtitle="Awarded projects in progress and history."
       >
         <EmptyStateCard
           title="Complete supplier onboarding"
@@ -101,17 +101,17 @@ export default async function SupplierProjectsPage() {
     <PortalShell
       workspace="supplier"
       title="Projects"
-      subtitle="Awarded jobs in progress and history."
+      subtitle="Awarded projects in progress and history."
     >
       <PortalCard
         title="Awarded projects"
-        description="These are search requests that have been awarded to your shop and are now tracked as projects."
+        description="These are RFQs that have been awarded to your shop and are now tracked as projects."
       >
         {projects.length === 0 ? (
           <EmptyStateCard
             title="No projects yet"
             description="When a customer awards your bid, it will show up here as a project."
-            action={{ label: "View search requests", href: "/supplier/quotes" }}
+            action={{ label: "View RFQs", href: "/supplier/quotes" }}
           />
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
@@ -166,7 +166,7 @@ export default async function SupplierProjectsPage() {
                             {project.projectName}
                           </span>
                           <span className="mt-1 text-xs text-slate-500">
-                            Quote {project.id.startsWith("Q-") ? project.id : `#${project.id.slice(0, 6)}`}
+                            RFQ {project.id.startsWith("Q-") ? project.id : `#${project.id.slice(0, 6)}`}
                           </span>
                         </div>
                       </td>
@@ -220,7 +220,7 @@ export default async function SupplierProjectsPage() {
                             href={`/supplier/quotes/${project.id}`}
                             className={`${primaryInfoCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
                           >
-                            Open job
+                            Open project
                           </Link>
                         </div>
                       </td>

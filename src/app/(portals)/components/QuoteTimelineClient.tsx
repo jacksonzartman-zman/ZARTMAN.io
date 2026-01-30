@@ -25,7 +25,7 @@ const PHASE_ORDER: QuotePhase[] = [
 ];
 
 const PHASE_LABELS: Record<QuotePhase, string> = {
-  rfq: "Search request",
+  rfq: "RFQ",
   bidding: "Offers",
   award: "Introduction",
   kickoff: "Kickoff",

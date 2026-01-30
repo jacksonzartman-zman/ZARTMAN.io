@@ -68,7 +68,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Search request
+            RFQ
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Files &amp; value
@@ -77,7 +77,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
             Your quote
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Search request status
+            RFQ status
           </th>
           <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Action
@@ -268,7 +268,7 @@ function resolveBidStatusHint({
 }): string {
   switch (row.supplierBidState) {
     case "no_bid":
-      return "Invite assigned—share a quote to stay in the rotation.";
+      return "RFQ assigned—share a quote to stay in the rotation.";
     case "submitted":
       return lastBidLabel;
     case "won":

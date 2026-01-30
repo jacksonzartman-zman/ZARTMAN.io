@@ -192,7 +192,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             id: data.id,
             createdAt: data.created_at ?? new Date().toISOString(),
             updatedAt: data.updated_at ?? null,
-            rfqLabel: "Shared search request",
+              rfqLabel: "Shared RFQ",
             status: (data.status ?? "Submitted").trim() || "Submitted",
             rfqHistoryStatus: "Waiting on offers",
             hasWinner: false,
@@ -228,7 +228,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
       includeOpsEvents: true,
     });
     if (!workspaceResult.ok || !workspaceResult.data) {
-      const errorMessage = workspaceResult.error ?? "Unable to load this search.";
+      const errorMessage = workspaceResult.error ?? "Unable to load this RFQ.";
       if (quoteIdParam) {
         // When deep-linking to a specific quote, treat missing/unauthorized as a calm landing.
         quoteResolutionError = errorMessage;
@@ -266,7 +266,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
           id: workspaceData.quote.id,
           createdAt,
           updatedAt,
-          rfqLabel: "Search request",
+          rfqLabel: "RFQ",
           status: (workspaceData.quote.status ?? "Submitted").trim() || "Submitted",
           rfqHistoryStatus: rfqAward ? "Awarded" : "Waiting on offers",
           hasWinner: Boolean(rfqAward),
@@ -302,12 +302,12 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
       <PortalShell
         workspace="customer"
         title="Search results"
-        subtitle="Track provider responses, compare offers, and refine your search."
+        subtitle="Track provider responses, compare offers, and refine your RFQ."
       >
         <EmptyStateCard
-          title="We couldn’t open that search"
-          description="This link may be expired, or you may not have access to this search."
-          action={{ label: "Start a new search", href: "/" }}
+          title="We couldn’t open that RFQ"
+          description="This link may be expired, or you may not have access to this RFQ."
+          action={{ label: "Start a new RFQ", href: "/" }}
           secondaryAction={{ label: "View dashboard", href: "/customer" }}
         />
       </PortalShell>
@@ -379,7 +379,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   const contactedSuppliersCount = countContactedSuppliers(rfqDestinations);
   let pendingNextStepsCopy: string | null = null;
   let pendingOffersDescription =
-    "Providers are reviewing your search request. We will surface offers here as soon as they respond.";
+    "Providers are reviewing your RFQ. We will surface offers here as soon as they respond.";
   let showSlaNudge = false;
   let slaNudgeDetail: string | null = null;
   if (activeQuote && workspaceData && totalOfferCount === 0) {
@@ -498,12 +498,12 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
   });
   const showActivityFeed = Boolean(quoteIdParam) || Boolean(recentQuoteForActivity);
   const activityDescription = activeQuote
-    ? "Latest updates as suppliers respond to your search request."
+    ? "Latest updates as suppliers respond to your RFQ."
     : quoteIdParam
-      ? "We will show updates as soon as the search is live."
-      : "Recent activity from your latest search.";
+      ? "We will show updates as soon as the RFQ is live."
+      : "Recent activity from your latest RFQ.";
   const activityEmptyState = quoteIdParam
-    ? "Activity will appear once the search is live."
+    ? "Activity will appear once the RFQ is live."
     : "Activity will appear here as new updates arrive.";
 
   const savedSearchAlertPreference = activeQuote
@@ -784,8 +784,8 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
               description={workspaceError}
               action={
                 quoteIdParam
-                  ? { label: "Start a new search", href: "/" }
-                  : { label: "View searches", href: "/customer/search" }
+                  ? { label: "Start a new RFQ", href: "/" }
+                  : { label: "View RFQs", href: "/customer/search" }
               }
             />
           ) : null}
@@ -795,7 +795,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
               title={initializingSearchProgress?.statusHeadline ?? "Searching providers..."}
               description={
                 initializingSearchProgress?.statusDetail ??
-                "We are setting up your search request and routing it to matched providers."
+                "We are setting up your RFQ and routing it to matched providers."
               }
               action={
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -808,10 +808,10 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             >
               <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-4 py-3">
                 <p className="text-sm font-semibold text-slate-100">
-                  Quote ID: {quoteIdParam}
+                  RFQ ID: {quoteIdParam}
                 </p>
                 <p className="text-xs text-slate-400">
-                  We’ll surface status updates here as soon as the search is live.
+                  We’ll surface status updates here as soon as the RFQ is live.
                 </p>
               </div>
             </PortalCard>
@@ -981,19 +981,19 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
             </>
           ) : quoteIdParam ? null : quotes.length === 0 ? (
             <EmptyStateCard
-              title="No searches yet"
-              description="Submit a new search request to start comparing pricing and lead times."
+              title="No RFQs yet"
+              description="Submit a new RFQ to start comparing pricing and lead times."
               action={
                 SHOW_LEGACY_QUOTE_ENTRYPOINTS
-                  ? { label: "Start a search", href: "/quote" }
+                  ? { label: "Start an RFQ", href: "/quote" }
                   : null
               }
               secondaryAction={{ label: "View dashboard", href: "/customer" }}
             />
           ) : (
             <PortalCard
-              title="Recent searches"
-              description="Pick a search session to see provider progress and offers."
+              title="Recent RFQs"
+              description="Pick an RFQ to see provider progress and offers."
             >
               <div className="space-y-3">
                 {recentQuotes.map((quote) => {

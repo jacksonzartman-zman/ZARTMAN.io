@@ -108,7 +108,7 @@ export default async function CustomerSettingsPage() {
                     Company profile
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    These details appear on shared search requests and invoices.
+                    These details appear on shared RFQs and invoices.
                   </p>
                 </div>
                 <Link

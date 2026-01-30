@@ -146,7 +146,7 @@ export default async function SupplierQuoteDetailPage({
     return (
       <PortalNoticeCard
         title="Complete onboarding"
-        description="Finish the supplier onboarding form before opening search requests."
+        description="Finish the supplier onboarding form before opening RFQs."
       />
     );
   }
@@ -174,8 +174,8 @@ export default async function SupplierQuoteDetailPage({
 
     return (
       <PortalNoticeCard
-        title="Not invited to this search request"
-        description="You can only open search requests you’ve been invited to (or where you’ve submitted a quote). If you believe you should have access, contact the Zartman team."
+        title="Not invited to this RFQ"
+        description="You can only open RFQs you’ve been invited to (or where you’ve submitted a quote). If you believe you should have access, contact the Zartman team."
       />
     );
   }
@@ -187,12 +187,12 @@ export default async function SupplierQuoteDetailPage({
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[supplier quote] load failed", {
       quoteId,
-      error: workspaceResult.error ?? "Quote not found",
+      error: workspaceResult.error ?? "RFQ not found",
     });
     return (
       <PortalNoticeCard
-        title="Quote not found"
-        description="We couldn’t find that quote ID. Double-check the link or ping the Zartman team."
+        title="RFQ not found"
+        description="We couldn’t find that RFQ ID. Double-check the link or ping the Zartman team."
       />
     );
   }
@@ -241,7 +241,7 @@ export default async function SupplierQuoteDetailPage({
   } else if (!outboundStatus.enabled) {
     portalEmailDisabledCopy = "Email not configured.";
   } else if (!awardedToSupplier) {
-    portalEmailDisabledCopy = "Email is available after this search request is awarded to you.";
+    portalEmailDisabledCopy = "Email is available after this RFQ is awarded to you.";
   } else if (!isCustomerEmailBridgeEnabled()) {
     portalEmailDisabledCopy = "Customer email replies are off.";
   } else {
@@ -604,7 +604,7 @@ function SupplierQuoteWorkspace({
       : acceptedLock
         ? "Quote is accepted — quoting is locked."
         : closedWindowLock
-          ? "Quoting is closed for this search request."
+          ? "Quoting is closed for this RFQ."
           : "Follow updates in the shared thread below.";
   const bidPillValue =
     existingBid?.status && typeof existingBid.status === "string" && existingBid.status.trim()
@@ -618,7 +618,7 @@ function SupplierQuoteWorkspace({
       ? "Not selected"
       : "Pending";
   const supplierAtAGlancePills = [
-    { key: "rfq", label: "Search request", value: primaryFileName },
+    { key: "rfq", label: "RFQ", value: primaryFileName },
     { key: "files", label: "Files", value: fileCountText },
     {
       key: "bid",
@@ -710,7 +710,7 @@ function SupplierQuoteWorkspace({
         <section className="rounded-2xl border border-slate-800 bg-slate-950/40 px-5 py-4 text-sm text-slate-200">
           <p className="text-base font-semibold text-white">RFQ closed</p>
           <p className="mt-1 text-slate-300">
-            This search request was awarded to another supplier
+            This RFQ was awarded to another supplier
             {awardedAtLabel ? ` on ${awardedAtLabel}` : ""}.
           </p>
         </section>
@@ -732,7 +732,7 @@ function SupplierQuoteWorkspace({
       <section className="rounded-2xl border border-slate-800 bg-slate-950/40 px-5 py-4 text-sm text-slate-200">
         <p className="text-base font-semibold text-white">RFQ closed</p>
         <p className="mt-1 text-slate-300">
-          This search request was awarded to another supplier
+          This RFQ was awarded to another supplier
           {awardedAtLabel ? ` on ${awardedAtLabel}` : ""}.
         </p>
       </section>
@@ -766,7 +766,7 @@ function SupplierQuoteWorkspace({
     projectSection = (
       <PortalCard
         title="Project kickoff"
-        description="Stay tuned—project details appear for the supplier that wins the search request."
+        description="Stay tuned—project details appear for the supplier that wins the RFQ."
       >
         <p className="text-sm text-slate-300">
           Keep quoting with your best pricing and lead times. Once a customer selects your proposal, we’ll
@@ -808,7 +808,7 @@ function SupplierQuoteWorkspace({
         ) : null}
         {closedWindowLock ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-100">
-            Quoting is disabled because this search request is no longer accepting new proposals.
+            Quoting is disabled because this RFQ is no longer accepting new proposals.
           </p>
         ) : null}
         <SupplierBidPanel
@@ -845,7 +845,7 @@ function SupplierQuoteWorkspace({
       id="uploads"
       className="scroll-mt-24"
       title="Uploads"
-      description="Shared search request files and previews."
+      description="Shared RFQ files and previews."
       defaultOpen={fileCount > 0}
       summary={
         <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1">
@@ -1054,7 +1054,7 @@ function SupplierQuoteWorkspace({
       id="timeline"
       className="scroll-mt-24"
       title="Timeline"
-      description="Updates and milestones for this search request."
+      description="Updates and milestones for this RFQ."
       defaultOpen={false}
     >
       <QuoteTimeline
@@ -1150,7 +1150,7 @@ function SupplierQuoteWorkspace({
             id="messages"
             className="scroll-mt-24"
             title="Messages"
-            description="Customer, supplier, and admin updates for this search request."
+            description="Customer, supplier, and admin updates for this RFQ."
             defaultOpen={tabParam === "messages"}
             summary={
               quoteMessages.length > 0 ? (
@@ -1188,7 +1188,7 @@ function SupplierQuoteWorkspace({
                   viewerRole="supplier"
                   markRead={tabParam === "messages"}
                   title="Messages"
-                  description="Customer, supplier, and admin updates for this search request."
+                  description="Customer, supplier, and admin updates for this RFQ."
                   portalEmail={{
                     enabled: portalEmailEnabled,
                     recipientRole: "customer",
@@ -1203,7 +1203,7 @@ function SupplierQuoteWorkspace({
                   helperText="Your note notifies the customer and the Zartman team."
                   disabledCopy={
                     !awardedToSupplier
-                      ? "Messaging unlocks once this search request is awarded to you."
+                      ? "Messaging unlocks once this RFQ is awarded to you."
                       : messagingDisabledReason ?? undefined
                   }
                   emptyStateCopy="Send the first message to align on scope and timing."
@@ -1267,7 +1267,7 @@ function SupplierQuoteWorkspace({
               </div>
               <p className="text-xs text-slate-500">
                 Tip: keep the <span className="font-semibold text-slate-300">To</span> address
-                unchanged so we can attach your reply to this search request.
+                unchanged so we can attach your reply to this RFQ.
               </p>
             </div>
           </PortalCard>

@@ -58,7 +58,7 @@ export default async function SupplierMessagesPage() {
       <PortalShell
         workspace="supplier"
         title="Messages"
-        subtitle="Conversations across your search requests and projects."
+        subtitle="Conversations across your RFQs and projects."
         actions={
           <Link
             href="/supplier"
@@ -70,11 +70,11 @@ export default async function SupplierMessagesPage() {
       >
         <PortalCard
           title="Messages"
-          description="We’ll show your search request conversations here once your supplier workspace is connected."
+          description="We’ll show your RFQ conversations here once your supplier workspace is connected."
         >
           <EmptyStateCard
             title="Complete supplier onboarding"
-            description="Finish onboarding to unlock search requests and the shared message inbox."
+            description="Finish onboarding to unlock RFQs and the shared message inbox."
             action={{ label: "Finish onboarding", href: "/supplier/onboarding" }}
           />
         </PortalCard>
@@ -88,7 +88,7 @@ export default async function SupplierMessagesPage() {
     <PortalShell
       workspace="supplier"
       title="Messages"
-      subtitle="Conversations across your search requests and projects."
+      subtitle="Conversations across your RFQs and projects."
       actions={
         <Link
           href="/supplier"
@@ -100,13 +100,13 @@ export default async function SupplierMessagesPage() {
     >
       <PortalCard
         title="Messages"
-        description="One inbox for every search request thread—see what needs your attention and jump back into context."
+        description="One inbox for every RFQ thread—see what needs your attention and jump back into context."
       >
         {rows.length === 0 ? (
           <EmptyStateCard
             title="No conversations yet"
-            description="When customers or admins message you about search requests, they’ll appear here."
-            action={{ label: "View search requests", href: "/supplier/quotes" }}
+            description="When customers or admins message you about RFQs, they’ll appear here."
+            action={{ label: "View RFQs", href: "/supplier/quotes" }}
           />
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
@@ -114,7 +114,7 @@ export default async function SupplierMessagesPage() {
               <thead className="bg-slate-900/60">
                 <tr>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Search request
+                    RFQ
                   </th>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Thread
@@ -148,7 +148,7 @@ export default async function SupplierMessagesPage() {
                         >
                           <span className="font-medium text-slate-100">{row.rfqLabel}</span>
                           <span className="text-xs text-slate-500">
-                            Quote {row.quoteId.startsWith("Q-") ? row.quoteId : `#${row.quoteId.slice(0, 6)}`}
+                            RFQ {row.quoteId.startsWith("Q-") ? row.quoteId : `#${row.quoteId.slice(0, 6)}`}
                           </span>
                         </Link>
                       </td>

@@ -50,7 +50,7 @@ async function SupplierOnboardingPage({
     <div className="space-y-6">
       <PortalCard
         title="Supplier onboarding"
-        description="Share your capabilities so we can match search requests, bids, and compliance docs to your workspace."
+        description="Share your capabilities so we can match RFQs, bids, and compliance docs to your workspace."
         action={
           <Link
             href="/supplier"
@@ -61,7 +61,7 @@ async function SupplierOnboardingPage({
         }
       >
         <p className="text-sm text-slate-300">
-          Complete this profile once. We’ll route search requests to your inbox automatically
+          Complete this profile once. We’ll route RFQs to your inbox automatically
           whenever there’s a process and certification match.
         </p>
       </PortalCard>

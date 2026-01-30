@@ -209,13 +209,13 @@ export function InviteTeammateModal({
               Invite teammate
             </p>
             <h3 className="mt-1 text-lg font-semibold text-white">
-              {mode === "success" ? "All set" : "Share this search request"}
+              {mode === "success" ? "All set" : "Share this RFQ"}
             </h3>
             {mode === "success" ? (
               <p className="mt-1 text-sm text-slate-300">{successLine ?? "Done."}</p>
             ) : (
               <p className="mt-1 text-sm text-slate-300">
-                We’ll email them a link to review this search request.
+                We’ll email them a link to review this RFQ.
               </p>
             )}
           </div>

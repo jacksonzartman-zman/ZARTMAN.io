@@ -64,7 +64,7 @@ export function CustomerQuoteProjectCard({
   return (
     <PortalCard
       title="PO details & target dates"
-      description="Share your PO number, target ship date, and kickoff notes once this search request is awarded."
+      description="Share your PO number, target ship date, and kickoff notes once this RFQ is awarded."
     >
       <div className="space-y-4">
 

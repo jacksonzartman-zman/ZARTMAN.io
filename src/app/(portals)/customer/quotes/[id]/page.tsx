@@ -195,20 +195,20 @@ export default async function CustomerQuoteDetailPage({
   if (!workspaceResult.ok || !workspaceResult.data) {
     console.error("[customer quote] load failed", {
       quoteId,
-      error: workspaceResult.error ?? "Quote not found",
+      error: workspaceResult.error ?? "RFQ not found",
     });
     return (
       <PortalNoticeCard
-        title="Quote not found"
-        description={`We couldn’t find a search request for that link (Quote ID ${formatQuoteId(
+        title="RFQ not found"
+        description={`We couldn’t find an RFQ for that link (RFQ ID ${formatQuoteId(
           quoteId,
-        )}). Double-check the URL, or return to your Quotes list.`}
+        )}). Double-check the URL, or return to your RFQs list.`}
         action={
           <Link
             href="/customer/quotes"
             className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
           >
-            Back to quotes
+            Back to RFQs
           </Link>
         }
       />
@@ -305,7 +305,7 @@ export default async function CustomerQuoteDetailPage({
             href="/customer/quotes"
             className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
           >
-            Back to quotes
+            Back to RFQs
           </Link>
         }
       />
@@ -652,7 +652,7 @@ export default async function CustomerQuoteDetailPage({
         "A winning supplier has already been selected for this quote.";
     } else if (!quoteAwardStatusAllowed) {
       customerAwardDisabledReason =
-        "Selecting a winner is unavailable for closed or archived search requests.";
+        "Selecting a winner is unavailable for closed or archived RFQs.";
     }
   }
   const pricedBids = bids.filter(
@@ -972,7 +972,7 @@ export default async function CustomerQuoteDetailPage({
   const awardedByLabel = formatAwardedByLabel(quote.awarded_by_role, {
     perspective: "customer",
   });
-  const headerTitle = `${customerName ?? "Search request"} · ${formatQuoteId(quote.id)}`;
+  const headerTitle = `${customerName ?? "RFQ"} · ${formatQuoteId(quote.id)}`;
   const headerActions = (
     <div className="flex flex-wrap items-center gap-2">
       <CustomerQuoteStatusCtas
@@ -990,7 +990,7 @@ export default async function CustomerQuoteDetailPage({
         href="/customer/quotes"
         className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
       >
-        Back to quotes
+        Back to RFQs
       </Link>
     </div>
   );
@@ -1137,7 +1137,7 @@ export default async function CustomerQuoteDetailPage({
     <section className={clsx(cardClasses, "space-y-5")}>
       <header className="space-y-1">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Search request snapshot
+          RFQ snapshot
         </p>
         <h2 className="text-lg font-semibold text-white">Project overview</h2>
       </header>
@@ -1227,8 +1227,8 @@ export default async function CustomerQuoteDetailPage({
         </div>
         {bidsUnavailable ? (
           <p className="text-xs text-slate-400">
-            Offers aren’t available here right now, but your search request is still saved and in
-            review. Check Messages for updates.
+            Offers aren’t available here right now, but your RFQ is still saved and in review.
+            Check Messages for updates.
           </p>
         ) : rfqOfferCount === 0 ? (
           <EmptyStateCard
@@ -1304,7 +1304,7 @@ export default async function CustomerQuoteDetailPage({
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Early search update
         </p>
-        <h2 className="text-lg font-semibold text-white">We&apos;ve got your search request.</h2>
+        <h2 className="text-lg font-semibold text-white">We&apos;ve got your RFQ.</h2>
       </div>
       <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-200">
         <li>
@@ -1537,7 +1537,7 @@ export default async function CustomerQuoteDetailPage({
         {customerFeedbackAdvisories.length > 0 ? (
           <div className="rounded-2xl border border-slate-800 bg-slate-950/60 px-5 py-4">
             <p className="text-sm font-semibold text-slate-100">
-              Suppliers flagged the following issues on previous search requests like this one:
+              Suppliers flagged the following issues on previous RFQs like this one:
             </p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-200">
               {customerFeedbackAdvisories.map((entry) => (
@@ -1556,7 +1556,7 @@ export default async function CustomerQuoteDetailPage({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-amber-100">
-                  Your search request may get fewer offers.
+                  Your RFQ may get fewer offers.
                 </p>
                 <p className="mt-1 text-xs text-amber-100/80">
                   Improving completeness can increase supplier response rate.
@@ -1811,7 +1811,7 @@ export default async function CustomerQuoteDetailPage({
       id="timeline"
       className="scroll-mt-24"
       title="Timeline"
-      description="Updates and milestones for this search request."
+      description="Updates and milestones for this RFQ."
       defaultOpen={tabParam === "activity"}
     >
       <QuoteTimeline
@@ -1865,8 +1865,8 @@ export default async function CustomerQuoteDetailPage({
         {kickoffSection}
         {messagesUnavailable ? (
           <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
-            Messages are temporarily unavailable right now. Your search request is still
-            saved—refresh to try again.
+            Messages are temporarily unavailable right now. Your RFQ is still saved—refresh to try
+            again.
           </p>
         ) : null}
         <DisclosureSection
@@ -2023,7 +2023,7 @@ function QuoteSummaryCard({
       <header className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
-            Quote snapshot
+            RFQ snapshot
           </p>
           <p
             className="mt-1 truncate text-base font-semibold text-white"

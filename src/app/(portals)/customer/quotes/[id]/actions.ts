@@ -91,7 +91,7 @@ export type QuoteStatusTransitionState =
   | { ok: false; error: string };
 
 const CUSTOMER_STATUS_TRANSITION_ERROR =
-  "We couldn’t update this search request right now. Please try again.";
+  "We couldn’t update this RFQ right now. Please try again.";
 
 const CUSTOMER_AWARD_BID_ERROR =
   "We couldn’t verify that offer. Refresh and try again.";
@@ -107,12 +107,12 @@ const CUSTOMER_SELECT_OFFER_GENERIC_ERROR =
 const CUSTOMER_SELECT_OFFER_ACCESS_ERROR =
   "We couldn’t confirm your access to this quote.";
 const CUSTOMER_SELECT_OFFER_NOT_FOUND_ERROR =
-  "That offer isn’t available for this search request.";
+  "That offer isn’t available for this RFQ.";
 const CUSTOMER_SELECT_OFFER_SUCCESS_MESSAGE = "Offer selection saved.";
 const CUSTOMER_AWARD_OFFER_GENERIC_ERROR =
   "We couldn’t record that selection. Please try again.";
 const CUSTOMER_AWARD_OFFER_NOT_FOUND_ERROR =
-  "That offer isn’t available for this search request.";
+  "That offer isn’t available for this RFQ.";
 const CUSTOMER_AWARD_OFFER_INELIGIBLE_ERROR =
   "That supplier isn’t eligible to be awarded.";
 const CUSTOMER_SHORTLIST_GENERIC_ERROR =
@@ -120,7 +120,7 @@ const CUSTOMER_SHORTLIST_GENERIC_ERROR =
 const CUSTOMER_SHORTLIST_ACCESS_ERROR =
   "We couldn’t confirm your access to this quote.";
 const CUSTOMER_SHORTLIST_NOT_FOUND_ERROR =
-  "That offer isn’t available for this search request.";
+  "That offer isn’t available for this RFQ.";
 const CUSTOMER_CONFIRM_SELECTION_GENERIC_ERROR =
   "We couldn’t confirm your selection. Please try again.";
 const CUSTOMER_CONFIRM_SELECTION_ACCESS_ERROR =
@@ -224,7 +224,7 @@ export async function archiveCustomerQuoteAction(
     if (!customer) {
       return {
         ok: false,
-        error: "Complete your profile before updating this search request.",
+        error: "Complete your profile before updating this RFQ.",
       };
     }
 
@@ -262,7 +262,7 @@ export async function archiveCustomerQuoteAction(
     revalidatePath("/supplier");
     revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
-    return { ok: true, message: "Search request archived." };
+    return { ok: true, message: "RFQ archived." };
   } catch (error) {
     console.error("[customer quote status] archive crashed", {
       quoteId: normalizedQuoteId,
@@ -288,7 +288,7 @@ export async function reopenCustomerQuoteAction(
     if (!customer) {
       return {
         ok: false,
-        error: "Complete your profile before updating this search request.",
+        error: "Complete your profile before updating this RFQ.",
       };
     }
 
@@ -326,7 +326,7 @@ export async function reopenCustomerQuoteAction(
     revalidatePath("/supplier");
     revalidatePath(`/supplier/quotes/${normalizedQuoteId}`);
 
-    return { ok: true, message: "Search request reopened." };
+    return { ok: true, message: "RFQ reopened." };
   } catch (error) {
     console.error("[customer quote status] reopen crashed", {
       quoteId: normalizedQuoteId,
