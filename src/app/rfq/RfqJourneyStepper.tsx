@@ -4,6 +4,7 @@ type RfqJourneyStepperProps = {
   // 0..5 inclusive:
   // Upload → Processing → Waiting on offers → Offers ready → Awarded → In progress
   stageIndex: number;
+  isDelivered?: boolean;
 };
 
 const STAGES: Array<{ label: string; helper: string }> = [
@@ -69,10 +70,14 @@ function StepIcon({ state, index }: { state: "done" | "active" | "todo"; index: 
   );
 }
 
-export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
+export function RfqJourneyStepper({ stageIndex, isDelivered = false }: RfqJourneyStepperProps) {
   const current = clampStageIndex(stageIndex);
   const percent = Math.round((current / (STAGES.length - 1)) * 100);
   const fillScale = percent / 100;
+
+  const lastStageIndex = STAGES.length - 1;
+  const headerLabel =
+    isDelivered && current === lastStageIndex ? "Completed" : STAGES[current]?.label;
 
   return (
     <section className="rounded-3xl border border-slate-900/60 bg-slate-950/35 px-5 py-5">
@@ -85,7 +90,7 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
             Step {current + 1} of {STAGES.length}
           </p>
           <p className="mt-1 text-xs text-ink-soft">
-            {STAGES[current]?.label} — {STAGES[current]?.helper}
+            {headerLabel} — {STAGES[current]?.helper}
           </p>
         </div>
         <div className="text-right">
@@ -113,6 +118,8 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
               const state = idx < current ? "done" : idx === current ? "active" : "todo";
               const showCaption = state === "active";
               const caption = percent === 100 ? "Completed" : "In progress";
+              const displayLabel =
+                isDelivered && idx === lastStageIndex ? "✔ Completed" : stage.label;
               return (
                 <li key={stage.label} className="min-w-0">
                   <div className="flex flex-col items-center text-center">
@@ -125,7 +132,7 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
                       title={stage.label}
                     >
                       <span className="block w-full truncate md:whitespace-normal md:break-words md:max-h-[2.6em] md:overflow-hidden">
-                        {stage.label}
+                        {displayLabel}
                       </span>
                     </p>
                     {showCaption ? (
@@ -140,6 +147,12 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
           </ol>
         </div>
       </div>
+
+      {isDelivered ? (
+        <p className="mt-3 text-xs text-ink-soft">
+          RFQ complete — thanks for using Zartman
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -68,7 +68,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
 
   const quoteRes = await supabaseServer()
     .from("quotes")
-    .select("id,upload_id,status,created_at,target_date,customer_id")
+    .select("id,upload_id,status,created_at,target_date,customer_id,ops_status")
     .eq("id", quoteId)
     .maybeSingle<{
       id: string;
@@ -77,6 +77,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
       created_at: string | null;
       target_date: string | null;
       customer_id: string | null;
+      ops_status: string | null;
     }>();
 
   const quote = quoteRes.data?.id ? quoteRes.data : null;
@@ -233,6 +234,7 @@ export default async function RfqStatusPage({ searchParams }: PageProps) {
             quoteId={quote.id}
             quoteStatus={quote.status ?? null}
             normalizedStatus={normalizedStatus}
+            quoteOpsStatus={quote.ops_status ?? null}
             intakeKey={intakeKey}
             quoteCreatedAt={quote.created_at ?? null}
             primaryFileName={primaryFileName}
