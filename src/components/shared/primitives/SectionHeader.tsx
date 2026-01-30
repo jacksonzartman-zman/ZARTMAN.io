@@ -26,15 +26,15 @@ export function SectionHeader({
 }) {
   const kickerClasses =
     variant === "label"
-      ? "text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400"
-      : "text-xs font-semibold uppercase tracking-[0.3em] text-slate-500";
+      ? "text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500"
+      : "text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500";
 
   const titleClasses =
     variant === "hero"
-      ? "text-2xl font-semibold text-white heading-tight"
+      ? "text-xl font-semibold text-white heading-tight sm:text-2xl"
       : variant === "label"
-        ? "text-sm font-semibold text-slate-100"
-        : "text-lg font-semibold text-slate-50";
+        ? "text-sm font-semibold text-slate-100 heading-tight"
+        : "text-lg font-semibold text-slate-50 heading-tight";
 
   const subtitleClasses =
     variant === "label" ? "text-xs text-slate-400" : "text-sm text-slate-300";
