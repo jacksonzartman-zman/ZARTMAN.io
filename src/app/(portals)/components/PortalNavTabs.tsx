@@ -31,10 +31,6 @@ export function PortalNavTabs({
 }: PortalNavTabsProps) {
   const hasPrimaryLinks = links.length > 0;
   const hasMoreLinks = Boolean(moreLinks && moreLinks.length > 0);
-  if (!hasPrimaryLinks && !hasMoreLinks) {
-    return null;
-  }
-
   const path = currentPath || "/";
   const resolveActive =
     isActive ??
@@ -62,6 +58,10 @@ export function PortalNavTabs({
   const moreLinksActive = (moreLinks ?? []).some((link) =>
     resolveActive(link.href, path),
   );
+
+  if (!hasPrimaryLinks && !hasMoreLinks) {
+    return null;
+  }
 
   return (
     <nav
