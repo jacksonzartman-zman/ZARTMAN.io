@@ -150,6 +150,9 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
 
                 <div className="col-span-6 flex items-center gap-2 sm:col-span-3">
                   <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
+                  {row.status === "Delivered" ? (
+                    <span className="text-xs font-medium text-slate-400">Completed successfully</span>
+                  ) : null}
                   {hasNewOffers ? <NewOffersBadge /> : null}
                 </div>
 
