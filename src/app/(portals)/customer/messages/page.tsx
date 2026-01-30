@@ -75,25 +75,25 @@ export default async function CustomerMessagesPage() {
             action={{ label: "View search requests", href: "/customer/quotes" }}
           />
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
-            <table className="min-w-full divide-y divide-slate-900/70 text-sm">
-              <thead className="bg-slate-900/60">
+          <div className="overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
+            <table className="min-w-full divide-y divide-slate-800/40 text-sm">
+              <thead className="bg-transparent">
                 <tr>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Search request
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Thread
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
                     Status
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 lg:table-cell">
                     Last message
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-900/70">
+              <tbody className="divide-y divide-slate-800/40">
                 {rows.map((row) => {
                   const threadLabel = resolveThreadStatusLabel("customer", row.needsReplyFrom);
                   const threadPill = statusPillClasses(threadLabel);
@@ -102,23 +102,25 @@ export default async function CustomerMessagesPage() {
                     formatRelativeTimeCompactFromTimestamp(toTimestamp(row.lastMessageAt)) ?? "—";
                   const unread = Math.max(0, Math.floor(row.unreadCount ?? 0));
                   return (
-                    <tr key={row.quoteId} className="hover:bg-slate-900/50">
-                      <td className="px-5 py-4 align-middle">
+                    <tr key={row.quoteId} className="hover:bg-slate-900/20">
+                      <td className="px-5 py-5 align-middle">
                         <Link
                           href={`/customer/quotes/${row.quoteId}?tab=messages#messages`}
                           className="flex flex-col gap-1 underline-offset-4 hover:underline"
                         >
-                          <span className="font-medium text-slate-100">{row.rfqLabel}</span>
+                          <span className="text-[15px] font-semibold text-slate-100">
+                            {row.rfqLabel}
+                          </span>
                           <span className="text-xs text-slate-500">
                             Quote {row.quoteId.startsWith("Q-") ? row.quoteId : `#${row.quoteId.slice(0, 6)}`}
                           </span>
                         </Link>
                       </td>
-                      <td className="px-5 py-4 align-middle">
+                      <td className="px-5 py-5 align-middle">
                         <div className="flex flex-wrap items-center gap-2">
                           <span
                             className={clsx(
-                              "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+                              "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
                               threadPill,
                             )}
                           >
@@ -131,14 +133,14 @@ export default async function CustomerMessagesPage() {
                           ) : null}
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle">
+                      <td className="hidden px-5 py-5 align-middle md:table-cell">
                         <div className="flex flex-wrap gap-2">
-                          <span className="inline-flex rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold text-slate-200">
+                          <span className="inline-flex rounded-full border border-slate-800/80 bg-slate-950/35 px-2.5 py-1 text-[11px] font-semibold text-slate-200">
                             {row.quoteStatus}
                           </span>
                           <span
                             className={clsx(
-                              "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold",
+                              "inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold",
                               kickoff.className,
                             )}
                           >
@@ -146,10 +148,10 @@ export default async function CustomerMessagesPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle">
+                      <td className="hidden px-5 py-5 align-middle lg:table-cell">
                         <div className="space-y-1">
                           <p className="text-xs text-slate-200">{row.lastMessagePreview}</p>
-                          <p className="text-[11px] uppercase tracking-wide text-slate-600">
+                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-600">
                             {lastMessageAtLabel}
                           </p>
                         </div>
