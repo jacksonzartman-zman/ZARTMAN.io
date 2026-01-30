@@ -92,6 +92,8 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
           ? formatDateTime(row.targetDate, { includeTime: false }) ?? "—"
           : "—";
         const urgent = isUrgentNeedBy(row.targetDate);
+        const missingSpecs =
+          !row.processHint?.trim() || !row.quantityHint?.trim() || !row.targetDate?.trim();
         const receivedLabel =
           formatRelativeTimeFromTimestamp(toTimestamp(row.createdAt)) ?? "—";
         const pending = pendingIds.has(row.id);
@@ -315,6 +317,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                     processLabel={processLabel}
                     quantityLabel={quantityLabel}
                     needByLabel={needByLabel}
+                    showQualityHint={missingSpecs}
                   />
                 </td>
               </tr>
@@ -332,12 +335,14 @@ function NewRfqPreviewPanel({
   processLabel,
   quantityLabel,
   needByLabel,
+  showQualityHint,
 }: {
   id: string;
   fileNames: string[];
   processLabel: string;
   quantityLabel: string;
   needByLabel: string;
+  showQualityHint: boolean;
 }) {
   const fileList = useMemo(() => {
     const cleaned = fileNames
@@ -391,6 +396,11 @@ function NewRfqPreviewPanel({
           </div>
         </div>
       </div>
+      {showQualityHint ? (
+        <p className="mt-3 text-xs text-slate-500">
+          More complete specs lead to faster awards.
+        </p>
+      ) : null}
     </div>
   );
 }
