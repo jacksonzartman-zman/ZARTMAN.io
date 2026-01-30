@@ -476,19 +476,24 @@ function SupplierActivityRecapStats(props: {
   responseActivityLabel: string | null;
   responseMomentumLabel: string | null;
 }) {
+  const hasAnySignal =
+    props.newRfqsTodayCount > 0 ||
+    props.activeJobsCount > 0 ||
+    props.quotesSentLast7DaysCount > 0 ||
+    Boolean(props.responseActivityLabel) ||
+    Boolean(props.responseMomentumLabel);
+
+  if (!hasAnySignal) {
+    return null;
+  }
+
   return (
-    <section className="rounded-2xl border border-slate-800/40 bg-slate-950/20 px-5 py-4">
-      <div className="flex items-baseline justify-between gap-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
-          Recap
-        </p>
-        {props.responseMomentumLabel ? (
-          <p className="text-xs font-medium text-slate-500">
-            {props.responseMomentumLabel}
-          </p>
-        ) : null}
-      </div>
-      <div className="mt-3 grid gap-4 sm:grid-cols-3 sm:gap-6">
+    <PortalCard
+      title="Recap"
+      description={props.responseMomentumLabel ?? "Quick pulse on recent activity."}
+      className="border-slate-900/45 bg-slate-950/25 shadow-none hover:border-slate-900/55 hover:bg-slate-950/30 hover:shadow-none"
+    >
+      <div className="grid gap-4 sm:grid-cols-3 sm:gap-6">
         <ActivityRecapStat
           label="New RFQs today"
           labelAddon={props.responseActivityLabel}
@@ -503,7 +508,7 @@ function SupplierActivityRecapStats(props: {
           value={props.quotesSentLast7DaysCount}
         />
       </div>
-    </section>
+    </PortalCard>
   );
 }
 

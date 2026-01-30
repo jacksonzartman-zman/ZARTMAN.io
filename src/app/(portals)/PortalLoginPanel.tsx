@@ -103,9 +103,7 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
   const cooldownActive = cooldownSecondsLeft > 0;
 
   useEffect(() => {
-    if (quoteFlow) {
-      console.log("[login] rendering quote-flow login", { nextPath: normalizedNextPath });
-    }
+    // Intentionally no logging: keep login flow quiet in the browser console.
   }, [quoteFlow, normalizedNextPath]);
 
   useEffect(() => {

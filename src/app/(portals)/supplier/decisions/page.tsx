@@ -4,6 +4,7 @@ import { PortalLoginPanel } from "../../PortalLoginPanel";
 import { WorkspaceWelcomeBanner } from "../../WorkspaceWelcomeBanner";
 import { SystemStatusBar } from "../../SystemStatusBar";
 import { EmptyStateNotice } from "../../EmptyStateNotice";
+import { PortalShell } from "../../components/PortalShell";
 import { primaryCtaClasses } from "@/lib/ctas";
 import { normalizeEmailInput } from "@/app/(portals)/quotes/pageUtils";
 import { getServerAuthUser } from "@/server/auth";
@@ -32,56 +33,71 @@ export default async function SupplierDecisionsPage() {
   const roles = await resolveUserRoles(user.id);
   if (!roles?.isSupplier) {
     return (
-      <PortalCard
-        title="Supplier workspace required"
-        description="This view is reserved for supplier accounts."
+      <PortalShell
+        workspace="supplier"
+        title="Decisions"
+        subtitle="Actions that keep search requests moving."
       >
-        <p className="text-sm text-slate-400">
-          Switch to the customer portal or contact support if you need supplier access.
-        </p>
-        <div className="mt-4 flex gap-3">
-          <Link
-            href="/customer"
-            className="rounded-full border border-slate-800 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-100 hover:border-slate-600"
-          >
-            Go to customer portal
-          </Link>
-        </div>
-      </PortalCard>
+        <EmptyStateNotice
+          title="Supplier workspace required"
+          description="Switch to the customer portal or contact support if you need supplier access."
+          action={
+            <Link
+              href="/customer"
+              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+            >
+              Go to customer portal
+            </Link>
+          }
+        />
+      </PortalShell>
     );
   }
 
   const supplierEmail = normalizeEmailInput(user.email ?? null);
   if (!supplierEmail) {
     return (
-      <PortalCard
-        title="Sign in with a supplier email"
-        description="We couldn’t determine which supplier account to load."
+      <PortalShell
+        workspace="supplier"
+        title="Decisions"
+        subtitle="Actions that keep search requests moving."
       >
-        <p className="text-sm text-slate-400">
-          Sign out and back in with the verified email tied to your supplier workspace.
-        </p>
-      </PortalCard>
+        <PortalCard
+          title="Sign in with a supplier email"
+          description="We couldn’t determine which supplier account to load."
+          className="border-slate-900/45 bg-slate-950/30 shadow-none hover:border-slate-900/55 hover:bg-slate-950/35 hover:shadow-none"
+        >
+          <p className="text-sm text-slate-400">
+            Sign out and back in with the verified email tied to your supplier workspace.
+          </p>
+        </PortalCard>
+      </PortalShell>
     );
   }
 
   const profile = await loadSupplierProfileByUserId(user.id);
   if (!profile?.supplier) {
     return (
-      <PortalCard
-        title="Finish supplier onboarding"
-        description="Decisions unlock once we have your shop profile on file."
-        action={
-          <Link href="/supplier/onboarding" className={primaryCtaClasses}>
-            Complete onboarding
-          </Link>
-        }
+      <PortalShell
+        workspace="supplier"
+        title="Decisions"
+        subtitle="Actions that keep search requests moving."
       >
-        <p className="text-sm text-slate-400">
-          Share capabilities, certifications, and documents so we know where to route search
-          requests.
-        </p>
-      </PortalCard>
+        <PortalCard
+          title="Finish supplier onboarding"
+          description="Decisions unlock once we have your shop profile on file."
+          action={
+            <Link href="/supplier/onboarding" className={primaryCtaClasses}>
+              Complete onboarding
+            </Link>
+          }
+        >
+          <p className="text-sm text-slate-400">
+            Share capabilities, certifications, and documents so we know where to route search
+            requests.
+          </p>
+        </PortalCard>
+      </PortalShell>
     );
   }
 
@@ -123,13 +139,29 @@ export default async function SupplierDecisionsPage() {
     formatRelativeTimeFromTimestamp(Date.now()) ?? "Just now";
 
   return (
-    <div className="space-y-6">
-      <WorkspaceWelcomeBanner role="supplier" companyName={companyName} />
-      <SystemStatusBar
-        role="supplier"
-        statusMessage={statusMessage}
-        syncedLabel={lastSyncedLabel}
-      />
+    <PortalShell
+      workspace="supplier"
+      title="Decisions"
+      subtitle="Actions that keep search requests moving."
+      headerContent={
+        <div className="space-y-4">
+          <WorkspaceWelcomeBanner role="supplier" companyName={companyName} />
+          <SystemStatusBar
+            role="supplier"
+            statusMessage={statusMessage}
+            syncedLabel={lastSyncedLabel}
+          />
+        </div>
+      }
+      actions={
+        <Link
+          href="/supplier"
+          className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+        >
+          Back to dashboard
+        </Link>
+      }
+    >
       <PortalCard
         title="Decisions queue"
         description="Every search request that needs pricing or a quick follow-up."
@@ -196,7 +228,7 @@ export default async function SupplierDecisionsPage() {
           </li>
         </ul>
       </PortalCard>
-    </div>
+    </PortalShell>
   );
 }
 
