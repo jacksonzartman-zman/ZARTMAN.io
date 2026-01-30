@@ -191,6 +191,14 @@ async function SupplierDashboardPage({
     return typeof ts === "number" && ts >= sevenDaysAgoMs;
   }).length;
 
+  const responseDaysLast7 = countDistinctResponseDaysLast7Days(quotesList, sevenDaysAgoMs);
+  const responseMomentumLabel =
+    responseDaysLast7 >= 5
+      ? "Great momentum this week"
+      : responseDaysLast7 >= 3
+        ? "Consistent this week"
+        : null;
+
   const lastBidAtMs = quotesList.reduce<number | null>((best, row) => {
     const ts = toTimestamp(row.lastBidAt);
     if (typeof ts !== "number") return best;
@@ -262,6 +270,7 @@ async function SupplierDashboardPage({
         activeJobsCount={activeJobs.length}
         quotesSentLast7DaysCount={quotesSentLast7DaysCount}
         responseActivityLabel={responseActivityLabel}
+        responseMomentumLabel={responseMomentumLabel}
       />
       <InvitedSupplierWelcomePanel enabled={invitedJustCompleted} />
       {showGettingSetUp ? (
@@ -448,6 +457,7 @@ function SupplierActivityRecapStats(props: {
   activeJobsCount: number;
   quotesSentLast7DaysCount: number;
   responseActivityLabel: string | null;
+  responseMomentumLabel: string | null;
 }) {
   return (
     <section className="rounded-2xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
@@ -455,6 +465,7 @@ function SupplierActivityRecapStats(props: {
         <ActivityRecapStat
           label="New RFQs today"
           labelAddon={props.responseActivityLabel}
+          labelSubtext={props.responseMomentumLabel}
           value={props.newRfqsTodayCount}
         />
         <ActivityRecapStat
@@ -475,21 +486,29 @@ function SupplierActivityRecapStats(props: {
 function ActivityRecapStat(props: {
   label: string;
   labelAddon?: string | null;
+  labelSubtext?: string | null;
   value: number;
   className?: string;
 }) {
   return (
     <div className={["flex items-center justify-between gap-3", props.className].filter(Boolean).join(" ")}>
-      <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
-          {props.label}
-        </span>
-        {props.labelAddon ? (
-          <span className="text-[11px] font-medium text-slate-500">
-            {props.labelAddon}
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+            {props.label}
           </span>
+          {props.labelAddon ? (
+            <span className="text-[11px] font-medium text-slate-500">
+              {props.labelAddon}
+            </span>
+          ) : null}
+        </div>
+        {props.labelSubtext ? (
+          <p className="mt-1 text-xs font-medium text-slate-500">
+            {props.labelSubtext}
+          </p>
         ) : null}
-      </span>
+      </div>
       <span className="text-lg font-semibold text-white tabular-nums">
         {Math.max(0, Math.floor(props.value)).toLocaleString("en-US")}
       </span>
@@ -514,6 +533,19 @@ function getLatestDashboardTimestamp(input: {
   }
   if (timestamps.length === 0) return null;
   return Math.max(...timestamps);
+}
+
+function countDistinctResponseDaysLast7Days(
+  rows: Array<{ lastBidAt: string | null }>,
+  sevenDaysAgoMs: number,
+): number {
+  const days = new Set<string>();
+  for (const row of rows ?? []) {
+    const ts = toTimestamp(row?.lastBidAt);
+    if (typeof ts !== "number" || ts < sevenDaysAgoMs) continue;
+    days.add(new Date(ts).toISOString().slice(0, 10));
+  }
+  return days.size;
 }
 
 type NextAppPage = (props: {
