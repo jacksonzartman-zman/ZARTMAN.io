@@ -22,11 +22,17 @@ function clampStageIndex(value: number): number {
 
 function StepIcon({ state, index }: { state: "done" | "active" | "todo"; index: number }) {
   const base =
-    "grid h-8 w-8 place-items-center rounded-full border text-xs font-semibold transition-colors duration-300 motion-reduce:transition-none";
+    "grid h-8 w-8 place-items-center rounded-full border text-xs font-semibold transition-opacity duration-300 motion-reduce:transition-none";
 
   if (state === "done") {
     return (
-      <span className={clsx(base, "border-emerald-400/35 bg-emerald-500/10 text-emerald-100")}>
+      <span
+        className={clsx(
+          base,
+          // “Completed” should feel earned: subtle fill + slightly stronger edge.
+          "border-emerald-300/40 bg-emerald-400/20 text-emerald-50 ring-1 ring-emerald-400/15",
+        )}
+      >
         <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
           <path
             d="M16.5 5.8 8.6 13.7 3.6 8.7"
@@ -47,7 +53,6 @@ function StepIcon({ state, index }: { state: "done" | "active" | "todo"; index: 
         className={clsx(
           base,
           "border-slate-500/60 bg-slate-950/60 text-ink shadow-[0_0_0_4px_rgba(15,23,42,0.55)]",
-          "animate-pulse motion-reduce:animate-none",
         )}
       >
         {index + 1}
@@ -94,11 +99,11 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
       <div className="mt-4">
         <div className="relative">
           <div
-            className="absolute left-[8.333%] right-[8.333%] top-4 h-[2px] bg-slate-900/60"
+            className="absolute left-[8.333%] right-[8.333%] top-4 h-[2px] bg-slate-900/55"
             aria-hidden="true"
           />
           <div
-            className="absolute left-[8.333%] right-[8.333%] top-4 h-[2px] origin-left bg-emerald-400/50 transition-transform duration-700 ease-out motion-reduce:transition-none"
+            className="absolute left-[8.333%] right-[8.333%] top-4 h-[2px] origin-left bg-emerald-400/70"
             style={{ transform: `scaleX(${fillScale})` }}
             aria-hidden="true"
           />
@@ -106,13 +111,15 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
           <ol className="relative grid w-full grid-cols-6 gap-x-3">
             {STAGES.map((stage, idx) => {
               const state = idx < current ? "done" : idx === current ? "active" : "todo";
+              const showCaption = state === "active";
+              const caption = percent === 100 ? "Completed" : "In progress";
               return (
                 <li key={stage.label} className="min-w-0">
                   <div className="flex flex-col items-center text-center">
                     <StepIcon state={state} index={idx} />
                     <p
                       className={clsx(
-                        "mt-2 w-full min-w-0 text-[11px] font-semibold uppercase tracking-[0.12em] leading-tight transition-colors duration-300 motion-reduce:transition-none md:tracking-[0.08em] md:leading-snug",
+                        "mt-2 w-full min-w-0 text-[11px] font-semibold uppercase tracking-[0.12em] leading-tight md:tracking-[0.08em] md:leading-snug",
                         state === "done" ? "text-emerald-100" : state === "active" ? "text-ink" : "text-ink-soft",
                       )}
                       title={stage.label}
@@ -121,6 +128,11 @@ export function RfqJourneyStepper({ stageIndex }: RfqJourneyStepperProps) {
                         {stage.label}
                       </span>
                     </p>
+                    {showCaption ? (
+                      <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.18em] text-ink-soft/80">
+                        {caption}
+                      </p>
+                    ) : null}
                   </div>
                 </li>
               );
