@@ -5,7 +5,6 @@ import { EmptyStateNotice } from "../EmptyStateNotice";
 import { SystemStatusBar } from "../SystemStatusBar";
 import { DataFallbackNotice } from "../DataFallbackNotice";
 import { PortalShell } from "../components/PortalShell";
-import { PortalStatPills } from "../components/PortalStatPills";
 import NewRfqsTable from "./NewRfqsTable";
 import ActiveJobsTable from "./ActiveJobsTable";
 import { getServerAuthUser } from "@/server/auth";
@@ -30,7 +29,6 @@ import {
   normalizeEmailInput,
   type SearchParamsLike,
 } from "@/app/(portals)/quotes/pageUtils";
-import type { WorkspaceMetric } from "../WorkspaceMetrics";
 import { buildSupplierInboxRows } from "./inboxRows";
 import { InvitedSupplierWelcomePanel } from "./InvitedSupplierWelcomePanel";
 import { SupplierOfferSentBanner } from "./SupplierOfferSentBanner";
@@ -178,13 +176,23 @@ async function SupplierDashboardPage({
     .filter((row) => row.isAwardedToSupplier)
     .sort((a, b) => (b.awardedAt ?? "").localeCompare(a.awardedAt ?? ""));
 
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTodayMs = startOfToday.getTime();
+  const newRfqsTodayCount = newRfqs.filter((row) => {
+    const ts = toTimestamp(row.createdAt);
+    return typeof ts === "number" && ts >= startOfTodayMs;
+  }).length;
+
+  const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const quotesSentLast7DaysCount = quotesList.filter((row) => {
+    const ts = toTimestamp(row.lastBidAt);
+    return typeof ts === "number" && ts >= sevenDaysAgoMs;
+  }).length;
+
   const workspaceCompanyName =
     sanitizeDisplayName(supplier?.company_name) ??
     sessionCompanyName;
-  const supplierMetrics = deriveSupplierDashboardMetrics({
-    newRfqsCount: newRfqs.length,
-    activeJobsCount: activeJobs.length,
-  });
   const lastUpdatedTimestamp = getLatestDashboardTimestamp({
     inboxRows: newRfqs,
     activeJobs,
@@ -233,10 +241,10 @@ async function SupplierDashboardPage({
       <div className="space-y-3">
         <SupplierOfferSentBanner enabled={offerJustSent} />
       </div>
-      <PortalStatPills
-        role="supplier"
-        metrics={supplierMetrics}
-        lastUpdatedLabel={lastUpdatedLabel}
+      <SupplierActivityRecapStats
+        newRfqsTodayCount={newRfqsTodayCount}
+        activeJobsCount={activeJobs.length}
+        quotesSentLast7DaysCount={quotesSentLast7DaysCount}
       />
       <InvitedSupplierWelcomePanel enabled={invitedJustCompleted} />
       {showGettingSetUp ? (
@@ -418,22 +426,48 @@ function sanitizeDisplayName(value?: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function deriveSupplierDashboardMetrics(input: {
-  newRfqsCount: number;
+function SupplierActivityRecapStats(props: {
+  newRfqsTodayCount: number;
   activeJobsCount: number;
-}): WorkspaceMetric[] {
-  return [
-    {
-      label: "New RFQs",
-      value: Math.max(0, Math.floor(input.newRfqsCount)),
-      helper: "RFQs awaiting your offer",
-    },
-    {
-      label: "Active jobs",
-      value: Math.max(0, Math.floor(input.activeJobsCount)),
-      helper: "Awarded RFQs in progress",
-    },
-  ];
+  quotesSentLast7DaysCount: number;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-slate-900/70">
+        <ActivityRecapStat
+          label="New RFQs today"
+          value={props.newRfqsTodayCount}
+        />
+        <ActivityRecapStat
+          label="Active jobs"
+          value={props.activeJobsCount}
+          className="sm:pl-4"
+        />
+        <ActivityRecapStat
+          label="Quotes sent (7d)"
+          value={props.quotesSentLast7DaysCount}
+          className="sm:pl-4"
+        />
+      </div>
+    </section>
+  );
+}
+
+function ActivityRecapStat(props: {
+  label: string;
+  value: number;
+  className?: string;
+}) {
+  return (
+    <div className={["flex items-center justify-between gap-3", props.className].filter(Boolean).join(" ")}>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+        {props.label}
+      </span>
+      <span className="text-lg font-semibold text-white tabular-nums">
+        {Math.max(0, Math.floor(props.value)).toLocaleString("en-US")}
+      </span>
+    </div>
+  );
 }
 
 function getLatestDashboardTimestamp(input: {
