@@ -35,11 +35,7 @@ const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
   ],
   supplier: [
     { label: "Dashboard", href: "/supplier" },
-    { label: "Decisions", href: "/supplier/decisions" },
-    { label: "Quotes", href: "/supplier/quotes" },
-    { label: "Projects", href: "/supplier/projects" },
     { label: "Messages", href: "/supplier/messages" },
-    { label: "Notifications", href: "/supplier/notifications" },
     { label: "Settings", href: "/supplier/settings" },
   ],
 };
@@ -47,6 +43,13 @@ const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
 const CUSTOMER_MORE_LINKS: PortalNavLink[] = [
   { label: "Search", href: "/customer/search" },
   { label: "Saved searches", href: "/customer/saved" },
+];
+
+const SUPPLIER_MORE_LINKS: PortalNavLink[] = [
+  { label: "Quotes", href: "/supplier/quotes" },
+  { label: "Projects", href: "/supplier/projects" },
+  { label: "Notifications", href: "/supplier/notifications" },
+  { label: "Decisions", href: "/supplier/decisions" },
 ];
 
 export type AppHeaderClientProps = {
@@ -63,28 +66,36 @@ export default function AppHeaderClient({
   const pathname = usePathname() ?? "/";
   const role = useMemo(() => deriveRoleFromPath(pathname), [pathname]);
   const navLinks: PortalNavLink[] = role ? NAV_LINKS[role] : [];
-  const moreLinks: PortalNavLink[] =
-    role === "customer" ? CUSTOMER_MORE_LINKS : [];
-  const navLinksWithBadges = navLinks.map((link) => {
-    const showBadge =
-      role === "supplier" &&
-      link.href === "/supplier/decisions" &&
-      typeof supplierDecisionCount === "number" &&
-      supplierDecisionCount > 0;
+  const moreLinks: PortalNavLink[] = role
+    ? role === "customer"
+      ? CUSTOMER_MORE_LINKS
+      : SUPPLIER_MORE_LINKS
+    : [];
 
-    if (!showBadge) {
-      return link;
-    }
+  const addSupplierBadges = (links: PortalNavLink[]) =>
+    links.map((link) => {
+      const showBadge =
+        role === "supplier" &&
+        link.href === "/supplier/decisions" &&
+        typeof supplierDecisionCount === "number" &&
+        supplierDecisionCount > 0;
 
-    return {
-      ...link,
-      badge: (
-        <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100">
-          {formatBadgeCount(supplierDecisionCount)}
-        </span>
-      ),
-    };
-  });
+      if (!showBadge) {
+        return link;
+      }
+
+      return {
+        ...link,
+        badge: (
+          <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[11px] font-semibold text-amber-100">
+            {formatBadgeCount(supplierDecisionCount)}
+          </span>
+        ),
+      };
+    });
+
+  const navLinksWithBadges = addSupplierBadges(navLinks);
+  const moreLinksWithBadges = addSupplierBadges(moreLinks);
 
   const brandHref =
     role === "customer"
@@ -154,7 +165,7 @@ export default function AppHeaderClient({
         {user && navLinksWithBadges.length > 0 ? (
           <PortalNavTabs
             links={navLinksWithBadges}
-            moreLinks={moreLinks}
+            moreLinks={moreLinksWithBadges}
             currentPath={pathname}
           />
         ) : null}
