@@ -54,7 +54,8 @@ function StatusPill({
 
 function NewOffersBadge() {
   return (
-    <span className="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" aria-hidden />
       New offers
     </span>
   );
@@ -103,23 +104,23 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
   }, []);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
+    <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/30">
       <div className="grid grid-cols-12 gap-3 border-b border-slate-900/70 px-5 py-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-        <div className="col-span-12 sm:col-span-7">RFQ files</div>
+        <div className="col-span-12 sm:col-span-7">RFQ</div>
         <div className="col-span-6 sm:col-span-3">Status</div>
-        <div className="col-span-6 text-right sm:col-span-2">Updated</div>
+        <div className="col-span-6 text-right sm:col-span-2">Last update</div>
       </div>
-      <ul className="divide-y divide-slate-900/70">
+      <ul className="space-y-2 p-2 sm:p-3">
         {rows.map((row) => {
           const hasNewOffers = row.status === "Offers ready" && !seenIds.has(row.id);
           return (
             <li
               key={row.id}
               className={clsx(
-                "transition",
+                "relative overflow-hidden rounded-xl border px-0 py-0 transition",
                 hasNewOffers
-                  ? "bg-emerald-500/5 hover:bg-emerald-500/10"
-                  : "hover:bg-slate-900/40",
+                  ? "border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10"
+                  : "border-slate-900/70 bg-slate-950/20 hover:bg-slate-900/30",
               )}
             >
               <Link
@@ -128,10 +129,16 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                   if (row.status === "Offers ready") markSeen(row.id);
                 }}
                 className={clsx(
-                  "grid grid-cols-12 gap-3 px-5 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400",
-                  hasNewOffers && "outline outline-1 outline-emerald-500/10",
+                  "relative grid grid-cols-12 gap-3 px-4 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 sm:px-5",
+                  hasNewOffers && "ring-1 ring-emerald-500/10",
                 )}
               >
+                {hasNewOffers ? (
+                  <span
+                    className="absolute left-0 top-0 h-full w-0.5 bg-emerald-400/70"
+                    aria-hidden
+                  />
+                ) : null}
                 <div className="col-span-12 min-w-0 sm:col-span-7">
                   <p
                     className="min-w-0 truncate text-sm font-semibold text-slate-100"
@@ -140,11 +147,17 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                     {row.primaryFileName}
                   </p>
                   {row.secondaryFileName ? (
-                    <p className="mt-1 min-w-0 truncate text-xs text-slate-400" title={row.secondaryFileName}>
+                    <p
+                      className="mt-1 min-w-0 truncate text-xs text-slate-400"
+                      title={row.secondaryFileName}
+                    >
                       {row.secondaryFileName}
                     </p>
                   ) : (
-                    <p className="mt-1 min-w-0 truncate text-xs text-slate-500" title={row.fallbackLabel}>
+                    <p
+                      className="mt-1 min-w-0 truncate text-xs text-slate-500"
+                      title={row.fallbackLabel}
+                    >
                       {row.fallbackLabel}
                     </p>
                   )}
@@ -187,7 +200,10 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                 </div>
 
                 <div className="col-span-6 flex items-center justify-end text-right sm:col-span-2">
-                  <span className="text-xs font-semibold text-slate-200" title={row.updatedTitle}>
+                  <span
+                    className="text-[11px] font-medium text-slate-400"
+                    title={row.updatedTitle}
+                  >
                     {row.updatedLabel}
                   </span>
                 </div>
