@@ -52,6 +52,7 @@ import { CustomerQuoteAwardPanel } from "./CustomerQuoteAwardPanel";
 import { CustomerQuoteProjectCard } from "./CustomerQuoteProjectCard";
 import { FocusScroll } from "./FocusScroll";
 import { PostAwardReassurancePanel } from "./PostAwardReassurancePanel";
+import { DeliveredOrderReinforcementPanel } from "./DeliveredOrderReinforcementPanel";
 import { FocusTabScroll } from "@/app/(portals)/shared/FocusTabScroll";
 import {
   loadQuoteProjectForQuote,
@@ -1850,6 +1851,9 @@ export default async function CustomerQuoteDetailPage({
         {awardedSupplierCard}
         {quoteHasWinner ? <PostAwardReassurancePanel quoteId={quote.id} /> : null}
         <CustomerProjectTimelineStrip steps={projectTimeline.steps} />
+        {customerOpsStatusStep === "delivered" ? (
+          <DeliveredOrderReinforcementPanel quoteId={quote.id} />
+        ) : null}
         {shouldShowCustomerOpsStatus && customerOpsStatusStep ? (
           <CustomerProductionStatusRow step={customerOpsStatusStep} label={customerOpsStatusLabel} />
         ) : null}
