@@ -122,13 +122,9 @@ export default async function CustomerSettingsPage() {
                 <SettingsField label="Company name" value={companyName} />
                 <SettingsField label="Primary email" value={email} />
               </div>
-              <button
-                type="button"
-                disabled
-                className="inline-flex cursor-not-allowed rounded-full bg-slate-950/20 px-4 py-2 text-sm font-semibold text-slate-400 ring-1 ring-slate-800/50"
-              >
-                Editing soon
-              </button>
+              <p className="text-xs text-slate-500">
+                Company profile editing is not available yet.
+              </p>
             </div>
           </div>
         </PortalCard>
@@ -173,17 +169,24 @@ export default async function CustomerSettingsPage() {
 
         <PortalCard
           title="Integrations"
-          description="ERP and procurement connectors, coming soon."
+          description="Connectors and exports (not yet available)."
           className="lg:col-span-2"
         >
-          <div className="overflow-hidden rounded-xl bg-slate-950/20 ring-1 ring-slate-800/50">
-            <div className="divide-y divide-slate-800/40">
-              <IntegrationPlaceholder name="NetSuite" status="In development" />
-              <IntegrationPlaceholder name="SAP" status="Scoping" />
-              <IntegrationPlaceholder name="Coupa" status="Design" />
-              <IntegrationPlaceholder name="email@yourdomain.com" status="Ready soon" />
+          <details className="group rounded-xl bg-slate-950/15 px-4 py-3 ring-1 ring-slate-800/40">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-slate-200">
+              <span>Show planned integrations</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 transition group-open:text-slate-300">
+                Coming soon
+              </span>
+            </summary>
+            <div className="mt-4 overflow-hidden rounded-xl bg-slate-950/10 ring-1 ring-slate-800/40">
+              <div className="divide-y divide-slate-800/30">
+                <IntegrationPlaceholder name="NetSuite" status="In development" />
+                <IntegrationPlaceholder name="SAP" status="Scoping" />
+                <IntegrationPlaceholder name="Coupa" status="Design" />
+              </div>
             </div>
-          </div>
+          </details>
         </PortalCard>
       </div>
     </PortalShell>
@@ -225,13 +228,8 @@ function IntegrationPlaceholder({
   status: string;
 }) {
   return (
-    <div className="flex flex-col gap-1 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-white">{name}</p>
-        <p className="mt-1 text-xs text-slate-500">
-          We’ll surface a connect button the moment this integration goes live.
-        </p>
-      </div>
+    <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <p className="truncate text-sm font-semibold text-slate-200">{name}</p>
       <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
         {status}
       </p>

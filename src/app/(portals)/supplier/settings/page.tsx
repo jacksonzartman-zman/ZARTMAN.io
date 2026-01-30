@@ -159,14 +159,22 @@ export default async function SupplierSettingsPage() {
           description="Connect your shop tools as adapters roll out."
           className="lg:col-span-2"
         >
-          <div className="overflow-hidden rounded-2xl bg-slate-950/20 ring-1 ring-slate-800/50">
-            <div className="divide-y divide-slate-800/40">
-              <IntegrationPlaceholderRow name="ProShop ERP" status="In development" />
-              <IntegrationPlaceholderRow name="JobBOSS" status="Scoping" />
-              <IntegrationPlaceholderRow name="CSV export" status="Ready soon" />
-              <IntegrationPlaceholderRow name="Custom webhook" status="Design" />
+          <details className="group rounded-xl bg-slate-950/15 px-4 py-3 ring-1 ring-slate-800/40">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-slate-200">
+              <span>Show planned integrations</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 transition group-open:text-slate-300">
+                Coming soon
+              </span>
+            </summary>
+            <div className="mt-4 overflow-hidden rounded-xl bg-slate-950/10 ring-1 ring-slate-800/40">
+              <div className="divide-y divide-slate-800/30">
+                <IntegrationPlaceholderRow name="ProShop ERP" status="In development" />
+                <IntegrationPlaceholderRow name="JobBOSS" status="Scoping" />
+                <IntegrationPlaceholderRow name="CSV export" status="Design" />
+                <IntegrationPlaceholderRow name="Custom webhook" status="Design" />
+              </div>
             </div>
-          </div>
+          </details>
         </PortalCard>
       </div>
     </PortalShell>
@@ -233,13 +241,8 @@ function IntegrationPlaceholderRow({
   status: string;
 }) {
   return (
-    <div className="flex flex-col gap-1 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-white">{name}</p>
-        <p className="mt-1 text-xs text-slate-500">
-          We’ll surface a connect button the moment this integration goes live.
-        </p>
-      </div>
+    <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <p className="truncate text-sm font-semibold text-slate-200">{name}</p>
       <p className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
         {status}
       </p>
