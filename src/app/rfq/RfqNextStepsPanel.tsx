@@ -14,6 +14,13 @@ function formatFirstOfferMinutes(mins: number | null | undefined): string | null
   return String(v);
 }
 
+function roundUpToNearestFiveMins(mins: number | null | undefined): number | null {
+  if (typeof mins !== "number" || !Number.isFinite(mins)) return null;
+  const v = Math.max(0, Math.floor(mins));
+  if (v <= 0) return 5;
+  return Math.max(5, Math.ceil(v / 5) * 5);
+}
+
 export function RfqNextStepsPanel({
   matchedCount,
   typicalFirstOfferMins,
@@ -27,6 +34,10 @@ export function RfqNextStepsPanel({
 
   const minsLabel = formatFirstOfferMinutes(typicalFirstOfferMins);
   const firstOfferLabel = minsLabel ? `Typical first offer: ~${minsLabel} min` : "Typical first offer: minutes";
+
+  const reassuranceMins = roundUpToNearestFiveMins(typicalFirstOfferMins);
+  const reassuranceLabel =
+    reassuranceMins !== null ? `Most suppliers respond within ~${reassuranceMins} minutes.` : null;
 
   const notifyVisible = Boolean(showNotifyRow);
 
@@ -54,9 +65,12 @@ export function RfqNextStepsPanel({
         </li>
         <li className="flex items-start gap-3">
           <RowIcon variant="clock" />
-          <p className="text-sm text-ink">
-            <span className={clsx(minsLabel && "tabular-nums")}>{firstOfferLabel}</span>
-          </p>
+          <div>
+            <p className="text-sm text-ink">
+              <span className={clsx(minsLabel && "tabular-nums")}>{firstOfferLabel}</span>
+            </p>
+            {reassuranceLabel ? <p className="mt-1 text-xs text-ink-soft">{reassuranceLabel}</p> : null}
+          </div>
         </li>
         {notifyVisible ? (
           <li className="flex items-start gap-3">
