@@ -396,7 +396,7 @@ async function CustomerDashboardPage({
         ) : (
           <EmptyStateNotice
             title="No open search requests yet"
-            description={`Waiting for the first upload from ${viewerDisplayEmail}. Fresh search requests drop here as soon as they sync.`}
+            description="New search requests will appear here as soon as they sync."
             action={
               SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
                 <Link
@@ -452,7 +452,7 @@ async function CustomerDashboardPage({
         ) : (
           <EmptyStateNotice
             title="No activity to show"
-            description="No activity yet. We’ll stream quote updates here the moment anything moves."
+            description="Updates will appear here as things move."
           />
         )}
       </PortalCard>
@@ -479,9 +479,10 @@ async function CustomerDashboardPage({
             ))}
           </ul>
         ) : (
-          <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/40 p-4 text-sm text-slate-400">
-            Nothing needs a decision right now. We’ll surface supplier-ready moves here the moment they exist.
-          </div>
+          <EmptyStateNotice
+            title="All set"
+            description="No decisions right now. We’ll surface anything that needs your input."
+          />
         )}
       </PortalCard>
 

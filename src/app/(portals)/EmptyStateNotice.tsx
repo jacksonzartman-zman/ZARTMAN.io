@@ -13,7 +13,7 @@ export function EmptyStateNotice({
 }: EmptyStateNoticeProps) {
   return (
     <div
-      className="rounded-2xl border border-dashed border-slate-800/70 bg-slate-950/40 px-4 py-5 text-left"
+      className="rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4 text-left"
       role="status"
       aria-live="polite"
     >

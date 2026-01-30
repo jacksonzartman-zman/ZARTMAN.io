@@ -195,8 +195,8 @@ export default async function SupplierDecisionsPage() {
           </div>
         ) : (
           <EmptyStateNotice
-            title="No bids yet"
-            description="We’ll surface invites, awards, and feedback as soon as buyers route search requests to you."
+            title="No decisions right now"
+            description="Invites, follow-ups, and awards will show up here as soon as they’re ready."
           />
         )}
       </PortalCard>

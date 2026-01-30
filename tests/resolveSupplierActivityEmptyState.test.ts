@@ -10,7 +10,7 @@ const assignmentsDisabled = resolveSupplierActivityEmptyState({
 assert(assignmentsDisabled, "Expected empty state copy for assignments-disabled");
 assert.strictEqual(
   assignmentsDisabled?.title,
-  "Workspace activity will appear here",
+  "Activity will appear here",
   "Assignments disabled title mismatch",
 );
 
@@ -22,7 +22,7 @@ const supplierExistsCopy = resolveSupplierActivityEmptyState({
 
 assert.strictEqual(
   supplierExistsCopy?.description,
-  "We’ll stream search request assignments and bid updates here as they happen.",
+  "New assignments, bids, and updates will show up here as they happen.",
   "Supplier copy mismatch",
 );
 
@@ -34,7 +34,7 @@ const onboardingCopy = resolveSupplierActivityEmptyState({
 
 assert.strictEqual(
   onboardingCopy?.title,
-  "Activity unlocks after onboarding",
+  "Finish onboarding to unlock activity",
   "Onboarding copy mismatch",
 );
 

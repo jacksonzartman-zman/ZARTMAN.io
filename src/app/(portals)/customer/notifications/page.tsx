@@ -8,6 +8,7 @@ import {
   type UserNotification,
 } from "@/server/notifications";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import { EmptyStateNotice } from "@/app/(portals)/EmptyStateNotice";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +28,18 @@ export default async function CustomerNotificationsPage() {
         title="Notifications"
         subtitle="You don’t have access to the customer workspace."
       >
-        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6">
-          <p className="text-sm text-slate-300">This page is only available to customer users.</p>
-        </section>
+        <EmptyStateNotice
+          title="Customer access required"
+          description="This page is only available to customer accounts."
+          action={
+            <Link
+              href="/supplier"
+              className="text-sm font-semibold text-emerald-200 underline-offset-4 hover:underline"
+            >
+              Go to supplier portal
+            </Link>
+          }
+        />
       </PortalShell>
     );
   }
@@ -86,9 +96,10 @@ export default async function CustomerNotificationsPage() {
       }
     >
       {notifications.length === 0 ? (
-        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6">
-          <p className="text-sm text-slate-400">Nothing needs your attention right now.</p>
-        </section>
+        <EmptyStateNotice
+          title="You’re all caught up"
+          description="Nothing needs your attention right now."
+        />
       ) : (
         <div className="space-y-6">
           {grouped.map(([dayKey, items]) => (

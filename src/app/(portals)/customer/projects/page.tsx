@@ -200,7 +200,7 @@ export default async function CustomerProjectsPage({
         {projects.length === 0 ? (
           <EmptyStateCard
             title="No projects yet"
-            description="You don&apos;t have any awarded work yet. Once you award a supplier on a quote, projects will show up here."
+            description="Projects appear once you award a supplier."
             action={{ label: "View Quotes", href: "/customer/quotes" }}
           />
         ) : (
@@ -215,7 +215,7 @@ export default async function CustomerProjectsPage({
               status === "in_progress" && !supplierFilter ? (
                 <EmptyStateCard
                   title="No active projects"
-                  description="You’re all caught up. When you award a supplier, active projects will appear here."
+                  description="You’re all caught up. New awards will appear here."
                   action={{ label: "View completed", href: "/customer/projects?status=complete" }}
                 />
               ) : (

@@ -76,18 +76,13 @@ export default async function SupplierProjectsPage() {
         title="Projects"
         subtitle="Awarded jobs in progress and history."
       >
-        <section className="space-y-3 rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
-          <p className="text-sm text-slate-300">
-            We couldn&apos;t find a supplier workspace linked to {user.email}. Go back to your dashboard
-            and complete onboarding to start tracking awarded projects.
-          </p>
-          <Link
-            href="/supplier"
-            className="inline-flex items-center rounded-full bg-blue-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-400"
-          >
-            Back to dashboard
-          </Link>
-        </section>
+        <EmptyStateCard
+          title="Complete supplier onboarding"
+          description="Finish onboarding to start tracking awarded projects here."
+          tone="info"
+          actionVariant="info"
+          action={{ label: "Back to dashboard", href: "/supplier" }}
+        />
       </PortalShell>
     );
   }

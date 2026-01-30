@@ -19,6 +19,7 @@ import type { QuoteMessageFormState } from "@/app/(portals)/components/QuoteMess
 import type { OutboundFileOption } from "@/server/quotes/outboundFilePicker";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { CopyTextButton } from "@/components/CopyTextButton";
+import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 const CHANGE_REQUEST_SUBMITTED_EVENT = "zartman:change-request-submitted";
 const CHANGE_REQUEST_CREATED_PREFIX = "Change request created:";
@@ -100,10 +101,10 @@ export function QuoteMessagesThread({
   className,
   title = "Messages",
   description = "Shared thread with your supplier and the Zartman team.",
-  usageHint = "Use Messages for clarifications, change requests, and questions.",
+  usageHint = "Use Messages for quick questions and change requests.",
   helperText,
   disabledCopy,
-  emptyStateCopy = "No messages yet. Start the thread if you need clarification, want to request a change, or have a question—everyone on this workspace will be notified.",
+  emptyStateCopy = "No messages yet. Send a note when you need clarification or want to confirm details.",
   emailReplyIndicator,
   portalEmail = null,
 }: QuoteMessagesThreadProps) {
@@ -261,7 +262,11 @@ function QuoteMessageList({
         footer={
           <button
             type="button"
-            className="inline-flex w-full items-center justify-center rounded-full bg-emerald-400 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-950 transition hover:bg-emerald-300 sm:w-auto"
+            className={[
+              primaryCtaClasses,
+              ctaSizeClasses.sm,
+              "w-full sm:w-auto",
+            ].join(" ")}
             aria-label="Write a message"
             onClick={() => {
               focusQuoteMessageComposerTextarea(quoteId);

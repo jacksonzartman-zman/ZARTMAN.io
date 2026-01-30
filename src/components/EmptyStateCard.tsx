@@ -6,6 +6,7 @@
 import clsx from "clsx";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { infoCtaClasses, primaryCtaClasses, secondaryCtaClasses } from "@/lib/ctas";
 
 type EmptyStateTone = "neutral" | "info" | "success" | "warning";
 
@@ -13,6 +14,7 @@ export type EmptyStateCardProps = {
   title: string;
   description: string;
   tone?: EmptyStateTone;
+  actionVariant?: "primary" | "info" | "secondary";
   action?: { label: string; href: string } | null;
   secondaryAction?: { label: string; href: string } | null;
   className?: string;
@@ -23,6 +25,7 @@ export function EmptyStateCard({
   title,
   description,
   tone = "neutral",
+  actionVariant,
   action,
   secondaryAction,
   className,
@@ -30,23 +33,33 @@ export function EmptyStateCard({
 }: EmptyStateCardProps) {
   const toneClasses =
     tone === "success"
-      ? "border-emerald-500/30 bg-emerald-500/5"
+      ? "border-emerald-500/25 bg-emerald-500/5"
       : tone === "info"
-        ? "border-blue-500/30 bg-blue-500/5"
+        ? "border-blue-500/25 bg-blue-500/5"
         : tone === "warning"
-          ? "border-amber-500/30 bg-amber-500/5"
-          : "border-dashed border-slate-800/70 bg-black/30";
+          ? "border-amber-500/25 bg-amber-500/5"
+          : "border-slate-900/60 bg-slate-950/30";
+
+  const primaryActionClasses = (() => {
+    if (actionVariant === "info" || tone === "info") {
+      return infoCtaClasses;
+    }
+    if (actionVariant === "secondary") {
+      return secondaryCtaClasses;
+    }
+    return primaryCtaClasses;
+  })();
 
   return (
     <section className={clsx("rounded-2xl border px-5 py-4", toneClasses, className)}>
-      <p className="text-base font-semibold text-slate-100">{title}</p>
+      <p className="text-sm font-semibold text-slate-100">{title}</p>
       <p className="mt-1 text-sm text-slate-400">{description}</p>
       {action || secondaryAction ? (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {action ? (
             <ActionLink
               href={action.href}
-              className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-black transition hover:bg-emerald-400"
+              className={clsx(primaryActionClasses, "text-xs font-semibold uppercase tracking-wide")}
             >
               {action.label}
             </ActionLink>
@@ -54,7 +67,10 @@ export function EmptyStateCard({
           {secondaryAction ? (
             <ActionLink
               href={secondaryAction.href}
-              className="inline-flex items-center justify-center rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-500 hover:text-white"
+              className={clsx(
+                secondaryCtaClasses,
+                "text-xs font-semibold uppercase tracking-wide",
+              )}
             >
               {secondaryAction.label}
             </ActionLink>
