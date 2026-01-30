@@ -260,6 +260,7 @@ async function SupplierDashboardPage({
       subtitle="Quote new RFQs and track active jobs in one place."
       actions={headerActions}
       headerContent={headerContent}
+      bodyClassName="space-y-6"
     >
       <div className="space-y-3">
         <AwardedJobSuccessBanner awardedQuoteIds={activeJobs.map((row) => row.quoteId)} />
@@ -273,156 +274,166 @@ async function SupplierDashboardPage({
         responseMomentumLabel={responseMomentumLabel}
       />
       <InvitedSupplierWelcomePanel enabled={invitedJustCompleted} />
-      {showGettingSetUp ? (
-        <PortalCard
-          title="Quick setup"
-          description="Two steps to ensure you receive the right RFQs."
-        >
-          <ul className="space-y-2 text-sm">
-            {!hasCapabilities ? (
-              <li>
-                <Link
-                  href="/supplier/onboarding"
-                  className="font-semibold text-blue-200 underline-offset-4 hover:underline"
-                >
-                  Add capabilities &amp; processes
-                </Link>
-              </li>
-            ) : null}
-            {!onboardingState.hasRecentCapacitySnapshot ? (
-              <li>
-                <Link
-                  href="/supplier/settings/capacity"
-                  className="font-semibold text-blue-200 underline-offset-4 hover:underline"
-                >
-                  Update capacity
-                </Link>
-              </li>
-            ) : null}
-          </ul>
-        </PortalCard>
-      ) : null}
-
-      {showProfileCompletionNudge ? (
-        <PortalCard
-          title="Complete your profile to receive better matched RFQs"
-          action={
-            <Link
-              href="/supplier/settings/processes"
-              className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-slate-500 hover:text-white"
-            >
-              Update processes
-            </Link>
-          }
-          className="py-4"
-        />
-      ) : null}
-
-      <PortalCard
-        title="New RFQs"
-        description="RFQs waiting for your offer."
-        action={
-          supplierExists ? (
-            <Link
-              href="/supplier/quotes?status=open"
-              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
-            >
-              View all
-            </Link>
-          ) : null
-        }
-      >
-        {isApprovalGateActive(approvalGate) ? (
-          <EmptyStateNotice
-            title={getApprovalHoldCopy(approvalGate?.status).title}
-            description={getApprovalHoldCopy(approvalGate?.status).description}
-          />
-        ) : supplierExists && newRfqs.length > 0 ? (
-          <NewRfqsTable rows={newRfqs.slice(0, 10)} />
-        ) : supplierExists ? (
-          <EmptyStateNotice
-            title="No new RFQs"
-            description="When a new RFQ is assigned to your shop, it appears here immediately."
-          />
-        ) : (
-          <EmptyStateNotice
-            title="Finish onboarding to receive RFQs"
-            description="Complete your supplier profile so we can route the right requests to you."
+      <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
+        <div className="space-y-6 lg:col-span-8">
+          <PortalCard
+            title="New RFQs"
+            description="RFQs waiting for your offer."
             action={
-              <Link
-                href="/supplier/onboarding"
-                className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
-              >
-                Finish onboarding
-              </Link>
+              supplierExists ? (
+                <Link
+                  href="/supplier/quotes?status=open"
+                  className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+                >
+                  View all
+                </Link>
+              ) : null
             }
-          />
-        )}
-        {matchesUnavailable ? <DataFallbackNotice className="mt-3" /> : null}
-      </PortalCard>
+            className="py-6"
+          >
+            {isApprovalGateActive(approvalGate) ? (
+              <EmptyStateNotice
+                title={getApprovalHoldCopy(approvalGate?.status).title}
+                description={getApprovalHoldCopy(approvalGate?.status).description}
+              />
+            ) : supplierExists && newRfqs.length > 0 ? (
+              <NewRfqsTable rows={newRfqs.slice(0, 10)} />
+            ) : supplierExists ? (
+              <EmptyStateNotice
+                title="No new RFQs"
+                description="When a new RFQ is assigned to your shop, it appears here immediately."
+              />
+            ) : (
+              <EmptyStateNotice
+                title="Finish onboarding to receive RFQs"
+                description="Complete your supplier profile so we can route the right requests to you."
+                action={
+                  <Link
+                    href="/supplier/onboarding"
+                    className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+                  >
+                    Finish onboarding
+                  </Link>
+                }
+              />
+            )}
+            {matchesUnavailable ? <DataFallbackNotice className="mt-3" /> : null}
+          </PortalCard>
+        </div>
 
-      <PortalCard
-        title="Active jobs"
-        description="Awarded RFQs in progress."
-        action={
-          supplierExists ? (
-            <Link
-              href="/supplier/quotes"
-              className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
-            >
-              View all
-            </Link>
-          ) : null
-        }
-      >
-        {supplierExists && activeJobs.length > 0 ? (
-          <ActiveJobsTable rows={activeJobs.slice(0, 10)} />
-        ) : supplierExists ? (
-          <EmptyStateNotice
-            title="No active jobs"
-            description="Once you’re awarded an RFQ, it will show up here."
-          />
-        ) : (
-          <EmptyStateNotice
-            title="Active jobs unlock after onboarding"
-            description="Sign in with your supplier email to see awarded work in progress."
+        <div className="space-y-6 lg:col-span-4">
+          <PortalCard
+            title="Active jobs"
+            description="Awarded RFQs in progress."
             action={
-              <Link
-                href="/login?next=/supplier"
-                className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
-              >
-                Go to login
-              </Link>
+              supplierExists ? (
+                <Link
+                  href="/supplier/quotes"
+                  className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+                >
+                  View all
+                </Link>
+              ) : null
             }
-          />
-        )}
-      </PortalCard>
+            className="shadow-none hover:translate-y-0 hover:shadow-none"
+          >
+            {supplierExists && activeJobs.length > 0 ? (
+              <ActiveJobsTable rows={activeJobs.slice(0, 10)} />
+            ) : supplierExists ? (
+              <EmptyStateNotice
+                title="No active jobs"
+                description="Once you’re awarded an RFQ, it will show up here."
+              />
+            ) : (
+              <EmptyStateNotice
+                title="Active jobs unlock after onboarding"
+                description="Sign in with your supplier email to see awarded work in progress."
+                action={
+                  <Link
+                    href="/login?next=/supplier"
+                    className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+                  >
+                    Go to login
+                  </Link>
+                }
+              />
+            )}
+          </PortalCard>
 
-      {approvalsOn && supplierExists && !supplierApproved ? (
-        <PortalCard
-          title="Status"
-          description="Your supplier profile is pending review."
-        >
-          <p className="text-sm text-slate-300">
-            You can keep updating your profile. New RFQs will start flowing once you’re approved.
-          </p>
-        </PortalCard>
-      ) : null}
+          {showGettingSetUp ? (
+            <PortalCard
+              title="Quick setup"
+              description="Two steps to ensure you receive the right RFQs."
+              className="shadow-none hover:translate-y-0 hover:shadow-none"
+            >
+              <ul className="space-y-2 text-sm">
+                {!hasCapabilities ? (
+                  <li>
+                    <Link
+                      href="/supplier/onboarding"
+                      className="font-semibold text-blue-200 underline-offset-4 hover:underline"
+                    >
+                      Add capabilities &amp; processes
+                    </Link>
+                  </li>
+                ) : null}
+                {!onboardingState.hasRecentCapacitySnapshot ? (
+                  <li>
+                    <Link
+                      href="/supplier/settings/capacity"
+                      className="font-semibold text-blue-200 underline-offset-4 hover:underline"
+                    >
+                      Update capacity
+                    </Link>
+                  </li>
+                ) : null}
+              </ul>
+            </PortalCard>
+          ) : null}
 
-      {onboardingJustCompleted ? (
-        <PortalCard title="Profile updated">
-          <p className="text-sm text-slate-300">
-            Profile updated! We’ll start routing matched RFQs to you automatically.
-          </p>
-        </PortalCard>
-      ) : null}
-      {inviteJustAccepted ? (
-        <PortalCard title="Invite accepted">
-          <p className="text-sm text-slate-300">
-            Invite accepted! You’re now part of this supplier workspace.
-          </p>
-        </PortalCard>
-      ) : null}
+          {showProfileCompletionNudge ? (
+            <PortalCard
+              title="Complete your profile to receive better matched RFQs"
+              action={
+                <Link
+                  href="/supplier/settings/processes"
+                  className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-slate-500 hover:text-white"
+                >
+                  Update processes
+                </Link>
+              }
+              className="py-4 shadow-none hover:translate-y-0 hover:shadow-none"
+            />
+          ) : null}
+
+          {approvalsOn && supplierExists && !supplierApproved ? (
+            <PortalCard
+              title="Status"
+              description="Your supplier profile is pending review."
+              className="shadow-none hover:translate-y-0 hover:shadow-none"
+            >
+              <p className="text-sm text-slate-300">
+                You can keep updating your profile. New RFQs will start flowing once you’re approved.
+              </p>
+            </PortalCard>
+          ) : null}
+
+          {onboardingJustCompleted ? (
+            <PortalCard title="Profile updated" className="shadow-none hover:translate-y-0 hover:shadow-none">
+              <p className="text-sm text-slate-300">
+                Profile updated! We’ll start routing matched RFQs to you automatically.
+              </p>
+            </PortalCard>
+          ) : null}
+          {inviteJustAccepted ? (
+            <PortalCard title="Invite accepted" className="shadow-none hover:translate-y-0 hover:shadow-none">
+              <p className="text-sm text-slate-300">
+                Invite accepted! You’re now part of this supplier workspace.
+              </p>
+            </PortalCard>
+          ) : null}
+        </div>
+      </div>
     </PortalShell>
   );
 }
@@ -460,8 +471,8 @@ function SupplierActivityRecapStats(props: {
   responseMomentumLabel: string | null;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-slate-900/70">
+    <section className="rounded-2xl border border-slate-900/60 bg-slate-950/35 px-4 py-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-slate-900/60">
         <ActivityRecapStat
           label="New RFQs today"
           labelAddon={props.responseActivityLabel}
@@ -471,12 +482,10 @@ function SupplierActivityRecapStats(props: {
         <ActivityRecapStat
           label="Active jobs"
           value={props.activeJobsCount}
-          className="sm:pl-4"
         />
         <ActivityRecapStat
           label="Quotes sent (7d)"
           value={props.quotesSentLast7DaysCount}
-          className="sm:pl-4"
         />
       </div>
     </section>
@@ -491,10 +500,18 @@ function ActivityRecapStat(props: {
   className?: string;
 }) {
   return (
-    <div className={["flex items-center justify-between gap-3", props.className].filter(Boolean).join(" ")}>
+    <div
+      className={[
+        "flex items-center justify-between gap-3 rounded-xl py-1",
+        "sm:px-4 sm:py-2",
+        props.className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-400">
             {props.label}
           </span>
           {props.labelAddon ? (
@@ -509,7 +526,7 @@ function ActivityRecapStat(props: {
           </p>
         ) : null}
       </div>
-      <span className="text-lg font-semibold text-white tabular-nums">
+      <span className="text-base font-semibold text-white tabular-nums">
         {Math.max(0, Math.floor(props.value)).toLocaleString("en-US")}
       </span>
     </div>
