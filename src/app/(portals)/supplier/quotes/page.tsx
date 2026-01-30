@@ -155,7 +155,7 @@ export default async function SupplierQuotesPage({
     return (
       <PortalShell
         workspace="supplier"
-        title="Quotes"
+        title="RFQs"
         subtitle="This workspace is reserved for supplier accounts."
       >
         <EmptyStateNotice
@@ -180,12 +180,12 @@ export default async function SupplierQuotesPage({
     return (
       <PortalShell
         workspace="supplier"
-        title="Quotes"
-        subtitle="Finish onboarding to start receiving search requests here."
+        title="RFQs"
+        subtitle="Finish onboarding to start receiving RFQs here."
       >
         <EmptyStateNotice
           title="Complete supplier onboarding"
-          description="Share capabilities, certifications, and documents so we can route the right search requests."
+          description="Share capabilities, certifications, and documents so we can route the right RFQs."
           action={
             <Link
               href="/supplier/onboarding"
@@ -293,8 +293,8 @@ export default async function SupplierQuotesPage({
   return (
     <PortalShell
       workspace="supplier"
-      title="Quotes"
-      subtitle="Search requests you’re invited to, have quoted on, or have been awarded."
+      title="RFQs"
+      subtitle="RFQs you’re invited to, have quoted on, or have been awarded."
       actions={
         <div className="flex flex-wrap gap-3">
           <Link
@@ -314,7 +314,7 @@ export default async function SupplierQuotesPage({
     >
       <SupplierFunnelBanner activeStep={2} />
       <PortalCard
-        title="Search requests"
+        title="RFQs"
         description="Status, kickoff, messages, and match health at a glance."
       >
         <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
@@ -371,7 +371,7 @@ export default async function SupplierQuotesPage({
             </select>
           </label>
           <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
-            Search request quality
+            RFQ quality
             <select
               name="rfqQuality"
               defaultValue={rfqQualityFilter}
@@ -400,7 +400,7 @@ export default async function SupplierQuotesPage({
 
         {approvalGateActive ? (
           <EmptyStateCard
-            title="Search requests unlock after approval"
+            title="RFQs unlock after approval"
             description="We’ll populate this list as soon as your supplier profile is approved."
             tone="info"
             actionVariant="info"
@@ -409,7 +409,7 @@ export default async function SupplierQuotesPage({
         ) : filteredRows.length === 0 ? (
           hasFilters ? (
             <EmptyStateCard
-              title="No search requests match these filters"
+              title="No RFQs match these filters"
               description="Try clearing filters to see everything."
               tone="info"
               actionVariant="info"
@@ -417,7 +417,7 @@ export default async function SupplierQuotesPage({
             />
           ) : (
             <EmptyStateCard
-              title="No search requests yet"
+              title="No RFQs yet"
               description="Invites and quotes will appear here as soon as you’re included."
               tone="info"
               actionVariant="info"
@@ -430,7 +430,7 @@ export default async function SupplierQuotesPage({
               <thead className="bg-slate-900/60">
                 <tr>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-                    Search request / Quote
+                    RFQ
                   </th>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     Status

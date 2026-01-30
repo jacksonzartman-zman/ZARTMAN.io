@@ -22,8 +22,8 @@ const STEPS: Array<{
   },
   {
     step: 3,
-    title: "Active job",
-    context: "Step 3 of 3 — Job in progress",
+    title: "Active project",
+    context: "Step 3 of 3 — Project in progress",
     helper: "Kickoff tasks unlock after award; keep the project moving.",
   },
 ];

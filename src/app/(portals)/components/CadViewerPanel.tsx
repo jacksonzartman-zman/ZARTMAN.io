@@ -84,7 +84,7 @@ export function CadViewerPanel({
             {hasSource
               ? "Preview is not available for this file type."
               : fallbackMessage ??
-                "Upload a CAD file to attach it to your search request."}
+                "Upload a CAD file to attach it to your RFQ."}
           </span>
         </div>
       )}

@@ -289,7 +289,7 @@ export function CustomerQuotePartPanel({
             <div className="mt-3 space-y-2">
               {files.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-slate-900/60 bg-slate-950/20 px-4 py-3 text-sm text-slate-400">
-                  Files attached to your search request will appear here for quick previewing.
+                  Files attached to your RFQ will appear here for quick previewing.
                 </p>
               ) : (
                 files.map((file, index) => {

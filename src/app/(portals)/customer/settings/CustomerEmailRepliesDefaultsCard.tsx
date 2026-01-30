@@ -22,11 +22,11 @@ export function CustomerEmailRepliesDefaultsCard(props: {
   const canToggle = props.availability.kind === "ready";
 
   const helperText =
-    "Suppliers will reply via masked email addresses. You can turn this off per quote.";
+    "Suppliers will reply via masked email addresses. You can turn this off per RFQ.";
 
   const status = useMemo(() => {
     if (props.availability.kind !== "ready") return props.availability.message;
-    return enabled ? "Enabled for new search requests" : "Off by default";
+    return enabled ? "Enabled for new RFQs" : "Off by default";
   }, [enabled, props.availability]);
 
   return (
@@ -90,7 +90,7 @@ export function CustomerEmailRepliesDefaultsCard(props: {
           />
           <span className="space-y-1">
             <span className="text-sm font-semibold text-white">
-              Enable email replies by default for new search requests
+              Enable email replies by default for new RFQs
             </span>
             <p className="text-xs text-slate-400">
               {busy ? "Saving…" : enabled ? "On" : "Off"}
@@ -99,7 +99,7 @@ export function CustomerEmailRepliesDefaultsCard(props: {
         </label>
 
         <p className="text-xs text-slate-500">
-          Per-quote email reply controls remain the source of truth for existing search requests.
+          Per-RFQ email reply controls remain the source of truth for existing RFQs.
         </p>
       </div>
     </PortalCard>

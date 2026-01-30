@@ -47,7 +47,7 @@ export function CompleteCustomerProfileCard({
   return (
     <PortalCard
       title="Complete your workspace"
-      description="Share the basics about your company so we can link search requests, quotes, and future orders to your account."
+      description="Share the basics about your company so we can link RFQs, projects, and future orders to your account."
     >
       <form action={formAction} className="space-y-4">
         <div>

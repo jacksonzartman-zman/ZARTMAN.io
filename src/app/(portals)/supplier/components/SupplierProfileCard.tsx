@@ -26,7 +26,7 @@ export function SupplierProfileCard({
       title="Supplier profile"
       description={
         hasProfile
-          ? "Keep company details, capabilities, and compliance docs current so search request matches stay accurate."
+          ? "Keep company details, capabilities, and compliance docs current so RFQ matches stay accurate."
           : "Complete onboarding so customers see verified company info."
       }
       action={

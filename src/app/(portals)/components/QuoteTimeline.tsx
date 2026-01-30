@@ -33,7 +33,7 @@ export async function QuoteTimeline({
   });
 
   const events = result.ok ? result.events : [];
-  const rfqPhaseLabel = actorRole === "admin" ? undefined : "Search request";
+  const rfqPhaseLabel = actorRole === "admin" ? undefined : "RFQ";
 
   return (
     <QuoteTimelineClient

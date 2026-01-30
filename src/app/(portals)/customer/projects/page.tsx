@@ -191,7 +191,12 @@ export default async function CustomerProjectsPage({
   function extractOriginFileLabel(projectName: string): string | null {
     const raw = (projectName ?? "").trim();
     if (!raw) return null;
-    if (raw.toLowerCase().startsWith("search request:")) {
+    const lowered = raw.toLowerCase();
+    if (lowered.startsWith("rfq:")) {
+      const value = raw.slice("rfq:".length).trim();
+      return value || null;
+    }
+    if (lowered.startsWith("search request:")) {
       const value = raw.slice("search request:".length).trim();
       return value || null;
     }

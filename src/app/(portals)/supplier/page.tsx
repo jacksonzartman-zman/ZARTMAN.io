@@ -85,7 +85,7 @@ async function SupplierDashboardPage({
       <PortalShell
         workspace="supplier"
         title="Dashboard"
-        subtitle="Quote new RFQs and track active jobs in one place."
+        subtitle="Quote new RFQs and track active projects in one place."
         headerContent={
           <WorkspaceWelcomeBanner
             role="supplier"
@@ -222,7 +222,7 @@ async function SupplierDashboardPage({
     <PortalShell
       workspace="supplier"
       title="Dashboard"
-      subtitle="Quote new RFQs and track active jobs in one place."
+      subtitle="Quote new RFQs and track active projects in one place."
       actions={headerActions}
       headerContent={headerContent}
       bodyClassName="space-y-6 sm:space-y-7"
@@ -282,7 +282,7 @@ async function SupplierDashboardPage({
 
         <div className="space-y-6 lg:col-span-4">
           <PortalCard
-            title="Step 3 · Active jobs"
+            title="Step 3 · Active projects"
             description="Awarded work in progress."
             className="border-slate-800/45 bg-slate-950/30 shadow-none hover:border-slate-700/55 hover:bg-slate-950/35 hover:shadow-[0_10px_26px_rgba(2,6,23,0.24)]"
             action={
@@ -300,12 +300,12 @@ async function SupplierDashboardPage({
               <ActiveJobsTable rows={activeJobs.slice(0, 10)} />
             ) : supplierExists ? (
               <EmptyStateNotice
-                title="No active jobs"
+                title="No active projects"
                 description="Once you’re awarded an RFQ, it will show up here."
               />
             ) : (
               <EmptyStateNotice
-                title="Active jobs unlock after onboarding"
+                title="Projects unlock after onboarding"
                 description="Sign in with your supplier email to see awarded work in progress."
                 action={
                   <Link
@@ -367,8 +367,8 @@ function getApprovalHoldCopy(status?: SupplierApprovalStatus) {
     };
   }
   return {
-    title: "Search requests unlock after approval",
-    description: "Search requests and quotes will appear here once your account is approved.",
+    title: "RFQs unlock after approval",
+    description: "RFQs and quotes will appear here once your account is approved.",
   };
 }
 

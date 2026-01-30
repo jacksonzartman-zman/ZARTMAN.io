@@ -140,7 +140,7 @@ async function CustomerDashboardPage({
       <PortalShell
         workspace="customer"
         title="Dashboard"
-        subtitle="Submit search requests, track offers, and keep supplier moves organized."
+        subtitle="Submit RFQs, track offers, and keep projects moving."
         headerContent={heroContent}
         actions={
           SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
@@ -148,7 +148,7 @@ async function CustomerDashboardPage({
               href="/quote"
               className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
             >
-              Start a new search
+              Start a new RFQ
             </Link>
           ) : null
         }
@@ -183,7 +183,7 @@ async function CustomerDashboardPage({
       <PortalShell
         workspace="customer"
         title="Dashboard"
-        subtitle="Submit search requests, track offers, and keep supplier moves organized."
+        subtitle="Submit RFQs, track offers, and keep projects moving."
         headerContent={
           <WorkspaceWelcomeBanner
             role="customer"
@@ -196,7 +196,7 @@ async function CustomerDashboardPage({
               href="/quote"
               className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
             >
-              Start a new search
+              Start a new RFQ
             </Link>
           ) : null
         }
@@ -312,7 +312,7 @@ async function CustomerDashboardPage({
       href="/quote"
       className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
     >
-      Start a new search
+      Start a new RFQ
     </Link>
   ) : null;
 
@@ -320,18 +320,18 @@ async function CustomerDashboardPage({
     <PortalShell
       workspace="customer"
       title="Dashboard"
-      subtitle="Submit search requests, track offers, and keep supplier moves organized."
+      subtitle="Submit RFQs, track offers, and keep projects moving."
       headerContent={headerContent}
       actions={headerActions}
     >
       {showFirstRfqCard ? (
         <PortalCard
-          title="Start your first search request"
+          title="Start your first RFQ"
           description="Upload your CAD or a ZIP, tell us what you need, and we’ll route it to the right suppliers."
           action={
             SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
               <Link href="/quote" className={primaryCtaClasses}>
-                Create a search request
+                Create an RFQ
               </Link>
             ) : null
           }
@@ -343,11 +343,11 @@ async function CustomerDashboardPage({
         </PortalCard>
       ) : null}
       <PortalCard
-        title="Open search requests"
+        title="Open RFQs"
         description={
           hasAnyQuotes
-            ? "Active search requests routed through Zartman for your team."
-            : "We’ll surface live search requests here as soon as they exist."
+            ? "Active RFQs routed through Zartman for your team."
+            : "We’ll surface RFQs here as soon as they’re submitted."
         }
       >
         {openQuotes.length > 0 ? (
@@ -381,15 +381,15 @@ async function CustomerDashboardPage({
           </ul>
         ) : (
           <EmptyStateNotice
-            title="No open search requests yet"
-            description="New search requests will appear here as soon as they sync."
+            title="No open RFQs yet"
+            description="New RFQs will appear here as soon as they sync."
             action={
               SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
                 <Link
                   href="/quote"
                   className="text-sm font-semibold text-emerald-300 underline-offset-4 hover:underline"
                 >
-                  Submit a new search request
+                  Submit a new RFQ
                 </Link>
               ) : null
             }
@@ -440,7 +440,7 @@ async function CustomerDashboardPage({
             <div>
               <p className="text-sm font-semibold text-white">Activity</p>
               <p className="text-xs text-slate-400">
-                Latest search request, offer, and status updates.
+                Latest RFQ, offer, and status updates.
               </p>
             </div>
             {recentActivity.length > 0 ? (
@@ -752,7 +752,7 @@ function getQuoteTitle(quote: PortalQuote): string {
   if (quote.fileName) {
     return quote.fileName;
   }
-  return `Quote ${formatQuoteId(quote.id)}`;
+  return `RFQ ${formatQuoteId(quote.id)}`;
 }
 
 function getQuoteSummary(quote: PortalQuote): string {
@@ -787,7 +787,7 @@ function getLatestCustomerActivityTimestamp(quotes: PortalQuote[]): number | nul
 
 function ActivityTypeBadge({ type }: { type: QuoteActivityEvent["type"] }) {
   const labelMap: Record<QuoteActivityEvent["type"], string> = {
-    rfq_submitted: "Search request",
+    rfq_submitted: "RFQ",
     status_changed: "Status",
     message_posted: "Message",
     bid_received: "Offer",

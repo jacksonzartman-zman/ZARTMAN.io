@@ -33,7 +33,7 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
-            Job
+            Project
           </th>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
             Awarded
@@ -84,7 +84,7 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
                   "inline-flex min-w-[9rem] justify-center",
                 )}
               >
-                Open job
+                Open project
               </Link>
             </td>
           </tr>

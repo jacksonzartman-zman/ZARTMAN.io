@@ -43,7 +43,7 @@ export function QuoteFilesUploadsSection({
   return (
     <CollapsibleCard
       title="Uploads"
-      description="Files for this search request (CAD, drawings, PDFs). Link files to parts below to clarify scope."
+      description="Files for this RFQ (CAD, drawings, PDFs). Link files to parts below to clarify scope."
       defaultOpen={defaultOpen}
       summary={
         <span className="rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold text-slate-200">
@@ -60,10 +60,10 @@ export function QuoteFilesUploadsSection({
             title="Some files can’t be found"
             description={
               legacyList.length > 0
-                ? `This search request references older uploads, but we can’t locate the file records for: ${legacyList
+                ? `This RFQ references older uploads, but we can’t locate the file records for: ${legacyList
                     .slice(0, 5)
                     .join(", ")}${legacyList.length > 5 ? "…" : ""}. Re-upload the missing files to continue, or contact support if you need help recovering them.`
-                : "This search request references older uploads, but we can’t locate the underlying file records. Re-upload the missing files to continue, or contact support if you need help recovering them."
+                : "This RFQ references older uploads, but we can’t locate the underlying file records. Re-upload the missing files to continue, or contact support if you need help recovering them."
             }
           />
         ) : null}
@@ -72,7 +72,7 @@ export function QuoteFilesUploadsSection({
         </div>
         {files.length === 0 ? (
           <EmptyStateCard
-            title="Add files to start this search request"
+            title="Add files to start this RFQ"
             description="Next, once you upload files, we’ll process them and start collecting supplier offers."
             action={{ label: "Add files", href: "#uploads" }}
           />

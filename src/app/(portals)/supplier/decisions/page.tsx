@@ -36,7 +36,7 @@ export default async function SupplierDecisionsPage() {
       <PortalShell
         workspace="supplier"
         title="Decisions"
-        subtitle="Actions that keep search requests moving."
+        subtitle="Actions that keep RFQs moving."
       >
         <EmptyStateNotice
           title="Supplier workspace required"
@@ -60,7 +60,7 @@ export default async function SupplierDecisionsPage() {
       <PortalShell
         workspace="supplier"
         title="Decisions"
-        subtitle="Actions that keep search requests moving."
+        subtitle="Actions that keep RFQs moving."
       >
         <PortalCard
           title="Sign in with a supplier email"
@@ -81,7 +81,7 @@ export default async function SupplierDecisionsPage() {
       <PortalShell
         workspace="supplier"
         title="Decisions"
-        subtitle="Actions that keep search requests moving."
+        subtitle="Actions that keep RFQs moving."
       >
         <PortalCard
           title="Finish supplier onboarding"
@@ -94,7 +94,7 @@ export default async function SupplierDecisionsPage() {
         >
           <p className="text-sm text-slate-400">
             Share capabilities, certifications, and documents so we know where to route search
-            requests.
+            RFQs.
           </p>
         </PortalCard>
       </PortalShell>
@@ -129,7 +129,7 @@ export default async function SupplierDecisionsPage() {
     "your shop";
   const statusMessage =
     attentionDecisions.length > 0
-      ? "Action needed on matched search requests"
+      ? "Action needed on matched RFQs"
       : winDecisions.length > 0
         ? "Kickoff awarded work"
         : lossDecisions.length > 0
@@ -142,7 +142,7 @@ export default async function SupplierDecisionsPage() {
     <PortalShell
       workspace="supplier"
       title="Decisions"
-      subtitle="Actions that keep search requests moving."
+      subtitle="Actions that keep RFQs moving."
       headerContent={
         <div className="space-y-4">
           <WorkspaceWelcomeBanner role="supplier" companyName={companyName} />
@@ -164,7 +164,7 @@ export default async function SupplierDecisionsPage() {
     >
       <PortalCard
         title="Decisions queue"
-        description="Every search request that needs pricing or a quick follow-up."
+        description="Every RFQ that needs pricing or a quick follow-up."
       >
         {hasDecisions ? (
           <div className="space-y-6">
