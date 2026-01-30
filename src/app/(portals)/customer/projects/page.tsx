@@ -98,18 +98,23 @@ export default async function CustomerProjectsPage({
         title="Projects"
         subtitle="Awarded jobs in progress and history."
       >
-        <section className="space-y-3 rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
+        <PortalCard
+          title="Complete your customer profile"
+          description="Link a customer workspace to track awarded projects and kickoff progress."
+          action={
+            <Link
+              href="/customer"
+              className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
+            >
+              Back to dashboard
+            </Link>
+          }
+        >
           <p className="text-sm text-slate-300">
-            We couldn&apos;t find a customer workspace linked to {user.email}. Go back to your dashboard
-            and complete your profile to start tracking projects.
+            We couldn&apos;t find a customer workspace linked to{" "}
+            <span className="break-anywhere font-medium text-slate-100">{user.email}</span>.
           </p>
-          <Link
-            href="/customer"
-            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
-          >
-            Back to dashboard
-          </Link>
-        </section>
+        </PortalCard>
       </PortalShell>
     );
   }
@@ -203,7 +208,7 @@ export default async function CustomerProjectsPage({
             <CustomerProjectsListControls
               basePath="/customer/projects"
               suppliers={suppliers}
-              className="mb-4"
+              className="mb-5"
             />
 
             {filteredProjects.length === 0 ? (
@@ -220,34 +225,34 @@ export default async function CustomerProjectsPage({
                 />
               )
             ) : (
-              <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
-                <table className="min-w-full divide-y divide-slate-900/70 text-sm">
-                  <thead className="bg-slate-900/60">
+              <div className="overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
+                <table className="min-w-full divide-y divide-slate-800/40 text-sm">
+                  <thead className="bg-transparent">
                     <tr>
-                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                         Project
                       </th>
-                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                         Supplier
                       </th>
-                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
                         Awarded
                       </th>
-                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
                         Last updated
                       </th>
-                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 lg:table-cell">
                         Last message
                       </th>
-                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
                         Kickoff
                       </th>
-                      <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                      <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                         Actions
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-900/70">
+                  <tbody className="divide-y divide-slate-800/40">
                     {filteredProjects.map((project) => {
                       const supplierLabel = project.supplierName?.trim()
                         ? project.supplierName
@@ -275,8 +280,8 @@ export default async function CustomerProjectsPage({
                         : "—";
 
                       return (
-                        <tr key={project.id} className="hover:bg-slate-900/50">
-                          <td className="px-5 py-4 align-middle">
+                        <tr key={project.id} className="hover:bg-slate-900/20">
+                          <td className="px-5 py-5 align-middle">
                             <div className="flex flex-col">
                               <span className="font-medium text-slate-100">
                                 {project.projectName}
@@ -297,16 +302,16 @@ export default async function CustomerProjectsPage({
                               </div>
                             </div>
                           </td>
-                          <td className="px-5 py-4 align-middle text-slate-200">
+                          <td className="px-5 py-5 align-middle text-slate-200">
                             {supplierLabel}
                           </td>
-                          <td className="px-5 py-4 align-middle text-slate-300">
+                          <td className="hidden px-5 py-5 align-middle text-slate-300 md:table-cell">
                             {formatAwardedDate(project.awardedAt)}
                           </td>
-                          <td className="px-5 py-4 align-middle text-slate-300">
+                          <td className="hidden px-5 py-5 align-middle text-slate-300 md:table-cell">
                             {formatLastUpdated(project.lastUpdatedAt)}
                           </td>
-                          <td className="px-5 py-4 align-middle">
+                          <td className="hidden px-5 py-5 align-middle lg:table-cell">
                             <div className="space-y-1">
                               <p
                                 className={clsx(
@@ -316,18 +321,18 @@ export default async function CustomerProjectsPage({
                               >
                                 {lastMessagePreview}
                               </p>
-                              <p className="text-[11px] uppercase tracking-wide text-slate-600">
+                              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-600">
                                 {lastMessageAtLabel}
                               </p>
                             </div>
                           </td>
-                          <td className="px-5 py-4 align-middle">
+                          <td className="hidden px-5 py-5 align-middle md:table-cell">
                             <div className="space-y-1">
                               <p className={clsx("font-medium", kickoff.tone)}>{kickoff.label}</p>
                               <p className="text-xs text-slate-400">{kickoffSubtext}</p>
                             </div>
                           </td>
-                          <td className="px-5 py-4 align-middle text-right">
+                          <td className="px-5 py-5 align-middle text-right">
                             <div className="flex flex-wrap justify-end gap-2">
                               {canNudge && project.awardedSupplierId ? (
                                 <KickoffNudgeButton
@@ -338,14 +343,14 @@ export default async function CustomerProjectsPage({
                               ) : null}
                               <Link
                                 href={`/customer/quotes/${project.id}?tab=activity`}
-                                className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                                className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700/80 bg-slate-950/30 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500/80 hover:bg-slate-950/40 hover:text-white"
                               >
                                 Activity
                               </Link>
                               <MessageLinkWithUnread
                                 href={`/customer/quotes/${project.id}?tab=messages`}
                                 unread={hasUnread}
-                                className="min-w-[7.5rem] rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                                className="min-w-[7.5rem] rounded-lg border border-slate-700/80 bg-slate-950/30 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500/80 hover:bg-slate-950/40 hover:text-white"
                               >
                                 Messages
                               </MessageLinkWithUnread>

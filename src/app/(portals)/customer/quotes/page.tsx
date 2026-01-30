@@ -120,22 +120,23 @@ export default async function CustomerQuotesPage({
           ) : null
         }
       >
-        <section className="space-y-3 rounded-2xl border border-slate-900 bg-slate-950/60 p-6">
+        <PortalCard
+          title="Complete your customer profile"
+          description="Link a customer workspace to track RFQs, offers, and messages in one place."
+          action={
+            <Link
+              href="/customer"
+              className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
+            >
+              Back to dashboard
+            </Link>
+          }
+        >
           <p className="text-sm text-slate-300">
             We couldn&apos;t find a customer workspace linked to{" "}
-            <span className="break-anywhere font-medium text-slate-100">
-              {user.email}
-            </span>
-            . Complete your customer profile to start tracking search requests, supplier offers, and
-            messages in one place.
+            <span className="break-anywhere font-medium text-slate-100">{user.email}</span>.
           </p>
-          <Link
-            href="/customer"
-            className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
-          >
-            Back to dashboard
-          </Link>
-        </section>
+        </PortalCard>
       </PortalShell>
     );
   }

@@ -104,23 +104,23 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
   }, []);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/30">
-      <div className="grid grid-cols-12 gap-3 border-b border-slate-900/70 px-5 py-3 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+    <div className="overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
+      <div className="grid grid-cols-12 gap-3 border-b border-slate-800/50 px-5 py-3.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
         <div className="col-span-12 sm:col-span-7">RFQ</div>
         <div className="col-span-6 sm:col-span-3">Status</div>
         <div className="col-span-6 text-right sm:col-span-2">Last update</div>
       </div>
-      <ul className="space-y-2 p-2 sm:p-3">
+      <ul className="divide-y divide-slate-800/40">
         {rows.map((row) => {
           const hasNewOffers = row.status === "Offers ready" && !seenIds.has(row.id);
           return (
             <li
               key={row.id}
               className={clsx(
-                "relative overflow-hidden rounded-xl border px-0 py-0 transition",
+                "relative transition-colors",
                 hasNewOffers
-                  ? "border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10"
-                  : "border-slate-900/70 bg-slate-950/20 hover:bg-slate-900/30",
+                  ? "bg-emerald-500/5 hover:bg-emerald-500/10"
+                  : "hover:bg-slate-900/20",
               )}
             >
               <Link
@@ -129,8 +129,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                   if (row.status === "Offers ready") markSeen(row.id);
                 }}
                 className={clsx(
-                  "relative grid grid-cols-12 gap-3 px-4 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 sm:px-5",
-                  hasNewOffers && "ring-1 ring-emerald-500/10",
+                  "relative grid grid-cols-12 gap-3 px-5 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 sm:py-5",
                 )}
               >
                 {hasNewOffers ? (
@@ -141,21 +140,21 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                 ) : null}
                 <div className="col-span-12 min-w-0 sm:col-span-7">
                   <p
-                    className="min-w-0 truncate text-sm font-semibold text-slate-100"
+                    className="min-w-0 truncate text-[15px] font-semibold text-slate-100"
                     title={row.primaryFileName}
                   >
                     {row.primaryFileName}
                   </p>
                   {row.secondaryFileName ? (
                     <p
-                      className="mt-1 min-w-0 truncate text-xs text-slate-400"
+                      className="mt-1 min-w-0 truncate text-sm text-slate-400"
                       title={row.secondaryFileName}
                     >
                       {row.secondaryFileName}
                     </p>
                   ) : (
                     <p
-                      className="mt-1 min-w-0 truncate text-xs text-slate-500"
+                      className="mt-1 min-w-0 truncate text-sm text-slate-500"
                       title={row.fallbackLabel}
                     >
                       {row.fallbackLabel}
@@ -167,7 +166,9 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                   <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
                   {row.status === "Delivered" ? (
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="truncate text-xs font-medium text-slate-400">Completed successfully</span>
+                      <span className="truncate text-xs font-medium text-slate-400">
+                        Completed successfully
+                      </span>
                       <span className="text-xs text-slate-700" aria-hidden>
                         ·
                       </span>

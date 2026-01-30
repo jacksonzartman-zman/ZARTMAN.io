@@ -13,6 +13,7 @@ type Availability =
 export function CustomerEmailRepliesDefaultsCard(props: {
   initialEnabled: boolean;
   availability: Availability;
+  className?: string;
 }) {
   const [enabled, setEnabled] = useState(Boolean(props.initialEnabled));
   const [busy, setBusy] = useState(false);
@@ -29,11 +30,10 @@ export function CustomerEmailRepliesDefaultsCard(props: {
   }, [enabled, props.availability]);
 
   return (
-    <PortalCard title="Email replies" description={helperText}>
+    <PortalCard title="Email replies" description={helperText} className={props.className}>
       <div className="space-y-4">
-
         {props.availability.kind !== "ready" ? (
-          <p className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">
+          <p className="rounded-xl bg-slate-950/35 px-4 py-3 text-sm text-slate-200 ring-1 ring-slate-800/50">
             {status}
           </p>
         ) : null}
@@ -46,10 +46,10 @@ export function CustomerEmailRepliesDefaultsCard(props: {
 
         <label
           className={clsx(
-            "flex items-start gap-4 rounded-2xl border px-6 py-4",
+            "flex items-start gap-4 rounded-xl px-5 py-4 ring-1",
             canToggle
-              ? "border-slate-900/60 bg-slate-950/30"
-              : "border-slate-900/40 bg-slate-950/20 opacity-70",
+              ? "bg-slate-950/20 ring-slate-800/50"
+              : "bg-slate-950/15 ring-slate-800/40 opacity-70",
           )}
         >
           <input
