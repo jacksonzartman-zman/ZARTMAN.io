@@ -68,8 +68,8 @@ export default async function CustomerSettingsPage() {
     >
       <div className="grid gap-6 lg:grid-cols-2">
         <PortalCard
-          title="Account"
-          description="Quick reference for your login identity."
+          title="Workspace"
+          description="Basics about your account, company profile, and team access."
           className="lg:col-span-2"
           action={
             <Link
@@ -80,20 +80,57 @@ export default async function CustomerSettingsPage() {
             </Link>
           }
         >
-          <dl className="grid gap-4 text-sm text-slate-200 md:grid-cols-2">
-            <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                Email
-              </dt>
-              <dd className="mt-1 font-mono text-slate-100">{email}</dd>
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="space-y-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                Account
+              </p>
+              <dl className="grid gap-3 text-sm text-slate-200">
+                <div className="rounded-xl bg-slate-950/20 px-4 py-3 ring-1 ring-slate-800/50">
+                  <dt className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Email
+                  </dt>
+                  <dd className="mt-1 font-mono text-slate-100">{email}</dd>
+                </div>
+                <div className="rounded-xl bg-slate-950/20 px-4 py-3 ring-1 ring-slate-800/50">
+                  <dt className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Company
+                  </dt>
+                  <dd className="mt-1 text-slate-100">{companyName}</dd>
+                </div>
+              </dl>
             </div>
-            <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                Company
-              </dt>
-              <dd className="mt-1 text-slate-100">{companyName}</dd>
+
+            <div className="space-y-3 lg:col-span-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Company profile
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    These details appear on shared search requests and invoices.
+                  </p>
+                </div>
+                <Link
+                  href="/customer/settings/team"
+                  className="text-sm font-semibold text-emerald-300 underline-offset-4 hover:underline"
+                >
+                  Manage team
+                </Link>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <SettingsField label="Company name" value={companyName} />
+                <SettingsField label="Primary email" value={email} />
+              </div>
+              <button
+                type="button"
+                disabled
+                className="inline-flex cursor-not-allowed rounded-full bg-slate-950/20 px-4 py-2 text-sm font-semibold text-slate-400 ring-1 ring-slate-800/50"
+              >
+                Editing soon
+              </button>
             </div>
-          </dl>
+          </div>
         </PortalCard>
 
         <CustomerEmailRepliesDefaultsCard
@@ -103,25 +140,9 @@ export default async function CustomerSettingsPage() {
         />
 
         <PortalCard
-          title="Company profile"
-          description="Contact details that appear on shared search requests and invoices."
-        >
-          <div className="grid gap-4 md:grid-cols-2">
-            <SettingsField label="Company name" value={companyName} />
-            <SettingsField label="Primary email" value={email} />
-          </div>
-          <button
-            type="button"
-            disabled
-            className="mt-5 inline-flex cursor-not-allowed rounded-full bg-slate-950/20 px-4 py-2 text-sm font-semibold text-slate-400 ring-1 ring-slate-800/50"
-          >
-            Saving soon
-          </button>
-        </PortalCard>
-
-        <PortalCard
           title="Organization"
           description="Plan and seat summary (read-only for now)."
+          className="lg:col-span-2"
         >
           <div className="grid gap-4 md:grid-cols-2">
             <SettingsField label="Org name" value={org.name} />
@@ -131,23 +152,6 @@ export default async function CustomerSettingsPage() {
           </div>
           <p className="mt-4 text-xs text-slate-500">
             Seat management is read-only today. Ping us if you need to increase capacity ahead of time.
-          </p>
-        </PortalCard>
-
-        <PortalCard
-          title="Team"
-          description="Invite teammates to collaborate in your customer workspace."
-          action={
-            <Link
-              href="/customer/settings/team"
-              className="text-sm font-semibold text-emerald-300 underline-offset-4 hover:underline"
-            >
-              Manage team
-            </Link>
-          }
-        >
-          <p className="text-sm text-slate-300">
-            Add teammates when you’re ready to coordinate RFQs, project kickoff, and messages together.
           </p>
         </PortalCard>
 
@@ -168,7 +172,7 @@ export default async function CustomerSettingsPage() {
         </PortalCard>
 
         <PortalCard
-          title="Integrations roadmap"
+          title="Integrations"
           description="ERP and procurement connectors, coming soon."
           className="lg:col-span-2"
         >
