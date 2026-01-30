@@ -165,7 +165,7 @@ export default async function SupplierProjectsPage() {
                           <span className="font-medium text-slate-100">
                             {project.projectName}
                           </span>
-                          <span className="text-xs text-slate-500">
+                          <span className="mt-1 text-xs text-slate-500">
                             Quote {project.id.startsWith("Q-") ? project.id : `#${project.id.slice(0, 6)}`}
                           </span>
                         </div>

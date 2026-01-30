@@ -481,7 +481,7 @@ export default async function SupplierQuotesPage({
                           >
                             {row.rfqLabel}
                           </Link>
-                          <span className="text-xs text-slate-500">{subtext}</span>
+                          <span className="mt-1 text-xs text-slate-500">{subtext}</span>
                         </div>
                       </td>
                       <td className="px-5 py-4 align-middle">
