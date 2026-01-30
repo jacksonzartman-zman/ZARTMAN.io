@@ -14,6 +14,7 @@ import { requireUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { getSupplierAwardedQuotesForProjects } from "@/server/supplier/projects";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
+import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
@@ -204,22 +205,22 @@ export default async function SupplierProjectsPage() {
                         <div className="flex flex-wrap justify-end gap-2">
                           <Link
                             href={`/supplier/quotes/${project.id}?tab=activity`}
-                            className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                            className="inline-flex items-center text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
                           >
                             Activity
                           </Link>
                           <MessageLinkWithUnread
                             href={`/supplier/quotes/${project.id}?tab=messages`}
                             unread={hasUnread}
-                            className="min-w-[7.5rem] rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                            className="text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
                           >
                             Messages
                           </MessageLinkWithUnread>
                           <Link
                             href={`/supplier/quotes/${project.id}`}
-                            className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-400"
+                            className={`${primaryInfoCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
                           >
-                            Open
+                            Open job
                           </Link>
                         </div>
                       </td>

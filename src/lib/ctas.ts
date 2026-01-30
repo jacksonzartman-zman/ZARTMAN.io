@@ -14,6 +14,8 @@ export const secondaryCtaClasses = `${CTA_BASE_CLASSES} ${CTA_SIZE_VARIANTS.md} 
 
 export const infoCtaClasses = `${CTA_BASE_CLASSES} ${CTA_SIZE_VARIANTS.md} border border-blue-400/70 bg-blue-500/10 text-blue-100 hover:bg-blue-500/20 focus-visible:outline-blue-300`;
 
+export const primaryInfoCtaClasses = `${CTA_BASE_CLASSES} ${CTA_SIZE_VARIANTS.md} bg-blue-500 text-white shadow-lift-sm hover:bg-blue-400 focus-visible:outline-blue-300`;
+
 export const dangerCtaClasses = `${CTA_BASE_CLASSES} ${CTA_SIZE_VARIANTS.md} border border-red-400/60 bg-red-500/10 text-red-100 hover:bg-red-500/20 focus-visible:outline-red-300`;
 
 export const ghostCtaClasses =

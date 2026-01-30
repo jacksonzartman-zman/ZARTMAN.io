@@ -19,6 +19,7 @@ import CustomerProjectsListControls, {
   type CustomerProjectsSortKey,
   type CustomerProjectsStatusFilter,
 } from "./CustomerProjectsListControls";
+import { primaryCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
@@ -346,22 +347,22 @@ export default async function CustomerProjectsPage({
                               ) : null}
                               <Link
                                 href={`/customer/quotes/${project.id}?tab=activity`}
-                                className="inline-flex min-w-[7.5rem] items-center justify-center rounded-lg border border-slate-700/80 bg-slate-950/30 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500/80 hover:bg-slate-950/40 hover:text-white"
+                                className="inline-flex items-center text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
                               >
                                 Activity
                               </Link>
                               <MessageLinkWithUnread
                                 href={`/customer/quotes/${project.id}?tab=messages`}
                                 unread={hasUnread}
-                                className="min-w-[7.5rem] rounded-lg border border-slate-700/80 bg-slate-950/30 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-slate-500/80 hover:bg-slate-950/40 hover:text-white"
+                                className="text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
                               >
                                 Messages
                               </MessageLinkWithUnread>
                               <Link
                                 href={`/customer/quotes/${project.id}`}
-                                className="inline-flex min-w-[9rem] items-center justify-center rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-emerald-400"
+                                className={`${primaryCtaClasses} px-4 py-1.5 text-xs font-semibold uppercase tracking-wide`}
                               >
-                                Open project workspace
+                                Open project
                               </Link>
                             </div>
                           </td>

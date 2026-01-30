@@ -194,13 +194,13 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                         onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
-                          router.push("/");
+                          router.push("/quote");
                         }}
                         onKeyDown={(event) => {
                           if (event.key !== "Enter" && event.key !== " ") return;
                           event.preventDefault();
                           event.stopPropagation();
-                          router.push("/");
+                          router.push("/quote");
                         }}
                         aria-label="Upload another part"
                       >
@@ -211,12 +211,20 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                 </div>
 
                 <div className="col-span-6 flex items-center justify-end text-right sm:col-span-2">
-                  <span
-                    className="text-[11px] font-medium text-slate-400"
-                    title={row.updatedTitle}
-                  >
-                    {row.updatedLabel}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="hidden text-[11px] font-semibold text-emerald-200 underline-offset-4 transition hover:text-emerald-100 hover:underline sm:inline"
+                      aria-hidden
+                    >
+                      View RFQ →
+                    </span>
+                    <span
+                      className="text-[11px] font-medium text-slate-400"
+                      title={row.updatedTitle}
+                    >
+                      {row.updatedLabel}
+                    </span>
+                  </div>
                 </div>
               </Link>
             </li>

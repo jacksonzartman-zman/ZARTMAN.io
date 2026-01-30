@@ -6,9 +6,9 @@ import { loadCustomerQuotesList } from "@/server/customer/quotesList";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
-import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { CustomerQuotesListClient } from "./CustomerQuotesListClient";
+import { primaryCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
@@ -118,14 +118,12 @@ export default async function CustomerQuotesPage({
         title="RFQ history"
         subtitle="Track every request you’ve submitted, newest first."
         actions={
-          SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
-            <Link
-              href="/quote"
-              className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-            >
-              Start a new search
-            </Link>
-          ) : null
+          <Link
+            href="/quote"
+            className={`${primaryCtaClasses} text-xs font-semibold uppercase tracking-wide`}
+          >
+            Upload new part
+          </Link>
         }
       >
         <PortalCard
@@ -182,14 +180,9 @@ export default async function CustomerQuotesPage({
       title="RFQ history"
       subtitle="Intake stage: submitted RFQs, newest first. Awarded RFQs continue as Projects."
       actions={
-        SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
-          <Link
-            href="/quote"
-            className="inline-flex items-center rounded-full border border-emerald-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-emerald-100 transition hover:border-emerald-300 hover:text-white"
-          >
-            Start a new search
-          </Link>
-        ) : null
+        <Link href="/quote" className={`${primaryCtaClasses} text-xs font-semibold uppercase tracking-wide`}>
+          Upload new part
+        </Link>
       }
     >
       <PortalCard
@@ -200,11 +193,7 @@ export default async function CustomerQuotesPage({
           <EmptyStateCard
             title="No RFQs yet"
             description="Upload a part to start a search. We’ll keep status and offers here."
-            action={
-              SHOW_LEGACY_QUOTE_ENTRYPOINTS
-                ? { label: "Start a new RFQ", href: "/quote" }
-                : null
-            }
+            action={{ label: "Upload new part", href: "/quote" }}
           />
         ) : (
           <CustomerQuotesListClient rows={rows} />
