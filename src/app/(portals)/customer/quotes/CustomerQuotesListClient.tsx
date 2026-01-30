@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type RfqStatusTone = "slate" | "blue" | "emerald" | "amber" | "muted";
 
@@ -84,6 +85,7 @@ function writeSeenMap(next: Record<string, number>) {
 
 export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] }) {
   const [seenMap, setSeenMap] = useState<Record<string, number>>({});
+  const router = useRouter();
 
   useEffect(() => {
     setSeenMap(readSeenMap());
@@ -151,7 +153,35 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                 <div className="col-span-6 flex items-center gap-2 sm:col-span-3">
                   <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
                   {row.status === "Delivered" ? (
-                    <span className="text-xs font-medium text-slate-400">Completed successfully</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-xs font-medium text-slate-400">Completed successfully</span>
+                      <span className="text-xs text-slate-700" aria-hidden>
+                        ·
+                      </span>
+                      <span
+                        role="link"
+                        tabIndex={0}
+                        className={clsx(
+                          "text-xs font-semibold text-slate-500 underline decoration-slate-700/70 underline-offset-4 transition",
+                          "hover:text-slate-200 hover:decoration-slate-300/60",
+                          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400",
+                        )}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          router.push("/");
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          router.push("/");
+                        }}
+                        aria-label="Upload another part"
+                      >
+                        Upload another part
+                      </span>
+                    </div>
                   ) : null}
                   {hasNewOffers ? <NewOffersBadge /> : null}
                 </div>
