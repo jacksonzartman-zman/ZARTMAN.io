@@ -200,34 +200,6 @@ export default async function SupplierDecisionsPage() {
           />
         )}
       </PortalCard>
-      <PortalCard
-        title="Stay in the rotation"
-        description="A quick reminder on how the queue works."
-      >
-        <ul className="space-y-3 text-sm text-slate-300">
-          <li className="flex gap-2">
-            <span className="text-slate-500">•</span>
-            <p>
-              <span className="font-semibold text-white">Search request invites</span> appear when a
-              buyer assigns your shop but hasn’t seen a bid yet.
-            </p>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-slate-500">•</span>
-            <p>
-              <span className="font-semibold text-white">Bid follow-ups</span> nudge you when a pending
-              proposal is older than a few days.
-            </p>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-slate-500">•</span>
-            <p>
-              Clearing the queue keeps your shop top of mind when new search requests route through
-              Zartman.
-            </p>
-          </li>
-        </ul>
-      </PortalCard>
     </PortalShell>
   );
 }

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import clsx from "clsx";
 
 import PortalCard from "@/app/(portals)/PortalCard";
 import { PortalShell } from "@/app/(portals)/components/PortalShell";
@@ -10,28 +9,6 @@ import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 
 export const dynamic = "force-dynamic";
-
-function kickoffPill(status: "not_started" | "in_progress" | "complete" | "n/a") {
-  if (status === "n/a") {
-    return { label: "Kickoff: —", className: "border-slate-800 bg-slate-950/50 text-slate-300" };
-  }
-  if (status === "complete") {
-    return {
-      label: "Kickoff complete",
-      className: "border-emerald-500/40 bg-emerald-500/10 text-emerald-100",
-    };
-  }
-  if (status === "in_progress") {
-    return {
-      label: "Kickoff in progress",
-      className: "border-blue-500/40 bg-blue-500/10 text-blue-100",
-    };
-  }
-  return {
-    label: "Kickoff not started",
-    className: "border-slate-800 bg-slate-950/50 text-slate-300",
-  };
-}
 
 function statusPillClasses(label: string) {
   if (label === "Needs your reply") {
@@ -85,9 +62,6 @@ export default async function CustomerMessagesPage() {
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Thread
                   </th>
-                  <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
-                    Status
-                  </th>
                   <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 lg:table-cell">
                     Last message
                   </th>
@@ -97,7 +71,6 @@ export default async function CustomerMessagesPage() {
                 {rows.map((row) => {
                   const threadLabel = resolveThreadStatusLabel("customer", row.needsReplyFrom);
                   const threadPill = statusPillClasses(threadLabel);
-                  const kickoff = kickoffPill(row.kickoffStatus);
                   const lastMessageAtLabel =
                     formatRelativeTimeCompactFromTimestamp(toTimestamp(row.lastMessageAt)) ?? "—";
                   const unread = Math.max(0, Math.floor(row.unreadCount ?? 0));
@@ -119,10 +92,10 @@ export default async function CustomerMessagesPage() {
                       <td className="px-5 py-5 align-middle">
                         <div className="flex flex-wrap items-center gap-2">
                           <span
-                            className={clsx(
+                            className={[
                               "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
                               threadPill,
-                            )}
+                            ].join(" ")}
                           >
                             {threadLabel}
                           </span>
@@ -131,21 +104,6 @@ export default async function CustomerMessagesPage() {
                               {unread > 99 ? "99+" : unread}
                             </span>
                           ) : null}
-                        </div>
-                      </td>
-                      <td className="hidden px-5 py-5 align-middle md:table-cell">
-                        <div className="flex flex-wrap gap-2">
-                          <span className="inline-flex rounded-full border border-slate-800/80 bg-slate-950/35 px-2.5 py-1 text-[11px] font-semibold text-slate-200">
-                            {row.quoteStatus}
-                          </span>
-                          <span
-                            className={clsx(
-                              "inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                              kickoff.className,
-                            )}
-                          >
-                            {kickoff.label}
-                          </span>
                         </div>
                       </td>
                       <td className="hidden px-5 py-5 align-middle lg:table-cell">

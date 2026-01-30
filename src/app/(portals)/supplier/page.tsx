@@ -75,10 +75,6 @@ async function SupplierDashboardPage({
     sanitizeDisplayName(user.email) ??
     "your team";
   const supplierEmail = normalizeEmailInput(user.email ?? null);
-  const onboardingJustCompleted =
-    getSearchParamValue(searchParams, "onboard") === "1";
-  const inviteJustAccepted =
-    getSearchParamValue(searchParams, "invite") === "accepted";
   const invitedJustCompleted =
     getSearchParamValue(searchParams, "invited") === "1";
   const offerJustSent = getSearchParamValue(searchParams, "offer") === "sent";
@@ -179,41 +175,7 @@ async function SupplierDashboardPage({
     .filter((row) => row.isAwardedToSupplier)
     .sort((a, b) => (b.awardedAt ?? "").localeCompare(a.awardedAt ?? ""));
 
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const startOfTodayMs = startOfToday.getTime();
-  const newRfqsTodayCount = newRfqs.filter((row) => {
-    const ts = toTimestamp(row.createdAt);
-    return typeof ts === "number" && ts >= startOfTodayMs;
-  }).length;
-
   const sevenDaysAgoMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const quotesSentLast7DaysCount = quotesList.filter((row) => {
-    const ts = toTimestamp(row.lastBidAt);
-    return typeof ts === "number" && ts >= sevenDaysAgoMs;
-  }).length;
-
-  const responseDaysLast7 = countDistinctResponseDaysLast7Days(quotesList, sevenDaysAgoMs);
-  const responseMomentumLabel =
-    responseDaysLast7 >= 5
-      ? "Great momentum this week"
-      : responseDaysLast7 >= 3
-        ? "Consistent this week"
-        : null;
-
-  const lastBidAtMs = quotesList.reduce<number | null>((best, row) => {
-    const ts = toTimestamp(row.lastBidAt);
-    if (typeof ts !== "number") return best;
-    return best === null ? ts : Math.max(best, ts);
-  }, null);
-  const responseActivityLabel = (() => {
-    if (typeof lastBidAtMs !== "number") return null;
-    const now = Date.now();
-    const last24HoursMs = now - 24 * 60 * 60 * 1000;
-    if (lastBidAtMs >= last24HoursMs) return "Responding actively";
-    if (lastBidAtMs >= sevenDaysAgoMs) return "Active this week";
-    return null;
-  })();
 
   const workspaceCompanyName =
     sanitizeDisplayName(supplier?.company_name) ??
@@ -317,13 +279,6 @@ async function SupplierDashboardPage({
         </div>
 
         <div className="space-y-6 lg:col-span-4">
-          <SupplierActivityRecapStats
-            newRfqsTodayCount={newRfqsTodayCount}
-            activeJobsCount={activeJobs.length}
-            quotesSentLast7DaysCount={quotesSentLast7DaysCount}
-            responseActivityLabel={responseActivityLabel}
-            responseMomentumLabel={responseMomentumLabel}
-          />
           <PortalCard
             title="Active jobs"
             description="Awarded RFQs in progress."
@@ -392,54 +347,6 @@ async function SupplierDashboardPage({
               </ul>
             </PortalCard>
           ) : null}
-
-          {showProfileCompletionNudge ? (
-            <PortalCard
-              title="Complete your profile to receive better matched RFQs"
-              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
-              action={
-                <Link
-                  href="/supplier/settings/processes"
-                  className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/40 px-4 py-2 text-xs font-semibold text-slate-100 transition hover:border-slate-500 hover:text-white"
-                >
-                  Update processes
-                </Link>
-              }
-            />
-          ) : null}
-
-          {approvalsOn && supplierExists && !supplierApproved ? (
-            <PortalCard
-              title="Status"
-              description="Your supplier profile is pending review."
-              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
-            >
-              <p className="text-sm text-slate-300">
-                You can keep updating your profile. New RFQs will start flowing once you’re approved.
-              </p>
-            </PortalCard>
-          ) : null}
-
-          {onboardingJustCompleted ? (
-            <PortalCard
-              title="Profile updated"
-              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
-            >
-              <p className="text-sm text-slate-300">
-                Profile updated! We’ll start routing matched RFQs to you automatically.
-              </p>
-            </PortalCard>
-          ) : null}
-          {inviteJustAccepted ? (
-            <PortalCard
-              title="Invite accepted"
-              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
-            >
-              <p className="text-sm text-slate-300">
-                Invite accepted! You’re now part of this supplier workspace.
-              </p>
-            </PortalCard>
-          ) : null}
         </div>
       </div>
     </PortalShell>
@@ -471,81 +378,6 @@ function sanitizeDisplayName(value?: string | null): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function SupplierActivityRecapStats(props: {
-  newRfqsTodayCount: number;
-  activeJobsCount: number;
-  quotesSentLast7DaysCount: number;
-  responseActivityLabel: string | null;
-  responseMomentumLabel: string | null;
-}) {
-  const hasAnySignal =
-    props.newRfqsTodayCount > 0 ||
-    props.activeJobsCount > 0 ||
-    props.quotesSentLast7DaysCount > 0 ||
-    Boolean(props.responseActivityLabel) ||
-    Boolean(props.responseMomentumLabel);
-
-  if (!hasAnySignal) {
-    return null;
-  }
-
-  return (
-    <PortalCard
-      title="Recap"
-      description={props.responseMomentumLabel ?? "Quick pulse on recent activity."}
-      className="border-slate-900/45 bg-slate-950/25 shadow-none hover:border-slate-900/55 hover:bg-slate-950/30 hover:shadow-none"
-    >
-      <div className="grid gap-4 sm:grid-cols-3 sm:gap-6">
-        <ActivityRecapStat
-          label="New RFQs today"
-          labelAddon={props.responseActivityLabel}
-          value={props.newRfqsTodayCount}
-        />
-        <ActivityRecapStat
-          label="Active jobs"
-          value={props.activeJobsCount}
-        />
-        <ActivityRecapStat
-          label="Quotes sent (7d)"
-          value={props.quotesSentLast7DaysCount}
-        />
-      </div>
-    </PortalCard>
-  );
-}
-
-function ActivityRecapStat(props: {
-  label: string;
-  labelAddon?: string | null;
-  value: number;
-  className?: string;
-}) {
-  return (
-    <div
-      className={[
-        "flex flex-col gap-1.5",
-        props.className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-          {props.label}
-        </span>
-        {props.labelAddon ? (
-          <span className="text-[11px] font-medium text-slate-500">
-            {props.labelAddon}
-          </span>
-        ) : null}
-      </div>
-      <span className="text-lg font-semibold text-white tabular-nums">
-        {Math.max(0, Math.floor(props.value)).toLocaleString("en-US")}
-      </span>
-    </div>
-  );
-}
-
 function getLatestDashboardTimestamp(input: {
   inboxRows: Array<{ createdAt: string | null }>;
   activeJobs: Array<{ lastActivityAt: string | null; awardedAt: string | null }>;
@@ -563,19 +395,6 @@ function getLatestDashboardTimestamp(input: {
   }
   if (timestamps.length === 0) return null;
   return Math.max(...timestamps);
-}
-
-function countDistinctResponseDaysLast7Days(
-  rows: Array<{ lastBidAt: string | null }>,
-  sevenDaysAgoMs: number,
-): number {
-  const days = new Set<string>();
-  for (const row of rows ?? []) {
-    const ts = toTimestamp(row?.lastBidAt);
-    if (typeof ts !== "number" || ts < sevenDaysAgoMs) continue;
-    days.add(new Date(ts).toISOString().slice(0, 10));
-  }
-  return days.size;
 }
 
 type NextAppPage = (props: {

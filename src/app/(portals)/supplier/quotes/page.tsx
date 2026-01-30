@@ -484,15 +484,7 @@ export default async function SupplierQuotesPage({
                       </td>
                       <td className="px-5 py-4 align-middle">
                         <QuoteStatusBadge status={row.status} size="sm" />
-                        {row.isAwardedToSupplier ? (
-                          <p className="mt-2 text-xs font-semibold text-emerald-200">
-                            Awarded to you
-                          </p>
-                        ) : closedByAward ? (
-                          <p className="mt-2 text-xs font-semibold text-slate-300">
-                            RFQ closed
-                          </p>
-                        ) : null}
+                        <p className="mt-2 text-xs text-slate-500">{subtext}</p>
                       </td>
                       <td className="px-5 py-4 align-middle">
                         <Link
@@ -536,13 +528,6 @@ export default async function SupplierQuotesPage({
                             </span>
                           ) : null}
                         </div>
-                        {unread > 0 ? (
-                          <p className="mt-1 text-xs text-slate-500">
-                            See inbox for “Needs your reply” signals
-                          </p>
-                        ) : (
-                          <p className="mt-1 text-xs text-slate-500">—</p>
-                        )}
                       </td>
                       <td className="px-5 py-4 align-middle">
                         <div className="flex flex-col gap-2">
