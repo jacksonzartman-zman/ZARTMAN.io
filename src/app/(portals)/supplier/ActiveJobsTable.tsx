@@ -1,7 +1,7 @@
 import Link from "next/link";
 import clsx from "clsx";
 import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
-import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
+import { ctaSizeClasses } from "@/lib/ctas";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import type { SupplierQuoteListRow } from "@/server/suppliers/quotesList";
 
@@ -29,6 +29,7 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
 
   return (
     <AdminTableShell
+      className="border-slate-800/35 bg-slate-950/15 shadow-none"
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
@@ -56,7 +57,7 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
           formatRelativeTimeFromTimestamp(toTimestamp(row.lastActivityAt)) ?? "—";
 
         return (
-          <tr key={row.quoteId} className="bg-slate-950/40 transition hover:bg-slate-900/40">
+          <tr key={row.quoteId} className="bg-transparent transition hover:bg-slate-900/25">
             <td className={clsx(adminTableCellClass, "px-5 py-4")}>
               <Link
                 href={href}
@@ -77,7 +78,10 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
             <td className={clsx(adminTableCellClass, "px-5 py-4 text-right")}>
               <Link
                 href={href}
-                className={clsx(primaryCtaClasses, ctaSizeClasses.sm, "inline-flex min-w-[9rem] justify-center")}
+                className={clsx(
+                  ctaSizeClasses.sm,
+                  "inline-flex min-w-[9rem] justify-center rounded-full border border-slate-700/70 bg-transparent text-slate-200 transition hover:border-slate-500 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400",
+                )}
               >
                 Open job
               </Link>

@@ -260,25 +260,19 @@ async function SupplierDashboardPage({
       subtitle="Quote new RFQs and track active jobs in one place."
       actions={headerActions}
       headerContent={headerContent}
-      bodyClassName="space-y-6"
+      bodyClassName="space-y-5"
     >
       <div className="space-y-3">
         <AwardedJobSuccessBanner awardedQuoteIds={activeJobs.map((row) => row.quoteId)} />
         <SupplierOfferSentBanner enabled={offerJustSent} />
       </div>
-      <SupplierActivityRecapStats
-        newRfqsTodayCount={newRfqsTodayCount}
-        activeJobsCount={activeJobs.length}
-        quotesSentLast7DaysCount={quotesSentLast7DaysCount}
-        responseActivityLabel={responseActivityLabel}
-        responseMomentumLabel={responseMomentumLabel}
-      />
       <InvitedSupplierWelcomePanel enabled={invitedJustCompleted} />
       <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
         <div className="space-y-6 lg:col-span-8">
           <PortalCard
             title="New RFQs"
             description="RFQs waiting for your offer."
+            className="border-slate-700/70 bg-slate-950/55 shadow-[0_12px_32px_rgba(2,6,23,0.32)] hover:border-slate-600/70 hover:bg-slate-950/60 hover:shadow-[0_14px_38px_rgba(2,6,23,0.38)]"
             action={
               supplierExists ? (
                 <Link
@@ -321,14 +315,22 @@ async function SupplierDashboardPage({
         </div>
 
         <div className="space-y-6 lg:col-span-4">
+          <SupplierActivityRecapStats
+            newRfqsTodayCount={newRfqsTodayCount}
+            activeJobsCount={activeJobs.length}
+            quotesSentLast7DaysCount={quotesSentLast7DaysCount}
+            responseActivityLabel={responseActivityLabel}
+            responseMomentumLabel={responseMomentumLabel}
+          />
           <PortalCard
             title="Active jobs"
             description="Awarded RFQs in progress."
+            className="border-slate-800/45 bg-slate-950/30 shadow-none hover:border-slate-700/55 hover:bg-slate-950/35 hover:shadow-[0_10px_26px_rgba(2,6,23,0.24)]"
             action={
               supplierExists ? (
                 <Link
                   href="/supplier/quotes"
-                  className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
+                  className="text-sm font-semibold text-slate-300 underline-offset-4 hover:text-white hover:underline"
                 >
                   View all
                 </Link>
@@ -362,6 +364,7 @@ async function SupplierDashboardPage({
             <PortalCard
               title="Quick setup"
               description="Two steps to ensure you receive the right RFQs."
+              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
             >
               <ul className="space-y-2 text-sm">
                 {!hasCapabilities ? (
@@ -391,6 +394,7 @@ async function SupplierDashboardPage({
           {showProfileCompletionNudge ? (
             <PortalCard
               title="Complete your profile to receive better matched RFQs"
+              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
               action={
                 <Link
                   href="/supplier/settings/processes"
@@ -406,6 +410,7 @@ async function SupplierDashboardPage({
             <PortalCard
               title="Status"
               description="Your supplier profile is pending review."
+              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
             >
               <p className="text-sm text-slate-300">
                 You can keep updating your profile. New RFQs will start flowing once you’re approved.
@@ -414,14 +419,20 @@ async function SupplierDashboardPage({
           ) : null}
 
           {onboardingJustCompleted ? (
-            <PortalCard title="Profile updated">
+            <PortalCard
+              title="Profile updated"
+              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
+            >
               <p className="text-sm text-slate-300">
                 Profile updated! We’ll start routing matched RFQs to you automatically.
               </p>
             </PortalCard>
           ) : null}
           {inviteJustAccepted ? (
-            <PortalCard title="Invite accepted">
+            <PortalCard
+              title="Invite accepted"
+              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
+            >
               <p className="text-sm text-slate-300">
                 Invite accepted! You’re now part of this supplier workspace.
               </p>
@@ -466,12 +477,21 @@ function SupplierActivityRecapStats(props: {
   responseMomentumLabel: string | null;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-900/60 bg-slate-950/35 px-4 py-2">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-slate-900/60">
+    <section className="rounded-2xl border border-slate-800/40 bg-slate-950/20 px-5 py-4">
+      <div className="flex items-baseline justify-between gap-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
+          Recap
+        </p>
+        {props.responseMomentumLabel ? (
+          <p className="text-xs font-medium text-slate-500">
+            {props.responseMomentumLabel}
+          </p>
+        ) : null}
+      </div>
+      <div className="mt-3 grid gap-4 sm:grid-cols-3 sm:gap-6">
         <ActivityRecapStat
           label="New RFQs today"
           labelAddon={props.responseActivityLabel}
-          labelSubtext={props.responseMomentumLabel}
           value={props.newRfqsTodayCount}
         />
         <ActivityRecapStat
@@ -490,38 +510,29 @@ function SupplierActivityRecapStats(props: {
 function ActivityRecapStat(props: {
   label: string;
   labelAddon?: string | null;
-  labelSubtext?: string | null;
   value: number;
   className?: string;
 }) {
   return (
     <div
       className={[
-        "flex items-center justify-between gap-3 rounded-xl py-1",
-        "sm:px-4 sm:py-2",
+        "flex flex-col gap-1.5",
         props.className,
       ]
         .filter(Boolean)
         .join(" ")}
     >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-400">
-            {props.label}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+          {props.label}
+        </span>
+        {props.labelAddon ? (
+          <span className="text-[11px] font-medium text-slate-500">
+            {props.labelAddon}
           </span>
-          {props.labelAddon ? (
-            <span className="text-[11px] font-medium text-slate-500">
-              {props.labelAddon}
-            </span>
-          ) : null}
-        </div>
-        {props.labelSubtext ? (
-          <p className="mt-1 text-xs font-medium text-slate-500">
-            {props.labelSubtext}
-          </p>
         ) : null}
       </div>
-      <span className="text-base font-semibold text-white tabular-nums">
+      <span className="text-lg font-semibold text-white tabular-nums">
         {Math.max(0, Math.floor(props.value)).toLocaleString("en-US")}
       </span>
     </div>
