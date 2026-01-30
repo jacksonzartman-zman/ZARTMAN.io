@@ -106,7 +106,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
 
   return (
     <div className="overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
-      <div className="grid grid-cols-12 gap-3 border-b border-slate-800/50 px-5 py-3.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+      <div className="grid grid-cols-12 gap-3 border-b border-slate-800/50 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
         <div className="col-span-12 sm:col-span-7">RFQ</div>
         <div className="col-span-6 sm:col-span-3">Status</div>
         <div className="col-span-6 text-right sm:col-span-2">Last update</div>
@@ -130,7 +130,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                   if (row.status === "Offers ready") markSeen(row.id);
                 }}
                 className={clsx(
-                  "relative grid grid-cols-12 gap-3 px-5 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 sm:py-5",
+                  "relative grid grid-cols-12 gap-3 px-5 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400",
                 )}
               >
                 {hasNewOffers ? (

@@ -219,7 +219,7 @@ export default async function CustomerProjectsPage({
             <CustomerProjectsListControls
               basePath="/customer/projects"
               suppliers={suppliers}
-              className="mb-5"
+              className="mb-4"
             />
 
             {filteredProjects.length === 0 ? (
@@ -293,7 +293,7 @@ export default async function CustomerProjectsPage({
 
                       return (
                         <tr key={project.id} className="hover:bg-slate-900/20">
-                          <td className="px-5 py-5 align-middle">
+                          <td className="px-5 py-4 align-middle">
                             <div className="flex flex-col">
                               <span className="font-medium text-slate-100">
                                 {originFileLabel ?? project.projectName}
@@ -306,16 +306,16 @@ export default async function CustomerProjectsPage({
                               </span>
                             </div>
                           </td>
-                          <td className="px-5 py-5 align-middle text-slate-200">
+                          <td className="px-5 py-4 align-middle text-slate-200">
                             {supplierLabel}
                           </td>
-                          <td className="hidden px-5 py-5 align-middle text-slate-300 md:table-cell">
+                          <td className="hidden px-5 py-4 align-middle text-slate-300 md:table-cell">
                             {formatAwardedDate(project.awardedAt)}
                           </td>
-                          <td className="hidden px-5 py-5 align-middle text-slate-300 md:table-cell">
+                          <td className="hidden px-5 py-4 align-middle text-slate-300 md:table-cell">
                             {formatLastUpdated(project.lastUpdatedAt)}
                           </td>
-                          <td className="hidden px-5 py-5 align-middle lg:table-cell">
+                          <td className="hidden px-5 py-4 align-middle lg:table-cell">
                             <div className="space-y-1">
                               <p
                                 className={clsx(
@@ -330,13 +330,13 @@ export default async function CustomerProjectsPage({
                               </p>
                             </div>
                           </td>
-                          <td className="hidden px-5 py-5 align-middle md:table-cell">
+                          <td className="hidden px-5 py-4 align-middle md:table-cell">
                             <div className="space-y-1">
                               <p className={clsx("font-medium", kickoff.tone)}>{kickoff.label}</p>
                               <p className="text-xs text-slate-400">{kickoffSubtext}</p>
                             </div>
                           </td>
-                          <td className="px-5 py-5 align-middle text-right">
+                          <td className="px-5 py-4 align-middle text-right">
                             <div className="flex flex-wrap justify-end gap-2">
                               {canNudge && project.awardedSupplierId ? (
                                 <KickoffNudgeButton

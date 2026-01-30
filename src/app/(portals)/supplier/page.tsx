@@ -225,7 +225,7 @@ async function SupplierDashboardPage({
       subtitle="Quote new RFQs and track active jobs in one place."
       actions={headerActions}
       headerContent={headerContent}
-      bodyClassName="space-y-5"
+      bodyClassName="space-y-6 sm:space-y-7"
     >
       <div className="space-y-3">
         <AwardedJobSuccessBanner awardedQuoteIds={activeJobs.map((row) => row.quoteId)} />
