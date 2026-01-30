@@ -344,6 +344,13 @@ export function PublicOffersSection({
 
   const statusText = (quoteStatus ?? "Submitted").trim() || "Submitted";
 
+  const momentumLine =
+    offersCount >= 4
+      ? "Strong interest from suppliers."
+      : offersCount >= 2
+        ? "Multiple suppliers are responding to your RFQ."
+        : null;
+
   return (
     <>
       {showSubmittedBanner ? (
@@ -557,6 +564,8 @@ export function PublicOffersSection({
             </div>
             <span className="text-xs font-semibold text-ink-soft">{badgeLabel}</span>
           </header>
+
+          {momentumLine ? <p className="text-xs text-ink-soft">{momentumLine}</p> : null}
 
           <div className="grid gap-4">
             {offers.map((offer, idx) => (
