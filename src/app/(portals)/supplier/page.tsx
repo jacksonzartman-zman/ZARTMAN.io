@@ -342,7 +342,7 @@ async function SupplierDashboardPage({
         ) : supplierExists ? (
           <EmptyStateNotice
             title="No new RFQs"
-            description="When a new RFQ is assigned to your shop, it appears here immediately."
+            description="No new RFQs yet — we’ll notify you when work arrives."
           />
         ) : (
           <EmptyStateNotice
@@ -380,7 +380,7 @@ async function SupplierDashboardPage({
         ) : supplierExists ? (
           <EmptyStateNotice
             title="No active jobs"
-            description="Once you’re awarded an RFQ, it will show up here."
+            description="No active jobs yet — awarded work will show up here as soon as it lands."
           />
         ) : (
           <EmptyStateNotice

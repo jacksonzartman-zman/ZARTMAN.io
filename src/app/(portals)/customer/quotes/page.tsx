@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requireCustomerSessionOrRedirect";
 import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesList } from "@/server/customer/quotesList";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 import PortalCard from "../../PortalCard";
 import { PortalShell } from "../../components/PortalShell";
 import { SHOW_LEGACY_QUOTE_ENTRYPOINTS } from "@/lib/ui/deprecation";
@@ -186,22 +187,15 @@ export default async function CustomerQuotesPage({
         description="File names, current status, and latest update."
       >
         {sortedQuotes.length === 0 ? (
-          <div className="rounded-2xl border border-slate-900/70 bg-black/40 p-6">
-            <p className="text-sm font-semibold text-slate-100">No RFQs yet</p>
-            <p className="mt-2 text-sm text-slate-400">
-              When you submit an RFQ, it’ll show up here with status updates as offers come in.
-            </p>
-            {SHOW_LEGACY_QUOTE_ENTRYPOINTS ? (
-              <div className="mt-4">
-                <Link
-                  href="/quote"
-                  className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
-                >
-                  Start a new RFQ
-                </Link>
-              </div>
-            ) : null}
-          </div>
+          <EmptyStateCard
+            title="No RFQs yet"
+            description="Upload your first part to get started. Once you submit an RFQ, it’ll show up here with status updates as offers come in."
+            action={
+              SHOW_LEGACY_QUOTE_ENTRYPOINTS
+                ? { label: "Start a new RFQ", href: "/quote" }
+                : null
+            }
+          />
         ) : (
           <CustomerQuotesListClient rows={rows} />
         )}
