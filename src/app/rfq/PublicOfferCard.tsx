@@ -56,6 +56,13 @@ export function PublicOfferCard({ offer, optionNumber, manufacturingProcesses, c
             {offer.isBestValue ? <HighlightPill tone="emerald">Best value</HighlightPill> : null}
             {offer.isFastest ? <HighlightPill tone="blue">Fastest</HighlightPill> : null}
           </div>
+          {offer.isBestValue || offer.isFastest ? (
+            <p className="mt-2 text-[11px] text-ink-muted">
+              {offer.isBestValue ? "Lowest total price" : null}
+              {offer.isBestValue && offer.isFastest ? " · " : null}
+              {offer.isFastest ? "Shortest lead time" : null}
+            </p>
+          ) : null}
         </div>
 
         <div className="text-right">
