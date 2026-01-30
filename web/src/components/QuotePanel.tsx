@@ -25,18 +25,27 @@ export default function QuotePanel() {
   }
 
   return (
-    <div className="space-y-3">
-      <button onClick={create} disabled={busy} className="px-3 py-2 rounded bg-white text-black">
+    <div className="space-y-4">
+      <button
+        onClick={create}
+        disabled={busy}
+        className="inline-flex h-10 items-center justify-center rounded-pill bg-white px-4 text-sm font-semibold text-black shadow-sm transition hover:bg-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:opacity-60"
+      >
         {busy ? 'Creating…' : '+ New Quote'}
       </button>
       <div className="space-y-2">
         {quotes.map(q => (
-          <div key={q.id} className="p-3 rounded bg-neutral-900 border border-neutral-800">
-            <div className="font-medium">{q.title}</div>
-            <div className="text-sm opacity-70">{q.status} • {new Date(q.created_at).toLocaleString()}</div>
+          <div
+            key={q.id}
+            className="rounded-2xl border border-line-subtle bg-page-soft/80 p-4 shadow-lift-sm"
+          >
+            <div className="text-sm font-semibold text-ink tracking-tight">{q.title}</div>
+            <div className="mt-1 text-xs text-ink-muted">
+              {q.status} • {new Date(q.created_at).toLocaleString()}
+            </div>
           </div>
         ))}
-        {quotes.length === 0 && <div className="opacity-60">No quotes yet.</div>}
+        {quotes.length === 0 && <div className="text-sm text-ink-muted">No quotes yet.</div>}
       </div>
     </div>
   );

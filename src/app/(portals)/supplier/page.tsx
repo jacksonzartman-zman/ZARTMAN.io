@@ -47,10 +47,12 @@ async function SupplierDashboardPage({
   if (!user) {
     return (
       <section className="mx-auto max-w-3xl rounded-3xl border border-slate-900 bg-slate-950/70 p-8 text-center shadow-[0_18px_40px_rgba(2,6,23,0.85)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-sky-200">
           Supplier workspace
         </p>
-        <h1 className="mt-4 text-3xl font-semibold text-white">You&apos;re not logged in</h1>
+        <h1 className="mt-4 text-3xl font-semibold text-white heading-tight sm:text-4xl">
+          You&apos;re not logged in
+        </h1>
         <p className="mt-3 text-sm text-slate-300">
           Use the email you onboarded with to request a magic link. We&apos;ll redirect you back to
           your supplier dashboard once you&apos;re in.

@@ -14,7 +14,7 @@ export default function Page() {
           <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
             Find suppliers for your part, fast
           </h1>
-          <p className="text-base text-ink/muted md:text-lg">
+          <p className="text-base text-ink-muted md:text-lg">
             Upload a CAD file to share quote requests, collaborate with suppliers, and deliver parts
             faster.
           </p>
@@ -27,7 +27,7 @@ export default function Page() {
 
       <section id="how-it-works" className="mx-auto max-w-page px-4 pb-16">
         <div className="mx-auto grid max-w-copy gap-4 rounded-2xl bg-white/5 p-6 md:p-8">
-          <h2 className="text-xl font-semibold tracking-tight">How it works</h2>
+          <h2 className="text-2xl font-semibold tracking-tight">How it works</h2>
           <ol className="grid gap-3 text-sm text-ink/80 md:text-base">
             <li className="rounded-xl bg-white/5 px-4 py-3">
               <span className="font-semibold text-ink">1)</span> Upload a CAD file.

@@ -10,7 +10,7 @@ export default function PortalLayout({ children }: PortalLayoutProps) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
       <AppHeader />
-      <main className="py-10">
+      <main className="py-8 sm:py-10">
         <PortalContainer>{children}</PortalContainer>
       </main>
     </div>

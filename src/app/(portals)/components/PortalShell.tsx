@@ -15,8 +15,8 @@ type PortalShellProps = {
 };
 
 const WORKSPACE_ACCENTS: Record<PortalShellProps["workspace"], string> = {
-  customer: "text-emerald-300",
-  supplier: "text-blue-300",
+  customer: "text-emerald-200",
+  supplier: "text-sky-200",
 };
 
 export function PortalShell({
@@ -37,7 +37,7 @@ export function PortalShell({
       : "Supplier workspace");
 
   return (
-    <div className={clsx("space-y-8 lg:space-y-10", className)}>
+    <div className={clsx("space-y-8 sm:space-y-10", className)}>
       <PageHeader
         eyebrow={workspaceLabel}
         eyebrowClassName={WORKSPACE_ACCENTS[workspace]}
@@ -47,7 +47,7 @@ export function PortalShell({
       >
         {headerContent}
       </PageHeader>
-      <div className={clsx("space-y-8", bodyClassName)}>{children}</div>
+      <div className={clsx("space-y-7 sm:space-y-8", bodyClassName)}>{children}</div>
     </div>
   );
 }

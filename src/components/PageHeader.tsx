@@ -23,7 +23,7 @@ export function PageHeader({
   return (
     <section
       className={clsx(
-        "rounded-3xl border border-slate-900/70 bg-slate-950/70 p-6 shadow-[0_18px_40px_rgba(2,6,23,0.6)]",
+        "rounded-3xl border border-slate-900/70 bg-slate-950/70 p-6 sm:p-7 shadow-[0_18px_40px_rgba(2,6,23,0.6)]",
         className,
       )}
     >
@@ -32,7 +32,7 @@ export function PageHeader({
           {eyebrow ? (
             <p
               className={clsx(
-                "text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400",
+                "text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500",
                 eyebrowClassName,
               )}
             >
@@ -40,7 +40,9 @@ export function PageHeader({
             </p>
           ) : null}
           <div className="space-y-2">
-            <h1 className="text-3xl font-semibold text-white heading-tight">{title}</h1>
+            <h1 className="text-3xl font-semibold text-white heading-tight sm:text-4xl">
+              {title}
+            </h1>
             {description ? (
               <p className="text-sm text-slate-400 heading-snug">{description}</p>
             ) : null}

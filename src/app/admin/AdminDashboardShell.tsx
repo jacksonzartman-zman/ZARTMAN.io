@@ -21,11 +21,11 @@ export default function AdminDashboardShell({
   className,
 }: AdminDashboardShellProps) {
   return (
-    <main className={clsx("py-10", className)}>
-      <PortalContainer className="space-y-8">
+    <main className={clsx("py-8 sm:py-10", className)}>
+      <PortalContainer className="space-y-8 sm:space-y-10">
         <PageHeader
           eyebrow={eyebrow}
-          eyebrowClassName="text-emerald-400"
+          eyebrowClassName="text-emerald-200"
           title={title}
           description={description}
           actions={actions}

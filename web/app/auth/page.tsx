@@ -28,22 +28,42 @@ export default function AuthPage() {
   }
 
   return (
-    <main style={{ padding: 32, maxWidth: 420 }}>
-      <h1>Sign in</h1>
-      <p>We’ll email you a magic link.</p>
+    <main className="mx-auto w-full max-w-sm px-4 py-14 sm:py-16">
+      <div className="space-y-6">
+        <header className="space-y-2">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">
+            Sign in
+          </h1>
+          <p className="text-sm text-ink-muted">
+            We’ll email you a magic link.
+          </p>
+        </header>
       {sent ? (
-        <p>Check your inbox.</p>
+        <p className="text-sm text-ink-soft">Check your inbox.</p>
       ) : (
         <>
-          <input
-            placeholder="you@company.com"
-            value={email}
-            onChange={(e)=>setEmail(e.target.value)}
-            style={{ width:'100%', padding:12, borderRadius:8, margin:'12px 0' }}
-          />
-          <button onClick={send} style={{ padding:12, borderRadius:8 }}>Send link</button>
+          <div className="space-y-3">
+            <label className="grid gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.24em] text-ink-muted">
+                Email
+              </span>
+              <input
+                placeholder="you@company.com"
+                value={email}
+                onChange={(e)=>setEmail(e.target.value)}
+                className="h-11 w-full rounded-xl border border-line-subtle bg-page-soft px-3 text-sm text-ink outline-none placeholder:text-ink-muted/70 focus:border-white/20 focus:ring-2 focus:ring-white/10"
+              />
+            </label>
+            <button
+              onClick={send}
+              className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-black shadow-sm transition hover:bg-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30 disabled:opacity-60"
+            >
+              Send link
+            </button>
+          </div>
         </>
       )}
+      </div>
     </main>
   )
 }
