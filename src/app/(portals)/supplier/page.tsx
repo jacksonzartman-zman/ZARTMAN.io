@@ -190,6 +190,20 @@ async function SupplierDashboardPage({
     return typeof ts === "number" && ts >= sevenDaysAgoMs;
   }).length;
 
+  const lastBidAtMs = quotesList.reduce<number | null>((best, row) => {
+    const ts = toTimestamp(row.lastBidAt);
+    if (typeof ts !== "number") return best;
+    return best === null ? ts : Math.max(best, ts);
+  }, null);
+  const responseActivityLabel = (() => {
+    if (typeof lastBidAtMs !== "number") return null;
+    const now = Date.now();
+    const last24HoursMs = now - 24 * 60 * 60 * 1000;
+    if (lastBidAtMs >= last24HoursMs) return "Responding actively";
+    if (lastBidAtMs >= sevenDaysAgoMs) return "Active this week";
+    return null;
+  })();
+
   const workspaceCompanyName =
     sanitizeDisplayName(supplier?.company_name) ??
     sessionCompanyName;
@@ -245,6 +259,7 @@ async function SupplierDashboardPage({
         newRfqsTodayCount={newRfqsTodayCount}
         activeJobsCount={activeJobs.length}
         quotesSentLast7DaysCount={quotesSentLast7DaysCount}
+        responseActivityLabel={responseActivityLabel}
       />
       <InvitedSupplierWelcomePanel enabled={invitedJustCompleted} />
       {showGettingSetUp ? (
@@ -430,12 +445,14 @@ function SupplierActivityRecapStats(props: {
   newRfqsTodayCount: number;
   activeJobsCount: number;
   quotesSentLast7DaysCount: number;
+  responseActivityLabel: string | null;
 }) {
   return (
     <section className="rounded-2xl border border-slate-900/70 bg-slate-950/40 px-4 py-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-0 sm:divide-x sm:divide-slate-900/70">
         <ActivityRecapStat
           label="New RFQs today"
+          labelAddon={props.responseActivityLabel}
           value={props.newRfqsTodayCount}
         />
         <ActivityRecapStat
@@ -455,13 +472,21 @@ function SupplierActivityRecapStats(props: {
 
 function ActivityRecapStat(props: {
   label: string;
+  labelAddon?: string | null;
   value: number;
   className?: string;
 }) {
   return (
     <div className={["flex items-center justify-between gap-3", props.className].filter(Boolean).join(" ")}>
-      <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
-        {props.label}
+      <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+          {props.label}
+        </span>
+        {props.labelAddon ? (
+          <span className="text-[11px] font-medium text-slate-500">
+            {props.labelAddon}
+          </span>
+        ) : null}
       </span>
       <span className="text-lg font-semibold text-white tabular-nums">
         {Math.max(0, Math.floor(props.value)).toLocaleString("en-US")}
