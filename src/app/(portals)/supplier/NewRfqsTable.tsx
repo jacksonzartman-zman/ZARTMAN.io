@@ -15,16 +15,20 @@ type NewRfqsTableProps = {
 };
 
 const SNOOZE_STORAGE_KEY = "supplier_rfq_snoozes_v1";
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const URGENT_WINDOW_DAYS = 3;
 
 export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
   const router = useRouter();
-  const [items, setItems] = useState<SupplierInboxRow[]>(() => rows);
+  const [items, setItems] = useState<SupplierInboxRow[]>(() =>
+    sortNewRfqRows(filterSnoozedRows(rows)),
+  );
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const [errorById, setErrorById] = useState<Record<string, string>>({});
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    setItems(filterSnoozedRows(rows));
+    setItems(sortNewRfqRows(filterSnoozedRows(rows)));
   }, [rows]);
 
   if (items.length === 0) {
@@ -87,6 +91,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
         const needByLabel = row.targetDate
           ? formatDateTime(row.targetDate, { includeTime: false }) ?? "—"
           : "—";
+        const urgent = isUrgentNeedBy(row.targetDate);
         const receivedLabel =
           formatRelativeTimeFromTimestamp(toTimestamp(row.createdAt)) ?? "—";
         const pending = pendingIds.has(row.id);
@@ -139,7 +144,14 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                 {quantityLabel}
               </td>
               <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>
-                {needByLabel}
+                {row.targetDate ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{needByLabel}</span>
+                    {urgent ? <UrgentPill /> : null}
+                  </div>
+                ) : (
+                  "—"
+                )}
               </td>
               <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400")}>
                 {receivedLabel}
@@ -398,6 +410,47 @@ function ChevronIcon({ rotated }: { rotated: boolean }) {
       />
     </svg>
   );
+}
+
+function UrgentPill() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100">
+      Urgent
+    </span>
+  );
+}
+
+function isUrgentNeedBy(targetDate: string | null): boolean {
+  const ms = toTimestamp(targetDate);
+  if (typeof ms !== "number") return false;
+  const now = Date.now();
+  const windowMs = URGENT_WINDOW_DAYS * DAY_IN_MS;
+  return ms - now <= windowMs;
+}
+
+function sortNewRfqRows(rows: SupplierInboxRow[]): SupplierInboxRow[] {
+  return [...rows].sort((a, b) => {
+    const aNeedBy = toTimestamp(a.targetDate);
+    const bNeedBy = toTimestamp(b.targetDate);
+
+    const aHasNeedBy = typeof aNeedBy === "number";
+    const bHasNeedBy = typeof bNeedBy === "number";
+
+    if (aHasNeedBy && bHasNeedBy) {
+      if (aNeedBy !== bNeedBy) return aNeedBy - bNeedBy; // sooner first
+    } else if (aHasNeedBy) {
+      return -1;
+    } else if (bHasNeedBy) {
+      return 1;
+    }
+
+    const aReceived = toTimestamp(a.createdAt) ?? 0;
+    const bReceived = toTimestamp(b.createdAt) ?? 0;
+    if (aReceived !== bReceived) return bReceived - aReceived; // newest first
+
+    // Keep ordering deterministic across identical timestamps.
+    return a.id.localeCompare(b.id);
+  });
 }
 
 function filterSnoozedRows(rows: SupplierInboxRow[]): SupplierInboxRow[] {
