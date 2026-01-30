@@ -637,6 +637,7 @@ export function PublicOffersSection({
               <PublicOfferCard
                 key={offer.id}
                 offer={offer}
+                offers={offers}
                 optionNumber={idx + 1}
                 manufacturingProcesses={manufacturingProcesses}
                 className={clsx(idx === 0 && firstOfferArrivalActive && "rfq-first-offer-card")}
