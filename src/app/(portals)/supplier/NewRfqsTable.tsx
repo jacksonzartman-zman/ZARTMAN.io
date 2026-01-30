@@ -96,6 +96,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
           !row.processHint?.trim() || !row.quantityHint?.trim() || !row.targetDate?.trim();
         const receivedLabel =
           formatRelativeTimeFromTimestamp(toTimestamp(row.createdAt)) ?? "—";
+        const freshnessLabel = formatRfqFreshness(row.createdAt);
         const pending = pendingIds.has(row.id);
         const error = errorById[row.id];
         const previewFiles = fileNames.length > 0
@@ -131,7 +132,10 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                     >
                       {filesLabel}
                     </Link>
-                    <p className="mt-1 text-xs text-slate-400">
+                    {freshnessLabel ? (
+                      <p className="mt-1 text-xs text-slate-500">{freshnessLabel}</p>
+                    ) : null}
+                    <p className={clsx("text-xs text-slate-400", freshnessLabel ? "mt-0.5" : "mt-1")}>
                       {fileCount > 0
                         ? `${fileCount} file${fileCount === 1 ? "" : "s"}`
                         : "Files pending"}
@@ -436,6 +440,26 @@ function isUrgentNeedBy(targetDate: string | null): boolean {
   const now = Date.now();
   const windowMs = URGENT_WINDOW_DAYS * DAY_IN_MS;
   return ms - now <= windowMs;
+}
+
+function formatRfqFreshness(createdAt: string | null | undefined): string | null {
+  const timestamp = toTimestamp(createdAt);
+  if (typeof timestamp !== "number") return null;
+
+  const now = Date.now();
+  const delta = Math.max(0, now - timestamp);
+  const MINUTE_IN_MS = 60 * 1000;
+  const HOUR_IN_MS = 60 * MINUTE_IN_MS;
+
+  if (delta < MINUTE_IN_MS) {
+    return "Received just now";
+  }
+  if (delta < HOUR_IN_MS) {
+    const minutes = Math.max(1, Math.round(delta / MINUTE_IN_MS));
+    return `Received ${minutes} min ago`;
+  }
+  const hours = Math.max(1, Math.round(delta / HOUR_IN_MS));
+  return `Received ${hours} ${hours === 1 ? "hr" : "hrs"} ago`;
 }
 
 function sortNewRfqRows(rows: SupplierInboxRow[]): SupplierInboxRow[] {
