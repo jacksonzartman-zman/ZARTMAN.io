@@ -340,6 +340,9 @@ export function CustomerQuoteCompareOffers({
           <p className="mt-1 text-xs text-emerald-100/80">
             We’ll move this order into production and keep you updated.
           </p>
+          <p className="mt-1 text-xs text-emerald-100/60">
+            Your selected supplier has been notified and will begin preparing your order.
+          </p>
         </div>
       ) : null}
       {awardError ? (
