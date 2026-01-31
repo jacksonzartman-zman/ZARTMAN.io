@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PORTAL_SURFACE_CARD } from "@/app/(portals)/components/PortalShell";
+
 type RfqStatusTone = "slate" | "blue" | "emerald" | "amber" | "muted";
 
 type CustomerQuoteRow = {
@@ -101,7 +103,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
   }, []);
 
   return (
-    <div className="-mx-7 overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
+    <div className={clsx("-mx-7 overflow-hidden", PORTAL_SURFACE_CARD)}>
       <div className="border-b border-slate-800/50 px-6 py-3">
         <div className="grid grid-cols-1 gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:grid-cols-[minmax(0,1fr)_10rem_7rem_7rem] md:items-center">
           <div>RFQ</div>
