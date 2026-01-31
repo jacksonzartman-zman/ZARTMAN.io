@@ -18,6 +18,7 @@ import { requireUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { getSupplierAwardedQuotesForProjects } from "@/server/supplier/projects";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
+import { OneTimeLocalStorageAffirmation } from "@/app/(portals)/shared/OneTimeLocalStorageAffirmation";
 import {
   PORTAL_CELL,
   PORTAL_CELL_RIGHT,
@@ -172,9 +173,16 @@ export default async function SupplierProjectsPage() {
                       <td className={PORTAL_CELL}>
                         <div className="flex flex-col gap-2">
                           <div className="space-y-1">
-                            <span className={PORTAL_TITLE}>
-                              {project.projectName}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={PORTAL_TITLE}>{project.projectName}</span>
+                              <OneTimeLocalStorageAffirmation
+                                as="span"
+                                storageKey={`supplier.project.now_active_affirmed.v1:${project.id}`}
+                                className="shrink-0 items-center rounded-full border border-slate-900/60 bg-slate-950/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500"
+                              >
+                                Now active
+                              </OneTimeLocalStorageAffirmation>
+                            </div>
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                               <span>
                                 RFQ{" "}
