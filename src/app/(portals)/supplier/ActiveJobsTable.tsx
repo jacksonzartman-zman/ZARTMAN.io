@@ -29,22 +29,22 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
 
   return (
     <AdminTableShell
-      className="border-slate-800/35 bg-slate-950/15 shadow-none"
+      className="border-slate-800/50 bg-slate-950/20 shadow-none"
       head={
         <tr>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             Project
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             Awarded
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             Kickoff
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             Last update
           </th>
-          <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
             Action
           </th>
         </tr>
@@ -57,22 +57,22 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
           formatRelativeTimeFromTimestamp(toTimestamp(row.lastActivityAt)) ?? "—";
 
         return (
-          <tr key={row.quoteId} className="bg-transparent transition hover:bg-slate-900/25">
+          <tr key={row.quoteId} className="bg-transparent transition hover:bg-slate-900/20">
             <td className={clsx(adminTableCellClass, "px-5 py-4")}>
               <Link
                 href={href}
-                className="block font-semibold text-white underline-offset-4 hover:underline"
+                className="block text-sm font-semibold leading-tight text-white underline-offset-4 hover:underline"
               >
                 {row.rfqLabel}
               </Link>
             </td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400")}>
+            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400 tabular-nums")}>
               {awardedLabel}
             </td>
             <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>
               {formatKickoffStatus(row.kickoffStatus)}
             </td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400")}>
+            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400 tabular-nums")}>
               {lastUpdateLabel}
             </td>
             <td className={clsx(adminTableCellClass, "px-5 py-4 text-right")}>

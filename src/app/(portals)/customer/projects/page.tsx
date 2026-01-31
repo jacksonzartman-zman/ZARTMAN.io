@@ -300,7 +300,7 @@ export default async function CustomerProjectsPage({
                         <tr key={project.id} className="hover:bg-slate-900/20">
                           <td className="px-5 py-4 align-middle">
                             <div className="flex flex-col">
-                              <span className="font-medium text-slate-100">
+                              <span className="text-sm font-semibold leading-tight text-slate-100">
                                 {originFileLabel ?? project.projectName}
                               </span>
                               <span className="mt-1 text-xs text-slate-500">
@@ -314,10 +314,10 @@ export default async function CustomerProjectsPage({
                           <td className="px-5 py-4 align-middle text-slate-200">
                             {supplierLabel}
                           </td>
-                          <td className="hidden px-5 py-4 align-middle text-slate-300 md:table-cell">
+                          <td className="hidden px-5 py-4 align-middle text-slate-300 tabular-nums md:table-cell">
                             {formatAwardedDate(project.awardedAt)}
                           </td>
-                          <td className="hidden px-5 py-4 align-middle text-slate-300 md:table-cell">
+                          <td className="hidden px-5 py-4 align-middle text-slate-300 tabular-nums md:table-cell">
                             {formatLastUpdated(project.lastUpdatedAt)}
                           </td>
                           <td className="hidden px-5 py-4 align-middle lg:table-cell">
@@ -342,7 +342,7 @@ export default async function CustomerProjectsPage({
                             </div>
                           </td>
                           <td className="px-5 py-4 align-middle text-right">
-                            <div className="flex flex-wrap justify-end gap-2">
+                            <div className="flex flex-wrap items-center justify-end gap-3">
                               {canNudge && project.awardedSupplierId ? (
                                 <KickoffNudgeButton
                                   quoteId={project.id}

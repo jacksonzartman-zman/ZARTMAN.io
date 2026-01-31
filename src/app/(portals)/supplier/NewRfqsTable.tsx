@@ -87,25 +87,25 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
         </label>
       </div>
       <AdminTableShell
-        className="border-slate-800/40 bg-slate-950/25 shadow-none"
+        className="border-slate-800/50 bg-slate-950/20 shadow-none"
         head={
           <tr>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Files
             </th>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Process
             </th>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Qty
             </th>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Need-by
             </th>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Received
             </th>
-            <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+            <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Action
             </th>
           </tr>
@@ -151,7 +151,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
 
               return (
                 <Fragment key={row.id}>
-                  <tr className="bg-transparent transition hover:bg-slate-900/30">
+                  <tr className="bg-transparent transition hover:bg-slate-900/20">
                     <td className={clsx(adminTableCellClass, "px-5 py-4")}>
                       <div className="flex items-start gap-3">
                         <button
@@ -207,7 +207,12 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                         "—"
                       )}
                     </td>
-                    <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400")}>
+                    <td
+                      className={clsx(
+                        adminTableCellClass,
+                        "px-5 py-4 text-slate-400 tabular-nums",
+                      )}
+                    >
                       {receivedLabel}
                     </td>
                     <td className={clsx(adminTableCellClass, "px-5 py-4 text-right")}>

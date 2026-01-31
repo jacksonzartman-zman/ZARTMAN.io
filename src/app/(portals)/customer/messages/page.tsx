@@ -81,12 +81,12 @@ export default async function CustomerMessagesPage() {
                   const href = `/customer/quotes/${row.quoteId}?tab=messages#messages`;
                   return (
                     <tr key={row.quoteId} className="hover:bg-slate-900/20">
-                      <td className="px-5 py-5 align-middle">
+                      <td className="px-5 py-4 align-middle">
                         <Link
                           href={href}
                           className="flex flex-col gap-1 underline-offset-4 hover:underline"
                         >
-                          <span className="text-[15px] font-semibold text-slate-100">
+                          <span className="text-sm font-semibold leading-tight text-slate-100">
                             {row.rfqLabel}
                           </span>
                           <span className="text-xs text-slate-500">
@@ -94,11 +94,11 @@ export default async function CustomerMessagesPage() {
                           </span>
                         </Link>
                       </td>
-                      <td className="px-5 py-5 align-middle">
+                      <td className="px-5 py-4 align-middle">
                         <div className="flex flex-wrap items-center gap-2">
                           <span
                             className={[
-                              "inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                              "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
                               threadPill,
                             ].join(" ")}
                           >
@@ -111,7 +111,7 @@ export default async function CustomerMessagesPage() {
                           ) : null}
                         </div>
                       </td>
-                      <td className="hidden px-5 py-5 align-middle lg:table-cell">
+                      <td className="hidden px-5 py-4 align-middle lg:table-cell">
                         <div className="space-y-1">
                           <p className="text-xs text-slate-200">{row.lastMessagePreview}</p>
                           <p className="text-[11px] uppercase tracking-[0.22em] text-slate-600">
@@ -119,7 +119,7 @@ export default async function CustomerMessagesPage() {
                           </p>
                         </div>
                       </td>
-                      <td className="px-5 py-5 align-middle text-right">
+                      <td className="px-5 py-4 align-middle text-right">
                         <Link
                           href={href}
                           className={`${primaryCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
