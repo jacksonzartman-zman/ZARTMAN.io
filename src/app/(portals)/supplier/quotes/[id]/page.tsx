@@ -13,7 +13,10 @@ import { formatCurrency } from "@/lib/formatCurrency";
 import { formatAwardedByLabel } from "@/lib/awards";
 import { QuoteFilesCard } from "@/app/admin/quotes/[id]/QuoteFilesCard";
 import PortalCard from "@/app/(portals)/PortalCard";
-import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import {
+  PORTAL_SURFACE_CARD_INTERACTIVE_QUIET,
+  PortalShell,
+} from "@/app/(portals)/components/PortalShell";
 import {
   formatQuoteId,
   getSearchParamValue,
@@ -831,17 +834,14 @@ function SupplierQuoteWorkspace({
       }
     >
       <div className="space-y-4">
-        <header className="space-y-1">
-          <h2 className="text-lg font-semibold text-white">
-            Submit your quote
-          </h2>
-          <p className="text-sm text-slate-300">
-            Only the Zartman team and the requesting customer can see these details.
-          </p>
-          <p className="text-xs text-slate-500">
+        <div className="space-y-1">
+          <p className="text-sm text-slate-200">
             Price + lead time are all we need. Notes are optional.
           </p>
-        </header>
+          <p className="text-xs text-slate-500">
+            Only the Zartman team and the requesting customer can see these details.
+          </p>
+        </div>
         {acceptedLock ? (
           <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
             This quote is locked because the customer already accepted it.
@@ -884,7 +884,7 @@ function SupplierQuoteWorkspace({
   const filesSection = (
     <DisclosureSection
       id="uploads"
-      className="scroll-mt-24"
+      className={clsx("scroll-mt-24", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
       title="Uploads"
       description="Shared RFQ files and previews."
       defaultOpen={fileCount > 0}
@@ -908,7 +908,7 @@ function SupplierQuoteWorkspace({
   const rfqDetailsSection = (
     <DisclosureSection
       id="details"
-      className="scroll-mt-24"
+      className={clsx("scroll-mt-24", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
       title="Details"
       description="Customer, process hints, and workflow snapshot."
       defaultOpen={false}
@@ -949,6 +949,7 @@ function SupplierQuoteWorkspace({
       title="Notes"
       description="DFM feedback and intake notes."
       defaultOpen={false}
+      className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
     >
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
@@ -1171,7 +1172,7 @@ function SupplierQuoteWorkspace({
     >
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
-      <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
+      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,0.72fr)_minmax(0,0.28fr)] lg:gap-6 lg:space-y-0">
         <div className="space-y-5">
           {winnerCallout}
           <OneTimeLocalStorageAffirmation
@@ -1232,8 +1233,7 @@ function SupplierQuoteWorkspace({
                   currentUserId={currentUserId}
                   viewerRole="supplier"
                   markRead={tabParam === "messages"}
-                  title="Messages"
-                  description="Customer, supplier, and admin updates for this RFQ."
+                  embedded
                   portalEmail={{
                     enabled: portalEmailEnabled,
                     recipientRole: "customer",
@@ -1257,10 +1257,11 @@ function SupplierQuoteWorkspace({
             )}
           </DisclosureSection>
         </div>
-        <div className="space-y-5">
+        <div className="space-y-4">
           <PortalCard
             title="Capacity (Next Week)"
             description="Advisory-only snapshot to help timeline planning."
+            className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
           >
             <div className="space-y-4">
               <dl className="grid gap-3">
@@ -1301,7 +1302,11 @@ function SupplierQuoteWorkspace({
               </div>
             </div>
           </PortalCard>
-          <PortalCard title="Email this thread" description="Reply via email to post a supplier message.">
+          <PortalCard
+            title="Email this thread"
+            description="Reply via email to post a supplier message."
+            className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
+          >
             <div className="space-y-3">
               <p className="text-xs text-slate-400">{replyToStatusCopy}</p>
               <div className="flex flex-col gap-2">
