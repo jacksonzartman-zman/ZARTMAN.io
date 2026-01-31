@@ -28,6 +28,11 @@ export type QuoteMessagesThreadProps = {
   quoteId: string;
   messages: QuoteMessageRecord[];
   canPost: boolean;
+  /**
+   * When true, render without the outer "card" chrome + large header.
+   * Intended for embedding inside another surface (e.g. `DisclosureSection`).
+   */
+  embedded?: boolean;
   postAction?: (
     prevState: QuoteMessageFormState,
     formData: FormData,
@@ -94,6 +99,7 @@ export function QuoteMessagesThread({
   quoteId,
   messages,
   canPost,
+  embedded = false,
   postAction,
   currentUserId,
   markRead = false,
@@ -155,64 +161,49 @@ export function QuoteMessagesThread({
   return (
     <section
       className={clsx(
-        "space-y-5 rounded-2xl border border-slate-900 bg-slate-950/50 px-6 py-5",
+        embedded
+          ? "space-y-5"
+          : "space-y-5 rounded-2xl border border-slate-900 bg-slate-950/50 px-6 py-5",
         className,
       )}
     >
-      <header className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Messages</p>
-        <div>
-          <h2 className="text-xl font-semibold text-white">{title}</h2>
-          <p className="text-sm text-slate-400">{description}</p>
-        </div>
-        {showChangeRequestBanner ? (
-          <p
-            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100"
-            role="status"
-            aria-live="polite"
-          >
-            Change request submitted. We&apos;ll coordinate updates in Messages.
+      {!embedded ? (
+        <header className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Messages
           </p>
-        ) : null}
-        {usageHint ? (
-          <p className="text-xs text-slate-500">{usageHint}</p>
-        ) : null}
-        {emailReplyIndicator ? (
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {emailReplyIndicator.state === "enabled" ? (
-              <>
-                <span className="text-emerald-200">Email replies enabled</span>
-                <span
-                  className="break-anywhere rounded-md border border-slate-900/60 bg-slate-950/30 px-2 py-1 font-mono text-[11px] text-slate-100"
-                  title={emailReplyIndicator.replyTo}
-                >
-                  {emailReplyIndicator.replyTo}
-                </span>
-                <CopyTextButton
-                  text={emailReplyIndicator.replyTo}
-                  idleLabel="Copy reply-to"
-                  logPrefix="[email_bridge]"
-                />
-              </>
-            ) : (
-              <>
-                <span className="text-slate-500">Email replies off</span>
-                {emailReplyIndicator.helper ? (
-                  <span className="text-slate-500">{emailReplyIndicator.helper}</span>
-                ) : null}
-                {emailReplyIndicator.cta?.href && emailReplyIndicator.cta?.label ? (
-                  <a
-                    href={emailReplyIndicator.cta.href}
-                    className="font-semibold text-emerald-200 underline-offset-4 hover:underline"
-                  >
-                    {emailReplyIndicator.cta.label}
-                  </a>
-                ) : null}
-              </>
-            )}
+          <div>
+            <h2 className="text-xl font-semibold text-white">{title}</h2>
+            <p className="text-sm text-slate-400">{description}</p>
           </div>
-        ) : null}
-      </header>
+          {showChangeRequestBanner ? (
+            <p
+              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100"
+              role="status"
+              aria-live="polite"
+            >
+              Change request submitted. We&apos;ll coordinate updates in Messages.
+            </p>
+          ) : null}
+          {usageHint ? <p className="text-xs text-slate-500">{usageHint}</p> : null}
+          {emailReplyIndicator ? <EmailReplyIndicatorRow indicator={emailReplyIndicator} /> : null}
+        </header>
+      ) : (
+        <>
+          {showChangeRequestBanner ? (
+            <p
+              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100"
+              role="status"
+              aria-live="polite"
+            >
+              Change request submitted. We&apos;ll coordinate updates in Messages.
+            </p>
+          ) : null}
+          {emailReplyIndicator ? (
+            <EmailReplyIndicatorRow indicator={emailReplyIndicator} embedded />
+          ) : null}
+        </>
+      )}
 
       <QuoteMessageList
         quoteId={quoteId}
@@ -237,6 +228,53 @@ export function QuoteMessagesThread({
         </p>
       ) : null}
     </section>
+  );
+}
+
+function EmailReplyIndicatorRow({
+  indicator,
+  embedded = false,
+}: {
+  indicator: NonNullable<QuoteMessagesThreadProps["emailReplyIndicator"]>;
+  embedded?: boolean;
+}) {
+  return (
+    <div
+      className={clsx(
+        "flex flex-wrap items-center gap-2 text-xs",
+        embedded ? "rounded-xl border border-slate-900/60 bg-slate-950/30 px-4 py-2" : null,
+      )}
+    >
+      {indicator.state === "enabled" ? (
+        <>
+          <span className="text-emerald-200">Email replies enabled</span>
+          <span
+            className="break-anywhere rounded-md border border-slate-900/60 bg-slate-950/30 px-2 py-1 font-mono text-[11px] text-slate-100"
+            title={indicator.replyTo}
+          >
+            {indicator.replyTo}
+          </span>
+          <CopyTextButton
+            text={indicator.replyTo}
+            idleLabel="Copy reply-to"
+            logPrefix="[email_bridge]"
+          />
+        </>
+      ) : (
+        <>
+          <span className="text-slate-500">Email replies off</span>
+          {indicator.helper ? <span className="text-slate-500">{indicator.helper}</span> : null}
+          {indicator.cta?.href && indicator.cta?.label ? (
+            <a
+              href={indicator.cta.href}
+              className="font-semibold text-emerald-200 underline-offset-4 hover:underline"
+            >
+              {indicator.cta.label}
+            </a>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }
 

@@ -20,7 +20,10 @@ import { buildSearchStateSummary } from "@/lib/search/searchState";
 import { buildSearchProgress } from "@/lib/search/searchProgress";
 import { buildCustomerProjectTimeline } from "@/lib/quote/customerProjectTimeline";
 import PortalCard from "@/app/(portals)/PortalCard";
-import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import {
+  PORTAL_SURFACE_CARD_INTERACTIVE_QUIET,
+  PortalShell,
+} from "@/app/(portals)/components/PortalShell";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { QuoteFilesUploadsSection } from "@/app/(portals)/components/QuoteFilesUploadsSection";
 import {
@@ -74,6 +77,7 @@ import {
 } from "@/lib/quote/kickoffChecklist";
 import { KickoffNudgeButton } from "@/app/(portals)/customer/components/KickoffNudgeButton";
 import type { QuoteSectionRailSection } from "@/components/QuoteSectionRail";
+import { QuoteSectionRail } from "@/components/QuoteSectionRail";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { getLatestKickoffNudgedAt } from "@/server/quotes/kickoffNudge";
 import { computePartsCoverage } from "@/lib/quote/partsCoverage";
@@ -1370,7 +1374,7 @@ export default async function CustomerQuoteDetailPage({
   const quoteDetailsSection = (
     <DisclosureSection
       id="details"
-      className="scroll-mt-24"
+      className={clsx("scroll-mt-24", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
       title="Details"
       description="Status, key dates, and workflow snapshot."
       defaultOpen={false}
@@ -1438,7 +1442,7 @@ export default async function CustomerQuoteDetailPage({
   const filesSection = (
     <DisclosureSection
       id="uploads"
-      className="scroll-mt-24"
+      className={clsx("scroll-mt-24", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
       title="Uploads"
       description={`Upload CAD and drawings here, then link files to parts below. Max ${formatMaxUploadSize()} per file.`}
       defaultOpen={false}
@@ -1483,6 +1487,7 @@ export default async function CustomerQuoteDetailPage({
       title="Notes"
       description="DFM feedback and any intake notes captured with the upload."
       defaultOpen={false}
+      className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
     >
       <div className="grid gap-4 lg:grid-cols-2">
         <div>
@@ -1811,7 +1816,7 @@ export default async function CustomerQuoteDetailPage({
   const timelineSection = (
     <DisclosureSection
       id="timeline"
-      className="scroll-mt-24"
+      className={clsx("scroll-mt-24", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
       title="Timeline"
       description="Updates and milestones for this RFQ."
       defaultOpen={tabParam === "activity"}
@@ -1849,110 +1854,119 @@ export default async function CustomerQuoteDetailPage({
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
       {showDemoModeBanner ? <DemoModeBanner /> : null}
-      <div className="space-y-6">
-        {awardedSupplierCard}
-        {quoteHasWinner ? <PostAwardReassurancePanel quoteId={quote.id} /> : null}
-        <CustomerProjectTimelineStrip steps={projectTimeline.steps} />
-        {customerOpsStatusStep === "delivered" ? (
-          <DeliveredOrderReinforcementPanel quoteId={quote.id} />
-        ) : null}
-        {shouldShowCustomerOpsStatus && customerOpsStatusStep ? (
-          <CustomerProductionStatusRow
-            quoteId={quote.id}
-            step={customerOpsStatusStep}
-            label={customerOpsStatusLabel}
-          />
-        ) : null}
-        {decisionCtaRow}
-        {compareOffersSection}
-        {selectionConfirmedSection}
-        {orderWorkspaceSection}
-        {rfqOfferCount === 0 ? decisionSection : null}
-        {kickoffSection}
-        {messagesUnavailable ? (
-          <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
-            Messages are temporarily unavailable right now. Your RFQ is still saved—refresh to try
-            again.
-          </p>
-        ) : null}
-        <DisclosureSection
-          id="messages"
-          className="scroll-mt-24"
-          title="Messages"
-          description="Shared thread with your supplier and the Zartman team."
-          defaultOpen={tabParam === "messages"}
-          summary={
-            quoteMessages.length > 0 ? (
-              <TagPill size="md" tone="slate" className="normal-case tracking-normal">
-                {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
-              </TagPill>
-            ) : (
-              <TagPill size="md" tone="slate" className="normal-case tracking-normal">
-                No messages
-              </TagPill>
-            )
-          }
-        >
-          {messagesSchemaMissing ? (
-            <EmptyStateCard
-              title="Messaging not enabled"
-              description="Messaging isn’t enabled in this environment."
-              className="px-5 py-3"
+      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,0.72fr)_minmax(0,0.28fr)] lg:gap-6 lg:space-y-0">
+        <div className="space-y-6">
+          {awardedSupplierCard}
+          {quoteHasWinner ? <PostAwardReassurancePanel quoteId={quote.id} /> : null}
+          <CustomerProjectTimelineStrip steps={projectTimeline.steps} />
+          {customerOpsStatusStep === "delivered" ? (
+            <DeliveredOrderReinforcementPanel quoteId={quote.id} />
+          ) : null}
+          {shouldShowCustomerOpsStatus && customerOpsStatusStep ? (
+            <CustomerProductionStatusRow
+              quoteId={quote.id}
+              step={customerOpsStatusStep}
+              label={customerOpsStatusLabel}
             />
-          ) : (
-            <>
-              {threadNeedsReply.needs_reply_role === "admin" ? (
-                <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
-                  Waiting on Admin.
-                </p>
-              ) : threadNeedsReply.needs_reply_role === "customer" ? (
-                <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
-                  Admin is waiting for your reply.
-                </p>
-              ) : null}
-              <div id="email-replies">
-                <CustomerEmailRepliesCard
-                  quoteId={quote.id}
-                  initialOptedIn={customerEmailOptedIn}
-                  bridgeEnabled={customerEmailBridgeEnabled}
-                  replyToAddress={customerReplyToAddress}
-                />
-              </div>
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
-                <div className="max-w-[46rem]">
-                  <p className="text-sm font-semibold text-white">Need to request a change?</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Submit a change request and we’ll coordinate next steps here in Messages.
-                  </p>
-                </div>
-                <RequestChangeScaffold
-                  quoteId={quote.id}
-                  messagesHref={messagesHref}
-                  disabled={readOnly}
-                />
-              </div>
-              <QuoteMessagesThread
-                quoteId={quote.id}
-                messages={quoteMessages}
-                canPost={!readOnly}
-                postAction={postMessageAction}
-                currentUserId={user.id}
-                viewerRole="customer"
-                markRead={tabParam === "messages"}
-                title="Messages"
-                description="Shared thread with your supplier and the Zartman team."
-                helperText="Your message notifies the Zartman team immediately."
-                disabledCopy={readOnly ? "Messaging is disabled in read-only mode." : undefined}
-                emptyStateCopy="Send the first message if you need clarification, want to request a change, or have a question."
+          ) : null}
+          {decisionCtaRow}
+          {compareOffersSection}
+          {selectionConfirmedSection}
+          {orderWorkspaceSection}
+          {rfqOfferCount === 0 ? decisionSection : null}
+          {kickoffSection}
+          {messagesUnavailable ? (
+            <p className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 px-5 py-3 text-sm text-yellow-100">
+              Messages are temporarily unavailable right now. Your RFQ is still saved—refresh to try
+              again.
+            </p>
+          ) : null}
+          <DisclosureSection
+            id="messages"
+            className="scroll-mt-24"
+            title="Messages"
+            description="Shared thread with your supplier and the Zartman team."
+            defaultOpen={tabParam === "messages"}
+            summary={
+              quoteMessages.length > 0 ? (
+                <TagPill size="md" tone="slate" className="normal-case tracking-normal">
+                  {quoteMessages.length} message{quoteMessages.length === 1 ? "" : "s"}
+                </TagPill>
+              ) : (
+                <TagPill size="md" tone="slate" className="normal-case tracking-normal">
+                  No messages
+                </TagPill>
+              )
+            }
+          >
+            {messagesSchemaMissing ? (
+              <EmptyStateCard
+                title="Messaging not enabled"
+                description="Messaging isn’t enabled in this environment."
+                className="px-5 py-3"
               />
-            </>
-          )}
-        </DisclosureSection>
-
-        {filesSection}
-        {quoteDetailsSection}
-        {timelineSection}
-        {notesSection}
+            ) : (
+              <>
+                {threadNeedsReply.needs_reply_role === "admin" ? (
+                  <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+                    Waiting on Admin.
+                  </p>
+                ) : threadNeedsReply.needs_reply_role === "customer" ? (
+                  <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-sm text-slate-200">
+                    Admin is waiting for your reply.
+                  </p>
+                ) : null}
+                <div id="email-replies">
+                  <CustomerEmailRepliesCard
+                    quoteId={quote.id}
+                    initialOptedIn={customerEmailOptedIn}
+                    bridgeEnabled={customerEmailBridgeEnabled}
+                    replyToAddress={customerReplyToAddress}
+                  />
+                </div>
+                <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-slate-900/60 bg-slate-950/30 px-5 py-4">
+                  <div className="max-w-[46rem]">
+                    <p className="text-sm font-semibold text-white">Need to request a change?</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Submit a change request and we’ll coordinate next steps here in Messages.
+                    </p>
+                  </div>
+                  <RequestChangeScaffold
+                    quoteId={quote.id}
+                    messagesHref={messagesHref}
+                    disabled={readOnly}
+                  />
+                </div>
+                <QuoteMessagesThread
+                  quoteId={quote.id}
+                  messages={quoteMessages}
+                  canPost={!readOnly}
+                  postAction={postMessageAction}
+                  currentUserId={user.id}
+                  viewerRole="customer"
+                  markRead={tabParam === "messages"}
+                  embedded
+                  helperText="Your message notifies the Zartman team immediately."
+                  disabledCopy={readOnly ? "Messaging is disabled in read-only mode." : undefined}
+                  emptyStateCopy="Send the first message if you need clarification, want to request a change, or have a question."
+                />
+              </>
+            )}
+          </DisclosureSection>
+        </div>
+        <aside className="space-y-5">
+          <PortalCard
+            title="Workspace"
+            description="Quick links and supporting details."
+            className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
+          >
+            <QuoteSectionRail sections={sectionRailSections} />
+          </PortalCard>
+          {filesSection}
+          {quoteDetailsSection}
+          {timelineSection}
+          {notesSection}
+        </aside>
       </div>
     </PortalShell>
   );
