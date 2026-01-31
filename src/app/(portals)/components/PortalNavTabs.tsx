@@ -126,7 +126,7 @@ export function PortalNavTabs({
   return (
     <nav
       className={clsx(
-        "flex flex-wrap items-center gap-1.5 text-sm font-medium text-slate-300",
+        "flex flex-wrap items-center gap-1 rounded-xl bg-white/[0.02] p-1 text-sm font-medium text-slate-300 ring-1 ring-inset ring-white/10",
         className,
       )}
     >
@@ -138,10 +138,10 @@ export function PortalNavTabs({
             href={link.href}
             aria-current={active ? "page" : undefined}
             className={clsx(
-              "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
+              "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-opacity motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60",
               active
-                ? "bg-white/5 text-white ring-1 ring-slate-700/60"
-                : "text-slate-300 hover:bg-white/5 hover:text-white",
+                ? "bg-white/[0.06] text-white shadow-sm shadow-black/20"
+                : "text-slate-300/90 hover:bg-white/[0.04] hover:text-white hover:opacity-100",
               linkClassName,
             )}
           >
@@ -157,21 +157,19 @@ export function PortalNavTabs({
             type="button"
             onClick={() => setMoreOpen((prev) => !prev)}
             className={clsx(
-              "inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
+              "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-opacity motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60",
               moreLinksActive || moreOpen
-                ? "bg-white/5 text-white ring-1 ring-slate-700/60"
-                : "text-slate-300 hover:bg-white/5 hover:text-white",
+                ? "bg-white/[0.06] text-white shadow-sm shadow-black/20"
+                : "text-slate-300/90 hover:bg-white/[0.04] hover:text-white hover:opacity-100",
               linkClassName,
             )}
             aria-haspopup="menu"
             aria-expanded={moreOpen}
+            aria-label="More navigation links"
           >
             <span>{moreLabel}</span>
             <svg
-              className={clsx(
-                "h-4 w-4 transition-transform",
-                moreOpen ? "rotate-180" : "rotate-0",
-              )}
+              className="h-4 w-4 opacity-70"
               viewBox="0 0 20 20"
               fill="none"
               aria-hidden="true"
@@ -187,7 +185,7 @@ export function PortalNavTabs({
           </button>
 
           {moreOpen ? (
-            <div className="absolute left-0 z-50 mt-2 w-64 rounded-2xl border border-slate-800/80 bg-slate-950/95 p-2 text-sm shadow-lg shadow-black/40">
+            <div className="absolute left-0 z-50 mt-2 w-64 rounded-2xl border border-white/10 bg-slate-950/95 p-2 text-sm shadow-lg shadow-black/40">
               {computedMoreLinks.map((link) => {
                 const active = activeHref ? link.href === activeHref : resolveActive(link.href, path);
                 return (
@@ -197,10 +195,10 @@ export function PortalNavTabs({
                     aria-current={active ? "page" : undefined}
                     onClick={() => setMoreOpen(false)}
                     className={clsx(
-                      "flex items-center justify-between gap-3 rounded-xl px-3 py-2 font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
+                      "flex items-center justify-between gap-3 rounded-xl px-3 py-2 font-semibold transition-opacity motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60",
                       active
-                        ? "bg-white/5 text-white ring-1 ring-slate-700/60"
-                        : "text-slate-200 hover:bg-white/5 hover:text-white",
+                        ? "bg-white/[0.06] text-white"
+                        : "text-slate-200/90 hover:bg-white/[0.04] hover:text-white hover:opacity-100",
                     )}
                   >
                     <span>{link.label}</span>
