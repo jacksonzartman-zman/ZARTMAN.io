@@ -41,7 +41,6 @@ import { SupplierBidPanel } from "./SupplierBidPanel";
 import { BidWorkspace } from "./BidWorkspace";
 import { PortalLoginPanel } from "@/app/(portals)/PortalLoginPanel";
 import { getServerAuthUser } from "@/server/auth";
-import { WorkflowStatusCallout } from "@/components/WorkflowStatusCallout";
 import { getNextWorkflowState } from "@/lib/workflow";
 import { canUserBid } from "@/lib/permissions";
 import { approvalsEnabled } from "@/server/suppliers/flags";
