@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
-import { PORTAL_SURFACE_CARD_INTERACTIVE } from "./components/PortalShell";
+import { PORTAL_SURFACE_CARD, PORTAL_SURFACE_CARD_INTERACTIVE } from "./components/PortalShell";
 
 type PortalCardProps = {
   id?: string;
@@ -27,6 +27,7 @@ export default function PortalCard({
     <section
       id={id}
       className={clsx(
+        PORTAL_SURFACE_CARD,
         PORTAL_SURFACE_CARD_INTERACTIVE,
         "p-6",
         className,

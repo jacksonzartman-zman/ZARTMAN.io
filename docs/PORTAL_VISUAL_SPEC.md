@@ -35,7 +35,9 @@ Goal: make all portals feel like one product — **premium, calm, subtle**, with
 ### Interaction (premium, calm, subtle)
 - **Hover**: slightly lift border contrast + background; optional small shadow increase.
 - **Active/pressed**: reduce shadow slightly; keep border stable (avoid “flash”).
-- **Focus**: always visible, soft outline (`focus-visible:outline-*`), never harsh.
+- **Focus**: always visible but soft:
+  - cards/panels: `focus-within` ring/border (quiet, non-glowy)
+  - controls/links: `focus-visible:outline-*` (never harsh)
 - **Motion**: keep transitions short and quiet; always respect reduced motion (`motion-reduce:*`).
 
 ### “Fun but not childish”
