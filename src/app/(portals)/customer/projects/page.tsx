@@ -20,6 +20,7 @@ import CustomerProjectsListControls, {
   type CustomerProjectsStatusFilter,
 } from "./CustomerProjectsListControls";
 import { primaryCtaClasses } from "@/lib/ctas";
+import { OneTimeLocalStorageAffirmation } from "@/app/(portals)/shared/OneTimeLocalStorageAffirmation";
 
 export const dynamic = "force-dynamic";
 
@@ -301,7 +302,14 @@ export default async function CustomerProjectsPage({
                           <td className="px-5 py-4 align-middle">
                             <div className="flex flex-col">
                               <span className="text-sm font-semibold leading-tight text-slate-100">
-                                {originFileLabel ?? project.projectName}
+                                {originFileLabel ?? project.projectName}{" "}
+                                <OneTimeLocalStorageAffirmation
+                                  as="span"
+                                  storageKey={`customer.project.now_active_affirmed.v1:${project.id}`}
+                                  className="ml-2 inline-flex items-center rounded-full border border-slate-800 bg-slate-950/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                                >
+                                  Now active
+                                </OneTimeLocalStorageAffirmation>
                               </span>
                               <span className="mt-1 text-xs text-slate-500">
                                 RFQ{" "}

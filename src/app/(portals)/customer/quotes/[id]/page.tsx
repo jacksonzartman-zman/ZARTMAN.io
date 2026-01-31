@@ -127,6 +127,7 @@ import {
   getCustomerOpsStatusStepIndex,
   normalizeCustomerOpsStatusStep,
 } from "@/lib/quote/customerOpsStatus";
+import { OneTimeLocalStorageAffirmation } from "@/app/(portals)/shared/OneTimeLocalStorageAffirmation";
 
 export const dynamic = "force-dynamic";
 
@@ -1634,6 +1635,12 @@ export default async function CustomerQuoteDetailPage({
             </span>
           ) : null}
         </div>
+        <OneTimeLocalStorageAffirmation
+          storageKey={`customer.rfq.progress_affirmed.v1:${quote.id}:awarded`}
+          className="text-xs text-slate-400"
+        >
+          Award recorded.
+        </OneTimeLocalStorageAffirmation>
         <p className="text-base font-semibold text-white">{winningSupplierName ?? "Supplier"}</p>
         <p className="text-xs text-slate-300">
           {winningBidPriceLabel} &middot; Lead time {winningBidLeadTimeLabel}
@@ -1850,7 +1857,11 @@ export default async function CustomerQuoteDetailPage({
           <DeliveredOrderReinforcementPanel quoteId={quote.id} />
         ) : null}
         {shouldShowCustomerOpsStatus && customerOpsStatusStep ? (
-          <CustomerProductionStatusRow step={customerOpsStatusStep} label={customerOpsStatusLabel} />
+          <CustomerProductionStatusRow
+            quoteId={quote.id}
+            step={customerOpsStatusStep}
+            label={customerOpsStatusLabel}
+          />
         ) : null}
         {decisionCtaRow}
         {compareOffersSection}
@@ -1948,13 +1959,21 @@ export default async function CustomerQuoteDetailPage({
 }
 
 function CustomerProductionStatusRow({
+  quoteId,
   step,
   label,
 }: {
+  quoteId: string;
   step: (typeof CUSTOMER_OPS_STATUS_STEPS)[number];
   label: string | null;
 }) {
   const currentIndex = getCustomerOpsStatusStepIndex(step);
+  const affirmationCopy =
+    step === "in_production"
+      ? "Moved into production."
+      : step === "delivered"
+        ? "Marked delivered."
+        : null;
 
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-950/50 px-5 py-4">
@@ -1964,6 +1983,14 @@ function CustomerProductionStatusRow({
             Production status
           </p>
           <p className="mt-1 text-sm font-semibold text-white">{label ?? "—"}</p>
+          {affirmationCopy ? (
+            <OneTimeLocalStorageAffirmation
+              storageKey={`customer.rfq.progress_affirmed.v1:${quoteId}:${step}`}
+              className="mt-1 text-xs text-slate-400"
+            >
+              {affirmationCopy}
+            </OneTimeLocalStorageAffirmation>
+          ) : null}
         </div>
         <TagPill size="md" tone="emerald" className="normal-case tracking-normal">
           {label ?? "—"}
