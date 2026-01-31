@@ -24,6 +24,7 @@ import {
   type CreatePartFromSuggestionState,
 } from "@/app/quote/actions";
 import { CadPreviewModal } from "@/components/shared/CadPreviewModal";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 function normalizeId(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -230,11 +231,12 @@ export function CustomerPartsSection({
       </header>
 
       {!hasAnyFiles ? (
-        <div className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-3">
-          <p className="text-sm text-slate-300">
-            Once files are uploaded, you’ll be able to assign them to parts for clearer kickoff and
-            quoting.
-          </p>
+        <div className="mt-4">
+          <EmptyStateCard
+            title="Upload files to start"
+            description="Once files are uploaded, you’ll be able to assign them to parts for clearer kickoff and quoting."
+            className="px-4 py-3"
+          />
         </div>
       ) : null}
 
@@ -324,11 +326,12 @@ export function CustomerPartsSection({
               ))}
             </div>
           ) : (
-            <div className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-3">
-              <p className="text-sm text-slate-300">
-                No suggested parts yet. You can still add parts manually, or click{" "}
-                <span className="font-semibold text-slate-100">Use AI to suggest parts</span>.
-              </p>
+            <div className="mt-4">
+              <EmptyStateCard
+                title="No suggested parts yet"
+                description="You can still add parts manually, or use AI to suggest parts."
+                className="px-4 py-3"
+              />
             </div>
           )}
         </div>
@@ -336,9 +339,11 @@ export function CustomerPartsSection({
 
       <div className="mt-4 space-y-3">
         {partsList.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/20 px-4 py-3 text-sm text-slate-300">
-            No parts yet. Add one below if you want to organize files by part.
-          </p>
+          <EmptyStateCard
+            title="No parts yet"
+            description="Add a part below if you want to organize files by part."
+            className="px-4 py-3"
+          />
         ) : null}
 
         {partsList.map((part, index) => {

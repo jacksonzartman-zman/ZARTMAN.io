@@ -48,6 +48,7 @@ import { approvalsEnabled } from "@/server/suppliers/flags";
 import { QuoteTimeline } from "@/app/(portals)/components/QuoteTimeline";
 import { CollapsibleCard } from "@/components/CollapsibleCard";
 import { DisclosureSection } from "@/components/DisclosureSection";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 import {
   loadSupplierCapacitySnapshotsForWeek,
   loadLatestCapacityUpdateRequestForSupplierWeek,
@@ -1205,9 +1206,11 @@ function SupplierQuoteWorkspace({
             }
           >
             {messagesSchemaMissing ? (
-              <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-3 text-sm text-slate-400">
-                Messaging not enabled in this environment.
-              </p>
+              <EmptyStateCard
+                title="Messaging not enabled"
+                description="Messaging isn’t enabled in this environment."
+                className="px-5 py-3"
+              />
             ) : (
               <>
                 {threadNeedsReply.needs_reply_role === "admin" ? (
