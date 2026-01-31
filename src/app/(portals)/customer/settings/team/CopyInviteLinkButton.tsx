@@ -20,7 +20,10 @@ export function CopyInviteLinkButton({ link }: { link: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="rounded-full border border-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-slate-700 hover:text-white"
+      className={[
+        "bg-transparent px-0 py-0 text-xs font-semibold underline-offset-4 transition",
+        copied ? "text-emerald-200" : "text-slate-300 hover:text-white hover:underline",
+      ].join(" ")}
     >
       {copied ? "Copied" : "Copy invite link"}
     </button>

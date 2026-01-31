@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 
 import { formatDateTime } from "@/lib/formatDate";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
+import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 type SavedSearchListItem = {
   quoteId: string;
@@ -27,12 +28,11 @@ type SavedSearchSummary = {
   locations: string[];
 };
 
-const ACTION_BUTTON_CLASSES =
-  "inline-flex items-center rounded-full border border-slate-800 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white";
-const ACTION_BUTTON_DISABLED_CLASSES =
-  "cursor-not-allowed border-slate-900 text-slate-600";
-const ACTION_DANGER_CLASSES =
-  "border-red-500/40 text-red-200 hover:border-red-400 hover:text-white";
+const SECONDARY_ACTION_LINK_CLASSES =
+  "bg-transparent px-0 py-0 text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline";
+const SECONDARY_ACTION_DISABLED_CLASSES = "cursor-not-allowed text-slate-500 no-underline";
+const DANGER_ACTION_LINK_CLASSES =
+  "bg-transparent px-0 py-0 text-xs font-semibold text-red-200 underline-offset-4 transition hover:text-white hover:underline";
 const INPUT_CLASSES =
   "w-full rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-emerald-400";
 const MAX_LABEL_LENGTH = 120;
@@ -210,8 +210,10 @@ function SavedSearchRow({ search }: { search: SavedSearchListItem }) {
                   onClick={handleRename}
                   disabled={!labelIsValid || isSaving}
                   className={clsx(
-                    ACTION_BUTTON_CLASSES,
-                    (!labelIsValid || isSaving) && ACTION_BUTTON_DISABLED_CLASSES,
+                    primaryCtaClasses,
+                    ctaSizeClasses.sm,
+                    "text-xs font-semibold uppercase tracking-wide",
+                    (!labelIsValid || isSaving) && "pointer-events-none opacity-60",
                   )}
                 >
                   Save
@@ -226,8 +228,8 @@ function SavedSearchRow({ search }: { search: SavedSearchListItem }) {
                   }}
                   disabled={isSaving}
                   className={clsx(
-                    ACTION_BUTTON_CLASSES,
-                    isSaving && ACTION_BUTTON_DISABLED_CLASSES,
+                    SECONDARY_ACTION_LINK_CLASSES,
+                    isSaving && SECONDARY_ACTION_DISABLED_CLASSES,
                   )}
                 >
                   Cancel
@@ -236,16 +238,23 @@ function SavedSearchRow({ search }: { search: SavedSearchListItem }) {
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <Link href={openHref} className={ACTION_BUTTON_CLASSES}>
-                Open
+              <Link
+                href={openHref}
+                className={clsx(
+                  primaryCtaClasses,
+                  ctaSizeClasses.sm,
+                  "text-xs font-semibold uppercase tracking-wide",
+                )}
+              >
+                Open search
               </Link>
               <button
                 type="button"
                 onClick={handleCopyLink}
                 disabled={isSaving}
                 className={clsx(
-                  ACTION_BUTTON_CLASSES,
-                  isSaving && ACTION_BUTTON_DISABLED_CLASSES,
+                  SECONDARY_ACTION_LINK_CLASSES,
+                  isSaving && SECONDARY_ACTION_DISABLED_CLASSES,
                 )}
               >
                 {copyLabel}
@@ -255,8 +264,8 @@ function SavedSearchRow({ search }: { search: SavedSearchListItem }) {
                 onClick={() => setIsRenaming(true)}
                 disabled={isSaving}
                 className={clsx(
-                  ACTION_BUTTON_CLASSES,
-                  isSaving && ACTION_BUTTON_DISABLED_CLASSES,
+                  SECONDARY_ACTION_LINK_CLASSES,
+                  isSaving && SECONDARY_ACTION_DISABLED_CLASSES,
                 )}
               >
                 Rename
@@ -266,9 +275,8 @@ function SavedSearchRow({ search }: { search: SavedSearchListItem }) {
                 onClick={handleDelete}
                 disabled={isSaving}
                 className={clsx(
-                  ACTION_BUTTON_CLASSES,
-                  ACTION_DANGER_CLASSES,
-                  isSaving && ACTION_BUTTON_DISABLED_CLASSES,
+                  DANGER_ACTION_LINK_CLASSES,
+                  isSaving && SECONDARY_ACTION_DISABLED_CLASSES,
                 )}
               >
                 Delete

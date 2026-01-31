@@ -18,11 +18,13 @@ export function KickoffNudgeButton({
   supplierId,
   className,
   latestNudgedAt,
+  variant = "button",
 }: {
   quoteId: string;
   supplierId: string;
   className?: string;
   latestNudgedAt?: string | null;
+  variant?: "button" | "link";
 }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -45,6 +47,12 @@ export function KickoffNudgeButton({
     typeof cooldownUntilMs === "number" && Number.isFinite(cooldownUntilMs) && nowMs < cooldownUntilMs;
   const remainingMs = cooldownActive && cooldownUntilMs ? cooldownUntilMs - nowMs : 0;
   const remainingLabel = cooldownActive ? formatDurationCompact(remainingMs) : null;
+
+  const buttonLabel = pending
+    ? "Nudging..."
+    : cooldownActive
+      ? "Nudge on cooldown"
+      : "Nudge supplier";
 
   const handleClick = () => {
     setMessage(null);
@@ -72,14 +80,23 @@ export function KickoffNudgeButton({
         type="button"
         onClick={handleClick}
         disabled={pending || cooldownActive}
-        className={clsx(
-          "inline-flex items-center justify-center rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition",
-          pending || cooldownActive
-            ? "cursor-not-allowed border-slate-800 bg-slate-950/40 text-slate-500"
-            : "border-slate-700 bg-slate-950/40 text-slate-200 hover:border-slate-500 hover:text-white",
-        )}
+        className={
+          variant === "link"
+            ? clsx(
+                "bg-transparent px-0 py-0 text-xs font-semibold underline-offset-4 transition",
+                pending || cooldownActive
+                  ? "cursor-not-allowed text-slate-500"
+                  : "text-slate-300 hover:text-white hover:underline",
+              )
+            : clsx(
+                "inline-flex items-center justify-center rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition",
+                pending || cooldownActive
+                  ? "cursor-not-allowed border-slate-800 bg-slate-950/40 text-slate-500"
+                  : "border-slate-700 bg-slate-950/40 text-slate-200 hover:border-slate-500 hover:text-white",
+              )
+        }
       >
-        {pending ? "Nudging..." : cooldownActive ? "Nudge on cooldown" : "Nudge supplier"}
+        {buttonLabel}
       </button>
       {cooldownActive && remainingLabel ? (
         <p className="text-[11px] text-slate-500">Next nudge in {remainingLabel}.</p>

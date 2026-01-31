@@ -11,6 +11,7 @@ import {
 import { formatDateTime } from "@/lib/formatDate";
 import { CopyInviteLinkButton } from "./CopyInviteLinkButton";
 import { resendCustomerInviteAction, sendCustomerInviteAction } from "./actions";
+import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
@@ -208,9 +209,9 @@ export default async function CustomerTeamSettingsPage({
                               <input type="hidden" name="inviteId" value={invite.id} />
                               <button
                                 type="submit"
-                                className="rounded-full border border-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-slate-700 hover:text-white"
+                                className={`${primaryCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
                               >
-                                Resend
+                                Resend invite
                               </button>
                             </form>
                             <CopyInviteLinkButton link={link} />
