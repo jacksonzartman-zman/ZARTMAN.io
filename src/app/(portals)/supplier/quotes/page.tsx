@@ -29,6 +29,7 @@ import { resolveMaybePromise, type SearchParamsLike } from "@/app/(portals)/quot
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { SupplierFunnelBanner } from "../components/SupplierFunnelBanner";
+import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
@@ -425,34 +426,37 @@ export default async function SupplierQuotesPage({
             />
           )
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
-            <table className="min-w-full divide-y divide-slate-900/70 text-sm">
-              <thead className="bg-slate-900/60">
+          <div className="overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
+            <table className="min-w-full divide-y divide-slate-800/40 text-sm">
+              <thead className="bg-transparent">
                 <tr>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     RFQ
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Status
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Parts
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Kickoff
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Messages
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Match
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Last activity
+                  </th>
+                  <th className="hidden px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 xl:table-cell">
+                    Action
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-900/70">
+              <tbody className="divide-y divide-slate-800/40">
                 {filteredRows.map((row) => {
                   const closedByAward = Boolean(row.hasAward);
                   const open = isOpenQuoteStatus(row.status) && !closedByAward;
@@ -473,12 +477,12 @@ export default async function SupplierQuotesPage({
                   const partsCount = typeof row.partsCount === "number" ? row.partsCount : 0;
 
                   return (
-                    <tr key={row.quoteId} className="hover:bg-slate-900/50">
+                    <tr key={row.quoteId} className="hover:bg-slate-900/20">
                       <td className="px-5 py-4 align-middle">
                         <div className="flex flex-col">
                           <Link
                             href={`/supplier/quotes/${row.quoteId}`}
-                            className="font-medium text-slate-100 underline-offset-4 transition hover:underline"
+                            className="text-sm font-semibold leading-tight text-slate-100 underline-offset-4 transition hover:underline"
                           >
                             {row.rfqLabel}
                           </Link>
@@ -487,7 +491,7 @@ export default async function SupplierQuotesPage({
                       </td>
                       <td className="px-5 py-4 align-middle">
                         <QuoteStatusBadge status={row.status} size="sm" />
-                        <p className="mt-2 text-xs text-slate-500">{subtext}</p>
+                        <p className="mt-1 text-xs text-slate-500">{subtext}</p>
                       </td>
                       <td className="px-5 py-4 align-middle">
                         <Link
@@ -547,8 +551,16 @@ export default async function SupplierQuotesPage({
                           </span>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle text-slate-300">
+                      <td className="px-5 py-4 align-middle text-slate-300 tabular-nums">
                         {formatLastActivity(row.lastActivityAt)}
+                      </td>
+                      <td className="hidden px-5 py-4 align-middle text-right xl:table-cell">
+                        <Link
+                          href={`/supplier/quotes/${row.quoteId}`}
+                          className={`${primaryInfoCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
+                        >
+                          Open RFQ
+                        </Link>
                       </td>
                     </tr>
                   );

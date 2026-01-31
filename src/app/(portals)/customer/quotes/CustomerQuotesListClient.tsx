@@ -141,21 +141,21 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                 ) : null}
                 <div className="col-span-12 min-w-0 sm:col-span-7">
                   <p
-                    className="min-w-0 truncate text-[15px] font-semibold text-slate-100"
+                    className="min-w-0 truncate text-sm font-semibold leading-tight text-slate-100"
                     title={row.primaryFileName}
                   >
                     {row.primaryFileName}
                   </p>
                   {row.secondaryFileName ? (
                     <p
-                      className="mt-1 min-w-0 truncate text-sm text-slate-400"
+                      className="mt-1 min-w-0 truncate text-xs text-slate-400"
                       title={row.secondaryFileName}
                     >
                       {row.secondaryFileName}
                     </p>
                   ) : (
                     <p
-                      className="mt-1 min-w-0 truncate text-sm text-slate-500"
+                      className="mt-1 min-w-0 truncate text-xs text-slate-500"
                       title={row.fallbackLabel}
                     >
                       {row.fallbackLabel}
@@ -211,15 +211,15 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                 </div>
 
                 <div className="col-span-6 flex items-center justify-end text-right sm:col-span-2">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 tabular-nums">
                     <span
-                      className="hidden text-[11px] font-semibold text-emerald-200 underline-offset-4 transition hover:text-emerald-100 hover:underline sm:inline"
+                      className="hidden text-xs font-semibold text-emerald-200 underline-offset-4 transition hover:text-emerald-100 hover:underline sm:inline"
                       aria-hidden
                     >
-                      View RFQ →
+                      Open →
                     </span>
                     <span
-                      className="text-[11px] font-medium text-slate-400"
+                      className="text-xs font-medium text-slate-400"
                       title={row.updatedTitle}
                     >
                       {row.updatedLabel}

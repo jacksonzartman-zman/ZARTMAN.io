@@ -114,31 +114,31 @@ export default async function SupplierProjectsPage() {
             action={{ label: "View RFQs", href: "/supplier/quotes" }}
           />
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
-            <table className="min-w-full divide-y divide-slate-900/70 text-sm">
-              <thead className="bg-slate-900/60">
+          <div className="overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
+            <table className="min-w-full divide-y divide-slate-800/40 text-sm">
+              <thead className="bg-transparent">
                 <tr>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Project
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Customer
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Awarded
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Last message
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Kickoff
                   </th>
-                  <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-900/70">
+              <tbody className="divide-y divide-slate-800/40">
                 {projects.map((project) => {
                   const customerLabel = project.customerName?.trim()
                     ? project.customerName
@@ -159,10 +159,10 @@ export default async function SupplierProjectsPage() {
                     : "—";
 
                   return (
-                    <tr key={project.id} className="hover:bg-slate-900/50">
+                    <tr key={project.id} className="hover:bg-slate-900/20">
                       <td className="px-5 py-4 align-middle">
                         <div className="flex flex-col">
-                          <span className="font-medium text-slate-100">
+                          <span className="text-sm font-semibold leading-tight text-slate-100">
                             {project.projectName}
                           </span>
                           <span className="mt-1 text-xs text-slate-500">
@@ -173,7 +173,7 @@ export default async function SupplierProjectsPage() {
                       <td className="px-5 py-4 align-middle text-slate-200">
                         {customerLabel}
                       </td>
-                      <td className="px-5 py-4 align-middle text-slate-300">
+                      <td className="px-5 py-4 align-middle text-slate-300 tabular-nums">
                         {formatAwardedDate(project.awardedAt)}
                       </td>
                       <td className="px-5 py-4 align-middle">
@@ -202,7 +202,7 @@ export default async function SupplierProjectsPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4 align-middle text-right">
-                        <div className="flex flex-wrap justify-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-3">
                           <Link
                             href={`/supplier/quotes/${project.id}?tab=activity#timeline`}
                             className="inline-flex items-center text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
