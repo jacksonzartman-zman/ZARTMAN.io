@@ -14,6 +14,9 @@ export const dynamic = "force-dynamic";
 
 type RfqStatusTone = "slate" | "blue" | "emerald" | "amber" | "muted";
 
+const QUIET_CARD_CLASSNAME =
+  "border-slate-900/45 bg-slate-950/25 shadow-none hover:border-slate-900/55 hover:bg-slate-950/30 hover:shadow-none";
+
 function clsx(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
@@ -177,28 +180,97 @@ export default async function CustomerQuotesPage({
   return (
     <PortalShell
       workspace="customer"
-      title="RFQ history"
-      subtitle="Intake stage: submitted RFQs, newest first. Awarded RFQs continue as Projects."
+      title="RFQs"
+      subtitle="Your command center for intake: track status, review offers, and jump back into context."
       actions={
         <Link href="/quote" className={`${primaryCtaClasses} text-xs font-semibold uppercase tracking-wide`}>
           Upload new part
         </Link>
       }
     >
-      <PortalCard
-        title="RFQs"
-        description="Intake stage: file names, current status, and latest update. Awarded RFQs appear under Projects."
-      >
-        {sortedQuotes.length === 0 ? (
-          <EmptyStateCard
-            title="No RFQs yet"
-            description="Upload a part to start a search. We’ll keep status and offers here."
-            action={{ label: "Upload new part", href: "/quote" }}
+      <div className="grid grid-cols-12 gap-6 lg:gap-8">
+        <div className="col-span-12 lg:col-span-8 xl:col-span-9">
+          <PortalCard
+            title="RFQ queue"
+            description="A calm, scan-friendly feed of your submissions—title, status, and latest update at a glance."
+            className="p-7"
+          >
+            {sortedQuotes.length === 0 ? (
+              <EmptyStateCard
+                title="No RFQs yet"
+                description="Upload a part to start a search. We’ll keep status, offers, and updates here."
+                action={{ label: "Upload new part", href: "/quote" }}
+              />
+            ) : (
+              <CustomerQuotesListClient rows={rows} />
+            )}
+          </PortalCard>
+        </div>
+
+        <aside className="col-span-12 space-y-4 lg:col-span-4 xl:col-span-3">
+          <PortalCard
+            title="Shortcuts"
+            description="Secondary surfaces—quick jumps back into execution and conversations."
+            className={clsx("p-5", QUIET_CARD_CLASSNAME)}
+          >
+            <ul className="space-y-3 text-sm">
+              <li className="flex items-center justify-between gap-3">
+                <Link
+                  href="/customer/projects"
+                  className="font-semibold text-slate-200 underline-offset-4 transition hover:text-white hover:underline motion-reduce:transition-none"
+                >
+                  Projects
+                </Link>
+                <span className="text-xs text-slate-500">Execution stage</span>
+              </li>
+              <li className="flex items-center justify-between gap-3">
+                <Link
+                  href="/customer/messages"
+                  className="font-semibold text-slate-200 underline-offset-4 transition hover:text-white hover:underline motion-reduce:transition-none"
+                >
+                  Messages
+                </Link>
+                <span className="text-xs text-slate-500">Inbox</span>
+              </li>
+            </ul>
+          </PortalCard>
+
+          <PortalCard
+            title="How to scan this list"
+            description="Primary title, status, then meta—kept intentionally quiet."
+            className={clsx("p-5", QUIET_CARD_CLASSNAME)}
+          >
+            <ul className="list-disc space-y-2 pl-5 text-sm text-slate-300">
+              <li>
+                <span className="font-semibold text-slate-100">Title</span>{" "}
+                is the primary file name (or the RFQ label).
+              </li>
+              <li>
+                <span className="font-semibold text-slate-100">Status</span>{" "}
+                shows where the RFQ is in intake; “Offers ready” highlights new results.
+              </li>
+              <li>
+                <span className="font-semibold text-slate-100">Meta</span>{" "}
+                includes the RFQ id and last update time for quick triage.
+              </li>
+            </ul>
+          </PortalCard>
+
+          <PortalCard
+            title="Need to start a new RFQ?"
+            description="Upload CAD, drawings, or a ZIP—then we’ll route it for offers."
+            className={clsx("p-5", QUIET_CARD_CLASSNAME)}
+            action={
+              <Link
+                href="/quote"
+                className="inline-flex items-center rounded-full border border-slate-800 bg-slate-950/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-700 hover:bg-slate-950/45 hover:text-white motion-reduce:transition-none"
+              >
+                Upload
+              </Link>
+            }
           />
-        ) : (
-          <CustomerQuotesListClient rows={rows} />
-        )}
-      </PortalCard>
+        </aside>
+      </div>
     </PortalShell>
   );
 }

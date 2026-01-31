@@ -23,6 +23,13 @@ function clsx(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
+function formatRfqId(id: string): string {
+  const raw = (id ?? "").trim();
+  if (!raw) return "—";
+  if (raw.startsWith("Q-")) return raw;
+  return `#${raw.slice(0, 6)}`;
+}
+
 function StatusPill({
   children,
   tone,
@@ -105,11 +112,11 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
   }, []);
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
-      <div className="grid grid-cols-12 gap-3 border-b border-slate-800/50 px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-        <div className="col-span-12 sm:col-span-7">RFQ</div>
-        <div className="col-span-6 sm:col-span-3">Status</div>
-        <div className="col-span-6 text-right sm:col-span-2">Last update</div>
+    <div className="-mx-7 overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
+      <div className="grid grid-cols-12 gap-3 border-b border-slate-800/50 px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+        <div className="col-span-12 sm:col-span-8">RFQ</div>
+        <div className="col-span-6 sm:col-span-2">Status</div>
+        <div className="col-span-6 text-right sm:col-span-2">Updated</div>
       </div>
       <ul className="divide-y divide-slate-800/40">
         {rows.map((row) => {
@@ -118,10 +125,10 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
             <li
               key={row.id}
               className={clsx(
-                "relative transition-colors",
+                "relative transition-colors motion-reduce:transition-none",
                 hasNewOffers
                   ? "bg-emerald-500/5 hover:bg-emerald-500/10"
-                  : "hover:bg-slate-900/20",
+                  : "hover:bg-slate-900/15",
               )}
             >
               <Link
@@ -130,7 +137,7 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                   if (row.status === "Offers ready") markSeen(row.id);
                 }}
                 className={clsx(
-                  "relative grid grid-cols-12 gap-3 px-5 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400",
+                  "group relative grid grid-cols-12 gap-3 px-6 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 motion-reduce:transition-none",
                 )}
               >
                 {hasNewOffers ? (
@@ -139,9 +146,9 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                     aria-hidden
                   />
                 ) : null}
-                <div className="col-span-12 min-w-0 sm:col-span-7">
+                <div className="col-span-12 min-w-0 sm:col-span-8">
                   <p
-                    className="min-w-0 truncate text-sm font-semibold leading-tight text-slate-100"
+                    className="min-w-0 truncate text-[15px] font-semibold leading-tight text-slate-100"
                     title={row.primaryFileName}
                   >
                     {row.primaryFileName}
@@ -161,33 +168,31 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                       {row.fallbackLabel}
                     </p>
                   )}
+                  <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-600">
+                    RFQ {formatRfqId(row.id)}
+                  </p>
                 </div>
 
-                <div className="col-span-6 flex flex-col items-start gap-2 sm:col-span-3 sm:flex-row sm:items-center">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
-                      {hasNewOffers ? <NewOffersBadge /> : null}
-                    </div>
-                    {row.stageLabel ? (
-                      <p className="text-[11px] font-medium text-slate-500">
-                        {row.stageLabel}
-                      </p>
-                    ) : null}
+                <div className="col-span-6 flex flex-col items-start gap-2 sm:col-span-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
+                    {hasNewOffers ? <NewOffersBadge /> : null}
                   </div>
+                  {row.stageLabel ? (
+                    <p className="text-[11px] font-medium text-slate-500">
+                      {row.stageLabel}
+                    </p>
+                  ) : null}
                   {row.status === "Delivered" ? (
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 flex-col gap-1">
                       <span className="truncate text-xs font-medium text-slate-400">
                         Completed successfully
-                      </span>
-                      <span className="text-xs text-slate-700" aria-hidden>
-                        ·
                       </span>
                       <span
                         role="link"
                         tabIndex={0}
                         className={clsx(
-                          "text-xs font-semibold text-slate-500 underline decoration-slate-700/70 underline-offset-4 transition",
+                          "text-xs font-semibold text-slate-500 underline decoration-slate-700/70 underline-offset-4 transition motion-reduce:transition-none",
                           "hover:text-slate-200 hover:decoration-slate-300/60",
                           "focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400",
                         )}
@@ -211,12 +216,9 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                 </div>
 
                 <div className="col-span-6 flex items-center justify-end text-right sm:col-span-2">
-                  <div className="flex items-center gap-3 tabular-nums">
-                    <span
-                      className="hidden text-xs font-semibold text-emerald-200 underline-offset-4 transition hover:text-emerald-100 hover:underline sm:inline"
-                      aria-hidden
-                    >
-                      Open →
+                  <div className="flex flex-col items-end gap-1 tabular-nums">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-600 sm:hidden">
+                      Last update
                     </span>
                     <span
                       className="text-xs font-medium text-slate-400"
