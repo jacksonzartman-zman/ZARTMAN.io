@@ -88,24 +88,25 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
       </div>
       <AdminTableShell
         className="border-slate-800/50 bg-slate-950/20 shadow-none"
+        tableClassName="table-fixed"
         head={
           <tr>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className="w-auto px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Files
             </th>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className="w-[12rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Process
             </th>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className="w-[6.5rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Qty
             </th>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className="w-[10.5rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Need-by
             </th>
-            <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className="w-[9rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Received
             </th>
-            <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <th className="w-[12.5rem] px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
               Action
             </th>
           </tr>
@@ -151,7 +152,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
 
               return (
                 <Fragment key={row.id}>
-                  <tr className="bg-transparent transition hover:bg-slate-900/20">
+                  <tr className="bg-transparent transition hover:bg-slate-900/20 motion-reduce:transition-none">
                     <td className={clsx(adminTableCellClass, "px-5 py-4")}>
                       <div className="flex items-start gap-3">
                         <button
@@ -161,29 +162,28 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                           aria-expanded={expanded}
                           aria-controls={previewId}
                           className={clsx(
-                            "mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-800/70 bg-slate-950/25 text-slate-400 transition hover:border-slate-600/80 hover:text-white",
+                            "mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-800/70 bg-slate-950/25 text-slate-400 transition hover:border-slate-600/80 hover:text-white motion-reduce:transition-none",
                             expanded ? "text-white" : "",
                           )}
                         >
                           <ChevronIcon rotated={expanded} />
                         </button>
                         <div className="min-w-0 flex-1">
-                          <Link
-                            href={href}
-                            className="block truncate font-semibold text-white underline-offset-4 hover:underline"
-                            title={filesTitle ?? filesLabel}
-                          >
-                            {filesLabel}
-                          </Link>
-                          {freshnessLabel ? (
-                            <p className="mt-1 text-xs text-slate-500">{freshnessLabel}</p>
-                          ) : null}
-                          <p
-                            className={clsx(
-                              "text-xs text-slate-400",
-                              freshnessLabel ? "mt-0.5" : "mt-1",
-                            )}
-                          >
+                          <div className="flex min-w-0 items-baseline gap-2">
+                            <Link
+                              href={href}
+                              className="min-w-0 truncate font-semibold text-white underline-offset-4 hover:underline"
+                              title={filesTitle ?? filesLabel}
+                            >
+                              {filesLabel}
+                            </Link>
+                            {freshnessLabel ? (
+                              <span className="shrink-0 text-xs text-slate-500 tabular-nums">
+                                {freshnessLabel}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-[11px] text-slate-400">
                             {fileCount > 0
                               ? `${fileCount} file${fileCount === 1 ? "" : "s"}`
                               : "Files pending"}
@@ -191,16 +191,41 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                         </div>
                       </div>
                     </td>
-                    <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>
-                      {processLabel}
+                    <td
+                      className={clsx(
+                        adminTableCellClass,
+                        "px-5 py-4 text-xs text-slate-400",
+                      )}
+                    >
+                      <span
+                        className="block truncate whitespace-nowrap"
+                        title={processLabel}
+                      >
+                        {processLabel}
+                      </span>
                     </td>
-                    <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>
-                      {quantityLabel}
+                    <td
+                      className={clsx(
+                        adminTableCellClass,
+                        "px-5 py-4 text-xs text-slate-400",
+                      )}
+                    >
+                      <span
+                        className="block truncate whitespace-nowrap tabular-nums"
+                        title={quantityLabel}
+                      >
+                        {quantityLabel}
+                      </span>
                     </td>
-                    <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>
+                    <td
+                      className={clsx(
+                        adminTableCellClass,
+                        "px-5 py-4 text-xs text-slate-400",
+                      )}
+                    >
                       {row.targetDate ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span>{needByLabel}</span>
+                        <div className="flex items-center gap-2 whitespace-nowrap">
+                          <span className="tabular-nums">{needByLabel}</span>
                           {urgent ? <UrgentPill /> : null}
                         </div>
                       ) : (
@@ -210,7 +235,7 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                     <td
                       className={clsx(
                         adminTableCellClass,
-                        "px-5 py-4 text-slate-400 tabular-nums",
+                        "px-5 py-4 text-xs text-slate-500 tabular-nums whitespace-nowrap",
                       )}
                     >
                       {receivedLabel}
@@ -222,135 +247,138 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
                           className={clsx(
                             primaryInfoCtaClasses,
                             ctaSizeClasses.sm,
-                            "inline-flex min-w-[9rem] justify-center",
+                            "inline-flex min-w-[10.5rem] justify-center px-5 py-2 text-sm shadow-[0_10px_22px_rgba(37,99,235,0.22)] hover:shadow-[0_12px_26px_rgba(37,99,235,0.28)] motion-reduce:transition-none",
                             pending ? "pointer-events-none opacity-60" : "",
                           )}
                         >
                           Submit offer
                         </Link>
-                        <button
-                          type="button"
-                          disabled={pending}
-                          onClick={async () => {
-                            if (pending) return;
-                            setErrorById((prev) => {
-                              if (!prev[row.id]) return prev;
-                              const next = { ...prev };
-                              delete next[row.id];
-                              return next;
-                            });
-                            setPendingIds((prev) => new Set(prev).add(row.id));
-
-                            try {
-                              const res = await fetch(
-                                `/api/supplier/rfqs/${row.quoteId}/snooze`,
-                                {
-                                  method: "POST",
-                                  headers: { "content-type": "application/json" },
-                                  body: JSON.stringify({ hours: 24 }),
-                                },
-                              );
-                              const payload = (await res.json().catch(() => null)) as any;
-                              if (!res.ok || !payload?.ok) {
-                                const errorCode =
-                                  typeof payload?.error === "string" && payload.error
-                                    ? payload.error
-                                    : "unknown";
-                                throw new Error(errorCode);
-                              }
-
-                              if (
-                                typeof payload?.snoozeUntil === "string" &&
-                                payload.snoozeUntil
-                              ) {
-                                persistSnooze(row.quoteId, payload.snoozeUntil);
-                              }
-
-                              // Optimistically remove from the current list.
-                              setItems((prev) =>
-                                prev.filter((candidate) => candidate.id !== row.id),
-                              );
-                              // Refresh server-rendered pills/status (DB-backed snooze will keep it out).
-                              router.refresh();
-                            } catch (err) {
-                              const message =
-                                err instanceof Error && err.message
-                                  ? err.message
-                                  : "Unable to snooze right now.";
-                              setErrorById((prev) => ({ ...prev, [row.id]: message }));
-                            } finally {
-                              setPendingIds((prev) => {
-                                const next = new Set(prev);
-                                next.delete(row.id);
+                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide">
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={async () => {
+                              if (pending) return;
+                              setErrorById((prev) => {
+                                if (!prev[row.id]) return prev;
+                                const next = { ...prev };
+                                delete next[row.id];
                                 return next;
                               });
-                            }
-                          }}
-                          className={clsx(
-                            ctaSizeClasses.sm,
-                            "bg-transparent px-0 py-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400 underline-offset-4 transition hover:text-slate-100 hover:underline",
-                            pending ? "opacity-60" : "",
-                          )}
-                        >
-                          {pending ? "Snoozing..." : "Snooze 24h"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={pending}
-                          onClick={async () => {
-                            if (pending) return;
-                            setErrorById((prev) => {
-                              if (!prev[row.id]) return prev;
-                              const next = { ...prev };
-                              delete next[row.id];
-                              return next;
-                            });
-                            setPendingIds((prev) => new Set(prev).add(row.id));
+                              setPendingIds((prev) => new Set(prev).add(row.id));
 
-                            try {
-                              const res = await fetch(
-                                `/api/supplier/rfqs/${row.quoteId}/decline`,
-                                {
-                                  method: "POST",
-                                },
-                              );
-                              const payload = (await res.json().catch(() => null)) as any;
-                              if (!res.ok || !payload?.ok) {
-                                const errorCode =
-                                  typeof payload?.error === "string" && payload.error
-                                    ? payload.error
-                                    : "unknown";
-                                throw new Error(errorCode);
+                              try {
+                                const res = await fetch(
+                                  `/api/supplier/rfqs/${row.quoteId}/snooze`,
+                                  {
+                                    method: "POST",
+                                    headers: { "content-type": "application/json" },
+                                    body: JSON.stringify({ hours: 24 }),
+                                  },
+                                );
+                                const payload = (await res.json().catch(() => null)) as any;
+                                if (!res.ok || !payload?.ok) {
+                                  const errorCode =
+                                    typeof payload?.error === "string" && payload.error
+                                      ? payload.error
+                                      : "unknown";
+                                  throw new Error(errorCode);
+                                }
+
+                                if (
+                                  typeof payload?.snoozeUntil === "string" &&
+                                  payload.snoozeUntil
+                                ) {
+                                  persistSnooze(row.quoteId, payload.snoozeUntil);
+                                }
+
+                                // Optimistically remove from the current list.
+                                setItems((prev) =>
+                                  prev.filter((candidate) => candidate.id !== row.id),
+                                );
+                                // Refresh server-rendered pills/status (DB-backed snooze will keep it out).
+                                router.refresh();
+                              } catch (err) {
+                                const message =
+                                  err instanceof Error && err.message
+                                    ? err.message
+                                    : "Unable to snooze right now.";
+                                setErrorById((prev) => ({ ...prev, [row.id]: message }));
+                              } finally {
+                                setPendingIds((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(row.id);
+                                  return next;
+                                });
                               }
-
-                              // Optimistically remove from the current list.
-                              setItems((prev) =>
-                                prev.filter((candidate) => candidate.id !== row.id),
-                              );
-                              // Refresh server-rendered pills/status + ensure the RFQ stays out.
-                              router.refresh();
-                            } catch (err) {
-                              const message =
-                                err instanceof Error && err.message
-                                  ? err.message
-                                  : "Unable to decline right now.";
-                              setErrorById((prev) => ({ ...prev, [row.id]: message }));
-                            } finally {
-                              setPendingIds((prev) => {
-                                const next = new Set(prev);
-                                next.delete(row.id);
+                            }}
+                            className={clsx(
+                              ctaSizeClasses.sm,
+                              "bg-transparent px-0 py-0 text-slate-400 underline-offset-4 transition hover:text-slate-100 hover:underline motion-reduce:transition-none",
+                              pending ? "opacity-60" : "",
+                            )}
+                          >
+                            {pending ? "Snoozing..." : "Snooze 24h"}
+                          </button>
+                          <span className="select-none text-slate-700">·</span>
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={async () => {
+                              if (pending) return;
+                              setErrorById((prev) => {
+                                if (!prev[row.id]) return prev;
+                                const next = { ...prev };
+                                delete next[row.id];
                                 return next;
                               });
-                            }
-                          }}
-                          className={clsx(
-                            ctaSizeClasses.sm,
-                            "bg-transparent px-0 py-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400 underline-offset-4 transition hover:text-slate-100 hover:underline",
-                            pending ? "opacity-60" : "",
-                          )}
-                        >
-                          {pending ? "Declining..." : "Not a fit"}
-                        </button>
+                              setPendingIds((prev) => new Set(prev).add(row.id));
+
+                              try {
+                                const res = await fetch(
+                                  `/api/supplier/rfqs/${row.quoteId}/decline`,
+                                  {
+                                    method: "POST",
+                                  },
+                                );
+                                const payload = (await res.json().catch(() => null)) as any;
+                                if (!res.ok || !payload?.ok) {
+                                  const errorCode =
+                                    typeof payload?.error === "string" && payload.error
+                                      ? payload.error
+                                      : "unknown";
+                                  throw new Error(errorCode);
+                                }
+
+                                // Optimistically remove from the current list.
+                                setItems((prev) =>
+                                  prev.filter((candidate) => candidate.id !== row.id),
+                                );
+                                // Refresh server-rendered pills/status + ensure the RFQ stays out.
+                                router.refresh();
+                              } catch (err) {
+                                const message =
+                                  err instanceof Error && err.message
+                                    ? err.message
+                                    : "Unable to decline right now.";
+                                setErrorById((prev) => ({ ...prev, [row.id]: message }));
+                              } finally {
+                                setPendingIds((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(row.id);
+                                  return next;
+                                });
+                              }
+                            }}
+                            className={clsx(
+                              ctaSizeClasses.sm,
+                              "bg-transparent px-0 py-0 text-slate-400 underline-offset-4 transition hover:text-slate-100 hover:underline motion-reduce:transition-none",
+                              pending ? "opacity-60" : "",
+                            )}
+                          >
+                            {pending ? "Declining..." : "Not a fit"}
+                          </button>
+                        </div>
                         {error ? (
                           <p
                             className="max-w-[12rem] text-right text-xs text-red-300"
@@ -423,15 +451,15 @@ function NewRfqPreviewPanel({
   return (
     <div
       id={id}
-      className="rounded-2xl border border-slate-800/60 bg-slate-950/25 px-4 py-3"
+      className="rounded-2xl border border-slate-800/60 bg-slate-950/25 px-5 py-4"
     >
-      <div className="grid gap-3 md:grid-cols-4">
-        <div className="md:col-span-2">
+      <div className="grid gap-x-8 gap-y-4 md:grid-cols-12">
+        <div className="md:col-span-6">
           <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
             Files
           </p>
           {fileList.length > 0 ? (
-            <ul className="mt-2 space-y-1 text-sm text-slate-200">
+            <ul className="mt-1.5 space-y-0.5 text-sm text-slate-200">
               {fileList.map((name) => (
                 <li key={name} className="min-w-0">
                   <span className="block truncate" title={name}>
@@ -444,24 +472,24 @@ function NewRfqPreviewPanel({
             <p className="mt-2 text-sm text-slate-200">—</p>
           )}
         </div>
-        <div>
+        <div className="md:col-span-3">
           <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
             Process(es)
           </p>
-          <p className="mt-2 text-sm text-slate-200">{processLabel || "—"}</p>
+          <p className="mt-1.5 text-sm text-slate-200">{processLabel || "—"}</p>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-1">
+        <div className="grid gap-4 sm:grid-cols-2 md:col-span-3 md:grid-cols-1">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
               Qty
             </p>
-            <p className="mt-2 text-sm text-slate-200">{quantityLabel || "—"}</p>
+            <p className="mt-1.5 text-sm text-slate-200">{quantityLabel || "—"}</p>
           </div>
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
               Need-by
             </p>
-            <p className="mt-2 text-sm text-slate-200">{needByLabel || "—"}</p>
+            <p className="mt-1.5 text-sm text-slate-200">{needByLabel || "—"}</p>
           </div>
         </div>
       </div>
@@ -479,7 +507,10 @@ function ChevronIcon({ rotated }: { rotated: boolean }) {
     <svg
       viewBox="0 0 20 20"
       fill="currentColor"
-      className={clsx("h-4 w-4 transition-transform", rotated ? "rotate-180" : "")}
+      className={clsx(
+        "h-4 w-4 transition-transform motion-reduce:transition-none",
+        rotated ? "rotate-180" : "",
+      )}
       aria-hidden="true"
     >
       <path
