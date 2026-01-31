@@ -72,7 +72,8 @@ export function PortalLoginPanel({ role, fallbackRedirect, nextPath }: PortalLog
   const [lastSentTo, setLastSentTo] = useState<string | null>(null);
   const [lastRequestId, setLastRequestId] = useState<string | null>(null);
   const [cooldownUntilMs, setCooldownUntilMs] = useState<number | null>(null);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  // Keep SSR/hydration deterministic; set `nowMs` after mount.
+  const [nowMs, setNowMs] = useState<number>(0);
   const inFlightRef = useRef(false);
   const pathname = usePathname();
   const roleIsKnown = Object.prototype.hasOwnProperty.call(ROLE_COPY, role);

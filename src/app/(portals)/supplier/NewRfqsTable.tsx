@@ -21,36 +21,49 @@ const URGENT_WINDOW_DAYS = 3;
 
 export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
   const router = useRouter();
-  const [items, setItems] = useState<SupplierInboxRow[]>(() =>
-    sortNewRfqRows(filterSnoozedRows(rows)),
-  );
-  const [showUrgentOnly, setShowUrgentOnly] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.localStorage.getItem(URGENT_ONLY_STORAGE_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
+  // IMPORTANT: keep initial render deterministic for SSR/hydration.
+  // Any localStorage- or time-derived filtering is applied after mount.
+  const [items, setItems] = useState<SupplierInboxRow[]>(() => sortNewRfqRows(rows));
+  const [hasMounted, setHasMounted] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [showUrgentOnly, setShowUrgentOnly] = useState<boolean>(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const [errorById, setErrorById] = useState<Record<string, string>>({});
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
-    setItems(sortNewRfqRows(filterSnoozedRows(rows)));
-  }, [rows]);
+    setHasMounted(true);
+  }, []);
 
   useEffect(() => {
+    // Always keep list stable on SSR and first client paint.
+    // After mount, apply snooze filtering (localStorage + Date.now) as a UI enhancement.
+    if (!hasMounted) {
+      setItems(sortNewRfqRows(rows));
+      return;
+    }
+
+    const now = Date.now();
+    const snoozes = safeReadSnoozes();
+    setItems(sortNewRfqRows(filterSnoozedRows(rows, { snoozes, now })));
+  }, [hasMounted, rows]);
+
+  useEffect(() => {
+    if (!hasMounted) return;
+    setShowUrgentOnly(safeReadUrgentOnlyPref());
+    setPrefsLoaded(true);
+  }, [hasMounted]);
+
+  useEffect(() => {
+    // Don't overwrite a stored preference before we've had a chance to read it.
+    if (!prefsLoaded) return;
     if (typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(
-        URGENT_ONLY_STORAGE_KEY,
-        showUrgentOnly ? "1" : "0",
-      );
+      window.localStorage.setItem(URGENT_ONLY_STORAGE_KEY, showUrgentOnly ? "1" : "0");
     } catch {
       // ignore
     }
-  }, [showUrgentOnly]);
+  }, [prefsLoaded, showUrgentOnly]);
 
   const visibleItems = useMemo(() => {
     if (!showUrgentOnly) return items;
@@ -130,17 +143,19 @@ export default function NewRfqsTable({ rows }: NewRfqsTableProps) {
 
               const processLabel = row.processHint ?? "—";
               const quantityLabel = row.quantityHint ?? "—";
-              const needByLabel = row.targetDate
-                ? formatDateTime(row.targetDate, { includeTime: false }) ?? "—"
-                : "—";
-              const urgent = isUrgentNeedBy(row.targetDate);
+              const needByLabel =
+                hasMounted && row.targetDate
+                  ? formatDateTime(row.targetDate, { includeTime: false }) ?? "—"
+                  : "—";
+              const urgent = hasMounted ? isUrgentNeedBy(row.targetDate) : false;
               const missingSpecs =
                 !row.processHint?.trim() ||
                 !row.quantityHint?.trim() ||
                 !row.targetDate?.trim();
-              const receivedLabel =
-                formatRelativeTimeFromTimestamp(toTimestamp(row.createdAt)) ?? "—";
-              const freshnessLabel = formatRfqFreshness(row.createdAt);
+              const receivedLabel = hasMounted
+                ? formatRelativeTimeFromTimestamp(toTimestamp(row.createdAt)) ?? "—"
+                : "—";
+              const freshnessLabel = hasMounted ? formatRfqFreshness(row.createdAt) : null;
               const pending = pendingIds.has(row.id);
               const error = errorById[row.id];
               const previewFiles = fileNames.length > 0
@@ -583,12 +598,11 @@ function sortNewRfqRows(rows: SupplierInboxRow[]): SupplierInboxRow[] {
   });
 }
 
-function filterSnoozedRows(rows: SupplierInboxRow[]): SupplierInboxRow[] {
-  if (typeof window === "undefined") {
-    return rows;
-  }
-  const snoozes = readSnoozes();
-  const now = Date.now();
+function filterSnoozedRows(
+  rows: SupplierInboxRow[],
+  args: { snoozes: Record<string, string>; now: number },
+): SupplierInboxRow[] {
+  const { snoozes, now } = args;
   return rows.filter((row) => {
     const untilIso = snoozes[row.quoteId];
     if (!untilIso) return true;
@@ -608,6 +622,20 @@ function persistSnooze(quoteId: string, snoozeUntilIso: string) {
   const snoozes = readSnoozes();
   snoozes[id] = snoozeUntilIso;
   writeSnoozes(snoozes);
+}
+
+function safeReadSnoozes(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  return readSnoozes();
+}
+
+function safeReadUrgentOnlyPref(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(URGENT_ONLY_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 function readSnoozes(): Record<string, string> {
