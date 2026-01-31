@@ -21,7 +21,7 @@ export function StatusPill({
   return (
     <span
       className={clsx(
-        "pill px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
+        "pill px-3 py-1 text-[11px] font-medium uppercase tracking-[0.14em]",
         variant,
         className,
       )}

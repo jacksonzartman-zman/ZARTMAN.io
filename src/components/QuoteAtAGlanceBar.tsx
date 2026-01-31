@@ -62,7 +62,7 @@ export function QuoteAtAGlanceBar({
             <span className={clsx("rounded-full border px-3 py-1 text-xs font-semibold", statusBadgeClasses)}>
               {statusLabel}
             </span>
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <span className="text-xs font-medium text-slate-500">
               What&apos;s next
             </span>
           </div>
