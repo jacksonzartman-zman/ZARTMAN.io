@@ -11,7 +11,6 @@ import { requireCustomerSessionOrRedirect } from "@/app/(portals)/customer/requi
 import { loadCustomerInbox } from "@/server/messages/inbox";
 import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
-import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
@@ -59,84 +58,72 @@ export default async function CustomerMessagesPage() {
           />
         ) : (
           <div className={`${PORTAL_SURFACE_CARD} overflow-hidden`}>
-            <table className="min-w-full divide-y divide-slate-800/40 text-sm">
-              <thead className="bg-transparent">
-                <tr>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    RFQ
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Thread
-                  </th>
-                  <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 lg:table-cell">
-                    Last message
-                  </th>
-                  <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/40">
-                {rows.map((row) => {
-                  const threadLabel = resolveThreadStatusLabel("customer", row.needsReplyFrom);
-                  const threadPill = statusPillClasses(threadLabel);
-                  const lastMessageAtLabel =
-                    formatRelativeTimeCompactFromTimestamp(toTimestamp(row.lastMessageAt)) ?? "—";
-                  const unread = Math.max(0, Math.floor(row.unreadCount ?? 0));
-                  const href = `/customer/quotes/${row.quoteId}?tab=messages#messages`;
-                  return (
-                    <tr key={row.quoteId} className="hover:bg-slate-900/20">
-                      <td className="px-5 py-4 align-middle">
-                        <Link
-                          href={href}
-                          className="flex flex-col gap-1 underline-offset-4 hover:underline"
-                        >
-                          <span className="text-sm font-semibold leading-tight text-slate-100">
-                            {row.rfqLabel}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            RFQ {row.quoteId.startsWith("Q-") ? row.quoteId : `#${row.quoteId.slice(0, 6)}`}
-                          </span>
-                        </Link>
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <div className="flex flex-wrap items-center gap-2">
+            <div className="divide-y divide-slate-800/40">
+              {rows.map((row) => {
+                const threadLabel = resolveThreadStatusLabel("customer", row.needsReplyFrom);
+                const threadPill = statusPillClasses(threadLabel);
+                const lastMessageAtLabel =
+                  formatRelativeTimeCompactFromTimestamp(toTimestamp(row.lastMessageAt)) ?? "—";
+                const unread = Math.max(0, Math.floor(row.unreadCount ?? 0));
+                const href = `/customer/quotes/${row.quoteId}?tab=messages#messages`;
+                const rfqIdLabel = row.quoteId.startsWith("Q-") ? row.quoteId : `#${row.quoteId.slice(0, 6)}`;
+                const preview = row.lastMessagePreview?.trim() ? row.lastMessagePreview : "—";
+
+                return (
+                  <div
+                    key={row.quoteId}
+                    className="flex flex-col gap-3 px-5 py-4 hover:bg-slate-900/20 md:h-16 md:flex-row md:items-center md:gap-6 md:py-0"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={href}
+                        className="block min-w-0 truncate text-sm font-semibold leading-tight text-slate-100 underline-offset-4 hover:underline"
+                      >
+                        {row.rfqLabel}
+                      </Link>
+
+                      <div className="mt-1 flex min-w-0 items-center gap-2 text-xs">
+                        <span className="min-w-0 flex-1 truncate text-slate-300/70">{preview}</span>
+                        <span className="flex shrink-0 flex-wrap items-center gap-2 text-[11px] text-slate-500 md:flex-nowrap md:whitespace-nowrap">
                           <span
                             className={[
-                              "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                              "inline-flex items-center rounded-full border px-2 py-0.5 font-semibold uppercase tracking-wide",
+                              "whitespace-nowrap",
                               threadPill,
                             ].join(" ")}
                           >
                             {threadLabel}
                           </span>
                           {unread > 0 ? (
-                            <span className="inline-flex min-w-[1.75rem] items-center justify-center rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-semibold text-red-100">
+                            <span className="inline-flex min-w-[1.75rem] items-center justify-center whitespace-nowrap rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-semibold text-red-100">
                               {unread > 99 ? "99+" : unread}
                             </span>
                           ) : null}
-                        </div>
-                      </td>
-                      <td className="hidden px-5 py-4 align-middle lg:table-cell">
-                        <div className="space-y-1">
-                          <p className="text-xs text-slate-200">{row.lastMessagePreview}</p>
-                          <p className="text-[11px] uppercase tracking-[0.22em] text-slate-600">
-                            {lastMessageAtLabel}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 align-middle text-right">
-                        <Link
-                          href={href}
-                          className={`${primaryCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
-                        >
-                          Open conversation
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </span>
+                        <span className="hidden shrink-0 items-center gap-2 whitespace-nowrap text-[11px] tabular-nums text-slate-500 md:flex">
+                          <span className="text-slate-600">•</span>
+                          <span>{lastMessageAtLabel}</span>
+                          <span className="text-slate-600">•</span>
+                          <span>RFQ {rfqIdLabel}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 md:ml-auto md:justify-end">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:hidden">
+                        {lastMessageAtLabel}
+                      </span>
+                      <Link
+                        href={href}
+                        className="inline-flex items-center justify-center whitespace-nowrap rounded-full border border-slate-800 bg-slate-950/40 px-4 py-1.5 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-900/40 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60 motion-reduce:transition-none"
+                      >
+                        Open conversation <span aria-hidden="true">→</span>
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </PortalCard>
