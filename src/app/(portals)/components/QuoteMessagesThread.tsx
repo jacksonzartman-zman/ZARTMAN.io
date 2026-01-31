@@ -114,6 +114,7 @@ export function QuoteMessagesThread({
   emailReplyIndicator,
   portalEmail = null,
 }: QuoteMessagesThreadProps) {
+  const [hasMounted, setHasMounted] = useState(false);
   const realtimeMessages = useQuoteMessagesRealtime(quoteId, messages);
   const sortedMessages = useMemo(
     () => sortMessages(realtimeMessages),
@@ -122,6 +123,10 @@ export function QuoteMessagesThread({
   const composerEnabled = Boolean(postAction) && canPost;
   const [showChangeRequestBanner, setShowChangeRequestBanner] = useState(false);
   const bannerTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
 
   useEffect(() => {
     const onSubmitted = () => {
@@ -211,6 +216,7 @@ export function QuoteMessagesThread({
         currentUserId={currentUserId}
         viewerRole={viewerRole}
         emptyStateCopy={emptyStateCopy}
+        showTimestamps={hasMounted}
       />
 
       {composerEnabled && postAction ? (
@@ -284,12 +290,14 @@ function QuoteMessageList({
   currentUserId,
   viewerRole,
   emptyStateCopy,
+  showTimestamps,
 }: {
   quoteId: string;
   messages: QuoteMessageRecord[];
   currentUserId: string | null;
   viewerRole: QuoteMessagesThreadProps["viewerRole"];
   emptyStateCopy: string;
+  showTimestamps: boolean;
 }) {
   if (messages.length === 0) {
     return (
@@ -378,8 +386,9 @@ function QuoteMessageList({
                 ) : null}
               </div>
               <span>
-                {formatDateTime(message.created_at, { includeTime: true }) ??
-                  "Just now"}
+                {showTimestamps
+                  ? formatDateTime(message.created_at, { includeTime: true }) ?? "Just now"
+                  : "—"}
               </span>
             </div>
             <p className="break-anywhere mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-100">
