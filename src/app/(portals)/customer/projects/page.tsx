@@ -347,6 +347,7 @@ export default async function CustomerProjectsPage({
                                 <KickoffNudgeButton
                                   quoteId={project.id}
                                   supplierId={project.awardedSupplierId}
+                                  variant="link"
                                   className="items-stretch"
                                 />
                               ) : null}
