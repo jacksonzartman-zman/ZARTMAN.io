@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import PortalCard from "@/app/(portals)/PortalCard";
 import {
   PortalShell,
+  PORTAL_SURFACE_CARD,
   PORTAL_SURFACE_CARD_INTERACTIVE_QUIET,
 } from "@/app/(portals)/components/PortalShell";
 import { CustomerQuoteCompareOffers } from "@/app/(portals)/customer/quotes/[id]/CustomerQuoteCompareOffers";
@@ -567,7 +568,8 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
       ) : null}
       <section
         className={clsx(
-          "rounded-2xl border border-slate-900/70 bg-slate-950/70 px-6 py-5 shadow-[0_10px_30px_rgba(2,6,23,0.45)]",
+          PORTAL_SURFACE_CARD,
+          "px-6 py-5",
           "lg:sticky lg:top-4 lg:z-20",
         )}
         aria-label="Search summary"

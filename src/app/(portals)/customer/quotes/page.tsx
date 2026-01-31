@@ -5,7 +5,7 @@ import { getCustomerByUserId } from "@/server/customers";
 import { loadCustomerQuotesList } from "@/server/customer/quotesList";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import PortalCard from "../../PortalCard";
-import { PortalShell } from "../../components/PortalShell";
+import { PortalShell, PORTAL_SURFACE_CARD_INTERACTIVE_QUIET } from "../../components/PortalShell";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { CustomerQuotesListClient } from "./CustomerQuotesListClient";
 import { primaryCtaClasses } from "@/lib/ctas";
@@ -202,7 +202,11 @@ export default async function CustomerQuotesPage({
         </div>
       }
     >
-      <PortalCard title="RFQs" header={false} className="p-7">
+      <PortalCard
+        title="RFQs"
+        header={false}
+        className={clsx("p-7", PORTAL_SURFACE_CARD_INTERACTIVE_QUIET)}
+      >
         {sortedQuotes.length === 0 ? (
           <EmptyStateCard
             title="No RFQs yet"

@@ -2,7 +2,11 @@ import clsx from "clsx";
 import Link from "next/link";
 
 import PortalCard from "@/app/(portals)/PortalCard";
-import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import {
+  PortalShell,
+  PORTAL_SURFACE_CARD,
+  PORTAL_SURFACE_CARD_INTERACTIVE_QUIET,
+} from "@/app/(portals)/components/PortalShell";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { formatDateTime } from "@/lib/formatDate";
 import {
@@ -106,6 +110,7 @@ export default async function SupplierProjectsPage() {
       <PortalCard
         title="Awarded projects"
         header={false}
+        className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
       >
         {projects.length === 0 ? (
           <EmptyStateCard
@@ -114,7 +119,7 @@ export default async function SupplierProjectsPage() {
             action={{ label: "View RFQs", href: "/supplier/quotes" }}
           />
         ) : (
-          <div className="overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
+          <div className={clsx(PORTAL_SURFACE_CARD, "overflow-hidden")}>
             <table className="min-w-full divide-y divide-slate-800/40 text-sm">
               <thead className="bg-transparent">
                 <tr>

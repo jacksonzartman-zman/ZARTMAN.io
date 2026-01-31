@@ -1,6 +1,10 @@
 import Link from "next/link";
 
-import { PortalShell } from "../../components/PortalShell";
+import {
+  PortalShell,
+  PORTAL_SURFACE_CARD,
+  PORTAL_SURFACE_CARD_INTERACTIVE_QUIET,
+} from "../../components/PortalShell";
 import { PortalLoginPanel } from "../../PortalLoginPanel";
 import PortalCard from "../../PortalCard";
 import { EmptyStateNotice } from "../../EmptyStateNotice";
@@ -315,6 +319,7 @@ export default async function SupplierQuotesPage({
       <PortalCard
         title="RFQs"
         header={false}
+        className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
       >
         <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
@@ -424,7 +429,7 @@ export default async function SupplierQuotesPage({
             />
           )
         ) : (
-          <div className="overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
+          <div className={`${PORTAL_SURFACE_CARD} overflow-hidden`}>
             <table className="min-w-full divide-y divide-slate-800/40 text-sm">
               <thead className="bg-transparent">
                 <tr>
