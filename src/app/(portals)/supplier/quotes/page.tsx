@@ -28,7 +28,6 @@ import { normalizeSearchParams } from "@/lib/route/normalizeSearchParams";
 import { resolveMaybePromise, type SearchParamsLike } from "@/app/(portals)/quotes/pageUtils";
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
-import { SupplierFunnelBanner } from "../components/SupplierFunnelBanner";
 import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
@@ -313,10 +312,9 @@ export default async function SupplierQuotesPage({
         </div>
       }
     >
-      <SupplierFunnelBanner activeStep={2} />
       <PortalCard
         title="RFQs"
-        description="Status, kickoff, messages, and match health at a glance."
+        header={false}
       >
         <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">

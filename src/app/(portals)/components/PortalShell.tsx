@@ -34,10 +34,10 @@ export const PORTAL_SURFACE_CARD_INTERACTIVE_QUIET =
   "border-slate-900/40 bg-slate-950/18 shadow-[0_4px_14px_rgba(2,6,23,0.14)] hover:border-slate-900/50 hover:bg-slate-950/22 hover:shadow-[0_6px_18px_rgba(2,6,23,0.16)]";
 
 export const PORTAL_SURFACE_HEADER =
-  "rounded-3xl border border-slate-800/60 bg-slate-950/60 shadow-[0_18px_40px_rgba(2,6,23,0.6)]";
+  "rounded-3xl border border-slate-900/60 bg-slate-950/35 shadow-[0_10px_24px_rgba(2,6,23,0.35)]";
 
-const PORTAL_STACK_PAGE = "space-y-8 sm:space-y-10";
-const PORTAL_STACK_SECTIONS = "space-y-7 sm:space-y-8";
+const PORTAL_STACK_PAGE = "space-y-6 sm:space-y-8";
+const PORTAL_STACK_SECTIONS = "space-y-6 sm:space-y-7";
 
 const WORKSPACE_ACCENTS: Record<PortalShellProps["workspace"], string> = {
   customer: "text-emerald-200",
