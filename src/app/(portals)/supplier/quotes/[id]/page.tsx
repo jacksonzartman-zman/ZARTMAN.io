@@ -100,6 +100,7 @@ import { isPortalEmailSendEnabledFlag } from "@/server/quotes/emailOpsFlags";
 import type { KickoffTaskRow } from "@/components/KickoffTasksChecklist";
 import { getDemoSupplierProviderIdFromCookie } from "@/server/demo/demoSupplierProvider";
 import { SupplierFunnelBanner } from "../../components/SupplierFunnelBanner";
+import { OneTimeLocalStorageAffirmation } from "@/app/(portals)/shared/OneTimeLocalStorageAffirmation";
 
 export const dynamic = "force-dynamic";
 
@@ -1173,6 +1174,13 @@ function SupplierQuoteWorkspace({
       <div className="space-y-5 lg:grid lg:grid-cols-[minmax(0,0.65fr)_minmax(0,0.35fr)] lg:gap-5 lg:space-y-0">
         <div className="space-y-5">
           {winnerCallout}
+          <OneTimeLocalStorageAffirmation
+            enabled={Boolean(existingBid)}
+            storageKey={`supplier.quote.submitted_affirmed.v1:${quote.id}`}
+            className="px-1 text-xs text-slate-400"
+          >
+            Quote submitted.
+          </OneTimeLocalStorageAffirmation>
           {bidPanelSection}
           {kickoffSection}
           {timelineSection}
