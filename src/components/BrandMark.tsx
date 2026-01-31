@@ -29,7 +29,7 @@ export function BrandMark({
       href={href}
       aria-label="Zartman.io home"
       className={clsx(
-        "inline-flex items-center gap-2 text-inherit transition-colors hover:opacity-80",
+        "inline-flex items-center gap-2 rounded-md text-inherit transition-colors hover:opacity-85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50",
         className,
       )}
     >
