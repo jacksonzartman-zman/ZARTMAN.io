@@ -115,33 +115,16 @@ export default async function CustomerQuotesPage({
     return (
       <PortalShell
         workspace="customer"
-        title="RFQ history"
-        subtitle="Track every request you’ve submitted, newest first."
-        actions={
-          <Link
-            href="/quote"
-            className={`${primaryCtaClasses} text-xs font-semibold uppercase tracking-wide`}
-          >
-            Upload new part
-          </Link>
-        }
+        title="RFQs"
+        subtitle="Your command center for intake: track status, review offers, and jump back into context."
       >
-        <PortalCard
-          title="Complete your customer profile"
-          description="Link a customer workspace to track RFQs, offers, and messages in one place."
-          action={
-            <Link
-              href="/customer"
-              className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
-            >
-              Back to dashboard
-            </Link>
-          }
-        >
-          <p className="text-sm text-slate-300">
-            We couldn&apos;t find a customer workspace linked to{" "}
-            <span className="break-anywhere font-medium text-slate-100">{user.email}</span>.
-          </p>
+        <PortalCard title="Customer workspace required" className={PORTAL_SURFACE_CARD}>
+          <EmptyStateCard
+            title="Complete your customer profile"
+            description={`We couldn’t find a customer workspace linked to ${user.email ?? "your account"}.`}
+            tone="warning"
+            action={{ label: "Back to dashboard", href: "/customer" }}
+          />
         </PortalCard>
       </PortalShell>
     );
@@ -185,7 +168,7 @@ export default async function CustomerQuotesPage({
             href="/quote"
             className={`${primaryCtaClasses} text-xs font-semibold uppercase tracking-wide`}
           >
-            Upload new part
+            Start an RFQ
           </Link>
           <Link
             href="/customer/projects"
@@ -212,7 +195,7 @@ export default async function CustomerQuotesPage({
             <EmptyStateCard
               title="No RFQs yet"
               description="Upload a part to start a search. We’ll keep status, offers, and updates here."
-              action={{ label: "Upload new part", href: "/quote" }}
+              action={{ label: "Start an RFQ", href: "/quote" }}
             />
           </div>
         ) : (

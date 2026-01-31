@@ -88,14 +88,14 @@ export default async function SupplierProjectsPage() {
       <PortalShell
         workspace="supplier"
         title="Projects"
-        subtitle="Awarded projects in progress and history."
+        subtitle="Your command center for execution: kickoff progress, updates, and delivery history."
       >
         <EmptyStateCard
           title="Complete supplier onboarding"
           description="Finish onboarding to start tracking awarded projects here."
           tone="info"
           actionVariant="info"
-          action={{ label: "Back to dashboard", href: "/supplier" }}
+          action={{ label: "Finish onboarding", href: "/supplier/onboarding" }}
         />
       </PortalShell>
     );
@@ -114,7 +114,7 @@ export default async function SupplierProjectsPage() {
     <PortalShell
       workspace="supplier"
       title="Projects"
-      subtitle="Awarded projects in progress and history."
+      subtitle="Your command center for execution: kickoff progress, updates, and delivery history."
     >
       <PortalCard
         title="Execution queue"
@@ -124,6 +124,8 @@ export default async function SupplierProjectsPage() {
           <EmptyStateCard
             title="No projects yet"
             description="When a customer awards your bid, it will show up here as a project."
+            tone="info"
+            actionVariant="info"
             action={{ label: "View RFQs", href: "/supplier/quotes" }}
           />
         ) : (

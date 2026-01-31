@@ -67,15 +67,7 @@ export default async function SupplierMessagesPage() {
       <PortalShell
         workspace="supplier"
         title="Messages"
-        subtitle="Conversations across your RFQs and projects."
-        actions={
-          <Link
-            href="/supplier"
-            className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
-          >
-            Back to dashboard
-          </Link>
-        }
+        subtitle="Your command center for conversations: triage threads and jump back into context."
       >
         <PortalCard
           title="Messages"
@@ -84,6 +76,8 @@ export default async function SupplierMessagesPage() {
           <EmptyStateCard
             title="Complete supplier onboarding"
             description="Finish onboarding to unlock RFQs and the shared message inbox."
+            tone="info"
+            actionVariant="info"
             action={{ label: "Finish onboarding", href: "/supplier/onboarding" }}
           />
         </PortalCard>
@@ -97,7 +91,7 @@ export default async function SupplierMessagesPage() {
     <PortalShell
       workspace="supplier"
       title="Messages"
-      subtitle="Conversations across your RFQs and projects."
+      subtitle="Your command center for conversations: triage threads and jump back into context."
       actions={
         <Link
           href="/supplier"
@@ -115,6 +109,8 @@ export default async function SupplierMessagesPage() {
           <EmptyStateCard
             title="No conversations yet"
             description="When customers or admins message you about RFQs, they’ll appear here."
+            tone="info"
+            actionVariant="info"
             action={{ label: "View RFQs", href: "/supplier/quotes" }}
           />
         ) : (

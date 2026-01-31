@@ -41,7 +41,7 @@ export default async function CustomerMessagesPage() {
     <PortalShell
       workspace="customer"
       title="Messages"
-      subtitle="Conversations across your RFQs and projects."
+      subtitle="Your command center for conversations: triage threads and jump back into context."
       actions={
         <Link
           href="/customer"

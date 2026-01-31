@@ -78,24 +78,15 @@ export default async function CustomerProjectsPage({
       <PortalShell
         workspace="customer"
         title="Projects"
-        subtitle="Execution stage: awarded projects in progress and history."
+        subtitle="Your command center for execution: kickoff progress, updates, and delivery history."
       >
-        <PortalCard
-          title="Complete your customer profile"
-          description="Link a customer workspace to track awarded projects and kickoff progress."
-          action={
-            <Link
-              href="/customer"
-              className="inline-flex items-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-black transition hover:bg-emerald-400"
-            >
-              Back to dashboard
-            </Link>
-          }
-        >
-          <p className="text-sm text-slate-300">
-            We couldn&apos;t find a customer workspace linked to{" "}
-            <span className="break-anywhere font-medium text-slate-100">{user.email}</span>.
-          </p>
+        <PortalCard title="Customer workspace required" className={PORTAL_SURFACE_CARD}>
+          <EmptyStateCard
+            title="Complete your customer profile"
+            description={`We couldn’t find a customer workspace linked to ${user.email ?? "your account"}.`}
+            tone="warning"
+            action={{ label: "Back to dashboard", href: "/customer" }}
+          />
         </PortalCard>
       </PortalShell>
     );
@@ -188,7 +179,7 @@ export default async function CustomerProjectsPage({
     <PortalShell
       workspace="customer"
       title="Projects"
-      subtitle="Execution stage: awarded projects in progress and history."
+      subtitle="Your command center for execution: kickoff progress, updates, and delivery history."
     >
       <PortalCard title="Projects" header={false} className={`${PORTAL_SURFACE_CARD} p-0`}>
         {projects.length === 0 ? (
@@ -219,6 +210,7 @@ export default async function CustomerProjectsPage({
                   <EmptyStateCard
                     title="No projects match these filters"
                     description="Try switching status tabs or clearing the supplier filter."
+                    action={{ label: "Clear filters", href: "/customer/projects" }}
                   />
                 )
               ) : null}

@@ -85,7 +85,7 @@ async function SupplierDashboardPage({
       <PortalShell
         workspace="supplier"
         title="Dashboard"
-        subtitle="Quote new RFQs and track active projects in one place."
+        subtitle="Your command center for quoting: new RFQs, active projects, and what needs attention."
         headerContent={
           <WorkspaceWelcomeBanner
             role="supplier"
@@ -93,11 +93,19 @@ async function SupplierDashboardPage({
           />
         }
       >
-        <section className="rounded-2xl border border-slate-900 bg-slate-950/40 p-6 text-center">
+        <PortalCard title="Sign in required" className="p-7 sm:p-8">
           <p className="text-sm text-slate-300">
             Sign in with a verified supplier email address to load your workspace.
           </p>
-        </section>
+          <div className="mt-5">
+            <Link
+              href="/login?next=/supplier"
+              className="inline-flex items-center rounded-full border border-blue-400/40 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-blue-100 transition hover:border-blue-300 hover:text-white"
+            >
+              Go to login
+            </Link>
+          </div>
+        </PortalCard>
       </PortalShell>
     );
   }
@@ -233,7 +241,7 @@ async function SupplierDashboardPage({
     <PortalShell
       workspace="supplier"
       title="Dashboard"
-      subtitle="Quote new RFQs and track active projects in one place."
+      subtitle="Your command center for quoting: new RFQs, active projects, and what needs attention."
       actions={headerActions}
       headerContent={headerContent}
       bodyClassName="space-y-6 sm:space-y-7"
@@ -255,7 +263,7 @@ async function SupplierDashboardPage({
                   href="/supplier/quotes?status=open"
                   className="text-sm font-semibold text-blue-200 underline-offset-4 hover:underline"
                 >
-                  View all
+                    View RFQs
                 </Link>
               ) : null
             }
@@ -295,16 +303,6 @@ async function SupplierDashboardPage({
             title="Projects"
             description="Awarded work in progress."
             className={`${PORTAL_SURFACE_CARD_INTERACTIVE_QUIET} p-4`}
-            action={
-              supplierExists ? (
-                <Link
-                  href="/supplier/projects"
-                  className="text-sm font-semibold text-slate-300 underline-offset-4 hover:text-white hover:underline"
-                >
-                  View all
-                </Link>
-              ) : null
-            }
           >
             {supplierExists && activeJobs.length > 0 ? (
               <ActiveJobsTable rows={activeJobs.slice(0, 10)} />

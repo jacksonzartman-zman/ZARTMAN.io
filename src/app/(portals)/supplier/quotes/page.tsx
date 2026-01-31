@@ -175,20 +175,17 @@ export default async function SupplierQuotesPage({
       <PortalShell
         workspace="supplier"
         title="RFQs"
-        subtitle="This workspace is reserved for supplier accounts."
+        subtitle="Your command center for RFQs: triage invites, submit offers, and monitor awards."
       >
-        <EmptyStateNotice
-          title="Supplier access required"
-          description="Switch to the customer portal or contact support if you need supplier access."
-          action={
-            <Link
-              href="/customer"
-              className="text-sm font-semibold text-blue-300 underline-offset-4 hover:underline"
-            >
-              Go to customer portal
-            </Link>
-          }
-        />
+        <PortalCard title="Supplier access required" className={PORTAL_SURFACE_CARD}>
+          <EmptyStateCard
+            title="Supplier access required"
+            description="Switch to the customer portal or contact support if you need supplier access."
+            tone="warning"
+            actionVariant="info"
+            action={{ label: "Go to customer portal", href: "/customer" }}
+          />
+        </PortalCard>
       </PortalShell>
     );
   }
@@ -200,20 +197,17 @@ export default async function SupplierQuotesPage({
       <PortalShell
         workspace="supplier"
         title="RFQs"
-        subtitle="Finish onboarding to start receiving RFQs here."
+        subtitle="Your command center for RFQs: triage invites, submit offers, and monitor awards."
       >
-        <EmptyStateNotice
-          title="Complete supplier onboarding"
-          description="Share capabilities, certifications, and documents so we can route the right RFQs."
-          action={
-            <Link
-              href="/supplier/onboarding"
-              className="text-sm font-semibold text-blue-300 underline-offset-4 hover:underline"
-            >
-              Finish onboarding
-            </Link>
-          }
-        />
+        <PortalCard title="Supplier onboarding required" className={PORTAL_SURFACE_CARD}>
+          <EmptyStateCard
+            title="Complete supplier onboarding"
+            description="Share capabilities, certifications, and documents so we can route the right RFQs."
+            tone="info"
+            actionVariant="info"
+            action={{ label: "Finish onboarding", href: "/supplier/onboarding" }}
+          />
+        </PortalCard>
       </PortalShell>
     );
   }
@@ -360,7 +354,7 @@ export default async function SupplierQuotesPage({
     <PortalShell
       workspace="supplier"
       title="RFQs"
-      subtitle="RFQs you’re invited to, have quoted on, or have been awarded."
+      subtitle="Your command center for RFQs: triage invites, submit offers, and monitor awards."
       actions={
         <div className="flex flex-wrap gap-3">
           <Link
