@@ -109,9 +109,9 @@ export default async function SupplierMessagesPage() {
             action={{ label: "View RFQs", href: "/supplier/quotes" }}
           />
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-900/70 bg-black/40">
-            <table className="min-w-full divide-y divide-slate-900/70 text-sm">
-              <thead className="bg-slate-900/60">
+          <div className="-mx-6 overflow-hidden border-t border-slate-800/40">
+            <table className="min-w-full divide-y divide-slate-800/40 text-sm">
+              <thead className="bg-transparent">
                 <tr>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
                     RFQ
@@ -130,7 +130,7 @@ export default async function SupplierMessagesPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-900/70">
+              <tbody className="divide-y divide-slate-800/40">
                 {rows.map((row) => {
                   const threadLabel = resolveThreadStatusLabel("supplier", row.needsReplyFrom);
                   const threadPill = statusPillClasses(threadLabel);
@@ -140,7 +140,7 @@ export default async function SupplierMessagesPage() {
                   const unread = Math.max(0, Math.floor(row.unreadCount ?? 0));
                   const href = `/supplier/quotes/${row.quoteId}?tab=messages#messages`;
                   return (
-                    <tr key={row.quoteId} className="hover:bg-slate-900/50">
+                    <tr key={row.quoteId} className="hover:bg-slate-900/20">
                       <td className="px-5 py-4 align-middle">
                         <Link
                           href={href}

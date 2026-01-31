@@ -653,7 +653,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
         />
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)]">
         <aside className="space-y-4">
           <PortalCard
             title="Filters"

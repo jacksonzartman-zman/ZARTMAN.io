@@ -1854,7 +1854,7 @@ export default async function CustomerQuoteDetailPage({
       <FocusTabScroll tab={tabParam} when="activity" targetId="timeline" />
       <FocusTabScroll tab={tabParam} when="messages" targetId="messages" />
       {showDemoModeBanner ? <DemoModeBanner /> : null}
-      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,0.72fr)_minmax(0,0.28fr)] lg:gap-6 lg:space-y-0">
+      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(0,0.74fr)_minmax(0,0.26fr)] lg:gap-6 lg:space-y-0">
         <div className="space-y-6">
           {awardedSupplierCard}
           {quoteHasWinner ? <PostAwardReassurancePanel quoteId={quote.id} /> : null}

@@ -3,7 +3,6 @@ import Link from "next/link";
 import {
   PortalShell,
   PORTAL_SURFACE_CARD,
-  PORTAL_SURFACE_CARD_INTERACTIVE_QUIET,
 } from "../../components/PortalShell";
 import { PortalLoginPanel } from "../../PortalLoginPanel";
 import PortalCard from "../../PortalCard";
@@ -374,117 +373,123 @@ export default async function SupplierQuotesPage({
       <PortalCard
         title="RFQs"
         header={false}
-        className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
+        className={`${PORTAL_SURFACE_CARD} p-0`}
       >
-        <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
-            Status
-            <select
-              name="status"
-              defaultValue={statusFilter}
-              className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+        <div className="p-6">
+          <form method="get" className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+              Status
+              <select
+                name="status"
+                defaultValue={statusFilter}
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+              >
+                <option value="">All</option>
+                <option value="open">Open</option>
+                <option value="awarded">Awarded to you</option>
+                <option value="closed">Closed</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+              Kickoff
+              <select
+                name="kickoff"
+                defaultValue={kickoffFilter}
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+              >
+                <option value="">All</option>
+                <option value="not_started">Not started</option>
+                <option value="in_progress">In progress</option>
+                <option value="complete">Complete</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+              Messages
+              <select
+                name="messages"
+                defaultValue={messagesFilter}
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+              >
+                <option value="">All</option>
+                <option value="needs_reply">Needs reply</option>
+                <option value="unread">Unread only</option>
+                <option value="up_to_date">Up to date</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+              Parts
+              <select
+                name="partsCoverage"
+                defaultValue={partsCoverageFilter}
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+              >
+                <option value="">All</option>
+                <option value="needs_attention">Needs attention</option>
+                <option value="good">Good</option>
+                <option value="none">No parts</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
+              RFQ quality
+              <select
+                name="rfqQuality"
+                defaultValue={rfqQualityFilter}
+                className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+              >
+                <option value="">All</option>
+                <option value="high">High (85+)</option>
+                <option value="medium">Medium (70–84)</option>
+                <option value="low">Low (50–69)</option>
+                <option value="min">Min (&lt; 50)</option>
+              </select>
+            </label>
+            <button
+              type="submit"
+              className="inline-flex items-center rounded-lg bg-blue-500 px-4 py-2 text-xs font-semibold text-black transition hover:bg-blue-400"
             >
-              <option value="">All</option>
-              <option value="open">Open</option>
-              <option value="awarded">Awarded to you</option>
-              <option value="closed">Closed</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
-            Kickoff
-            <select
-              name="kickoff"
-              defaultValue={kickoffFilter}
-              className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
+              Apply
+            </button>
+            <Link
+              href="/supplier/quotes"
+              className="text-xs font-semibold text-slate-300 underline-offset-4 hover:underline"
             >
-              <option value="">All</option>
-              <option value="not_started">Not started</option>
-              <option value="in_progress">In progress</option>
-              <option value="complete">Complete</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
-            Messages
-            <select
-              name="messages"
-              defaultValue={messagesFilter}
-              className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
-            >
-              <option value="">All</option>
-              <option value="needs_reply">Needs reply</option>
-              <option value="unread">Unread only</option>
-              <option value="up_to_date">Up to date</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
-            Parts
-            <select
-              name="partsCoverage"
-              defaultValue={partsCoverageFilter}
-              className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
-            >
-              <option value="">All</option>
-              <option value="needs_attention">Needs attention</option>
-              <option value="good">Good</option>
-              <option value="none">No parts</option>
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-300">
-            RFQ quality
-            <select
-              name="rfqQuality"
-              defaultValue={rfqQualityFilter}
-              className="rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-2 text-xs text-slate-100 outline-none transition focus:border-blue-400"
-            >
-              <option value="">All</option>
-              <option value="high">High (85+)</option>
-              <option value="medium">Medium (70–84)</option>
-              <option value="low">Low (50–69)</option>
-              <option value="min">Min (&lt; 50)</option>
-            </select>
-          </label>
-          <button
-            type="submit"
-            className="inline-flex items-center rounded-lg bg-blue-500 px-4 py-2 text-xs font-semibold text-black transition hover:bg-blue-400"
-          >
-            Apply
-          </button>
-          <Link
-            href="/supplier/quotes"
-            className="text-xs font-semibold text-slate-300 underline-offset-4 hover:underline"
-          >
-            Clear
-          </Link>
-        </form>
+              Clear
+            </Link>
+          </form>
+        </div>
 
         {approvalGateActive ? (
-          <EmptyStateCard
-            title="RFQs unlock after approval"
-            description="We’ll populate this list as soon as your supplier profile is approved."
-            tone="info"
-            actionVariant="info"
-            action={{ label: "Back to dashboard", href: "/supplier" }}
-          />
-        ) : filteredRows.length === 0 ? (
-          hasFilters ? (
+          <div className="px-6 pb-6">
             <EmptyStateCard
-              title="No RFQs match these filters"
-              description="Try clearing filters to see everything."
-              tone="info"
-              actionVariant="info"
-              action={{ label: "Clear filters", href: "/supplier/quotes" }}
-            />
-          ) : (
-            <EmptyStateCard
-              title="No RFQs yet"
-              description="Invites and quotes will appear here as soon as you’re included."
+              title="RFQs unlock after approval"
+              description="We’ll populate this list as soon as your supplier profile is approved."
               tone="info"
               actionVariant="info"
               action={{ label: "Back to dashboard", href: "/supplier" }}
             />
-          )
+          </div>
+        ) : filteredRows.length === 0 ? (
+          <div className="px-6 pb-6">
+            {hasFilters ? (
+              <EmptyStateCard
+                title="No RFQs match these filters"
+                description="Try clearing filters to see everything."
+                tone="info"
+                actionVariant="info"
+                action={{ label: "Clear filters", href: "/supplier/quotes" }}
+              />
+            ) : (
+              <EmptyStateCard
+                title="No RFQs yet"
+                description="Invites and quotes will appear here as soon as you’re included."
+                tone="info"
+                actionVariant="info"
+                action={{ label: "Back to dashboard", href: "/supplier" }}
+              />
+            )}
+          </div>
         ) : (
-          <div className={`${PORTAL_SURFACE_CARD} overflow-hidden`}>
+          <div className="overflow-hidden border-t border-slate-800/40">
             <table className="min-w-full table-fixed divide-y divide-slate-800/40 text-sm">
               <thead className="bg-transparent">
                 <tr>
