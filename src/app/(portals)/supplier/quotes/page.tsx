@@ -33,6 +33,9 @@ import { resolveMaybePromise, type SearchParamsLike } from "@/app/(portals)/quot
 import { computeRfqQualitySummary } from "@/server/quotes/rfqQualitySignals";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
+import { formatDateTime } from "@/lib/formatDate";
+import { matchQuotesToSupplier } from "@/server/suppliers";
+import { buildSupplierInboxRows } from "@/app/(portals)/supplier/inboxRows";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +49,11 @@ function normalizeText(value: unknown): string {
 
 function formatLastActivity(value: string | null): string {
   return formatRelativeTimeCompactFromTimestamp(toTimestamp(value)) ?? "—";
+}
+
+function formatReceivedAt(value: string | null): string {
+  const relative = formatRelativeTimeCompactFromTimestamp(toTimestamp(value));
+  return relative ? `Received ${relative}` : "Received —";
 }
 
 function kickoffPill(status: SupplierQuoteListRow["kickoffStatus"]) {
@@ -294,6 +302,53 @@ export default async function SupplierQuotesPage({
       rfqQualityFilter,
   );
 
+  const rfqMetaByQuoteId = new Map<
+    string,
+    {
+      receivedAt: string | null;
+      processHint: string | null;
+      quantityHint: string | null;
+      targetDate: string | null;
+    }
+  >();
+
+  if (!approvalGateActive && supplier) {
+    const visibleQuoteIds = new Set(filteredRows.map((row) => row.quoteId));
+    try {
+      const matchesResult = await matchQuotesToSupplier(
+        {
+          supplierId: supplier.id,
+          supplierEmail: supplier.primary_email ?? user.email ?? null,
+        },
+        {
+          maxMatches: Math.max(40, Math.min(200, visibleQuoteIds.size + 20)),
+          quoteFetchLimit: Math.max(80, Math.min(300, visibleQuoteIds.size * 2)),
+        },
+      );
+
+      const inboxRows = buildSupplierInboxRows({
+        matches: matchesResult.data ?? [],
+        bidAggregates: {},
+        capabilities: profile?.capabilities ?? [],
+      });
+
+      for (const row of inboxRows) {
+        if (!visibleQuoteIds.has(row.quoteId)) continue;
+        rfqMetaByQuoteId.set(row.quoteId, {
+          receivedAt: row.createdAt ?? null,
+          processHint: row.processHint ?? null,
+          quantityHint: row.quantityHint ?? null,
+          targetDate: row.targetDate ?? null,
+        });
+      }
+    } catch (error) {
+      console.error("[supplier quotes] match metadata load failed", {
+        supplierId: supplier.id,
+        error,
+      });
+    }
+  }
+
   return (
     <PortalShell
       workspace="supplier"
@@ -430,31 +485,16 @@ export default async function SupplierQuotesPage({
           )
         ) : (
           <div className={`${PORTAL_SURFACE_CARD} overflow-hidden`}>
-            <table className="min-w-full divide-y divide-slate-800/40 text-sm">
+            <table className="min-w-full table-fixed divide-y divide-slate-800/40 text-sm">
               <thead className="bg-transparent">
                 <tr>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     RFQ
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <th className="hidden w-[15rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
                     Status
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Parts
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Kickoff
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Messages
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Match
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Last activity
-                  </th>
-                  <th className="hidden px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 xl:table-cell">
+                  <th className="w-[12.5rem] px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Action
                   </th>
                 </tr>
@@ -470,99 +510,97 @@ export default async function SupplierQuotesPage({
                       : open
                         ? "Open"
                         : "Closed";
-                  const subtext = row.hasBid ? `${coreStatus} • Quote submitted` : coreStatus;
-                  const kickoff = kickoffPill(row.kickoffStatus);
                   const unread = Math.max(0, Math.floor(row.unreadMessagesCount ?? 0));
                   const messagesHref = `/supplier/quotes/${row.quoteId}?tab=messages#messages`;
-                  const matchChip = matchHealthChip(row.matchHealth);
-                  const bench = benchChip(row.benchStatus);
-                  const partsChip = partsCoverageChip(row.partsCoverageHealth);
                   const partsCount = typeof row.partsCount === "number" ? row.partsCount : 0;
+                  const meta = rfqMetaByQuoteId.get(row.quoteId) ?? null;
+                  const receivedLabel = formatReceivedAt(meta?.receivedAt ?? null);
+                  const processLabel = meta?.processHint?.trim() ? meta.processHint : "Process —";
+                  const quantityLabel = meta?.quantityHint?.trim() ? meta.quantityHint : "Qty —";
+                  const needByLabel = meta?.targetDate
+                    ? (formatDateTime(meta.targetDate, { includeTime: false }) ?? "—")
+                    : "—";
+                  const secondaryMeta = `${receivedLabel} • ${processLabel} • ${quantityLabel} • Need-by ${needByLabel}`;
+                  const ctaLabel = open && !row.hasBid ? "Submit offer →" : "Open RFQ →";
+                  const statusLine = row.hasBid ? `${coreStatus} • Offer submitted` : coreStatus;
 
                   return (
-                    <tr key={row.quoteId} className="hover:bg-slate-900/20">
+                    <tr
+                      key={row.quoteId}
+                      className="bg-transparent transition hover:bg-slate-900/20 motion-reduce:transition-none"
+                    >
                       <td className="px-5 py-4 align-middle">
-                        <div className="flex flex-col">
+                        <div className="flex min-w-0 flex-col">
                           <Link
                             href={`/supplier/quotes/${row.quoteId}`}
-                            className="text-sm font-semibold leading-tight text-slate-100 underline-offset-4 transition hover:underline"
+                            className="truncate text-sm font-semibold leading-tight text-slate-100 underline-offset-4 transition hover:underline motion-reduce:transition-none"
                           >
                             {row.rfqLabel}
                           </Link>
-                          <span className="mt-1 text-xs text-slate-500">{subtext}</span>
+                          <span
+                            className="mt-1 truncate text-xs text-slate-500 md:whitespace-nowrap"
+                            title={secondaryMeta}
+                          >
+                            {secondaryMeta}
+                          </span>
+
+                          <div className="mt-2 flex items-center gap-3 md:hidden">
+                            <QuoteStatusBadge status={row.status} size="sm" />
+                            <Link
+                              href={messagesHref}
+                              className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
+                            >
+                              <span className="whitespace-nowrap">Messages</span>
+                              {unread > 0 ? (
+                                <span className="inline-flex min-w-[1.6rem] items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-100 tabular-nums">
+                                  {unread > 99 ? "99+" : unread}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-600 tabular-nums">
+                                  0
+                                </span>
+                              )}
+                            </Link>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle">
-                        <QuoteStatusBadge status={row.status} size="sm" />
-                        <p className="mt-1 text-xs text-slate-500">{subtext}</p>
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <Link
-                          href={`/supplier/quotes/${row.quoteId}#uploads`}
-                          className="group inline-flex flex-col items-start gap-1 underline-offset-4 hover:underline"
-                        >
-                          <span
-                            className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${partsChip.className}`}
-                          >
-                            {partsChip.label}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            {partsCount.toLocaleString()} part{partsCount === 1 ? "" : "s"}
-                          </span>
-                          {partsChip.helper ? (
-                            <span className="text-xs text-slate-500">{partsChip.helper}</span>
-                          ) : null}
-                        </Link>
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        {row.isAwardedToSupplier ? (
-                          <span
-                            className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${kickoff.className}`}
-                          >
-                            {kickoff.label}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-slate-400">
-                            {closedByAward ? "RFQ closed" : open ? "Waiting for decision" : "Not awarded"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <Link
-                          href={messagesHref}
-                          className="inline-flex flex-wrap items-center gap-2 text-sm text-slate-300 underline-offset-4 hover:text-white hover:underline"
-                        >
-                          <span>{unread > 0 ? "Unread" : "Up to date"}</span>
-                          {unread > 0 ? (
-                            <span className="inline-flex min-w-[1.75rem] items-center justify-center rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-semibold text-red-100">
-                              {unread > 99 ? "99+" : unread}
+                      <td className="hidden px-5 py-4 align-middle md:table-cell">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center justify-between gap-3">
+                            <QuoteStatusBadge status={row.status} size="sm" />
+                            <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap">
+                              {formatLastActivity(row.lastActivityAt)}
                             </span>
-                          ) : null}
-                        </Link>
-                      </td>
-                      <td className="px-5 py-4 align-middle">
-                        <div className="flex flex-col gap-2">
-                          <span
-                            className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${matchChip.className}`}
-                          >
-                            {matchChip.label}
-                          </span>
-                          <span
-                            className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${bench.className}`}
-                          >
-                            {bench.label}
-                          </span>
+                          </div>
+                          <p className="text-xs text-slate-500">{statusLine}</p>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap">
+                              {partsCount.toLocaleString()} part{partsCount === 1 ? "" : "s"}
+                            </span>
+                            <Link
+                              href={messagesHref}
+                              className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
+                            >
+                              <span className="whitespace-nowrap">Messages</span>
+                              {unread > 0 ? (
+                                <span className="inline-flex min-w-[1.6rem] items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-100 tabular-nums">
+                                  {unread > 99 ? "99+" : unread}
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-slate-600 tabular-nums">
+                                  0
+                                </span>
+                              )}
+                            </Link>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle text-slate-300 tabular-nums">
-                        {formatLastActivity(row.lastActivityAt)}
-                      </td>
-                      <td className="hidden px-5 py-4 align-middle text-right xl:table-cell">
+                      <td className="px-5 py-4 align-middle text-right">
                         <Link
                           href={`/supplier/quotes/${row.quoteId}`}
-                          className={`${primaryInfoCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
+                          className={`${primaryInfoCtaClasses} ${ctaSizeClasses.sm} inline-flex min-w-[11rem] justify-center text-xs font-semibold uppercase tracking-wide motion-reduce:transition-none`}
                         >
-                          Open RFQ
+                          {ctaLabel}
                         </Link>
                       </td>
                     </tr>
