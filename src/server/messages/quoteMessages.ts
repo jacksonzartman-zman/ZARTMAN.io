@@ -627,15 +627,21 @@ export async function postQuoteMessage(
     author_user_id: actorUserId || null,
     message: body,
   };
-  if (providerId) {
-    payloadNew.provider_id = providerId;
-  }
+  const includeProviderId = Boolean(providerId) && (await hasQuoteMessagesColumn("provider_id"));
+  if (includeProviderId) payloadNew.provider_id = providerId;
 
   const legacyRole = normalizeSenderRole(authorRole);
   if (hasSenderRole) payloadNew.sender_role = legacyRole;
   if (hasSenderId) payloadNew.sender_id = actorUserId;
   if (hasAuthorType) payloadNew.author_type = legacyRole;
   if (hasBody) payloadNew.body = body;
+
+  console.debug("[quote_messages] provider_id", {
+    included: includeProviderId,
+    provider_id: includeProviderId ? providerId : null,
+    sender_role: legacyRole,
+    quote_id: normalizedQuoteId,
+  });
 
   const payloadLegacy: Record<string, unknown> = {
     quote_id: normalizedQuoteId,
