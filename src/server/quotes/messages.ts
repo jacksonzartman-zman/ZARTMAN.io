@@ -405,6 +405,28 @@ export async function createQuoteMessage(
       body: trimmedBody,
     };
 
+    // New unified schema columns (drift-tolerant).
+    const mappedAuthorRole =
+      normalizedSenderRole === "supplier"
+        ? "provider"
+        : normalizedSenderRole === "system"
+          ? "admin"
+          : normalizedSenderRole;
+    if (
+      (mappedAuthorRole === "customer" ||
+        mappedAuthorRole === "admin" ||
+        mappedAuthorRole === "provider") &&
+      (await hasQuoteMessagesColumn("author_role"))
+    ) {
+      payload.author_role = mappedAuthorRole;
+    }
+    if (await hasQuoteMessagesColumn("author_user_id")) {
+      payload.author_user_id = normalizedSenderId;
+    }
+    if (await hasQuoteMessagesColumn("message")) {
+      payload.message = trimmedBody;
+    }
+
     // Drift-tolerant: only include sender_email when the column exists.
     if (await hasQuoteMessagesColumn("sender_email")) {
       payload.sender_email = normalizedSenderEmail;

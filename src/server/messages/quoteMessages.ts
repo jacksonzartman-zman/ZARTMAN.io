@@ -614,6 +614,13 @@ export async function postQuoteMessage(
     return { ok: false, missing: true, message: null, reason: "unknown" };
   }
 
+  const [hasSenderRole, hasSenderId, hasBody, hasAuthorType] = await Promise.all([
+    hasQuoteMessagesColumn("sender_role"),
+    hasQuoteMessagesColumn("sender_id"),
+    hasQuoteMessagesColumn("body"),
+    hasQuoteMessagesColumn("author_type"),
+  ]);
+
   const payloadNew: Record<string, unknown> = {
     quote_id: normalizedQuoteId,
     author_role: authorRole,
@@ -625,6 +632,11 @@ export async function postQuoteMessage(
   }
 
   const legacyRole = normalizeSenderRole(authorRole);
+  if (hasSenderRole) payloadNew.sender_role = legacyRole;
+  if (hasSenderId) payloadNew.sender_id = actorUserId;
+  if (hasAuthorType) payloadNew.author_type = legacyRole;
+  if (hasBody) payloadNew.body = body;
+
   const payloadLegacy: Record<string, unknown> = {
     quote_id: normalizedQuoteId,
     sender_role: legacyRole,
@@ -633,6 +645,11 @@ export async function postQuoteMessage(
   };
 
   const runInsert = async (payload: Record<string, unknown>, variant: "new" | "legacy") => {
+    console.debug("[quote_messages] insert payload", {
+      variant,
+      keys: Object.keys(payload),
+      quote_id: normalizedQuoteId,
+    });
     const includeMetadata = await hasQuoteMessagesColumn("metadata");
     const select = await buildQuoteMessagesSelect({
       variant,
