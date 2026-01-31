@@ -74,6 +74,7 @@ export type PostQuoteMessageInput = {
   actorUserId: string;
   actorRole: QuoteMessageSenderRole;
   supplierId?: string | null;
+  providerId?: string | null;
   customerId?: string | null;
   senderName?: string | null;
   senderEmail?: string | null;
@@ -88,6 +89,12 @@ type CreateQuoteMessageParams = {
   senderName?: string | null;
   senderEmail?: string | null;
   supplierId?: string | null;
+  /**
+   * Optional provider id for supplier/provider-authored messages.
+   * - In some environments this matches `providers.id`
+   * - In others it may match `suppliers.id`
+   */
+  providerId?: string | null;
   customerId?: string | null;
   supabase?: SupabaseClient;
 };
@@ -373,6 +380,7 @@ export async function createQuoteMessage(
   const normalizedSenderName = sanitizeName(params.senderName);
   const normalizedSenderEmail = sanitizeEmail(params.senderEmail);
   const normalizedSupplierId = normalizeId(params.supplierId ?? null) || null;
+  const explicitProviderId = normalizeId(params.providerId ?? null) || null;
   const normalizedCustomerId = normalizeId(params.customerId ?? null) || null;
 
   if (
@@ -426,6 +434,71 @@ export async function createQuoteMessage(
     if (await hasQuoteMessagesColumn("message")) {
       payload.message = trimmedBody;
     }
+
+    // Provider association (required in some environments for supplier/provider messages).
+    // Drift-tolerant: only include when the column exists.
+    let resolvedProviderId: string | null = null;
+    const shouldAttachProviderId = mappedAuthorRole === "provider" || normalizedSenderRole === "supplier";
+    const hasProviderIdColumn =
+      shouldAttachProviderId && (await hasQuoteMessagesColumn("provider_id"));
+    if (hasProviderIdColumn) {
+      resolvedProviderId = explicitProviderId;
+      if (!resolvedProviderId && normalizedSenderRole === "supplier") {
+        // Best-effort: resolve provider id from suppliers table.
+        // Handles schemas where:
+        // - `suppliers.provider_id` maps to `providers.id`
+        // - or `quote_messages.provider_id` is actually a supplier id
+        try {
+          const attemptWithProviderId = await supabaseServer()
+            .from("suppliers")
+            .select("id,provider_id")
+            .eq("user_id", normalizedSenderId)
+            .limit(1)
+            .maybeSingle<{ id: string; provider_id?: string | null }>();
+          if (!attemptWithProviderId.error && attemptWithProviderId.data) {
+            resolvedProviderId =
+              normalizeId(attemptWithProviderId.data.provider_id ?? null) ||
+              normalizeId(attemptWithProviderId.data.id ?? null) ||
+              null;
+          } else if (attemptWithProviderId.error && isMissingTableOrColumnError(attemptWithProviderId.error)) {
+            const fallback = await supabaseServer()
+              .from("suppliers")
+              .select("id")
+              .eq("user_id", normalizedSenderId)
+              .limit(1)
+              .maybeSingle<{ id: string }>();
+            if (!fallback.error && fallback.data) {
+              resolvedProviderId = normalizeId(fallback.data.id ?? null) || null;
+            }
+          }
+        } catch (error) {
+          if (isMissingTableOrColumnError(error)) {
+            // ignore; schema drift tolerant
+          } else {
+            console.warn("[quote_messages] provider_id lookup failed", {
+              quoteId: normalizedQuoteId,
+              senderId: normalizedSenderId,
+              error: serializeSupabaseError(error) ?? error,
+            });
+          }
+        }
+
+        // Final fallback: some schemas use `auth.uid()` as supplier/provider id.
+        if (!resolvedProviderId) {
+          resolvedProviderId = normalizedSenderId || null;
+        }
+      }
+      if (resolvedProviderId) {
+        payload.provider_id = resolvedProviderId;
+      }
+    }
+
+    console.debug("[quote_messages] provider_id", {
+      included: Object.prototype.hasOwnProperty.call(payload, "provider_id"),
+      provider_id: (payload as any).provider_id ?? null,
+      sender_role: normalizedSenderRole,
+      quote_id: normalizedQuoteId,
+    });
 
     // Drift-tolerant: only include sender_email when the column exists.
     if (await hasQuoteMessagesColumn("sender_email")) {
@@ -599,6 +672,7 @@ export async function postQuoteMessage(
     senderName: input.senderName,
     senderEmail: input.senderEmail,
     supplierId: input.supplierId ?? null,
+    providerId: input.providerId ?? null,
     customerId: input.customerId ?? null,
     supabase: input.supabase,
   });

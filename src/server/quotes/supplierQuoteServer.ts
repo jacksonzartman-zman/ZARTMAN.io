@@ -406,6 +406,10 @@ export async function postSupplierMessageImpl(
       profile.supplier.primary_email ?? user.email ?? "supplier@zartman.io";
 
     const supabase = createAuthClient();
+    const supplierProviderId =
+      typeof (profile.supplier as { provider_id?: string | null } | null)?.provider_id === "string"
+        ? (profile.supplier as any).provider_id.trim()
+        : null;
     const result = await createQuoteMessage({
       quoteId: trimmedQuoteId,
       senderId: user.id,
@@ -414,6 +418,7 @@ export async function postSupplierMessageImpl(
       senderName: authorName,
       senderEmail: authorEmail,
       supplierId,
+      providerId: supplierProviderId,
       supabase,
     });
 
