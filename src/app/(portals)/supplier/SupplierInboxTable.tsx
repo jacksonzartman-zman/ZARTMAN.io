@@ -16,6 +16,12 @@ import {
   getSupplierBidSummaryLabel,
   type SupplierBidSummaryState,
 } from "@/lib/bids/status";
+import {
+  PORTAL_DIVIDER,
+  PORTAL_ROW,
+  PORTAL_TH,
+  PORTAL_TH_RIGHT,
+} from "@/app/(portals)/components/portalTableRhythm";
 
 export type SupplierInboxRow = {
   id: string;
@@ -67,19 +73,19 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
     <AdminTableShell
       head={
         <tr>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className={PORTAL_TH}>
             RFQ
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className={PORTAL_TH}>
             Files &amp; value
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className={PORTAL_TH}>
             Your quote
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className={PORTAL_TH}>
             RFQ status
           </th>
-          <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+          <th className={PORTAL_TH_RIGHT}>
             Action
           </th>
         </tr>
@@ -134,9 +140,9 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
         return (
           <tr
             key={row.id}
-            className="bg-slate-950/40 transition hover:bg-slate-900/40"
+            className={clsx("bg-transparent", PORTAL_ROW)}
           >
-            <td className={`${adminTableCellClass} text-slate-100`}>
+            <td className={clsx(adminTableCellClass, "px-6 py-4 text-slate-100")}>
               <p className="text-sm font-semibold text-white">
                 {row.rfqLabel}
               </p>
@@ -173,7 +179,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
                 </div>
               ) : null}
             </td>
-            <td className={`${adminTableCellClass} text-slate-200`}>
+            <td className={clsx(adminTableCellClass, "px-6 py-4 text-slate-200")}>
               <p className="text-sm font-medium text-slate-100">
                 {row.priceLabel}
               </p>
@@ -185,7 +191,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               ) : null}
               <p className="text-xs text-slate-500">{materialsLabel}</p>
             </td>
-            <td className={adminTableCellClass}>
+            <td className={clsx(adminTableCellClass, "px-6 py-4")}>
               <span
                 className={clsx(
                   "inline-flex w-fit items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide",
@@ -196,10 +202,10 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
               </span>
               <p className="mt-2 text-xs text-slate-400">{bidStatusHint}</p>
             </td>
-            <td className={adminTableCellClass}>
+            <td className={clsx(adminTableCellClass, "px-6 py-4")}>
               <QuoteStatusBadge status={row.status} size="sm" />
             </td>
-            <td className={`${adminTableCellClass} text-right`}>
+            <td className={clsx(adminTableCellClass, "px-6 py-4 text-right")}>
               <Link
                 href={href}
                 className={clsx(

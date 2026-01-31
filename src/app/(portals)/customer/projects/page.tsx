@@ -2,7 +2,7 @@ import clsx from "clsx";
 import Link from "next/link";
 
 import PortalCard from "@/app/(portals)/PortalCard";
-import { PortalShell } from "@/app/(portals)/components/PortalShell";
+import { PortalShell, PORTAL_SURFACE_CARD } from "@/app/(portals)/components/PortalShell";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
 import {
   formatRelativeTimeCompactFromTimestamp,
@@ -20,6 +20,15 @@ import CustomerProjectsListControls, {
 } from "./CustomerProjectsListControls";
 import { primaryCtaClasses } from "@/lib/ctas";
 import { OneTimeLocalStorageAffirmation } from "@/app/(portals)/shared/OneTimeLocalStorageAffirmation";
+import {
+  PORTAL_CELL,
+  PORTAL_CELL_RIGHT,
+  PORTAL_DIVIDER,
+  PORTAL_ROW,
+  PORTAL_TH,
+  PORTAL_TH_RIGHT,
+  PORTAL_TITLE,
+} from "@/app/(portals)/components/portalTableRhythm";
 
 export const dynamic = "force-dynamic";
 
@@ -181,46 +190,52 @@ export default async function CustomerProjectsPage({
       title="Projects"
       subtitle="Execution stage: awarded projects in progress and history."
     >
-      <PortalCard title="Projects" header={false} className="p-7">
+      <PortalCard title="Projects" header={false} className={`${PORTAL_SURFACE_CARD} p-0`}>
         {projects.length === 0 ? (
-          <EmptyStateCard
-            title="No projects yet"
-            description="Projects appear once you award a supplier."
-            action={{ label: "View RFQs", href: "/customer/quotes" }}
-          />
+          <div className="p-6">
+            <EmptyStateCard
+              title="No projects yet"
+              description="Projects appear once you award a supplier."
+              action={{ label: "View RFQs", href: "/customer/quotes" }}
+            />
+          </div>
         ) : (
           <>
-            <CustomerProjectsListControls
-              basePath="/customer/projects"
-              suppliers={suppliers}
-              className="mb-4"
-            />
+            <div className="p-6">
+              <CustomerProjectsListControls
+                basePath="/customer/projects"
+                suppliers={suppliers}
+                className="mb-4"
+              />
 
-            {filteredProjects.length === 0 ? (
-              status === "in_progress" && !supplierFilter ? (
-                <EmptyStateCard
-                  title="No active projects"
-                  description="You’re all caught up. New awards will appear here."
-                  action={{ label: "View completed", href: "/customer/projects?status=complete" }}
-                />
-              ) : (
-                <EmptyStateCard
-                  title="No projects match these filters"
-                  description="Try switching status tabs or clearing the supplier filter."
-                />
-              )
-            ) : (
-              <div className="overflow-hidden">
-                <table className="min-w-full text-sm">
-                  <thead className="sr-only">
+              {filteredProjects.length === 0 ? (
+                status === "in_progress" && !supplierFilter ? (
+                  <EmptyStateCard
+                    title="No active projects"
+                    description="You’re all caught up. New awards will appear here."
+                    action={{ label: "View completed", href: "/customer/projects?status=complete" }}
+                  />
+                ) : (
+                  <EmptyStateCard
+                    title="No projects match these filters"
+                    description="Try switching status tabs or clearing the supplier filter."
+                  />
+                )
+              ) : null}
+            </div>
+
+            {filteredProjects.length > 0 ? (
+              <div className="overflow-hidden border-t border-slate-800/40">
+                <table className="min-w-full table-fixed text-sm">
+                  <thead className="bg-transparent">
                     <tr>
-                      <th scope="col">Project</th>
-                      <th scope="col" className="hidden md:table-cell">
-                        Open
+                      <th className={PORTAL_TH}>Project</th>
+                      <th className={clsx(PORTAL_TH_RIGHT, "hidden w-[12rem] md:table-cell")}>
+                        Action
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/50">
+                  <tbody className={PORTAL_DIVIDER}>
                     {filteredProjects.map((project) => {
                       const supplierLabel = project.supplierName?.trim()
                         ? project.supplierName
@@ -236,14 +251,11 @@ export default async function CustomerProjectsPage({
                         formatRelativeTimeCompactFromTimestamp(toTimestamp(lastMessageAt)) ?? "—";
 
                       return (
-                        <tr
-                          key={project.id}
-                          className="group hover:bg-slate-900/15 motion-reduce:transition-none"
-                        >
-                          <td className="px-5 py-4 align-middle">
+                        <tr key={project.id} className={clsx("group", PORTAL_ROW)}>
+                          <td className={PORTAL_CELL}>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-slate-100">
+                                <span className={clsx("min-w-0 truncate", PORTAL_TITLE)}>
                                   {originFileLabel ?? project.projectName}
                                 </span>
                                 <OneTimeLocalStorageAffirmation
@@ -276,9 +288,7 @@ export default async function CustomerProjectsPage({
                                     <span aria-hidden="true" className="text-slate-700">
                                       ·
                                     </span>
-                                    <span className="truncate">
-                                      From RFQ: {originFileLabel}
-                                    </span>
+                                    <span className="truncate">From RFQ: {originFileLabel}</span>
                                   </span>
                                 ) : null}
                               </div>
@@ -321,7 +331,7 @@ export default async function CustomerProjectsPage({
                             </div>
                           </td>
 
-                          <td className="hidden px-5 py-4 align-middle text-right md:table-cell">
+                          <td className={clsx(PORTAL_CELL_RIGHT, "hidden md:table-cell")}>
                             <Link
                               href={`/customer/quotes/${project.id}`}
                               className={clsx(
@@ -341,7 +351,7 @@ export default async function CustomerProjectsPage({
                   </tbody>
                 </table>
               </div>
-            )}
+            ) : null}
           </>
         )}
       </PortalCard>

@@ -4,6 +4,11 @@ import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShel
 import { ctaSizeClasses, infoCtaClasses } from "@/lib/ctas";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import type { SupplierQuoteListRow } from "@/server/suppliers/quotesList";
+import {
+  PORTAL_ROW,
+  PORTAL_TH,
+  PORTAL_TH_RIGHT,
+} from "@/app/(portals)/components/portalTableRhythm";
 
 type ActiveJobsTableProps = {
   rows: SupplierQuoteListRow[];
@@ -33,19 +38,19 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
       tableClassName="table-fixed"
       head={
         <tr>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+          <th className={PORTAL_TH}>
             Project
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+          <th className={PORTAL_TH}>
             Awarded
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+          <th className={PORTAL_TH}>
             Kickoff
           </th>
-          <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+          <th className={PORTAL_TH}>
             Last update
           </th>
-          <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+          <th className={PORTAL_TH_RIGHT}>
             Action
           </th>
         </tr>
@@ -60,9 +65,9 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
         return (
           <tr
             key={row.quoteId}
-            className="bg-transparent transition hover:bg-slate-900/15 motion-reduce:transition-none"
+            className={clsx("bg-transparent", PORTAL_ROW)}
           >
-            <td className={clsx(adminTableCellClass, "px-5 py-4")}>
+            <td className={clsx(adminTableCellClass, "px-6 py-4")}>
               <Link
                 href={href}
                 className="block truncate font-semibold leading-tight text-white underline-offset-4 hover:underline"
@@ -73,7 +78,7 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
             <td
               className={clsx(
                 adminTableCellClass,
-                "px-5 py-4 text-xs text-slate-500 tabular-nums whitespace-nowrap",
+                "px-6 py-4 text-xs text-slate-500 tabular-nums whitespace-nowrap",
               )}
             >
               {awardedLabel}
@@ -81,7 +86,7 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
             <td
               className={clsx(
                 adminTableCellClass,
-                "px-5 py-4 text-xs text-slate-300 whitespace-nowrap",
+                "px-6 py-4 text-xs text-slate-300 whitespace-nowrap",
               )}
             >
               {formatKickoffStatus(row.kickoffStatus)}
@@ -89,12 +94,12 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
             <td
               className={clsx(
                 adminTableCellClass,
-                "px-5 py-4 text-xs text-slate-500 tabular-nums whitespace-nowrap",
+                "px-6 py-4 text-xs text-slate-500 tabular-nums whitespace-nowrap",
               )}
             >
               {lastUpdateLabel}
             </td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-right")}>
+            <td className={clsx(adminTableCellClass, "px-6 py-4 text-right")}>
               <Link
                 href={href}
                 className={clsx(

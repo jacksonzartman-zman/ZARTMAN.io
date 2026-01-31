@@ -35,6 +35,14 @@ import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 import { formatDateTime } from "@/lib/formatDate";
 import { matchQuotesToSupplier } from "@/server/suppliers";
 import { buildSupplierInboxRows } from "@/app/(portals)/supplier/inboxRows";
+import {
+  PORTAL_CELL,
+  PORTAL_CELL_RIGHT,
+  PORTAL_DIVIDER,
+  PORTAL_ROW,
+  PORTAL_TH,
+  PORTAL_TH_RIGHT,
+} from "@/app/(portals)/components/portalTableRhythm";
 
 export const dynamic = "force-dynamic";
 
@@ -490,21 +498,21 @@ export default async function SupplierQuotesPage({
           </div>
         ) : (
           <div className="overflow-hidden border-t border-slate-800/40">
-            <table className="min-w-full table-fixed divide-y divide-slate-800/40 text-sm">
+            <table className="min-w-full table-fixed text-sm">
               <thead className="bg-transparent">
                 <tr>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <th className={PORTAL_TH}>
                     RFQ
                   </th>
-                  <th className="hidden w-[15rem] px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
+                  <th className={`hidden w-[15rem] md:table-cell ${PORTAL_TH}`}>
                     Status
                   </th>
-                  <th className="w-[12.5rem] px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <th className={`w-[12.5rem] ${PORTAL_TH_RIGHT}`}>
                     Action
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/40">
+              <tbody className={PORTAL_DIVIDER}>
                 {filteredRows.map((row) => {
                   const closedByAward = Boolean(row.hasAward);
                   const open = isOpenQuoteStatus(row.status) && !closedByAward;
@@ -532,9 +540,9 @@ export default async function SupplierQuotesPage({
                   return (
                     <tr
                       key={row.quoteId}
-                      className="bg-transparent transition hover:bg-slate-900/20 motion-reduce:transition-none"
+                      className={PORTAL_ROW}
                     >
-                      <td className="px-5 py-4 align-middle">
+                      <td className={PORTAL_CELL}>
                         <div className="flex min-w-0 flex-col">
                           <Link
                             href={`/supplier/quotes/${row.quoteId}`}
@@ -569,7 +577,7 @@ export default async function SupplierQuotesPage({
                           </div>
                         </div>
                       </td>
-                      <td className="hidden px-5 py-4 align-middle md:table-cell">
+                      <td className={`hidden md:table-cell ${PORTAL_CELL}`}>
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-3">
                             <QuoteStatusBadge status={row.status} size="sm" />
@@ -600,7 +608,7 @@ export default async function SupplierQuotesPage({
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle text-right">
+                      <td className={PORTAL_CELL_RIGHT}>
                         <Link
                           href={`/supplier/quotes/${row.quoteId}`}
                           className={`${primaryInfoCtaClasses} ${ctaSizeClasses.sm} inline-flex min-w-[11rem] justify-center text-xs font-semibold uppercase tracking-wide motion-reduce:transition-none`}

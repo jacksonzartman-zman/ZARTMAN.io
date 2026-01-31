@@ -28,7 +28,7 @@ export default function AdminTableShell({
         <thead className="bg-slate-950/70">
           {head}
         </thead>
-        <tbody>{body}</tbody>
+        <tbody className="divide-y divide-slate-800/35">{body}</tbody>
       </table>
     </div>
   );

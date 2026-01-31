@@ -10,6 +10,15 @@ import { loadSupplierInbox } from "@/server/messages/inbox";
 import { resolveThreadStatusLabel } from "@/lib/messages/needsReply";
 import { formatRelativeTimeCompactFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
+import {
+  PORTAL_CELL,
+  PORTAL_CELL_RIGHT,
+  PORTAL_DIVIDER,
+  PORTAL_ROW,
+  PORTAL_TH,
+  PORTAL_TH_RIGHT,
+  PORTAL_TITLE,
+} from "@/app/(portals)/components/portalTableRhythm";
 
 export const dynamic = "force-dynamic";
 
@@ -110,27 +119,27 @@ export default async function SupplierMessagesPage() {
           />
         ) : (
           <div className="-mx-6 overflow-hidden border-t border-slate-800/40">
-            <table className="min-w-full divide-y divide-slate-800/40 text-sm">
+            <table className="min-w-full text-sm">
               <thead className="bg-transparent">
                 <tr>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className={PORTAL_TH}>
                     RFQ
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className={PORTAL_TH}>
                     Thread
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className={PORTAL_TH}>
                     Status
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className={PORTAL_TH}>
                     Last message
                   </th>
-                  <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                  <th className={PORTAL_TH_RIGHT}>
                     Action
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/40">
+              <tbody className={PORTAL_DIVIDER}>
                 {rows.map((row) => {
                   const threadLabel = resolveThreadStatusLabel("supplier", row.needsReplyFrom);
                   const threadPill = statusPillClasses(threadLabel);
@@ -140,19 +149,19 @@ export default async function SupplierMessagesPage() {
                   const unread = Math.max(0, Math.floor(row.unreadCount ?? 0));
                   const href = `/supplier/quotes/${row.quoteId}?tab=messages#messages`;
                   return (
-                    <tr key={row.quoteId} className="hover:bg-slate-900/20">
-                      <td className="px-5 py-4 align-middle">
+                    <tr key={row.quoteId} className={PORTAL_ROW}>
+                      <td className={PORTAL_CELL}>
                         <Link
                           href={href}
                           className="flex flex-col gap-1 underline-offset-4 hover:underline"
                         >
-                          <span className="font-medium text-slate-100">{row.rfqLabel}</span>
+                          <span className={PORTAL_TITLE}>{row.rfqLabel}</span>
                           <span className="text-xs text-slate-500">
                             RFQ {row.quoteId.startsWith("Q-") ? row.quoteId : `#${row.quoteId.slice(0, 6)}`}
                           </span>
                         </Link>
                       </td>
-                      <td className="px-5 py-4 align-middle">
+                      <td className={PORTAL_CELL}>
                         <div className="flex flex-wrap items-center gap-2">
                           <span
                             className={clsx(
@@ -169,7 +178,7 @@ export default async function SupplierMessagesPage() {
                           ) : null}
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle">
+                      <td className={PORTAL_CELL}>
                         <div className="flex flex-wrap gap-2">
                           <span className="inline-flex rounded-full border border-slate-800 bg-slate-950/50 px-3 py-1 text-[11px] font-semibold text-slate-200">
                             {row.quoteStatus}
@@ -184,7 +193,7 @@ export default async function SupplierMessagesPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle">
+                      <td className={PORTAL_CELL}>
                         <div className="space-y-1">
                           <p className="text-xs text-slate-200">{row.lastMessagePreview}</p>
                           <p className="text-[11px] uppercase tracking-wide text-slate-600">
@@ -192,7 +201,7 @@ export default async function SupplierMessagesPage() {
                           </p>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle text-right">
+                      <td className={PORTAL_CELL_RIGHT}>
                         <Link
                           href={href}
                           className={`${primaryInfoCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
