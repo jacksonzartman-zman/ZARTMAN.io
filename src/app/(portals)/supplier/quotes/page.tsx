@@ -466,6 +466,7 @@ export default async function SupplierQuotesPage({
                   const subtext = row.hasBid ? `${coreStatus} • Quote submitted` : coreStatus;
                   const kickoff = kickoffPill(row.kickoffStatus);
                   const unread = Math.max(0, Math.floor(row.unreadMessagesCount ?? 0));
+                  const messagesHref = `/supplier/quotes/${row.quoteId}?tab=messages#messages`;
                   const matchChip = matchHealthChip(row.matchHealth);
                   const bench = benchChip(row.benchStatus);
                   const partsChip = partsCoverageChip(row.partsCoverageHealth);
@@ -520,16 +521,17 @@ export default async function SupplierQuotesPage({
                         )}
                       </td>
                       <td className="px-5 py-4 align-middle">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm text-slate-300">
-                            {unread > 0 ? "Unread" : "Up to date"}
-                          </span>
+                        <Link
+                          href={messagesHref}
+                          className="inline-flex flex-wrap items-center gap-2 text-sm text-slate-300 underline-offset-4 hover:text-white hover:underline"
+                        >
+                          <span>{unread > 0 ? "Unread" : "Up to date"}</span>
                           {unread > 0 ? (
                             <span className="inline-flex min-w-[1.75rem] items-center justify-center rounded-full bg-red-500/20 px-2 py-0.5 text-[11px] font-semibold text-red-100">
                               {unread > 99 ? "99+" : unread}
                             </span>
                           ) : null}
-                        </div>
+                        </Link>
                       </td>
                       <td className="px-5 py-4 align-middle">
                         <div className="flex flex-col gap-2">
