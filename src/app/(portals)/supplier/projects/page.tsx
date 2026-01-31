@@ -18,7 +18,6 @@ import { requireUser } from "@/server/auth";
 import { loadSupplierProfileByUserId } from "@/server/suppliers";
 import { getSupplierAwardedQuotesForProjects } from "@/server/supplier/projects";
 import { loadUnreadMessageSummary } from "@/server/quotes/messageReads";
-import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
 
 export const dynamic = "force-dynamic";
 
@@ -108,9 +107,8 @@ export default async function SupplierProjectsPage() {
       subtitle="Awarded projects in progress and history."
     >
       <PortalCard
-        title="Awarded projects"
-        header={false}
-        className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
+        title="Execution queue"
+        className={PORTAL_SURFACE_CARD}
       >
         {projects.length === 0 ? (
           <EmptyStateCard
@@ -119,27 +117,21 @@ export default async function SupplierProjectsPage() {
             action={{ label: "View RFQs", href: "/supplier/quotes" }}
           />
         ) : (
-          <div className={clsx(PORTAL_SURFACE_CARD, "overflow-hidden")}>
+          <div className="overflow-hidden">
             <table className="min-w-full divide-y divide-slate-800/40 text-sm">
               <thead className="bg-transparent">
                 <tr>
                   <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
                     Project
                   </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Customer
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Awarded
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Last message
-                  </th>
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
                     Kickoff
                   </th>
-                  <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Actions
+                  <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 lg:table-cell">
+                    Last message
+                  </th>
+                  <th className="hidden px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
+                    Open
                   </th>
                 </tr>
               </thead>
@@ -164,24 +156,74 @@ export default async function SupplierProjectsPage() {
                     : "—";
 
                   return (
-                    <tr key={project.id} className="hover:bg-slate-900/20">
+                    <tr
+                      key={project.id}
+                      className="hover:bg-slate-900/20 transition-colors motion-reduce:transition-none"
+                    >
                       <td className="px-5 py-4 align-middle">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-semibold leading-tight text-slate-100">
+                        <div className="flex flex-col gap-2">
+                          <div className="space-y-1">
+                            <span className="text-sm font-semibold leading-tight text-slate-100">
                             {project.projectName}
-                          </span>
-                          <span className="mt-1 text-xs text-slate-500">
-                            RFQ {project.id.startsWith("Q-") ? project.id : `#${project.id.slice(0, 6)}`}
-                          </span>
+                            </span>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                              <span>
+                                RFQ{" "}
+                                {project.id.startsWith("Q-") ? project.id : `#${project.id.slice(0, 6)}`}
+                              </span>
+                              <span className="text-slate-700" aria-hidden="true">
+                                ·
+                              </span>
+                              <span>{customerLabel}</span>
+                              <span className="text-slate-700" aria-hidden="true">
+                                ·
+                              </span>
+                              <span className="tabular-nums">{formatAwardedDate(project.awardedAt)}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-slate-500">
+                            <Link
+                              href={`/supplier/quotes/${project.id}?tab=activity#timeline`}
+                              className="underline-offset-4 hover:text-slate-200 hover:underline motion-reduce:transition-none"
+                            >
+                              Activity
+                            </Link>
+                            <MessageLinkWithUnread
+                              href={`/supplier/quotes/${project.id}?tab=messages#messages`}
+                              unread={hasUnread}
+                              className="underline-offset-4 hover:text-slate-200 hover:underline motion-reduce:transition-none"
+                            >
+                              Messages
+                            </MessageLinkWithUnread>
+                            <span className="text-slate-700 md:hidden" aria-hidden="true">
+                              ·
+                            </span>
+                            <Link
+                              href={`/supplier/quotes/${project.id}`}
+                              className={clsx(
+                                "md:hidden inline-flex items-center",
+                                "text-[11px] font-semibold text-slate-200",
+                                "underline-offset-4 hover:text-white hover:underline",
+                                "motion-reduce:transition-none",
+                              )}
+                            >
+                              Open project →
+                            </Link>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle text-slate-200">
-                        {customerLabel}
+                      <td className="hidden px-5 py-4 align-middle md:table-cell">
+                        <div className="space-y-1">
+                          <p className={clsx("font-medium", kickoff.tone)}>
+                            {kickoff.label}
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {kickoff.detail} tasks completed
+                          </p>
+                        </div>
                       </td>
-                      <td className="px-5 py-4 align-middle text-slate-300 tabular-nums">
-                        {formatAwardedDate(project.awardedAt)}
-                      </td>
-                      <td className="px-5 py-4 align-middle">
+                      <td className="hidden px-5 py-4 align-middle lg:table-cell">
                         <div className="space-y-1">
                           <p
                             className={clsx(
@@ -196,38 +238,19 @@ export default async function SupplierProjectsPage() {
                           </p>
                         </div>
                       </td>
-                      <td className="px-5 py-4 align-middle">
-                        <div className="space-y-1">
-                          <p className={clsx("font-medium", kickoff.tone)}>
-                            {kickoff.label}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            {kickoff.detail} tasks completed
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 align-middle text-right">
-                        <div className="flex flex-wrap items-center justify-end gap-3">
-                          <Link
-                            href={`/supplier/quotes/${project.id}?tab=activity#timeline`}
-                            className="inline-flex items-center text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
-                          >
-                            Activity
-                          </Link>
-                          <MessageLinkWithUnread
-                            href={`/supplier/quotes/${project.id}?tab=messages#messages`}
-                            unread={hasUnread}
-                            className="text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
-                          >
-                            Messages
-                          </MessageLinkWithUnread>
-                          <Link
-                            href={`/supplier/quotes/${project.id}`}
-                            className={`${primaryInfoCtaClasses} ${ctaSizeClasses.sm} text-xs font-semibold uppercase tracking-wide`}
-                          >
-                            Open project
-                          </Link>
-                        </div>
+                      <td className="hidden px-5 py-4 align-middle text-right md:table-cell">
+                        <Link
+                          href={`/supplier/quotes/${project.id}`}
+                          className={clsx(
+                            "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold",
+                            "text-blue-100 ring-1 ring-inset ring-blue-400/30",
+                            "bg-blue-500/10 hover:bg-blue-500/15",
+                            "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-200",
+                            "transition motion-reduce:transition-none",
+                          )}
+                        >
+                          Open project →
+                        </Link>
                       </td>
                     </tr>
                   );
