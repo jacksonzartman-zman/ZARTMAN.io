@@ -1,7 +1,7 @@
 import Link from "next/link";
 import clsx from "clsx";
 import AdminTableShell, { adminTableCellClass } from "@/app/admin/AdminTableShell";
-import { ctaSizeClasses, primaryInfoCtaClasses } from "@/lib/ctas";
+import { ctaSizeClasses, infoCtaClasses } from "@/lib/ctas";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import type { SupplierQuoteListRow } from "@/server/suppliers/quotesList";
 
@@ -29,7 +29,8 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
 
   return (
     <AdminTableShell
-      className="border-slate-800/50 bg-slate-950/20 shadow-none"
+      className="border-slate-900/35 bg-transparent shadow-none"
+      tableClassName="table-fixed"
       head={
         <tr>
           <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
@@ -57,34 +58,52 @@ export default function ActiveJobsTable({ rows }: ActiveJobsTableProps) {
           formatRelativeTimeFromTimestamp(toTimestamp(row.lastActivityAt)) ?? "—";
 
         return (
-          <tr key={row.quoteId} className="bg-transparent transition hover:bg-slate-900/20">
+          <tr
+            key={row.quoteId}
+            className="bg-transparent transition hover:bg-slate-900/15 motion-reduce:transition-none"
+          >
             <td className={clsx(adminTableCellClass, "px-5 py-4")}>
               <Link
                 href={href}
-                className="block text-sm font-semibold leading-tight text-white underline-offset-4 hover:underline"
+                className="block truncate font-semibold leading-tight text-white underline-offset-4 hover:underline"
               >
                 {row.rfqLabel}
               </Link>
             </td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400 tabular-nums")}>
+            <td
+              className={clsx(
+                adminTableCellClass,
+                "px-5 py-4 text-xs text-slate-500 tabular-nums whitespace-nowrap",
+              )}
+            >
               {awardedLabel}
             </td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-200")}>
+            <td
+              className={clsx(
+                adminTableCellClass,
+                "px-5 py-4 text-xs text-slate-300 whitespace-nowrap",
+              )}
+            >
               {formatKickoffStatus(row.kickoffStatus)}
             </td>
-            <td className={clsx(adminTableCellClass, "px-5 py-4 text-slate-400 tabular-nums")}>
+            <td
+              className={clsx(
+                adminTableCellClass,
+                "px-5 py-4 text-xs text-slate-500 tabular-nums whitespace-nowrap",
+              )}
+            >
               {lastUpdateLabel}
             </td>
             <td className={clsx(adminTableCellClass, "px-5 py-4 text-right")}>
               <Link
                 href={href}
                 className={clsx(
+                  infoCtaClasses,
                   ctaSizeClasses.sm,
-                  primaryInfoCtaClasses,
-                  "inline-flex min-w-[9rem] justify-center",
+                  "inline-flex min-w-[8.5rem] justify-center border-blue-400/45 text-blue-100 hover:bg-blue-500/15",
                 )}
               >
-                Open project
+                Open job
               </Link>
             </td>
           </tr>
