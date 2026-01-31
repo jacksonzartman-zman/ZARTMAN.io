@@ -113,7 +113,7 @@ function SectionChip({
   isActive: boolean;
 }) {
   const tone: QuoteAtAGlancePillTone = mapRailToneToPillTone(section.tone);
-  const base = "pill px-3 py-1 text-[11px] font-semibold";
+  const base = "pill px-3 py-1 text-[11px] font-medium";
   const classes =
     tone === "info"
       ? clsx(

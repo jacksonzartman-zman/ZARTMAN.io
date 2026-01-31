@@ -940,11 +940,6 @@ function SupplierQuoteWorkspace({
             value={formatDateTime(quote.created_at, { includeTime: true }) ?? "—"}
           />
         </dl>
-        <WorkflowStatusCallout
-          currentLabel={derived.statusLabel}
-          nextState={nextWorkflowState}
-          variant="blue"
-        />
       </div>
     </DisclosureSection>
   );

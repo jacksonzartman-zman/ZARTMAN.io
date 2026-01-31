@@ -28,21 +28,18 @@ export function WorkflowStatusCallout({
   return (
     <div
       className={clsx(
-        "rounded-xl border border-slate-900/60 bg-slate-950/40 p-3",
+        "rounded-xl border border-slate-900/60 bg-slate-950/30 p-3",
         className,
       )}
     >
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-        Workflow
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold">
+      <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
         <span
           className={clsx(
             "inline-flex items-center rounded-full px-3 py-1",
             palette.currentBadge,
           )}
         >
-          Current: {currentLabel}
+          {currentLabel}
         </span>
         <span className="text-slate-500">→</span>
         <span
@@ -51,14 +48,12 @@ export function WorkflowStatusCallout({
             nextState ? palette.nextBadge : "border-emerald-500/30 text-emerald-200",
           )}
         >
-          {nextState ? formatWorkflowStateLabel(nextState) : "Final milestone"}
+          <span className="text-slate-400">Next: </span>
+          <span className="text-slate-200">
+            {nextState ? formatWorkflowStateLabel(nextState) : "Final milestone"}
+          </span>
         </span>
       </div>
-      <p className="mt-2 text-[11px] uppercase tracking-wide text-slate-500">
-        {nextState
-          ? "Up next once the team advances this search request."
-          : "This search request has reached the end of the workflow."}
-      </p>
     </div>
   );
 }

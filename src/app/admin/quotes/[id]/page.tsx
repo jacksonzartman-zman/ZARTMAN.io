@@ -2754,8 +2754,8 @@ export default async function QuoteDetailPage({ params }: QuoteDetailPageProps) 
                 </div>
               ) : null}
               {partsCoverageSummary.anyParts && !partsCoverageSummary.allCovered ? (
-                <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-5 py-3 text-xs text-slate-300">
-                  Note: Some parts are missing CAD or drawings. You can still award, but clarify scope during kickoff.
+                <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-xs text-slate-300">
+                  Some parts are missing CAD or drawings. Confirm scope during kickoff.
                 </p>
               ) : null}
 

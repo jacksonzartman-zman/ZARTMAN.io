@@ -26,8 +26,8 @@ export function SectionHeader({
 }) {
   const kickerClasses =
     variant === "label"
-      ? "text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500"
-      : "text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500";
+      ? "text-[11px] font-medium uppercase tracking-[0.22em] text-slate-500"
+      : "text-[11px] font-medium uppercase tracking-[0.26em] text-slate-500";
 
   const titleClasses =
     variant === "hero"

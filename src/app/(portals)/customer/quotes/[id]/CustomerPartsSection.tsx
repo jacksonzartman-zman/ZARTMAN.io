@@ -398,7 +398,7 @@ export function CustomerPartsSection({
                     <input type="hidden" name="quotePartId" value={part.id} />
 
                     <p className="text-xs text-slate-400">
-                      Most likely matches appear first. You can adjust selections as needed.
+                      Suggested matches are shown first.
                     </p>
 
                     <div className="max-h-64 overflow-auto rounded-xl border border-slate-900/60 bg-slate-950/40">

@@ -349,9 +349,9 @@ function PartCard({
               </div>
             ) : (
               <div className="px-4 py-3">
-                <p className="text-xs text-slate-400">
-                  Most likely matches appear first. You can adjust selections as needed.
-                </p>
+                  <p className="text-xs text-slate-400">
+                    Suggested matches are shown first.
+                  </p>
 
                 <ul className="mt-3 space-y-2">
                   {sortedFiles.map((entry, idx) => {

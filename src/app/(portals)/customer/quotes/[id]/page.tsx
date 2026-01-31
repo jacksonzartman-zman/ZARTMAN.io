@@ -1270,8 +1270,8 @@ export default async function CustomerQuoteDetailPage({
               customerAwardBidsReady ? (
                 <>
                   {partsCoverageSummary.anyParts && !partsCoverageSummary.allCovered ? (
-                    <p className="rounded-xl border border-slate-800 bg-slate-950/60 px-5 py-3 text-xs text-slate-300">
-                      Note: Some parts are missing CAD or drawings. You can still award, but clarify scope in kickoff.
+                    <p className="rounded-xl border border-slate-900/60 bg-slate-950/30 px-5 py-3 text-xs text-slate-300">
+                      Some parts are missing CAD or drawings. Confirm scope during kickoff.
                     </p>
                   ) : null}
                   <CustomerQuoteAwardPanel
@@ -1392,11 +1392,6 @@ export default async function CustomerQuoteDetailPage({
           </TagPill>
         </div>
 
-        <WorkflowStatusCallout
-          currentLabel={quoteStatusLabel}
-          nextState={nextWorkflowState}
-        />
-
         <dl className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
           <div className="rounded-xl border border-slate-900/60 bg-slate-950/40 px-3 py-2">
             <dt className="text-[11px] uppercase tracking-wide text-slate-500">
@@ -1444,7 +1439,7 @@ export default async function CustomerQuoteDetailPage({
       id="uploads"
       className="scroll-mt-24"
       title="Uploads"
-      description={`CAD and drawings are collected here. You can then link them to parts in the Parts section below. Max ${formatMaxUploadSize()} per file. Very large packages may need to be split into multiple uploads.`}
+      description={`Upload CAD and drawings here, then link files to parts below. Max ${formatMaxUploadSize()} per file.`}
       defaultOpen={false}
       summary={
         <TagPill size="md" tone="slate" className="normal-case tracking-normal">
