@@ -80,7 +80,7 @@ export default function SupplierInboxTable({ rows }: SupplierInboxTableProps) {
             Files &amp; value
           </th>
           <th className={PORTAL_TH}>
-            Your quote
+            Your offer
           </th>
           <th className={PORTAL_TH}>
             RFQ status
@@ -259,7 +259,7 @@ function getSupplierBidCtaLabel(state: SupplierBidSummaryState): string {
     case "won":
       return "Open workspace";
     default:
-      return "View quote";
+      return "View offer";
   }
 }
 

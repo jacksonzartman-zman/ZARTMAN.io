@@ -292,7 +292,7 @@ async function SupplierDashboardPage({
 
         <div className="space-y-5 lg:col-span-3">
           <PortalCard
-            title="Active projects"
+            title="Projects"
             description="Awarded work in progress."
             className={`${PORTAL_SURFACE_CARD_INTERACTIVE_QUIET} p-4`}
             action={

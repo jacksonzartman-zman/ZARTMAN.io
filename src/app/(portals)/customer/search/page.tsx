@@ -1084,7 +1084,7 @@ export default async function CustomerSearchPage({ searchParams }: CustomerSearc
                   href="/customer/quotes"
                   className="text-xs font-semibold text-slate-300 underline-offset-4 hover:underline"
                 >
-                  View quote history
+                  View RFQ history
                 </Link>
               </div>
             </PortalCard>
