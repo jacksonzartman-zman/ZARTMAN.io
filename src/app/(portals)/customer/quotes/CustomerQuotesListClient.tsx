@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 
 type RfqStatusTone = "slate" | "blue" | "emerald" | "amber" | "muted";
 
@@ -39,32 +38,23 @@ function StatusPill({
 }) {
   const toneClasses =
     tone === "blue"
-      ? "border-blue-500/30 bg-blue-500/10 text-blue-100"
+      ? "border-blue-400/20 bg-slate-950/20 text-slate-200"
       : tone === "emerald"
-        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-100"
+        ? "border-emerald-400/20 bg-slate-950/20 text-slate-200"
         : tone === "amber"
-          ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
+          ? "border-amber-400/20 bg-slate-950/20 text-slate-200"
           : tone === "muted"
-            ? "border-slate-900/70 bg-slate-950/20 text-slate-400"
-            : "border-slate-800 bg-slate-950/40 text-slate-200";
+            ? "border-slate-900/60 bg-slate-950/10 text-slate-400"
+            : "border-slate-800/70 bg-slate-950/20 text-slate-200";
 
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap",
         toneClasses,
       )}
     >
       {children}
-    </span>
-  );
-}
-
-function NewOffersBadge() {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">
-      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" aria-hidden />
-      New offers
     </span>
   );
 }
@@ -94,7 +84,6 @@ function writeSeenMap(next: Record<string, number>) {
 
 export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] }) {
   const [seenMap, setSeenMap] = useState<Record<string, number>>({});
-  const router = useRouter();
 
   useEffect(() => {
     setSeenMap(readSeenMap());
@@ -113,22 +102,27 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
 
   return (
     <div className="-mx-7 overflow-hidden rounded-2xl bg-slate-950/25 ring-1 ring-slate-800/50">
-      <div className="grid grid-cols-12 gap-3 border-b border-slate-800/50 px-6 py-4 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-        <div className="col-span-12 sm:col-span-8">RFQ</div>
-        <div className="col-span-6 sm:col-span-2">Status</div>
-        <div className="col-span-6 text-right sm:col-span-2">Updated</div>
+      <div className="border-b border-slate-800/50 px-6 py-3">
+        <div className="grid grid-cols-1 gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:grid-cols-[minmax(0,1fr)_10rem_7rem_7rem] md:items-center">
+          <div>RFQ</div>
+          <div className="hidden md:block">Status</div>
+          <div className="hidden md:block text-right">Updated</div>
+          <div className="hidden md:block text-right">Action</div>
+        </div>
       </div>
       <ul className="divide-y divide-slate-800/40">
         {rows.map((row) => {
           const hasNewOffers = row.status === "Offers ready" && !seenIds.has(row.id);
+          const title =
+            row.primaryFileName?.trim() && row.primaryFileName !== "No files yet"
+              ? row.primaryFileName
+              : row.fallbackLabel;
           return (
             <li
               key={row.id}
               className={clsx(
                 "relative transition-colors motion-reduce:transition-none",
-                hasNewOffers
-                  ? "bg-emerald-500/5 hover:bg-emerald-500/10"
-                  : "hover:bg-slate-900/15",
+                "hover:bg-slate-900/15",
               )}
             >
               <Link
@@ -137,96 +131,70 @@ export function CustomerQuotesListClient({ rows }: { rows: CustomerQuoteRow[] })
                   if (row.status === "Offers ready") markSeen(row.id);
                 }}
                 className={clsx(
-                  "group relative grid grid-cols-12 gap-3 px-6 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 motion-reduce:transition-none",
+                  "group relative grid grid-cols-1 gap-3 px-6 py-4 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 motion-reduce:transition-none md:grid-cols-[minmax(0,1fr)_10rem_7rem_7rem] md:items-center",
                 )}
               >
                 {hasNewOffers ? (
                   <span
-                    className="absolute left-0 top-0 h-full w-0.5 bg-emerald-400/70"
+                    className="absolute left-0 top-0 h-full w-0.5 bg-emerald-400/50"
                     aria-hidden
                   />
                 ) : null}
-                <div className="col-span-12 min-w-0 sm:col-span-8">
+                <div className="min-w-0">
                   <p
-                    className="min-w-0 truncate text-[15px] font-semibold leading-tight text-slate-100"
-                    title={row.primaryFileName}
+                    className="min-w-0 truncate text-[15px] font-semibold leading-snug text-slate-100"
+                    title={title}
                   >
-                    {row.primaryFileName}
+                    {title}
                   </p>
-                  {row.secondaryFileName ? (
-                    <p
-                      className="mt-1 min-w-0 truncate text-xs text-slate-400"
-                      title={row.secondaryFileName}
-                    >
-                      {row.secondaryFileName}
-                    </p>
-                  ) : (
-                    <p
-                      className="mt-1 min-w-0 truncate text-xs text-slate-500"
-                      title={row.fallbackLabel}
-                    >
-                      {row.fallbackLabel}
-                    </p>
-                  )}
-                  <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-600">
-                    RFQ {formatRfqId(row.id)}
-                  </p>
-                </div>
-
-                <div className="col-span-6 flex flex-col items-start gap-2 sm:col-span-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
-                    {hasNewOffers ? <NewOffersBadge /> : null}
-                  </div>
-                  {row.stageLabel ? (
-                    <p className="text-[11px] font-medium text-slate-500">
-                      {row.stageLabel}
-                    </p>
-                  ) : null}
-                  {row.status === "Delivered" ? (
-                    <div className="flex min-w-0 flex-col gap-1">
-                      <span className="truncate text-xs font-medium text-slate-400">
-                        Completed successfully
-                      </span>
-                      <span
-                        role="link"
-                        tabIndex={0}
-                        className={clsx(
-                          "text-xs font-semibold text-slate-500 underline decoration-slate-700/70 underline-offset-4 transition motion-reduce:transition-none",
-                          "hover:text-slate-200 hover:decoration-slate-300/60",
-                          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400",
-                        )}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          router.push("/quote");
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return;
-                          event.preventDefault();
-                          event.stopPropagation();
-                          router.push("/quote");
-                        }}
-                        aria-label="Upload another part"
-                      >
-                        Upload another part
-                      </span>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="col-span-6 flex items-center justify-end text-right sm:col-span-2">
-                  <div className="flex flex-col items-end gap-1 tabular-nums">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-600 sm:hidden">
-                      Last update
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 md:hidden">
+                    <span className="text-xs font-medium text-slate-300 whitespace-nowrap">
+                      {row.status}
                     </span>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500 whitespace-nowrap">
+                    <span className="tabular-nums">RFQ {formatRfqId(row.id)}</span>
+                    <span className="px-2 text-slate-700" aria-hidden>
+                      ·
+                    </span>
+                    <span className="tabular-nums" title={row.updatedTitle}>
+                      Updated {row.updatedLabel}
+                    </span>
+                  </p>
+                  <div className="mt-3 flex justify-end md:hidden">
+                    <span className="text-xs font-semibold text-slate-300 whitespace-nowrap">
+                      View RFQ →
+                    </span>
+                  </div>
+                </div>
+
+                <div className="hidden min-w-0 md:flex md:items-center">
+                  <div className="flex min-w-0 flex-col items-start gap-1">
+                    <StatusPill tone={row.statusTone}>{row.status}</StatusPill>
+                  </div>
+                </div>
+
+                <div className="hidden md:flex md:items-center md:justify-end md:text-right">
+                  <div className="flex flex-col items-end gap-1 tabular-nums">
                     <span
-                      className="text-xs font-medium text-slate-400"
+                      className="text-xs font-medium text-slate-400 whitespace-nowrap"
                       title={row.updatedTitle}
                     >
                       {row.updatedLabel}
                     </span>
                   </div>
+                </div>
+
+                <div className="hidden md:flex md:items-center md:justify-end">
+                  <span
+                    className={clsx(
+                      "text-xs font-semibold text-slate-300 whitespace-nowrap",
+                      "transition-colors motion-reduce:transition-none",
+                      "group-hover:text-white group-focus-visible:text-white",
+                    )}
+                  >
+                    View RFQ →
+                  </span>
                 </div>
               </Link>
             </li>
