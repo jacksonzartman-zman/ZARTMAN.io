@@ -1445,7 +1445,7 @@ export default async function CustomerQuoteDetailPage({
       className="scroll-mt-24"
       title="Uploads"
       description={`CAD and drawings are collected here. You can then link them to parts in the Parts section below. Max ${formatMaxUploadSize()} per file. Very large packages may need to be split into multiple uploads.`}
-      defaultOpen={fileCount > 0}
+      defaultOpen={false}
       summary={
         <TagPill size="md" tone="slate" className="normal-case tracking-normal">
           {fileCountText}
@@ -1516,7 +1516,7 @@ export default async function CustomerQuoteDetailPage({
       className="scroll-mt-24"
       title="Decision"
       description="Once offers arrive, compare options and select a supplier."
-      defaultOpen={bidCount > 0 && !quoteHasWinner}
+      defaultOpen={false}
       summary={
         quoteHasWinner ? (
           <TagPill size="md" tone="emerald">
@@ -1698,7 +1698,7 @@ export default async function CustomerQuoteDetailPage({
       className="scroll-mt-24"
       title="Compare Offers"
       description="Review supplier offers and pick a best-fit option."
-      defaultOpen={rfqOfferCount > 0}
+      defaultOpen={false}
       summary={
         <TagPill
           size="md"
@@ -1742,7 +1742,7 @@ export default async function CustomerQuoteDetailPage({
         className="scroll-mt-24"
         title="Order confirmation"
         description="Optional PO number + ship-to details for the awarded quote."
-        defaultOpen
+        defaultOpen={false}
         summary={
           <TagPill size="md" tone={selectionConfirmedAt ? "emerald" : "slate"}>
             {selectionConfirmedAt ? "Confirmed" : "Pending"}
@@ -1765,7 +1765,7 @@ export default async function CustomerQuoteDetailPage({
       className="scroll-mt-24"
       title="Kickoff"
       description="Track the final confirmations between selection and ordering."
-      defaultOpen={quoteHasWinner}
+      defaultOpen={false}
     >
       <div className="space-y-6">
         {fileCount === 0 ? (
