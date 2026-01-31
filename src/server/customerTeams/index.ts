@@ -307,6 +307,75 @@ export async function setQuoteTeamIdIfMissing(args: {
   }
 }
 
+export async function maybeAttachQuoteToTeamAfterInvite(args: {
+  quoteId: string;
+  teamId: string;
+}): Promise<boolean> {
+  const quoteId = normalizeId(args.quoteId);
+  const teamId = normalizeId(args.teamId);
+  if (!quoteId || !teamId) return false;
+  if (!(await isCustomerTeamsSchemaReady())) return false;
+
+  try {
+    const [{ data: team, error: teamError }, { data: quote, error: quoteError }] =
+      await Promise.all([
+        supabaseServer()
+          .from("customer_teams")
+          .select("customer_account_id")
+          .eq("id", teamId)
+          .maybeSingle<{ customer_account_id: string | null }>(),
+        supabaseServer()
+          .from("quotes")
+          .select("customer_id,team_id")
+          .eq("id", quoteId)
+          .maybeSingle<{ customer_id: string | null; team_id: string | null }>(),
+      ]);
+
+    if (teamError) {
+      if (isMissingTableOrColumnError(teamError)) return false;
+      console.warn("[customer_teams] invite attach: team lookup failed", {
+        teamId,
+        quoteId,
+        error: serializeSupabaseError(teamError) ?? teamError,
+      });
+      return false;
+    }
+
+    if (quoteError) {
+      if (isMissingTableOrColumnError(quoteError)) return false;
+      console.warn("[customer_teams] invite attach: quote lookup failed", {
+        teamId,
+        quoteId,
+        error: serializeSupabaseError(quoteError) ?? quoteError,
+      });
+      return false;
+    }
+
+    const customerAccountId = normalizeId(team?.customer_account_id);
+    if (!customerAccountId) return false;
+
+    const quoteCustomerId = normalizeId(quote?.customer_id);
+    if (!quoteCustomerId || quoteCustomerId !== customerAccountId) {
+      return false;
+    }
+
+    const existingQuoteTeamId = normalizeId(quote?.team_id);
+    if (existingQuoteTeamId) {
+      return existingQuoteTeamId === teamId;
+    }
+
+    return await setQuoteTeamIdIfMissing({ quoteId, teamId });
+  } catch (error) {
+    if (isMissingTableOrColumnError(error)) return false;
+    console.warn("[customer_teams] invite attach crashed", {
+      teamId,
+      quoteId,
+      error: serializeSupabaseError(error) ?? error,
+    });
+    return false;
+  }
+}
+
 export async function userHasTeamAccessToQuote(args: {
   quoteId: string;
   userId: string;

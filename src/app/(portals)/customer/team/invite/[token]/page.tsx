@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { getServerAuthUser } from "@/server/auth";
 import { logOpsEventNoQuote } from "@/server/ops/events";
+import { maybeAttachQuoteToTeamAfterInvite } from "@/server/customerTeams";
 import { acceptCustomerTeamInvite, loadCustomerTeamInviteByToken } from "@/server/customerTeams/invites";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,27 @@ function normalizeNextPath(value: unknown): string | null {
   if (trimmed.startsWith("//")) return null;
   if (/^https?:\/\//i.test(trimmed)) return null;
   return trimmed;
+}
+
+function isUuidLike(value: string): boolean {
+  const v = (value ?? "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+}
+
+function extractQuoteIdFromNextPath(nextPath: string | null): string | null {
+  if (!nextPath) return null;
+  try {
+    const url = new URL(nextPath, "http://local");
+    const quoteParam = url.searchParams.get("quote");
+    if (quoteParam && isUuidLike(quoteParam)) return quoteParam;
+
+    const match = url.pathname.match(/^\/customer\/quotes\/([^/]+)/);
+    const fromPath = match?.[1] ?? "";
+    if (fromPath && isUuidLike(fromPath)) return fromPath;
+  } catch {
+    // Ignore malformed nextPath.
+  }
+  return null;
 }
 
 async function CustomerTeamInvitePage({ params, searchParams }: CustomerTeamInvitePageProps) {
@@ -108,6 +130,20 @@ async function CustomerTeamInvitePage({ params, searchParams }: CustomerTeamInvi
       user_email: user.email ?? undefined,
     },
   });
+
+  // Routing seam fix: ensure the deep-linked quote (if any) is attached to the accepted team.
+  // Security: only attach if the quote belongs to the same customer account as the team.
+  const quoteIdFromNext = extractQuoteIdFromNextPath(nextPath);
+  if (quoteIdFromNext) {
+    try {
+      await maybeAttachQuoteToTeamAfterInvite({
+        quoteId: quoteIdFromNext,
+        teamId: accept.teamId,
+      });
+    } catch {
+      // Fail-soft: do not block the redirect.
+    }
+  }
 
   redirect(nextPath ?? "/customer?invite=accepted");
 }

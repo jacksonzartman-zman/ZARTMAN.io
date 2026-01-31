@@ -162,7 +162,9 @@ export async function notifyOnChangeRequestSubmitted(
 
   const adminQuoteHref = buildPortalLink(`/admin/quotes/${quoteId}`);
   const customerQuoteHref = buildPortalLink(`/customer/quotes/${quoteId}`);
-  const customerMessagesHref = buildPortalLink(`/customer/quotes/${quoteId}#messages`);
+  const customerMessagesHref = buildPortalLink(
+    `/customer/quotes/${quoteId}?tab=messages#messages`,
+  );
 
   const payload = {
     quoteId,
