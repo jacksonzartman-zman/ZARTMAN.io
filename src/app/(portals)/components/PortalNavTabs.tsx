@@ -3,6 +3,11 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  isNavHrefActive,
+  normalizePathname,
+  pickBestActiveHref,
+} from "@/lib/navigation/portalNav";
 
 export type PortalNavLink = {
   label: string;
@@ -31,21 +36,48 @@ export function PortalNavTabs({
   linkClassName,
   isActive,
 }: PortalNavTabsProps) {
-  const path = currentPath || "/";
+  const path = normalizePathname(currentPath || "/");
   const resolveActive =
     isActive ??
-    ((href: string, pathname: string) => defaultIsPortalNavLinkActive(pathname, href));
+    ((href: string, pathname: string) => isNavHrefActive(pathname, href));
+
+  const dedupeLinksByHref = (input: PortalNavLink[]) => {
+    const seen = new Set<string>();
+    const output: PortalNavLink[] = [];
+    for (const link of input) {
+      if (!link || typeof link.href !== "string" || !link.href) continue;
+      const href = normalizePathname(link.href);
+      if (seen.has(href)) continue;
+      seen.add(href);
+      output.push({ ...link, href });
+    }
+    return output;
+  };
 
   const maxVisible = Math.max(0, Math.floor(maxVisibleLinks));
 
-  const initialVisibleLinks = maxVisible > 0 ? links.slice(0, maxVisible) : [];
-  const overflowLinks = maxVisible > 0 ? links.slice(maxVisible) : links;
+  const primaryLinks = dedupeLinksByHref(links);
+  const primaryHrefSet = new Set(primaryLinks.map((link) => link.href));
+  const extraMoreLinks = dedupeLinksByHref(
+    (moreLinks ?? []).filter((link) => !primaryHrefSet.has(normalizePathname(link.href))),
+  );
 
-  const initialMoreLinks = [...overflowLinks, ...(moreLinks ?? [])];
+  const initialVisibleLinks = maxVisible > 0 ? primaryLinks.slice(0, maxVisible) : [];
+  const overflowLinks = maxVisible > 0 ? primaryLinks.slice(maxVisible) : primaryLinks;
+
+  const initialMoreLinks = dedupeLinksByHref([...overflowLinks, ...extraMoreLinks]);
+
+  const activeHref = pickBestActiveHref(
+    path,
+    [...primaryLinks, ...extraMoreLinks].map((link) => link.href),
+    (pathname, href) => resolveActive(href, pathname),
+  );
 
   // If the active link is in "More", surface it in the main row so location is obvious.
-  const activeInMoreIdx = initialMoreLinks.findIndex((link) => resolveActive(link.href, path));
-  const activeInMoreLink = activeInMoreIdx >= 0 ? initialMoreLinks[activeInMoreIdx] : null;
+  const activeInMoreLink =
+    activeHref && !initialVisibleLinks.some((link) => link.href === activeHref)
+      ? initialMoreLinks.find((link) => link.href === activeHref) ?? null
+      : null;
 
   const visibleLinks =
     activeInMoreLink && initialVisibleLinks.length > 0
@@ -83,7 +115,9 @@ export function PortalNavTabs({
     setMoreOpen(false);
   }, [path]);
 
-  const moreLinksActive = computedMoreLinks.some((link) => resolveActive(link.href, path));
+  const moreLinksActive = activeHref
+    ? computedMoreLinks.some((link) => link.href === activeHref)
+    : computedMoreLinks.some((link) => resolveActive(link.href, path));
 
   if (!hasPrimaryLinks && !hasMoreLinks) {
     return null;
@@ -97,7 +131,7 @@ export function PortalNavTabs({
       )}
     >
       {visibleLinks.map((link) => {
-        const active = resolveActive(link.href, path);
+        const active = activeHref ? link.href === activeHref : resolveActive(link.href, path);
         return (
           <Link
             key={link.href}
@@ -155,7 +189,7 @@ export function PortalNavTabs({
           {moreOpen ? (
             <div className="absolute left-0 z-50 mt-2 w-64 rounded-2xl border border-slate-800/80 bg-slate-950/95 p-2 text-sm shadow-lg shadow-black/40">
               {computedMoreLinks.map((link) => {
-                const active = resolveActive(link.href, path);
+                const active = activeHref ? link.href === activeHref : resolveActive(link.href, path);
                 return (
                   <Link
                     key={link.href}
@@ -183,5 +217,5 @@ export function PortalNavTabs({
 }
 
 export function defaultIsPortalNavLinkActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+  return isNavHrefActive(pathname, href);
 }

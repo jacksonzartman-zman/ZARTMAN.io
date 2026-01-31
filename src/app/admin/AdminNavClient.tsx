@@ -5,12 +5,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import { PortalContainer } from "@/app/(portals)/components/PortalContainer";
-import {
-  defaultIsPortalNavLinkActive,
-  type PortalNavLink,
-} from "@/app/(portals)/components/PortalNavTabs";
+import { type PortalNavLink } from "@/app/(portals)/components/PortalNavTabs";
 import { NotificationsTray } from "@/components/notifications/NotificationsTray";
 import { BrandMark } from "@/components/BrandMark";
+import { isNavHrefActive, pickBestActiveHref } from "@/lib/navigation/portalNav";
 
 export type AdminHeaderUser = {
   email: string | null;
@@ -64,19 +62,23 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
   const moreRef = useRef<HTMLDivElement | null>(null);
   const mobileRef = useRef<HTMLDivElement | null>(null);
 
-  const primaryActiveHref = useMemo(() => {
-    const match = PRIMARY_LINKS.find((link) => defaultIsPortalNavLinkActive(pathname, link.href));
-    return match?.href ?? null;
-  }, [pathname]);
+  const primaryActiveHref = useMemo(
+    () => pickBestActiveHref(pathname, PRIMARY_LINKS.map((link) => link.href), isNavHrefActive),
+    [pathname],
+  );
 
-  const opsActive = useMemo(() => {
-    return OPS_LINKS.some((link) => defaultIsPortalNavLinkActive(pathname, link.href));
-  }, [pathname]);
+  const opsActiveHref = useMemo(
+    () => pickBestActiveHref(pathname, OPS_LINKS.map((link) => link.href), isNavHrefActive),
+    [pathname],
+  );
 
-  const advancedActive = useMemo(() => {
-    return ADVANCED_LINKS.some((link) => defaultIsPortalNavLinkActive(pathname, link.href));
-  }, [pathname]);
+  const advancedActiveHref = useMemo(
+    () => pickBestActiveHref(pathname, ADVANCED_LINKS.map((link) => link.href), isNavHrefActive),
+    [pathname],
+  );
 
+  const opsActive = Boolean(opsActiveHref);
+  const advancedActive = Boolean(advancedActiveHref);
   const moreActive = advancedActive;
 
   useEffect(() => {
@@ -155,7 +157,7 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
               Ops
             </span>
             {OPS_LINKS.map((link) => {
-              const active = defaultIsPortalNavLinkActive(pathname, link.href);
+              const active = Boolean(opsActiveHref) && link.href === opsActiveHref;
               return (
                 <Link
                   key={link.href}
@@ -199,7 +201,7 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
                     <MenuLink
                       key={link.href}
                       link={link}
-                      pathname={pathname}
+                      activeHref={advancedActiveHref}
                       onClick={() => setMoreOpen(false)}
                     />
                   ))}
@@ -231,7 +233,7 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
               >
                 <MenuLink
                   link={NOTIFICATIONS_LINK}
-                  pathname={pathname}
+                  activeHref={isNavHrefActive(pathname, NOTIFICATIONS_LINK.href) ? NOTIFICATIONS_LINK.href : null}
                   onClick={() => setMobileOpen(false)}
                 />
                 <div className="my-2 h-px bg-slate-900/80" />
@@ -241,7 +243,7 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
                   <MenuLink
                     key={link.href}
                     link={link}
-                    pathname={pathname}
+                    activeHref={primaryActiveHref}
                     onClick={() => setMobileOpen(false)}
                   />
                 ))}
@@ -252,7 +254,7 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
                   <MenuLink
                     key={link.href}
                     link={link}
-                    pathname={pathname}
+                    activeHref={opsActiveHref}
                     onClick={() => setMobileOpen(false)}
                   />
                 ))}
@@ -280,7 +282,7 @@ export default function AdminNavClient({ user, signOutAction }: AdminNavClientPr
                       <MenuLink
                         key={link.href}
                         link={link}
-                        pathname={pathname}
+                        activeHref={advancedActiveHref}
                         onClick={() => setMobileOpen(false)}
                       />
                     ))}
@@ -438,14 +440,14 @@ function MenuSection({ title }: { title: string }) {
 
 function MenuLink({
   link,
-  pathname,
+  activeHref,
   onClick,
 }: {
   link: PortalNavLink;
-  pathname: string;
+  activeHref: string | null;
   onClick: () => void;
 }) {
-  const active = defaultIsPortalNavLinkActive(pathname, link.href);
+  const active = Boolean(activeHref) && link.href === activeHref;
   return (
     <Link
       key={link.href}
