@@ -373,7 +373,7 @@ export default async function SupplierQuotesPage({
             href="/supplier/messages"
             className="inline-flex items-center rounded-full border border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:border-slate-600 hover:text-white"
           >
-            Message inbox
+            Messages
           </Link>
         </div>
       }
@@ -568,11 +568,7 @@ export default async function SupplierQuotesPage({
                                 <span className="inline-flex min-w-[1.6rem] items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-100 tabular-nums">
                                   {unread > 99 ? "99+" : unread}
                                 </span>
-                              ) : (
-                                <span className="text-[10px] text-slate-600 tabular-nums">
-                                  0
-                                </span>
-                              )}
+                              ) : null}
                             </Link>
                           </div>
                         </div>
@@ -599,11 +595,7 @@ export default async function SupplierQuotesPage({
                                 <span className="inline-flex min-w-[1.6rem] items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-100 tabular-nums">
                                   {unread > 99 ? "99+" : unread}
                                 </span>
-                              ) : (
-                                <span className="text-[10px] text-slate-600 tabular-nums">
-                                  0
-                                </span>
-                              )}
+                              ) : null}
                             </Link>
                           </div>
                         </div>
