@@ -126,7 +126,7 @@ export function PortalNavTabs({
   return (
     <nav
       className={clsx(
-        "flex flex-wrap items-center gap-1 rounded-xl bg-white/[0.02] p-1 text-sm font-medium text-slate-300 ring-1 ring-inset ring-white/10",
+        "flex flex-wrap items-center gap-1 rounded-xl bg-white/[0.015] p-1 text-sm font-medium text-slate-300 ring-1 ring-inset ring-white/[0.08]",
         className,
       )}
     >
@@ -138,10 +138,10 @@ export function PortalNavTabs({
             href={link.href}
             aria-current={active ? "page" : undefined}
             className={clsx(
-              "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-opacity motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60",
+              "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-200/90 transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50",
               active
-                ? "bg-white/[0.06] text-white shadow-sm shadow-black/20"
-                : "text-slate-300/90 hover:bg-white/[0.04] hover:text-white hover:opacity-100",
+                ? "bg-white/[0.07] text-white ring-1 ring-inset ring-white/[0.12]"
+                : "hover:bg-white/[0.04] hover:text-white",
               linkClassName,
             )}
           >
@@ -157,10 +157,10 @@ export function PortalNavTabs({
             type="button"
             onClick={() => setMoreOpen((prev) => !prev)}
             className={clsx(
-              "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-opacity motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60",
+              "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-200/90 transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50",
               moreLinksActive || moreOpen
-                ? "bg-white/[0.06] text-white shadow-sm shadow-black/20"
-                : "text-slate-300/90 hover:bg-white/[0.04] hover:text-white hover:opacity-100",
+                ? "bg-white/[0.07] text-white ring-1 ring-inset ring-white/[0.12]"
+                : "hover:bg-white/[0.04] hover:text-white",
               linkClassName,
             )}
             aria-haspopup="menu"
@@ -185,7 +185,7 @@ export function PortalNavTabs({
           </button>
 
           {moreOpen ? (
-            <div className="absolute left-0 z-50 mt-2 w-64 rounded-2xl border border-white/10 bg-slate-950/95 p-2 text-sm shadow-lg shadow-black/40">
+            <div className="absolute left-0 z-50 mt-2 w-64 rounded-2xl border border-white/[0.08] bg-slate-950/95 p-2 text-sm shadow-lg shadow-black/40">
               {computedMoreLinks.map((link) => {
                 const active = activeHref ? link.href === activeHref : resolveActive(link.href, path);
                 return (
@@ -195,10 +195,10 @@ export function PortalNavTabs({
                     aria-current={active ? "page" : undefined}
                     onClick={() => setMoreOpen(false)}
                     className={clsx(
-                      "flex items-center justify-between gap-3 rounded-xl px-3 py-2 font-semibold transition-opacity motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60",
+                      "flex items-center justify-between gap-3 rounded-xl px-3 py-2 font-semibold text-slate-200/90 transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50",
                       active
-                        ? "bg-white/[0.06] text-white"
-                        : "text-slate-200/90 hover:bg-white/[0.04] hover:text-white hover:opacity-100",
+                        ? "bg-white/[0.07] text-white"
+                        : "hover:bg-white/[0.04] hover:text-white",
                     )}
                   >
                     <span>{link.label}</span>

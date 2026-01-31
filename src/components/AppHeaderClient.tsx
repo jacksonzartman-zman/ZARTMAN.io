@@ -21,9 +21,9 @@ const ROLE_BADGE_COPY: Record<PortalRole, string> = {
 
 const ROLE_BADGE_CLASSES: Record<PortalRole, string> = {
   customer:
-    "text-emerald-100/90 bg-emerald-500/10 ring-emerald-400/20",
+    "text-emerald-100/90 bg-emerald-500/[0.08] ring-emerald-300/[0.16]",
   supplier:
-    "text-sky-100/90 bg-sky-500/10 ring-sky-400/20",
+    "text-sky-100/90 bg-sky-500/[0.08] ring-sky-300/[0.16]",
 };
 
 const NAV_LINKS: Record<PortalRole, PortalNavLink[]> = {
@@ -106,9 +106,9 @@ export default function AppHeaderClient({
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-neutral-950/80 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/70">
-      <div className="mx-auto flex w-full max-w-page flex-col gap-3 px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3.5">
+      <div className="mx-auto flex w-full max-w-page flex-col gap-2.5 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <BrandMark
               href={brandHref}
               withWordmark
@@ -119,7 +119,7 @@ export default function AppHeaderClient({
             {user && role ? (
               <span
                 className={clsx(
-                  "inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ring-1 ring-inset",
+                  "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ring-1 ring-inset",
                   ROLE_BADGE_CLASSES[role],
                 )}
               >
@@ -130,27 +130,27 @@ export default function AppHeaderClient({
 
           <div className="flex items-center gap-3.5">
             {user ? (
-            <>
-              {role ? (
-                <NotificationsTray
-                  viewAllHref={
-                    role === "customer"
-                      ? "/customer/notifications"
-                      : "/supplier/notifications"
-                  }
+              <>
+                {role ? (
+                  <NotificationsTray
+                    viewAllHref={
+                      role === "customer"
+                        ? "/customer/notifications"
+                        : "/supplier/notifications"
+                    }
+                  />
+                ) : null}
+                <UserDropdown
+                  user={user}
+                  role={role}
+                  signOutAction={signOutAction}
                 />
-              ) : null}
-              <UserDropdown
-                user={user}
-                role={role}
-                signOutAction={signOutAction}
-              />
-            </>
+              </>
             ) : (
               <div className="flex items-center gap-3 text-sm font-semibold text-ink-soft">
                 <Link
                   href="/login"
-                  className="rounded-md border border-transparent px-3.5 py-1.5 hover:border-white/10 hover:bg-white/5 hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60"
+                  className="rounded-md border border-transparent px-3.5 py-1.5 transition-colors hover:border-white/10 hover:bg-white/[0.04] hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50"
                 >
                   Log in
                 </Link>
@@ -246,7 +246,7 @@ function UserDropdown({
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex items-center gap-2 rounded-md bg-white/[0.03] px-3.5 py-1.5 text-sm font-semibold text-slate-200 ring-1 ring-inset ring-white/10 transition-opacity hover:bg-white/[0.05] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60 motion-reduce:transition-none"
+        className="inline-flex items-center gap-2 rounded-md bg-white/[0.02] px-3.5 py-1.5 text-sm font-semibold text-slate-200 ring-1 ring-inset ring-white/[0.08] transition-colors hover:bg-white/[0.04] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50 motion-reduce:transition-none"
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -267,7 +267,7 @@ function UserDropdown({
         </svg>
       </button>
       {open ? (
-        <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-white/10 bg-slate-950/95 p-4 text-sm shadow-lg shadow-black/40">
+        <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-white/[0.08] bg-slate-950/95 p-4 text-sm shadow-lg shadow-black/40">
           <p className="text-xs text-slate-500">Signed in as</p>
           <p className="mt-1 font-semibold text-white">
             {user.displayName ?? "Workspace user"}
@@ -279,7 +279,7 @@ function UserDropdown({
           <div className="mt-4 flex flex-col gap-2">
             <Link
               href={settingsHref}
-              className="rounded-xl bg-white/[0.03] px-3 py-2 text-left text-sm font-semibold text-slate-100 ring-1 ring-inset ring-white/10 transition-opacity hover:bg-white/[0.06] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60 motion-reduce:transition-none"
+              className="rounded-xl bg-white/[0.02] px-3 py-2 text-left text-sm font-semibold text-slate-100 ring-1 ring-inset ring-white/[0.08] transition-colors hover:bg-white/[0.05] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50 motion-reduce:transition-none"
               onClick={() => setOpen(false)}
             >
               Account settings
@@ -287,7 +287,7 @@ function UserDropdown({
             <form action={signOutAction}>
               <button
                 type="submit"
-                className="w-full rounded-xl bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100 transition-opacity hover:bg-red-500/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/60 motion-reduce:transition-none"
+                className="w-full rounded-xl bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100 transition-colors hover:bg-red-500/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50 motion-reduce:transition-none"
               >
                 Log out
               </button>

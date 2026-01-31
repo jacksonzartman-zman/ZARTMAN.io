@@ -81,7 +81,7 @@ export function NotificationsTray({ viewAllHref }: NotificationsTrayProps) {
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-900/70 bg-slate-950/70 text-slate-300 transition hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-300"
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.02] text-slate-300 ring-1 ring-inset ring-white/[0.08] transition-colors hover:bg-white/[0.04] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={badgeLabel ? `View notifications (${badgeLabel} unread)` : "View notifications"}
@@ -95,7 +95,7 @@ export function NotificationsTray({ viewAllHref }: NotificationsTrayProps) {
       </button>
 
       {open ? (
-        <div className="absolute right-0 mt-2 w-96 rounded-2xl border border-slate-900/80 bg-slate-950/95 p-4 text-sm text-slate-200 shadow-[0_18px_40px_rgba(2,6,23,0.65)]">
+        <div className="absolute right-0 mt-2 w-96 rounded-2xl border border-white/[0.08] bg-slate-950/95 p-4 text-sm text-slate-200 shadow-[0_18px_40px_rgba(2,6,23,0.65)]">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-white">Notifications</p>
@@ -155,13 +155,13 @@ function NotificationPreview({
   return (
     <Link
       href={notification.href}
-      className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+      className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200/50"
       onClick={(event) => event.stopPropagation()}
     >
       <div
         className={clsx(
-          "flex flex-col rounded-2xl border px-3 py-2 transition hover:border-blue-400/30 hover:bg-slate-900/40",
-          notification.isRead ? "border-slate-900/70 opacity-80" : "border-blue-500/30",
+          "flex flex-col rounded-2xl border px-3 py-2 transition-colors hover:border-white/[0.16] hover:bg-white/[0.03]",
+          notification.isRead ? "border-white/[0.06] opacity-80" : "border-white/[0.12]",
         )}
       >
         <div className="flex items-start justify-between gap-3">
