@@ -38,7 +38,7 @@ export function SupplierFunnelBanner({
   return (
     <section
       className={clsx(
-        "rounded-2xl border border-slate-900/70 bg-slate-950/35 p-5",
+        "rounded-2xl border border-slate-900/60 bg-slate-950/25 p-4 sm:p-5",
         className,
       )}
       aria-label="Supplier workflow funnel"
@@ -53,7 +53,7 @@ export function SupplierFunnelBanner({
             <li
               key={step.step}
               className={clsx(
-                "rounded-2xl border px-4 py-3 transition",
+                "rounded-2xl border px-4 py-3 transition motion-reduce:transition-none",
                 isActive
                   ? "border-blue-400/35 bg-blue-500/5"
                   : "border-slate-900/70 bg-black/20",

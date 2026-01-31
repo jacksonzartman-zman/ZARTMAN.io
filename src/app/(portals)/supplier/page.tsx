@@ -38,6 +38,9 @@ import { SupplierFunnelBanner } from "./components/SupplierFunnelBanner";
 
 export const dynamic = "force-dynamic";
 
+const QUIET_CARD_CLASSNAME =
+  "border-slate-900/45 bg-slate-950/25 shadow-none hover:border-slate-900/55 hover:bg-slate-950/30 hover:shadow-none";
+
 type SupplierDashboardPageProps = {
   searchParams?: SearchParamsLike;
 };
@@ -244,13 +247,12 @@ async function SupplierDashboardPage({
         <SupplierOfferSentBanner enabled={offerJustSent} />
       </div>
       <InvitedSupplierWelcomePanel enabled={invitedJustCompleted} />
-      <SupplierFunnelBanner activeStep={1} />
-      <div className="grid gap-6 lg:grid-cols-12 lg:items-start">
-        <div className="space-y-6 lg:col-span-8">
+      <div className="grid gap-7 lg:grid-cols-12 lg:items-start lg:gap-8">
+        <div className="space-y-7 lg:col-span-9">
           <PortalCard
             title="Step 1 · New RFQs"
             description="RFQs waiting for your offer."
-            className="border-slate-700/70 bg-slate-950/55 shadow-[0_12px_32px_rgba(2,6,23,0.32)] hover:border-slate-600/70 hover:bg-slate-950/60 hover:shadow-[0_14px_38px_rgba(2,6,23,0.38)]"
+            className="p-7 sm:p-8 ring-1 ring-blue-400/10 border-slate-700/70 bg-slate-950/60 shadow-[0_16px_44px_rgba(2,6,23,0.4)] hover:border-slate-600/75 hover:bg-slate-950/65 hover:shadow-[0_18px_52px_rgba(2,6,23,0.48)]"
             action={
               supplierExists ? (
                 <Link
@@ -289,14 +291,21 @@ async function SupplierDashboardPage({
               />
             )}
             {matchesUnavailable ? <DataFallbackNotice className="mt-3" /> : null}
+
+            <div className="mt-6 border-t border-slate-800/60 pt-5">
+              <SupplierFunnelBanner
+                activeStep={1}
+                className="border-slate-900/55 bg-black/10"
+              />
+            </div>
           </PortalCard>
         </div>
 
-        <div className="space-y-6 lg:col-span-4">
+        <div className="space-y-5 lg:col-span-3">
           <PortalCard
             title="Step 3 · Active projects"
             description="Awarded work in progress."
-            className="border-slate-800/45 bg-slate-950/30 shadow-none hover:border-slate-700/55 hover:bg-slate-950/35 hover:shadow-[0_10px_26px_rgba(2,6,23,0.24)]"
+            className={`${QUIET_CARD_CLASSNAME} p-5`}
             action={
               supplierExists ? (
                 <Link
@@ -335,7 +344,7 @@ async function SupplierDashboardPage({
             <PortalCard
               title="Quick setup"
               description="Two steps to ensure you receive the right RFQs."
-              className="border-slate-800/40 bg-slate-950/25 shadow-none hover:bg-slate-950/30 hover:shadow-none"
+              className={`${QUIET_CARD_CLASSNAME} p-5`}
             >
               <ul className="space-y-2 text-sm">
                 {!hasCapabilities ? (
