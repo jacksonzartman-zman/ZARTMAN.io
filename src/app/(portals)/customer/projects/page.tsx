@@ -2,13 +2,8 @@ import clsx from "clsx";
 import Link from "next/link";
 
 import PortalCard from "@/app/(portals)/PortalCard";
-import {
-  PortalShell,
-  PORTAL_SURFACE_CARD,
-  PORTAL_SURFACE_CARD_INTERACTIVE_QUIET,
-} from "@/app/(portals)/components/PortalShell";
+import { PortalShell } from "@/app/(portals)/components/PortalShell";
 import { EmptyStateCard } from "@/components/EmptyStateCard";
-import { formatDateTime } from "@/lib/formatDate";
 import {
   formatRelativeTimeCompactFromTimestamp,
   toTimestamp,
@@ -34,37 +29,9 @@ export const dynamic = "force-dynamic";
  * - Done: Empty state (filters) stays calm + actionable
  */
 
-function formatAwardedDate(value: string | null): string {
-  if (!value) return "—";
-  return formatDateTime(value) ?? "—";
-}
-
 function formatLastUpdated(value: string | null): string {
   const ts = toTimestamp(value);
   return formatRelativeTimeCompactFromTimestamp(ts) ?? "—";
-}
-
-function formatMessageSenderLabel(senderRole: string | null | undefined): string {
-  const normalized = (senderRole ?? "").trim().toLowerCase();
-  if (normalized === "supplier") return "Supplier";
-  if (normalized === "customer") return "Customer";
-  if (normalized === "system") return "System";
-  return "Admin";
-}
-
-function formatLastMessagePreview(input: {
-  currentUserId: string;
-  senderId: string | null;
-  senderRole: string;
-  body: string;
-}): string {
-  const prefix =
-    input.senderId && input.senderId === input.currentUserId
-      ? "You"
-      : formatMessageSenderLabel(input.senderRole);
-  const body = (input.body ?? "").trim();
-  if (!body) return "—";
-  return `${prefix}: ${body}`;
 }
 
 function formatKickoffStatus(summary: {
@@ -214,11 +181,7 @@ export default async function CustomerProjectsPage({
       title="Projects"
       subtitle="Execution stage: awarded projects in progress and history."
     >
-      <PortalCard
-        title="Projects"
-        header={false}
-        className={PORTAL_SURFACE_CARD_INTERACTIVE_QUIET}
-      >
+      <PortalCard title="Projects" header={false} className="p-7">
         {projects.length === 0 ? (
           <EmptyStateCard
             title="No projects yet"
@@ -247,45 +210,23 @@ export default async function CustomerProjectsPage({
                 />
               )
             ) : (
-              <div className={clsx(PORTAL_SURFACE_CARD, "overflow-hidden")}>
-                <table className="min-w-full divide-y divide-slate-800/40 text-sm">
-                  <thead className="bg-transparent">
+              <div className="overflow-hidden">
+                <table className="min-w-full text-sm">
+                  <thead className="sr-only">
                     <tr>
-                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                        Project
-                      </th>
-                      <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                        Supplier
-                      </th>
-                      <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
-                        Awarded
-                      </th>
-                      <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
-                        Last updated
-                      </th>
-                      <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 lg:table-cell">
-                        Last message
-                      </th>
-                      <th className="hidden px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 md:table-cell">
-                        Kickoff
-                      </th>
-                      <th className="px-5 py-4 text-right text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                        Actions
+                      <th scope="col">Project</th>
+                      <th scope="col" className="hidden md:table-cell">
+                        Open
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/40">
+                  <tbody className="divide-y divide-slate-800/50">
                     {filteredProjects.map((project) => {
                       const supplierLabel = project.supplierName?.trim()
                         ? project.supplierName
                         : "Supplier pending";
                       const originFileLabel = extractOriginFileLabel(project.projectName);
                       const kickoff = formatKickoffStatus(project.kickoff);
-                      const kickoffSubtext = project.kickoff.isComplete
-                        ? "Kickoff complete"
-                        : kickoff.detail
-                          ? `Kickoff in progress (${kickoff.detail})`
-                          : "Kickoff in progress";
                       const canNudge =
                         Boolean(project.awardedSupplierId) && !project.kickoff.isComplete;
                       const summary = messageSummary[project.id];
@@ -293,97 +234,106 @@ export default async function CustomerProjectsPage({
                       const lastMessageAt = summary?.lastMessage?.created_at ?? null;
                       const lastMessageAtLabel =
                         formatRelativeTimeCompactFromTimestamp(toTimestamp(lastMessageAt)) ?? "—";
-                      const lastMessagePreview = summary?.lastMessage
-                        ? formatLastMessagePreview({
-                            currentUserId: user.id,
-                            senderId: summary.lastMessage.sender_id,
-                            senderRole: summary.lastMessage.sender_role,
-                            body: summary.lastMessage.body,
-                          })
-                        : "—";
 
                       return (
-                        <tr key={project.id} className="hover:bg-slate-900/20">
+                        <tr
+                          key={project.id}
+                          className="group hover:bg-slate-900/15 motion-reduce:transition-none"
+                        >
                           <td className="px-5 py-4 align-middle">
-                            <div className="flex flex-col">
-                              <span className="text-sm font-semibold leading-tight text-slate-100">
-                                {originFileLabel ?? project.projectName}{" "}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-slate-100">
+                                  {originFileLabel ?? project.projectName}
+                                </span>
                                 <OneTimeLocalStorageAffirmation
                                   as="span"
                                   storageKey={`customer.project.now_active_affirmed.v1:${project.id}`}
-                                  className="ml-2 inline-flex items-center rounded-full border border-slate-800 bg-slate-950/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                                  className="hidden shrink-0 items-center rounded-full border border-slate-900/60 bg-slate-950/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:inline-flex"
                                 >
                                   Now active
                                 </OneTimeLocalStorageAffirmation>
-                              </span>
-                              <span className="mt-1 text-xs text-slate-500">
-                                RFQ{" "}
-                                {project.id.startsWith("Q-")
-                                  ? project.id
-                                  : `#${project.id.slice(0, 6)}`}
-                              </span>
+                              </div>
+
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                                <span className={clsx("font-semibold", kickoff.tone)}>
+                                  {kickoff.label}
+                                </span>
+                                <span aria-hidden="true" className="text-slate-700">
+                                  ·
+                                </span>
+                                <span className="tabular-nums">
+                                  Updated {formatLastUpdated(project.lastUpdatedAt)}
+                                </span>
+                                <span className="hidden lg:inline">
+                                  <span aria-hidden="true" className="mx-2 text-slate-700">
+                                    ·
+                                  </span>
+                                  <span className="tabular-nums">Last message {lastMessageAtLabel}</span>
+                                </span>
+                                {originFileLabel ? (
+                                  <span className="hidden xl:inline-flex min-w-0 max-w-[28rem] items-center gap-2">
+                                    <span aria-hidden="true" className="text-slate-700">
+                                      ·
+                                    </span>
+                                    <span className="truncate">
+                                      From RFQ: {originFileLabel}
+                                    </span>
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-slate-500">
+                                <Link
+                                  href={`/customer/quotes/${project.id}`}
+                                  className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-100 ring-1 ring-inset ring-emerald-400/25 hover:bg-emerald-500/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300 md:hidden"
+                                >
+                                  Open →
+                                </Link>
+                                <Link
+                                  href={`/customer/quotes/${project.id}?tab=activity#timeline`}
+                                  className="underline-offset-4 hover:text-slate-200 hover:underline motion-reduce:transition-none"
+                                >
+                                  Activity
+                                </Link>
+                                <MessageLinkWithUnread
+                                  href={`/customer/quotes/${project.id}?tab=messages#messages`}
+                                  unread={hasUnread}
+                                  className="underline-offset-4 hover:text-slate-200 hover:underline motion-reduce:transition-none"
+                                >
+                                  Messages
+                                </MessageLinkWithUnread>
+                                {canNudge && project.awardedSupplierId ? (
+                                  <KickoffNudgeButton
+                                    quoteId={project.id}
+                                    supplierId={project.awardedSupplierId}
+                                    variant="link"
+                                    className="text-[11px] font-semibold text-slate-500 hover:text-slate-200 motion-reduce:transition-none"
+                                  />
+                                ) : null}
+                                <span className="hidden md:inline text-slate-700" aria-hidden="true">
+                                  ·
+                                </span>
+                                <span className="hidden md:inline tabular-nums text-slate-600">
+                                  {supplierLabel}
+                                </span>
+                              </div>
                             </div>
                           </td>
-                          <td className="px-5 py-4 align-middle text-slate-200">
-                            {supplierLabel}
-                          </td>
-                          <td className="hidden px-5 py-4 align-middle text-slate-300 tabular-nums md:table-cell">
-                            {formatAwardedDate(project.awardedAt)}
-                          </td>
-                          <td className="hidden px-5 py-4 align-middle text-slate-300 tabular-nums md:table-cell">
-                            {formatLastUpdated(project.lastUpdatedAt)}
-                          </td>
-                          <td className="hidden px-5 py-4 align-middle lg:table-cell">
-                            <div className="space-y-1">
-                              <p
-                                className={clsx(
-                                  "text-xs",
-                                  hasUnread ? "text-slate-200" : "text-slate-500",
-                                )}
-                              >
-                                {lastMessagePreview}
-                              </p>
-                              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-600">
-                                {lastMessageAtLabel}
-                              </p>
-                            </div>
-                          </td>
-                          <td className="hidden px-5 py-4 align-middle md:table-cell">
-                            <div className="space-y-1">
-                              <p className={clsx("font-medium", kickoff.tone)}>{kickoff.label}</p>
-                              <p className="text-xs text-slate-400">{kickoffSubtext}</p>
-                            </div>
-                          </td>
-                          <td className="px-5 py-4 align-middle text-right">
-                            <div className="flex flex-wrap items-center justify-end gap-3">
-                              {canNudge && project.awardedSupplierId ? (
-                                <KickoffNudgeButton
-                                  quoteId={project.id}
-                                  supplierId={project.awardedSupplierId}
-                                  variant="link"
-                                  className="items-stretch"
-                                />
-                              ) : null}
-                              <Link
-                                href={`/customer/quotes/${project.id}?tab=activity#timeline`}
-                                className="inline-flex items-center text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
-                              >
-                                Activity
-                              </Link>
-                              <MessageLinkWithUnread
-                                href={`/customer/quotes/${project.id}?tab=messages#messages`}
-                                unread={hasUnread}
-                                className="text-xs font-semibold text-slate-300 underline-offset-4 transition hover:text-white hover:underline"
-                              >
-                                Messages
-                              </MessageLinkWithUnread>
-                              <Link
-                                href={`/customer/quotes/${project.id}`}
-                                className={`${primaryCtaClasses} px-4 py-1.5 text-xs font-semibold uppercase tracking-wide`}
-                              >
-                                Open project
-                              </Link>
-                            </div>
+
+                          <td className="hidden px-5 py-4 align-middle text-right md:table-cell">
+                            <Link
+                              href={`/customer/quotes/${project.id}`}
+                              className={clsx(
+                                "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold",
+                                "text-emerald-100 ring-1 ring-inset ring-emerald-400/30",
+                                "bg-emerald-500/10 hover:bg-emerald-500/15",
+                                "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300",
+                                "transition motion-reduce:transition-none",
+                              )}
+                            >
+                              Open project →
+                            </Link>
                           </td>
                         </tr>
                       );
