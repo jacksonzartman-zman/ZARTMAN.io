@@ -7,6 +7,7 @@ import { formatDateTime } from "@/lib/formatDate";
 import type { QuoteEventRecord } from "@/server/quotes/events";
 import { formatQuoteEvent } from "@/lib/quoteEvents/formatQuoteEvent";
 import { Fragment } from "react";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 type QuoteEventsTimelineProps = {
   events: QuoteEventRecord[];
@@ -51,7 +52,11 @@ export function QuoteEventsTimeline({
       </header>
 
       {!hasEvents ? (
-        <p className="text-xs text-slate-400">{emptyState}</p>
+        <EmptyStateCard
+          title="No activity yet"
+          description={emptyState}
+          className="px-4 py-3"
+        />
       ) : (
         <ol className="mt-4 space-y-3 border-l border-slate-800">
           {formattedEvents.map((entry, index) => {

@@ -7,6 +7,7 @@ import {
   type DfMCheckResult,
   type GeometryStats,
 } from "@/lib/dfm/basicPartChecks";
+import { EmptyStateNotice } from "@/app/(portals)/EmptyStateNotice";
 
 type PartDfMPanelProps = {
   geometryStats?: GeometryStats | null;
@@ -103,9 +104,10 @@ export function PartDfMPanel({
             </article>
           ))
         ) : (
-          <p className="rounded-xl border border-dashed border-slate-900/60 bg-slate-950/30 px-4 py-3 text-sm text-slate-400">
-            No automated flags yet. Upload an STL to run geometry-based checks.
-          </p>
+          <EmptyStateNotice
+            title="No automated flags yet"
+            description="Upload an STL to run geometry-based checks."
+          />
         )}
       </div>
     </section>

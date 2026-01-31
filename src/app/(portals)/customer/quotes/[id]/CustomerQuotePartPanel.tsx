@@ -13,6 +13,7 @@ import {
   type QuoteWorkspaceStatus,
 } from "@/lib/quote/workspaceStatus";
 import { classifyCadFileType } from "@/lib/cadRendering";
+import { EmptyStateNotice } from "@/app/(portals)/EmptyStateNotice";
 import { SectionHeader } from "@/components/shared/primitives/SectionHeader";
 import { StatusPill } from "@/components/shared/primitives/StatusPill";
 import { TagPill } from "@/components/shared/primitives/TagPill";
@@ -288,9 +289,10 @@ export function CustomerQuotePartPanel({
 
             <div className="mt-3 space-y-2">
               {files.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-900/60 bg-slate-950/20 px-4 py-3 text-sm text-slate-400">
-                  Files attached to your RFQ will appear here for quick previewing.
-                </p>
+                <EmptyStateNotice
+                  title="No files yet"
+                  description="Files attached to your RFQ will appear here for quick previewing."
+                />
               ) : (
                 files.map((file, index) => {
                   const preview = previews[index] ?? null;

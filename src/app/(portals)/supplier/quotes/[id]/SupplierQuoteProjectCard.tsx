@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { formatDateTime } from "@/lib/formatDate";
 import type { QuoteProjectRecord } from "@/server/quotes/projects";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 type SupplierQuoteProjectCardProps = {
   project: QuoteProjectRecord | null;
@@ -54,10 +55,11 @@ export function SupplierQuoteProjectCard({
           Project details are temporarily unavailable.
         </p>
       ) : showEmptyState ? (
-        <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-sm text-slate-300">
-          The customer hasn&apos;t provided kickoff details yet. We&apos;ll notify you when the PO number and ship
-          date are ready.
-        </p>
+        <EmptyStateCard
+          title="Awaiting customer kickoff details"
+          description="We’ll notify you when the PO number and ship date are ready."
+          className="px-4 py-3"
+        />
       ) : null}
 
       {project ? (

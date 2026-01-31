@@ -1888,9 +1888,11 @@ export default async function CustomerQuoteDetailPage({
           }
         >
           {messagesSchemaMissing ? (
-            <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-5 py-3 text-sm text-slate-400">
-              Messaging not enabled in this environment.
-            </p>
+            <EmptyStateCard
+              title="Messaging not enabled"
+              description="Messaging isn’t enabled in this environment."
+              className="px-5 py-3"
+            />
           ) : (
             <>
               {threadNeedsReply.needs_reply_role === "admin" ? (
@@ -2534,13 +2536,21 @@ function CustomerKickoffPanel({
       </dl>
 
       {!hasWinner ? (
-        <p className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-sm text-slate-300">
-          Kickoff begins after supplier is selected.
-        </p>
+        <div className="mt-4">
+          <EmptyStateCard
+            title="Kickoff not started"
+            description="Kickoff begins after a supplier is selected."
+            className="px-4 py-3"
+          />
+        </div>
       ) : (
-        <p className="mt-4 rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-3 py-2 text-sm text-slate-300">
-          Kickoff progress will update as your supplier completes onboarding tasks.
-        </p>
+        <div className="mt-4">
+          <EmptyStateCard
+            title="Kickoff in progress"
+            description="Kickoff progress will update as your supplier completes onboarding tasks."
+            className="px-4 py-3"
+          />
+        </div>
       )}
     </section>
   );

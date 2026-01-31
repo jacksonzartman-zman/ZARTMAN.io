@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { formatDateTime } from "@/lib/formatDate";
 import { formatRelativeTimeFromTimestamp, toTimestamp } from "@/lib/relativeTime";
 import { ctaSizeClasses, primaryCtaClasses } from "@/lib/ctas";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 type SavedSearchListItem = {
   quoteId: string;
@@ -45,9 +46,10 @@ const SUMMARY_VALUE_CLASSES =
 export function SavedSearchesList({ searches }: { searches: SavedSearchListItem[] }) {
   if (searches.length === 0) {
     return (
-      <p className="text-sm text-slate-400">
-        You have no saved searches yet.
-      </p>
+      <EmptyStateCard
+        title="No saved searches yet"
+        description="Save a search to revisit it or share it with your team."
+      />
     );
   }
 

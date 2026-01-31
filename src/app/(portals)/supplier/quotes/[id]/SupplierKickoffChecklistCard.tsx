@@ -13,6 +13,7 @@ import {
   type KickoffTasksChecklistUpdate,
   type KickoffTasksChecklistUpdateResult,
 } from "@/components/KickoffTasksChecklist";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 import { updateSupplierKickoffTaskStatusAction } from "./actions";
 import PortalCard from "../../../PortalCard";
 
@@ -68,9 +69,11 @@ export function SupplierKickoffChecklistCard({
         ) : null}
 
         {!hasTasks ? (
-          <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-300">
-            Kickoff not ready yet. Refresh in a moment.
-          </p>
+          <EmptyStateCard
+            title="Kickoff not ready yet"
+            description="Refresh in a moment to load kickoff tasks."
+            className="px-4 py-3"
+          />
         ) : (
           <div>
             <KickoffTasksChecklist

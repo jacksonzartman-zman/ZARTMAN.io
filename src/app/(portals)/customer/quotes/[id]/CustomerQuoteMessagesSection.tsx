@@ -1,5 +1,6 @@
 import { formatDateTime } from "@/lib/formatDate";
 import type { QuoteMessageRecord } from "@/server/quotes/messages";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 const MESSAGE_LIMIT = 50;
 
@@ -23,9 +24,11 @@ export function CustomerQuoteMessagesSection({
   return (
     <div className="space-y-4">
       {recentMessages.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-sm text-slate-400">
-          No messages yet.
-        </p>
+        <EmptyStateCard
+          title="No messages yet"
+          description="Send the first message when you need clarification or want to confirm details."
+          className="px-4 py-3"
+        />
       ) : (
         <ul className="space-y-3">
           {recentMessages.map((message) => {
@@ -90,9 +93,11 @@ export function CustomerQuoteMessagesSection({
           </button>
         </form>
       ) : (
-        <p className="rounded-xl border border-dashed border-slate-800/70 bg-black/30 px-4 py-3 text-xs text-slate-400">
-          Messaging is disabled while viewing this quote in read-only mode.
-        </p>
+        <EmptyStateCard
+          title="Messaging disabled"
+          description="Switch back to your primary email to send messages from the portal."
+          className="px-4 py-3"
+        />
       )}
     </div>
   );

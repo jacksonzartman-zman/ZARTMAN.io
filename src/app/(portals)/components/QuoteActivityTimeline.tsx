@@ -6,6 +6,7 @@ import clsx from "clsx";
 
 import { formatDateTime } from "@/lib/formatDate";
 import type { QuoteTimelineEvent } from "@/lib/quote/tracking";
+import { EmptyStateCard } from "@/components/EmptyStateCard";
 
 type QuoteActivityTimelineProps = {
   events: QuoteTimelineEvent[];
@@ -47,10 +48,14 @@ export function QuoteActivityTimeline({
       </header>
 
       {!hasEvents ? (
-        <p className="text-xs text-slate-400">
-          {emptyState ??
-            "Timeline data will populate once we record RFQ or offer activity."}
-        </p>
+        <EmptyStateCard
+          title="No activity yet"
+          description={
+            emptyState ??
+            "Timeline data will populate once we record RFQ or offer activity."
+          }
+          className="px-4 py-3"
+        />
       ) : (
         <ol className="mt-4 space-y-3 border-l border-slate-800">
           {events.map((event) => (
